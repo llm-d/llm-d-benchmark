@@ -1,0 +1,29 @@
+# Build Stage: using Go 1.24.1 image
+FROM golang:1.24.1-alpine AS builder
+
+# Install necessary build dependencies if required
+RUN apk add --no-cache git
+
+WORKDIR /app
+# Copy go modules files first for caching dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the rest of the source code.
+COPY . .
+
+# Build the binary from the main package in cmd/llm-d-benchmark
+RUN cd cmd/llm-d-benchmark && go build -o /app/llm-d-benchmark .
+
+# Runtime Stage: minimal image
+FROM alpine:latest
+
+WORKDIR /app
+# Copy the built binary from the builder stage
+COPY --from=builder /app/llm-d-benchmark .
+
+# Expose port 8080 if your application listens on it (adjust if needed)
+EXPOSE 8080
+
+# Run the binary
+CMD ["tail", "-f", "/dev/null"]
