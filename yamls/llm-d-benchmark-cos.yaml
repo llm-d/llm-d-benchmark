@@ -1,0 +1,21 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: llm-d-cos
+  annotations:
+    # region match the region selected when creating the bucket
+    ibm.io/region: us-east 
+    # use the direct endpoint; not the public endpoint
+    ibm.io/endpoint: 'https://s3.direct.us-east.cloud-object-storage.appdomain.cloud' 
+    ibm.io/auto-create-bucket: 'false'
+    ibm.io/auto-delete-bucket: 'false'
+    ibm.io/tls-cipher-suite: default
+    ibm.io/secret-name: vllm-d-benchmark-secret
+    ibm.io/bucket: hf-cache
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 200G
+  storageClassName: ibmc-s3fs-cos-perf  # or ibmc-s3fs-cos
