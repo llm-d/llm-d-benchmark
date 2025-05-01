@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+  creationTimestamp: "2025-05-01T00:21:19Z"
+  generation: 1
+  labels:
+    app: llama-3-8b
+  name: llama-3-8b
+  namespace: e2e-solution
+  resourceVersion: "19575196"
+  uid: d7c22911-f96f-437e-aa93-3ca50198003a
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: llama-3-8b
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: llama-3-8b
+    spec:
+      containers:
+      - args:
+        - vllm serve meta-llama/Llama-3.1-8B-Instruct --port 8083 --trust-remote-code
+          --enable-chunked-prefill --max_num_batched_tokens 1024
+        command:
+        - /bin/sh
+        - -c
+        env:
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: token
+              name: hf-token-secret-llama3
+        image: vllm/vllm-openai:latest
+        imagePullPolicy: Always
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 8083
+            scheme: HTTP
+          initialDelaySeconds: 1200
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: llama-3-8b
+        ports:
+        - containerPort: 8083
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 8083
+            scheme: HTTP
+          initialDelaySeconds: 1200
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: "10"
+            memory: 20G
+            nvidia.com/gpu: "1"
+          requests:
+            cpu: "2"
+            memory: 6G
+            nvidia.com/gpu: "1"
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /root/.cache/huggingface
+          name: cache-volume
+        - mountPath: /dev/shm
+          name: shm
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: cache-volume
+        persistentVolumeClaim:
+          claimName: llama-3-8b
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 2Gi
+        name: shm
+status:
+  availableReplicas: 1
+  conditions:
+  - lastTransitionTime: "2025-05-01T00:41:38Z"
+    lastUpdateTime: "2025-05-01T00:41:38Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2025-05-01T00:41:38Z"
+    lastUpdateTime: "2025-05-01T00:41:38Z"
+    message: ReplicaSet "llama-3-8b-7bbf785946" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  observedGeneration: 1
+  readyReplicas: 1
+  replicas: 1
+  updatedReplicas: 1

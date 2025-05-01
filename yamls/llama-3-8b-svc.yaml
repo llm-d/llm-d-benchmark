@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: "2025-04-30T19:04:18Z"
+  name: llama-3-8b
+  namespace: e2e-solution
+  resourceVersion: "19217074"
+  uid: 6a758fb5-29a3-4019-8990-e6d02c5c1bd5
+spec:
+  clusterIP: 172.30.58.26
+  clusterIPs:
+  - 172.30.58.26
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 8083
+  selector:
+    app: llama-3-8b
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}
