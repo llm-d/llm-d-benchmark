@@ -1,0 +1,13 @@
+apiVersion: v1                
+kind: PersistentVolumeClaim
+metadata:
+  name: llama-8b-cache    
+  namespace: e2e-solution
+spec:  
+  accessModes:                                                    
+    - ReadWriteMany       
+  resources:            
+    requests:                      
+      storage: 300Gi
+  storageClassName: ocs-storagecluster-cephfs
+
