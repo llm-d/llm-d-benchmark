@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"name":"llama-3-70b","namespace":"e2e-solution"},"spec":{"ports":[{"name":"http-llama-3-70b","port":80,"protocol":"TCP","targetPort":8087}],"selector":{"app":"llama-3-70b"},"sessionAffinity":"None","type":"ClusterIP"}}
+  creationTimestamp: "2025-05-01T01:17:30Z"
+  name: llama-3-70b
+  namespace: e2e-solution
+  resourceVersion: "19614858"
+  uid: d2cf0a40-f961-4e5b-8f74-1c89b94391ce
+spec:
+  clusterIP: 172.30.198.68
+  clusterIPs:
+  - 172.30.198.68
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: http-llama-3-70b
+    port: 80
+    protocol: TCP
+    targetPort: 8087
+  selector:
+    app: llama-3-70b
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}
