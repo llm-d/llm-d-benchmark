@@ -20,5 +20,10 @@ python3 -m pip show urllib3 >/dev/null 2>&1 || python3 -m pip install urllib3
 python3 -m pip show kubernetes >/dev/null 2>&1 || python3 -m pip install kubernetes
 python3 -m pip show pandas >/dev/null 2>&1 || python3 -m pip install pandas
 pip install -e .
-python3 examples/example_llm-d-lmbenchmark-openshift.py
+if [ ! -f "$FMPERF_EXAMPLE" ]; then
+  echo "❌  File '${FMPERF_EXAMPLE}' not found in branch '${GIT_BRANCH}'. Stopping..."
+  exit 1
+else
+  python3 ${FMPERF_EXAMPLE}
+fi
 cd ..
