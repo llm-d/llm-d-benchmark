@@ -40,7 +40,7 @@ spec:
           --trust-remote-code \
           --enable-chunked-prefill \
           --max_num_batched_tokens 1024 \
-          --kv-transfer-config '{"kv_connector":"LMCacheConnectorV1","kv_role":"kv_both"}
+          --kv-transfer-config '{"kv_connector":"LMCacheConnectorV1","kv_role":"kv_both"}'
         command:
         - /bin/sh
         - -c
