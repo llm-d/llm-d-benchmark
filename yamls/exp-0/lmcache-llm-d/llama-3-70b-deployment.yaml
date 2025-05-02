@@ -77,14 +77,14 @@ spec:
             path: /health
             port: 80
             scheme: HTTP
-          initialDelaySeconds: 300
+          initialDelaySeconds: 1200
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /health
             port: 80
             scheme: HTTP
-          initialDelaySeconds: 300
+          initialDelaySeconds: 1200
           periodSeconds: 5
         resources:
           limits:
