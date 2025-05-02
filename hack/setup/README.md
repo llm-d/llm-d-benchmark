@@ -39,5 +39,5 @@ cd llm-d-benchmark/hack/setup
 
 ## to execute an individual step
 ```
-./display.sh --step 09_run_experiment.sh
+./deploy.sh --step 09_run_experiment.sh
 ```
