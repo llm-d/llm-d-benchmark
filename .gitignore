@@ -24,3 +24,8 @@ go.work.sum
 .DS_Store
 
 .vscode/
+
+
+hack/setup/fmperf/
+hack/setup/gateway-api-inference-extension/
+hack/setup/llm-d-kv-cache-manager/
