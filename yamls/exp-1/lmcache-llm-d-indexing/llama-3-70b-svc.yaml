@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: llama-3-70b
+  namespace: aibrix-system
+spec:
+  ports:
+  - name: http-llama-3-70b
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: llama-3-70b
+  sessionAffinity: None
+  type: ClusterIP
