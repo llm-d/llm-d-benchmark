@@ -72,12 +72,12 @@ spec:
           limits:
             cpu: "10"
             ephemeral-storage: "30Gi"
-            memory: 20G
+            memory: 200G
             nvidia.com/gpu: "2"
           requests:
             cpu: "2"
             ephemeral-storage: "10Gi"
-            memory: 6G
+            memory: 100G
             nvidia.com/gpu: "2"
         volumeMounts:
         - mountPath: /root/.cache/huggingface
@@ -90,5 +90,5 @@ spec:
           claimName: model-cache
       - emptyDir:
           medium: Memory
-          sizeLimit: 2Gi
+          sizeLimit: 8Gi
         name: shm
