@@ -8,6 +8,13 @@
 *.so
 *.dylib
 
+# Keep secrets out
+**/*secrets.yml
+**/*secret.yml
+**/*secret.yaml
+**/*secrets.yaml
+**/*yaml.secrets
+
 # Test binary, built with `go test -c`
 *.test
 
