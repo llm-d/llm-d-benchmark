@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama-3-70b
+  labels:
+    app: llama-3-70b
+  namespace: aibrix-system
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: llama-3-70b
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: llama-3-70b
+    spec:
+      securityContext:           # Add this section here
+        capabilities:
+          add: ["NET_BIND_SERVICE"]
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu.product
+                operator: In
+                values:
+                - NVIDIA-A100-SXM4-80GB
+      containers:
+      - args:
+        - |
+          export LMCACHE_DISTRIBUTED_URL=${POD_IP} && \
+          vllm serve meta-llama/Llama-3.1-70B-Instruct \
+          --host 0.0.0.0 \
+          --port 80 \
+          --max-model-len 20000 \
+          --disable-log-requests \
+          --gpu-memory-utilization 0.95 \
+          --tensor-parallel-size 2 \
+          --kv-transfer-config '{"kv_connector":"LMCacheConnectorV1","kv_role":"kv_both"}'
+        command:
+        - /bin/sh
+        - -c
+        env:
+        - name: HF_HOME
+          value: /root/.cache/huggingface
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: token
+              name: hf-token
+        - name: LMCACHE_LOOKUP_URL
+          value: 'redis-lookup-server-service.aibrix-system.svc.cluster.local:8100'
+        - name: LMCACHE_ENABLE_DEBUG
+          value: 'True'
+        - name: LMCACHE_ENABLE_P2P
+          value: 'True'
+        - name: LMCACHE_LOCAL_CPU
+          value: "True"
+        - name: LMCACHE_MAX_LOCAL_CPU_SIZE
+          value: "40"
+        - name: LMCACHE_USE_EXPERIMENTAL
+          value: "True"
+        - name: VLLM_RPC_TIMEOUT
+          value: "1000000"
+        image: quay.io/llm-d/llm-d-dev:0.0.4-amd64
+        imagePullPolicy: Always
+        name: llama-3-70b
+        ports:
+        - containerPort: 80
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+            scheme: HTTP
+          initialDelaySeconds: 1200
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+            scheme: HTTP
+          initialDelaySeconds: 1200
+          periodSeconds: 5
+        resources:
+          limits:
+            cpu: "10"
+            ephemeral-storage: "30Gi"
+            memory: 200G
+            nvidia.com/gpu: "2"
+          requests:
+            cpu: "2"
+            ephemeral-storage: "10Gi"
+            memory: 100G
+            nvidia.com/gpu: "2"
+        volumeMounts:
+        - mountPath: /root/.cache/huggingface
+          name: cache-volume
+        - mountPath: /dev/shm
+          name: shm
+      volumes:
+      - name: cache-volume
+        persistentVolumeClaim:
+          claimName: model-cache
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 8Gi
+        name: shm
