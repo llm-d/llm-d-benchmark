@@ -11,7 +11,10 @@ METHOD_TYPES = {
     'llm-d': 'LLM-d',
     'vllm-prod': 'vLLM + LMCache',
     'lmcache': 'vLLM Production Stack + LMCache',
-    'lmcache-0310': 'vLLM Production Stack + LMCache (03-10-2025)'
+    'lmcache-0310': 'vLLM Production Stack + LMCache (03-10-2025)',
+    'vllm-70b': 'vLLM v1',
+    'baseline-llm-d-70b': 'llm-d w/o KVCache offloading',
+    'lmcache-llm-d-70b': 'llm-d w KVCache offloading'
 }
 
 # Define benchmark types and their titles
@@ -23,8 +26,8 @@ BENCHMARK_TYPES = {
 
 # Define QPS ranges for each benchmark type
 BENCHMARK_QPS_RANGES = {
-    'sharegpt': (0, 10.),
-    'long_input': (0, 10.0),
+    'sharegpt': (0, 1.4),
+    'long_input': (0, 1.2),
     'short_input': (0, 10.0)
 }
 
