@@ -1,36 +1,51 @@
 #!/usr/bin/env bash
-source "$(dirname "$0")/env.sh"
+source ${LLMDBENCH_STEPS_DIR}/env.sh
 
 echo "Deploying vLLM via Helm with LMCache and Gateway..."
 
-oc adm policy add-scc-to-user anyuid -z default -n "$OPENSHIFT_NAMESPACE" || true
-oc adm policy add-scc-to-user anyuid -z inference-gateway -n "$OPENSHIFT_NAMESPACE" || true
+${LLMDBENCH_KCMD} adm policy add-scc-to-user anyuid -z ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT} -n "$LLMDBENCH_OPENSHIFT_NAMESPACE" || true
+${LLMDBENCH_KCMD} adm policy add-scc-to-user anyuid -z inference-gateway -n "$LLMDBENCH_OPENSHIFT_NAMESPACE" || true
 
-git clone https://github.com/neuralmagic/llm-d-kv-cache-manager.git || true
-cd llm-d-kv-cache-manager/vllm-setup-helm
+pushd ${LLMDBENCH_KVCM_DIR} &>/dev/null
+if [[ ! -d llm-d-kv-cache-manager ]]; then
+  git clone https://github.com/neuralmagic/llm-d-kv-cache-manager.git || true
+fi
 
-helm upgrade --install vllm-p2p . \
-  --namespace "$OPENSHIFT_NAMESPACE" \
+pushd llm-d-kv-cache-manager/vllm-setup-helm &>/dev/null
+for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
+  echo "Installing release vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]}..."
+  ${LLMDBENCH_HCMD} upgrade --install vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]} . \
+  --namespace "$LLMDBENCH_OPENSHIFT_NAMESPACE" \
   --set secret.create=true \
-  --set secret.hfTokenValue="$HF_TOKEN" \
-  --set vllm.replicas=1 \
-  --set vllm.poolLabelValue="vllm-llama3-8b-instruct"
-
-cd ../../
+  --set secret.hfTokenValue="${LLMDBENCH_HF_TOKEN}" \
+  --set vllm.replicaCount=${LLMDBENCH_VLLM_REPLICAS} \
+  --set persistence.enabled=${LLMDBENCH_VLLM_PERSISTENCE_ENABLED} \
+  --set persistence.accessMode=ReadWriteMany \
+  --set persistence.size=${LLMDBENCH_MODEL_CACHE_SIZE} \
+  --set persistence.storageClassName=${LLMDBENCH_STORAGE_CLASS} \
+  --set vllm.poolLabelValue="vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" \
+  --set vllm.model.name=${LLMDBENCH_MODEL2PARAM[${model}:name]} \
+  --set vllm.model.label=${LLMDBENCH_MODEL2PARAM[${model}:label]}
+done
+popd &>/dev/null
 
 VERSION="v0.3.0"
-kubectl apply -f "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${VERSION}/manifests.yaml"
+${LLMDBENCH_KCMD} apply -f "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${VERSION}/manifests.yaml"
 
-git clone https://github.com/neuralmagic/gateway-api-inference-extension.git || true
-cd gateway-api-inference-extension
+pushd ${LLMDBENCH_GAIE_DIR} &>/dev/null
+if [[ ! -d gateway-api-inference-extension ]]; then
+    git clone https://github.com/neuralmagic/gateway-api-inference-extension.git
+fi
+pushd gateway-api-inference-extension &>/dev/null
 
-kubectl apply -f config/manifests/gateway/kgateway/gateway.yaml
-kubectl apply -f config/manifests/gateway/kgateway/httproute.yaml
-kubectl apply -f config/manifests/inferencemodel.yaml
+${LLMDBENCH_KCMD} apply -f config/manifests/gateway/kgateway/gateway.yaml
+${LLMDBENCH_KCMD} apply -f config/manifests/gateway/kgateway/httproute.yaml
+${LLMDBENCH_KCMD} apply -f config/manifests/inferencemodel.yaml
 
-sed -i "s/namespace: default/namespace: ${OPENSHIFT_NAMESPACE}/g" config/manifests/inferencepool-resources.yaml
-sed -i "s|image: .*|image: quay.io/vmaroon/gateway-api-inference-extension/epp:kvc-v3|g" config/manifests/inferencepool-resources.yaml
+${LLMDBENCH_SCMD} -i "s^namespace: .*^namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}^g" config/manifests/inferencepool-resources.yaml
+${LLMDBENCH_SCMD} -i "s|image: .*|image: ${LLMDBBENCH_EPP_IMAGE}|g" config/manifests/inferencepool-resources.yaml
 
-kubectl apply -f config/manifests/inferencepool-resources.yaml
+${LLMDBENCH_KCMD} apply -f config/manifests/inferencepool-resources.yaml
 
-cd ..
+popd &>/dev/null
+popd &>/dev/null
