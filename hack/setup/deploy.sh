@@ -2,14 +2,24 @@
 
 set -euo pipefail
 
-STEPS_DIR="$(dirname "$0")/steps"
-DRY_RUN=false
-STEP=""
+if [[ $0 != "-bash" ]]; then
+    pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
+fi
+
+export LLMDBENCH_DIR=$(realpath $(pwd)/)
+
+if [ $0 != "-bash" ] ; then
+    popd  > /dev/null 2>&1
+fi
+
+export LLMDBENCH_STEPS_DIR="$LLMDBENCH_DIR/steps"
+LLMDBENCH_DRY_RUN=false
+LLMDBENCH_STEP_LIST=$LLMDBENCH_STEPS_DIR"/*.sh"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --dry-run) DRY_RUN=true ;;
-    --step) STEP="$2"; shift ;;
+    --dry-run) LLMDBENCH_DRY_RUN=true ;;
+    --step) LLMDBENCH_STEP_LIST="$2"; shift ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
   shift
@@ -17,18 +27,19 @@ done
 
 run_step() {
   local script_name=$1
-  local step_id=$(basename "$script_name")
-  if [[ -z "$STEP" || "$STEP" == "$step_id" ]]; then
+  local script_path=$(ls ${LLMDBENCH_STEPS_DIR}/${script_name}*)
+  if [ -f $script_path ]; then
+    local step_id=$(basename "$script_path")
     echo -e "\n=== Running step: $step_id ==="
-    if [[ "$DRY_RUN" == "true" ]]; then
-      echo "[DRY RUN] Would execute: $script_name"
+    if [[ "$LLMDBENCH_DRY_RUN" == "true" ]]; then
+      echo "[DRY RUN] Would execute: $script_path"
     else
-      bash "$script_name"
+      source $script_path
     fi
   fi
 }
 
-for step in "$STEPS_DIR"/*.sh; do
+for step in $LLMDBENCH_STEP_LIST; do
   run_step "$step"
 done
 

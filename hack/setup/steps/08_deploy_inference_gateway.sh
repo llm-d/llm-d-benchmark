@@ -1,35 +1,24 @@
 #!/usr/bin/env bash
-source "$(dirname "$0")/env.sh"
+source ${LLMDBENCH_STEPS_DIR}/env.sh
 
-echo "Setting up inference-gateway using KGateway..."
-
-if kubectl get gatewayclass kgateway &>/dev/null; then
-  echo "❗ KGateway already installed. Skipping CRD install."
-else
-  git clone https://github.com/neuralmagic/gateway-api-inference-extension.git || true
-  cd gateway-api-inference-extension
-  INFRASTRUCTURE_OVERRIDE=true make environment.dev.kubernetes.infrastructure
-  cd ..
-fi
-
-cat <<EOF | kubectl apply -f -
+cat <<EOF | ${LLMDBENCH_KCMD} apply -f -
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: GatewayParameters
 metadata:
   name: inference-gateway-params
-  namespace: ${OPENSHIFT_NAMESPACE}
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   kube:
     service:
       type: ClusterIP
 EOF
 
-cat <<EOF | kubectl apply -f -
+cat <<EOF | ${LLMDBENCH_KCMD} apply -f -
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: inference-gateway
-  namespace: ${OPENSHIFT_NAMESPACE}
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   gatewayClassName: kgateway
   infrastructure:
@@ -46,12 +35,12 @@ spec:
         from: Same
 EOF
 
-cat <<EOF | kubectl apply -f -
+cat <<EOF | ${LLMDBENCH_KCMD} apply -f -
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
 metadata:
   name: inference-http-route
-  namespace: ${OPENSHIFT_NAMESPACE}
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   parentRefs:
   - group: gateway.networking.k8s.io
@@ -72,9 +61,9 @@ spec:
       request: 300s
 EOF
 
-if kubectl get svc -n "$OPENSHIFT_NAMESPACE" | grep -q 'LoadBalancer'; then
+if ${LLMDBENCH_KCMD} get svc -n "$LLMDBENCH_OPENSHIFT_NAMESPACE" | grep -q 'LoadBalancer'; then
   echo "⚠️ Found LoadBalancer service — patching to enforce ClusterIP..."
-  kubectl patch gateway inference-gateway -n "$OPENSHIFT_NAMESPACE" --type=merge -p '{
+  ${LLMDBENCH_KCMD} patch gateway inference-gateway -n "$LLMDBENCH_OPENSHIFT_NAMESPACE" --type=merge -p '{
     "spec": {
       "infrastructure": {
         "parametersRef": {
