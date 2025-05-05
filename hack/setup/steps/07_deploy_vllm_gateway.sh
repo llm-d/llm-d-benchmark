@@ -43,7 +43,7 @@ ${LLMDBENCH_KCMD} apply -f config/manifests/gateway/kgateway/httproute.yaml
 ${LLMDBENCH_KCMD} apply -f config/manifests/inferencemodel.yaml
 
 ${LLMDBENCH_SCMD} -i "s^namespace: .*^namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}^g" config/manifests/inferencepool-resources.yaml
-${LLMDBENCH_SCMD} -i "s|image: .*|image: ${LLMDBBENCH_EPP_IMAGE}|g" config/manifests/inferencepool-resources.yaml
+${LLMDBENCH_SCMD} -i "s|image: .*|image: ${LLMDBENCH_EPP_IMAGE}|g" config/manifests/inferencepool-resources.yaml
 
 ${LLMDBENCH_KCMD} apply -f config/manifests/inferencepool-resources.yaml
 
