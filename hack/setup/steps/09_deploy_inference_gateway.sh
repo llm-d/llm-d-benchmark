@@ -165,7 +165,7 @@ spec:
         - "9003"
         env:
         - name: KVCACHE_INDEXER_REDIS_ADDR
-          value: ${LLMDBENCH_REDIS_HOST}:${LLMDBENCH_REDIS_PORT}
+          value: vllm-p2p-${model}.${LLMDBENCH_OPENSHIFT_NAMESPACE}.svc.cluster.local:${LLMDBENCH_REDIS_PORT}
         - name: HF_TOKEN
           valueFrom:
             secretKeyRef:
