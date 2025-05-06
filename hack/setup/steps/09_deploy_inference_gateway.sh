@@ -93,7 +93,7 @@ EOF
     cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_d_${model}_secret.yaml
 apiVersion: v1
 data:
-  inference-gateway-secret-key: ${LLMDBENCH_HF_TOKEN}
+  inference-gateway-secret-key: $(echo -n ${LLMDBENCH_HF_TOKEN} | base64 | tr -d '\n')
 kind: Secret
 metadata:
   labels:
@@ -152,9 +152,9 @@ spec:
       containers:
       - args:
         - -poolName
-        - vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
+        - "vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct"
         - -poolNamespace
-        - ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+        - "${LLMDBENCH_OPENSHIFT_NAMESPACE}"
         - -v
         - "4"
         - --zap-encoder
@@ -169,7 +169,7 @@ spec:
         - name: HF_TOKEN
           valueFrom:
             secretKeyRef:
-              key: inference-gateway-secret-key:
+              key: inference-gateway-secret-key
               name: inference-gateway-secret
         - name: ENABLE_KVCACHE_AWARE_SCORER
           value: "true"
@@ -273,7 +273,21 @@ spec:
       request: 30s
 EOF
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_j_${model}_inferencemodel.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_j_${model}_inferencepool.yaml
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferencePool
+metadata:
+  name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  extensionRef:
+    name: endpoint-picker
+  selector:
+    app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  targetPortNumber: 8000
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_k_${model}_inferencemodel.yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferenceModel
 metadata:
@@ -285,20 +299,6 @@ spec:
   modelName: ${LLMDBENCH_MODEL2PARAM[${model}:name]}
   poolRef:
     name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
-EOF
-
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_k_${model}_inferencepool.yaml
-apiVersion: inference.networking.x-k8s.io/v1alpha2
-kind: InferencePool
-metadata:
-  name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
-  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-spec:
-  extensionRef:
-    name: endpoint-picker
-  selector:
-    app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
-  targetPortNumber: 8000
 EOF
 
     for rf in $(ls $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_*_${model}*); do

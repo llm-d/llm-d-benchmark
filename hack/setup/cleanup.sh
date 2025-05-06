@@ -92,11 +92,11 @@ if [[ $LLMDBENCH_DEEP_CLEANING -eq 0 ]]; then
   fi
 
   if [[ -z ${is_env_type_standalone} && ! -z ${is_env_type_vllm} ]]; then
-    tgtres=$(echo "$tgtres" | grep -E "vllm|inference-gateway|llm-route|base-model")
+    tgtres=$(echo "$tgtres" | grep -E "vllm|inference-gateway|llm-route|base-model|endpoint-picker|inference-route|inference-gateway-secret|inference-gateway-params|inference-gateway")
   fi
 
   for delres in $tgtres; do
-   llmdbench_execute_cmd "${LLMDBENCH_KCMD} delete --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE $delres" ${LLMDBENCH_DRY_RUN}
+   llmdbench_execute_cmd "${LLMDBENCH_KCMD} delete --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE --ignore-not-found=true $delres" ${LLMDBENCH_DRY_RUN}
   done
 else
 # List of resource kinds to clean up
