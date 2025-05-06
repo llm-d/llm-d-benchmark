@@ -21,6 +21,7 @@ function show_usage {
     echo -e "Usage: $0 -s/--step [step list] (default=$LLMDBENCH_STEP_LIST) \n \
                                 -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_DRY_RUN) ] \n \
                                 -m/--models [list the models to be deployed (default=$LLMDBENCH_MODEL_LIST) ] \n \
+                                -t/--types [list the environment types to be deployed (default=$LLMDBENCH_ENVIRONMENT_TYPES) ] \n \
                                 -h/--help (show this help)"
 }
 
@@ -36,14 +37,21 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
         -m=*|--models=*)
-        export LLMDBENCH_STEP_LIST=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_MODEL_LIST=$(echo $key | cut -d '=' -f 2)
         ;;
         -m|--models)
         export LLMDBENCH_MODEL_LIST="$2"
         shift
         ;;
+        -t=*|--types=*)
+        export LLMDBENCH_ENVIRONMENT_TYPES=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -t|--types)
+        export LLMDBENCH_ENVIRONMENT_TYPES="$2"
+        shift
+        ;;
         -n|--dry-run)
-        export LLMDBENCH_MODEL_LIST=1
+        export LLMDBENCH_DRY_RUN=1
         ;;
         -h|--help)
         show_usage

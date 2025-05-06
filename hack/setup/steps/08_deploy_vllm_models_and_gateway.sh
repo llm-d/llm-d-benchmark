@@ -48,13 +48,13 @@ anyuid \
   --set vllm.model.label=${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct \
   --set vllm.gpuMemoryUtilization=${LLMDBENCH_VLLM_GPU_MEM_UTIL} \
   --set vllm.model.maxModelLen=16384 \
-  --set vllm.tensorParallelSize=${LLMDBENCH_VLLM_GPU_NR} \
-  --set vllm.resource.limits.nvidia.com/gpu=${LLMDBENCH_VLLM_GPU_NR} \
-  --set vllm.resource.requests.nvidia.com/gpu=${LLMDBENCH_VLLM_GPU_NR}" ${LLMDBENCH_DRY_RUN}
+  --set vllm.tensorParallelSize=\"${LLMDBENCH_VLLM_GPU_NR}\" \
+  --set vllm.resources.limits.nvidia.com/gpu=\"${LLMDBENCH_VLLM_GPU_NR}\" \
+  --set vllm.resources.requests.nvidia.com/gpu=\"${LLMDBENCH_VLLM_GPU_NR}\"" ${LLMDBENCH_DRY_RUN}
   done
   popd &>/dev/null
   popd &>/dev/null
-
+  exit
   VERSION="v0.3.0"
   if [[ $LLMDBENCH_USER_IS_ADMIN -eq 1 ]]
   then

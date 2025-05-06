@@ -23,6 +23,8 @@ function show_usage {
     echo -e "Usage: $0 -t/--type [list of environment types targeted for cleaning (default=$LLMDBENCH_ENVIRONMENT_TYPES)) \n \
                               -d/--deep [\"deep cleaning\"] (default=$LLMDBENCH_DEEP_CLEANING) ] \n \
                               -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_DRY_RUN) ] \n \
+                              -m/--models [list the models to be deployed (default=$LLMDBENCH_MODEL_LIST) ] \n \
+                              -t/--types [list the environment types to be deployed (default=$LLMDBENCH_ENVIRONMENT_TYPES) ] \n \
                               -h/--help (show this help)"
 }
 
@@ -30,10 +32,17 @@ while [[ $# -gt 0 ]]; do
     key="$1"
 
     case $key in
-        -t=*|--type=*)
+        -m=*|--models=*)
+        export LLMDBENCH_MODEL_LIST=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -m|--models)
+        export LLMDBENCH_MODEL_LIST="$2"
+        shift
+        ;;
+        -t=*|--types=*)
         export LLMDBENCH_ENVIRONMENT_TYPES=$(echo $key | cut -d '=' -f 2)
         ;;
-        -t|--type)
+        -t|--types)
         export LLMDBENCH_ENVIRONMENT_TYPES="$2"
         shift
         ;;
@@ -83,7 +92,7 @@ if [[ $LLMDBENCH_DEEP_CLEANING -eq 0 ]]; then
   fi
 
   if [[ -z ${is_env_type_standalone} && ! -z ${is_env_type_vllm} ]]; then
-    tgtres=$(echo "$tgtres" | grep -E "vllm|inference-gateway|llm-route")
+    tgtres=$(echo "$tgtres" | grep -E "vllm|inference-gateway|llm-route|base-model")
   fi
 
   for delres in $tgtres; do
