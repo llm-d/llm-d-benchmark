@@ -52,7 +52,9 @@ anyuid \
   --set vllm.resources.limits.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
   --set vllm.resources.requests.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
   --set dshm.useEmptyDir=true \
-  --set dshm.sizeLimit=8Gi" ${LLMDBENCH_DRY_RUN}
+  --set dshm.sizeLimit=8Gi" ${LLMDBENCH_DRY_RUN} 
+
   done
   popd &>/dev/null
   popd &>/dev/null
+fi
