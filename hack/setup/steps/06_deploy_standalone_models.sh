@@ -1,27 +1,23 @@
 #!/usr/bin/env bash
 source ${LLMDBENCH_STEPS_DIR}/env.sh
 
-for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
-  if [[ ${model} == llama-8b ]]; then
-    echo "Deploying LLaMA 2 8B..."
-
-    ${LLMDBENCH_KCMD} apply -f - <<EOF
+  cat << EOF > $LLMDBENCH_TEMPDIR/06_a_deployment_llama-8b.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  name: standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
   labels:
-    app: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+    app: standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+      app: standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
   template:
     metadata:
       labels:
-        app: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+        app: standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
     spec:
       affinity:
         nodeAffinity:
@@ -33,13 +29,13 @@ spec:
                 values:
                 - $LLMDBENCH_GPU_MODEL
       containers:
-      - name: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+      - name: standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
         image: ${LLMDBENCH_MODEL_IMAGE}
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
         args:
         - >
-          vllm serve ${LLMDBENCH_MODEL2PARAM[${model}:name]} --port 80
+          vllm serve ${LLMDBENCH_MODEL2PARAM[llama-8b:name]} --port 80
           --disable-log-requests --gpu-memory-utilization 0.95
         env:
         - name: HF_HOME
@@ -47,7 +43,7 @@ spec:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
-              name: hf-token
+              name: standalone-hf-token
               key: token
         ports:
         - containerPort: 80
@@ -78,72 +74,30 @@ spec:
       volumes:
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: llama-8b-cache
+          claimName: standalone-${model}-cache
       - name: shm
         emptyDir:
           medium: Memory
           sizeLimit: 8Gi
 EOF
 
-    ${LLMDBENCH_KCMD} apply -f - <<EOF
-apiVersion: v1
-kind: Service
-metadata:
-  name: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
-  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-spec:
-  ports:
-  - name: http
-    port: 80
-    targetPort: 80
-  selector:
-    app: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
-  type: ClusterIP
-EOF
-
-    ${LLMDBENCH_KCMD} apply -f - <<EOF
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: HTTPRoute
-metadata:
-  name: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
-  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-spec:
-  parentRefs:
-  - name: openshift-gateway
-    namespace: openshift-gateway
-  hostnames:
-  - "llama8b.${LLMDBENCH_OPENSHIFT_NAMESPACE}.apps.${LLMDBENCH_OPENSHIFT_HOST#https://api.}"
-  rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /
-    backendRefs:
-    - name: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
-      port: 80
-EOF
-  fi
-
-  if [[ ${model} == llama-70b ]]; then
-    echo "Deploying LLaMA 3 70B..."
-
-    ${LLMDBENCH_KCMD} apply -f - <<EOF
+  cat << EOF > $LLMDBENCH_TEMPDIR/06_a_deployment_llama-70b.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  name: standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
   labels:
-    app: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+    app: standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+      app: standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
   template:
     metadata:
       labels:
-        app: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+        app: standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
     spec:
       affinity:
         nodeAffinity:
@@ -155,13 +109,13 @@ spec:
                 values:
                 - $LLMDBENCH_GPU_MODEL
       containers:
-      - name: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+      - name: standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
         image: ${LLMDBENCH_MODEL_IMAGE}
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
         args:
         - >
-          vllm serve ${LLMDBENCH_MODEL2PARAM[${model}:name]} --port 80 --max-model-len 20000
+          vllm serve ${LLMDBENCH_MODEL2PARAM[llama-70b:name]} --port 80 --max-model-len 20000
           --disable-log-requests --gpu-memory-utilization 0.95 --tensor-parallel-size 2
         env:
         - name: HF_HOME
@@ -169,7 +123,7 @@ spec:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
-              name: hf-token
+              name: standalone-hf-token
               key: token
         - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
           value: "1"
@@ -202,18 +156,27 @@ spec:
       volumes:
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: llama-70b-cache
+          claimName: standalone-${model}-cache
       - name: shm
         emptyDir:
           medium: Memory
           sizeLimit: 8Gi
 EOF
 
-    ${LLMDBENCH_KCMD} apply -f - <<EOF
+is_env_type=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep standalone || true)
+if [[ ! -z ${is_env_type} ]]
+then
+
+  for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
+    echo "Deploying model \"${model}\" (from files located at $LLMDBENCH_TEMPDIR)..."
+
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/06_a_deployment_${model}.yaml" ${LLMDBENCH_DRY_RUN}
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/06_b_service_${model}.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  name: standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   ports:
@@ -221,32 +184,38 @@ spec:
     port: 80
     targetPort: 80
   selector:
-    app: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+    app: standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
   type: ClusterIP
 EOF
 
-    ${LLMDBENCH_KCMD} apply -f - <<EOF
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/06_b_service_${model}.yaml" ${LLMDBENCH_DRY_RUN}
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/06_c_httproute_${model}.yaml
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
 metadata:
-  name: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  name: standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   parentRefs:
   - name: openshift-gateway
     namespace: openshift-gateway
   hostnames:
-  - "llama70b.${LLMDBENCH_OPENSHIFT_NAMESPACE}.apps.${LLMDBENCH_OPENSHIFT_HOST#https://api.}"
+  - "${model}.${LLMDBENCH_OPENSHIFT_NAMESPACE}.apps.${LLMDBENCH_OPENSHIFT_HOST#https://api.}"
   rules:
   - matches:
     - path:
         type: PathPrefix
         value: /
     backendRefs:
-    - name: ${LLMDBENCH_MODEL2PARAM[${model}:label]}
+    - name: standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
       port: 80
 EOF
 
-  fi
-
-done
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/06_c_httproute_${model}.yaml" ${LLMDBENCH_DRY_RUN}
+  done
+else
+  echo "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."
+fi
+echo -e "\nA snapshot of the relevant (model-specific) resources on namespace \"${LLMDBENCH_OPENSHIFT_NAMESPACE}\":\n"
+${LLMDBENCH_KCMD} get --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} deployment,service,httproute,pods,secrets

@@ -4,7 +4,7 @@ source ${LLMDBENCH_STEPS_DIR}/env.sh
 if ! conda -h &>/dev/null; then
   if [ $LLMDBENCH_HOST_OS == "mac" ]; then
     echo "Installing Miniforge for macOS..."
-    brew install --cask miniforge
+    llmdbench_execute_cmd "brew install --cask miniforge" ${LLMDBENCH_DRY_RUN}
   else
     # For Linux, you can use the official Miniforge installer script
     echo "Installing Miniforge for Linux..."
@@ -20,7 +20,7 @@ else
   ANACONDA_PATH='export PATH="/opt/miniconda/bin/conda:$PATH"'
 fi
 
-if ! grep -Fxq "$ANACONDA_PATH" ~/.${LLMDBENCH_HOST_SHELL}rc; then
+if ! grep -Fxq "$ANACONDA_PATH" ~/.${LLMDBENCH_HOST_SHELL}rc && ${LLMDBENCH_DRY_RUN} -eq 0 ; then
   echo "$ANACONDA_PATH" >> ~/.${LLMDBENCH_HOST_SHELL}rc
   echo "✅ Anaconda path added to ~/.${LLMDBENCH_HOST_SHELL}rc"
 else

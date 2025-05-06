@@ -1,30 +1,54 @@
 #!/usr/bin/env bash
 source ${LLMDBENCH_STEPS_DIR}/env.sh
 
-echo "Preparing OpenShift namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE}..."
+llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
+adm \
+policy \
+add-scc-to-user \
+anyuid \
+-z ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT} \
+-n $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN}
 
-${LLMDBENCH_KCMD} adm policy add-scc-to-user anyuid -z ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT} -n "$LLMDBENCH_OPENSHIFT_NAMESPACE"
-${LLMDBENCH_KCMD} adm policy add-scc-to-user privileged -z ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT} -n "$LLMDBENCH_OPENSHIFT_NAMESPACE"
+llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
+adm \
+policy \
+add-scc-to-user \
+privileged \
+-z ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT} \
+-n $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN}
 
-${LLMDBENCH_KCMD} apply -f - <<EOF
+is_env_type=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep standalone || true)
+if [[ ! -z ${is_env_type} ]]
+then
+  echo "Preparing OpenShift namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE}..."
+
+  cat << EOF > $LLMDBENCH_TEMPDIR/03_secret.yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: hf-token
+  name: standalone-hf-token
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 type: Opaque
 stringData:
   token: ${LLMDBENCH_HF_TOKEN}
 EOF
 
-${LLMDBENCH_KCMD} create secret docker-registry quay-secret \
+  llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/03_secret.yaml" ${LLMDBENCH_DRY_RUN}
+
+  is_qs=$(${LLMDBENCH_KCMD} -n $LLMDBENCH_OPENSHIFT_NAMESPACE get secrets/standalone-quay-secret -o name --ignore-not-found=true | cut -d '/' -f 2)
+  if [[ -z $is_qs ]]; then
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} create secret docker-registry standalone-quay-secret \
   --docker-server=quay.io \
   --docker-username="${LLMDBENCH_QUAY_USER}" \
   --docker-password="${LLMDBENCH_QUAY_PASSWORD}" \
   --docker-email="${LLMDBENCH_DOCKER_EMAIL}" \
-  -n "${LLMDBENCH_OPENSHIFT_NAMESPACE}" || true
+  -n ${LLMDBENCH_OPENSHIFT_NAMESPACE}" ${LLMDBENCH_DRY_RUN}
+  fi
 
-${LLMDBENCH_KCMD} patch serviceaccount default \
-  -n "${LLMDBENCH_OPENSHIFT_NAMESPACE}" \
+  llmdbench_execute_cmd "${LLMDBENCH_KCMD} patch serviceaccount ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT} \
+  -n ${LLMDBENCH_OPENSHIFT_NAMESPACE} \
   --type=merge \
-  -p '{"imagePullSecrets":[{"name":"quay-secret"}]}'
+  -p '{\"imagePullSecrets\":[{\"name\":\"standalone-quay-secret\"}]}'" ${LLMDBENCH_DRY_RUN}
+else
+  echo "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."
+fi

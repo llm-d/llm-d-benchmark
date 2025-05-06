@@ -1,0 +1,290 @@
+#!/usr/bin/env bash
+source ${LLMDBENCH_STEPS_DIR}/env.sh
+
+is_env_type=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep vllm || true)
+if [[ ! -z ${is_env_type} ]]
+then
+  echo "Deploying vLLM via Helm with LMCache and Gateway..."
+
+  llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
+adm \
+policy \
+add-scc-to-user \
+anyuid \
+-z ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT} \
+-n $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN}
+
+  llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
+adm \
+policy \
+add-scc-to-user \
+anyuid \
+-z inference-gateway \
+-n $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN}
+
+  pushd ${LLMDBENCH_KVCM_DIR} &>/dev/null
+  if [[ ! -d llm-d-kv-cache-manager ]]; then
+    git clone https://github.com/neuralmagic/llm-d-kv-cache-manager.git || true
+  fi
+
+  pushd llm-d-kv-cache-manager/vllm-setup-helm &>/dev/null
+  git checkout $LLMDBENCH_KVCM_GIT_BRANCH
+  for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
+    echo "Installing release vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]}..."
+    llmdbench_execute_cmd "${LLMDBENCH_HCMD} upgrade --install vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]} . \
+  --namespace "$LLMDBENCH_OPENSHIFT_NAMESPACE" \
+  --set secret.create=true \
+  --set secret.hfTokenValue=\"${LLMDBENCH_HF_TOKEN}\" \
+  --set secret.name=vllm-p2p-${model}-secrets \
+  --set persistence.enabled=${LLMDBENCH_VLLM_PERSISTENCE_ENABLED} \
+  --set persistence.accessMode=ReadWriteMany \
+  --set persistence.size=${LLMDBENCH_MODEL_CACHE_SIZE} \
+  --set persistence.storageClassName=${LLMDBENCH_STORAGE_CLASS} \
+  --set vllm.replicaCount=${LLMDBENCH_VLLM_REPLICAS} \
+  --set vllm.poolLabelValue="vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" \
+  --set vllm.image.repository=\"${LLMDBENCH_VLLM_IMAGE_REPOSITORY}\" \
+  --set vllm.image.tag=\"${LLMDBENCH_VLLM_IMAGE_TAG}\" \
+  --set vllm.model.name=${LLMDBENCH_MODEL2PARAM[${model}:name]} \
+  --set vllm.model.label=${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct \
+  --set vllm.gpuMemoryUtilization=${LLMDBENCH_VLLM_GPU_MEM_UTIL} \
+  --set vllm.tensorParallelSize=${LLMDBENCH_VLLM_GPU_NR} \
+  --set vllm.resource.limits.nvidia.com/gpu=${LLMDBENCH_VLLM_GPU_NR} \
+  --set vllm.resource.requests.nvidia.com/gpu=${LLMDBENCH_VLLM_GPU_NR}" ${LLMDBENCH_DRY_RUN}
+  done
+  popd &>/dev/null
+  popd &>/dev/null
+
+  VERSION="v0.3.0"
+  if [[ $LLMDBENCH_USER_IS_ADMIN -eq 1 ]]
+  then
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${VERSION}/manifests.yaml" ${LLMDBENCH_DRY_RUN}
+  fi
+
+#  pushd ${LLMDBENCH_GAIE_DIR} &>/dev/null
+#  if [[ ! -d gateway-api-inference-extension ]]; then
+#      git clone https://github.com/neuralmagic/gateway-api-inference-extension.git
+#  fi
+#  pushd gateway-api-inference-extension &>/dev/null
+
+  for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
+    echo "Creating CRDs required for inference gateway for model \"${model}\" (from files located at $LLMDBENCH_TEMPDIR)..."
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/08_a_${model}_gateway_parameters.yaml
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayParameters
+metadata:
+  name: inference-gateway-params
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  kube:
+    service:
+      type: ClusterIP
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/08_b_${model}_gateway.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: inference-gateway
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  gatewayClassName: kgateway
+  infrastructure:
+    parametersRef:
+      group: gateway.kgateway.dev
+      kind: GatewayParameters
+      name: inference-gateway-params
+  listeners:
+  - name: http
+    port: 80
+    protocol: HTTP
+    allowedRoutes:
+      namespaces:
+        from: Same
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/08_c_${model}_httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: llm-route
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  parentRefs:
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: inference-gateway
+  rules:
+  - backendRefs:
+    - group: inference.networking.x-k8s.io
+      kind: InferencePool
+      name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+      port: 8000
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+    timeouts:
+      request: 300s
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/08_d_${model}_inferencepool.yaml
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferencePool
+metadata:
+  name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  targetPortNumber: 8000
+  selector:
+    app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  extensionRef:
+    name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/08_e_${model}_service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  selector:
+    app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
+  ports:
+    - protocol: TCP
+      port: 9002
+      targetPort: 9002
+      appProtocol: http2
+  type: ClusterIP
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/08_f_${model}_deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+  labels:
+    app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
+  template:
+    metadata:
+      labels:
+        app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
+    spec:
+      # Conservatively, this timeout should mirror the longest grace period of the pods within the pool
+      terminationGracePeriodSeconds: 130
+      containers:
+      - name: epp
+        image: ${LLMDBENCH_EPP_IMAGE}
+        imagePullPolicy: Always
+        args:
+        - -poolName
+        - "vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}"
+        - "-poolNamespace"
+        - "${LLMDBENCH_OPENSHIFT_NAMESPACE}"
+        - -v
+        - "4"
+        - --zap-encoder
+        - "json"
+        - -grpcPort
+        - "9002"
+        - -grpcHealthPort
+        - "9003"
+        ports:
+        - containerPort: 9002
+        - containerPort: 9003
+        - name: metrics
+          containerPort: 9090
+        livenessProbe:
+          grpc:
+            port: 9003
+            service: inference-extension
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          grpc:
+            port: 9003
+            service: inference-extension
+          initialDelaySeconds: 5
+          periodSeconds: 10
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/08_g_${model}_role.yaml
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pod-read
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+rules:
+- apiGroups: ["inference.networking.x-k8s.io"]
+  resources: ["inferencemodels"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["inference.networking.x-k8s.io"]
+  resources: ["inferencepools"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
+  verbs: ["get", "watch", "list"]
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/08_h_${model}_rolebinding.yaml
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: pod-read-binding
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+subjects:
+- kind: ServiceAccount
+  name: ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT}
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+roleRef:
+  kind: Role
+  name: pod-read
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/08_i_${model}_inferencepool.yaml
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferenceModel
+metadata:
+  name: base-model
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  modelName: vllm-${LLMDBENCH_MODEL2PARAM[${model}:name]}
+  criticality: Critical
+  poolRef:
+    name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+EOF
+
+    for rf in $(ls $LLMDBENCH_TEMPDIR/08_*_${model}*); do
+      llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $rf" ${LLMDBENCH_DRY_RUN}
+    done
+  done
+else
+  echo "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."
+fi
+
+echo -e "\nA snapshot of the relevant (model-specific) resources on namespace \"${LLMDBENCH_OPENSHIFT_NAMESPACE}\":\n"
+${LLMDBENCH_KCMD} get --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} gatewayparameters,gateway,httproute,service,deployment,pods,secrets
+
+#popd &>/dev/null
