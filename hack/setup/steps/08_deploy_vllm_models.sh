@@ -6,7 +6,9 @@ if [[ ! -z ${is_env_type} ]]
 then
   echo "Deploying vLLM via Helm with LMCache..."
 
-  llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
+  if [[ $LLMDBENCH_IS_OPENSHIFT -eq 1 ]]
+  then
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
 adm \
 policy \
 add-scc-to-user \
@@ -14,13 +16,14 @@ anyuid \
 -z ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT} \
 -n $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN}
 
-  llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
 adm \
 policy \
 add-scc-to-user \
 anyuid \
 -z inference-gateway \
 -n $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN}
+  fi
 
   pushd ${LLMDBENCH_KVCM_DIR} &>/dev/null
   if [[ ! -d llm-d-kv-cache-manager ]]; then

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 source ${LLMDBENCH_STEPS_DIR}/env.sh
 
-llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
+if [[ $LLMDBENCH_IS_OPENSHIFT -eq 1 ]]
+then
+  llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
 adm \
 policy \
 add-scc-to-user \
@@ -9,13 +11,14 @@ anyuid \
 -z ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT} \
 -n $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN}
 
-llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
+  llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
 adm \
 policy \
 add-scc-to-user \
 privileged \
 -z ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT} \
 -n $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN}
+fi
 
 is_env_type=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep standalone || true)
 if [[ ! -z ${is_env_type} ]]

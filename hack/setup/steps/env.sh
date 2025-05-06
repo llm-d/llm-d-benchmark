@@ -31,9 +31,6 @@ export LLMDBENCH_VLLM_IMAGE_TAG=${LLMDBENCH_VLLM_IMAGE_TAG:-lmcache-0.0.6-amd64}
 export LLMDBENCH_EPP_IMAGE=${LLMDBENCH_EPP_IMAGE:-quay.io/llm-d/llm-d-gateway-api-inference-extension-dev:0.0.5-amd64}
 
 # Not sure if those should be set
-export LLMDBENCH_REDIS_DEPLOYMENT_NAME="${LLMDBENCH_REDIS_DEPLOYMENT_NAME:-lookup-server-service}"
-export LLMDBENCH_REDIS_SVC_NAME="${LLMDBENCH_REDIS_SVC_NAME:-${LLMDBENCH_REDIS_DEPLOYMENT_NAME}}"
-export LLMDBENCH_REDIS_HOST="${LLMDBENCH_REDIS_HOST:-${LLMDBENCH_REDIS_SVC_NAME}.${LLMDBENCH_OPENSHIFT_NAMESPACE}.svc.cluster.local}"
 export LLMDBENCH_REDIS_PORT="${LLMDBENCH_REDIS_PORT:-8100}"
 
 export LLMDBENCH_MODEL_CACHE_SIZE="${LLMDBENCH_MODEL_CACHE_SIZE:-300Gi}"
@@ -81,8 +78,11 @@ fi
 export LLMDBENCH_PROXY_UID=$($LLMDBENCH_KCMD get namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} -o json | jq -e -r '.metadata.annotations["openshift.io/sa.scc.uid-range"]' | perl -F'/' -lane 'print $F[0]+1');
 
 export LLMDBENCH_IS_OPENSHIFT=0
-if $LLMDBENCH_KCMD  api-resources 2>/dev/null | grep -q 'route.openshift.io'; then
+is_ocp=$($LLMDBENCH_KCMD api-resources 2>&1 | grep 'route.openshift.io' || true)
+if [[ ! -z ${is_ocp} ]] then
   export LLMDBENCH_IS_OPENSHIFT=1
+else
+  export LLMDBENCH_KCMD=$(echo $LLMDBENCH_KCMD | $LLMDBENCH_SCMD 's^oc ^kubectl^g')
 fi
 
 export LLMDBENCH_USER_IS_ADMIN=1
