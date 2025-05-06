@@ -20,6 +20,7 @@ LLMDBENCH_STEP_LIST=$LLMDBENCH_STEPS_DIR"/*.sh"
 function show_usage {
     echo -e "Usage: $0 -s/--step [step list] (default=$LLMDBENCH_STEP_LIST) \n \
                                 -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_DRY_RUN) ] \n \
+                                -m/--models [list the models to be deployed (default=$LLMDBENCH_MODEL_LIST) ] \n \
                                 -h/--help (show this help)"
 }
 
@@ -34,8 +35,15 @@ while [[ $# -gt 0 ]]; do
         export LLMDBENCH_STEP_LIST="$2"
         shift
         ;;
+        -m=*|--models=*)
+        export LLMDBENCH_STEP_LIST=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -m|--models)
+        export LLMDBENCH_MODEL_LIST="$2"
+        shift
+        ;;
         -n|--dry-run)
-        export LLMDBENCH_DRY_RUN=1
+        export LLMDBENCH_MODEL_LIST=1
         ;;
         -h|--help)
         show_usage
