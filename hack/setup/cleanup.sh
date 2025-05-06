@@ -107,6 +107,7 @@ else
     pvc
     gateway
     httproute
+    route
     inferencemodel
     inferencepool
     configmap

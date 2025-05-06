@@ -236,6 +236,8 @@ else
   echo "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."
 fi
 
+oc expose service inference-gateway --name=llm-route
+
 echo -e "\nA snapshot of the relevant (model-specific) resources on namespace \"${LLMDBENCH_OPENSHIFT_NAMESPACE}\":\n"
 ${LLMDBENCH_KCMD} get --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} gatewayparameters,gateway,httproute,service,deployment,pods,secrets
 
