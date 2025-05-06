@@ -74,7 +74,7 @@ spec:
       volumes:
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: standalone-llama-70b-cache
+          claimName: standalone-llama-8b-cache
       - name: shm
         emptyDir:
           medium: Memory

@@ -24,7 +24,7 @@ export LLMDBENCH_VLLM_GPU_NR=${LLMDBENCH_VLLM_GPU_NR:-2}
 export LLMDBENCH_VLLM_GPU_MEM_UTIL=${LLMDBENCH_VLLM_GPU_MEM_UTIL:-0.95}
 export LLMDBENCH_VLLM_IMAGE_REPOSITORY=${LLMDBENCH_VLLM_IMAGE_REPOSITORY:-quay.io/llm-d/llm-d-dev}
 export LLMDBENCH_VLLM_IMAGE_TAG=${LLMDBENCH_VLLM_IMAGE_TAG:-lmcache-0.0.6-amd64}
-export LLMDBENCH_EPP_IMAGE=${LLMDBENCH_EPP_IMAGE:-quay.io/llm-d/llm-d-gateway-api-inference-extension-dev:0.0.5}
+export LLMDBENCH_EPP_IMAGE=${LLMDBENCH_EPP_IMAGE:-quay.io/llm-d/llm-d-gateway-api-inference-extension-dev:0.0.5-amd64}
 export LLMDBENCH_MODEL_CACHE_SIZE="${LLMDBENCH_MODEL_CACHE_SIZE:-300Gi}"
 export LLMDBENCH_MODEL_IMAGE=${LLMDBENCH_MODEL_IMAGE:-"vllm/vllm-openai:latest"}
 

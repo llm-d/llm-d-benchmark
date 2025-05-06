@@ -69,7 +69,10 @@ run_step() {
 }
 
 for step in ${LLMDBENCH_STEP_LIST//,/ }; do
-  step=$(printf %02d $step)
+  if [[ ${step} != "08" ]]
+  then
+    step=$(printf %02d $step)
+  fi
   run_step "$step"
 done
 
