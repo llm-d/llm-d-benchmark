@@ -25,7 +25,9 @@ for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
   --set persistence.storageClassName=${LLMDBENCH_STORAGE_CLASS} \
   --set vllm.poolLabelValue="vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" \
   --set vllm.model.name=${LLMDBENCH_MODEL2PARAM[${model}:name]} \
-  --set vllm.model.label=${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  --set vllm.model.label=${LLMDBENCH_MODEL2PARAM[${model}:label]} \
+  --set vllm.gpuMemoryUtilization=0.95 \
+  --set vllm.tensorParallelSize=2
 done
 popd &>/dev/null
 
