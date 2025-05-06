@@ -81,7 +81,7 @@ for hc in ${hclist}; do
 done
 
 if [[ $LLMDBENCH_DEEP_CLEANING -eq 0 ]]; then
-  allres=$(${LLMDBENCH_KCMD} --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE get deployment,service,httproute,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,secret -o name)
+  allres=$(${LLMDBENCH_KCMD} --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE get deployment,httproute,route,service,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,secret -o name)
   tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt")
 
   is_env_type_standalone=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep standalone || true)
