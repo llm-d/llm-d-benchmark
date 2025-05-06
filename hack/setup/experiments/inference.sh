@@ -1,3 +1,6 @@
+cd ..
+echo $LLMDBENCH_OPENSHIFT_HOST
+echo $LLMDBENCH_OPENSHIFT_NAMESPACE
 ./deploy.sh --step 00
 ./deploy.sh --step 01
 ./deploy.sh --step 02
