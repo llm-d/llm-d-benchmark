@@ -5,8 +5,8 @@ echo "Running experiment..."
 pushd ${LLMDBENCH_FMPERF_DIR}/fmperf &>/dev/null
 
 # Hardcode Conda init from known working path
-if [ -f "/opt/homebrew/anaconda3/etc/profile.d/conda.sh" ]; then
-  source "/opt/homebrew/anaconda3/etc/profile.d/conda.sh"
+if [ -f "/opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh" ]; then
+  source "/opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh"
   conda activate "$LLMDBENCH_CONDA_ENV_NAME"
 else
   echo "❌ Could not find conda.sh. Please verify your Anaconda installation."
