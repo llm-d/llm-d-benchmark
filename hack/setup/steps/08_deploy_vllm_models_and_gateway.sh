@@ -37,7 +37,7 @@ anyuid \
   --set secret.hfTokenValue=\"${LLMDBENCH_HF_TOKEN}\" \
   --set secret.name=vllm-p2p-${model}-secrets \
   --set persistence.enabled=${LLMDBENCH_VLLM_PERSISTENCE_ENABLED} \
-  --set persistence.accessMode=ReadWriteMany \
+  --set persistence.accessModes={\"ReadWriteMany\"} \
   --set persistence.size=${LLMDBENCH_MODEL_CACHE_SIZE} \
   --set persistence.storageClassName=${LLMDBENCH_STORAGE_CLASS} \
   --set vllm.replicaCount=${LLMDBENCH_VLLM_REPLICAS} \

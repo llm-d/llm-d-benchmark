@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 source ${LLMDBENCH_STEPS_DIR}/env.sh
 
-  cat << EOF > $LLMDBENCH_TEMPDIR/06_a_deployment_llama-8b.yaml
+cat << EOF > $LLMDBENCH_TEMPDIR/06_a_deployment_llama-8b.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -74,7 +74,7 @@ spec:
       volumes:
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: standalone-${model}-cache
+          claimName: standalone-llama-70b-cache
       - name: shm
         emptyDir:
           medium: Memory
@@ -156,7 +156,7 @@ spec:
       volumes:
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: standalone-${model}-cache
+          claimName: standalone-llama-70b-cache
       - name: shm
         emptyDir:
           medium: Memory
