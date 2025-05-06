@@ -7,7 +7,7 @@ then
   echo "Creating PVCs for model cache..."
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/04_pvc_${model}.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_pvc_${model}.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -21,7 +21,7 @@ spec:
       storage: ${LLMDBENCH_MODEL_CACHE_SIZE}
   storageClassName: ${LLMDBENCH_STORAGE_CLASS}
 EOF
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/04_pvc_${model}.yaml" ${LLMDBENCH_DRY_RUN}
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_pvc_${model}.yaml" ${LLMDBENCH_DRY_RUN}
   done
 else
   echo "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."

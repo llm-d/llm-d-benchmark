@@ -21,7 +21,7 @@ then
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
     echo "Creating CRDs required for inference gateway for model \"${model}\" (from files located at $LLMDBENCH_TEMPDIR)..."
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/08_a_${model}_gateway_parameters.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_a_${model}_gateway_parameters.yaml
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: GatewayParameters
 metadata:
@@ -33,7 +33,7 @@ spec:
       type: ClusterIP
 EOF
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/08_b_${model}_gateway.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_b_${model}_gateway.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -55,7 +55,7 @@ spec:
         from: Same
 EOF
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/08_c_${model}_httproute.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_c_${model}_httproute.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -80,7 +80,7 @@ spec:
       request: 300s
 EOF
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/08_d_${model}_inferencepool.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_d_${model}_inferencepool.yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferencePool
 metadata:
@@ -94,7 +94,7 @@ spec:
     name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
 EOF
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/08_e_${model}_service.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_e_${model}_service.yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -111,7 +111,7 @@ spec:
   type: ClusterIP
 EOF
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/08_f_${model}_deployment.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_f_${model}_deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -167,7 +167,7 @@ spec:
           periodSeconds: 10
 EOF
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/08_g_${model}_role.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_g_${model}_role.yaml
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -200,7 +200,7 @@ rules:
   - create
 EOF
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/08_h_${model}_rolebinding.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_h_${model}_rolebinding.yaml
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -215,7 +215,7 @@ roleRef:
   name: pod-read
 EOF
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/08_i_${model}_inferencepool.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_i_${model}_inferencepool.yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferenceModel
 metadata:
@@ -228,7 +228,7 @@ spec:
     name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
 EOF
 
-    for rf in $(ls $LLMDBENCH_TEMPDIR/08_*_${model}*); do
+    for rf in $(ls $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_*_${model}*); do
       llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $rf" ${LLMDBENCH_DRY_RUN}
     done
   done

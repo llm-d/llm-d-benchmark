@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 source ${LLMDBENCH_STEPS_DIR}/env.sh
 
-cat << EOF > $LLMDBENCH_TEMPDIR/06_a_deployment_llama-8b.yaml
+cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_llama-8b.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -81,7 +81,7 @@ spec:
           sizeLimit: 8Gi
 EOF
 
-  cat << EOF > $LLMDBENCH_TEMPDIR/06_a_deployment_llama-70b.yaml
+  cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_llama-70b.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -170,9 +170,9 @@ then
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
     echo "Deploying model \"${model}\" (from files located at $LLMDBENCH_TEMPDIR)..."
 
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/06_a_deployment_${model}.yaml" ${LLMDBENCH_DRY_RUN}
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_${model}.yaml" ${LLMDBENCH_DRY_RUN}
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/06_b_service_${model}.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_b_service_${model}.yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -188,9 +188,9 @@ spec:
   type: ClusterIP
 EOF
 
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/06_b_service_${model}.yaml" ${LLMDBENCH_DRY_RUN}
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_b_service_${model}.yaml" ${LLMDBENCH_DRY_RUN}
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/06_c_httproute_${model}.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
 metadata:
@@ -212,7 +212,7 @@ spec:
       port: 80
 EOF
 
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/06_c_httproute_${model}.yaml" ${LLMDBENCH_DRY_RUN}
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml" ${LLMDBENCH_DRY_RUN}
   done
 else
   echo "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."

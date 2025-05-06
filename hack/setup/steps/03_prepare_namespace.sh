@@ -22,7 +22,7 @@ if [[ ! -z ${is_env_type} ]]
 then
   echo "Preparing OpenShift namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE}..."
 
-  cat << EOF > $LLMDBENCH_TEMPDIR/03_secret.yaml
+  cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_secret.yaml
 apiVersion: v1
 kind: Secret
 metadata:
@@ -33,7 +33,7 @@ stringData:
   token: ${LLMDBENCH_HF_TOKEN}
 EOF
 
-  llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/03_secret.yaml" ${LLMDBENCH_DRY_RUN}
+  llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_secret.yaml" ${LLMDBENCH_DRY_RUN}
 
   is_qs=$(${LLMDBENCH_KCMD} -n $LLMDBENCH_OPENSHIFT_NAMESPACE get secrets/standalone-quay-secret -o name --ignore-not-found=true | cut -d '/' -f 2)
   if [[ -z $is_qs ]]; then

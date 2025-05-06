@@ -76,6 +76,8 @@ run_step() {
   local script_path=$(ls ${LLMDBENCH_STEPS_DIR}/${script_name}*)
   if [ -f $script_path ]; then
     local step_id=$(basename "$script_path")
+    local step_nr=$(echo $step_id | cut -d '_' -f 1)
+    export LLMDBENCH_CURRENT_STEP=${step_nr}
     echo -e "\n=== Running step: $step_id ==="
     if [[ $LLMDBENCH_DRY_RUN -eq 1 ]]; then
       echo "[DRY RUN] $script_path"
@@ -85,7 +87,7 @@ run_step() {
 }
 
 for step in ${LLMDBENCH_STEP_LIST//,/ }; do
-  if [[ ${step} != "08" ]]
+  if [[ ${#step} -lt 2 ]]
   then
     step=$(printf %02d $step)
   fi

@@ -5,7 +5,7 @@ echo "🔍 Checking if namespace '${LLMDBENCH_OPENSHIFT_NAMESPACE}' exists..."
 
 if ! ${LLMDBENCH_KCMD} get namespace "$LLMDBENCH_OPENSHIFT_NAMESPACE" --ignore-not-found | grep -q "$LLMDBENCH_OPENSHIFT_NAMESPACE"; then
   if [[ $(${LLMDBENCH_KCMD} whoami) == "system:admin" ]]; then
-  cat << EOF > $LLMDBENCH_TEMPDIR/00_ns_and_sa_and_rbac.yaml
+  cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_ns_and_sa_and_rbac.yaml
 ---
 apiVersion: v1
 kind: Namespace
