@@ -15,7 +15,7 @@ then
       exit 1
     else
       llmdbench_execute_cmd "${LLMDBENCH_KCMD} run testinference-gateway -n ${LLMDBENCH_OPENSHIFT_NAMESPACE} --attach --restart=Never --rm --image=ubi9/ubi --quiet --command -- bash -c \"curl --no-progress-meter http://${clusterip}:80/v1/models\" | jq ." ${LLMDBENCH_DRY_RUN} 1
-      echo "✅ Model \"$model\" seems to be up and running."
+      echo "✅ Inference gateway seems to be up and running."
     fi
     done
   fi

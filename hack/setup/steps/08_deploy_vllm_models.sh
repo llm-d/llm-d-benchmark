@@ -32,28 +32,27 @@ anyuid \
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
     echo "Installing release vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]}..."
     llmdbench_execute_cmd "${LLMDBENCH_HCMD} upgrade --install vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]} . \
-  --namespace "$LLMDBENCH_OPENSHIFT_NAMESPACE" \
-  --set secret.create=true \
-  --set secret.hfTokenValue=\"${LLMDBENCH_HF_TOKEN}\" \
-  --set secret.name=vllm-p2p-${model}-secrets \
-  --set persistence.enabled=${LLMDBENCH_VLLM_PERSISTENCE_ENABLED} \
-  --set persistence.accessModes={\"ReadWriteMany\"} \
-  --set persistence.size=${LLMDBENCH_MODEL_CACHE_SIZE} \
-  --set persistence.storageClassName=${LLMDBENCH_STORAGE_CLASS} \
-  --set vllm.replicaCount=${LLMDBENCH_VLLM_REPLICAS} \
-  --set vllm.poolLabelValue="vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" \
-  --set vllm.image.repository=\"${LLMDBENCH_VLLM_IMAGE_REPOSITORY}\" \
-  --set vllm.image.tag=\"${LLMDBENCH_VLLM_IMAGE_TAG}\" \
-  --set vllm.model.name=${LLMDBENCH_MODEL2PARAM[${model}:name]} \
-  --set vllm.model.label=${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct \
-  --set vllm.gpuMemoryUtilization=${LLMDBENCH_VLLM_GPU_MEM_UTIL} \
-  --set vllm.model.maxModelLen=${LLMDBENCH_VLLM_MAX_MODEL_LEN} \
-  --set vllm.tensorParallelSize=${LLMDBENCH_VLLM_GPU_NR} \
-  --set vllm.resources.limits.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
-  --set vllm.resources.requests.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
-  --set dshm.useEmptyDir=true \
-  --set dshm.sizeLimit=8Gi" ${LLMDBENCH_DRY_RUN} 
-
+--namespace "$LLMDBENCH_OPENSHIFT_NAMESPACE" \
+--set secret.create=true \
+--set secret.hfTokenValue=\"${LLMDBENCH_HF_TOKEN}\" \
+--set secret.name=vllm-p2p-${model}-secrets \
+--set persistence.enabled=${LLMDBENCH_VLLM_PERSISTENCE_ENABLED} \
+--set persistence.accessModes={\"ReadWriteMany\"} \
+--set persistence.size=${LLMDBENCH_MODEL_CACHE_SIZE} \
+--set persistence.storageClassName=${LLMDBENCH_STORAGE_CLASS} \
+--set vllm.replicaCount=${LLMDBENCH_VLLM_REPLICAS} \
+--set vllm.poolLabelValue="vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" \
+--set vllm.image.repository=\"${LLMDBENCH_VLLM_IMAGE_REPOSITORY}\" \
+--set vllm.image.tag=\"${LLMDBENCH_VLLM_IMAGE_TAG}\" \
+--set vllm.model.name=${LLMDBENCH_MODEL2PARAM[${model}:name]} \
+--set vllm.model.label=${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct \
+--set vllm.gpuMemoryUtilization=${LLMDBENCH_VLLM_GPU_MEM_UTIL} \
+--set vllm.model.maxModelLen=${LLMDBENCH_VLLM_MAX_MODEL_LEN} \
+--set vllm.tensorParallelSize=${LLMDBENCH_VLLM_GPU_NR} \
+--set vllm.resources.limits.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
+--set vllm.resources.requests.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
+--set dshm.useEmptyDir=true \
+--set dshm.sizeLimit=8Gi" ${LLMDBENCH_DRY_RUN}
   done
   popd &>/dev/null
   popd &>/dev/null

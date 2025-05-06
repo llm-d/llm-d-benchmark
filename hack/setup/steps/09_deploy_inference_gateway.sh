@@ -7,8 +7,7 @@ then
   echo "Deploying Inference Gateway..."
 
   VERSION="v0.3.0"
-  if [[ $LLMDBENCH_USER_IS_ADMIN -eq 1 ]]
-  then
+  if [[ $LLMDBENCH_USER_IS_ADMIN -eq 1 ]]; then
     llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${VERSION}/manifests.yaml" ${LLMDBENCH_DRY_RUN}
   fi
 
@@ -21,171 +20,46 @@ then
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
     echo "Creating CRDs required for inference gateway for model \"${model}\" (from files located at $LLMDBENCH_TEMPDIR)..."
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_a_${model}_gateway_parameters.yaml
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: GatewayParameters
-metadata:
-  name: inference-gateway-params
-  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-spec:
-  kube:
-    service:
-      type: ClusterIP
-EOF
-
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_b_${model}_gateway.yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: inference-gateway
-  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-spec:
-  gatewayClassName: kgateway
-  infrastructure:
-    parametersRef:
-      group: gateway.kgateway.dev
-      kind: GatewayParameters
-      name: inference-gateway-params
-  listeners:
-  - name: http
-    port: 80
-    protocol: HTTP
-    allowedRoutes:
-      namespaces:
-        from: Same
-EOF
-
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_c_${model}_httproute.yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: llm-route
-  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-spec:
-  parentRefs:
-  - group: gateway.networking.k8s.io
-    kind: Gateway
-    name: inference-gateway
-  rules:
-  - backendRefs:
-    - group: inference.networking.x-k8s.io
-      kind: InferencePool
-      name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
-      port: 8000
-    matches:
-    - path:
-        type: PathPrefix
-        value: /
-    timeouts:
-      request: 300s
-EOF
-
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_d_${model}_inferencepool.yaml
-apiVersion: inference.networking.x-k8s.io/v1alpha2
-kind: InferencePool
-metadata:
-  name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
-  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-spec:
-  targetPortNumber: 8000
-  selector:
-    app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
-  extensionRef:
-    name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
-EOF
-
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_e_${model}_service.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_a_${model}_service_account.yaml
 apiVersion: v1
-kind: Service
+kind: ServiceAccount
 metadata:
-  name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
+  name: endpoint-picker
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-spec:
-  selector:
-    app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
-  ports:
-    - protocol: TCP
-      port: 9002
-      targetPort: 9002
-      appProtocol: http2
-  type: ClusterIP
 EOF
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_f_${model}_deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
-  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-  labels:
-    app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
-  template:
-    metadata:
-      labels:
-        app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-epp
-    spec:
-      # Conservatively, this timeout should mirror the longest grace period of the pods within the pool
-      terminationGracePeriodSeconds: 130
-      containers:
-      - name: epp
-        image: ${LLMDBENCH_EPP_IMAGE}
-        imagePullPolicy: Always
-        args:
-        - -poolName
-        - "vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}"
-        - "-poolNamespace"
-        - "${LLMDBENCH_OPENSHIFT_NAMESPACE}"
-        - -v
-        - "4"
-        - --zap-encoder
-        - "json"
-        - -grpcPort
-        - "9002"
-        - -grpcHealthPort
-        - "9003"
-        ports:
-        - containerPort: 9002
-        - containerPort: 9003
-        - name: metrics
-          containerPort: 9090
-        livenessProbe:
-          grpc:
-            port: 9003
-            service: inference-extension
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        readinessProbe:
-          grpc:
-            port: 9003
-            service: inference-extension
-          initialDelaySeconds: 5
-          periodSeconds: 10
-EOF
-
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_g_${model}_role.yaml
-kind: Role
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_b_${model}_role.yaml
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
 metadata:
-  name: pod-read
+  name: endpoint-picker
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 rules:
-- apiGroups: ["inference.networking.x-k8s.io"]
-  resources: ["inferencemodels"]
-  verbs: ["get", "watch", "list"]
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "watch", "list"]
-- apiGroups: ["inference.networking.x-k8s.io"]
-  resources: ["inferencepools"]
-  verbs: ["get", "watch", "list"]
-- apiGroups: ["discovery.k8s.io"]
-  resources: ["endpointslices"]
-  verbs: ["get", "watch", "list"]
+- apiGroups:
+  - inference.networking.x-k8s.io
+  resources:
+  - inferencepools
+  - inferencemodels
+  verbs:
+  - get
+  - watch
+  - list
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - watch
+  - list
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
+  verbs:
+  - get
+  - watch
+  - list
 - apiGroups:
   - authentication.k8s.io
   resources:
@@ -200,22 +74,206 @@ rules:
   - create
 EOF
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_h_${model}_rolebinding.yaml
-kind: RoleBinding
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_c_${model}_rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
 metadata:
-  name: pod-read-binding
-  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-subjects:
-- kind: ServiceAccount
-  name: ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT}
+  name: endpoint-picker-binding
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 roleRef:
+  apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: pod-read
+  name: endpoint-picker
+subjects:
+- kind: ServiceAccount
+  name: endpoint-picker
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 EOF
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_i_${model}_inferencepool.yaml
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_d_${model}_secret.yaml
+apiVersion: v1
+data:
+  inference-gateway-secret-key: ${LLMDBENCH_HF_TOKEN}
+kind: Secret
+metadata:
+  labels:
+    app.kubernetes.io/component: secret
+    app.kubernetes.io/name: vllm
+  name: inference-gateway-secret
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+type: Opaque
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_e_${model}_service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: endpoint-picker
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  ports:
+  - appProtocol: http2
+    port: 9002
+    protocol: TCP
+    targetPort: 9002
+  selector:
+    app: endpoint-picker
+  type: ClusterIP
+EOF
+
+  is_qs=$(${LLMDBENCH_KCMD} -n $LLMDBENCH_OPENSHIFT_NAMESPACE get secrets/inference-gateway-quay-secret -o name --ignore-not-found=true | cut -d '/' -f 2)
+  if [[ -z $is_qs ]]; then
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} create secret docker-registry inference-gateway-quay-secret \
+  --docker-server=quay.io \
+  --docker-username="${LLMDBENCH_QUAY_USER}" \
+  --docker-password="${LLMDBENCH_QUAY_PASSWORD}" \
+  --docker-email="${LLMDBENCH_DOCKER_EMAIL}" \
+  -n ${LLMDBENCH_OPENSHIFT_NAMESPACE}" ${LLMDBENCH_DRY_RUN}
+  fi
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_f_${model}_deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: endpoint-picker
+  name: endpoint-picker
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: endpoint-picker
+  template:
+    metadata:
+      labels:
+        app: endpoint-picker
+    spec:
+      containers:
+      - args:
+        - -poolName
+        - vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
+        - -poolNamespace
+        - ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+        - -v
+        - "4"
+        - --zap-encoder
+        - json
+        - -grpcPort
+        - "9002"
+        - -grpcHealthPort
+        - "9003"
+        env:
+        - name: KVCACHE_INDEXER_REDIS_ADDR
+          value: ${LLMDBENCH_REDIS_HOST}:${LLMDBENCH_REDIS_PORT}
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: inference-gateway-secret-key:
+              name: inference-gateway-secret
+        - name: ENABLE_KVCACHE_AWARE_SCORER
+          value: "true"
+        - name: KVCACHE_AWARE_SCORER_WEIGHT
+          value: "2.0"
+        - name: ENABLE_LOAD_AWARE_SCORER
+          value: "true"
+        - name: LOAD_AWARE_SCORER_WEIGHT
+          value: "1.0"
+        image: ${LLMDBENCH_EPP_IMAGE}
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          grpc:
+            port: 9003
+            service: inference-extension
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        name: epp
+        ports:
+        - containerPort: 9002
+        - containerPort: 9003
+        - containerPort: 9090
+          name: metrics
+        readinessProbe:
+          grpc:
+            port: 9003
+            service: inference-extension
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      imagePullSecrets:
+      - name: inference-gateway-quay-secret
+      serviceAccountName: endpoint-picker
+      terminationGracePeriodSeconds: 130
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_g_${model}_gateway_parameters.yaml
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayParameters
+metadata:
+  name: inference-gateway-params
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  kube:
+    envoyContainer:
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: ${LLMDBENCH_PROXY_UID}
+    podTemplate:
+      extraLabels:
+        gateway: custom
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+    service:
+      extraLabels:
+        gateway: custom
+      type: ClusterIP
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_h_${model}_gateway.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: inference-gateway
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  gatewayClassName: kgateway
+  infrastructure:
+    parametersRef:
+      group: gateway.kgateway.dev
+      kind: GatewayParameters
+      name: inference-gateway-params
+  listeners:
+  - name: default
+    port: 80
+    protocol: HTTP
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_i_${model}_httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: inference-route
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  parentRefs:
+  - name: inference-gateway
+  rules:
+  - backendRefs:
+    - group: inference.networking.x-k8s.io
+      kind: InferencePool
+      name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
+      port: 8000
+    matches:
+    - path:
+        type: PathPrefix
+        value: /
+    timeouts:
+      request: 30s
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_j_${model}_inferencemodel.yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferenceModel
 metadata:
@@ -224,8 +282,23 @@ metadata:
 spec:
   modelName: ${LLMDBENCH_MODEL2PARAM[${model}:name]}
   criticality: Critical
+  modelName: ${LLMDBENCH_MODEL2PARAM[${model}:name]}
   poolRef:
-    name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+    name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
+EOF
+
+    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_k_${model}_inferencepool.yaml
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferencePool
+metadata:
+  name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  extensionRef:
+    name: endpoint-picker
+  selector:
+    app: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  targetPortNumber: 8000
 EOF
 
     for rf in $(ls $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_*_${model}*); do
