@@ -222,7 +222,7 @@ metadata:
   name: base-model
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
-  modelName: vllm-${LLMDBENCH_MODEL2PARAM[${model}:name]}
+  modelName: ${LLMDBENCH_MODEL2PARAM[${model}:name]}
   criticality: Critical
   poolRef:
     name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}
