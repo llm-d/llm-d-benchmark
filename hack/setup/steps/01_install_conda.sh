@@ -26,4 +26,6 @@ if ! grep -Fxq "$ANACONDA_PATH" ~/.${LLMDBENCH_HOST_SHELL}rc && ${LLMDBENCH_DRY_
 else
   echo "ℹ️ Anaconda path already present in ~/.${LLMDBENCH_HOST_SHELL}rc"
 fi
-source ~/.${LLMDBENCH_HOST_SHELL}rc
+
+# no need to source - we already export for current shell - next shell will naturally pick it up
+# source ~/.${LLMDBENCH_HOST_SHELL}rc
