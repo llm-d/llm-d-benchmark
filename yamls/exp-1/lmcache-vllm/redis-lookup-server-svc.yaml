@@ -1,0 +1,16 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: redis-lookup-server-service
+  namespace: aibrix-system
+  labels:
+    app.kubernetes.io/component: redis-lookup-server
+spec:
+  ports:
+    - name: lookupserver-port
+      protocol: TCP
+      port: 8100
+      targetPort: 6379
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: redis-lookup-server

@@ -14,7 +14,10 @@ METHOD_TYPES = {
     'lmcache-0310': 'vLLM Production Stack + LMCache (03-10-2025)',
     'vllm-70b': 'vLLM v1',
     'baseline-llm-d-70b': 'llm-d w/o KVCache offloading',
-    'lmcache-llm-d-70b': 'llm-d w KVCache offloading'
+    'lmcache-llm-d-70b': 'llm-d w KVCache offloading',
+    'lmcache-indexing-llm-d-70b': 'llm-d w KVCache offloading + KVCache indexing',
+    'lmcache-vllm-70b': 'Production Stack(vLLM v1) + LMCache',
+    'vllm-70b-2replicas': 'vLLM v1 (2 replicas) + Round Robin'
 }
 
 # Define benchmark types and their titles
@@ -26,7 +29,8 @@ BENCHMARK_TYPES = {
 
 # Define QPS ranges for each benchmark type
 BENCHMARK_QPS_RANGES = {
-    'sharegpt': (0, 1.4),
+    # 'sharegpt': (0, 1.4),
+    'sharegpt': (0, 10.0),
     'long_input': (0, 1.2),
     'short_input': (0, 10.0)
 }
