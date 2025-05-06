@@ -50,7 +50,9 @@ anyuid \
   --set vllm.model.maxModelLen=${LLMDBENCH_VLLM_MAX_MODEL_LEN} \
   --set vllm.tensorParallelSize=${LLMDBENCH_VLLM_GPU_NR} \
   --set vllm.resources.limits.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
-  --set vllm.resources.requests.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR}" ${LLMDBENCH_DRY_RUN}
+  --set vllm.resources.requests.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
+  --set dshm.useEmptyDir=true \
+  --set dshm.sizeLimit=8Gi" ${LLMDBENCH_DRY_RUN}
   done
   popd &>/dev/null
   popd &>/dev/null
