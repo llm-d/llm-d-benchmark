@@ -36,3 +36,8 @@ go.work.sum
 hack/setup/fmperf/
 hack/setup/gateway-api-inference-extension/
 hack/setup/llm-d-kv-cache-manager/
+
+# Log directories
+data/**/logs/
+**/logs/
+*.log
