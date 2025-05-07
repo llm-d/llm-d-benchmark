@@ -28,6 +28,19 @@ anyuid \
     llmdbench_execute_cmd "git clone https://github.com/neuralmagic/llm-d-kv-cache-manager.git || true" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
   fi
 
+cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_affinity.yaml
+vllm:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - $LLMDBENCH_GPU_MODEL
+EOF
+
   pushd llm-d-kv-cache-manager/vllm-setup-helm &>/dev/null
   llmdbench_execute_cmd "git checkout $LLMDBENCH_KVCM_GIT_BRANCH" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
@@ -59,7 +72,8 @@ anyuid \
 --set vllm.extraEnv.LMCACHE_MAX_LOCAL_CPU_SIZE=${LLMDBENCH_VLLM_LMCACHE_MAX_LOCAL_CPU_SIZE} \
 --set vllm.resources.requests.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
 --set dshm.useEmptyDir=true \
---set dshm.sizeLimit=8Gi" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+--set dshm.sizeLimit=8Gi \
+-f $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_affinity.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
   done
   popd &>/dev/null
   popd &>/dev/null
