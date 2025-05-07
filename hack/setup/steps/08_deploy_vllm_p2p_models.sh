@@ -42,6 +42,8 @@ anyuid \
 --set persistence.size=${LLMDBENCH_MODEL_CACHE_SIZE} \
 --set persistence.name=${LLMDBENCH_VLLM_PVC_NAME} \
 --set persistence.storageClassName=${LLMDBENCH_STORAGE_CLASS} \
+--set startupProbe.initialDelaySeconds=600 \
+--set livenessProbe.initialDelaySecons=600 \
 --set vllm.replicaCount=${LLMDBENCH_VLLM_REPLICAS} \
 --set vllm.poolLabelValue="vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" \
 --set vllm.image.repository=\"${LLMDBENCH_VLLM_IMAGE_REPOSITORY}\" \
