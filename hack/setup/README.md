@@ -38,4 +38,6 @@ export LLMDBENCH_QUAY_PASSWORD="..."
 ```
 ./deploy.sh --step 07_smoketest_standalone_models.sh
 ./deploy.sh -s 7
+./deploy.sh -s 3-5
+./deploy.sh -s 5,7
 ```

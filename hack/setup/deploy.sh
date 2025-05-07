@@ -106,6 +106,7 @@ _e=$(echo ${LLMDBENCH_STEP_LIST} | grep "-" || true)
 if [[ ! -z ${_e} ]]; then
   LLMDBENCH_STEP_LIST=$(eval echo $(echo {${LLMDBENCH_STEP_LIST}} | $LLMDBENCH_SCMD 's^-^..^g'))
 fi
+LLMDBENCH_STEP_LIST=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_SCMD 's^,^ ^g')
 
 for step in ${LLMDBENCH_STEP_LIST//,/ }; do
   if [[ ${#step} -lt 2 ]]

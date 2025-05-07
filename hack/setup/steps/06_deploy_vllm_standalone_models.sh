@@ -5,19 +5,19 @@ cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_llama-8b
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
+  name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
   labels:
-    app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
+    app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
+      app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
   template:
     metadata:
       labels:
-        app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
+        app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
     spec:
       affinity:
         nodeAffinity:
@@ -29,7 +29,7 @@ spec:
                 values:
                 - $LLMDBENCH_GPU_MODEL
       containers:
-      - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
+      - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
         image: ${LLMDBENCH_MODEL_IMAGE}
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
@@ -85,19 +85,19 @@ EOF
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
+  name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}-instruct
   labels:
-    app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
+    app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}-instruct
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
+      app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}-instruct
   template:
     metadata:
       labels:
-        app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
+        app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}-instruct
     spec:
       affinity:
         nodeAffinity:
@@ -109,7 +109,7 @@ spec:
                 values:
                 - $LLMDBENCH_GPU_MODEL
       containers:
-      - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
+      - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}-instruct
         image: ${LLMDBENCH_MODEL_IMAGE}
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
@@ -181,7 +181,7 @@ spec:
     port: 80
     targetPort: 80
   selector:
-    app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+    app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
   type: ClusterIP
 EOF
 
@@ -205,14 +205,17 @@ spec:
         type: PathPrefix
         value: /
     backendRefs:
-    - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+    - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
       port: 80
 EOF
 
     llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
     sleep 10 #TODO wait for service
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} expose service/vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} --name=vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
-
+    is_route=$(${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route | grep vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route || true)
+    if [[ -z $is_route ]]
+    then
+      llmdbench_execute_cmd "${LLMDBENCH_KCMD} expose service/vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} --name=vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    fi
   done
 else
   announce "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."

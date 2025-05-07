@@ -2,7 +2,7 @@
 source ${LLMDBENCH_DIR}/env.sh
 
 if [[ $LLMDBENCH_ENVIRONMENT_TYPE_P2P_ACTIVE -eq 1 ]]; then
-  echo "Deploying vLLM via Helm with LMCache..."
+  announce "Deploying vLLM via Helm with LMCache..."
 
   if [[ $LLMDBENCH_IS_OPENSHIFT -eq 1 ]]
   then
@@ -31,7 +31,7 @@ anyuid \
   pushd llm-d-kv-cache-manager/vllm-setup-helm &>/dev/null
   git checkout $LLMDBENCH_KVCM_GIT_BRANCH
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
-    echo "Installing release vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]}..."
+    announce "Installing release vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]}..."
     llmdbench_execute_cmd "${LLMDBENCH_HCMD} upgrade --install vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]} . \
 --namespace "$LLMDBENCH_OPENSHIFT_NAMESPACE" \
 --set secret.create=true \

@@ -170,13 +170,19 @@ spec:
               key: inference-gateway-secret-key
               name: inference-gateway-secret
         - name: ENABLE_KVCACHE_AWARE_SCORER
-          value: "true"
+          value: "${LLMDBENCH_EPP_ENABLE_KVCACHE_AWARE_SCORER}"
         - name: KVCACHE_AWARE_SCORER_WEIGHT
-          value: "2.0"
+          value: "${LLMDBENCH_EPP_KVCACHE_AWARE_SCORER_WEIGHT}"
         - name: ENABLE_LOAD_AWARE_SCORER
-          value: "true"
+          value: "${LLMDBENCH_EPP_ENABLE_LOAD_AWARE_SCORER}"
         - name: LOAD_AWARE_SCORER_WEIGHT
-          value: "1.0"
+          value: "${LLMDBENCH_EPP_LOAD_AWARE_SCORER_WEIGHT}"
+        - name: ENABLE_PREFIX_AWARE_SCORER
+          value: "${LLMDBENCH_EPP_ENABLE_PREFIX_AWARE_SCORER}"
+        - name: PREFIX_AWARE_SCORER_WEIGHT
+          value: "${LLMDBENCH_EPP_PREFIX_AWARE_SCORER_WEIGHT}"
+        - name: PD_ENABLED
+          value: "${LLMDBENCH_EPP_PREFIX_AWARE_SCORER_WEIGHT}"
         image: ${LLMDBENCH_EPP_IMAGE}
         imagePullPolicy: IfNotPresent
         livenessProbe:
@@ -307,7 +313,11 @@ else
   announce "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."
 fi
 
-llmdbench_execute_cmd "oc expose service inference-gateway --name=llm-route" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+is_route=$(${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route | grep llm-route || true)
+if [[ -z $is_route ]]
+then
+  llmdbench_execute_cmd "oc expose service inference-gateway --name=llm-route" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+fi
 
 announce "A snapshot of the relevant (model-specific) resources on namespace \"${LLMDBENCH_OPENSHIFT_NAMESPACE}\":"
 ${LLMDBENCH_KCMD} get --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} gatewayparameters,gateway,httproute,service,deployment,pods,secrets
