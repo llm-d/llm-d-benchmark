@@ -313,7 +313,7 @@ else
   announce "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."
 fi
 
-is_route=$(${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route | grep llm-route || true)
+is_route=$(${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route --ignore-not-found | grep llm-route || true)
 if [[ -z $is_route ]]
 then
   llmdbench_execute_cmd "oc expose service inference-gateway --name=llm-route" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}

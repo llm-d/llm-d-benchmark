@@ -36,7 +36,7 @@ spec:
         args:
         - >
           vllm serve ${LLMDBENCH_MODEL2PARAM[llama-8b:name]} --port 80
-          --disable-log-requests --gpu-memory-utilization 0.95
+          --disable-log-requests --gpu-memory-utilization ${LLMDBENCH_VLLM_GPU_MEM_UTIL}
         env:
         - name: HF_HOME
           value: /root/.cache/huggingface
@@ -59,12 +59,12 @@ spec:
           limits:
             cpu: "6"
             memory: 80Gi
-            nvidia.com/gpu: "1"
+            nvidia.com/gpu: "${LLMDBENCH_VLLM_GPU_NR}"
             ephemeral-storage: "20Gi"
           requests:
             cpu: "1"
             memory: 60Gi
-            nvidia.com/gpu: "1"
+            nvidia.com/gpu: "${LLMDBENCH_VLLM_GPU_NR}"
             ephemeral-storage: "10Gi"
         volumeMounts:
         - name: cache-volume
@@ -116,7 +116,7 @@ spec:
         args:
         - >
           vllm serve ${LLMDBENCH_MODEL2PARAM[llama-70b:name]} --port 80 --max-model-len 20000
-          --disable-log-requests --gpu-memory-utilization 0.95 --tensor-parallel-size 2
+          --disable-log-requests --gpu-memory-utilization ${LLMDBENCH_VLLM_GPU_MEM_UTIL} --tensor-parallel-size ${LLMDBENCH_VLLM_GPU_NR}
         env:
         - name: HF_HOME
           value: /root/.cache/huggingface
@@ -141,12 +141,12 @@ spec:
           limits:
             cpu: "10"
             memory: 200Gi
-            nvidia.com/gpu: "2"
+            nvidia.com/gpu: "${LLMDBENCH_VLLM_GPU_NR}"
             ephemeral-storage: "30Gi"
           requests:
             cpu: "2"
             memory: 100Gi
-            nvidia.com/gpu: "2"
+            nvidia.com/gpu: "${LLMDBENCH_VLLM_GPU_NR}"
             ephemeral-storage: "10Gi"
         volumeMounts:
         - name: cache-volume
@@ -211,7 +211,7 @@ EOF
 
     llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
     sleep 10 #TODO wait for service
-    is_route=$(${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route | grep vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route || true)
+    is_route=$(${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route --ignore-not-found | grep vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route || true)
     if [[ -z $is_route ]]
     then
       llmdbench_execute_cmd "${LLMDBENCH_KCMD} expose service/vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} --name=vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}

@@ -32,6 +32,9 @@ export LLMDBENCH_VLLM_MAX_MODEL_LEN=${LLMDBENCH_VLLM_MAX_MODEL_LEN:-16384}
 export LLMDBENCH_VLLM_IMAGE_REPOSITORY=${LLMDBENCH_VLLM_IMAGE_REPOSITORY:-quay.io/llm-d/llm-d-dev}
 export LLMDBENCH_VLLM_IMAGE_TAG=${LLMDBENCH_VLLM_IMAGE_TAG:-lmcache-0.0.6-amd64}
 
+# Size of PVC (vllm-standalone)
+export LLMDBENCH_MODEL_CACHE_SIZE="${LLMDBENCH_MODEL_CACHE_SIZE:-300Gi}"
+
 # Endpoint Picker Parameters
 export LLMDBENCH_EPP_IMAGE=${LLMDBENCH_EPP_IMAGE:-quay.io/llm-d/llm-d-gateway-api-inference-extension-dev:0.0.5-amd64}
 export LLMDBENCH_EPP_ENABLE_PREFIX_AWARE_SCORER=${LLMDBENCH_EPP_ENABLE_PREFIX_AWARE_SCORER:-true}
@@ -49,7 +52,6 @@ export OPENSHIFT_TOKEN=${LLMDBENCH_OPENSHIFT_TOKEN}
 # Not sure if those should be set
 export LLMDBENCH_REDIS_PORT="${LLMDBENCH_REDIS_PORT:-8100}"
 
-export LLMDBENCH_MODEL_CACHE_SIZE="${LLMDBENCH_MODEL_CACHE_SIZE:-300Gi}"
 export LLMDBENCH_MODEL_IMAGE=${LLMDBENCH_MODEL_IMAGE:-"vllm/vllm-openai:latest"}
 
 # Experiments
@@ -114,7 +116,10 @@ else
   fi
 fi
 
-export LLMDBENCH_PROXY_UID=$($LLMDBENCH_KCMD get namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} -o json | jq -e -r '.metadata.annotations["openshift.io/sa.scc.uid-range"]' | perl -F'/' -lane 'print $F[0]+1');
+is_ns=$($LLMDBENCH_KCMD get namespace | grep ${LLMDBENCH_OPENSHIFT_NAMESPACE} || true)
+if [[ ! -z ${is_ns} ]]; then
+  export LLMDBENCH_PROXY_UID=$($LLMDBENCH_KCMD get namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} -o json | jq -e -r '.metadata.annotations["openshift.io/sa.scc.uid-range"]' | perl -F'/' -lane 'print $F[0]+1');
+fi
 
 export LLMDBENCH_IS_OPENSHIFT=0
 is_ocp=$($LLMDBENCH_KCMD api-resources 2>&1 | grep 'route.openshift.io' || true)

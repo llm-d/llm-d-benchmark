@@ -6,7 +6,7 @@ git clone https://github.com/neuralmagic/llm-d-benchmark
 cd llm-d-benchmark/hack/setup
 ```
 
-## Set the minimalistic
+## Minimal set of required environment variables
 ```
 export LLMDBENCH_OPENSHIFT_HOST="https://api.fmaas-platform-eval.fmaas.res.ibm.com"
 export LLMDBENCH_OPENSHIFT_TOKEN="..."
@@ -19,9 +19,14 @@ export LLMDBENCH_QUAY_PASSWORD="..."
 ## A complete list of available variables (and its default values) can be found by running
  `cat hack/setup/env.sh | grep "^export LLMDBENCH_"`
 
+## list of steps
+```
+./deploy.sh -h
+```
+
 ## to dry-run
 ```
-./deploy.sh --dry-run
+./deploy.sh -n
 ```
 
 ## to deploy and test

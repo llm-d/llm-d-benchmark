@@ -102,7 +102,7 @@ run_step() {
 
 source ${LLMDBENCH_DIR}/env.sh
 
-_e=$(echo ${LLMDBENCH_STEP_LIST} | grep "-" || true)
+_e=$(echo ${LLMDBENCH_STEP_LIST} | grep "[0-9]-[0-9]" || true)
 if [[ ! -z ${_e} ]]; then
   LLMDBENCH_STEP_LIST=$(eval echo $(echo {${LLMDBENCH_STEP_LIST}} | $LLMDBENCH_SCMD 's^-^..^g'))
 fi
