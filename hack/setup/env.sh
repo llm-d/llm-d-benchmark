@@ -111,7 +111,7 @@ fi
 if [[ -f ${HOME}/.kube/config-${LLMDBENCH_OPENSHIFT_CLUSTER_NAME} ]]; then
   export LLMDBENCH_KCMD="oc --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_OPENSHIFT_CLUSTER_NAME}"
   export LLMDBENCH_HCMD="helm --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_OPENSHIFT_CLUSTER_NAME}"
-elif [[ -z $LLMDBENCH_OPENSHIFT_HOST || $LLMDBENCH_OPENSHIFT_HOST ]]; then
+elif [[ -z $LLMDBENCH_OPENSHIFT_HOST || $LLMDBENCH_OPENSHIFT_HOST == "auto" ]]; then
   current_context=$(${LLMDBENCH_KCMD} config view -o json | jq -r '."current-context"' || true)
   if [[ $LLMDBENCH_WARNING_DISPLAYED -eq 0 ]]; then
     echo "WARNING: environment variable LLMDBENCH_OPENSHIFT_HOST=$LLMDBENCH_OPENSHIFT_HOST. Will attempt to use current context \"${current_context}\"."
