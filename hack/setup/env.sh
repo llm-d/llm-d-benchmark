@@ -132,11 +132,6 @@ else
   fi
 fi
 
-is_ns=$($LLMDBENCH_KCMD get namespace | grep ${LLMDBENCH_OPENSHIFT_NAMESPACE} || true)
-if [[ ! -z ${is_ns} ]]; then
-  export LLMDBENCH_PROXY_UID=$($LLMDBENCH_KCMD get namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} -o json | jq -e -r '.metadata.annotations["openshift.io/sa.scc.uid-range"]' | perl -F'/' -lane 'print $F[0]+1');
-fi
-
 export LLMDBENCH_IS_OPENSHIFT=0
 is_ocp=$($LLMDBENCH_KCMD api-resources 2>&1 | grep 'route.openshift.io' || true)
 if [[ ! -z ${is_ocp} ]]; then
@@ -149,6 +144,11 @@ export LLMDBENCH_USER_IS_ADMIN=1
 not_admin=$($LLMDBENCH_KCMD get crds 2>&1 | grep -i Forbidden || true)
 if [[ ! -z ${not_admin} ]]; then
   export LLMDBENCH_USER_IS_ADMIN=0
+else
+  is_ns=$($LLMDBENCH_KCMD get namespace | grep ${LLMDBENCH_OPENSHIFT_NAMESPACE} || true)
+  if [[ ! -z ${is_ns} ]]; then
+    export LLMDBENCH_PROXY_UID=$($LLMDBENCH_KCMD get namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} -o json | jq -e -r '.metadata.annotations["openshift.io/sa.scc.uid-range"]' | perl -F'/' -lane 'print $F[0]+1');
+  fi
 fi
 
 for mt in standalone p2p; do
