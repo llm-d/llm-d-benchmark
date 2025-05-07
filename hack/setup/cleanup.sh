@@ -80,7 +80,7 @@ done
 
 if [[ $LLMDBENCH_DEEP_CLEANING -eq 0 ]]; then
   allres=$(${LLMDBENCH_KCMD} --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE get ${LLMDBENCH_RESOURCE_LIST} -o name)
-  tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt,secret/vllm-standalone-quay-secret")
+  tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt|secret/vllm-standalone-quay-secret")
 
   is_env_type_standalone=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep standalone || true)
   is_env_type_vllm=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep vllm || true)
