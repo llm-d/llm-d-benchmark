@@ -40,6 +40,7 @@ anyuid \
 --set persistence.enabled=${LLMDBENCH_VLLM_PERSISTENCE_ENABLED} \
 --set persistence.accessModes={\"ReadWriteMany\"} \
 --set persistence.size=${LLMDBENCH_MODEL_CACHE_SIZE} \
+--set persistence.name=${LLMDBENCH_VLLM_PVC_NAME} \
 --set persistence.storageClassName=${LLMDBENCH_STORAGE_CLASS} \
 --set vllm.replicaCount=${LLMDBENCH_VLLM_REPLICAS} \
 --set vllm.poolLabelValue="vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" \
@@ -51,6 +52,9 @@ anyuid \
 --set vllm.model.maxModelLen=${LLMDBENCH_VLLM_MAX_MODEL_LEN} \
 --set vllm.tensorParallelSize=${LLMDBENCH_VLLM_GPU_NR} \
 --set vllm.resources.limits.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
+--set vllm.resource.requests.cpu=${LLMDBENCH_VLLM_CPU_NR:-10} \
+--set vllm.resource.requests.memory=${LLMDBENCH_VLLM_CPU_MEM} \
+--set vllm.extraEnv.LMCACHE_MAX_LOCAL_CPU_SIZE=${LLMDBENCH_VLLM_LMCACHE_MAX_LOCAL_CPU_SIZE} \
 --set vllm.resources.requests.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
 --set dshm.useEmptyDir=true \
 --set dshm.sizeLimit=8Gi" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}

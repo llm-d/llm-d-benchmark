@@ -17,7 +17,7 @@ source ${LLMDBENCH_DIR}/env.sh
 export LLMDBENCH_STEPS_DIR="$LLMDBENCH_DIR/steps"
 export LLMDBENCH_DRY_RUN=${LLMDBENCH_DRY_RUN:-0}
 export LLMDBENCH_VERBOSE=${LLMDBENCH_VERBOSE:-0}
-LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name *.sh | sort)
+LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name "*.sh" | sort)
 
 function show_usage {
     echo -e "Usage: $0 -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e 's/ /,/g') \n \
