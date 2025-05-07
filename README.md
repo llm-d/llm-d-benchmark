@@ -1,132 +1,48 @@
-# llm-d-benchmark
+# Deploy and Teardown benchmark tests
 
+## Clone llm-d-benchmark repo
 ```
-export OPENSHIFT_HOST="https://api.fmaas-vllm-d.fmaas.res.ibm.com:6443"
-export OPENSHIFT_TOKEN="sha256~sVYh-xxx"
-export OPENSHIFT_NAMESPACE="e2e-solution"
-export HF_TOKEN="hf_xxx"
-export QUAY_USER=""
-export QUAY_PASSWORD=""
-
-benchmarking vllm-d
-
-## install conda
-```
-brew install anaconda
-echo 'export PATH="/opt/homebrew/anaconda3/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-
-conda
+git clone https://github.com/neuralmagic/llm-d-benchmark
+cd llm-d-benchmark/hack/setup
 ```
 
-Start with fmperf fork found at https://github.com/wangchen615/fmperf.git
-
-## install fmperf fork
+## Minimal set of required environment variables
 ```
-git clone https://github.com/wangchen615/fmperf.git -b dev-lmbenchmark
-cd fmperf
-conda create -y -n fmperf-env python=3.11
-conda activate fmperf-env
-pip install -r requirements.txt
-pip install -e .
-
-docker build -t fmperf .
-mkdir requests
-chmod o+w requests
-
-cp .env.example .env
-
+export LLMDBENCH_OPENSHIFT_HOST="https://api.fmaas-platform-eval.fmaas.res.ibm.com"
+export LLMDBENCH_OPENSHIFT_TOKEN="..."
+export LLMDBENCH_OPENSHIFT_NAMESPACE="..."
+export LLMDBENCH_HF_TOKEN="..."
+export LLMDBENCH_QUAY_USER="..."
+export LLMDBENCH_QUAY_PASSWORD="..."
 ```
 
-## prep namespace
+## A complete list of available variables (and its default values) can be found by running
+ `cat hack/setup/env.sh | grep "^export LLMDBENCH_"`
 
-### give perms to default SA to runasroot
+## list of steps
 ```
-oc adm policy add-scc-to-user anyuid -z default
-oc adm policy add-scc-to-user privileged -z default
-```
-
-### create secret for HF_TOKEN - must have access to llama-8b and llama-70b
-```
-cat <<EOF | oc apply -f -
-apiVersion: v1
-kind: Secret
-metadata:
-  name: hf-token
-  namespace: ${OPENSHIFT_NAMESPACE}
-type: Opaque
-stringData:
-  token: ${HF_TOKEN}
-EOF
+./deploy.sh -h
 ```
 
+## to dry-run
 ```
-oc create secret docker-registry quay-secret \
-  --docker-server=quay.io \
-  --docker-username=${QUAY_USER} \
-  --docker-password=${QUAY_PASSWORD} \
-  --docker-email=your@email.address \
-  -n ${OPENSHIFT_NAMESPACE}
+./deploy.sh -n
 ```
 
-### add registry secret to default SA
+## to deploy and test
 ```
-oc patch serviceaccount default \
-  -n ${OPENSHIFT_NAMESPACE} \
-  --type=merge \
-  -p '{"imagePullSecrets":[{"name":"quay-secret"}]}'
-  ```
-
-
-### create PVC for llama-8b model cache
-```
-cat <<EOF | oc apply -f -
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: llama-8b-cache
-  namespace: ${OPENSHIFT_NAMESPACE}
-spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 300Gi
-  storageClassName: ocs-storagecluster-cephfs
-EOF
+./deploy.sh
 ```
 
-### create PVC for llama-70b model cache
+## to cleanup your mess
 ```
-cat <<EOF | oc apply -f -
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: llama-70b-cache
-  namespace: ${OPENSHIFT_NAMESPACE}
-spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 300Gi
-  storageClassName: ocs-storagecluster-cephfs
-EOF
+./cleanup.sh
 ```
 
-## deploy a baseline model (non-llm version)
+## to execute an individual step (full name or number)
 ```
-https://github.com/neuralmagic/llm-d-benchmark/tree/dev/yamls/exp-0
+./deploy.sh --step 07_smoketest_standalone_models.sh
+./deploy.sh -s 7
+./deploy.sh -s 3-5
+./deploy.sh -s 5,7
 ```
-
-## deploy llm
-```
-```
-
-
-## run the experiment
-```
-python3 examples/example_llm-d-lmbenchmark-openshift.py 
-```
-
-#### Logs are shown in the pod starting with lmbenchmark-    and you can check the job status as well. Once the jobs is started, the fmperf script termination will not impact the job to do benchmarking.
