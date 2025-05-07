@@ -18,7 +18,7 @@ if [[ $LLMDBENCH_ENVIRONMENT_TYPE_P2P_ACTIVE -eq 1 ]]; then
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
     announce "Creating CRDs required for inference gateway for model \"${model}\" (from files located at $LLMDBENCH_WORK_DIR)..."
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_${model}_service_account.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_a_${model}_service_account.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -26,7 +26,7 @@ metadata:
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 EOF
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_b_${model}_role.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_b_${model}_role.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -72,7 +72,7 @@ rules:
   - create
 EOF
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_c_${model}_rbac.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_c_${model}_rbac.yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -88,7 +88,7 @@ subjects:
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 EOF
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_d_${model}_secret.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_d_${model}_secret.yaml
 apiVersion: v1
 data:
   inference-gateway-secret-key: $(echo -n ${LLMDBENCH_HF_TOKEN} | base64 | tr -d '\n')
@@ -102,7 +102,7 @@ metadata:
 type: Opaque
 EOF
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_e_${model}_service.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_e_${model}_service.yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -129,7 +129,7 @@ EOF
   -n ${LLMDBENCH_OPENSHIFT_NAMESPACE}" ${LLMDBENCH_DRY_RUN}
   fi
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_f_${model}_deployment.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_f_${model}_deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -209,7 +209,7 @@ spec:
       terminationGracePeriodSeconds: 130
 EOF
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_g_${model}_gateway_parameters.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_g_${model}_gateway_parameters.yaml
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: GatewayParameters
 metadata:
@@ -235,7 +235,7 @@ spec:
       type: ClusterIP
 EOF
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_h_${model}_gateway.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_h_${model}_gateway.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -254,7 +254,7 @@ spec:
     protocol: HTTP
 EOF
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_i_${model}_httproute.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_i_${model}_httproute.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -277,7 +277,7 @@ spec:
       request: 30s
 EOF
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_j_${model}_inferencepool.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_j_${model}_inferencepool.yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferencePool
 metadata:
@@ -291,7 +291,7 @@ spec:
   targetPortNumber: 8000
 EOF
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_k_${model}_inferencemodel.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_k_${model}_inferencemodel.yaml
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferenceModel
 metadata:
@@ -305,7 +305,7 @@ spec:
     name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
 EOF
 
-    for rf in $(ls $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_*_${model}*); do
+    for rf in $(ls $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_*_${model}*); do
       llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $rf" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
     done
   done
@@ -313,11 +313,17 @@ else
   announce "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."
 fi
 
-is_route=$(${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route --ignore-not-found | grep llm-route || true)
-if [[ -z $is_route ]]
-then
-  llmdbench_execute_cmd "oc expose service inference-gateway --name=llm-route" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
-fi
+for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
+  announce "ℹ️  Waiting for ${model} to be Ready (timeout=${LLMDBENCH_WAIT_TIMEOUT}s)..."
+  llmdbench_execute_cmd "${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} wait --timeout=${LLMDBENCH_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=endpoint-picker" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+
+  is_route=$(${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route --ignore-not-found | grep llm-route || true)
+  if [[ -z $is_route ]]
+  then
+    llmdbench_execute_cmd "oc expose service inference-gateway --name=llm-route" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+  fi
+    announce "ℹ️  endpoint picker ${model} to be Ready (timeout=${LLMDBENCH_WAIT_TIMEOUT}s)..."
+done
 
 announce "A snapshot of the relevant (model-specific) resources on namespace \"${LLMDBENCH_OPENSHIFT_NAMESPACE}\":"
 ${LLMDBENCH_KCMD} get --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} gatewayparameters,gateway,httproute,service,deployment,pods,secrets

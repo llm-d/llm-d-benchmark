@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 source ${LLMDBENCH_DIR}/env.sh
 
-cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_llama-8b.yaml
+cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_a_deployment_llama-8b.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -81,7 +81,7 @@ spec:
           sizeLimit: 8Gi
 EOF
 
-  cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_llama-70b.yaml
+  cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_a_deployment_llama-70b.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -167,9 +167,9 @@ if [[ $LLMDBENCH_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
     announce "Deploying model \"${model}\" (from files located at $LLMDBENCH_WORK_DIR)..."
 
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_a_deployment_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_b_service_${model}.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_b_service_${model}.yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -185,9 +185,9 @@ spec:
   type: ClusterIP
 EOF
 
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_b_service_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_b_service_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
 metadata:
@@ -209,13 +209,19 @@ spec:
       port: 80
 EOF
 
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
-    sleep 10 #TODO wait for service
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+  done
+
+  for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
+    announce "ℹ️  Waiting for ${model} to be Ready (timeout=${LLMDBENCH_WAIT_TIMEOUT}s)..."
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} wait --timeout=${LLMDBENCH_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+
     is_route=$(${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route --ignore-not-found | grep vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route || true)
     if [[ -z $is_route ]]
     then
       llmdbench_execute_cmd "${LLMDBENCH_KCMD} expose service/vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} --name=vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
     fi
+    announce "ℹ️  vllm (standalone) ${model} Ready"
   done
 else
   announce "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."

@@ -1,7 +1,7 @@
 # Shared configuration and validation
 
 # Cluster access
-export LLMDBENCH_OPENSHIFT_HOST="${LLMDBENCH_OPENSHIFT_HOST:-https://api.fmaas-vllm-d.fmaas.res.ibm.com}"
+export LLMDBENCH_OPENSHIFT_HOST="${LLMDBENCH_OPENSHIFT_HOST:-auto}"
 export LLMDBENCH_OPENSHIFT_TOKEN="${LLMDBENCH_OPENSHIFT_TOKEN:-sha256~sVYh-xxx}"
 export LLMDBENCH_OPENSHIFT_NAMESPACE="${LLMDBENCH_OPENSHIFT_NAMESPACE:-}"
 export LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT="${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT:-default}"
@@ -65,9 +65,19 @@ export LLMDBENCH_ENVIRONMENT_TYPES=${LLMDBENCH_ENVIRONMENT_TYPES:-"standalone,vl
 # Control variables
 export LLMDBENCH_OPENSHIFT_CLUSTER_NAME=$(echo ${LLMDBENCH_OPENSHIFT_HOST} | cut -d '.' -f 2)
 export LLMDBENCH_DEPENDENCIES_CHECKED=${LLMDBENCH_DEPENDENCIES_CHECKED:-0}
+export LLMDBENCH_WARNING_DISPLAYED=${LLMDBENCH_WARNING_DISPLAYED:-0}
+export LLMDBENCH_WAIT_TIMEOUT=${LLMDBENCH_WAIT_TIMEOUT:-900}
 export LLMDBENCH_RESOURCE_LIST=deployment,httproute,route,service,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,secret
 export LLMDBENCH_KCMD=oc
 export LLMDBENCH_HCMD=helm
+
+required_vars=("LLMDBENCH_OPENSHIFT_NAMESPACE" "LLMDBENCH_HF_TOKEN" "LLMDBENCH_QUAY_USER" "LLMDBENCH_QUAY_PASSWORD")
+for var in "${required_vars[@]}"; do
+  if [ -z "${!var:-}" ]; then
+    echo "❌ Environment variable '$var' is not set."
+    exit 1
+  fi
+done
 
 uname -s | grep -qi darwin
 if [[ $? -eq 0 ]]
@@ -98,10 +108,16 @@ then
   export LLMDBENCH_DEPENDENCIES_CHECKED=1
 fi
 
-if [[ -f ${HOME}/.kube/config-${LLMDBENCH_OPENSHIFT_CLUSTER_NAME} ]]
-then
+if [[ -f ${HOME}/.kube/config-${LLMDBENCH_OPENSHIFT_CLUSTER_NAME} ]]; then
   export LLMDBENCH_KCMD="oc --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_OPENSHIFT_CLUSTER_NAME}"
   export LLMDBENCH_HCMD="helm --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_OPENSHIFT_CLUSTER_NAME}"
+elif [[ -z $LLMDBENCH_OPENSHIFT_HOST || $LLMDBENCH_OPENSHIFT_HOST ]]; then
+  current_context=$(${LLMDBENCH_KCMD} config view -o json | jq -r '."current-context"' || true)
+  if [[ $LLMDBENCH_WARNING_DISPLAYED -eq 0 ]]; then
+    echo "WARNING: environment variable LLMDBENCH_OPENSHIFT_HOST=$LLMDBENCH_OPENSHIFT_HOST. Will attempt to use current context \"${current_context}\"."
+    LLMDBENCH_WARNING_DISPLAYED=1
+  fi
+  sleep 5
 else
   current_context=$(${LLMDBENCH_KCMD} config view -o json | jq -r '."current-context"' || true)
   current_namespace=$(echo $current_context | cut -d '/' -f 1)
@@ -156,15 +172,10 @@ LLMDBENCH_MODEL2PARAM["llama-70b:label"]="llama-3-70b"
 LLMDBENCH_MODEL2PARAM["llama-70b:name"]="meta-llama/Llama-3.1-70B-Instruct"
 LLMDBENCH_MODEL2PARAM["llama-70b:params"]="70b"
 
-required_vars=("LLMDBENCH_OPENSHIFT_NAMESPACE" "LLMDBENCH_HF_TOKEN" "LLMDBENCH_QUAY_USER" "LLMDBENCH_QUAY_PASSWORD")
-for var in "${required_vars[@]}"; do
-  if [ -z "${!var:-}" ]; then
-    echo "❌ Environment variable '$var' is not set."
-    exit 1
-  fi
-done
-
 export LLMDBENCH_WORK_DIR=${LLMDBENCH_WORK_DIR:-$(mktemp -d -t ${LLMDBENCH_OPENSHIFT_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)}
+mkdir -p ${LLMDBENCH_WORK_DIR}/yamls
+mkdir -p ${LLMDBENCH_WORK_DIR}/commands
+mkdir -p ${LLMDBENCH_WORK_DIR}/environment
 
 function llmdbench_execute_cmd {
   set +euo pipefail

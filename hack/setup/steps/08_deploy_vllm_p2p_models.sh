@@ -25,11 +25,11 @@ anyuid \
 
   pushd ${LLMDBENCH_KVCM_DIR} &>/dev/null
   if [[ ! -d llm-d-kv-cache-manager ]]; then
-    git clone https://github.com/neuralmagic/llm-d-kv-cache-manager.git || true
+    llmdbench_execute_cmd "git clone https://github.com/neuralmagic/llm-d-kv-cache-manager.git || true" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
   fi
 
   pushd llm-d-kv-cache-manager/vllm-setup-helm &>/dev/null
-  git checkout $LLMDBENCH_KVCM_GIT_BRANCH
+  llmdbench_execute_cmd "git checkout $LLMDBENCH_KVCM_GIT_BRANCH" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
     announce "Installing release vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]}..."
     llmdbench_execute_cmd "${LLMDBENCH_HCMD} upgrade --install vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]} . \
@@ -53,8 +53,38 @@ anyuid \
 --set vllm.resources.limits.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
 --set vllm.resources.requests.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_GPU_NR} \
 --set dshm.useEmptyDir=true \
---set dshm.sizeLimit=8Gi" ${LLMDBENCH_DRY_RUN}
+--set dshm.sizeLimit=8Gi" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
   done
   popd &>/dev/null
   popd &>/dev/null
 fi
+
+for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
+  announce "ℹ️  Waiting for ${model} to be Ready (timeout=${LLMDBENCH_WAIT_TIMEOUT}s)..."
+  llmdbench_execute_cmd "${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} wait --timeout=${LLMDBENCH_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+
+  cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+  selector:
+    app: vllm-p2p-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
+  type: ClusterIP
+EOF
+
+  llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+
+  is_route=$(${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route --ignore-not-found | grep vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route || true)
+  if [[ -z $is_route ]]
+  then
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} expose service/vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} --name=vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+  fi
+  announce "ℹ️  vllm (p2p) ${model} Ready"
+done
