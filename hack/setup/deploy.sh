@@ -12,16 +12,19 @@ if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
 fi
 
+source ${LLMDBENCH_DIR}/env.sh
 
 export LLMDBENCH_STEPS_DIR="$LLMDBENCH_DIR/steps"
 export LLMDBENCH_DRY_RUN=${LLMDBENCH_DRY_RUN:-0}
-LLMDBENCH_STEP_LIST=$LLMDBENCH_STEPS_DIR"/*.sh"
+export LLMDBENCH_VERBOSE=${LLMDBENCH_VERBOSE:-0}
+LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name *.sh | sort)
 
 function show_usage {
-    echo -e "Usage: $0 -s/--step [step list] (default=$LLMDBENCH_STEP_LIST) \n \
-                                -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_DRY_RUN) ] \n \
+    echo -e "Usage: $0 -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e 's/ /,/g') \n \
                                 -m/--models [list the models to be deployed (default=$LLMDBENCH_MODEL_LIST) ] \n \
                                 -t/--types [list the environment types to be deployed (default=$LLMDBENCH_ENVIRONMENT_TYPES) ] \n \
+                                -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_DRY_RUN) ] \n \
+                                -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_VERBOSE) ] \n \
                                 -h/--help (show this help)"
 }
 
@@ -53,6 +56,9 @@ while [[ $# -gt 0 ]]; do
         -n|--dry-run)
         export LLMDBENCH_DRY_RUN=1
         ;;
+        -v|--verbose)
+        export LLMDBENCH_VERBOSE=1
+        ;;
         -h|--help)
         show_usage
         if [[ "${BASH_SOURCE[0]}" == "${0}" ]]
@@ -73,18 +79,33 @@ done
 
 run_step() {
   local script_name=$1
-  local script_path=$(ls ${LLMDBENCH_STEPS_DIR}/${script_name}*)
+
+  if [[ -f $script_name ]]; then
+    local script_path=$script_name
+  else
+    local script_path=$(ls ${LLMDBENCH_STEPS_DIR}/${script_name}*)
+  fi
   if [ -f $script_path ]; then
     local step_id=$(basename "$script_path")
     local step_nr=$(echo $step_id | cut -d '_' -f 1)
     export LLMDBENCH_CURRENT_STEP=${step_nr}
-    echo -e "\n=== Running step: $step_id ==="
+    announce "=== Running step: $step_id ==="
     if [[ $LLMDBENCH_DRY_RUN -eq 1 ]]; then
-      echo "[DRY RUN] $script_path"
+      echo -e "[DRY RUN] $script_path\n"
     fi
     source $script_path
+    echo
+  else
+    announce "ERROR: unable to run step \"${script_name}\""
   fi
 }
+
+source ${LLMDBENCH_DIR}/env.sh
+
+_e=$(echo ${LLMDBENCH_STEP_LIST} | grep "-" || true)
+if [[ ! -z ${_e} ]]; then
+  LLMDBENCH_STEP_LIST=$(eval echo $(echo {${LLMDBENCH_STEP_LIST}} | $LLMDBENCH_SCMD 's^-^..^g'))
+fi
 
 for step in ${LLMDBENCH_STEP_LIST//,/ }; do
   if [[ ${#step} -lt 2 ]]
@@ -94,4 +115,4 @@ for step in ${LLMDBENCH_STEP_LIST//,/ }; do
   run_step "$step"
 done
 
-echo "✅ All steps complete."
+announce "✅ All steps complete."

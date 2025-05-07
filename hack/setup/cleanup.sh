@@ -12,9 +12,7 @@ if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
 fi
 
-LLMDBENCH_STEPS_DIR="$LLMDBENCH_DIR/steps"
-
-source ${LLMDBENCH_STEPS_DIR}/env.sh
+source ${LLMDBENCH_DIR}/env.sh
 
 export LLMDBENCH_DEEP_CLEANING=0
 export LLMDBENCH_DRY_RUN=0
@@ -70,7 +68,7 @@ while [[ $# -gt 0 ]]; do
         shift
 done
 
-echo "🧹 Cleaning up namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE"
+announce "🧹 Cleaning up namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE"
 
 # Special case: Helm release (if used)
 hclist=$($LLMDBENCH_HCMD --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE list --no-headers | grep vllm-p2p || true)
@@ -81,18 +79,18 @@ for hc in ${hclist}; do
 done
 
 if [[ $LLMDBENCH_DEEP_CLEANING -eq 0 ]]; then
-  allres=$(${LLMDBENCH_KCMD} --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE get deployment,httproute,route,service,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,secret -o name)
+  allres=$(${LLMDBENCH_KCMD} --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE get ${LLMDBENCH_RESOURCE_LIST} -o name)
   tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt")
 
   is_env_type_standalone=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep standalone || true)
   is_env_type_vllm=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep vllm || true)
 
-  if [[ ! -z ${is_env_type_standalone} && -z ${is_env_type_vllm} ]]; then
+  if [[ ${LLMDBENCH_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 && ${LLMDBENCH_ENVIRONMENT_TYPE_P2P_ACTIVE} -eq 0 ]]; then
     tgtres=$(echo "$tgtres" | grep standalone)
   fi
 
-  if [[ -z ${is_env_type_standalone} && ! -z ${is_env_type_vllm} ]]; then
-    tgtres=$(echo "$tgtres" | grep -E "vllm|inference-gateway|llm-route|base-model|endpoint-picker|inference-route|inference-gateway-secret|inference-gateway-params|inference-gateway")
+  if [[ ${LLMDBENCH_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 0 && ${LLMDBENCH_ENVIRONMENT_TYPE_P2P_ACTIVE} -eq 1 ]]; then
+    tgtres=$(echo "$tgtres" | grep -E "p2p|inference-gateway|llm-route|base-model|endpoint-picker|inference-route|inference-gateway-secret|inference-gateway-params|inference-gateway")
   fi
 
   for delres in $tgtres; do
@@ -120,15 +118,15 @@ else
 
 # Delete each resource type (ignoring not found errors)
   for kind in "${RESOURCE_KINDS[@]}"; do
-    echo "🗑️  Deleting all $kind in namespace $LLMDBENCH_OPENSHIFT_NAMESPACE..."
+    announce "🗑️  Deleting all $kind in namespace $LLMDBENCH_OPENSHIFT_NAMESPACE..."
     llmdbench_execute_cmd "${LLMDBENCH_KCMD} delete "$kind" --all -n "$LLMDBENCH_OPENSHIFT_NAMESPACE" --ignore-not-found=true || true" ${LLMDBENCH_DRY_RUN}
   done
 fi
 
 if [[ $LLMDBENCH_DEEP_CLEANING -eq 1 ]]; then
 # Optional: delete cloned repos if they exist
-  echo "🧼 Cleaning up local Git clones..."
+  announce "🧼 Cleaning up local Git clones..."
   llmdbench_execute_cmd "rm -rf ${LLMDBENCH_KVCM_DIR}/llm-d-kv-cache-manager ${LLMDBENCH_GAIE_DIR}/gateway-api-inference-extension ${LLMDBENCH_FMPERF_DIR}/fmperf" ${LLMDBENCH_DRY_RUN}
 fi
 
-echo "✅ Cleanup complete. Namespace '$LLMDBENCH_OPENSHIFT_NAMESPACE' is now cleared (except shared cluster-scoped resources like kgateway)."
+announce "✅ Cleanup complete. Namespace '$LLMDBENCH_OPENSHIFT_NAMESPACE' is now cleared (except shared cluster-scoped resources like kgateway)."

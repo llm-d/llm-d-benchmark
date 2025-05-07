@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-source ${LLMDBENCH_STEPS_DIR}/env.sh
+source ${LLMDBENCH_DIR}/env.sh
 
-echo "🔍 Checking if namespace '${LLMDBENCH_OPENSHIFT_NAMESPACE}' exists..."
+announce "🔍 Checking if namespace '${LLMDBENCH_OPENSHIFT_NAMESPACE}' exists..."
 
 if ! ${LLMDBENCH_KCMD} get namespace "$LLMDBENCH_OPENSHIFT_NAMESPACE" --ignore-not-found | grep -q "$LLMDBENCH_OPENSHIFT_NAMESPACE"; then
   if [[ $(${LLMDBENCH_KCMD} whoami) == "system:admin" ]]; then
-  cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_ns_and_sa_and_rbac.yaml
+  cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_ns_and_sa_and_rbac.yaml
 ---
 apiVersion: v1
 kind: Namespace
@@ -45,11 +45,11 @@ subjects:
     namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 ---
 EOF
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/00_ns_and_sa_and_rbac.yaml" ${LLMDBENCH_DRY_RUN}
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/00_ns_and_sa_and_rbac.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
   else
-    echo "⚠️  Namespace '${LLMDBENCH_OPENSHIFT_NAMESPACE}' not found. Stopping..."
+    announce "⚠️ Namespace '${LLMDBENCH_OPENSHIFT_NAMESPACE}' not found. Stopping..."
     exit 1
   fi
 else
-  echo "✅ Namespace '${LLMDBENCH_OPENSHIFT_NAMESPACE}' exists."
+  announce "✅ Namespace '${LLMDBENCH_OPENSHIFT_NAMESPACE}' exists."
 fi

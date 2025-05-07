@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-source ${LLMDBENCH_STEPS_DIR}/env.sh
+source ${LLMDBENCH_DIR}/env.sh
 
-cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_llama-8b.yaml
+cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_llama-8b.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
+  name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
   labels:
-    app: standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
+    app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
+      app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
   template:
     metadata:
       labels:
-        app: standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
+        app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
     spec:
       affinity:
         nodeAffinity:
@@ -29,7 +29,7 @@ spec:
                 values:
                 - $LLMDBENCH_GPU_MODEL
       containers:
-      - name: standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
+      - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}
         image: ${LLMDBENCH_MODEL_IMAGE}
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
@@ -43,7 +43,7 @@ spec:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
-              name: standalone-hf-token
+              name: vllm-standalone-hf-token
               key: token
         ports:
         - containerPort: 80
@@ -74,30 +74,30 @@ spec:
       volumes:
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: standalone-llama-8b-cache
+          claimName: vllm-standalone-llama-8b-cache
       - name: shm
         emptyDir:
           medium: Memory
           sizeLimit: 8Gi
 EOF
 
-  cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_llama-70b.yaml
+  cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_llama-70b.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
+  name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
   labels:
-    app: standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
+    app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
+      app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
   template:
     metadata:
       labels:
-        app: standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
+        app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
     spec:
       affinity:
         nodeAffinity:
@@ -109,7 +109,7 @@ spec:
                 values:
                 - $LLMDBENCH_GPU_MODEL
       containers:
-      - name: standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
+      - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}
         image: ${LLMDBENCH_MODEL_IMAGE}
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
@@ -123,7 +123,7 @@ spec:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
-              name: standalone-hf-token
+              name: vllm-standalone-hf-token
               key: token
         - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
           value: "1"
@@ -156,27 +156,24 @@ spec:
       volumes:
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: standalone-llama-70b-cache
+          claimName: vllm-standalone-llama-70b-cache
       - name: shm
         emptyDir:
           medium: Memory
           sizeLimit: 8Gi
 EOF
 
-is_env_type=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep standalone || true)
-if [[ ! -z ${is_env_type} ]]
-then
-
+if [[ $LLMDBENCH_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
-    echo "Deploying model \"${model}\" (from files located at $LLMDBENCH_TEMPDIR)..."
+    announce "Deploying model \"${model}\" (from files located at $LLMDBENCH_WORK_DIR)..."
 
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_${model}.yaml" ${LLMDBENCH_DRY_RUN}
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_b_service_${model}.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_b_service_${model}.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   ports:
@@ -184,17 +181,17 @@ spec:
     port: 80
     targetPort: 80
   selector:
-    app: standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+    app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
   type: ClusterIP
 EOF
 
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_b_service_${model}.yaml" ${LLMDBENCH_DRY_RUN}
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_b_service_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
 
-    cat << EOF > $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml
+    cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
 metadata:
-  name: standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+  name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   parentRefs:
@@ -208,16 +205,17 @@ spec:
         type: PathPrefix
         value: /
     backendRefs:
-    - name: standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
+    - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}
       port: 80
 EOF
 
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_TEMPDIR/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml" ${LLMDBENCH_DRY_RUN}
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} expose service/standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} --name=standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route" ${LLMDBENCH_DRY_RUN}
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    sleep 10 #TODO wait for service
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} expose service/vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} --name=vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
 
   done
 else
-  echo "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."
+  announce "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."
 fi
-echo -e "\nA snapshot of the relevant (model-specific) resources on namespace \"${LLMDBENCH_OPENSHIFT_NAMESPACE}\":\n"
+announce "A snapshot of the relevant (model-specific) resources on namespace \"${LLMDBENCH_OPENSHIFT_NAMESPACE}\":"
 ${LLMDBENCH_KCMD} get --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} deployment,service,httproute,pods,secrets

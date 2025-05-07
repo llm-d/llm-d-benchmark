@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-source ${LLMDBENCH_STEPS_DIR}/env.sh
+source ${LLMDBENCH_DIR}/env.sh
 
-is_env_type=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep vllm || true)
-if [[ ! -z ${is_env_type} ]]
-then
+if [[ $LLMDBENCH_ENVIRONMENT_TYPE_P2P_ACTIVE -eq 1 ]]; then
   echo "Deploying vLLM via Helm with LMCache..."
 
   if [[ $LLMDBENCH_IS_OPENSHIFT -eq 1 ]]
@@ -14,7 +12,7 @@ policy \
 add-scc-to-user \
 anyuid \
 -z ${LLMDBENCH_OPENSHIFT_SERVICE_ACCOUNT} \
--n $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN}
+-n $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
 
     llmdbench_execute_cmd "${LLMDBENCH_KCMD} \
 adm \
@@ -22,7 +20,7 @@ policy \
 add-scc-to-user \
 anyuid \
 -z inference-gateway \
--n $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN}
+-n $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
   fi
 
   pushd ${LLMDBENCH_KVCM_DIR} &>/dev/null
