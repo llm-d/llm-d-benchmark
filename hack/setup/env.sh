@@ -139,7 +139,7 @@ fi
 
 export LLMDBENCH_IS_OPENSHIFT=0
 is_ocp=$($LLMDBENCH_KCMD api-resources 2>&1 | grep 'route.openshift.io' || true)
-if [[ ! -z ${is_ocp} ]] then
+if [[ ! -z ${is_ocp} ]]; then
   export LLMDBENCH_IS_OPENSHIFT=1
 else
   export LLMDBENCH_KCMD=$(echo $LLMDBENCH_KCMD | $LLMDBENCH_SCMD 's^oc ^kubectl^g')
