@@ -17,7 +17,7 @@ export LLMDBENCH_QUAY_PASSWORD="..."
 ```
 
 ## A complete list of available variables (and its default values) can be found by running
- `cat hack/setup/env.sh | grep "^export LLMDBENCH_"`
+ `cat env.sh | grep ^export LLMDBENCH_ | sort`
 
 ## list of steps
 ```
