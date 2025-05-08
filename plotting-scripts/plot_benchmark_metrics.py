@@ -18,7 +18,9 @@ METHOD_TYPES = {
     'lmcache-indexing-llm-d-70b': 'llm-d w KVCache offloading + KVCache indexing',
     'lmcache-vllm-70b': 'Production Stack(vLLM v1) + LMCache',
     'vllm-70b-2replicas': 'vLLM v1 (2 replicas) + Round Robin',
-    'llm-d-70b-2replicas': 'llm-d (2 replicas)' + '\n' + 'KVCache (score=2) & Load (score=1) aware routing'
+    'llm-d-70b-2replicas': 'llm-d (2 replicas)' + '\n' + 'KVCache (score=2) & Load (score=1) aware routing',
+    'vllm-standalone-llama-3-70b-2replicas-H100': 'vLLM v1 (2 replicas) + Round Robin \n H100',
+    'llm-d-70b-2replicas-H100': 'llm-d (2 replicas)' + '\n' + 'Prefix (score=2) & Load (score=1) aware routing' + '\n H100',
 }
 
 # Define benchmark types and their titles
