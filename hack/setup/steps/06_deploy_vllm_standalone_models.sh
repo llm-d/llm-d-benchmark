@@ -30,7 +30,7 @@ spec:
                 - $LLMDBENCH_GPU_MODEL
       containers:
       - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
-        image: ${LLMDBENCH_MODEL_IMAGE}
+        image: ${LLMDBENCH_VLLM_STANDALONE_IMAGE}
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
         args:
@@ -74,7 +74,7 @@ spec:
       volumes:
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: ${LLMDBENCH_VLLM_PVC_NAME}
+          claimName: ${LLMDBENCH_MODEL2PARAM[llama-8b:pvc]}
       - name: shm
         emptyDir:
           medium: Memory
@@ -110,7 +110,7 @@ spec:
                 - $LLMDBENCH_GPU_MODEL
       containers:
       - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}-instruct
-        image: ${LLMDBENCH_MODEL_IMAGE}
+        image: ${LLMDBENCH_VLLM_STANDALONE_IMAGE}
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
         args:
@@ -156,7 +156,7 @@ spec:
       volumes:
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: ${LLMDBENCH_VLLM_PVC_NAME}
+          claimName: ${LLMDBENCH_MODEL2PARAM[llama-70b:pvc]}
       - name: shm
         emptyDir:
           medium: Memory
@@ -164,6 +164,9 @@ spec:
 EOF
 
 if [[ $LLMDBENCH_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
+
+  extract_environment
+
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
     announce "Deploying model \"${model}\" (from files located at $LLMDBENCH_WORK_DIR)..."
 
@@ -187,7 +190,8 @@ EOF
 
     llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_b_service_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
 
-    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml
+    if [[ ${LLMDBENCH_VLLM_STANDALONE_HTTPROUTE} -eq 1 ]]; then
+      cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
 metadata:
@@ -209,7 +213,8 @@ spec:
       port: 80
 EOF
 
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+      llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_c_httproute_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    fi
   done
 
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do

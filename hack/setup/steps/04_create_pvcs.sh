@@ -8,7 +8,7 @@ if [[ $LLMDBENCH_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: vllm-standalone-${model}-cache
+  name: ${LLMDBENCH_MODEL2PARAM[${model}:pvc]}
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
   accessModes:
@@ -20,6 +20,7 @@ spec:
 EOF
     llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
   done
+
   for vol in ${LLMDBENCH_VLLM_PVC_NAME}; do
     announce "Creating PVC ${vol} for caching models..."
     cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml

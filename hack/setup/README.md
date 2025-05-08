@@ -15,6 +15,7 @@ export LLMDBENCH_HF_TOKEN="..."
 export LLMDBENCH_QUAY_USER="..."
 export LLMDBENCH_QUAY_PASSWORD="..."
 ```
+## IMPORTANT: in case you want to simply use the current context, just set `export LLMDBENCH_OPENSHIFT_HOST=auto`
 
 ## A complete list of available variables (and its default values) can be found by running
  `cat env.sh | grep ^export LLMDBENCH_ | sort`

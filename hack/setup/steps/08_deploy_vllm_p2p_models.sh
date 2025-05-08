@@ -2,6 +2,9 @@
 source ${LLMDBENCH_DIR}/env.sh
 
 if [[ $LLMDBENCH_ENVIRONMENT_TYPE_P2P_ACTIVE -eq 1 ]]; then
+
+  extract_environment
+
   announce "Deploying vLLM via Helm with LMCache..."
 
   if [[ $LLMDBENCH_IS_OPENSHIFT -eq 1 ]]
@@ -59,8 +62,8 @@ EOF
 --set livenessProbe.initialDelaySecons=600 \
 --set vllm.replicaCount=${LLMDBENCH_VLLM_REPLICAS} \
 --set vllm.poolLabelValue="vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" \
---set vllm.image.repository=\"${LLMDBENCH_VLLM_IMAGE_REPOSITORY}\" \
---set vllm.image.tag=\"${LLMDBENCH_VLLM_IMAGE_TAG}\" \
+--set vllm.image.repository=\"${LLMDBENCH_VLLM_P2P_IMAGE_REPOSITORY}\" \
+--set vllm.image.tag=\"${LLMDBENCH_VLLM_P2P_IMAGE_TAG}\" \
 --set vllm.model.name=${LLMDBENCH_MODEL2PARAM[${model}:name]} \
 --set vllm.model.label=${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct \
 --set vllm.gpuMemoryUtilization=${LLMDBENCH_VLLM_GPU_MEM_UTIL} \
@@ -83,7 +86,7 @@ for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
   announce "ℹ️  Waiting for ${model} to be Ready (timeout=${LLMDBENCH_WAIT_TIMEOUT}s)..."
   llmdbench_execute_cmd "${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} wait --timeout=${LLMDBENCH_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
 
-  cat << EOF > $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml
+  cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -99,7 +102,7 @@ spec:
   type: ClusterIP
 EOF
 
-  llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+  llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
 
   is_route=$(${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route --ignore-not-found | grep vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route || true)
   if [[ -z $is_route ]]

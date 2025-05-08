@@ -22,7 +22,7 @@ export LLMDBENCH_KVCM_DIR="${LLMDBENCH_KVCM_DIR:-/tmp}"
 export LLMDBENCH_KVCM_GIT_BRANCH=${LLMDBENCH_KVCM_GIT_BRANCH:-dev}
 export LLMDBENCH_GAIE_DIR="${LLMDBENCH_GAIE_DIR:-/tmp}"
 
-# Directly affects helm charts
+# Applicable to both standalone and p2p
 export LLMDBENCH_GPU_MODEL=${LLMDBENCH_GPU_MODEL:-NVIDIA-A100-SXM4-80GB}
 export LLMDBENCH_VLLM_REPLICAS=${LLMDBENCH_VLLM_REPLICAS:-1}
 export LLMDBENCH_VLLM_PERSISTENCE_ENABLED=${LLMDBENCH_VLLM_PERSISTENCE_ENABLED:-false}
@@ -33,8 +33,10 @@ export LLMDBENCH_VLLM_CPU_MEM=${LLMDBENCH_VLLM_CPU_MEM:-80Gi}
 export LLMDBENCH_VLLM_MAX_MODEL_LEN=${LLMDBENCH_VLLM_MAX_MODEL_LEN:-16384}
 export LLMDBENCH_VLLM_PVC_NAME=${LLMDBENCH_VLLM_PVC_NAME:-""}
 export LLMDBENCH_VLLM_LMCACHE_MAX_LOCAL_CPU_SIZE=${LLMDBENCH_VLLM_LMCACHE_MAX_LOCAL_CPU_SIZE:-40}
-export LLMDBENCH_VLLM_IMAGE_REPOSITORY=${LLMDBENCH_VLLM_IMAGE_REPOSITORY:-quay.io/llm-d/llm-d-dev}
-export LLMDBENCH_VLLM_IMAGE_TAG=${LLMDBENCH_VLLM_IMAGE_TAG:-lmcache-0.0.6-amd64}
+export LLMDBENCH_VLLM_P2P_IMAGE_REPOSITORY=${LLMDBENCH_VLLM_P2P_IMAGE_REPOSITORY:-quay.io/llm-d/llm-d-dev}
+export LLMDBENCH_VLLM_P2P_IMAGE_TAG=${LLMDBENCH_VLLM_P2P_IMAGE_TAG:-lmcache-0.0.6-amd64}
+export LLMDBENCH_VLLM_STANDALONE_IMAGE=${LLMDBENCH_VLLM_STANDALONE_IMAGE:-"vllm/vllm-openai:latest"}
+export LLMDBENCH_VLLM_STANDALONE_HTTPROUTE=${LLMDBENCH_VLLM_STANDALONE_HTTPROUTE:-0}
 
 # Size of PVC (vllm-standalone)
 export LLMDBENCH_MODEL_CACHE_SIZE="${LLMDBENCH_MODEL_CACHE_SIZE:-300Gi}"
@@ -55,8 +57,6 @@ export OPENSHIFT_TOKEN=${LLMDBENCH_OPENSHIFT_TOKEN}
 
 # Not sure if those should be set
 export LLMDBENCH_REDIS_PORT="${LLMDBENCH_REDIS_PORT:-8100}"
-
-export LLMDBENCH_MODEL_IMAGE=${LLMDBENCH_MODEL_IMAGE:-"vllm/vllm-openai:latest"}
 
 # Experiments
 export LLMDBENCH_CONDA_ENV_NAME="${LLMDBENCH_CONDA_ENV_NAME:-fmperf-env}"
@@ -87,9 +87,8 @@ uname -s | grep -qi darwin
 if [[ $? -eq 0 ]]
 then
     export LLMDBENCH_HOST_OS=mac
-  which gsed > /dev/null 2>&1
-  if [[ $? -ne 0 ]]
-  then
+  is_gsed=$(which gsed || true)
+  if [[ -z ${is_gsed} ]]; then
     brew install gnu-sed
   fi
   export LLMDBENCH_SCMD=gsed
@@ -100,15 +99,21 @@ fi
 
 export LLMDBENCH_PCMD=${LLMDBENCH_PCMD:-python3}
 
-if [[ $LLMDBENCH_DEPENDENCIES_CHECKED -eq 0 ]]
+if [[ $LLMDBENCH_DEPENDENCIES_CHECKED -eq 0 && ! -f ~/.llmdbench_dependencies_checked ]]
 then
   for req in $LLMDBENCH_SCMD $LLMDBENCH_PCMD $LLMDBENCH_KCMD $LLMDBENCH_HCMD kubectl kustomize; do
+    echo -n "Checking dependency \"${req}\"..."
     is_req=$(which ${req} || true)
     if [[ -z ${is_req} ]]; then
       echo "Dependency \"${req}\" is missing"
       exit 1
     fi
+    echo "done"
   done
+  echo -n "Checking if your current bash (version $(printf "%s\n" $BASH_VERSION) support arrays..."
+  declare -A test
+  echo done
+  touch ~/.llmdbench_dependencies_checked
   export LLMDBENCH_DEPENDENCIES_CHECKED=1
 fi
 
@@ -136,7 +141,7 @@ else
   fi
 fi
 
-export LLMDBENCH_IS_OPENSHIFT=0
+export LLMDBENCH_IS_OPENSHIFT=${LLMDBENCH_IS_OPENSHIFT:-0}
 is_ocp=$($LLMDBENCH_KCMD api-resources 2>&1 | grep 'route.openshift.io' || true)
 if [[ ! -z ${is_ocp} ]]; then
   export LLMDBENCH_IS_OPENSHIFT=1
@@ -175,6 +180,13 @@ LLMDBENCH_MODEL2PARAM["llama-8b:params"]="8b"
 LLMDBENCH_MODEL2PARAM["llama-70b:label"]="llama-3-70b"
 LLMDBENCH_MODEL2PARAM["llama-70b:name"]="meta-llama/Llama-3.1-70B-Instruct"
 LLMDBENCH_MODEL2PARAM["llama-70b:params"]="70b"
+if [[ -z $LLMDBENCH_VLLM_PVC_NAME ]]; then
+  LLMDBENCH_MODEL2PARAM["llama-70b:pvc"]="vllm-standalone-llama-70b-cache"
+  LLMDBENCH_MODEL2PARAM["llama-8b:pvc"]="vllm-standalone-llama-8b-cache"
+else
+  LLMDBENCH_MODEL2PARAM["llama-70b:pvc"]="$LLMDBENCH_VLLM_PVC_NAME"
+  LLMDBENCH_MODEL2PARAM["llama-8b:pvc"]="$LLMDBENCH_VLLM_PVC_NAME"
+fi
 
 export LLMDBENCH_WORK_DIR=${LLMDBENCH_WORK_DIR:-$(mktemp -d -t ${LLMDBENCH_OPENSHIFT_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)}
 mkdir -p ${LLMDBENCH_WORK_DIR}/yamls
@@ -188,14 +200,19 @@ function llmdbench_execute_cmd {
   local verbose=${3:-0}
 
   if [[ ${dry_run} -eq 1 ]]; then
-    echo "---> would have executed the command \"${actual_cmd}\""
+
+    _msg="---> would have executed the command \"${actual_cmd}\""
+    echo ${_msg}
+    echo ${_msg} > ${LLMDBENCH_WORK_DIR}/commands/$(date +%s%N)_command.log
     return 0
   else
+    _msg="---> will execute the command \"${actual_cmd}\""
+    echo ${_msg} > ${LLMDBENCH_WORK_DIR}/commands/$(date +%s%N)_command.log
     if [[ ${verbose} -eq 0 ]]; then
       eval ${actual_cmd} &>/dev/null
       ecode=$?
     else
-      echo "---> will execute the command \"${actual_cmd}\""
+      echo ${_msg}
       eval ${actual_cmd}
       ecode=$?
     fi
@@ -206,6 +223,15 @@ function llmdbench_execute_cmd {
   return $ecode
 }
 export -f llmdbench_execute_cmd
+
+function extract_environment {
+  local envlist=$(env | grep ^LLMDBENCH | sort | grep -Ev "TOKEN|USER|PASSWORD|EMAIL")
+  echo -e "\n\nList of environment variables which will be used"
+  echo "$envlist"
+  echo -e "\n\n"
+  echo "$envlist" > ${LLMDBENCH_WORK_DIR}/environment/variables
+}
+export -f extract_environment
 
 function announce {
     # 1 - MESSAGE
