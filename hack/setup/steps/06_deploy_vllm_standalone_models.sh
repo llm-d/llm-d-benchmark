@@ -181,7 +181,7 @@ spec:
     port: 80
     targetPort: 80
   selector:
-    app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
+    app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:params]}-vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
   type: ClusterIP
 EOF
 
@@ -205,7 +205,7 @@ spec:
         type: PathPrefix
         value: /
     backendRefs:
-    - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
+    - name: vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:params]}-vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
       port: 80
 EOF
 
@@ -213,10 +213,8 @@ EOF
   done
 
   for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
-    announce "ℹ️  Sleeping for 10s..."
-    sleep 10
     announce "ℹ️  Waiting for ${model} to be Ready (timeout=${LLMDBENCH_WAIT_TIMEOUT}s)..."
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} wait --timeout=${LLMDBENCH_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} wait --timeout=${LLMDBENCH_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:params]}-vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
 
     is_route=$(${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route --ignore-not-found | grep vllm-standalone-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route || true)
     if [[ -z $is_route ]]

@@ -193,9 +193,11 @@ function llmdbench_execute_cmd {
   else
     if [[ ${verbose} -eq 0 ]]; then
       eval ${actual_cmd} &>/dev/null
+      ecode=$?
     else
       echo "---> will execute the command \"${actual_cmd}\""
       eval ${actual_cmd}
+      ecode=$?
     fi
     local ecode=$?
   fi
