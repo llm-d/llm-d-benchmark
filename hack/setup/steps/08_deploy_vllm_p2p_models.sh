@@ -80,6 +80,8 @@ EOF
 fi
 
 for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
+  announce "ℹ️  Sleeping for 10s..."
+  sleep 10
   announce "ℹ️  Waiting for ${model} to be Ready (timeout=${LLMDBENCH_WAIT_TIMEOUT}s)..."
   llmdbench_execute_cmd "${LLMDBENCH_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} wait --timeout=${LLMDBENCH_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
 
