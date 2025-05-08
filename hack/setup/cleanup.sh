@@ -6,23 +6,23 @@ if [[ $0 != "-bash" ]]; then
     pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
 fi
 
-export LLMDBENCH_DIR=$(realpath $(pwd)/)
+export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/)
 
 if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
 fi
 
-source ${LLMDBENCH_DIR}/env.sh
+source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
-export LLMDBENCH_DEEP_CLEANING=0
-export LLMDBENCH_DRY_RUN=0
+export LLMDBENCH_CONTROL_DEEP_CLEANING=0
+export LLMDBENCH_CONTROL_DRY_RUN=0
 
 function show_usage {
-    echo -e "Usage: $0 -t/--type [list of environment types targeted for cleaning (default=$LLMDBENCH_ENVIRONMENT_TYPES)) \n \
-                              -d/--deep [\"deep cleaning\"] (default=$LLMDBENCH_DEEP_CLEANING) ] \n \
-                              -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_DRY_RUN) ] \n \
-                              -m/--models [list the models to be deployed (default=$LLMDBENCH_MODEL_LIST) ] \n \
-                              -t/--types [list the environment types to be deployed (default=$LLMDBENCH_ENVIRONMENT_TYPES) ] \n \
+    echo -e "Usage: $0 -t/--type [list of environment types targeted for cleaning (default=$LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES)) \n \
+                              -d/--deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING) ] \n \
+                              -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
+                              -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
+                              -t/--types [list the environment types to be deployed (default=$LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES) ] \n \
                               -h/--help (show this help)"
 }
 
@@ -31,24 +31,24 @@ while [[ $# -gt 0 ]]; do
 
     case $key in
         -m=*|--models=*)
-        export LLMDBENCH_MODEL_LIST=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_DEPLOY_MODEL_LIST=$(echo $key | cut -d '=' -f 2)
         ;;
         -m|--models)
-        export LLMDBENCH_MODEL_LIST="$2"
+        export LLMDBENCH_DEPLOY_MODEL_LIST="$2"
         shift
         ;;
         -t=*|--types=*)
-        export LLMDBENCH_ENVIRONMENT_TYPES=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES=$(echo $key | cut -d '=' -f 2)
         ;;
         -t|--types)
-        export LLMDBENCH_ENVIRONMENT_TYPES="$2"
+        export LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES="$2"
         shift
         ;;
         -d|--deep)
-        export LLMDBENCH_DEEP_CLEANING=1
+        export LLMDBENCH_CONTROL_DEEP_CLEANING=1
         ;;
         -n|--dry-run)
-        export LLMDBENCH_DRY_RUN=1
+        export LLMDBENCH_CONTROL_DRY_RUN=1
         ;;
         -h|--help)
         show_usage
@@ -68,33 +68,36 @@ while [[ $# -gt 0 ]]; do
         shift
 done
 
+extract_environment
+sleep 5
+
 announce "🧹 Cleaning up namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE"
 
 # Special case: Helm release (if used)
-hclist=$($LLMDBENCH_HCMD --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE list --no-headers | grep vllm-p2p || true)
+hclist=$($LLMDBENCH_CONTROL_HCMD --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE list --no-headers | grep vllm-p2p || true)
 hclist=$(echo "${hclist}" | awk '{ print $1 }')
 for hc in ${hclist}; do
   echo "🧽 Deleting Helm release \"${hc}\"..."
-  llmdbench_execute_cmd "${LLMDBENCH_HCMD} uninstall ${hc} --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_DRY_RUN}
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_HCMD} uninstall ${hc} --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE" ${LLMDBENCH_CONTROL_DRY_RUN}
 done
 
-if [[ $LLMDBENCH_DEEP_CLEANING -eq 0 ]]; then
-  allres=$(${LLMDBENCH_KCMD} --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE get ${LLMDBENCH_RESOURCE_LIST} -o name)
-  tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt|secret/vllm-standalone-quay-secret|secret/vllm-standalone-hf-token")
+if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
+  allres=$(${LLMDBENCH_CONTROL_KCMD} --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE get ${LLMDBENCH_CONTROL_RESOURCE_LIST} -o name)
+  tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt|secret/vllm-common-quay-secret|secret/vllm-common-hf-token")
 
-  is_env_type_standalone=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep standalone || true)
-  is_env_type_vllm=$(echo $LLMDBENCH_ENVIRONMENT_TYPES | grep vllm || true)
+  is_env_type_standalone=$(echo $LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES | grep standalone || true)
+  is_env_type_vllm=$(echo $LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES | grep vllm || true)
 
-  if [[ ${LLMDBENCH_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 && ${LLMDBENCH_ENVIRONMENT_TYPE_P2P_ACTIVE} -eq 0 ]]; then
+  if [[ ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 && ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_P2P_ACTIVE} -eq 0 ]]; then
     tgtres=$(echo "$tgtres" | grep standalone)
   fi
 
-  if [[ ${LLMDBENCH_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 0 && ${LLMDBENCH_ENVIRONMENT_TYPE_P2P_ACTIVE} -eq 1 ]]; then
+  if [[ ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 0 && ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_P2P_ACTIVE} -eq 1 ]]; then
     tgtres=$(echo "$tgtres" | grep -E "p2p|inference-gateway|llm-route|base-model|endpoint-picker|inference-route|inference-gateway-secret|inference-gateway-params|inference-gateway")
   fi
 
   for delres in $tgtres; do
-   llmdbench_execute_cmd "${LLMDBENCH_KCMD} delete --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE --ignore-not-found=true $delres" ${LLMDBENCH_DRY_RUN}
+   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE --ignore-not-found=true $delres" ${LLMDBENCH_CONTROL_DRY_RUN}
   done
 else
 # List of resource kinds to clean up
@@ -119,14 +122,14 @@ else
 # Delete each resource type (ignoring not found errors)
   for kind in "${RESOURCE_KINDS[@]}"; do
     announce "🗑️  Deleting all $kind in namespace $LLMDBENCH_OPENSHIFT_NAMESPACE..."
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} delete "$kind" --all -n "$LLMDBENCH_OPENSHIFT_NAMESPACE" --ignore-not-found=true || true" ${LLMDBENCH_DRY_RUN}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete "$kind" --all -n "$LLMDBENCH_OPENSHIFT_NAMESPACE" --ignore-not-found=true || true" ${LLMDBENCH_CONTROL_DRY_RUN}
   done
 fi
 
-if [[ $LLMDBENCH_DEEP_CLEANING -eq 1 ]]; then
+if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 1 ]]; then
 # Optional: delete cloned repos if they exist
   announce "🧼 Cleaning up local Git clones..."
-  llmdbench_execute_cmd "rm -rf ${LLMDBENCH_KVCM_DIR}/llm-d-kv-cache-manager ${LLMDBENCH_GAIE_DIR}/gateway-api-inference-extension ${LLMDBENCH_FMPERF_DIR}/fmperf" ${LLMDBENCH_DRY_RUN}
+  llmdbench_execute_cmd "rm -rf ${LLMDBENCH_KVCM_DIR}/llm-d-kv-cache-manager ${LLMDBENCH_GAIE_DIR}/gateway-api-inference-extension ${LLMDBENCH_FMPERF_DIR}/fmperf" ${LLMDBENCH_CONTROL_DRY_RUN}
 fi
 
 announce "✅ Cleanup complete. Namespace '$LLMDBENCH_OPENSHIFT_NAMESPACE' is now cleared (except shared cluster-scoped resources like kgateway)."

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-source ${LLMDBENCH_DIR}/env.sh
+source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
-if [[ $LLMDBENCH_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
-  for model in ${LLMDBENCH_MODEL_LIST//,/ }; do
+if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
+  for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     announce "Creating PVC for caching model ${model}..."
-    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${model}.yaml
+    cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${model}.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -15,15 +15,15 @@ spec:
     - ReadWriteMany
   resources:
     requests:
-      storage: ${LLMDBENCH_MODEL_CACHE_SIZE}
-  storageClassName: ${LLMDBENCH_STORAGE_CLASS}
+      storage: ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE}
+  storageClassName: ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS}
 EOF
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${model}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${model}.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
   done
 
-  for vol in ${LLMDBENCH_VLLM_PVC_NAME}; do
+  for vol in ${LLMDBENCH_VLLM_COMMON_PVC_NAME}; do
     announce "Creating PVC ${vol} for caching models..."
-    cat << EOF > $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml
+    cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -34,12 +34,12 @@ spec:
     - ReadWriteMany
   resources:
     requests:
-      storage: ${LLMDBENCH_MODEL_CACHE_SIZE}
-  storageClassName: ${LLMDBENCH_STORAGE_CLASS}
+      storage: ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE}
+  storageClassName: ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS}
 EOF
-    llmdbench_execute_cmd "${LLMDBENCH_KCMD} apply -f $LLMDBENCH_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml" ${LLMDBENCH_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
   done
 
 else
-  announce "ℹ️ Environment types are \"${LLMDBENCH_ENVIRONMENT_TYPES}\". Skipping this step."
+  announce "ℹ️ Environment types are \"${LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES}\". Skipping this step."
 fi

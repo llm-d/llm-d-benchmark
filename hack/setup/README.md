@@ -30,6 +30,9 @@ export LLMDBENCH_QUAY_PASSWORD="..."
 ./deploy.sh -n
 ```
 
+## two types of VLLM deployments are available: "standalone" (a simple deployment with services) and "p2p" (using a helm chart and accessed via inference gateway). This is controlled by the variable LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES (default "standalone,p2p")
+
+
 ## to deploy and test
 ```
 ./deploy.sh

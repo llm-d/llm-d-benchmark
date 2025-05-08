@@ -6,24 +6,24 @@ if [[ $0 != "-bash" ]]; then
     pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
 fi
 
-export LLMDBENCH_DIR=$(realpath $(pwd)/)
+export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/)
 
 if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
 fi
 
-source ${LLMDBENCH_DIR}/env.sh
+source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
-export LLMDBENCH_STEPS_DIR="$LLMDBENCH_DIR/steps"
-export LLMDBENCH_DRY_RUN=${LLMDBENCH_DRY_RUN:-0}
+export LLMDBENCH_STEPS_DIR="$LLMDBENCH_CONTROL_DIR/steps"
+export LLMDBENCH_CONTROL_DRY_RUN=${LLMDBENCH_CONTROL_DRY_RUN:-0}
 export LLMDBENCH_VERBOSE=${LLMDBENCH_VERBOSE:-0}
 LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name "*.sh" | sort)
 
 function show_usage {
-    echo -e "Usage: $0 -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e 's/ /,/g') \n \
-                                -m/--models [list the models to be deployed (default=$LLMDBENCH_MODEL_LIST) ] \n \
-                                -t/--types [list the environment types to be deployed (default=$LLMDBENCH_ENVIRONMENT_TYPES) ] \n \
-                                -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_DRY_RUN) ] \n \
+    echo -e "Usage: $0 -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e 's/ /,/g') \n \
+                                -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
+                                -t/--types [list the environment types to be deployed (default=$LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES) ] \n \
+                                -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
                                 -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_VERBOSE) ] \n \
                                 -h/--help (show this help)"
 }
@@ -40,21 +40,21 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
         -m=*|--models=*)
-        export LLMDBENCH_MODEL_LIST=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_DEPLOY_MODEL_LIST=$(echo $key | cut -d '=' -f 2)
         ;;
         -m|--models)
-        export LLMDBENCH_MODEL_LIST="$2"
+        export LLMDBENCH_DEPLOY_MODEL_LIST="$2"
         shift
         ;;
         -t=*|--types=*)
-        export LLMDBENCH_ENVIRONMENT_TYPES=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES=$(echo $key | cut -d '=' -f 2)
         ;;
         -t|--types)
-        export LLMDBENCH_ENVIRONMENT_TYPES="$2"
+        export LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES="$2"
         shift
         ;;
         -n|--dry-run)
-        export LLMDBENCH_DRY_RUN=1
+        export LLMDBENCH_CONTROL_DRY_RUN=1
         ;;
         -v|--verbose)
         export LLMDBENCH_VERBOSE=1
@@ -90,7 +90,7 @@ run_step() {
     local step_nr=$(echo $step_id | cut -d '_' -f 1)
     export LLMDBENCH_CURRENT_STEP=${step_nr}
     announce "=== Running step: $step_id ==="
-    if [[ $LLMDBENCH_DRY_RUN -eq 1 ]]; then
+    if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
       echo -e "[DRY RUN] $script_path\n"
     fi
     source $script_path
@@ -100,13 +100,13 @@ run_step() {
   fi
 }
 
-source ${LLMDBENCH_DIR}/env.sh
+source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 _e=$(echo ${LLMDBENCH_STEP_LIST} | grep "[0-9]-[0-9]" || true)
 if [[ ! -z ${_e} ]]; then
-  LLMDBENCH_STEP_LIST=$(eval echo $(echo {${LLMDBENCH_STEP_LIST}} | $LLMDBENCH_SCMD 's^-^..^g'))
+  LLMDBENCH_STEP_LIST=$(eval echo $(echo {${LLMDBENCH_STEP_LIST}} | $LLMDBENCH_CONTROL_SCMD 's^-^..^g'))
 fi
-LLMDBENCH_STEP_LIST=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_SCMD 's^,^ ^g')
+LLMDBENCH_STEP_LIST=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g')
 
 for step in ${LLMDBENCH_STEP_LIST//,/ }; do
   if [[ ${#step} -lt 2 ]]
