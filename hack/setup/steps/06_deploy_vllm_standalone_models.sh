@@ -10,7 +10,7 @@ metadata:
     app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
-  replicas: 1
+  replicas: ${LLMDBENCH_VLLM_REPLICAS}
   selector:
     matchLabels:
       app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
@@ -62,8 +62,8 @@ spec:
             nvidia.com/gpu: "${LLMDBENCH_VLLM_GPU_NR}"
             ephemeral-storage: "20Gi"
           requests:
-            cpu: "1"
-            memory: 60Gi
+            cpu: "$LLMDBENCH_VLLM_CPU_NR"
+            memory: $LLMDBENCH_VLLM_CPU_MEM
             nvidia.com/gpu: "${LLMDBENCH_VLLM_GPU_NR}"
             ephemeral-storage: "10Gi"
         volumeMounts:
@@ -74,7 +74,7 @@ spec:
       volumes:
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: vllm-standalone-llama-8b-cache
+          claimName: ${LLMDBENCH_VLLM_PVC_NAME}
       - name: shm
         emptyDir:
           medium: Memory
@@ -90,7 +90,7 @@ metadata:
     app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}-instruct
   namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
 spec:
-  replicas: 1
+  replicas: ${LLMDBENCH_VLLM_REPLICAS}
   selector:
     matchLabels:
       app: vllm-standalone-${LLMDBENCH_MODEL2PARAM[llama-70b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-70b:label]}-instruct
@@ -144,8 +144,8 @@ spec:
             nvidia.com/gpu: "${LLMDBENCH_VLLM_GPU_NR}"
             ephemeral-storage: "30Gi"
           requests:
-            cpu: "2"
-            memory: 100Gi
+            cpu: "$LLMDBENCH_VLLM_CPU_NR"
+            memory: ${LLMDBENCH_VLLM_CPU_MEM}
             nvidia.com/gpu: "${LLMDBENCH_VLLM_GPU_NR}"
             ephemeral-storage: "10Gi"
         volumeMounts:
@@ -156,7 +156,7 @@ spec:
       volumes:
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: vllm-standalone-llama-70b-cache
+          claimName: ${LLMDBENCH_VLLM_PVC_NAME}
       - name: shm
         emptyDir:
           medium: Memory
