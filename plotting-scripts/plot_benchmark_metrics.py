@@ -37,7 +37,7 @@ BENCHMARK_TYPES = {
 # Define QPS ranges for each benchmark type
 BENCHMARK_QPS_RANGES = {
     # 'sharegpt': (0, 1.4),
-    'sharegpt': (0, 40.0),
+    'sharegpt': (0, 100.0),
     'long_input': (0, 1.2),
     'short_input': (0, 10.0)
 }
@@ -46,7 +46,7 @@ BENCHMARK_QPS_RANGES = {
 BENCHMARK_Y_RANGES = {
     'itl': (0, 0.1),      # Inter-token Latency in seconds
     'ttft': (0, 1.0),     # Time to First Token in seconds
-    'throughput': (5000, 20000)  # Throughput in tokens per second
+    'throughput': (5000, 30000)  # Throughput in tokens per second
 }
 
 def extract_qps(filename):
