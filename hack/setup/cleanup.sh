@@ -18,11 +18,11 @@ export LLMDBENCH_CONTROL_DEEP_CLEANING=0
 export LLMDBENCH_CONTROL_DRY_RUN=0
 
 function show_usage {
-    echo -e "Usage: $0 -t/--type [list of environment types targeted for cleaning (default=$LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES)) \n \
+    echo -e "Usage: $0 -t/--type [list of environment types targeted for cleaning (default=$LLMDBENCH_DEPLOY_METHODS)) \n \
                               -d/--deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING) ] \n \
                               -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
                               -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
-                              -t/--types [list the environment types to be deployed (default=$LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES) ] \n \
+                              -t/--types [list the environment types to be deployed (default=$LLMDBENCH_DEPLOY_METHODS) ] \n \
                               -h/--help (show this help)"
 }
 
@@ -38,10 +38,10 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
         -t=*|--types=*)
-        export LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_DEPLOY_METHODS=$(echo $key | cut -d '=' -f 2)
         ;;
         -t|--types)
-        export LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES="$2"
+        export LLMDBENCH_DEPLOY_METHODS="$2"
         shift
         ;;
         -d|--deep)
@@ -83,10 +83,10 @@ done
 
 if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
   allres=$(${LLMDBENCH_CONTROL_KCMD} --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE get ${LLMDBENCH_CONTROL_RESOURCE_LIST} -o name)
-  tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt|secret/vllm-common-quay-secret|secret/vllm-common-hf-token")
+  tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt|secret/${LLMDBENCH_VLLM_COMMON_PULL_SECRET_NAME}|secret/${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}")
 
-  is_env_type_standalone=$(echo $LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES | grep standalone || true)
-  is_env_type_vllm=$(echo $LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES | grep vllm || true)
+  is_env_type_standalone=$(echo $LLMDBENCH_DEPLOY_METHODS | grep standalone || true)
+  is_env_type_vllm=$(echo $LLMDBENCH_DEPLOY_METHODS | grep vllm || true)
 
   if [[ ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 && ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_P2P_ACTIVE} -eq 0 ]]; then
     tgtres=$(echo "$tgtres" | grep standalone)
@@ -129,6 +129,7 @@ fi
 if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 1 ]]; then
 # Optional: delete cloned repos if they exist
   announce "🧼 Cleaning up local Git clones..."
+  sleep 10
   llmdbench_execute_cmd "rm -rf ${LLMDBENCH_KVCM_DIR}/llm-d-kv-cache-manager ${LLMDBENCH_GAIE_DIR}/gateway-api-inference-extension ${LLMDBENCH_FMPERF_DIR}/fmperf" ${LLMDBENCH_CONTROL_DRY_RUN}
 fi
 

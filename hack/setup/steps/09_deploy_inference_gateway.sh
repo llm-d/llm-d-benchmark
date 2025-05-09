@@ -310,7 +310,7 @@ EOF
     done
   done
 else
-  announce "ℹ️ Environment types are \"${LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES}\". Skipping this step."
+  announce "ℹ️ Environment types are \"${LLMDBENCH_DEPLOY_METHODS}\". Skipping this step."
 fi
 
 for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
@@ -320,7 +320,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route --ignore-not-found | grep llm-route || true)
   if [[ -z $is_route ]]
   then
-    llmdbench_execute_cmd "oc expose service inference-gateway --name=llm-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} expose service inference-gateway --name=llm-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
   fi
     announce "ℹ️  endpoint picker ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
 done

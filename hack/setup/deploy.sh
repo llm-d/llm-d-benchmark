@@ -22,7 +22,7 @@ LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name "*.sh" | sort)
 function show_usage {
     echo -e "Usage: $0 -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e 's/ /,/g') \n \
                                 -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
-                                -t/--types [list the environment types to be deployed (default=$LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES) ] \n \
+                                -t/--types [list the environment types to be deployed (default=$LLMDBENCH_DEPLOY_METHODS) ] \n \
                                 -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
                                 -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_VERBOSE) ] \n \
                                 -h/--help (show this help)"
@@ -47,10 +47,10 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
         -t=*|--types=*)
-        export LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_DEPLOY_METHODS=$(echo $key | cut -d '=' -f 2)
         ;;
         -t|--types)
-        export LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES="$2"
+        export LLMDBENCH_DEPLOY_METHODS="$2"
         shift
         ;;
         -n|--dry-run)

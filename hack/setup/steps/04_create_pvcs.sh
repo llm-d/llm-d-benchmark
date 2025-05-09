@@ -41,5 +41,5 @@ EOF
   done
 
 else
-  announce "ℹ️ Environment types are \"${LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES}\". Skipping this step."
+  announce "ℹ️ Environment types are \"${LLMDBENCH_DEPLOY_METHODS}\". Skipping this step."
 fi

@@ -38,10 +38,10 @@ vllm:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
         - matchExpressions:
-          - key: nvidia.com/gpu.product
+          - key: $(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
             operator: In
             values:
-            - $LLMDBENCH_VLLM_COMMON_GPU_MODEL
+            - $(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 2)
 EOF
 
   pushd llm-d-kv-cache-manager/vllm-setup-helm &>/dev/null
@@ -50,9 +50,9 @@ EOF
     announce "Installing release vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]}..."
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_HCMD} upgrade --install vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]} . \
 --namespace "$LLMDBENCH_OPENSHIFT_NAMESPACE" \
---set secret.create=true \
---set secret.hfTokenValue=\"${LLMDBENCH_HF_TOKEN}\" \
---set secret.name=vllm-p2p-${model}-secrets \
+--set secret.create=false \
+--set secret.keyPrefix=token \
+--set secret.name=$LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME \
 --set persistence.enabled=${LLMDBENCH_VLLM_COMMON_PERSISTENCE_ENABLED} \
 --set persistence.accessModes={\"ReadWriteMany\"} \
 --set persistence.size=${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE} \
@@ -83,11 +83,15 @@ EOF
   popd &>/dev/null
 fi
 
-for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
-  announce "ℹ️  Waiting for ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+  for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
 
-  cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml
+    announce "ℹ️  Waiting for pods serving model ${model} to be in \"Running\" state (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+
+    announce "ℹ️  Waiting for pods serving ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+
+    cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -99,16 +103,16 @@ spec:
     port: 80
     targetPort: 80
   selector:
-    app: vllm-p2p-${LLMDBENCH_MODEL2PARAM[llama-8b:params]}-vllm-${LLMDBENCH_MODEL2PARAM[llama-8b:label]}-instruct
+    app: vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]}-vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
   type: ClusterIP
 EOF
 
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
 
-  is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route --ignore-not-found | grep vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route || true)
-  if [[ -z $is_route ]]
-  then
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} expose service/vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} --name=vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
-  fi
-  announce "ℹ️  vllm (p2p) ${model} Ready"
+    is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} get route --ignore-not-found | grep vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route || true)
+    if [[ -z $is_route ]]
+    then
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} expose service/vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]} --namespace ${LLMDBENCH_OPENSHIFT_NAMESPACE} --name=vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    fi
+    announce "ℹ️  vllm (p2p) ${model} Ready"
 done

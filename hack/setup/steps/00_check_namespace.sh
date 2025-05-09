@@ -4,8 +4,9 @@ source ${LLMDBENCH_CONTROL_DIR}/env.sh
 announce "🔍 Checking if namespace '${LLMDBENCH_OPENSHIFT_NAMESPACE}' exists..."
 
 if ! ${LLMDBENCH_CONTROL_KCMD} get namespace "$LLMDBENCH_OPENSHIFT_NAMESPACE" --ignore-not-found | grep -q "$LLMDBENCH_OPENSHIFT_NAMESPACE"; then
-  if [[ $(${LLMDBENCH_CONTROL_KCMD} whoami) == "system:admin" ]]; then
-  cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_ns_and_sa_and_rbac.yaml
+  if [[ $LLMDBENCH_USER_IS_ADMIN -eq 1 ]]; then
+#  cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_ns_and_sa_and_rbac.yaml
+  cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_ns.yaml
 ---
 apiVersion: v1
 kind: Namespace
@@ -24,28 +25,28 @@ metadata:
 spec:
   finalizers:
   - kubernetes
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: system:openshift:scc:privileged
-subjects:
-  - kind: ServiceAccount
-    name: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
-    namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
----
+#---
+#apiVersion: v1
+#kind: ServiceAccount
+#metadata:
+#  name: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+#  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+#---
+#apiVersion: rbac.authorization.k8s.io/v1
+#kind: ClusterRoleBinding
+#metadata:
+#  name: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+#roleRef:
+#  apiGroup: rbac.authorization.k8s.io
+#  kind: ClusterRole
+#  name: system:openshift:scc:privileged
+#subjects:
+#  - kind: ServiceAccount
+#    name: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+#    namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+#---
 EOF
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/yamls/00_ns_and_sa_and_rbac.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/yamls/00_ns.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
   else
     announce "⚠️ Namespace '${LLMDBENCH_OPENSHIFT_NAMESPACE}' not found. Stopping..."
     exit 1

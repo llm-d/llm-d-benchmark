@@ -21,18 +21,20 @@ export LLMDBENCH_KVCM_GIT_BRANCH=${LLMDBENCH_KVCM_GIT_BRANCH:-dev}
 export LLMDBENCH_GAIE_DIR="${LLMDBENCH_GAIE_DIR:-/tmp}"
 
 # Applicable to both standalone and p2p
-export LLMDBENCH_VLLM_COMMON_GPU_MODEL=${LLMDBENCH_VLLM_COMMON_GPU_MODEL:-NVIDIA-A100-SXM4-80GB}
+export LLMDBENCH_VLLM_COMMON_AFFINITY=${LLMDBENCH_VLLM_COMMON_AFFINITY:-NVIDIA-A100-SXM4-80GB}
 export LLMDBENCH_VLLM_COMMON_REPLICAS=${LLMDBENCH_VLLM_COMMON_REPLICAS:-1}
-export LLMDBENCH_VLLM_COMMON_PERSISTENCE_ENABLED=${LLMDBENCH_VLLM_COMMON_PERSISTENCE_ENABLED:-false}
-export LLMDBENCH_VLLM_COMMON_GPU_NR=${LLMDBENCH_VLLM_COMMON_GPU_NR:-2}
+export LLMDBENCH_VLLM_COMMON_PERSISTENCE_ENABLED=${LLMDBENCH_VLLM_COMMON_PERSISTENCE_ENABLED:-true}
+export LLMDBENCH_VLLM_COMMON_GPU_NR=${LLMDBENCH_VLLM_COMMON_GPU_NR:-1}
 export LLMDBENCH_VLLM_COMMON_GPU_MEM_UTIL=${LLMDBENCH_VLLM_COMMON_GPU_MEM_UTIL:-0.95}
-export LLMDBENCH_VLLM_COMMON_CPU_NR=${LLMDBENCH_VLLM_COMMON_CPU_NR:-10}
-export LLMDBENCH_VLLM_COMMON_CPU_MEM=${LLMDBENCH_VLLM_COMMON_CPU_MEM:-80Gi}
+export LLMDBENCH_VLLM_COMMON_CPU_NR=${LLMDBENCH_VLLM_COMMON_CPU_NR:-4}
+export LLMDBENCH_VLLM_COMMON_CPU_MEM=${LLMDBENCH_VLLM_COMMON_CPU_MEM:-40Gi}
 export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=${LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN:-16384}
 export LLMDBENCH_VLLM_COMMON_PVC_NAME=${LLMDBENCH_VLLM_COMMON_PVC_NAME:-""}
 export LLMDBENCH_VLLM_COMMON_PVC_MOUNTPOINT=${LLMDBENCH_VLLM_COMMON_PVC_MOUNTPOINT:-/data}
 export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS="${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS:-ocs-storagecluster-cephfs}"
 export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE="${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE:-300Gi}"
+export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME:-"vllm-common-hf-token"}
+export LLMDBENCH_VLLM_COMMON_PULL_SECRET_NAME=${LLMDBENCH_VLLM_COMMON_PULL_SECRET_NAME:-"vllm-common-quay-secret"}
 
 # Standalone-specific parameters
 export LLMDBENCH_VLLM_STANDALONE_IMAGE=${LLMDBENCH_VLLM_STANDALONE_IMAGE:-"vllm/vllm-openai:latest"}
@@ -66,10 +68,10 @@ export LLMDBENCH_FMPERF_EXPERIMENT_LIST="${LLMDBENCH_FMPERF_EXPERIMENT_LIST:-exa
 
 # LLM-D-Benchmark deployment specific variables
 export LLMDBENCH_DEPLOY_MODEL_LIST=${LLMDBENCH_DEPLOY_MODEL_LIST:-"llama-8b,llama-70b"}
-export LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES=${LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES:-"standalone,p2p"}
+export LLMDBENCH_DEPLOY_METHODS=${LLMDBENCH_DEPLOY_METHODS:-"standalone,p2p"}
 
 # Control variables
-export LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME=$(echo ${LLMDBENCH_OPENSHIFT_HOST} | cut -d '.' -f 2)
+export LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME=${LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME:-$(echo ${LLMDBENCH_OPENSHIFT_HOST} | cut -d '.' -f 2)}
 export LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED=${LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED:-0}
 export LLMDBENCH_CONTROL_WARNING_DISPLAYED=${LLMDBENCH_CONTROL_WARNING_DISPLAYED:-0}
 export LLMDBENCH_CONTROL_WAIT_TIMEOUT=${LLMDBENCH_CONTROL_WAIT_TIMEOUT:-900}
@@ -124,6 +126,7 @@ if [[ -f ${HOME}/.kube/config-${LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME} ]]; th
   export LLMDBENCH_CONTROL_HCMD="helm --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME}"
 elif [[ -z $LLMDBENCH_OPENSHIFT_HOST || $LLMDBENCH_OPENSHIFT_HOST == "auto" ]]; then
   current_context=$(${LLMDBENCH_CONTROL_KCMD} config view -o json | jq -r '."current-context"' || true)
+  export LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)
   if [[ $LLMDBENCH_CONTROL_WARNING_DISPLAYED -eq 0 ]]; then
     echo "WARNING: environment variable LLMDBENCH_OPENSHIFT_HOST=$LLMDBENCH_OPENSHIFT_HOST. Will attempt to use current context \"${current_context}\"."
     LLMDBENCH_CONTROL_WARNING_DISPLAYED=1
@@ -131,6 +134,7 @@ elif [[ -z $LLMDBENCH_OPENSHIFT_HOST || $LLMDBENCH_OPENSHIFT_HOST == "auto" ]]; 
   fi
 else
   current_context=$(${LLMDBENCH_CONTROL_KCMD} config view -o json | jq -r '."current-context"' || true)
+  export LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)
   current_namespace=$(echo $current_context | cut -d '/' -f 1)
   current_url=$(echo $current_context | cut -d '/' -f 2 | cut -d ':' -f 1 | $LLMDBENCH_CONTROL_SCMD "s^-^.^g")
   target_url=$(echo $LLMDBENCH_OPENSHIFT_HOST | cut -d '/' -f 3 | $LLMDBENCH_CONTROL_SCMD "s^-^.^g")
@@ -139,7 +143,10 @@ else
   fi
 
   if [[ $current_namespace != $LLMDBENCH_OPENSHIFT_NAMESPACE ]]; then
-    ${LLMDBENCH_CONTROL_KCMD} project $LLMDBENCH_OPENSHIFT_NAMESPACE
+    namespace_exists=$(${LLMDBENCH_CONTROL_KCMD} get namespaces | grep $LLMDBENCH_OPENSHIFT_NAMESPACE || true)
+    if [[ ! -z $namespace_exists ]]; then
+      ${LLMDBENCH_CONTROL_KCMD} project $LLMDBENCH_OPENSHIFT_NAMESPACE
+    fi
   fi
 fi
 
@@ -148,7 +155,7 @@ is_ocp=$($LLMDBENCH_CONTROL_KCMD api-resources 2>&1 | grep 'route.openshift.io' 
 if [[ ! -z ${is_ocp} ]]; then
   export LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT=1
 else
-  export LLMDBENCH_CONTROL_KCMD=$(echo $LLMDBENCH_CONTROL_KCMD | $LLMDBENCH_CONTROL_SCMD 's^oc ^kubectl^g')
+  export LLMDBENCH_CONTROL_KCMD=$(echo $LLMDBENCH_CONTROL_KCMD | $LLMDBENCH_CONTROL_SCMD 's^oc ^kubectl ^g')
 fi
 
 export LLMDBENCH_USER_IS_ADMIN=1
@@ -163,11 +170,20 @@ else
 fi
 
 for mt in standalone p2p; do
-  is_env=$(echo $LLMDBENCH_DEPLOY_ENVIRONMENT_TYPES | grep $mt || true)
+  is_env=$(echo $LLMDBENCH_DEPLOY_METHODS | grep $mt || true)
   if [[ -z $is_env ]]; then
     export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_$(echo $mt | tr '[:lower:]' '[:upper:]')_ACTIVE=1
   else
     export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_$(echo $mt | tr '[:lower:]' '[:upper:]')_ACTIVE=1
+  fi
+done
+
+for resource in namespace ${LLMDBENCH_CONTROL_RESOURCE_LIST//,/ }; do
+  ra=$($LLMDBENCH_CONTROL_KCMD --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE auth can-i '*' $resource 2>&1 | grep yes || true)
+  if [[ -z ${ra} ]]
+  then
+    echo "ERROR: the current user cannot operate over the resource \"${resource}\""
+    exit 1
   fi
 done
 
