@@ -4,7 +4,7 @@ metadata:
   name: llama-4-scout
   labels:
     app: llama-4-scout
-  namespace: llmdbench
+  namespace: llmdbench3
 spec:
   replicas: 1
   revisionHistoryLimit: 10
@@ -35,7 +35,8 @@ spec:
             --disable-log-requests \
             --gpu-memory-utilization 0.95 \
             --max-model-len 10000 \
-            --tensor-parallel-size 4
+            --tensor-parallel-size 4 \
+            --kv-transfer-config '{"kv_connector":"LMCacheConnectorV1","kv_role":"kv_both"}'
         command:
         - /bin/sh
         - -c
@@ -47,10 +48,18 @@ spec:
             secretKeyRef:
               key: token
               name: vllm-common-hf-token
-        - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
-          value: "1"
-        - name: VLLM_DISABLE_COMPILE_CACHE
-          value: "1"
+        - name: LMCACHE_ENABLE_DEBUG
+          value: "True"
+        - name: LMCACHE_LOCAL_CPU
+          value: "True"
+        - name: LMCACHE_MAX_LOCAL_CPU_SIZE
+          value: "40"
+        - name: LMCACHE_USE_EXPERIMENTAL
+          value: "True"
+        - name: LMCACHE_ENABLE_P2P
+          value: "False"
+        - name: VLLM_RPC_TIMEOUT
+          value: "1000000"
         image: quay.io/llm-d/llm-d-dev:0.0.6-amd64
         imagePullPolicy: Always
         name: llama-4-scout

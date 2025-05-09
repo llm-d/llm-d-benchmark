@@ -22,6 +22,9 @@ METHOD_TYPES = {
     'vllm-standalone-llama-3-70b-2replicas-H100': 'vLLM v1 (2 replicas) + Round Robin (H100)',
     'llm-d-70b-2replicas-H100': 'llm-d (2 replicas)' + '\n' + 'Prefix (score=2) & Load (score=1) aware routing (H100)',
     'llm-d-70b-2replicas-H100-no-router': 'llm-d (2 replicas)' + '\n' + 'Round Robin (H100)',
+    'vllm-llama4-tp4': 'vLLM v1 (TP=4)',
+    'llm-d-llama4-tp4': 'llm-d (TP=4)',
+    'lmcache-llm-d-llama4-tp4': 'llm-d w KVCache offloading (TP=4)',
 }
 
 # Define benchmark types and their titles
@@ -43,7 +46,7 @@ BENCHMARK_QPS_RANGES = {
 BENCHMARK_Y_RANGES = {
     'itl': (0, 0.1),      # Inter-token Latency in seconds
     'ttft': (0, 1.0),     # Time to First Token in seconds
-    'throughput': (0, 1000)  # Throughput in tokens per second
+    'throughput': (5000, 20000)  # Throughput in tokens per second
 }
 
 def extract_qps(filename):

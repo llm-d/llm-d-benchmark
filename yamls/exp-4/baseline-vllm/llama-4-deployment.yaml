@@ -60,7 +60,7 @@ spec:
             path: /health
             port: 80
             scheme: HTTP
-          initialDelaySeconds: 3600
+          initialDelaySeconds: 300
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 10
@@ -69,7 +69,7 @@ spec:
             path: /health
             port: 80
             scheme: HTTP
-          initialDelaySeconds: 3600
+          initialDelaySeconds: 300
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 10
