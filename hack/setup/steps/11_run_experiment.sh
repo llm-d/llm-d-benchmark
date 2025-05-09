@@ -14,6 +14,8 @@ apiclient = client.ApiClient()
 v1 = client.CoreV1Api()
 print(v1.list_namespaced_pod(namespace="${LLMDBENCH_OPENSHIFT_NAMESPACE}"))
 EOF
+pushd ${LLMDBENCH_CONTROL_WORK_DIR} &>/dev/null
+
 ${LLMDBENCH_CONTROL_PCMD} fmperf/test.py
 
 exit
