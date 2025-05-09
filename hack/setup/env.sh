@@ -65,6 +65,7 @@ export LLMDBENCH_IGW_REDIS_PORT="${LLMDBENCH_IGW_REDIS_PORT:-8100}"
 # Experiments
 export LLMDBENCH_FMPERF_CONDA_ENV_NAME="${LLMDBENCH_FMPERF_CONDA_ENV_NAME:-fmperf-env}"
 export LLMDBENCH_FMPERF_EXPERIMENT_LIST="${LLMDBENCH_FMPERF_EXPERIMENT_LIST:-examples/example_llm-d-lmbenchmark-openshift.py}"
+export LLMDBENCH_FMPERF_PVC_NAME="${LLMDBENCH_FMPERF_PVC_NAME:-workload-pvc}"
 
 # LLM-D-Benchmark deployment specific variables
 export LLMDBENCH_DEPLOY_MODEL_LIST=${LLMDBENCH_DEPLOY_MODEL_LIST:-"llama-8b,llama-70b"}
@@ -73,13 +74,14 @@ export LLMDBENCH_DEPLOY_METHODS=${LLMDBENCH_DEPLOY_METHODS:-"standalone,p2p"}
 # Control variables
 export LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME=${LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME:-$(echo ${LLMDBENCH_OPENSHIFT_HOST} | cut -d '.' -f 2)}
 export LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED=${LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED:-0}
+export LLMDBENCH_CONTROL_PERMISSIONS_CHECKED=${LLMDBENCH_CONTROL_PERMISSIONS_CHECKED:-0}
 export LLMDBENCH_CONTROL_WARNING_DISPLAYED=${LLMDBENCH_CONTROL_WARNING_DISPLAYED:-0}
 export LLMDBENCH_CONTROL_WAIT_TIMEOUT=${LLMDBENCH_CONTROL_WAIT_TIMEOUT:-900}
 export LLMDBENCH_CONTROL_RESOURCE_LIST=deployment,httproute,route,service,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,secret
 export LLMDBENCH_CONTROL_KCMD=oc
 export LLMDBENCH_CONTROL_HCMD=helm
 
-required_vars=("LLMDBENCH_OPENSHIFT_NAMESPACE" "LLMDBENCH_HF_TOKEN" "LLMDBENCH_QUAY_USER" "LLMDBENCH_QUAY_PASSWORD")
+required_vars=("LLMDBENCH_OPENSHIFT_NAMESPACE")
 for var in "${required_vars[@]}"; do
   if [ -z "${!var:-}" ]; then
     echo "❌ Environment variable '$var' is not set."
@@ -121,9 +123,16 @@ then
   export LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED=1
 fi
 
+export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR:-$(mktemp -d -t ${LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)}
+mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/yamls
+mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/commands
+mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
+mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/fmperf
+
 if [[ -f ${HOME}/.kube/config-${LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME} ]]; then
   export LLMDBENCH_CONTROL_KCMD="oc --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME}"
   export LLMDBENCH_CONTROL_HCMD="helm --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME}"
+  cp -f ${HOME}/.kube/config-${LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME} $LLMDBENCH_CONTROL_WORK_DIR/context.ctx
 elif [[ -z $LLMDBENCH_OPENSHIFT_HOST || $LLMDBENCH_OPENSHIFT_HOST == "auto" ]]; then
   current_context=$(${LLMDBENCH_CONTROL_KCMD} config view -o json | jq -r '."current-context"' || true)
   export LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)
@@ -132,8 +141,14 @@ elif [[ -z $LLMDBENCH_OPENSHIFT_HOST || $LLMDBENCH_OPENSHIFT_HOST == "auto" ]]; 
     LLMDBENCH_CONTROL_WARNING_DISPLAYED=1
     sleep 5
   fi
+  ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/context.ctx
 else
   current_context=$(${LLMDBENCH_CONTROL_KCMD} config view -o json | jq -r '."current-context"' || true)
+  if [[ ${current_context} ]]; then
+    ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/context.ctx
+  else
+    echo "ERROR: unable to locate current context"
+  fi
   export LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)
   current_namespace=$(echo $current_context | cut -d '/' -f 1)
   current_url=$(echo $current_context | cut -d '/' -f 2 | cut -d ':' -f 1 | $LLMDBENCH_CONTROL_SCMD "s^-^.^g")
@@ -178,14 +193,24 @@ for mt in standalone p2p; do
   fi
 done
 
-for resource in namespace ${LLMDBENCH_CONTROL_RESOURCE_LIST//,/ }; do
-  ra=$($LLMDBENCH_CONTROL_KCMD --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE auth can-i '*' $resource 2>&1 | grep yes || true)
-  if [[ -z ${ra} ]]
-  then
-    echo "ERROR: the current user cannot operate over the resource \"${resource}\""
-    exit 1
-  fi
-done
+if [[ $LLMDBENCH_CONTROL_PERMISSIONS_CHECKED -eq 0 ]]; then
+  for resource in namespace ${LLMDBENCH_CONTROL_RESOURCE_LIST//,/ }; do
+    ra=$($LLMDBENCH_CONTROL_KCMD --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE auth can-i '*' $resource 2>&1 | grep yes || true)
+    if [[ -z ${ra} ]]
+    then
+      echo "ERROR: the current user cannot operate over the resource \"${resource}\""
+      exit 1
+    fi
+
+    ra=$($LLMDBENCH_CONTROL_KCMD --namespace $LLMDBENCH_OPENSHIFT_NAMESPACE auth can-i patch serviceaccount 2>&1 | grep yes || true)
+    if [[ -z ${ra} ]]
+    then
+      echo "ERROR: the current user cannot operate patch serviceaccount\""
+      exit 1
+    fi
+    export LLMDBENCH_CONTROL_PERMISSIONS_CHECKED=1
+  done
+fi
 
 export LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL=${SHELL:5}
 
@@ -208,11 +233,6 @@ else
   LLMDBENCH_MODEL2PARAM["llama-70b:pvc"]="$LLMDBENCH_VLLM_COMMON_PVC_NAME"
   LLMDBENCH_MODEL2PARAM["llama-8b:pvc"]="$LLMDBENCH_VLLM_COMMON_PVC_NAME"
 fi
-
-export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR:-$(mktemp -d -t ${LLMDBENCH_CONTROL_OPENSHIFT_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)}
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/yamls
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/commands
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
 
 function llmdbench_execute_cmd {
   set +euo pipefail

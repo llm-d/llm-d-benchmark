@@ -40,6 +40,25 @@ EOF
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
   done
 
+  for vol in ${LLMDBENCH_FMPERF_PVC_NAME}; do
+    announce "Creating PVC ${vol} for fmperf data storage..."
+    cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${vol}
+  namespace: ${LLMDBENCH_OPENSHIFT_NAMESPACE}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS}
+EOF
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+  done
+
 else
   announce "ℹ️ Environment types are \"${LLMDBENCH_DEPLOY_METHODS}\". Skipping this step."
 fi

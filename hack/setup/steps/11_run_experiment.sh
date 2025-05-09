@@ -2,6 +2,22 @@
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 echo "Running experiment..."
+
+    cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/fmperf/test.py
+import os
+import urllib3
+
+import kubernetes
+from kubernetes import client, config
+kubernetes.config.load_kube_config()
+apiclient = client.ApiClient()
+v1 = client.CoreV1Api()
+print(v1.list_namespaced_pod(namespace="${LLMDBENCH_OPENSHIFT_NAMESPACE}"))
+EOF
+${LLMDBENCH_CONTROL_PCMD} fmperf/test.py
+
+exit
+
 pushd ${LLMDBENCH_FMPERF_DIR}/fmperf &>/dev/null
 
 # Hardcode Conda init from known working path
@@ -17,9 +33,9 @@ if [[ ${LLMDBENCH_CONTROL_DRY_RUN} -eq 0 ]]; then
 # Confirm we're using the correct Python environment
   echo "✅ Python: $(which python3)"
   echo "✅ Env: $(conda info --envs | grep '*' || true)"
-  ${LLMDBENCH_CONTROL_PCMD} -m pip show urllib3 >/dev/null 2>&1 || python3 -m pip install urllib3
-  ${LLMDBENCH_CONTROL_PCMD} -m pip show kubernetes >/dev/null 2>&1 || python3 -m pip install kubernetes
-  ${LLMDBENCH_CONTROL_PCMD} -m pip show pandas >/dev/null 2>&1 || python3 -m pip install pandas
+  ${LLMDBENCH_CONTROL_PCMD} -m pip show urllib3 >/dev/null 2>&1 || ${LLMDBENCH_CONTROL_PCMD} -m pip install urllib3
+  ${LLMDBENCH_CONTROL_PCMD} -m pip show kubernetes >/dev/null 2>&1 || ${LLMDBENCH_CONTROL_PCMD} -m pip install kubernetes
+  ${LLMDBENCH_CONTROL_PCMD} -m pip show pandas >/dev/null 2>&1 || ${LLMDBENCH_CONTROL_PCMD} -m pip install pandas
   pip install -e .
 
   for experiment in ${LLMDBENCH_FMPERF_EXPERIMENT_LIST//,/ }; do
