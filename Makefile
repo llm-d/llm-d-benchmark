@@ -10,7 +10,7 @@ NAMESPACE ?= hc4ai-operator
 
 CONTAINER_TOOL := $(shell command -v docker >/dev/null 2>&1 && echo docker || command -v podman >/dev/null 2>&1 && echo podman || echo "")
 BUILDER := $(shell command -v buildah >/dev/null 2>&1 && echo buildah || echo $(CONTAINER_TOOL))
-PLATFORMS ?= linux/amd64 # linux/arm64 # linux/s390x,linux/ppc64le
+PLATFORMS ?= linux/amd64,linux/arm64 # linux/s390x,linux/ppc64le
 
 # go source files
 SRC = $(shell find . -type f -name '*.go')
