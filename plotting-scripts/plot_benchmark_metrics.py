@@ -19,8 +19,9 @@ METHOD_TYPES = {
     'lmcache-vllm-70b': 'Production Stack(vLLM v1) + LMCache',
     'vllm-70b-2replicas': 'vLLM v1 (2 replicas) + Round Robin',
     'llm-d-70b-2replicas': 'llm-d (2 replicas)' + '\n' + 'KVCache (score=2) & Load (score=1) aware routing',
-    'vllm-standalone-llama-3-70b-2replicas-H100': 'vLLM v1 (2 replicas) + Round Robin \n H100',
-    'llm-d-70b-2replicas-H100': 'llm-d (2 replicas)' + '\n' + 'Prefix (score=2) & Load (score=1) aware routing' + '\n H100',
+    'vllm-standalone-llama-3-70b-2replicas-H100': 'vLLM v1 (2 replicas) + Round Robin (H100)',
+    'llm-d-70b-2replicas-H100': 'llm-d (2 replicas)' + '\n' + 'Prefix (score=2) & Load (score=1) aware routing (H100)',
+    'llm-d-70b-2replicas-H100-no-router': 'llm-d (2 replicas)' + '\n' + 'Round Robin (H100)',
 }
 
 # Define benchmark types and their titles
@@ -33,9 +34,16 @@ BENCHMARK_TYPES = {
 # Define QPS ranges for each benchmark type
 BENCHMARK_QPS_RANGES = {
     # 'sharegpt': (0, 1.4),
-    'sharegpt': (0, 10.0),
+    'sharegpt': (0, 40.0),
     'long_input': (0, 1.2),
     'short_input': (0, 10.0)
+}
+
+# Define y-axis ranges for each metric
+BENCHMARK_Y_RANGES = {
+    'itl': (0, 0.1),      # Inter-token Latency in seconds
+    'ttft': (0, 1.0),     # Time to First Token in seconds
+    'throughput': (0, 1000)  # Throughput in tokens per second
 }
 
 def extract_qps(filename):
@@ -145,6 +153,7 @@ def plot_metrics(results_dict, benchmark_type, title, benchmark_dir, model_name)
     ax1.set_ylabel('Average Inter-token Latency (s)')
     ax1.set_title('Average Inter-token Latency vs QPS')
     ax1.set_xlim(qps_min, qps_max)
+    ax1.set_ylim(BENCHMARK_Y_RANGES['itl'])
     ax1.grid(True)
     ax1.legend()
     
@@ -157,6 +166,7 @@ def plot_metrics(results_dict, benchmark_type, title, benchmark_dir, model_name)
     ax2.set_ylabel('Average Time to First Token (s)')
     ax2.set_title('Average Time to First Token vs QPS')
     ax2.set_xlim(qps_min, qps_max)
+    ax2.set_ylim(BENCHMARK_Y_RANGES['ttft'])
     ax2.grid(True)
     ax2.legend()
     
@@ -169,6 +179,7 @@ def plot_metrics(results_dict, benchmark_type, title, benchmark_dir, model_name)
     ax3.set_ylabel('Throughput (tokens/s)')
     ax3.set_title('Throughput vs QPS')
     ax3.set_xlim(qps_min, qps_max)
+    ax3.set_ylim(BENCHMARK_Y_RANGES['throughput'])
     ax3.grid(True)
     ax3.legend()
     

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-llama-3-70b
+  namespace: llmdbench
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: http  # Use the named port instead of number
+      protocol: TCP
+      name: http
+  selector:
+    app: vllm-llama-3-70b  # Just use the main app label
