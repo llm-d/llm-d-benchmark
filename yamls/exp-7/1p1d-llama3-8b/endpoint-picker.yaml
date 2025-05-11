@@ -10,4 +10,4 @@ spec:
       appProtocol: http2
   type: ClusterIP
   selector:
-    app: llama3-8b-epp
+    app: endpoint-picker

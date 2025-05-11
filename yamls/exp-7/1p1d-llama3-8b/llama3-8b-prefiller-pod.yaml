@@ -27,7 +27,7 @@ spec:
         - "--model"
         - "meta-llama/Llama-3.1-8B-Instruct"
         - "--port"
-        - "80"
+        - "8000"
         - "--enforce-eager"
         - "--kv-transfer-config"
         - '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'

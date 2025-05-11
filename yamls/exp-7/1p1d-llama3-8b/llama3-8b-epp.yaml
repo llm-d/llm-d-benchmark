@@ -4,15 +4,15 @@ metadata:
   name: llama3-8b-epp
   namespace: vllm-prod
   labels:
-    app: llama3-8b-epp
+    app: endpoint-picker
 spec:
   selector:
     matchLabels:
-      app: llama3-8b-epp
+      app: endpoint-picker
   template:
     metadata:
       labels:
-        app: llama3-8b-epp
+        app: endpoint-picker
     spec:
       imagePullSecrets:
       - name: inference-gateway-quay-secret
