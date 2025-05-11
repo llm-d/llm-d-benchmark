@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama-4-scout
+  labels:
+    app: llama-4-scout
+  namespace: llmdbench2
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: llama-4-scout
+  template:
+    metadata:
+      labels:
+        app: llama-4-scout
+    spec:
+      imagePullSecrets:
+      - name: vllm-common-quay-secret
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu.product
+                operator: In
+                values:
+                - NVIDIA-H100-80GB-HBM3
+      containers:
+      - args:
+        - |
+          vllm serve RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic \
+            --port 80 \
+            --disable-log-requests \
+            --gpu-memory-utilization 0.95 \
+            --max-model-len 10000 \
+            --tensor-parallel-size 2
+        command:
+        - /bin/sh
+        - -c
+        env:
+        - name: HF_HOME
+          value: /root/.cache/huggingface
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: token
+              name: vllm-common-hf-token
+        - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+          value: "1"
+        - name: VLLM_DISABLE_COMPILE_CACHE
+          value: "1"
+        image: quay.io/llm-d/llm-d-dev:0.0.6-amd64
+        imagePullPolicy: Always
+        name: llama-4-scout
+        ports:
+        - containerPort: 80
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+            scheme: HTTP
+          initialDelaySeconds: 300
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+            scheme: HTTP
+          initialDelaySeconds: 300
+          periodSeconds: 5
+        resources:
+          limits:
+            nvidia.com/gpu: "2"
+          requests:
+            cpu: "10"
+            ephemeral-storage: "30Gi"
+            memory: 200G
+            nvidia.com/gpu: "2"
+        volumeMounts:
+        - mountPath: /root/.cache/huggingface
+          name: cache-volume
+        - mountPath: /dev/shm
+          name: shm
+      volumes:
+      - name: cache-volume
+        persistentVolumeClaim:
+          claimName: model-cache
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 8Gi
+        name: shm
