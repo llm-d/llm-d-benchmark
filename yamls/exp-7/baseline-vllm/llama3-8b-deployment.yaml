@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama3-8b
+  labels:
+    app: llama3-8b
+  namespace: aibrix-system
+spec:
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: llama3-8b
+  template:
+    metadata:
+      labels:
+        app: llama3-8b
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu.product
+                operator: In
+                values:
+                - NVIDIA-A100-SXM4-80GB
+      containers:
+      - args:
+        - |
+          vllm serve meta-llama/Llama-3.1-8B-Instruct \
+            --port 80
+        command:
+        - /bin/sh
+        - -c
+        env:
+        - name: HF_HOME
+          value: /root/.cache/huggingface
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: token
+              name: hf-token
+        - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+          value: "1"
+        - name: VLLM_DISABLE_COMPILE_CACHE
+          value: "1"
+        image: vllm/vllm-openai:latest
+        imagePullPolicy: Always
+        name: llama3-8b
+        ports:
+        - containerPort: 80
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+            scheme: HTTP
+          initialDelaySeconds: 300
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+            scheme: HTTP
+          initialDelaySeconds: 300
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 10
+        resources:
+          limits:
+            nvidia.com/gpu: "1"
+          requests:
+            cpu: "16"
+            ephemeral-storage: "30Gi"
+            memory: "40Gi"
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - mountPath: /root/.cache/huggingface
+          name: cache-volume
+        - mountPath: /dev/shm
+          name: shm
+      volumes:
+      - name: cache-volume
+        persistentVolumeClaim:
+          claimName: model-cache
+      - emptyDir:
+          medium: Memory
+          sizeLimit: 8Gi
+        name: shm

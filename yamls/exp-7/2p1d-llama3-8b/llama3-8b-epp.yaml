@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama3-8b-epp
+  namespace: vllm-prod
+  labels:
+    app: endpoint-picker
+spec:
+  selector:
+    matchLabels:
+      app: endpoint-picker
+  template:
+    metadata:
+      labels:
+        app: endpoint-picker
+    spec:
+      imagePullSecrets:
+      - name: inference-gateway-quay-secret
+      containers:
+        - args:
+            - --poolName
+            - llama3-8b
+            - --poolNamespace
+            - vllm-prod
+            - -v
+            - "4"
+            - --zap-encoder
+            - json
+            - --grpcPort
+            - "9002"
+            - --grpcHealthPort
+            - "9003"
+          env:
+            - name: PD_ENABLED
+              value: "true"
+            - name: PD_PROMPT_LEN_THRESHOLD
+              value: "10"
+            #   - name: KVCACHE_INDEXER_REDIS_ADDR
+            #     value: vllm-p2p-lookup-server-service.e2e-solution.svc.cluster.local:8100
+            #image: quay.io/llm-d/llm-d-gateway-api-inference-extension-dev:0.0.5
+          image: quay.io/llm-d/llm-d-inference-scheduler:0.0.1
+          # image: quay.io/llm-d/llm-d-gateway-api-inference-extension-dev:0.0.5-amd64
+          imagePullPolicy: Always
+          name: epp
+          ports:
+            - containerPort: 9002
+              protocol: TCP
+            - containerPort: 9003
+              protocol: TCP
+            - containerPort: 9090
+              name: metrics
+              protocol: TCP

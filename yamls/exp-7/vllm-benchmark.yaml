@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-benchmark
+  namespace: vllm-prod
+  labels:
+    app: vllm-benchmark
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-benchmark
+  template:
+    metadata:
+      labels:
+        app: vllm-benchmark
+    spec:
+      serviceAccountName: default
+      containers:
+      - name: vllm-benchmark
+        image: vllm/vllm-openai:latest
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "8"
+            memory: "16Gi"
+        command: ["/bin/bash", "-c", "sleep infinity"]
+        volumeMounts:
+        - name: workload-data
+          mountPath: /workload-data
+        env:
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: vllm-standalone-hf-token
+              key: token
+      volumes:
+      - name: workload-data
+        persistentVolumeClaim:
+          claimName: workload-pvc
