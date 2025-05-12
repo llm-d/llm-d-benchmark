@@ -2,7 +2,7 @@ apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferencePool
 metadata:
   name: llama3-8b
-  namespace: vllm-prod
+  namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE
 spec:
   extensionRef:
     name: llama3-8b-epp

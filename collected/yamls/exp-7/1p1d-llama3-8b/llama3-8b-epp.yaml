@@ -15,7 +15,7 @@ spec:
         app: endpoint-picker
     spec:
       imagePullSecrets:
-      - name: inference-gateway-quay-secret
+      - name: $LLMDBENCH_QUAY_SECRET
       containers:
         - args:
             - --poolName
