@@ -32,9 +32,9 @@ ARG FM_PERF_BRANCH=dev-llm-d
 RUN git clone --branch ${FM_PERF_BRANCH} ${FM_PERF_REPO}
 
 # Step 5: Copy local fmperf files and environment variable files
-COPY ./hack/setup/scenarios /workspace/scenarios 
-COPY ./hack/setup/env.sh /workspace/env.sh  
-COPY ./hack/setup/run_experiment.sh /workspace/hack/setup/run_experiment.sh
+COPY ./hack/deploy/scenarios /workspace/scenarios
+COPY ./hack/deploy/env.sh /workspace/env.sh
+COPY ./hack/deploy/run_experiment.sh /workspace/hack/setup/run_experiment.sh
 
 # Step 6: Set the environment variable for the experiment environment (standalone, p2p, etc.)
 ARG ENVIRONMENT=standalone

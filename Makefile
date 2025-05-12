@@ -35,18 +35,11 @@ test: check-ginkgo ## Run tests
 post-deploy-test: ## Run post deployment tests
 	echo Success!
 	@echo "Post-deployment tests passed."
-	
+
 .PHONY: lint
 lint: check-golangci-lint ## Run lint
 	@printf "\033[33;1m==== Running linting ====\033[0m\n"
 	golangci-lint run
-
-##@ Build
-
-.PHONY: build
-build: check-go ##
-	@printf "\033[33;1m==== Building ====\033[0m\n"
-	go build -o bin/$(PROJECT_NAME) cmd/$(PROJECT_NAME)/main.go
 
 ##@ Container Build/Push
 
@@ -142,7 +135,7 @@ install-k8s: check-kubectl check-kustomize check-envsubst ## Install on Kubernet
 	echo "Kubernetes installation complete."; \
 	echo "To use the app, run:"; \
 	echo "alias $(PROJECT_NAME)='kubectl exec -n $(NAMESPACE) -it $$POD -- /app/$(PROJECT_NAME)'"
-	
+
 .PHONY: uninstall-k8s
 uninstall-k8s: check-kubectl check-kustomize check-envsubst ## Uninstall from Kubernetes
 	export PROJECT_NAME=${PROJECT_NAME}
@@ -169,7 +162,7 @@ install-openshift: check-kubectl check-kustomize check-envsubst ## Install on Op
 	@POD=$$(kubectl get pod -l app=$(PROJECT_NAME)-statefulset -n $(NAMESPACE) -o jsonpath='{.items[0].metadata.name}'); \
 	echo "OpenShift installation complete."; \
 	echo "To use the app, run:"; \
-	echo "alias $(PROJECT_NAME)='kubectl exec -n $(NAMESPACE) -it $$POD -- /app/$(PROJECT_NAME)'" 
+	echo "alias $(PROJECT_NAME)='kubectl exec -n $(NAMESPACE) -it $$POD -- /app/$(PROJECT_NAME)'"
 
 .PHONY: uninstall-openshift
 uninstall-openshift: check-kubectl check-kustomize check-envsubst ## Uninstall from OpenShift

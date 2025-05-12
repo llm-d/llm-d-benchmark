@@ -1,9 +1,9 @@
-# Deploy and Teardown benchmark tests
+# Benchmark deploy, execution, data collection, analysis and teardown
 
 ## Clone llm-d-benchmark repo
 ```
 git clone https://github.com/neuralmagic/llm-d-benchmark
-cd llm-d-benchmark/hack/setup
+cd llm-d-benchmark/hack/deploy
 ```
 
 ## Minimal set of required environment variables
@@ -28,12 +28,12 @@ export LLMDBENCH_QUAY_PASSWORD="..."
 
 ## list of steps
 ```
-./deploy.sh -h
+./up.sh -h
 ```
 
 ## to dry-run
 ```
-./deploy.sh -n
+./up.sh -n
 ```
 
 ## VLLMs can be deployed by one of the following methods:
@@ -55,18 +55,23 @@ source scenario/<scenario name>
 
 ## At this point, with all the environment variables set (tip, `env | grep ^LLMDBENCH_ | sort`) you should be ready to deploy and test
 ```
-./deploy.sh
+./up.sh
 ```
 
-## to cleanup your mess
+### to re-execute only individual steps (full name or number)
+```
+./up.sh --step 07_smoketest_standalone_models.sh
+./up.sh -s 7
+./up.sh -s 3-5
+./up.sh -s 5,7
+```
+
+## Once everything is fully deployed, an experiment can be run
+```
+./run.sh
+```
+
+## Finally, cleanup everything
 ```
 ./cleanup.sh
-```
-
-## to execute an individual step (full name or number)
-```
-./deploy.sh --step 07_smoketest_standalone_models.sh
-./deploy.sh -s 7
-./deploy.sh -s 3-5
-./deploy.sh -s 5,7
 ```

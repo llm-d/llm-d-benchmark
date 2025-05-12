@@ -37,6 +37,8 @@ hack/setup/fmperf/
 hack/setup/gateway-api-inference-extension/
 hack/setup/llm-d-kv-cache-manager/
 
+util/rbac_audit_and_report.md
+
 # Log directories
 data/**/logs/
 **/logs/
