@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: llama3-8b-epp
-  namespace: vllm-prod
+  namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE
   labels:
     app: endpoint-picker
 spec:

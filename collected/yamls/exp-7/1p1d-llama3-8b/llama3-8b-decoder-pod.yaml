@@ -2,13 +2,15 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: llama3-8b-decoder
-  namespace: vllm-prod
+  namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE
   labels:
     app: llama3-8b-decoder
     llm-d.ai/inferenceServing: "true"
     llm-d.ai/model: "llama3-8b"
     llm-d.ai/role: "decode"
 spec:
+  imagePullSecrets:
+    - name: $LLMDBENCH_QUAY_SECRET
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -17,7 +19,16 @@ spec:
               - key: nvidia.com/gpu.product
                 operator: In
                 values:
-                  - NVIDIA-A100-SXM4-80GB
+                  - $LLMDBENCH_GPU_MODEL
+    podAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - llama3-8b-prefiller
+        topologyKey: kubernetes.io/hostname
   initContainers:
     - name: routing-proxy
       image: quay.io/llm-d/llm-d-routing-sidecar:0.0.5
@@ -62,7 +73,7 @@ spec:
         - name: HF_TOKEN
           valueFrom:
             secretKeyRef:
-              name: vllm-standalone-hf-token
+              name: $LLMDBENCH_HF_SECRET
               key: token
       ports:
         - containerPort: 5557

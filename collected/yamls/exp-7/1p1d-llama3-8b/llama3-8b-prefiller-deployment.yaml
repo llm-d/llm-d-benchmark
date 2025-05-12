@@ -9,7 +9,7 @@ metadata:
     llm-d.ai/model: "llama3-8b"
     llm-d.ai/role: "prefill"
 spec:
-  replicas: 2  # Number of prefiller pods
+  replicas: 1  # Number of prefiller pods
   selector:
     matchLabels:
       app: llama3-8b-prefiller
