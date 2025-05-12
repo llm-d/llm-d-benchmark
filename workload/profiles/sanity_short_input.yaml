@@ -1,6 +1,6 @@
 #LMBenchmark Workload Specification Example
 # This specification is used for running benchmarks with the LMBenchmark container
-model_name: "meta-llama/Llama-3.1-8B-Instruct"  # Model identifier
+model_name: "REPLACE_MODEL_NAME"  # Model identifier
 scenarios: "short-input"  # Scenarios to run (all, or sharegpt, long-input, short-input)
 # sharegpt: 0.5 0.67 0.84 1 1.17 1.34
 # long-input: 1.1 0.9 0.7 0.5 0.3 0.1
@@ -8,4 +8,4 @@ scenarios: "short-input"  # Scenarios to run (all, or sharegpt, long-input, shor
 # qps_values: "0.5 1 2 5 10"  # Space-separated list of QPS values to test
 qps_values: "0.5"  # Space-separated list of QPS values to test
 image: "lmcache/lmcache-benchmark:main"  # Container image to use
-service_account: "inference-gateway"  # Service account to use for the job 
+service_account: "inference-gateway"  # Service account to use for the job

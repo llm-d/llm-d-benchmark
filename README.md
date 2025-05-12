@@ -8,11 +8,11 @@ cd llm-d-benchmark/hack/deploy
 
 ## Minimal set of required environment variables
 ```
-export LLMDBENCH_OPENSHIFT_HOST="https://api.fmaas-platform-eval.fmaas.res.ibm.com"
-export LLMDBENCH_OPENSHIFT_TOKEN="..."
-export LLMDBENCH_OPENSHIFT_NAMESPACE="..."
+export LLMDBENCH_CLUSTER_HOST="https://api.fmaas-platform-eval.fmaas.res.ibm.com"
+export LLMDBENCH_CLUSTER_TOKEN="..."
+export LLMDBENCH_CLUSTER_NAMESPACE="..."
 ```
-### IMPORTANT: in case you want to simply use the current context, just set `export LLMDBENCH_OPENSHIFT_HOST=auto`
+### IMPORTANT: in case you want to simply use the current context, just set `export LLMDBENCH_CLUSTER_HOST=auto`
 
 ## In case you need to create a pull secret and hugging face token(s) these additional variables will be needed
 ```

@@ -25,7 +25,7 @@ def initialize_kubernetes(context_path, work_namespace, work_pvc_name):
     print(f"Loading kube config from \"{context_path}\"")
     kubernetes.config.load_kube_config(context_path)
 
-    _, active_context = kubernetes.config.list_kube_config_contexts()
+    _, active_context = kubernetes.config.list_kube_config_contexts(context_path)
 
     cluster_name=active_context['context']['cluster']
     print(f"Cluster name is \"{cluster_name}\"")
@@ -53,7 +53,7 @@ if __name__ == "__main__":
         context_path = f"{work_dir}/environment/context.ctx"
     print(f"Path to context is \"{context_path}\"")
 
-    work_namespace = os.environ.get("LLMDBENCH_OPENSHIFT_NAMESPACE")
+    work_namespace = os.environ.get("LLMDBENCH_CLUSTER_NAMESPACE")
     if not work_namespace :
         work_namespace = "default"
     print(f"Cluster namespace is \"{work_namespace}\"")
