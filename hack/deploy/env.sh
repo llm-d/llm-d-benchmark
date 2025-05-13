@@ -120,6 +120,13 @@ if [[ $LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED -eq 0 ]]; then
   return 0
 fi
 
+if [[ ! -z $LLMDBENCH_DEPLOY_SCENARIO ]]; then
+  export LLMDBENCH_SCENARIO_FULL_PATH=$(echo ${LLMDBENCH_CONTROL_DIR}/scenarios/$LLMDBENCH_DEPLOY_SCENARIO'.sh' | $LLMDBENCH_CONTROL_SCMD 's^.sh.sh^.sh^g')
+  if [[ -f $LLMDBENCH_SCENARIO_FULL_PATH ]]; then
+    source $LLMDBENCH_SCENARIO_FULL_PATH
+  fi
+fi
+
 required_vars=("LLMDBENCH_CLUSTER_NAMESPACE")
 for var in "${required_vars[@]}"; do
   if [ -z "${!var:-}" ]; then
@@ -129,13 +136,13 @@ for var in "${required_vars[@]}"; do
 done
 
 export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR:-$(mktemp -d -t ${LLMDBENCH_CONTROL_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)}
+
 mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls
 mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands
 mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
 mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
 mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
 mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/results
-
 
 if [[ -f ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME} ]]; then
   export LLMDBENCH_CONTROL_KCMD="oc --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME}"
@@ -247,6 +254,9 @@ function llmdbench_execute_cmd {
   local actual_cmd=$1
   local dry_run=${2:-1}
   local verbose=${3:-0}
+  local attempts=${4:-1}
+  local counter=1
+  local delay=10
 
   if [[ ${dry_run} -eq 1 ]]; then
 
@@ -257,14 +267,24 @@ function llmdbench_execute_cmd {
   else
     _msg="---> will execute the command \"${actual_cmd}\""
     echo ${_msg} > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/$(date +%s%N)_command.log
-    if [[ ${verbose} -eq 0 ]]; then
-      eval ${actual_cmd} &>/dev/null
-      local ecode=$?
-    else
-      echo ${_msg}
-      eval ${actual_cmd}
-      local ecode=$?
-    fi
+    while [[ "${counter}" -le "${attempts}" ]]; do
+      if [[ ${verbose} -eq 0 ]]; then
+        eval ${actual_cmd} &>/dev/null
+        local ecode=$?
+      else
+        echo ${_msg}
+        eval ${actual_cmd}
+        local ecode=$?
+      fi
+
+      if [[ $ecode -ne 0 && ${attempts} -gt 1 ]]
+      then
+        counter="$(( ${counter} + 1 ))"
+        sleep ${delay}
+      else
+          break
+      fi
+    done
   fi
 
   if [[ $ecode -ne 0 ]]

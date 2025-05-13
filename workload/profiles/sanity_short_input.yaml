@@ -7,5 +7,5 @@ scenarios: "short-input"  # Scenarios to run (all, or sharegpt, long-input, shor
 # short-input: 0.5 1 2 5 10
 # qps_values: "0.5 1 2 5 10"  # Space-separated list of QPS values to test
 qps_values: "0.5"  # Space-separated list of QPS values to test
-image: "lmcache/lmcache-benchmark:main"  # Container image to use
+image: "REPLACE_IMAGE"  # Container image to use
 service_account: "inference-gateway"  # Service account to use for the job

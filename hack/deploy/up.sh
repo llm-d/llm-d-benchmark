@@ -90,10 +90,6 @@ done
 
 export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=1
 
-if [[ -f ${LLMDBENCH_CONTROL_DIR}/scenarios/$LLMDBENCH_DEPLOY_SCENARIO ]]; then
-  source ${LLMDBENCH_CONTROL_DIR}/scenarios/$LLMDBENCH_DEPLOY_SCENARIO
-fi
-
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 run_step() {

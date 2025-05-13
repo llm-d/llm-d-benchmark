@@ -61,4 +61,4 @@ ARG SCENARIO=none
 ENV SCENARIO=${SCENARIO}
 
 # Step 7: Set the entrypoint to run the experiment
-ENTRYPOINT ["/workspace/llm-d-benchmark/hack/deploy/run.sh -c ${SCENARIO} -n"]
+ENTRYPOINT ["/workspace/llm-d-benchmark/run.sh -c ${SCENARIO} -n"]

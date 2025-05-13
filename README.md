@@ -58,6 +58,8 @@ source scenario/<scenario name>
 ./up.sh
 ```
 
+## IMPORTANT: the scenario can be indicated as part of the command line optios for `up.sh`
+
 ### to re-execute only individual steps (full name or number)
 ```
 ./up.sh --step 07_smoketest_standalone_models.sh
@@ -70,6 +72,10 @@ source scenario/<scenario name>
 ```
 ./run.sh
 ```
+## IMPORTANT: the scenario can be indicated as part of the command line optios for `up.sh`
+
+```
+
 
 ## Finally, cleanup everything
 ```

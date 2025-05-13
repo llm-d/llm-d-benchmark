@@ -326,6 +326,6 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
 done
 
 announce "A snapshot of the relevant (model-specific) resources on namespace \"${LLMDBENCH_CLUSTER_NAMESPACE}\":"
-${LLMDBENCH_CONTROL_KCMD} get --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} gatewayparameters,gateway,httproute,service,deployment,pods,secrets
+${LLMDBENCH_CONTROL_KCMD} get --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} gatewayparameters,gateway,httproute,route,service,deployment,pods,secrets
 
 #popd &>/dev/null
