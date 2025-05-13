@@ -2,7 +2,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: inference-gateway
-  namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE
+  namespace: $LLMDBENCH_CLUSTER_NAMESPACE
 spec:
   gatewayClassName: kgateway
   infrastructure:

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: llama3-8b-prefiller
-  namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE
+  namespace: $LLMDBENCH_CLUSTER_NAMESPACE
   labels:
     app: llama3-8b-prefiller
     llm-d.ai/inferenceServing: "true"
@@ -107,7 +107,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: llama3-8b-prefiller
-  namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE
+  namespace: $LLMDBENCH_CLUSTER_NAMESPACE
 spec:
   selector:
     app: llama3-8b-prefiller

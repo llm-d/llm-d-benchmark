@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vllm-benchmark
-  namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE
+  namespace: $LLMDBENCH_CLUSTER_NAMESPACE
   labels:
     app: vllm-benchmark
 spec:

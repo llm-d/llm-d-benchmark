@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: llama3-8b-epp
-  namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE
+  namespace: $LLMDBENCH_CLUSTER_NAMESPACE
   labels:
     app: endpoint-picker
 spec:
@@ -21,7 +21,7 @@ spec:
             - --poolName
             - llama3-8b
             - --poolNamespace
-            - $LLMDBENCH_OPENSHIFT_NAMESPACE
+            - $LLMDBENCH_CLUSTER_NAMESPACE
             - -v
             - "4"
             - --zap-encoder

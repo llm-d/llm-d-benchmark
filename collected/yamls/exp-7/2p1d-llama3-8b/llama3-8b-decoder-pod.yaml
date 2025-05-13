@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: llama3-8b-decoder
-  namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE
+  namespace: $LLMDBENCH_CLUSTER_NAMESPACE
   labels:
     app: llama3-8b-decoder
     llm-d.ai/inferenceServing: "true"
