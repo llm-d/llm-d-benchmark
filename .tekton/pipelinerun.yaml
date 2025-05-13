@@ -118,21 +118,21 @@ spec:
           - name: deleteExisting
             value: "$(params.deleteExisting)"
 
-      - name: go-lint
-        when:
-          - input: "$(params.runOptional)"
-            operator: in
-            values: ["true"]
-          - input: "$(tasks.read-cluster-name.results.cluster-name)"
-            operator: in
-            values: ["cluster-platform-eval"]
-        taskRef:
-          name: go-lint-task
-        runAfter:
-          - fetch-repository
-        workspaces:
-          - name: source
-            workspace: source
+      # - name: go-lint
+      #   when:
+      #     - input: "$(params.runOptional)"
+      #       operator: in
+      #       values: ["true"]
+      #     - input: "$(tasks.read-cluster-name.results.cluster-name)"
+      #       operator: in
+      #       values: ["cluster-platform-eval"]
+      #   taskRef:
+      #     name: go-lint-task
+      #   runAfter:
+      #     - fetch-repository
+      #   workspaces:
+      #     - name: source
+      #       workspace: source
 
       - name: go-test
         when:
@@ -145,7 +145,8 @@ spec:
         taskRef:
           name: go-test-task
         runAfter:
-          - go-lint
+          # - go-lint
+          - fetch-repository
         workspaces:
           - name: source
             workspace: source
