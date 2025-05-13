@@ -72,10 +72,11 @@ source scenario/<scenario name>
 ```
 ./run.sh
 ```
-## IMPORTANT: the scenario can be indicated as part of the command line optios for `up.sh`
+## IMPORTANT: the scenario can be indicated as part of the command line optios for `run.sh`
 
 ```
-
+./run.sh -c ocp_H100MIG_p2p_llama-8b
+```
 
 ## Finally, cleanup everything
 ```
