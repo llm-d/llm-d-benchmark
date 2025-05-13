@@ -21,7 +21,7 @@ spec:
             - --poolName
             - llama3-8b
             - --poolNamespace
-            - vllm-prod
+            - $LLMDBENCH_OPENSHIFT_NAMESPACE
             - -v
             - "4"
             - --zap-encoder

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vllm-benchmark
-  namespace: vllm-prod
+  namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE
   labels:
     app: vllm-benchmark
 spec:
@@ -32,7 +32,7 @@ spec:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
-              name: vllm-standalone-hf-token
+              name: $LLMDBENCH_HF_SECRET
               key: token
       volumes:
       - name: workload-data
