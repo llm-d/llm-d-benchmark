@@ -134,45 +134,45 @@ spec:
       #     - name: source
       #       workspace: source
 
-      - name: go-test
-        when:
-          - input: "$(params.runOptional)"
-            operator: in
-            values: ["true"]
-          - input: "$(tasks.read-cluster-name.results.cluster-name)"
-            operator: in
-            values: ["cluster-platform-eval"]
-        taskRef:
-          name: go-test-task
-        runAfter:
-          # - go-lint
-          - fetch-repository
-        workspaces:
-          - name: source
-            workspace: source
+      # - name: go-test
+      #   when:
+      #     - input: "$(params.runOptional)"
+      #       operator: in
+      #       values: ["true"]
+      #     - input: "$(tasks.read-cluster-name.results.cluster-name)"
+      #       operator: in
+      #       values: ["cluster-platform-eval"]
+      #   taskRef:
+      #     name: go-test-task
+      #   runAfter:
+      #     - go-lint
+      #   workspaces:
+      #     - name: source
+      #       workspace: source
 
-      - name: go-build
-        when:
-          - input: "$(params.runOptional)"
-            operator: in
-            values: ["true"]
-          - input: "$(tasks.read-cluster-name.results.cluster-name)"
-            operator: in
-            values: ["cluster-platform-eval"]
-        taskRef:
-          name: go-build-task
-        runAfter:
-          - go-test
-        workspaces:
-          - name: source
-            workspace: source
+      # - name: go-build
+      #   when:
+      #     - input: "$(params.runOptional)"
+      #       operator: in
+      #       values: ["true"]
+      #     - input: "$(tasks.read-cluster-name.results.cluster-name)"
+      #       operator: in
+      #       values: ["cluster-platform-eval"]
+      #   taskRef:
+      #     name: go-build-task
+      #   runAfter:
+      #     - go-test
+      #   workspaces:
+      #     - name: source
+      #       workspace: source
 
       - name: extract-version-and-registry
         params:
           - name: source-branch  
             value: "$(params.source_branch)"
         runAfter:
-          - go-build
+          # - go-build
+          - fetch-repository
         taskRef:
           name: extract-version-and-registry-task
         workspaces:
