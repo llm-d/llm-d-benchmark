@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: llama3-8b-epp
-  namespace: vllm-prod
+  namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE
   labels:
     app: endpoint-picker
 spec:
@@ -15,13 +15,13 @@ spec:
         app: endpoint-picker
     spec:
       imagePullSecrets:
-      - name: inference-gateway-quay-secret
+      - name: $LLMDBENCH_QUAY_SECRET
       containers:
         - args:
             - --poolName
             - llama3-8b
             - --poolNamespace
-            - vllm-prod
+            - $LLMDBENCH_OPENSHIFT_NAMESPACE
             - -v
             - "4"
             - --zap-encoder

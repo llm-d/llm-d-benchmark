@@ -16,15 +16,22 @@ spec:
         app: vllm-benchmark
     spec:
       serviceAccountName: default
+      initContainers:
+      - name: clone-repo
+        image: alpine/git:latest
+        command: ["/bin/sh", "-c", "git config --global --add safe.directory /workload-data/vllm && if [ -d '/workload-data/vllm' ]; then cd /workload-data/vllm && git pull; else git clone https://github.com/vllm-project/vllm.git /workload-data/vllm; fi"]
+        volumeMounts:
+        - name: workload-data
+          mountPath: /workload-data
       containers:
       - name: vllm-benchmark
-        image: vllm/vllm-openai:latest
+        image: ubuntu:22.04
         imagePullPolicy: Always
         resources:
           requests:
             cpu: "8"
             memory: "16Gi"
-        command: ["/bin/bash", "-c", "sleep infinity"]
+        command: ["/bin/bash", "-c", "apt-get update && apt-get install -y python3-pip vim && pip3 install vllm && sleep infinity"]
         volumeMounts:
         - name: workload-data
           mountPath: /workload-data

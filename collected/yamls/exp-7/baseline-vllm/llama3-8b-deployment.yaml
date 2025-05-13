@@ -4,7 +4,7 @@ metadata:
   name: llama3-8b
   labels:
     app: llama3-8b
-  namespace: aibrix-system
+  namespace: $LLMDBENCH_OPENSHIFT_NAMESPACE
 spec:
   replicas: 2
   revisionHistoryLimit: 10
@@ -24,7 +24,7 @@ spec:
               - key: nvidia.com/gpu.product
                 operator: In
                 values:
-                - NVIDIA-A100-SXM4-80GB
+                - $LLMDBENCH_GPU_MODEL
       containers:
       - args:
         - |
@@ -40,7 +40,7 @@ spec:
           valueFrom:
             secretKeyRef:
               key: token
-              name: hf-token
+              name: $LLMDBENCH_HF_SECRET
         - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
           value: "1"
         - name: VLLM_DISABLE_COMPILE_CACHE
