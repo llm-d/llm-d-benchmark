@@ -80,5 +80,5 @@ source scenario/<scenario name>
 
 ## Finally, cleanup everything
 ```
-./cleanup.sh
+./down.sh
 ```
