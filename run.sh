@@ -31,7 +31,7 @@ export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../../)
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 export LLMDBENCH_CONTROL_DRY_RUN=${LLMDBENCH_CONTROL_DRY_RUN:-0}
-export LLMDBENCH_VERBOSE=${LLMDBENCH_VERBOSE:-0}
+export LLMDBENCH_CONTROL_VERBOSE=${LLMDBENCH_CONTROL_VERBOSE:-0}
 export LLMDBENCH_DEPLOY_SCENARIO=
 export LLMDBENCH_FMPERF_EXPERIMENT_SKIP=0
 
@@ -39,7 +39,7 @@ function show_usage {
     echo -e "Usage: $(echo $0 | rev | cut -d '/' -f 1 | rev) -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
              -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
              -z/--skip [skip the execution of the experiment, and only collect data (default=$LLMDBENCH_FMPERF_EXPERIMENT_SKIP) ] \n \
-             -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_VERBOSE) ] \n \
+             -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
              -h/--help (show this help)"
 }
 
@@ -48,20 +48,20 @@ while [[ $# -gt 0 ]]; do
 
     case $key in
         -c=*|--scenario=*)
-        export LLMDBENCH_DEPLOY_SCENARIO=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=$(echo $key | cut -d '=' -f 2)
         ;;
         -c|--scenario)
-        export LLMDBENCH_DEPLOY_SCENARIO="$2"
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO="$2"
         shift
         ;;
         -n|--dry-run)
-        export LLMDBENCH_CONTROL_DRY_RUN=1
+        export LLMDBENCH_CLIOVERRIDE_CONTROL_DRY_RUN=1
         ;;
         -z|--skip)
-        export LLMDBENCH_FMPERF_EXPERIMENT_SKIP=1
+        export LLMDBENCH_CLIOVERRIDE_FMPERF_EXPERIMENT_SKIP=1
         ;;
         -v|--verbose)
-        export LLMDBENCH_VERBOSE=1
+        export LLMDBENCH_CLIOVERRIDE_VERBOSE=1
         ;;
         -h|--help)
         show_usage
@@ -91,8 +91,8 @@ pushd ${LLMDBENCH_FMPERF_DIR}/fmperf &>/dev/null
 
 # Hardcode Conda init from known working path
 if [ -f "/opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh" ]; then
-  llmdbench_execute_cmd "source \"/opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
-  llmdbench_execute_cmd "conda activate \"$LLMDBENCH_FMPERF_CONDA_ENV_NAME\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+  llmdbench_execute_cmd "source \"/opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  llmdbench_execute_cmd "conda activate \"$LLMDBENCH_FMPERF_CONDA_ENV_NAME\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 else
   echo "❌ Could not find conda.sh. Please verify your Anaconda installation."
   exit 1
@@ -108,7 +108,7 @@ if [[ ${LLMDBENCH_CONTROL_DRY_RUN} -eq 0 ]]; then
   pip install -e . >/dev/null 2>&1
 fi
 
-llmdbench_execute_cmd "cp -f ${LLMDBENCH_MAIN_DIR}/workload/harnesses/$LLMDBENCH_FMPERF_EXPERIMENT_HARNESS ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses/$LLMDBENCH_FMPERF_EXPERIMENT_HARNESS" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+llmdbench_execute_cmd "cp -f ${LLMDBENCH_MAIN_DIR}/workload/harnesses/$LLMDBENCH_FMPERF_EXPERIMENT_HARNESS ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses/$LLMDBENCH_FMPERF_EXPERIMENT_HARNESS" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 cat ${LLMDBENCH_MAIN_DIR}/workload/profiles/$LLMDBENCH_FMPERF_EXPERIMENT_PROFILE | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_MODEL_NAME^${LLMDBENCH_MODEL2PARAM[${LLMDBENCH_DEPLOY_MODEL_LIST}:name]}^g" -e "s^REPLACE_IMAGE^$LLMDBENCH_FMPERF_CONTAINER_IMAGE^g" > ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$LLMDBENCH_FMPERF_EXPERIMENT_PROFILE
 
 ecmd="${LLMDBENCH_CONTROL_PCMD} ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses/$LLMDBENCH_FMPERF_EXPERIMENT_HARNESS"
@@ -124,7 +124,7 @@ else
 fi
 
 announce "Collecting results ..."
-llmdbench_execute_cmd "mv $(pwd)/pod_log_response.txt ${LLMDBENCH_CONTROL_WORK_DIR}/results/pod_log_response.txt" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+llmdbench_execute_cmd "mv $(pwd)/pod_log_response.txt ${LLMDBENCH_CONTROL_WORK_DIR}/results/pod_log_response.txt" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
 PN=$(echo $LLMDBENCH_EXPERIMENT_ID | $LLMDBENCH_CONTROL_SCMD 's^_^-^g' | tr '[:upper:]' '[:lower:]')
 
@@ -148,10 +148,10 @@ spec:
       claimName: $LLMDBENCH_FMPERF_PVC_NAME
 EOF
 
-llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/run_access_to_pvc.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
-llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod/$PN" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
-llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} cp $PN:/requests/${LLMDBENCH_EXPERIMENT_ID}/ ${LLMDBENCH_CONTROL_WORK_DIR}/results/" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
-llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} delete pod $PN" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/run_access_to_pvc.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod/$PN" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} cp $PN:/requests/${LLMDBENCH_EXPERIMENT_ID}/ ${LLMDBENCH_CONTROL_WORK_DIR}/results/" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} delete pod $PN" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 announce "Done"
 
 popd ${LLMDBENCH_FMPERF_DIR} &>/dev/null

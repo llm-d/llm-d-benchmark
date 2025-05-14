@@ -15,7 +15,7 @@ policy \
 add-scc-to-user \
 anyuid \
 -z ${LLMDBENCH_CLUSTER_SERVICE_ACCOUNT} \
--n $LLMDBENCH_CLUSTER_NAMESPACE" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+-n $LLMDBENCH_CLUSTER_NAMESPACE" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} \
 adm \
@@ -23,12 +23,12 @@ policy \
 add-scc-to-user \
 anyuid \
 -z inference-gateway \
--n $LLMDBENCH_CLUSTER_NAMESPACE" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+-n $LLMDBENCH_CLUSTER_NAMESPACE" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   fi
 
   pushd ${LLMDBENCH_KVCM_DIR} &>/dev/null
   if [[ ! -d llm-d-kv-cache-manager ]]; then
-    llmdbench_execute_cmd "git clone https://github.com/llm-d/llm-d-kv-cache-manager.git || true" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "git clone https://github.com/neuralmagic/llm-d-kv-cache-manager.git || true" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   fi
 
 cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_affinity.yaml
@@ -45,7 +45,7 @@ vllm:
 EOF
 
   pushd llm-d-kv-cache-manager/vllm-setup-helm &>/dev/null
-  llmdbench_execute_cmd "git checkout $LLMDBENCH_KVCM_GIT_BRANCH" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+  llmdbench_execute_cmd "git checkout $LLMDBENCH_KVCM_GIT_BRANCH" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     announce "Installing release vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]}..."
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_HCMD} upgrade --install vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]} . \
@@ -66,7 +66,7 @@ EOF
 --set vllm.image.repository=\"${LLMDBENCH_VLLM_P2P_IMAGE_REPOSITORY}\" \
 --set vllm.image.tag=\"${LLMDBENCH_VLLM_P2P_IMAGE_TAG}\" \
 --set vllm.model.name=${LLMDBENCH_MODEL2PARAM[${model}:name]} \
---set vllm.model.label=${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct \
+--set vllm.model.label=${LLMDBENCH_MODEL2PARAM[${model}:label]}-${LLMDBENCH_MODEL2PARAM[${model}:type]} \
 --set vllm.gpuMemoryUtilization=${LLMDBENCH_VLLM_COMMON_GPU_MEM_UTIL} \
 --set vllm.model.maxModelLen=${LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN} \
 --set vllm.tensorParallelSize=${LLMDBENCH_VLLM_COMMON_GPU_NR} \
@@ -77,19 +77,18 @@ EOF
 --set vllm.resources.requests.\"nvidia\.com/gpu\"=${LLMDBENCH_VLLM_COMMON_GPU_NR} \
 --set dshm.useEmptyDir=true \
 --set dshm.sizeLimit=8Gi \
--f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_affinity.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+-f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_affinity.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   done
   popd &>/dev/null
   popd &>/dev/null
-fi
 
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
 
     announce "ℹ️  Waiting for (p2p) pods serving model ${model} to be in \"Running\" state (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
     announce "ℹ️  Waiting for (p2p) pods serving ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
     cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml
 apiVersion: v1
@@ -103,16 +102,17 @@ spec:
     port: 80
     targetPort: 80
   selector:
-    app: vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]}-vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
+    app: vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:params]}-vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-${LLMDBENCH_MODEL2PARAM[${model}:type]}
   type: ClusterIP
 EOF
 
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_service_${model}.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
     is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} get route --ignore-not-found | grep vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route || true)
     if [[ -z $is_route ]]
     then
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} expose service/vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} --name=vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} expose service/vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} --name=vllm-p2p-${LLMDBENCH_MODEL2PARAM[${model}:label]}-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     fi
     announce "ℹ️  vllm (p2p) ${model} Ready"
-done
+  done
+fi

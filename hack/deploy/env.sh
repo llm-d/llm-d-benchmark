@@ -74,6 +74,7 @@ export LLMDBENCH_DEPLOY_METHODS=${LLMDBENCH_DEPLOY_METHODS:-"standalone"}
 export LLMDBENCH_CONTROL_CLUSTER_NAME=${LLMDBENCH_CONTROL_CLUSTER_NAME:-$(echo ${LLMDBENCH_CLUSTER_URL} | cut -d '.' -f 2)}
 export LLMDBENCH_CONTROL_ENVVAR_DISPLAYED=${LLMDBENCH_CONTROL_ENVVAR_DISPLAYED:-0}
 export LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED=${LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED:-0}
+export LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED=${LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED:-0}
 export LLMDBENCH_CONTROL_PERMISSIONS_CHECKED=${LLMDBENCH_CONTROL_PERMISSIONS_CHECKED:-0}
 export LLMDBENCH_CONTROL_WARNING_DISPLAYED=${LLMDBENCH_CONTROL_WARNING_DISPLAYED:-0}
 export LLMDBENCH_CONTROL_WAIT_TIMEOUT=${LLMDBENCH_CONTROL_WAIT_TIMEOUT:-900}
@@ -125,6 +126,18 @@ if [[ ! -z $LLMDBENCH_DEPLOY_SCENARIO ]]; then
   if [[ -f $LLMDBENCH_SCENARIO_FULL_PATH ]]; then
     source $LLMDBENCH_SCENARIO_FULL_PATH
   fi
+fi
+
+overridevarlist=$(env | grep _CLIOVERRIDE_ | cut -d '=' -f 1)
+if [[ ! -z $overridevarlist ]]; then
+  for overridevar in $overridevarlist; do
+    actualvar=$(echo $overridevar | $LLMDBENCH_CONTROL_SCMD 's^_CLIOVERRIDE^^g')
+    if [[ $LLMDBENCH_CONTROL_VERBOSE -eq 1 && $LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED -eq 0 ]]; then
+      echo "Environment variable $actualvar was overriden by command line options"
+    fi
+    export $actualvar=${!overridevar}
+  done
+  export LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED=1
 fi
 
 required_vars=("LLMDBENCH_CLUSTER_NAMESPACE")
@@ -232,21 +245,33 @@ export LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL=${SHELL:5}
 declare -A LLMDBENCH_MODEL2PARAM
 #LLMDBENCH_MODEL2PARAM["llama-8b:label"]="llama-2-8b"
 #LLMDBENCH_MODEL2PARAM["llama-8b:name"]="meta-llama/Llama-2-8b-chat-hf"
+#---
 LLMDBENCH_MODEL2PARAM["llama-8b:label"]="llama-3-8b"
 LLMDBENCH_MODEL2PARAM["llama-8b:name"]="meta-llama/Llama-3.1-8B-Instruct"
+LLMDBENCH_MODEL2PARAM["llama-8b:type"]="instruct"
 LLMDBENCH_MODEL2PARAM["llama-8b:params"]="8b"
 LLMDBENCH_MODEL2PARAM["llama-8b:cmdline"]="vllm serve meta-llama/Llama-3.1-8B-Instruct --port 80 --disable-log-requests --gpu-memory-utilization $LLMDBENCH_VLLM_COMMON_GPU_MEM_UTIL"
+#---
 LLMDBENCH_MODEL2PARAM["llama-70b:label"]="llama-3-70b"
 LLMDBENCH_MODEL2PARAM["llama-70b:name"]="meta-llama/Llama-3.1-70B-Instruct"
+LLMDBENCH_MODEL2PARAM["llama-70b:type"]="instruct"
 LLMDBENCH_MODEL2PARAM["llama-70b:params"]="70b"
 LLMDBENCH_MODEL2PARAM["llama-70b:cmdline"]="vllm serve meta-llama/Llama-3.1-70B-Instruct --port 80 --max-model-len ${LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN} --disable-log-requests --gpu-memory-utilization $LLMDBENCH_VLLM_COMMON_GPU_MEM_UTIL --tensor-parallel-size $LLMDBENCH_VLLM_COMMON_GPU_NR"
+#---
+LLMDBENCH_MODEL2PARAM["llama-17b:label"]="llama-4-17b"
+LLMDBENCH_MODEL2PARAM["llama-17b:name"]="RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic"
+LLMDBENCH_MODEL2PARAM["llama-17b:type"]="scout"
+LLMDBENCH_MODEL2PARAM["llama-17b:params"]="17b"
+LLMDBENCH_MODEL2PARAM["llama-17b:cmdline"]="vllm serve RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic --port 80 --max-model-len ${LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN} --disable-log-requests --gpu-memory-utilization $LLMDBENCH_VLLM_COMMON_GPU_MEM_UTIL --tensor-parallel-size $LLMDBENCH_VLLM_COMMON_GPU_NR"
 
 if [[ -z $LLMDBENCH_VLLM_COMMON_PVC_NAME ]]; then
   LLMDBENCH_MODEL2PARAM["llama-70b:pvc"]="vllm-standalone-llama-70b-cache"
   LLMDBENCH_MODEL2PARAM["llama-8b:pvc"]="vllm-standalone-llama-8b-cache"
+  LLMDBENCH_MODEL2PARAM["llama-17b:pvc"]="vllm-standalone-llama-17b-cache"
 else
   LLMDBENCH_MODEL2PARAM["llama-70b:pvc"]="$LLMDBENCH_VLLM_COMMON_PVC_NAME"
   LLMDBENCH_MODEL2PARAM["llama-8b:pvc"]="$LLMDBENCH_VLLM_COMMON_PVC_NAME"
+  LLMDBENCH_MODEL2PARAM["llama-17b:pvc"]="$LLMDBENCH_VLLM_COMMON_PVC_NAME"
 fi
 
 function llmdbench_execute_cmd {

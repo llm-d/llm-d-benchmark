@@ -6,12 +6,12 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_P2P_ACTIVE -eq 1 ]]; then
 
   VERSION="v0.3.0"
   if [[ $LLMDBENCH_USER_IS_ADMIN -eq 1 ]]; then
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${VERSION}/manifests.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/${VERSION}/manifests.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   fi
 
 #  pushd ${LLMDBENCH_GAIE_DIR} &>/dev/null
 #  if [[ ! -d gateway-api-inference-extension ]]; then
-#      git clone https://github.com/llm-d/gateway-api-inference-extension.git
+#      git clone https://github.com/neuralmagic/gateway-api-inference-extension.git
 #  fi
 #  pushd gateway-api-inference-extension &>/dev/null
 
@@ -150,7 +150,7 @@ spec:
       containers:
       - args:
         - -poolName
-        - "vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct"
+        - "vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-${LLMDBENCH_MODEL2PARAM[${model}:type]}"
         - -poolNamespace
         - "${LLMDBENCH_CLUSTER_NAMESPACE}"
         - -v
@@ -267,7 +267,7 @@ spec:
   - backendRefs:
     - group: inference.networking.x-k8s.io
       kind: InferencePool
-      name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
+      name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-${LLMDBENCH_MODEL2PARAM[${model}:type]}
       port: 8000
     matches:
     - path:
@@ -281,7 +281,7 @@ EOF
 apiVersion: inference.networking.x-k8s.io/v1alpha2
 kind: InferencePool
 metadata:
-  name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
+  name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-${LLMDBENCH_MODEL2PARAM[${model}:type]}
   namespace: ${LLMDBENCH_CLUSTER_NAMESPACE}
 spec:
   extensionRef:
@@ -302,30 +302,32 @@ spec:
   criticality: Critical
   modelName: ${LLMDBENCH_MODEL2PARAM[${model}:name]}
   poolRef:
-    name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-instruct
+    name: vllm-${LLMDBENCH_MODEL2PARAM[${model}:label]}-${LLMDBENCH_MODEL2PARAM[${model}:type]}
 EOF
 
-    for rf in $(ls $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_*_${model}*); do
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $rf" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
-    done
   done
+
+  for rf in $(ls $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_*_${model}*); do
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $rf" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  done
+
+  for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
+    announce "ℹ️  Waiting for ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=endpoint-picker" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
+    is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} get route --ignore-not-found | grep llm-route || true)
+    if [[ -z $is_route ]]
+    then
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} expose service inference-gateway --name=llm-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    fi
+      announce "ℹ️  endpoint picker ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
+  done
+
+  announce "A snapshot of the relevant (model-specific) resources on namespace \"${LLMDBENCH_CLUSTER_NAMESPACE}\":"
+  if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 0 ]]; then
+    ${LLMDBENCH_CONTROL_KCMD} get --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} deployment,service,httproute,route,pods,secrets
+  fi
+
 else
   announce "ℹ️ Environment types are \"${LLMDBENCH_DEPLOY_METHODS}\". Skipping this step."
 fi
-
-for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
-  announce "ℹ️  Waiting for ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=endpoint-picker" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
-
-  is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} get route --ignore-not-found | grep llm-route || true)
-  if [[ -z $is_route ]]
-  then
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} expose service inference-gateway --name=llm-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
-  fi
-    announce "ℹ️  endpoint picker ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
-done
-
-announce "A snapshot of the relevant (model-specific) resources on namespace \"${LLMDBENCH_CLUSTER_NAMESPACE}\":"
-${LLMDBENCH_CONTROL_KCMD} get --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} gatewayparameters,gateway,httproute,route,service,deployment,pods,secrets
-
-#popd &>/dev/null

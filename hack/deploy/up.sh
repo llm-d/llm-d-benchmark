@@ -18,7 +18,7 @@ source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 export LLMDBENCH_STEPS_DIR="$LLMDBENCH_CONTROL_DIR/steps"
 export LLMDBENCH_CONTROL_DRY_RUN=${LLMDBENCH_CONTROL_DRY_RUN:-0}
-export LLMDBENCH_VERBOSE=${LLMDBENCH_VERBOSE:-0}
+export LLMDBENCH_CONTROL_VERBOSE=${LLMDBENCH_CONTROL_VERBOSE:-0}
 export LLMDBENCH_DEPLOY_SCENARIO=
 LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name "*.sh" | grep -v 11_ | sort | rev | cut -d '/' -f 1 | rev)
 
@@ -28,7 +28,7 @@ function show_usage {
             -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
             -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS) ] \n \
             -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
-            -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_VERBOSE) ] \n \
+            -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
             -h/--help (show this help)"
 }
 
@@ -37,38 +37,38 @@ while [[ $# -gt 0 ]]; do
 
     case $key in
         -s=*|--step=*)
-        export LLMDBENCH_STEP_LIST=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_STEP_LIST=$(echo $key | cut -d '=' -f 2)
         ;;
         -s|--step)
-        export LLMDBENCH_STEP_LIST="$2"
+        export LLMDBENCH_CLIOVERRIDE_STEP_LIST="$2"
         shift
         ;;
         -c=*|--scenario=*)
-        export LLMDBENCH_DEPLOY_SCENARIO=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=$(echo $key | cut -d '=' -f 2)
         ;;
         -c|--scenario)
-        export LLMDBENCH_DEPLOY_SCENARIO="$2"
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO="$2"
         shift
         ;;
         -m=*|--models=*)
-        export LLMDBENCH_DEPLOY_MODEL_LIST=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_MODEL_LIST=$(echo $key | cut -d '=' -f 2)
         ;;
         -m|--models)
-        export LLMDBENCH_DEPLOY_MODEL_LIST="$2"
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_MODEL_LIST="$2"
         shift
         ;;
         -t=*|--methods=*)
-        export LLMDBENCH_DEPLOY_METHODS=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_METHODS=$(echo $key | cut -d '=' -f 2)
         ;;
         -t|--methods)
-        export LLMDBENCH_DEPLOY_METHODS="$2"
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_METHODS="$2"
         shift
         ;;
         -n|--dry-run)
         export LLMDBENCH_CONTROL_DRY_RUN=1
         ;;
         -v|--verbose)
-        export LLMDBENCH_VERBOSE=1
+        export LLMDBENCH_CONTROL_VERBOSE=1
         ;;
         -h|--help)
         show_usage

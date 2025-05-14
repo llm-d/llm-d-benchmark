@@ -16,8 +16,9 @@ export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../../)
 
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
-export LLMDBENCH_CONTROL_DEEP_CLEANING=0
-export LLMDBENCH_CONTROL_DRY_RUN=0
+export LLMDBENCH_CONTROL_DEEP_CLEANING=${LLMDBENCH_CONTROL_DEEP_CLEANING:-0}
+export LLMDBENCH_CONTROL_DRY_RUN=${LLMDBENCH_CONTROL_DRY_RUN:-0}
+export LLMDBENCH_CONTROL_VERBOSE=${LLMDBENCH_CONTROL_VERBOSE:-0}
 export LLMDBENCH_DEPLOY_SCENARIO=
 
 function show_usage {
@@ -27,6 +28,7 @@ function show_usage {
               -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
               -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
               -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS) ] \n \
+              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
               -h/--help (show this help)"
 }
 
@@ -35,31 +37,34 @@ while [[ $# -gt 0 ]]; do
 
     case $key in
         -m=*|--models=*)
-        export LLMDBENCH_DEPLOY_MODEL_LIST=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_MODEL_LIST=$(echo $key | cut -d '=' -f 2)
         ;;
         -m|--models)
-        export LLMDBENCH_DEPLOY_MODEL_LIST="$2"
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_MODEL_LIST="$2"
         shift
         ;;
         -c=*|--scenario=*)
-        export LLMDBENCH_DEPLOY_SCENARIO=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=$(echo $key | cut -d '=' -f 2)
         ;;
         -c|--scenario)
-        export LLMDBENCH_DEPLOY_SCENARIO="$2"
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO="$2"
         shift
         ;;
         -t=*|--types=*)
-        export LLMDBENCH_DEPLOY_METHODS=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_METHODS=$(echo $key | cut -d '=' -f 2)
         ;;
         -t|--types)
-        export LLMDBENCH_DEPLOY_METHODS="$2"
+        export LLMDBENCH_CLIOVERRIDE_DEPLOY_METHODS="$2"
         shift
         ;;
         -d|--deep)
-        export LLMDBENCH_CONTROL_DEEP_CLEANING=1
+        export LLMDBENCH_CLIOVERRIDE_CONTROL_DEEP_CLEANING=1
         ;;
         -n|--dry-run)
-        export LLMDBENCH_CONTROL_DRY_RUN=1
+        export LLMDBENCH_CLIOVERRIDE_CONTROL_DRY_RUN=1
+        ;;
+        -v|--verbose)
+        export LLMDBENCH_CONTROL_VERBOSE=1
         ;;
         -h|--help)
         show_usage
@@ -99,9 +104,6 @@ done
 if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
   allres=$(${LLMDBENCH_CONTROL_KCMD} --namespace $LLMDBENCH_CLUSTER_NAMESPACE get ${LLMDBENCH_CONTROL_RESOURCE_LIST} -o name)
   tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt|secret/${LLMDBENCH_VLLM_COMMON_PULL_SECRET_NAME}|secret/${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}")
-
-  is_env_type_standalone=$(echo $LLMDBENCH_DEPLOY_METHODS | grep standalone || true)
-  is_env_type_vllm=$(echo $LLMDBENCH_DEPLOY_METHODS | grep vllm || true)
 
   if [[ ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 && ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_P2P_ACTIVE} -eq 0 ]]; then
     tgtres=$(echo "$tgtres" | grep standalone)

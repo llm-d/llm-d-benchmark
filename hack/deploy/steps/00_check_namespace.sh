@@ -46,7 +46,7 @@ spec:
 #    namespace: ${LLMDBENCH_CLUSTER_NAMESPACE}
 #---
 EOF
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/00_ns.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/00_ns.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   else
     announce "⚠️ Namespace '${LLMDBENCH_CLUSTER_NAMESPACE}' not found. Stopping..."
     exit 1
