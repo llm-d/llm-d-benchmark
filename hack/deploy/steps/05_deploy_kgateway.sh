@@ -8,7 +8,7 @@ if [[ $LLMDBENCH_USER_IS_ADMIN -eq 1 ]]; then
   else
     pushd ${LLMDBENCH_GAIE_DIR} &>/dev/null
     if [[ ! -d gateway-api-inference-extension ]]; then
-        llmdbench_execute_cmd "git clone https://github.com/neuralmagic/gateway-api-inference-extension.git" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+        llmdbench_execute_cmd "git clone https://github.com/llm-d/gateway-api-inference-extension.git" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
     fi
     pushd gateway-api-inference-extension &>/dev/null
     llmdbench_execute_cmd "INFRASTRUCTURE_OVERRIDE=true make environment.dev.kubernetes.infrastructure" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}

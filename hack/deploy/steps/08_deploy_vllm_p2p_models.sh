@@ -28,7 +28,7 @@ anyuid \
 
   pushd ${LLMDBENCH_KVCM_DIR} &>/dev/null
   if [[ ! -d llm-d-kv-cache-manager ]]; then
-    llmdbench_execute_cmd "git clone https://github.com/neuralmagic/llm-d-kv-cache-manager.git || true" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
+    llmdbench_execute_cmd "git clone https://github.com/llm-d/llm-d-kv-cache-manager.git || true" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_VERBOSE}
   fi
 
 cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_affinity.yaml

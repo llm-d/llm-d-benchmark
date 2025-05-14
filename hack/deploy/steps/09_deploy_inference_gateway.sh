@@ -11,7 +11,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_P2P_ACTIVE -eq 1 ]]; then
 
 #  pushd ${LLMDBENCH_GAIE_DIR} &>/dev/null
 #  if [[ ! -d gateway-api-inference-extension ]]; then
-#      git clone https://github.com/neuralmagic/gateway-api-inference-extension.git
+#      git clone https://github.com/llm-d/gateway-api-inference-extension.git
 #  fi
 #  pushd gateway-api-inference-extension &>/dev/null
 
