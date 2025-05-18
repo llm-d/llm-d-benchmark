@@ -2,7 +2,7 @@
 
 ## Clone llm-d-benchmark repo
 ```
-git clone https://github.com/neuralmagic/llm-d-benchmark
+git clone https://github.com/llm-d/llm-d-benchmark
 cd llm-d-benchmark/hack/deploy
 ```
 
