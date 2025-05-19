@@ -43,3 +43,6 @@ util/rbac_audit_and_report.md
 data/**/logs/
 **/logs/
 *.log
+
+**/venv
+**/*results

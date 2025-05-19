@@ -123,3 +123,21 @@ Finally, cleanup everything
 ```
 ./setup/teardown.sh
 ```
+
+## Quickstart K8s Launcher with Analysis
+
+For a simplified workflow that includes automated analysis of benchmark results, check out the quickstart-k8s launcher. This workflow provides:
+
+- Easy deployment and execution of benchmarks on Kubernetes
+- Support for comparing multiple LLM models
+- Generation of comprehensive performance visualizations
+
+### Quickstart Workflows
+
+1. **Single Model Benchmark**: Run benchmarks for a single model with automated analysis
+   - See [Single Model Quickstart](quickstart-k8s/README.md) for details
+
+2. **Multi-Model Comparison**: Compare performance across multiple LLM models
+   - See [Multi-Model Comparison Quickstart](quickstart-k8s/compare-baseline-llmd/README.md) for details
+
+To get started, navigate to the quickstart-k8s directory and follow the instructions in the respective README files.
