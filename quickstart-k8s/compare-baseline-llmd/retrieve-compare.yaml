@@ -1,0 +1,39 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: compare-retriever
+  namespace: fmperf
+spec:
+  serviceAccountName: fmperf-runner
+  containers:
+  - name: compare-retriever
+    image: registry.redhat.io/ubi9/ubi:latest
+    imagePullPolicy: IfNotPresent
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "Sleeping for 24 hours to allow result access..."
+        sleep 86400
+    volumeMounts:
+    - name: baseline-results
+      mountPath: /requests/baseline
+      readOnly: true
+    - name: llmd-results
+      mountPath: /requests/llmd
+      readOnly: true
+  volumes:
+  - name: baseline-results
+    persistentVolumeClaim:
+      claimName: baseline-results-pvc
+  - name: llmd-results
+    persistentVolumeClaim:
+      claimName: llm-d-results-pvc
+  restartPolicy: Never
