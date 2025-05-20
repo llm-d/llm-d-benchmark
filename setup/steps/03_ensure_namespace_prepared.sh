@@ -15,7 +15,7 @@ sampleApplication:
     modelName: "$(model_attribute $model model)"
 EOF
 
-llmd_opts="--skip-infra --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} --storage-class ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS} --storage-size ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE} --download-model $(model_attribute $model model) --download-timeout ${LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT} --values-file $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_prepare_namespace_${model}.yaml"
+llmd_opts="--skip-infra --storage-class ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS} --storage-size ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE} --download-model $(model_attribute $model model) --download-timeout ${LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT} --values-file $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_prepare_namespace_${model}.yaml"
 announce "🚀 Calling llm-d-deployer with options \"${llmd_opts}\"..."
 pushd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart &>/dev/null
 llmdbench_execute_cmd "cd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart; export KUBECONFIG=$LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx; export HF_TOKEN=$LLMDBENCH_HF_TOKEN; export PREPARE_ONLY=true; ./llmd-installer.sh --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} $llmd_opts" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0
