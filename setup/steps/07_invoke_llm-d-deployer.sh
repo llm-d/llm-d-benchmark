@@ -125,7 +125,7 @@ EOF
       LLMDBENCH_VLLM_DEPLOYER_VALUES_FILE=$LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_deployer_values.yaml
     fi
 
-    llmd_opts="--skip-infra --skip-download-model --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} --storage-class ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS} --storage-size ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE} --values-file $LLMDBENCH_VLLM_DEPLOYER_VALUES_FILE"
+    llmd_opts="--skip-infra --namespace ${LLMDBENCH_CLUSTER_NAMESPACE} --storage-class ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS} --storage-size ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE} --values-file $LLMDBENCH_VLLM_DEPLOYER_VALUES_FILE"
     announce "🚀 Calling llm-d-deployer with options \"${llmd_opts}\"..."
     llmdbench_execute_cmd "cd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart; export KUBECONFIG=$LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx; export HF_TOKEN=$LLMDBENCH_HF_TOKEN; export PREPARE_ONLY=false; ./llmd-installer.sh $llmd_opts" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0
     announce "✅ llm-d-deployer completed successfully"

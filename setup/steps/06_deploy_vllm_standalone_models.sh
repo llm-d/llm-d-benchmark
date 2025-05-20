@@ -48,7 +48,7 @@ spec:
           --tensor-parallel-size $LLMDBENCH_VLLM_COMMON_GPU_NR
         env:
         - name: HF_HOME
-          value: ${LLMDBENCH_VLLM_COMMON_PVC_MOUNTPOINT}
+          value: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
@@ -79,7 +79,7 @@ spec:
             ephemeral-storage: "10Gi"
         volumeMounts:
         - name: cache-volume
-          mountPath: ${LLMDBENCH_VLLM_COMMON_PVC_MOUNTPOINT}
+          mountPath: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
         - name: shm
           mountPath: /dev/shm
       volumes:
