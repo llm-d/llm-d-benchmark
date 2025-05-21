@@ -14,3 +14,9 @@ jobs:
         
       - name: Sanity check repo contents
         run: ls -la
+
+      - name: Run markdown link checker
+        uses: ./.github/actions/markdown-link-checker
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          args: "--quiet --retry"  
