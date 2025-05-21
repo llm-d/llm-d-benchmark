@@ -2,7 +2,7 @@
 
 This guide explains how to run benchmarks on LLM deployments.
 It uses [fmperf](https://github.com/fmperf-project/fmperf), specifically [fmperf's run_benchmark](https://github.com/fmperf-project/fmperf/blob/main/fmperf/utils/Benchmarking.py#L48)
-The environment vars are configured via a [configmap](./workload-configmap.yaml).
+The environment vars are configured via a [configmap](./resources/workload-configmap.yaml).
 This example runs LLM benchmarks in a Kubernetes cluster using a two-level job structure:
 
 1. A launcher job that sets up the environment and configuration
@@ -74,7 +74,7 @@ The comparison workflow allows you to:
 
    ```bash
    kubectl apply --kustomize resources
-   kubectl apply pvc.yaml
+   kubectl apply resources/pvc.yaml
    ```
 2. Create and monitor the launch and evaluate job.
 

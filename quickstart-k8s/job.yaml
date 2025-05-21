@@ -10,6 +10,8 @@ spec:
       serviceAccountName: fmperf-runner
       containers:
       - name: fmperf
+        # built from this PR: https://github.com/fmperf-project/fmperf/pull/41
+        # switch to fmperf-project/fmperf when merged
         image: quay.io/sallyom/fmperf:llmd
         imagePullPolicy: Always
         securityContext:

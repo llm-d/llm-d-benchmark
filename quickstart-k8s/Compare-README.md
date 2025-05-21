@@ -2,7 +2,7 @@
 
 This guide explains how to run benchmarks that compare two different LLM deployments (e.g., comparing a baseline model against an optimized version).
 It uses [fmperf](https://github.com/fmperf-project/fmperf), specifically [fmperf's run_benchmark](https://github.com/fmperf-project/fmperf/blob/main/fmperf/utils/Benchmarking.py#L48)
-The environment vars are configured via a [configmap](./workload-configmap.yaml).
+The environment vars are configured via a [configmap](./resources//workload-configmap.yaml).
 
 The comparison consists of:
 
