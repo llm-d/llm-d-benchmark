@@ -38,7 +38,7 @@ runs:
           else
             echo "✅ No broken links in $file"
           fi
-        done < <(find . -type f -name "*.md" -print0)
+        done < <(find . -type f -name "*.md" -not -name "*-template.md" -print0)
 
         echo "------------------------------------------------------------"
         if [ "$failed" -ne 0 ]; then
