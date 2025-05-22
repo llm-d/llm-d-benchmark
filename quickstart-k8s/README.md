@@ -123,7 +123,7 @@ The benchmark results can be analyzed using the provided Python script in the `a
 
 2. Run the analysis script:
    ```bash
-   python analyze-results/analyze_results.py --results-dir fmperf-results
+   python analyze_results.py --results-dir fmperf-results
    ```
 
 The script will create a `plots` directory and generate:
@@ -139,7 +139,7 @@ The script will create a `plots` directory and generate:
 # Install grip if needed
 pip install grip
 
-cd ./compare-results/analysis/plots
+cd ./fmperf-results/plots
 
 # Generate HTML and view in browser (--browser opens it automatically)
 grip README.md --browser

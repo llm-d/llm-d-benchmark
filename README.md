@@ -141,6 +141,6 @@ For a simplified workflow that includes automated analysis of benchmark results,
    - See [Single Model Quickstart](quickstart-k8s/README.md) for details
 
 2. **Multi-Model Comparison**: Compare performance across multiple LLM models
-   - See [Multi-Model Comparison Quickstart](quickstart-k8s/compare-baseline-llmd/README.md) for details
+   - See [Multi-Model Comparison Quickstart](quickstart-k8s/Compare-README.md) for details
 
 To get started, navigate to the quickstart-k8s directory and follow the instructions in the respective README files.

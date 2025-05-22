@@ -49,9 +49,10 @@ def create_plots_readme(plots_dir):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     template_path = os.path.join(script_dir, 'readme-analyze-template.md')
     readme_path = os.path.join(plots_dir, 'README.md')
+
     if os.path.exists(template_path):
         shutil.copyfile(template_path, readme_path)
-        print(f"Copied template to: {readme_path}")
+        print(f"Created README.md at: {readme_path}")
     else:
         print(f"Warning: Template file not found at {template_path}, using default content")
         readme_content = """# Benchmark Analysis Plots
