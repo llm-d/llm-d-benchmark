@@ -39,7 +39,6 @@ spec:
           value: "http://llama32-3b.vanilla-vllm.svc.cluster.local:8000"  # Internal service URL
         - name: FMPERF_REPETITION
           value: "1"
-        # Add HF_TOKEN_SECRET to be used by the injection script
         - name: HF_TOKEN_SECRET
           value: "huggingface-secret"  # Update with your actual secret name
         # Optional: Add these if you need to configure the model further
@@ -49,7 +48,6 @@ spec:
           value: "256"
         - name: FMPERF_MAX_TOKENS
           value: "32"
-        # New benchmark parameters
         - name: FMPERF_NUM_USERS_WARMUP
           value: "5"
         - name: FMPERF_NUM_USERS
@@ -64,7 +62,6 @@ spec:
           value: "32"
         - name: FMPERF_TEST_DURATION
           value: "60"
-        # Add this to ensure the job has a unique ID for evaluation job name
         - name: FMPERF_JOB_ID
           value: "baseline-32b"
         volumeMounts:
@@ -72,15 +69,10 @@ spec:
           mountPath: /app/yamls
         - name: logs
           mountPath: /app/logs
-        #- name: results
-        #  mountPath: /requests
       volumes:
       - name: workload-config
         configMap:
           name: fmperf-workload-config
-      #- name: results
-      #  persistentVolumeClaim:
-      #    claimName: baseline-results-pvc
       - name: logs
         emptyDir: {}
       restartPolicy: Never
@@ -123,7 +115,6 @@ spec:
           value: "http://llm-d-inference-gateway.llm-d.svc.cluster.local:80"  # Internal service URL
         - name: FMPERF_REPETITION
           value: "1"
-        # Add HF_TOKEN_SECRET to be used by the injection script
         - name: HF_TOKEN_SECRET
           value: "huggingface-secret"  # Update with your actual secret name
         # Optional: Add these if you need to configure the model further
@@ -133,7 +124,6 @@ spec:
           value: "256"
         - name: FMPERF_MAX_TOKENS
           value: "32"
-        # New benchmark parameters
         - name: FMPERF_NUM_USERS_WARMUP
           value: "5"
         - name: FMPERF_NUM_USERS
@@ -148,7 +138,6 @@ spec:
           value: "32"
         - name: FMPERF_TEST_DURATION
           value: "60"
-        # Add this to ensure the job has a unique ID for evaluation job name
         - name: FMPERF_JOB_ID
           value: "llmd-32b"
         volumeMounts:
@@ -156,15 +145,10 @@ spec:
           mountPath: /app/yamls
         - name: logs
           mountPath: /app/logs
-        #- name: results
-        #  mountPath: /requests
       volumes:
       - name: workload-config
         configMap:
           name: fmperf-workload-config
-      #- name: results
-      #  persistentVolumeClaim:
-      #    claimName: llm-d-results-pvc
       - name: logs
         emptyDir: {}
       restartPolicy: Never

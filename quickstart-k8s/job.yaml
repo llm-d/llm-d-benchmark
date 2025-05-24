@@ -38,7 +38,6 @@ spec:
           value: "http://llm-d-inference-gateway.llm-d.svc.cluster.local:80"  # Internal service URL
         - name: FMPERF_REPETITION
           value: "1"
-        # Add HF_TOKEN_SECRET to be used by the injection script
         - name: HF_TOKEN_SECRET
           value: "huggingface-secret"  # Update with your actual secret name
         # Optional: Add these if you need to configure the model further
@@ -48,7 +47,6 @@ spec:
           value: "256"
         - name: FMPERF_MAX_TOKENS
           value: "32"
-        # New benchmark parameters
         - name: FMPERF_NUM_USERS_WARMUP
           value: "5"
         - name: FMPERF_NUM_USERS
@@ -66,17 +64,12 @@ spec:
         volumeMounts:
         - name: workload-config
           mountPath: /app/yamls
-        #- name: results
-        #  mountPath: /requests
         - name: logs
           mountPath: /app/logs
       volumes:
       - name: workload-config
         configMap:
           name: fmperf-workload-config
-      #- name: results
-      #  persistentVolumeClaim:
-      #    claimName: fmperf-results-pvc
       - name: logs
         emptyDir: {}
       restartPolicy: Never
