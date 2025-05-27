@@ -1,0 +1,66 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: compare-benchmark-analysis
+  namespace: llm-d-benchmark
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: llm-d-benchmark-analysis
+    spec:
+      serviceAccountName: benchmark-runner
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: analysis
+        # TODO: UPDATE IMAGE
+        image: quay.io/sallyom/llm-d-benchmark:quickstart
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        command: ["sh"]
+        args: ["-c", "python3 /workspace/compare-stacks/compare-analyze.py --output-dir /requests/llm-d/analysis && echo 'Analysis complete! Results saved to /requests/llm-d/analysis/'"]
+        env:
+        - name: LLMDBENCH_CONTROL_WORK_DIR
+          value: "/requests"
+        - name: LLMDBENCH_FMPERF_RESULTS_DIR
+          value: "/requests"
+        # Set matplotlib backend to non-interactive for headless operation
+        - name: MPLBACKEND
+          value: "Agg"
+        # Environment variables from standalone-benchmark-env ConfigMap
+        - name: STANDALONE_LLMDBENCH_FMPERF_STACK_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: standalone-benchmark-env
+              key: LLMDBENCH_FMPERF_STACK_NAME
+        # Environment variables from llm-d-benchmark-env ConfigMap
+        - name: LLMD_LLMDBENCH_FMPERF_STACK_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: llm-d-benchmark-env
+              key: LLMDBENCH_FMPERF_STACK_NAME
+        volumeMounts:
+        - name: standalone-results
+          mountPath: /requests/standalone
+          readOnly: true
+        - name: llmd-results
+          mountPath: /requests/llm-d
+      volumes:
+      - name: standalone-results
+        persistentVolumeClaim:
+          claimName: standalone-results-pvc
+      - name: llmd-results
+        persistentVolumeClaim:
+          claimName: llm-d-results-pvc
+      restartPolicy: Never

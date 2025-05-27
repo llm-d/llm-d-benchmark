@@ -251,9 +251,9 @@ These plots, automatically generated, were used to showcase the difference betwe
 </p>
 
 
-## Quickstart K8s Launcher with Analysis
+## Quickstart K8s Benchmark Launcher for Existing Stacks
 
-For a simplified workflow that includes automated analysis of benchmark results, check out the quickstart-k8s launcher. This workflow provides:
+For a simplified workflow that includes analysis of benchmark results, check out the `quickstart-existing-stack-benchmark` launcher. This workflow provides:
 
 - Easy deployment and execution of benchmarks on Kubernetes
 - Support for comparing multiple LLM models
@@ -262,12 +262,12 @@ For a simplified workflow that includes automated analysis of benchmark results,
 ### Quickstart Workflows
 
 1. **Single Model Benchmark**: Run benchmarks for a single model with automated analysis
-   - See [Single Model Quickstart](quickstart-k8s/README.md) for details
+   - See [Single Model Quickstart](quickstart-existing-stack-benchmark/README.md) for details
 
 2. **Multi-Model Comparison**: Compare performance across multiple LLM models
-   - See [Multi-Model Comparison Quickstart](quickstart-k8s/Compare-README.md) for details
+   - See [Multi-Model Comparison Quickstart](quickstart-existing-stack-benchmark/Compare-README.md) for details
 
-To get started, navigate to the quickstart-k8s directory and follow the instructions in the respective README files.
+To get started, navigate to the `quickstart-existing-stack-benchmark` directory and follow the instructions in the respective README files.
 
 ## Contribute
 

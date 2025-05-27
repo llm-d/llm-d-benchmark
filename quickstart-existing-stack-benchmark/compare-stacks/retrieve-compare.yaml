@@ -3,9 +3,9 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: results-retriever
-  namespace: fmperf
+  namespace: llm-d-benchmark
 spec:
-  serviceAccountName: fmperf-runner
+  serviceAccountName: benchmark-runner
   containers:
   - name: results-retriever
     image: registry.redhat.io/ubi9/ubi:latest
@@ -23,11 +23,17 @@ spec:
         echo "Sleeping for 24 hours to allow result access..."
         sleep 86400
     volumeMounts:
-    - name: results
-      mountPath: /requests
+    - name: llm-d-results
+      mountPath: /requests/llm-d
+      readOnly: true
+    - name: standalone-results
+      mountPath: /requests/standalone
       readOnly: true
   volumes:
-  - name: results
+  - name: llm-d-results
     persistentVolumeClaim:
-      claimName: fmperf-results-pvc
-  restartPolicy: Never 
+      claimName: llm-d-results-pvc
+  - name: standalone-results
+    persistentVolumeClaim:
+      claimName: standalone-results-pvc
+  restartPolicy: Never

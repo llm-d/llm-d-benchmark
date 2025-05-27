@@ -1,0 +1,99 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: standalone-benchmark-run
+  namespace: llm-d-benchmark
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: llm-d-benchmark
+    spec:
+      serviceAccountName: benchmark-runner
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: evaluation
+        # TODO: UPDATE IMAGE
+        image: quay.io/sallyom/llm-d-benchmark:quickstart
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        command: ["sh"]
+        args: ["-c", "ln -sf /workspace/config/llmdbench_standalone_workload.yaml /workspace/llmdbench_workload.yaml && python3 /workspace/workload/harnesses/llm-d-benchmark.py"]
+        envFrom:
+        - configMapRef:
+            name: standalone-benchmark-env
+        volumeMounts:
+        - name: results
+          mountPath: /requests
+        - name: workload-file
+          mountPath: /workspace/config
+          readOnly: true
+      volumes:
+      - name: results
+        persistentVolumeClaim:
+          claimName: standalone-results-pvc
+      - name: workload-file
+        configMap:
+          name: benchmark-workload-config
+      restartPolicy: Never
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: llm-d-benchmark-run
+  namespace: llm-d-benchmark
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: llm-d-benchmark
+    spec:
+      serviceAccountName: benchmark-runner
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: evaluation
+        # TODO: UPDATE IMAGE
+        image: quay.io/sallyom/llm-d-benchmark:quickstart
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        command: ["sh"]
+        args: ["-c", "ln -sf /workspace/config/llmdbench_llm_d_workload.yaml /workspace/llmdbench_workload.yaml && python3 /workspace/workload/harnesses/llm-d-benchmark.py"]
+        envFrom:
+        - configMapRef:
+            name: llm-d-benchmark-env
+        volumeMounts:
+        - name: results
+          mountPath: /requests
+        - name: workload-file
+          mountPath: /workspace/config
+          readOnly: true
+      volumes:
+      - name: results
+        persistentVolumeClaim:
+          claimName: llm-d-results-pvc
+      - name: workload-file
+        configMap:
+          name: benchmark-workload-config
+      restartPolicy: Never

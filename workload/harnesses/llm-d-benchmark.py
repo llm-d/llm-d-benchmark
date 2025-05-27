@@ -175,7 +175,7 @@ def main():
         logger.info("The evaluation job will:")
         logger.info("1. Run the benchmark tests")
         logger.info("2. Save results to the PVC at:")
-        logger.info(f"   {results_dir}/{stack_type}-32b/LMBench_long_input_output_*.csv")
+        logger.info(f"   {results_dir}/{stack_name}/")
 
         # Wait for the evaluation job to complete
         job_name = f"lmbenchmark-evaluate-{job_id}"
