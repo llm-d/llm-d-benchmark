@@ -9,6 +9,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 1 ]]; then
       cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_deployer_values.yaml
 sampleApplication:
   enabled: true
+  baseConfigMapRefName: ${LLMDBENCH_VLLM_DEPLOYER_BASECONFIGMAPREFNAME}
   model:
     modelArtifactURI: pvc://model-pvc/models/$(model_attribute $model model)
     modelName: "$(model_attribute $model model)"

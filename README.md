@@ -17,6 +17,50 @@ The benchmarking system drives synthetic or trace-based traffic into an llm-d-po
   </picture>
 </p>
 
+### Goals
+
+#### Reproducibility
+Each benchmark run collects enough information to enable the execution on different clusters/environments with minimal setup effort
+
+#### Flexibility
+Multiple load generators and multiple load profiles available, in a plugabble architecture that allows expansion
+
+#### Well defined set of Metrics
+Define and measure a representative set of metrics that allows not only meaningful comparisons between different stacks, but also performance characterization for different components.
+
+For a discussion of candidate relevant metrics, please consult this [document](https://docs.google.com/document/d/1SpSp1E6moa4HSrJnS4x3NpLuj88sMXr2tbofKlzTZpk/edit?resourcekey=0-ob5dR-AJxLQ5SvPlA4rdsg&tab=t.0#heading=h.qmzyorj64um1)
+
+| Category | Metric | Unit |
+| ---------| ------- | ----- |
+| Throughput | Output tokens / second | tokens / second |
+| Throughput | Input tokens / second | tokens / second |
+| Throughput | Requests / second | qps |
+| Latency    | Time per output token (TPOT) | ms per output token |
+| Latency    | Time to first token (TTFT) | ms |
+| Latency    | Time per request (TTFT + TPOT * output length) | seconds per request |
+| Latency    | Normalized time per output token (TTFT/output length +TPOT) aka NTPOT | ms per output token |
+| Latency    | Inter Token Latency (ITL) - Time between decode tokens within a request | ms per output token |
+| Correctness | Failure rate | queries |
+| Experiment | Benchmark duration | seconds |
+
+### Relevant collection of Workloads
+Define a mix of workloads that express real-world use cases, allowing for `llm-d` performance characterization, evaluation, stress investigation.
+
+For a discussion of relevant workloads, please consult this [document](https://docs.google.com/document/d/1Ia0oRGnkPS8anB4g-_XPGnxfmOTOeqjJNb32Hlo_Tp0/edit?tab=t.0)
+
+| Workload                               | Use Case            | ISL    | ISV   | OSL    | OSV    | OSP    | Latency   |
+| -------------------------------------- | ------------------- | ------ | ----- | ------ | ------ | ------ | ----------|
+| Interactive Chat                       | Chat agent          | Medium | High  | Medium | Medium | Medium | Per token |
+| Classification of text                 | Sentiment analysis  | Medium |       | Short  | Low    | High   | Request   |
+| Classification of images               | Nudity filter       | Long   | Low   | Short  | Low    | High   | Request   |
+| Summarization / Information Retrieval  | Q&A from docs, RAG  | Long   | High  | Short  | Medium | Medium | Per token |
+| Text generation                        |                     | Short  | High  | Long   | Medium | Low    | Per token |
+| Translation                            |                     | Medium | High  | Medium | Medium | High   | Per token |
+| Code completion                        | Type ahead          | Long   | High  | Short  | Medium | Medium | Request |
+| Code generation                        | Adding a feature    | Long   | High  | Medium | High   | Medium | Request |
+
+### Design and Roadmap
+`llm-d-benchmark` follows the practice of its parent project (`llm-d`) by having also it is own [Northstar design](https://docs.google.com/document/d/1DtSEMRu3ann5M43TVB3vENPRoRkqBr_UiuwFnzit8mw/edit?tab=t.0#heading=h.9a3894cbydjw) (a work in progress)
 
 ### Main concepts (identified by specific directories)
 
@@ -29,7 +73,7 @@ Pieces of information identifying a particular cluster. This information include
 Load Generator (python code), written using software facilites available at https://github.com/fmperf-project/fmperf.
 
 > [!NOTE]
-> This will be expanded with additional load generators in the future.
+> This will be expanded with additional load generators in the future (e.g. [inference-perf](https://github.com/kubernetes-sigs/inference-perf) )
 
 #### Workload
 
@@ -193,6 +237,20 @@ A sample output of the contentx of `${LLMDBENCH_CONTROL_WORK_DIR}` for a very si
 ./workload/profiles/sanity_short-input.yaml
 ```
 
+## Observability
+As of today, observability, via Grafana dashboards, is considered to be outside of the scope for `llm-d-benchmark`. Please refer to the [installation guide on llm-d-deployer](https://github.com/llm-d/llm-d-deployer/tree/main/quickstart#grafana-dashboards) for instructions on how to enable it.
+
+### Examples
+These plots, automatically generated, were used to showcase the difference between a baseline `vLLM` deployment and `llm-d` (for models Llama 4 Scout and Lllama 3.1 70B)
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)">
+    <img alt="vllm vs llm-d comparison" src="./docs/images/scenarios_1_2_3_comparison.png" width=100%>
+  </picture>
+</p>
+
+
 ## Quickstart K8s Launcher with Analysis
 
 For a simplified workflow that includes automated analysis of benchmark results, check out the quickstart-k8s launcher. This workflow provides:
@@ -210,3 +268,12 @@ For a simplified workflow that includes automated analysis of benchmark results,
    - See [Multi-Model Comparison Quickstart](quickstart-k8s/Compare-README.md) for details
 
 To get started, navigate to the quickstart-k8s directory and follow the instructions in the respective README files.
+
+## Contribute
+
+- [Instructions on how to contribute](CONTRIBUTING.md) including details on our development process and governance.
+- We use Slack to discuss development across organizations. Please join: [Slack](https://inviter.co/llm-d-slack). There is a `sig-benchmarking` channel there.
+
+## License
+
+This project is licensed under Apache License 2.0. See the [LICENSE file](LICENSE) for details.
