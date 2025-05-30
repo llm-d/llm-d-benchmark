@@ -72,6 +72,7 @@ RUN cd fmperf; patch -p1 < fmperf.patch && \
 #RUN mkdir /workspace/llm-d-benchmark
 
 COPY workload/harnesses/llm-d-benchmark.py /usr/local/bin/llm-d-benchmark.py
+COPY workload/analysis/analyze_results.py /usr/local/bin/analyze_results.py
 
 #ADD scenarios /workspace/llm-d-benchmark/scenarios
 #ADD setup /workspace/llm-d-benchmark/setup

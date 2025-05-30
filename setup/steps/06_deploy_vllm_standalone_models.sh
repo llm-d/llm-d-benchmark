@@ -41,12 +41,7 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
         - >
-          vllm serve $(model_attribute $model model)
-          --port ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
-          --max-model-len ${LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN}
-          --disable-log-requests
-          --gpu-memory-utilization $LLMDBENCH_VLLM_COMMON_GPU_MEM_UTIL
-          --tensor-parallel-size $LLMDBENCH_VLLM_COMMON_GPU_NR
+          $(render_string $LLMDBENCH_VLLM_STANDALONE_ARGS $model)
         env:
         - name: HF_HOME
           value: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
@@ -55,8 +50,7 @@ spec:
             secretKeyRef:
               name: ${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}
               key: HF_TOKEN
-        - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
-          value: "1"
+        $(add_additional_env_to_yaml)
         ports:
         - containerPort: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
         livenessProbe:
@@ -71,12 +65,12 @@ spec:
           limits:
             cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
             memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
-            nvidia.com/gpu: "${LLMDBENCH_VLLM_COMMON_GPU_NR}"
+            $(echo "$LLMDBENCH_VLLM_STANDALONE_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
             ephemeral-storage: "20Gi"
           requests:
             cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
             memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
-            nvidia.com/gpu: "${LLMDBENCH_VLLM_COMMON_GPU_NR}"
+            $(echo "$LLMDBENCH_VLLM_STANDALONE_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
             ephemeral-storage: "10Gi"
         volumeMounts:
         - name: cache-volume

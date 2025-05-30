@@ -9,7 +9,7 @@ if [[ ! -d llm-d-deployer ]]; then
   llmdbench_execute_cmd "cd ${LLMDBENCH_DEPLOYER_DIR}/llm-d-deployer; patch -p1 < ${LLMDBENCH_MAIN_DIR}/util/patches/llm-d-deployer.patch" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 else
   pushd llm-d-deployer &>/dev/null
-#  llmdbench_execute_cmd "cd $$LLMDBENCH_DEPLOYER_DIR/git checkout ${LLMDBENCH_DEPLOYER_GIT_REPO}; git pull" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+#  llmdbench_execute_cmd "cd ${LLMDBENCH_DEPLOYER_DIR}/llm-d-deployer; git checkout ${LLMDBENCH_DEPLOYER_GIT_BRANCH}; git pull" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   popd &>/dev/null
 fi
 popd &>/dev/null

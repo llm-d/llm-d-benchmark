@@ -19,9 +19,9 @@ sampleApplication:
         key: HF_TOKEN
   resources:
     limits:
-      nvidia.com/gpu: ${LLMDBENCH_VLLM_COMMON_GPU_NR}
+      nvidia.com/gpu: ${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}
     requests:
-      nvidia.com/gpu: ${LLMDBENCH_VLLM_COMMON_GPU_NR}
+      nvidia.com/gpu: ${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}
   inferencePoolPort: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
   prefill:
     replicas: ${LLMDBENCH_VLLM_DEPLOYER_PREFILL_REPLICAS}
@@ -128,7 +128,7 @@ EOF
 
     llmd_opts="--skip-infra --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --storage-class ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS} --storage-size ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE} --values-file $LLMDBENCH_VLLM_DEPLOYER_VALUES_FILE"
     announce "🚀 Calling llm-d-deployer with options \"${llmd_opts}\"..."
-    llmdbench_execute_cmd "cd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart; export KUBECONFIG=$LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx; export HF_TOKEN=$LLMDBENCH_HF_TOKEN; export PREPARE_ONLY=false; ./llmd-installer.sh $llmd_opts" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0
+    llmdbench_execute_cmd "cd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart; export KUBECONFIG=$LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx; export HF_TOKEN=$LLMDBENCH_HF_TOKEN; ./llmd-installer.sh $llmd_opts" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0
     announce "✅ llm-d-deployer completed successfully"
 
     # FIXME: newer versions of kubectl/oc already support "--for=create".
