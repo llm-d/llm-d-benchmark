@@ -65,12 +65,12 @@ spec:
           limits:
             cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
             memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
-            $(echo "$LLMDBENCH_VLLM_STANDALONE_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
+            $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
             ephemeral-storage: "20Gi"
           requests:
             cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
             memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
-            $(echo "$LLMDBENCH_VLLM_STANDALONE_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
+            $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
             ephemeral-storage: "10Gi"
         volumeMounts:
         - name: cache-volume
