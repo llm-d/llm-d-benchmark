@@ -7,9 +7,9 @@ data:
   # UPDATE TO MATCH YOUR CLUSTER & DEPLOYMENT
   # Core benchmark configuration
   LLMDBENCH_FMPERF_NAMESPACE: "llm-d-benchmark"
-  LLMDBENCH_FMPERF_STACK_TYPE: "vllm-prod"
-  LLMDBENCH_FMPERF_ENDPOINT_URL: "https://vllm-service.vllm-namespace.cluster.local.svc"
-  LLMDBENCH_FMPERF_STACK_NAME: "standalone-vllm-llama-3b"
+  LLMDBENCH_FMPERF_STACK_TYPE: "llm-d"
+  LLMDBENCH_FMPERF_ENDPOINT_URL: "http://llm-d-inference-gateway.llm-d.svc.cluster.local:80"
+  LLMDBENCH_FMPERF_STACK_NAME: "llm-d-3b"
   LLMDBENCH_FMPERF_WORKLOAD_FILE: "llmdbench_workload.yaml"
   LLMDBENCH_FMPERF_REPETITION: "1"
   LLMDBENCH_FMPERF_RESULTS_DIR: "/requests"

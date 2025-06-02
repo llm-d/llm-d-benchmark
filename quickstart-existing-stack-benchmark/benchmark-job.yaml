@@ -12,7 +12,6 @@ spec:
     spec:
       serviceAccountName: benchmark-runner
       securityContext:
-        runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -21,13 +20,12 @@ spec:
         image: quay.io/sallyom/llm-d-benchmark:quickstart
         imagePullPolicy: Always
         securityContext:
+          seccompProfile:
+            type: RuntimeDefault
           allowPrivilegeEscalation: false
           capabilities:
             drop:
               - ALL
-          runAsNonRoot: true
-          seccompProfile:
-            type: RuntimeDefault
         command: ["sh"]
         args: ["-c", "ln -sf /workspace/config/llmdbench_workload.yaml /workspace/llmdbench_workload.yaml && python3 /workspace/workload/harnesses/llm-d-benchmark.py"]
         envFrom:

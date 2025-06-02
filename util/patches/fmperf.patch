@@ -2,17 +2,16 @@ diff --git a/fmperf/Cluster.py b/fmperf/Cluster.py
 index 5a398f9..fb616af 100644
 --- a/fmperf/Cluster.py
 +++ b/fmperf/Cluster.py
-@@ -40,8 +40,7 @@ def __init__(
+@@ -40,8 +40,6 @@ def __init__(
          self.security_context = {
              "allowPrivilegeEscalation": False,
              "capabilities": {"drop": ["ALL"]},
 -            "runAsNonRoot": False,
 -            "runAsUser": 0,
-+            "runAsNonRoot": True,
              "seccompProfile": {"type": "RuntimeDefault"},
          }
  
-@@ -412,6 +411,26 @@ def evaluate(
+@@ -412,6 +410,26 @@ def evaluate(
              # Add OUTPUT_PATH based on the volume mount and job name
              env.append({"name": "OUTPUT_PATH", "value": f"/requests/{job_name}"})
  
@@ -39,7 +38,7 @@ index 5a398f9..fb616af 100644
              # Add Hugging Face cache environment variables
              env.extend(
                  [
-@@ -423,6 +442,12 @@ def evaluate(
+@@ -423,6 +441,12 @@ def evaluate(
                      },
                  ]
              )
@@ -52,7 +51,7 @@ index 5a398f9..fb616af 100644
  
              # Add HF_TOKEN from host environment if available
              hf_token = (
-@@ -433,14 +458,17 @@ def evaluate(
+@@ -433,14 +457,17 @@ def evaluate(
              )
              if hf_token:
                  env.append({"name": "HF_TOKEN", "value": hf_token})
@@ -78,7 +77,7 @@ index 5a398f9..fb616af 100644
              # Add Hugging Face cache environment variables
              env.extend(
                  [
-@@ -452,23 +480,15 @@ def evaluate(
+@@ -452,23 +479,15 @@ def evaluate(
                      },
                  ]
              )
@@ -106,7 +105,7 @@ index 5a398f9..fb616af 100644
          else:
              env = [
                  {"name": "MODEL_ID", "value": model_name},
-@@ -524,16 +544,17 @@ def evaluate(
+@@ -524,16 +543,17 @@ def evaluate(
                          "initContainers": [
                              {
                                  "name": "init-cache-dirs",
@@ -126,7 +125,7 @@ index 5a398f9..fb616af 100644
                              }
                          ],
                          "containers": [
-@@ -547,10 +568,7 @@ def evaluate(
+@@ -547,10 +567,7 @@ def evaluate(
                                  ),
                                  "args": container_args,
                                  "volumeMounts": volume_mounts,
@@ -138,7 +137,7 @@ index 5a398f9..fb616af 100644
                              }
                          ],
                          "restartPolicy": "Never",
-@@ -642,6 +660,6 @@ def evaluate(
+@@ -642,6 +659,6 @@ def evaluate(
          else:
              perf_out, energy_out = None, None
  

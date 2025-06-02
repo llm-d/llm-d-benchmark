@@ -14,7 +14,6 @@ spec:
       allowPrivilegeEscalation: false
       capabilities:
         drop: ["ALL"]
-      runAsNonRoot: true
       seccompProfile:
         type: RuntimeDefault
     command: ["/bin/sh", "-c"]

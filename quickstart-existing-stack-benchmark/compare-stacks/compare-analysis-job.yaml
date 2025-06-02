@@ -12,7 +12,6 @@ spec:
     spec:
       serviceAccountName: benchmark-runner
       securityContext:
-        runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -25,7 +24,6 @@ spec:
           capabilities:
             drop:
               - ALL
-          runAsNonRoot: true
           seccompProfile:
             type: RuntimeDefault
         command: ["sh"]
