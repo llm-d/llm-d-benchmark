@@ -107,9 +107,6 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 1 ]]; then
     done
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE --ignore-not-found=true route llm-d-inference-gateway-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE --ignore-not-found=true job download-model" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    for cr in llm-d-modelservice-endpoint-picker llm-d-modelservice-manager llm-d-modelservice-metrics-auth llm-d-modelservice-admin llm-d-modelservice-editor llm-d-modelservice-viewer; do
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true ClusterRole $cr" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    done
   else
     for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
       cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/teardown.yaml
@@ -126,6 +123,9 @@ EOF
       announce "✅ llm-d-deployer completed uninstall"
     done
   fi
+  for cr in llm-d-modelservice-endpoint-picker llm-d-modelservice-manager llm-d-modelservice-metrics-auth llm-d-modelservice-admin llm-d-modelservice-editor llm-d-modelservice-viewer; do
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true ClusterRole $cr" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  done
 fi
 
 if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
