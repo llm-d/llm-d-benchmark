@@ -273,6 +273,7 @@ To get started, navigate to the `quickstart-existing-stack-benchmark` directory 
 
 - [Instructions on how to contribute](CONTRIBUTING.md) including details on our development process and governance.
 - We use Slack to discuss development across organizations. Please join: [Slack](https://inviter.co/llm-d-slack). There is a `sig-benchmarking` channel there.
+- We host a weekly standup for contributors on Thursdays at 13:30 ET. Please join: [Meeting Details](https://calendar.google.com/calendar/u/0?cid=NzA4ZWNlZDY0NDBjYjBkYzA3NjdlZTNhZTk2NWQ2ZTc1Y2U5NTZlMzA5MzhmYTAyZmQ3ZmU1MDJjMDBhNTRiNEBncm91cC5jYWxlbmRhci5nb29nbGUuY29t)
 
 ## License
 
