@@ -226,8 +226,13 @@ def main():
     # Parse command line arguments
     env_vars = os.environ
 
+    default_dir = "/tmp/"
+
     if 'LLMDBENCH_CONTROL_WORK_DIR' in env_vars:
-        default_dir = f"{env_vars['LLMDBENCH_CONTROL_WORK_DIR']}/results"
+        default_dir = f"{env_vars['LLMDBENCH_CONTROL_WORK_DIR']}"
+
+    if os.path.exists(f"{default_dir}/results") :
+        default_dir = f"{default_dir}/results"
 
     parser = argparse.ArgumentParser(description='Analyze benchmark results from CSV files.')
     parser.add_argument('--results-dir',

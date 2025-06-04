@@ -152,9 +152,10 @@ spec:
     imagePullPolicy: Always
     securityContext:
       runAsRoot: true
-#    command: ["sleep", "120"]
     command: ["llm-d-benchmark.sh"]
     env:
+    - name: LLMDBENCH_CONTROL_WORK_DIR
+      value: /requests/${LLMDBENCH_FMPERF_STACK_NAME}/
     - name: LLMDBENCH_BASE64_CONTEXT
       value: "$LLMDBENCH_BASE64_CONTEXT"
     - name: LLMDBENCH_BASE64_FMPERF_WORKLOAD
@@ -196,7 +197,7 @@ EOF
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=${LLMDBENCH_FMPERF_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       announce "✅ Benchmark execution for model \"$model\" effectivelly started"
 
-      announce "ℹ️  You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} logs -l app=${LLMDBENCH_FMPERF_LAUNCHER_NAME} -f\"..."
+      announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} logs -l app=${LLMDBENCH_FMPERF_LAUNCHER_NAME} -f\"..."
 
       announce "⏳ Waiting for pod \"${LLMDBENCH_FMPERF_LAUNCHER_NAME}\" for model \"$model\" to be in \"Completed\" state (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=ready=False pod ${LLMDBENCH_FMPERF_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
