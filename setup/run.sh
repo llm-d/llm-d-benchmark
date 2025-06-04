@@ -113,7 +113,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
     export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
 
     if [[ $LLMDBENCH_FMPERF_EXPERIMENT_SKIP -eq 1 ]]; then
-      announce "⏭️ Command line option \"-z\--skip\" invoked. Will skip experiment execution (and move straight to analysis"
+      announce "⏭️ Command line option \"-z\--skip\" invoked. Will skip experiment execution (and move straight to analysis)"
     else
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} delete pod ${LLMDBENCH_FMPERF_LAUNCHER_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_FMPERF_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
@@ -154,8 +154,16 @@ spec:
       runAsRoot: true
     command: ["llm-d-benchmark.sh"]
     env:
+    - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
+      value: "1"
+    - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY
+      value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY}"
+    - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS
+      value: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
+    - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
+      value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}"
     - name: LLMDBENCH_CONTROL_WORK_DIR
-      value: /requests/${LLMDBENCH_FMPERF_STACK_NAME}/
+      value: "/requests/${LLMDBENCH_FMPERF_STACK_NAME}/"
     - name: LLMDBENCH_BASE64_CONTEXT
       value: "$LLMDBENCH_BASE64_CONTEXT"
     - name: LLMDBENCH_BASE64_FMPERF_WORKLOAD
@@ -213,19 +221,25 @@ EOF
       announce "✅ Results for model \"$model\" collected successfully"
     fi
 
-    announce "🔍 Analyzing collected data..."
-    if [ "$LLMDBENCH_CONTROL_DEPLOY_HOST_OS" = "mac" ] && [ -f "/opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh" ]; then
-      llmdbench_execute_cmd "source \"/opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    elif [ "$LLMDBENCH_CONTROL_DEPLOY_HOST_OS" = "linux" ] && [ -f "/opt/miniconda/etc/profile.d/conda.sh" ]; then
-      llmdbench_execute_cmd "source \"/opt/miniconda/etc/profile.d/conda.sh\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    else
-      echo "❌ Could not find conda.sh for $LLMDBENCH_CONTROL_DEPLOY_HOST_OS. Please verify your Anaconda installation."
-      exit 1
+    if [[ $LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY -eq 1 ]]; then
+      announce "🔍 Analyzing collected data..."
+      if [ "$LLMDBENCH_CONTROL_DEPLOY_HOST_OS" = "mac" ] && [ -f "/opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh" ]; then
+        llmdbench_execute_cmd "source \"/opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      elif [ "$LLMDBENCH_CONTROL_DEPLOY_HOST_OS" = "linux" ] && [ -f "/opt/miniconda/etc/profile.d/conda.sh" ]; then
+        llmdbench_execute_cmd "source \"/opt/miniconda/etc/profile.d/conda.sh\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      else
+        echo "❌ Could not find conda.sh for $LLMDBENCH_CONTROL_DEPLOY_HOST_OS. Please verify your Anaconda installation."
+        exit 1
+      fi
+
+      llmdbench_execute_cmd "conda activate \"$LLMDBENCH_FMPERF_CONDA_ENV_NAME\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_PCMD} $LLMDBENCH_MAIN_DIR/analysis/analyze_results.py" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      announce "✅ Data analysis done."
     fi
 
-    llmdbench_execute_cmd "conda activate \"$LLMDBENCH_FMPERF_CONDA_ENV_NAME\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_PCMD} $LLMDBENCH_MAIN_DIR/analysis/analyze_results.py" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    announce "✅ Data analysis done."
+    if [[ -d ${LLMDBENCH_CONTROL_WORK_DIR}/results/analysis ]]; then
+      llmdbench_execute_cmd "mv ${LLMDBENCH_CONTROL_WORK_DIR}/results/analysis ${LLMDBENCH_CONTROL_WORK_DIR}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    fi
 
     unset LLMDBENCH_DEPLOY_CURRENT_MODEL
 

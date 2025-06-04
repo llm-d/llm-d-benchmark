@@ -9,7 +9,7 @@ export LLMDBENCH_HF_TOKEN="${LLMDBENCH_HF_TOKEN:-}"
 # Image
 export LLMDBENCH_IMAGE_REGISTRY=${LLMDBENCH_IMAGE_REGISTRY:-ghcr.io}
 export LLMDBENCH_IMAGE_REPO=${LLMDBENCH_IMAGE_REPO:-llm-d/llm-d-benchmark}
-export LLMDBENCH_IMAGE_TAG=${LLMDBENCH_IMAGE_TAG:-v0.0.8}
+export LLMDBENCH_IMAGE_TAG=${LLMDBENCH_IMAGE_TAG:-v0.1.0}
 
 # External repositories
 export LLMDBENCH_DEPLOYER_GIT_REPO="${LLMDBENCH_DEPLOYER_GIT_REPO:-https://github.com/llm-d/llm-d-deployer.git}"
@@ -90,12 +90,15 @@ export LLMDBENCH_VLLM_DEPLOYER_EPP_DECODE_SESSION_AWARE_SCORER_WEIGHT=${LLMDBENC
 export LLMDBENCH_FMPERF_CONDA_ENV_NAME="${LLMDBENCH_FMPERF_CONDA_ENV_NAME:-fmperf-env}"
 export LLMDBENCH_FMPERF_NAMESPACE=${LLMDBENCH_FMPERF_NAMESPACE:-fmperf}
 export LLMDBENCH_FMPERF_SERVICE_ACCOUNT=${LLMDBENCH_FMPERF_SERVICE_ACCOUNT:-fmperf-runner}
-export LLMDBENCH_FMPERF_EXPERIMENT_HARNESS="${LLMDBENCH_FMPERF_EXPERIMENT_HARNESS:-llm-d-benchmark.py}"
 export LLMDBENCH_FMPERF_EXPERIMENT_PROFILE="${LLMDBENCH_FMPERF_EXPERIMENT_PROFILE:-sanity_short-input.yaml}"
 export LLMDBENCH_FMPERF_PVC_NAME="${LLMDBENCH_FMPERF_PVC_NAME:-"workload-pvc"}"
 export LLMDBENCH_FMPERF_PVC_SIZE="${LLMDBENCH_FMPERF_PVC_SIZE:-20Gi}"
 export LLMDBENCH_FMPERF_CONTAINER_IMAGE=${LLMDBENCH_FMPERF_CONTAINER_IMAGE:-lmcache/lmcache-benchmark:main}
 export LLMDBENCH_FMPERF_EXPERIMENT_SKIP=${LLMDBENCH_FMPERF_EXPERIMENT_SKIP:-}
+
+export LLMDBENCH_RUN_EXPERIMENT_HARNESS="${LLMDBENCH_RUN_EXPERIMENT_HARNESS:-llm-d-benchmark.py}"
+export LLMDBENCH_RUN_EXPERIMENT_ANALYZER="${LLMDBENCH_RUN_EXPERIMENT_ANALYZER:-analyze_results.py}"
+export LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY="${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY:-0}"
 
 # LLM-D-Benchmark deployment specific variables
 export LLMDBENCH_DEPLOY_MODEL_LIST=${LLMDBENCH_DEPLOY_MODEL_LIST:-"llama-3b"}
@@ -245,6 +248,7 @@ if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
     fi
     export LLMDBENCH_CONTROL_REMOTE_KUBECONFIG_FILENAME=config
   fi
+  export LLMDBENCH_CONTROL_KCMD="oc --kubeconfig $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx"
 fi
 
 export LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT=${LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT:-0}
@@ -359,10 +363,12 @@ function llmdbench_execute_cmd {
     return 0
   else
     _msg="---> will execute the command \"${actual_cmd}\""
-    echo ${_msg} > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/$(date +%s%N)_command.log
+    command_tstamp=$(date +%s%N)
+    echo ${_msg} > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_command.log
     while [[ "${counter}" -le "${attempts}" ]]; do
+      command_tstamp=$(date +%s%N)
       if [[ ${verbose} -eq 0 && ${silent} -eq 1 ]]; then
-        eval ${actual_cmd} &>/dev/null
+        eval ${actual_cmd} 2> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stderr.log 1> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stdout.log
         local ecode=$?
       elif [[ ${verbose} -eq 0 && ${silent} -eq 0 ]]; then
         eval ${actual_cmd}
@@ -386,6 +392,8 @@ function llmdbench_execute_cmd {
   if [[ $ecode -ne 0 ]]
   then
     echo "ERROR while executing command \"${actual_cmd}\""
+    echo
+    cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stderr.log
   fi
 
   set -euo pipefail

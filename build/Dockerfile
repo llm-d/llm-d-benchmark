@@ -52,9 +52,10 @@ if [[ ! -z \${LLMDBENCH_BASE64_FMPERF_WORKLOAD} ]]; then\n\
   echo \${LLMDBENCH_BASE64_FMPERF_WORKLOAD} | base64 -d > /workspace/llmdbench_workload.yaml\n\
 fi\n\
 mv -f ~/.bashrc ~/fixbashrc\n\
-python3 /usr/local/bin/llm-d-benchmark.py\n\
+python3 /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_HARNESS}\n\
 mv -f ~/fixbashrc ~/.bashrc\n\
 cp -f /workspace/fmperf/pod_log_response.txt /requests/\${LLMDBENCH_FMPERF_STACK_NAME}/\n\
+python3 /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}\n\
 " >> /usr/local/bin/llm-d-benchmark.sh; \
 chmod +x /usr/local/bin/llm-d-benchmark.sh
 

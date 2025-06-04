@@ -226,6 +226,11 @@ def main():
     # Parse command line arguments
     env_vars = os.environ
 
+    if 'LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY' in env_vars and 'LLMDBENCH_RUN_EXPERIMENT_LAUNCHER' in env_vars :
+        if env_vars['LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY'] == "1" and env_vars['LLMDBENCH_RUN_EXPERIMENT_LAUNCHER'] == "1" :
+            logger.info(f"\nEnviroment variable \"LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY\" is set to \"1\", and this is a pod. Will skip execution")
+            exit(0)
+
     default_dir = "/tmp/"
 
     if 'LLMDBENCH_CONTROL_WORK_DIR' in env_vars:
