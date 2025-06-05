@@ -29,11 +29,11 @@ runs:
         echo "Tag: ${{ inputs.tag }}"
         echo "Registry: ${{ inputs.registry }}"
       shell: bash
-      
+
     - name: Build image
       run: |
         docker buildx build \
-          --platform linux/amd64 \
+          --platform linux/amd64,linux/arm64  \
           -t ${{ inputs.registry }}/${{ inputs.image-name }}:${{ inputs.tag }} \
           -f build/Dockerfile \
           --push .

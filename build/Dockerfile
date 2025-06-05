@@ -1,13 +1,15 @@
-FROM registry.access.redhat.com/ubi9/ubi
+FROM python:3.12.9-slim-bookworm
 
-RUN dnf install -y \
+RUN apt-get update; \
+    apt-get install -y \
     git \
     gpg \
     jq \
     pip \
     rsync \
     patch \
-    && dnf clean all && rm -rf /var/cache/dnf
+    curl \
+    && apt-get clean && rm -rf /var/cache/apt
 
 RUN OC_FILE_NAME=openshift-client-$(uname -s | sed -e "s/Linux/linux/g" -e "s/Darwin/apple-darwin/g")$(echo "-$(uname -m)" | sed -e 's/-x86_64//g' -e 's/-amd64//g' -e 's/aarch64/arm64-rhel9/g').tar.gz; \
     curl https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/$OC_FILE_NAME  -o $OC_FILE_NAME > /dev/null 2>&1 && \
@@ -64,6 +66,11 @@ WORKDIR /workspace
 ARG FM_PERF_REPO=https://github.com/fmperf-project/fmperf.git
 ARG FM_PERF_BRANCH=main
 RUN git clone --branch ${FM_PERF_BRANCH} ${FM_PERF_REPO}
+
+ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
+ARG INFERENCE_PERF_BRANCH=main
+RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
+RUN cd inference-perf; pip install .
 
 COPY util/patches/fmperf.patch fmperf/fmperf.patch
 RUN cd fmperf; patch -p1 < fmperf.patch && \

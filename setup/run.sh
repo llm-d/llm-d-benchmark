@@ -35,13 +35,13 @@ export LLMDBENCH_CONTROL_DRY_RUN=${LLMDBENCH_CONTROL_DRY_RUN:-0}
 export LLMDBENCH_CONTROL_VERBOSE=${LLMDBENCH_CONTROL_VERBOSE:-0}
 export LLMDBENCH_DEPLOY_SCENARIO=
 export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=
-export LLMDBENCH_FMPERF_EXPERIMENT_SKIP=0
+export LLMDBENCH_HARNESS_SKIP_RUN=0
 
 function show_usage {
     echo -e "Usage: $(echo $0 | rev | cut -d '/' -f 1 | rev) -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
              -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
              -m/--models [list the models to be run against (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
-             -z/--skip [skip the execution of the experiment, and only collect data (default=$LLMDBENCH_FMPERF_EXPERIMENT_SKIP) ] \n \
+             -z/--skip [skip the execution of the experiment, and only collect data (default=$LLMDBENCH_HARNESS_SKIP_RUN) ] \n \
              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
              -h/--help (show this help)"
 }
@@ -71,7 +71,7 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
         -z|--skip)
-        export LLMDBENCH_CLIOVERRIDE_FMPERF_EXPERIMENT_SKIP=1
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_SKIP_RUN=1
         ;;
         -v|--verbose)
         export LLMDBENCH_CLIOVERRIDE_CONTROL_VERBOSE=1
@@ -103,7 +103,6 @@ export LLMDBENCH_EXPERIMENT_ID=${LLMDBENCH_EXPERIMENT_ID:-"default"}
 
 export LLMDBENCH_BASE64_CONTEXT=$(cat $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx | base64)
 
-export LLMDBENCH_FMPERF_LAUNCHER_NAME=llmdbench-fmperf-launcher
 for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
@@ -112,15 +111,15 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
     export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
 
-    if [[ $LLMDBENCH_FMPERF_EXPERIMENT_SKIP -eq 1 ]]; then
+    if [[ $LLMDBENCH_HARNESS_SKIP_RUN -eq 1 ]]; then
       announce "⏭️ Command line option \"-z\--skip\" invoked. Will skip experiment execution (and move straight to analysis)"
     else
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} delete pod ${LLMDBENCH_FMPERF_LAUNCHER_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_FMPERF_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_FMPERF_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
-      render_template ${LLMDBENCH_MAIN_DIR}/workload/profiles/$LLMDBENCH_FMPERF_EXPERIMENT_PROFILE.in ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$LLMDBENCH_FMPERF_EXPERIMENT_PROFILE
+      render_template ${LLMDBENCH_MAIN_DIR}/workload/profiles/$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE.in ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE
 
-      export LLMDBENCH_BASE64_FMPERF_WORKLOAD=$(cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$LLMDBENCH_FMPERF_EXPERIMENT_PROFILE | base64)
+      export LLMDBENCH_BASE64_FMPERF_WORKLOAD=$(cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE | base64)
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
         export LLMDBENCH_FMPERF_STACK_TYPE=vllm-prod
@@ -134,24 +133,22 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 apiVersion: v1
 kind: Pod
 metadata:
-  name: ${LLMDBENCH_FMPERF_LAUNCHER_NAME}
-  namespace: ${LLMDBENCH_FMPERF_NAMESPACE}
+  name: ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}
+  namespace: ${LLMDBENCH_HARNESS_NAMESPACE}
   labels:
-    app: ${LLMDBENCH_FMPERF_LAUNCHER_NAME}
+    app: ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}
 spec:
   backoffLimit: 0
   template:
     metadata:
       labels:
-        app: ${LLMDBENCH_FMPERF_LAUNCHER_NAME}
+        app: ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}
 spec:
-  serviceAccountName: $LLMDBENCH_FMPERF_SERVICE_ACCOUNT
+  serviceAccountName: $LLMDBENCH_HARNESS_SERVICE_ACCOUNT
   containers:
-  - name: fmperf
+  - name: harness
     image: ${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}:${LLMDBENCH_IMAGE_TAG}
     imagePullPolicy: Always
-    securityContext:
-      runAsRoot: true
     command: ["llm-d-benchmark.sh"]
     env:
     - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
@@ -168,8 +165,8 @@ spec:
       value: "$LLMDBENCH_BASE64_CONTEXT"
     - name: LLMDBENCH_BASE64_FMPERF_WORKLOAD
       value: "${LLMDBENCH_BASE64_FMPERF_WORKLOAD}"
-    - name: LLMDBENCH_FMPERF_NAMESPACE
-      value: "${LLMDBENCH_FMPERF_NAMESPACE}"
+    - name: LLMDBENCH_HARNESS_NAMESPACE
+      value: "${LLMDBENCH_HARNESS_NAMESPACE}"
     - name: LLMDBENCH_FMPERF_STACK_TYPE
       value: "${LLMDBENCH_FMPERF_STACK_TYPE}"
     - name: LLMDBENCH_FMPERF_ENDPOINT_URL
@@ -191,33 +188,33 @@ spec:
   #    name: fmperf-workload-config
   - name: results
     persistentVolumeClaim:
-      claimName: $LLMDBENCH_FMPERF_PVC_NAME
+      claimName: $LLMDBENCH_HARNESS_PVC_NAME
   #- name: logs
   #  emptyDir: {}
   restartPolicy: Never
 EOF
 
-      announce "🚀 Starting pod \"${LLMDBENCH_FMPERF_LAUNCHER_NAME}\" for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL)..."
+      announce "🚀 Starting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL)..."
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-      announce "✅ Pod \"${LLMDBENCH_FMPERF_LAUNCHER_NAME}\" for model \"$model\" started"
+      announce "✅ Pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" started"
 
-      announce "⏳ Waiting for pod \"${LLMDBENCH_FMPERF_LAUNCHER_NAME}\" for model \"$model\" to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=${LLMDBENCH_FMPERF_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      announce "⏳ Waiting for pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       announce "✅ Benchmark execution for model \"$model\" effectivelly started"
 
-      announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} logs -l app=${LLMDBENCH_FMPERF_LAUNCHER_NAME} -f\"..."
+      announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} logs -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -f\"..."
 
-      announce "⏳ Waiting for pod \"${LLMDBENCH_FMPERF_LAUNCHER_NAME}\" for model \"$model\" to be in \"Completed\" state (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=ready=False pod ${LLMDBENCH_FMPERF_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      announce "⏳ Waiting for pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be in \"Completed\" state (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=ready=False pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       announce "✅ Benchmark execution for model \"$model\" completed"
 
-      announce "🗑️ Deleting pod \"${LLMDBENCH_FMPERF_LAUNCHER_NAME}\" for model \"$model\" ..."
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} delete pod ${LLMDBENCH_FMPERF_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-      announce "✅ Pod \"${LLMDBENCH_FMPERF_LAUNCHER_NAME}\" for model \"$model\""
+      announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" ..."
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      announce "✅ Pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\""
 
       announce "🏗️  Collecting results for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL) to \"${LLMDBENCH_CONTROL_WORK_DIR}/results/\"..."
-      LLMDBENCH_FMPERF_ACCESS_RESULTS_POD_NAME=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} get pod -l app=llm-d-benchmark-fmperf --no-headers -o name" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0 | $LLMDBENCH_CONTROL_SCMD 's|^pod/||g')
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_FMPERF_NAMESPACE} cp $LLMDBENCH_FMPERF_ACCESS_RESULTS_POD_NAME:/requests/${LLMDBENCH_FMPERF_STACK_NAME}/ ${LLMDBENCH_CONTROL_WORK_DIR}/results/" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pod -l app=llm-d-benchmark-harness --no-headers -o name" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0 | $LLMDBENCH_CONTROL_SCMD 's|^pod/||g')
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} cp $LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME:/requests/${LLMDBENCH_FMPERF_STACK_NAME}/ ${LLMDBENCH_CONTROL_WORK_DIR}/results/" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       announce "✅ Results for model \"$model\" collected successfully"
     fi
 
@@ -232,7 +229,7 @@ EOF
         exit 1
       fi
 
-      llmdbench_execute_cmd "conda activate \"$LLMDBENCH_FMPERF_CONDA_ENV_NAME\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      llmdbench_execute_cmd "conda activate \"$LLMDBENCH_HARNESS_CONDA_ENV_NAME\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_PCMD} $LLMDBENCH_MAIN_DIR/analysis/analyze_results.py" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       announce "✅ Data analysis done."
     fi
