@@ -1,0 +1,45 @@
+name: Run Benchmark
+
+on:
+  workflow_dispatch:  
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '0 0 * * *'  # runs every midnight UTC
+
+jobs:
+  run-benchmark:
+    name: Benchmark Test
+    runs-on: [self-hosted, k8s-util]  
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cleanup target cloud (standalone)
+        run: |
+          ./setup/teardown.sh -c ocp_A100_standalone_llama-3b
+
+      - name: Cleanup target cloud (deployer)
+        run: |
+          ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
+
+      - name: Standup (deployer)
+        run: |
+          ./setup/standup.sh -c ocp_A100_deployer_llama-3b
+
+      - name: Run benchmark
+        run: |
+          ./setup/run.sh -c ocp_A100_deployer_llama-3b
+
+      - name: Cleanup target cloud (deployer)
+        run: |
+          ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
+        
+      - name: Archive benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: results/
+          retention-days: 14
