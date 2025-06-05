@@ -1,42 +1,67 @@
 name: Run Benchmark
 
 on:
-  workflow_dispatch:  
+  workflow_dispatch:
   push:
     branches:
       - main
   schedule:
-    - cron: '0 0 * * *'  # runs every midnight UTC
+    - cron: '0 0 * * *'  # daily at midnight UTC
 
 jobs:
   run-benchmark:
     name: Benchmark Test
-    runs-on: [self-hosted, k8s-util]  
+    runs-on: [self-hosted, k8s-util]
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Cleanup target cloud (standalone)
+      - name: Set up kubeconfig from secret
         run: |
-          ./setup/teardown.sh -c ocp_A100_standalone_llama-3b
+          echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+        shell: bash
+
+      - name: Cleanup target cloud (standalone)
+        run: ./setup/teardown.sh -c ocp_A100_standalone_llama-3b
 
       - name: Cleanup target cloud (deployer)
-        run: |
-          ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
+        run: ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
 
       - name: Standup (deployer)
-        run: |
-          ./setup/standup.sh -c ocp_A100_deployer_llama-3b
+        run: ./setup/standup.sh -c ocp_A100_deployer_llama-3b
 
       - name: Run benchmark
-        run: |
-          ./setup/run.sh -c ocp_A100_deployer_llama-3b
+        run: ./setup/run.sh -c ocp_A100_deployer_llama-3b
 
       - name: Cleanup target cloud (deployer)
+        run: ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
+
+      - name: Install AWS CLI
         run: |
-          ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
-        
-      - name: Archive benchmark results
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install
+
+      - name: Copy benchmark results from pod
+        run: |
+          NAMESPACE="${{ secrets.K8S_NAMESPACE }}"
+          SELECTOR="${{ secrets.POD_LABEL_SELECTOR }}"
+          POD=$(kubectl get pod -n "$NAMESPACE" -l "$SELECTOR" -o jsonpath="{.items[0].metadata.name}")
+          mkdir -p ./results
+          kubectl cp "$NAMESPACE/$POD:/tmp/cicd/analysis" ./results
+
+      - name: Upload results to IBM Cloud Object Storage
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.COS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.COS_SECRET_ACCESS_KEY }}
+        run: |
+          aws configure set default.s3.signature_version s3v4
+          aws s3 cp ./results s3://${{ secrets.COS_BUCKET_NAME }}/benchmark-results/ \
+            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }}
+
+      - name: Archive benchmark results as GitHub artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
