@@ -29,9 +29,15 @@ function show_usage {
               -d/--deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING) ] \n \
               -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
               -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
-              -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS) ] \n \
+              -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"deployer\") ] \n \
               -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
-              -h/--help (show this help)"
+              -h/--help (show this help) \n\
+
+              * [models] can be specified with a full name (e.g., \"ibm-granite/granite-3.3-2b-instruct\") or as an alias. The following aliases are available \n\
+                  - llama-3b -> meta-llama/Llama-3.2-3B-Instruct \n\
+                  - llama-8b -> meta-llama/Llama-3.1-8B-Instruct \n\
+                  - llama-17b -> RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic \n\
+                  - llama-70b -> meta-llama/Llama-3.1-70B-Instruct"
 }
 
 while [[ $# -gt 0 ]]; do

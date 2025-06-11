@@ -72,8 +72,7 @@ ARG INFERENCE_PERF_BRANCH=main
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; pip install .
 
-COPY util/patches/fmperf.patch fmperf/fmperf.patch
-RUN cd fmperf; patch -p1 < fmperf.patch && \
+RUN cd fmperf; \
     pip install --no-cache-dir -r requirements.txt && \
     python3 setup.py install
 

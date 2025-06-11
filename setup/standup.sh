@@ -27,12 +27,18 @@ function show_usage {
     echo -e "Usage: $(echo $0 | rev | cut -d '/' -f 1 | rev) -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e 's/ /,/g') \n \
             -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
             -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
-            -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS) ] \n \
+            -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"deployer\") ] \n \
+            -a/--affinity [kubernetes node affinity] (default=$LLMDBENCH_VLLM_COMMON_AFFINITY) \n \
             -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
             -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
             -h/--help (show this help)\n \
 
-            * [step list] can take of form of comma-separated single/double digits (e.g. \"-s 0,1,5\") or ranges (e.g. \"-s 1-7\")"
+            * [step list] can take of form of comma-separated single/double digits (e.g. \"-s 0,1,5\") or ranges (e.g. \"-s 1-7\") \n\
+            ** [models] can be specified with a full name (e.g., \"ibm-granite/granite-3.3-2b-instruct\") or as an alias. The following aliases are available \n\
+                - llama-3b -> meta-llama/Llama-3.2-3B-Instruct \n\
+                - llama-8b -> meta-llama/Llama-3.1-8B-Instruct \n\
+                - llama-17b -> RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic \n\
+                - llama-70b -> meta-llama/Llama-3.1-70B-Instruct"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -65,6 +71,13 @@ while [[ $# -gt 0 ]]; do
         ;;
         -t|--methods)
         export LLMDBENCH_CLIOVERRIDE_DEPLOY_METHODS="$2"
+        shift
+        ;;
+        -a=*|--affinity=*)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_AFFINITY=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -a|--affinity)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_AFFINITY="$2"
         shift
         ;;
         -n|--dry-run)

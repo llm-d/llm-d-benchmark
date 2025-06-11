@@ -23,17 +23,19 @@ export LLMDBENCH_HARNESS_GIT_BRANCH="${LLMDBENCH_HARNESS_GIT_BRANCH:-main}"
 export LLMDBENCH_VLLM_COMMON_NAMESPACE="${LLMDBENCH_VLLM_COMMON_NAMESPACE:-llmdbench}"
 export LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT="${LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT:-default}"
 
-export LLMDBENCH_VLLM_COMMON_AFFINITY=${LLMDBENCH_VLLM_COMMON_AFFINITY:-nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3}
+export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=${LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE:-nvidia.com/gpu}
+export LLMDBENCH_VLLM_COMMON_AFFINITY=${LLMDBENCH_VLLM_COMMON_AFFINITY:-${LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE}.product:NVIDIA-H100-80GB-HBM3}
 export LLMDBENCH_VLLM_COMMON_REPLICAS=${LLMDBENCH_VLLM_COMMON_REPLICAS:-1}
 export LLMDBENCH_VLLM_COMMON_PERSISTENCE_ENABLED=${LLMDBENCH_VLLM_COMMON_PERSISTENCE_ENABLED:-true}
-export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=${LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE:-nvidia.com/gpu}
 export LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR=${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR:-1}
 export LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL=${LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL:-0.95}
 export LLMDBENCH_VLLM_COMMON_CPU_NR=${LLMDBENCH_VLLM_COMMON_CPU_NR:-4}
 export LLMDBENCH_VLLM_COMMON_CPU_MEM=${LLMDBENCH_VLLM_COMMON_CPU_MEM:-40Gi}
 export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=${LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN:-16384}
+export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=${LLMDBENCH_VLLM_COMMON_BLOCK_SIZE:-64}
+export LLMDBENCH_VLLM_COMMON_MAX_NUM_BATCHED_TOKENS=${LLMDBENCH_VLLM_COMMON_MAX_NUM_BATCHED_TOKENS:-4096}
 export LLMDBENCH_VLLM_COMMON_PVC_NAME=${LLMDBENCH_VLLM_COMMON_PVC_NAME:-"model-pvc"}
-export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS="${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS:-ocs-storagecluster-cephfs}"
+export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS="${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS:-default}"
 export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE="${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE:-300Gi}"
 export LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT=${LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT:-"2400"}
 export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME:-"llm-d-hf-token"}
@@ -274,6 +276,15 @@ else
   fi
 fi
 
+if [[ $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS == "default" ]]; then
+  has_default_sc=$($LLMDBENCH_CONTROL_KCMD get storageclass -o=jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{@.metadata.name}{"\n"}{end}' || true)
+  if [[ -z $has_default_sc ]]; then
+      echo "ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class\""
+      exit 1
+  fi
+  export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=${has_default_sc}
+fi
+
 for mt in standalone deployer; do
   is_env=$(echo $LLMDBENCH_DEPLOY_METHODS | grep $mt || true)
   if [[ -z $is_env ]]; then
@@ -439,7 +450,7 @@ function render_string {
   else
     echo "s^____^ ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
-  for entry in $(echo ${string} | $LLMDBENCH_CONTROL_SCMD -e 's/____/ /g' -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' | grep -E "REPLACE_ENV" | uniq); do
+  for entry in $(echo ${string} | $LLMDBENCH_CONTROL_SCMD -e 's/____/ /g' -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^]^\n^g' -e 's^ ^^g' | grep -E "REPLACE_ENV" | uniq); do
     parameter_name=$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_ENV_^\n______^g" -e "s^\"^^g" -e "s^'^^g" | grep "______" |  $LLMDBENCH_CONTROL_SCMD -e "s^______^^g")
     entry=REPLACE_ENV_${parameter_name}
     value=$(echo ${!parameter_name})
@@ -463,6 +474,23 @@ function render_template {
   cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands > $output_file_path
 }
 export -f render_template
+
+function check_storage_class_and_affinity {
+  local has_sc=$($LLMDBENCH_CONTROL_KCMD get storageclasses | grep $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS || true)
+  if [[ -z $has_sc ]]; then
+    echo "ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=$LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS but could not find such storage class"
+    return 1
+  fi
+
+  local annotation=$(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
+  local has_affinity=$($LLMDBENCH_CONTROL_KCMD get nodes | jq -r '.items[].metadata.annotations.[]' | grep $annotation || true)
+  if [[ -z $has_sc ]]; then
+    echo "ERROR. There are no nodes on this cluster with the annotation \"${annotation}\" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)"
+    return 1
+  fi
+
+}
+export -f check_storage_class_and_affinity
 
 function announce {
     # 1 - MESSAGE

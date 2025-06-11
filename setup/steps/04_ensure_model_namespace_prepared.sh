@@ -2,7 +2,7 @@
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 announce "🔍 Checking if \"${LLMDBENCH_VLLM_COMMON_NAMESPACE}\" is prepared."
-
+check_storage_class_and_affinity
 llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} delete job download-model --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
 for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do

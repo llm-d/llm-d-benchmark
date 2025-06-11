@@ -43,7 +43,13 @@ function show_usage {
              -m/--models [list the models to be run against (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
              -z/--skip [skip the execution of the experiment, and only collect data (default=$LLMDBENCH_HARNESS_SKIP_RUN) ] \n \
              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
-             -h/--help (show this help)"
+             -h/--help (show this help) \n\
+
+              * [models] can be specified with a full name (e.g., \"ibm-granite/granite-3.3-2b-instruct\") or as an alias. The following aliases are available \n\
+                  - llama-3b -> meta-llama/Llama-3.2-3B-Instruct \n\
+                  - llama-8b -> meta-llama/Llama-3.1-8B-Instruct \n\
+                  - llama-17b -> RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic \n\
+                  - llama-70b -> meta-llama/Llama-3.1-70B-Instruct"
 }
 
 while [[ $# -gt 0 ]]; do
