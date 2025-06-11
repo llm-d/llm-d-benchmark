@@ -44,8 +44,6 @@ metadata:
   labels:
     kubernetes.io/metadata.name: ${LLMDBENCH_HARNESS_NAMESPACE}
 $(${LLMDBENCH_CONTROL_KCMD} get namespace/${LLMDBENCH_VLLM_COMMON_NAMESPACE} -o yaml | yq .metadata.labels | grep -Ev "metadata.name" | sed 's|^|    |g')
-  annotations:
-$(${LLMDBENCH_CONTROL_KCMD} get namespace/${LLMDBENCH_VLLM_COMMON_NAMESPACE} -o yaml | yq .metadata.annotations | grep -Ev "last-applied|creationTimestamp" | sed 's|^|    |g')
 spec:
   finalizers:
   - kubernetes
@@ -149,7 +147,7 @@ spec:
     image: ${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}:${LLMDBENCH_IMAGE_TAG}
     imagePullPolicy: Always
     securityContext:
-      runAsRoot: true
+      runAsUser: 0
     command: ["rsync", "--daemon", "--no-detach", "--port=20873", "--log-file=/dev/stdout"]
     volumeMounts:
     - name: requests
