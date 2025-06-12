@@ -10,8 +10,9 @@ on:
 
 jobs:
   run-benchmark:
+    timeout-minutes: 240 #parameter to set the maximum time for the job to run
     name: Benchmark Test
-    runs-on: [self-hosted, k8s-util]
+    runs-on: [k8s-util]
 
     steps:
       - name: Checkout code
@@ -38,19 +39,25 @@ jobs:
       - name: Cleanup target cloud (deployer)
         run: ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
 
+        ## look for public action for aws cli install
       - name: Install AWS CLI
         run: |
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
           unzip awscliv2.zip
           sudo ./aws/install
+        shell: bash
 
-      - name: Copy benchmark results from pod
-        run: |
-          NAMESPACE="${{ secrets.K8S_NAMESPACE }}"
-          SELECTOR="${{ secrets.POD_LABEL_SELECTOR }}"
-          POD=$(kubectl get pod -n "$NAMESPACE" -l "$SELECTOR" -o jsonpath="{.items[0].metadata.name}")
-          mkdir -p ./results
-          kubectl cp "$NAMESPACE/$POD:/tmp/cicd/analysis" ./results
+    #   - name: Copy benchmark results from pod
+    #     run: |
+    #       NAMESPACE="${{ secrets.K8S_NAMESPACE }}"
+    #       SELECTOR="${{ secrets.POD_LABEL_SELECTOR }}"
+    #       POD=$(kubectl get pod -n "$NAMESPACE" -l "$SELECTOR" -o jsonpath="{.items[0].metadata.name}")
+    #       mkdir -p ./results
+    #       kubectl cp "$NAMESPACE/$POD:/tmp/cicd/analysis" ./results
+
+
+     # parameter to set cp input directory
+     # parm for output directory - date/time stamp (or GH run id)
 
       - name: Upload results to IBM Cloud Object Storage
         env:
@@ -58,11 +65,11 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.COS_SECRET_ACCESS_KEY }}
         run: |
           aws configure set default.s3.signature_version s3v4
-          aws s3 cp ./results s3://${{ secrets.COS_BUCKET_NAME }}/benchmark-results/ \
+          aws s3 cp ./tmp/cicd/analysis s3://${{ secrets.COS_BUCKET_NAME }}/benchmark-results/ \  
             --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }}
 
       - name: Archive benchmark results as GitHub artifact
-        if: always()
+        if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
