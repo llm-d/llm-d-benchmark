@@ -2,21 +2,45 @@ name: Run Benchmark
 
 on:
   workflow_dispatch:
+    inputs:
+      input_dir:
+        description: 'Input directory for benchmark results'
+        required: false
+        default: './tmp/cicd/analysis'
+      output_dir:
+        description: 'Output directory name (S3 prefix and artifact name)'
+        required: false
+        default: ''
+
   push:
     branches:
       - main
+
   schedule:
-    - cron: '0 0 * * *'  # daily at midnight UTC
+    - cron: '0 0 * * *'  # Daily at midnight UTC
 
 jobs:
   run-benchmark:
-    timeout-minutes: 240 #parameter to set the maximum time for the job to run
     name: Benchmark Test
     runs-on: [k8s-util]
+    timeout-minutes: 240
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set input and output directory environment variables
+        run: |
+          echo "INPUT_DIR=${{ github.event.inputs.input_dir }}" >> $GITHUB_ENV
+
+          if [ -z "${{ github.event.inputs.output_dir }}" ]; then
+            timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+            echo "OUTPUT_DIR=benchmark-results-${timestamp}" >> $GITHUB_ENV
+            echo "Using generated output dir: benchmark-results-${timestamp}"
+          else
+            echo "OUTPUT_DIR=${{ github.event.inputs.output_dir }}" >> $GITHUB_ENV
+            echo "Using provided output dir: ${{ github.event.inputs.output_dir }}"
+          fi
 
       - name: Set up kubeconfig from secret
         run: |
@@ -39,39 +63,22 @@ jobs:
       - name: Cleanup target cloud (deployer)
         run: ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
 
-        ## look for public action for aws cli install
-      - name: Install AWS CLI
-        run: |
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install
-        shell: bash
-
-    #   - name: Copy benchmark results from pod
-    #     run: |
-    #       NAMESPACE="${{ secrets.K8S_NAMESPACE }}"
-    #       SELECTOR="${{ secrets.POD_LABEL_SELECTOR }}"
-    #       POD=$(kubectl get pod -n "$NAMESPACE" -l "$SELECTOR" -o jsonpath="{.items[0].metadata.name}")
-    #       mkdir -p ./results
-    #       kubectl cp "$NAMESPACE/$POD:/tmp/cicd/analysis" ./results
-
-
-     # parameter to set cp input directory
-     # parm for output directory - date/time stamp (or GH run id)
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-cli@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Upload results to IBM Cloud Object Storage
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.COS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.COS_SECRET_ACCESS_KEY }}
         run: |
           aws configure set default.s3.signature_version s3v4
-          aws s3 cp ./tmp/cicd/analysis s3://${{ secrets.COS_BUCKET_NAME }}/benchmark-results/ \  
+          aws s3 cp "$INPUT_DIR" "s3://${{ secrets.COS_BUCKET_NAME }}/$OUTPUT_DIR/" \
             --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }}
 
       - name: Archive benchmark results as GitHub artifact
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results
-          path: results/
+          name: ${{ env.OUTPUT_DIR }}
+          path: ${{ env.INPUT_DIR }}
           retention-days: 14
