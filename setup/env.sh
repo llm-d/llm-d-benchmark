@@ -9,7 +9,7 @@ export LLMDBENCH_HF_TOKEN="${LLMDBENCH_HF_TOKEN:-}"
 # Image
 export LLMDBENCH_IMAGE_REGISTRY=${LLMDBENCH_IMAGE_REGISTRY:-ghcr.io}
 export LLMDBENCH_IMAGE_REPO=${LLMDBENCH_IMAGE_REPO:-llm-d/llm-d-benchmark}
-export LLMDBENCH_IMAGE_TAG=${LLMDBENCH_IMAGE_TAG:-v0.1.1}
+export LLMDBENCH_IMAGE_TAG=${LLMDBENCH_IMAGE_TAG:-v0.1.2}
 
 # External repositories
 export LLMDBENCH_DEPLOYER_GIT_REPO="${LLMDBENCH_DEPLOYER_GIT_REPO:-https://github.com/llm-d/llm-d-deployer.git}"
