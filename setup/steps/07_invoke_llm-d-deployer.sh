@@ -33,6 +33,9 @@ sampleApplication:
     replicas: ${LLMDBENCH_VLLM_DEPLOYER_DECODE_REPLICAS}
     extraArgs: $(render_string ${LLMDBENCH_VLLM_DEPLOYER_DECODE_EXTRA_ARGS} $model)
 
+gateway:
+  gatewayClassName: ${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME}
+
 modelservice:
   replicas: $LLMDBENCH_VLLM_DEPLOYER_MODELSERVICE_REPLICAS
 

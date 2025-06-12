@@ -3,10 +3,10 @@ source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 announce "🔍 Checking if Gateway Provider is setup..."
 if [[ $LLMDBENCH_USER_IS_ADMIN -eq 1 ]]; then
-  if [[ $(${LLMDBENCH_CONTROL_KCMD} get pods -n kgateway-system --no-headers --ignore-not-found --field-selector status.phase=Running | wc -l) -ne 0 ]]; then
+  if [[ ${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME} == "kgateway" && $(${LLMDBENCH_CONTROL_KCMD} get pods -n kgateway-system --no-headers --ignore-not-found --field-selector status.phase=Running | wc -l) -ne 0 ]]; then
     announce "⏭️  Gateway Provider is already setup, skipping installation"
   else
-    llmd_opts="--infra-only --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE}"
+    llmd_opts="--infra-only --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --gateway ${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME}"
     announce "🚀 Calling llm-d-deployer with options \"${llmd_opts}\"..."
     pushd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart &>/dev/null
     llmdbench_execute_cmd "cd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart; export KUBECONFIG=$LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx; export HF_TOKEN=$LLMDBENCH_HF_TOKEN; ./llmd-installer.sh $llmd_opts" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0

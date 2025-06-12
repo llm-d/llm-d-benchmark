@@ -10,4 +10,71 @@ index 4ad96c7..a7a8a4d 100644
 +kubeVersion: ">= 1.28.0-0"
  maintainers:
    - name: llm-d
-     url: https://github.com/llm-d/llm-d-deployer
+     url: https://github.com/llm-d/llm-d-deployerdiff --git a/chart-dependencies/ci-deps.sh b/chart-dependencies/ci-deps.sh
+index 1b1b0e5..db39977 100755
+--- a/chart-dependencies/ci-deps.sh
++++ b/chart-dependencies/ci-deps.sh
+@@ -24,7 +24,7 @@ CWD=$( dirname -- "$( readlink -f -- "$0"; )"; )
+ 
+ ## Populate manifests
+ MODE=${1:-apply} # allowed values "apply" or "delete"
+-
++BACKEND=${2:-$(helm show values $CWD/../charts/llm-d --jsonpath '{.gateway.gatewayClassName}')}
+ if [[ "$MODE" == "apply" ]]; then
+     LOG_ACTION_NAME="Installing"
+ else
+@@ -40,7 +40,6 @@ log_success "🚪 GAIE CRDs: ${LOG_ACTION_NAME}..."
+ kubectl $MODE -k https://github.com/llm-d/llm-d-inference-scheduler/deploy/components/crds-gie || true
+ 
+ ### Install Gateway provider
+-backend=$(helm show values $CWD/../charts/llm-d --jsonpath '{.gateway.gatewayClassName}')
+ log_success "🎒 Gateway provider '${COLOR_BLUE}${backend}${COLOR_RESET}${COLOR_GREEN}': ${LOG_ACTION_NAME}...${COLOR_RESET}"
+ 
+-$CWD/$backend/install.sh $MODE
++$CWD/$BACKEND/install.sh $MODE
+diff --git a/quickstart/llmd-installer.sh b/quickstart/llmd-installer.sh
+index 502bfa9..84db8f1 100755
+--- a/quickstart/llmd-installer.sh
++++ b/quickstart/llmd-installer.sh
+@@ -25,6 +25,7 @@ DISABLE_METRICS=false
+ MONITORING_NAMESPACE="llm-d-monitoring"
+ DOWNLOAD_MODEL=""
+ DOWNLOAD_TIMEOUT="600"
++GATEWAY_TYPE="istio"
+ 
+ # Minikube-specific flags & globals
+ USE_MINIKUBE=false
+@@ -54,6 +55,7 @@ Options:
+   -t, --download-timeout           Timeout for model download job
+   -k, --minikube                   Deploy on an existing minikube instance with hostPath storage
+   -g, --context                    Supply a specific Kubernetes context
++  -j, --gateway                    Select gateway type (istio or kgateway)
+   -h, --help                       Show this help and exit
+ EOF
+ }
+@@ -138,6 +140,7 @@ parse_args() {
+       -t|--download-timeout)           DOWNLOAD_TIMEOUT="$2"; shift 2 ;;
+       -k|--minikube)                   USE_MINIKUBE=true; shift ;;
+       -g|--context)                    KUBERNETES_CONTEXT="$2"; shift 2 ;;
++      -j|--gateway)                    GATEWAY_TYPE="$2"; shift 2 ;;
+       -h|--help)                       print_help; exit 0 ;;
+       *)                               die "Unknown option: $1" ;;
+     esac
+@@ -386,7 +389,7 @@ create_pvc_and_download_model_if_needed() {
+ install() {
+   if [[ "${SKIP_INFRA}" == "false" ]]; then
+     log_info "🏗️ Installing GAIE Kubernetes infrastructure…"
+-    bash ../chart-dependencies/ci-deps.sh
++    bash ../chart-dependencies/ci-deps.sh apply ${GATEWAY_TYPE}
+     log_success "GAIE infra applied"
+   fi
+ 
+@@ -535,7 +538,7 @@ post_install() {
+ uninstall() {
+   if [[ "${SKIP_INFRA}" == "false" ]]; then
+     log_info "🗑️ Tearing down GAIE Kubernetes infrastructure…"
+-    bash ../chart-dependencies/ci-deps.sh delete
++    bash ../chart-dependencies/ci-deps.sh delete ${GATEWAY_TYPE}
+   fi
+   MODEL_ARTIFACT_URI=$($KCMD get modelservice --ignore-not-found -n ${NAMESPACE} -o yaml | yq '.items[].spec.modelArtifacts.uri')
+   PROTOCOL="${MODEL_ARTIFACT_URI%%://*}"

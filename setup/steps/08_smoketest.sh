@@ -25,7 +25,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     exit 1
   fi
 
-  announce "🚀 Testing all pods \"${pod_string}\"..."
+  announce "🚀 Testing all pods \"${pod_string}\" (port ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT})..."
   for pod_ip in $pod_ip_list; do
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --attach --restart=Never --rm --image=${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}:${LLMDBENCH_IMAGE_TAG} --quiet --command -- bash -c \"curl --no-progress-meter http://${pod_ip}:${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}/v1/models\" | jq ." ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 2
   done
@@ -36,7 +36,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     exit 1
   fi
 
-  announce "🚀 Testing service/gateway \"${service_ip}\"..."
+  announce "🚀 Testing service/gateway \"${service_ip}\" (port 80)..."
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-gateway -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --attach --restart=Never --rm --image=${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}:${LLMDBENCH_IMAGE_TAG} --quiet --command -- bash -c \"curl --no-progress-meter http://${service_ip}:80/v1/models\" | jq ." ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 2
   announce "✅ Service responds successfully"
 
