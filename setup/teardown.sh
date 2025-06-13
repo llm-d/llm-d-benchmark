@@ -14,6 +14,8 @@ fi
 
 export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
 
+export LLMDBENCH_STEPS_DIR="$LLMDBENCH_CONTROL_DIR/steps"
+
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 export LLMDBENCH_CONTROL_DEEP_CLEANING=${LLMDBENCH_CONTROL_DEEP_CLEANING:-0}
@@ -98,6 +100,8 @@ source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 extract_environment
 sleep 5
+
+source ${LLMDBENCH_STEPS_DIR}/00_ensure_llm-d-deployer.sh
 
 announce "🧹 Cleaning up namespace: $LLMDBENCH_VLLM_COMMON_NAMESPACE"
 
