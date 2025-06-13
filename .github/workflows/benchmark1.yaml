@@ -69,9 +69,15 @@ jobs:
         shell: bash
 
       - name: Install oc
-        uses: redhat-actions/oc-installer@v1
-        with:
-          oc_version: '4.6'
+        run: |
+          OC_FILE_NAME=openshift-client-$(uname -s | sed -e "s/Linux/linux/g" -e "s/Darwin/apple-darwin/g")$(echo "-$(uname -m)" | sed -e 's/-x86_64//g' -e 's/-amd64//g' -e 's/aarch64/arm64-rhel9/g').tar.gz
+          curl https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/$OC_FILE_NAME  -o $OC_FILE_NAME
+          tar xzf $OC_FILE_NAME
+          sudo mv oc /usr/local/bin/
+          sudo mv kubectl /usr/local/bin/
+          sudo chmod +x /usr/local/bin/oc
+          sudo chmod +x /usr/local/bin/kubectl
+          rm openshift-client-*.tar.gz
 
       - name: Install Kustomize
         uses: multani/action-setup-kustomize@v1
