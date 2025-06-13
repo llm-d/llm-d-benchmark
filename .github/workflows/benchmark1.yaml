@@ -63,11 +63,12 @@ jobs:
       - name: Cleanup target cloud (deployer)
         run: ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
 
-      - name: Configure AWS CLI
-        uses: aws-actions/configure-aws-cli@v2
+      - name: Configure AWS Credentials for IBM COS
+        uses: aws-actions/configure-aws-credentials@v4.1.0
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-region: us-south
 
       - name: Upload results to IBM Cloud Object Storage
         run: |
