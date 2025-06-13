@@ -29,6 +29,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Display OS used
+        run: |
+          cat /etc/*os-*
+        shell: bash
+
       - name: Set input and output directory environment variables
         run: |
           echo "INPUT_DIR=${{ github.event.inputs.input_dir }}" >> $GITHUB_ENV
