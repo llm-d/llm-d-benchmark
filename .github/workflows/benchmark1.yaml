@@ -51,10 +51,9 @@ jobs:
 
       - name: Install yq
         run: |
-          export VERSION=v4.2.0
+          export VERSION=v4.45.4
           export BINARY=yq_linux_amd64
-          curl -s https://github.com/mikefarah/yq/releases/download/${VERSION}/${BINARY}.tar.gz -o ${BINARY}.tar.gz
-          tar xz ${BINARY}.tar.gz
+          curl -L https://github.com/mikefarah/yq/releases/download/${VERSION}/${BINARY} -o ${BINARY}
           sudo mv ${BINARY} /usr/local/bin/yq
 
       - name: Install oc
