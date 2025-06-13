@@ -54,7 +54,8 @@ jobs:
           export VERSION=v4.45.4
           export BINARY=yq_linux_amd64
           curl -L https://github.com/mikefarah/yq/releases/download/${VERSION}/${BINARY} -o ${BINARY}
-          sudo mv ${BINARY} /usr/local/bin/yq
+          chmod +x ${BINARY}
+          sudo cp -f $(which yq) || sudo cp -f ${BINARY} /usr/local/bin/yq
 
       - name: Install oc
         uses: redhat-actions/oc-installer@v1
