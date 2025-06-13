@@ -52,7 +52,7 @@ jobs:
       - name: Install oc
         uses: redhat-actions/oc-installer@v1
         with:
-          oc_version: '4.17.15'
+          oc_version: '4.6'
 
       - name: Cleanup target cloud (standalone)
         run: ./setup/teardown.sh -c ocp_A100_standalone_llama-3b
