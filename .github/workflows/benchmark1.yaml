@@ -102,7 +102,7 @@ jobs:
       - name: Cleanup target cloud (deployer)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
+        run: ./setup/teardown.sh -c ocp_A100_deployer_llama-3b -d
 
       - name: Standup (deployer)
         env:
