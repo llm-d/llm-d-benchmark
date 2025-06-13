@@ -86,8 +86,10 @@ jobs:
 
       - name: Run benchmark
         run: ./setup/run.sh -c ocp_A100_deployer_llama-3b
-
+      
       - name: Cleanup target cloud (deployer)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
 
       - name: Configure AWS Credentials for IBM COS
