@@ -76,15 +76,23 @@ jobs:
         shell: bash
 
       - name: Cleanup target cloud (standalone)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: ./setup/teardown.sh -c ocp_A100_standalone_llama-3b
 
       - name: Cleanup target cloud (deployer)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
 
       - name: Standup (deployer)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: ./setup/standup.sh -c ocp_A100_deployer_llama-3b
 
       - name: Run benchmark
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: ./setup/run.sh -c ocp_A100_deployer_llama-3b
       
       - name: Cleanup target cloud (deployer)
