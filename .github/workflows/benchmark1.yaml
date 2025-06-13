@@ -49,6 +49,11 @@ jobs:
           chmod 600 ~/.kube/config
         shell: bash
 
+      - name: Install oc
+        uses: redhat-actions/oc-installer@v1
+        with:
+          oc_version: '4.17.15'
+
       - name: Cleanup target cloud (standalone)
         run: ./setup/teardown.sh -c ocp_A100_standalone_llama-3b
 
