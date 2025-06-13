@@ -49,6 +49,14 @@ jobs:
           chmod 600 ~/.kube/config
         shell: bash
 
+      - name: Install yq
+        run: |
+          export VERSION=v4.2.0
+          export BINARY=yq_linux_amd64
+          curl -s https://github.com/mikefarah/yq/releases/download/${VERSION}/${BINARY}.tar.gz -o ${BINARY}.tar.gz
+          tar xz ${BINARY}.tar.gz
+          sudo mv ${BINARY} /usr/local/bin/yq
+
       - name: Install oc
         uses: redhat-actions/oc-installer@v1
         with:
@@ -86,7 +94,7 @@ jobs:
 
       - name: Run benchmark
         run: ./setup/run.sh -c ocp_A100_deployer_llama-3b
-      
+
       - name: Cleanup target cloud (deployer)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
