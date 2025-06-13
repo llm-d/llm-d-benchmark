@@ -53,19 +53,25 @@ jobs:
         uses: redhat-actions/oc-installer@v1
         with:
           oc_version: '4.6'
-       
+
       - name: Install kustomize
         run: |
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
 
-      - name: Install python deps
+      - name: Populate python deps
         run: |
-          echo -e "pandas\ngrip>=4.6.0\nmatplotlib>=3.7.0\nnumpy>=1.22.0\nseaborn>=0.12.0\nkubernetes>=28.0.0" > requirements.txt;
-          pip install --no-cache-dir -r requirements.txt
+          echo -e "pandas\ngrip>=4.6.0\nmatplotlib>=3.7.0\nnumpy>=1.22.0\nseaborn>=0.12.0\nkubernetes>=28.0.0" > requirements.txt
+
+      - name: Install python deps
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
 
       - name: Set up kubeconfig from secret
         run: |
-          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 && chmod 700 get_helm.sh && ./get_helm.sh 
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 && chmod 700 get_helm.sh && ./get_helm.sh
         shell: bash
 
       - name: Cleanup target cloud (standalone)
