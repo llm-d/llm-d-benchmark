@@ -53,6 +53,15 @@ jobs:
         uses: redhat-actions/oc-installer@v1
         with:
           oc_version: '4.6'
+       
+      - name: Install kustomize
+        run: |
+          cd /usr/local/bin; curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
+
+      - name: Install python deps
+        run: |
+          echo -e "pandas\ngrip>=4.6.0\nmatplotlib>=3.7.0\nnumpy>=1.22.0\nseaborn>=0.12.0\nkubernetes>=28.0.0" > requirements.txt;
+          pip install --no-cache-dir -r requirements.txt
 
       - name: Cleanup target cloud (standalone)
         run: ./setup/teardown.sh -c ocp_A100_standalone_llama-3b
