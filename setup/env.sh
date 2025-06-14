@@ -129,6 +129,7 @@ is_mac=$(uname -s | grep -i darwin || true)
 if [[ ! -z $is_mac ]]
 then
     export LLMDBENCH_CONTROL_DEPLOY_HOST_OS=mac
+    export LLMDBENCH_BASE64_ARGS=""
   is_gsed=$(which gsed || true)
   if [[ -z ${is_gsed} ]]; then
     brew install gnu-sed
@@ -136,6 +137,7 @@ then
   export LLMDBENCH_CONTROL_SCMD=gsed
 else
     export LLMDBENCH_CONTROL_DEPLOY_HOST_OS=linux
+    export LLMDBENCH_BASE64_ARGS="-w0"
     export LLMDBENCH_CONTROL_SCMD=sed
 fi
 

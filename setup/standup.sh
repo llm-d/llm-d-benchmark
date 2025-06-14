@@ -146,5 +146,5 @@ for step in ${LLMDBENCH_STEP_LIST//,/ }; do
   run_step "$step"
 done
 
-announce "ℹ️ The current work dir is \"${LLMDBENCH_CONTROL_WORK_DIR}\". Run \"export LLMDBENCH_CONTROL_WORK_DIR=$LLMDBENCH_CONTROL_WORK_DIR\" if you wish subsequent executions use the same diretory"
+announce "ℹ️  The current work dir is \"${LLMDBENCH_CONTROL_WORK_DIR}\". Run \"export LLMDBENCH_CONTROL_WORK_DIR=$LLMDBENCH_CONTROL_WORK_DIR\" if you wish subsequent executions use the same diretory"
 announce "✅ All steps complete."

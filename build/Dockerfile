@@ -42,7 +42,8 @@ path = /requests\n\
 read only = yes\n\
 use chroot = false\n\
 list = yes\n\
-" >> /etc/rsyncd.conf
+" >> /etc/rsyncd.conf; \
+sed -i 's^\-e^^' /etc/rsyncd.conf
 
 
 RUN echo "#!/usr/bin/env bash" > /usr/local/bin/llm-d-benchmark.sh; echo -e "\
@@ -55,10 +56,22 @@ if [[ ! -z \${LLMDBENCH_BASE64_FMPERF_WORKLOAD} ]]; then\n\
 fi\n\
 mv -f ~/.bashrc ~/fixbashrc\n\
 python3 /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_HARNESS}\n\
+ec=\$?\n\
+if [[ \$ec -ne 0 ]]; then\n\
+  echo \"execution of /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_HARNESS} failed, wating 30 seconds and trying again\"\n\
+  sleep 30\n\
+fi\n\
 mv -f ~/fixbashrc ~/.bashrc\n\
 cp -f /workspace/fmperf/pod_log_response.txt /requests/\${LLMDBENCH_FMPERF_STACK_NAME}/\n\
 python3 /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}\n\
+ec=\$?\n\
+if [[ \$ec -ne 0 ]]; then\n\
+  echo \"execution of /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_ANALYZER} failed, wating 30 seconds and trying again\"\n\
+  sleep 30\n\
+fi\n\
+exit \$ec\n\
 " >> /usr/local/bin/llm-d-benchmark.sh; \
+sed -i 's^\-e^^' /usr/local/bin/llm-d-benchmark.sh; \
 chmod +x /usr/local/bin/llm-d-benchmark.sh
 
 WORKDIR /workspace

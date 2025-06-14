@@ -107,7 +107,7 @@ source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 export LLMDBENCH_EXPERIMENT_ID=${LLMDBENCH_EXPERIMENT_ID:-"default"}
 
-export LLMDBENCH_BASE64_CONTEXT=$(cat $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx | base64)
+export LLMDBENCH_BASE64_CONTEXT=$(cat $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx | base64 $LLMDBENCH_BASE64_ARGS)
 
 create_fmperf_harness_pod() {
   cat <<EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
@@ -239,7 +239,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
       render_template ${LLMDBENCH_MAIN_DIR}/workload/profiles/$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE.in ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE
 
-      export LLMDBENCH_BASE64_FMPERF_WORKLOAD=$(cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE | base64)
+      export LLMDBENCH_BASE64_FMPERF_WORKLOAD=$(cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE | base64 $LLMDBENCH_BASE64_ARGS)
 
       if [[ "${LLMDBENCH_HARNESS_NAME}" == "fmperf" ]]; then
         create_fmperf_harness_pod
