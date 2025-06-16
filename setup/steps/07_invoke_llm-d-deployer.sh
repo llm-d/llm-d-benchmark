@@ -142,11 +142,17 @@ modelservice:
       registry: ghcr.io
       repository: llm-d/llm-d-routing-sidecar
       tag: "0.0.6"
+
+  inferenceSimulator:
+    image:
+      registry: ghcr.io
+      repository: llm-d/llm-d-inference-sim
+      tag: "v0.1.2"
 EOF
       LLMDBENCH_VLLM_DEPLOYER_VALUES_FILE=$LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_deployer_values.yaml
     fi
 
-    llmd_opts="--skip-infra --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --storage-class ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS} --storage-size ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE} --values-file $LLMDBENCH_VLLM_DEPLOYER_VALUES_FILE --context $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx"
+    llmd_opts="--skip-infra --release ${LLMDBENCH_VLLM_DEPLOYER_RELEASE} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --storage-class ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS} --storage-size ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE} --values-file $LLMDBENCH_VLLM_DEPLOYER_VALUES_FILE --context $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx"
     announce "🚀 Calling llm-d-deployer with options \"${llmd_opts}\"..."
     llmdbench_execute_cmd "cd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart; export HF_TOKEN=$LLMDBENCH_HF_TOKEN; ./llmd-installer.sh $llmd_opts" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0
     announce "✅ llm-d-deployer completed successfully"
@@ -169,7 +175,7 @@ EOF
       if [[ -z $is_route ]]
       then
         announce "📜 Exposing pods serving model ${model} as service..."
-        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} expose service/llm-d-inference-gateway --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --target-port=${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT} --name=llm-d-inference-gateway-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} expose service/${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --target-port=${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT} --name=${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
         announce "✅ Service for pods service model ${model} created"
       fi
       announce "✅ Model \"${model}\" and associated service deployed."

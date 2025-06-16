@@ -259,11 +259,11 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       announce "✅ Benchmark execution for model \"$model\" effectivelly started"
 
       announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} logs -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -f\"..."
-      echo ${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=ready=False pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}
+
       announce "⏳ Waiting for pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be in \"Completed\" state (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=ready=False pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       announce "✅ Benchmark execution for model \"$model\" completed"
-      sleep 600
+
       announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" ..."
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       announce "✅ Pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\""

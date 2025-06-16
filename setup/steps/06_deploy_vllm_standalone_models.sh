@@ -11,19 +11,19 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vllm-standalone-$(model_attribute $model parameters)-vllm-$(model_attribute $model label)-$(model_attribute $model type)
+  name: vllm-standalone-$(model_attribute $model label)
   labels:
-    app: vllm-standalone-$(model_attribute $model parameters)-vllm-$(model_attribute $model label)-$(model_attribute $model type)
+    app: vllm-standalone-$(model_attribute $model label)
   namespace: ${LLMDBENCH_VLLM_COMMON_NAMESPACE}
 spec:
   replicas: ${LLMDBENCH_VLLM_COMMON_REPLICAS}
   selector:
     matchLabels:
-      app: vllm-standalone-$(model_attribute $model parameters)-vllm-$(model_attribute $model label)-$(model_attribute $model type)
+      app: vllm-standalone-$(model_attribute $model label)
   template:
     metadata:
       labels:
-        app: vllm-standalone-$(model_attribute $model parameters)-vllm-$(model_attribute $model label)-$(model_attribute $model type)
+        app: vllm-standalone-$(model_attribute $model label)
     spec:
       affinity:
         nodeAffinity:
@@ -35,7 +35,7 @@ spec:
                 values:
                 - $(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 2)
       containers:
-      - name: vllm-standalone-$(model_attribute $model parameters)-vllm-$(model_attribute $model label)-$(model_attribute $model type)
+      - name: vllm-standalone-$(model_attribute $model label)
         image: ${LLMDBENCH_VLLM_STANDALONE_IMAGE}
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
@@ -103,7 +103,7 @@ spec:
     port: 80
     targetPort: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
   selector:
-    app: vllm-standalone-$(model_attribute $model parameters)-vllm-$(model_attribute $model label)-$(model_attribute $model type)
+    app: vllm-standalone-$(model_attribute $model label)
   type: ClusterIP
 EOF
 
@@ -141,11 +141,11 @@ EOF
 
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     announce "⏳ Waiting for (standalone) pods serving model ${model} to be in \"Running\" state (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=vllm-standalone-$(model_attribute $model parameters)-vllm-$(model_attribute $model label)-$(model_attribute $model type)" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=vllm-standalone-$(model_attribute $model label)" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "🚀 (standalone) pods serving model ${model} running"
 
     announce "⏳ Waiting for (standalone) pods serving ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-standalone-$(model_attribute $model parameters)-vllm-$(model_attribute $model label)-$(model_attribute $model type)" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-standalone-$(model_attribute $model label)" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "🚀 (standalone) pods serving model ${model} ready"
 
     if [[ $LLMDBENCH_VLLM_STANDALONE_ROUTE -ne 0 ]]; then

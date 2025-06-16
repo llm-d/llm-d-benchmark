@@ -8,7 +8,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
   service_ip=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | grep ${pod_string} | awk '{print $3}' || true)
 else
   pod_string=decode
-  route_string=llm-d-inference-gateway
+  route_string=${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway
   service_ip=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | tail -n1 | awk '{print $3}')
 fi
 
