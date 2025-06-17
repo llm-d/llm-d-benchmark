@@ -143,11 +143,16 @@ else
 fi
 
 export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python3}
-export LLMDBENCH_CONTROL_CCMD=${LLMDBENCH_CONTROL_CCMD:-podman}
-is_docker=$(which docker || true)
-if [[ ! -z ${is_docker} ]]; then
-  export LLMDBENCH_CONTROL_CCMD=docker
+is_podmanr=$(which podman || true)
+if [[ ! -z ${is_podmanr} ]]; then
+  export LLMDBENCH_CONTROL_CCMD=podman
+else
+  is_docker=$(which docker || true)
+  if [[ ! -z ${is_docker} ]]; then
+    export LLMDBENCH_CONTROL_CCMD=docker
+  fi
 fi
+
 if [[ $LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED -eq 0 && ! -f ~/.llmdbench_dependencies_checked ]]
 then
   deplist="$LLMDBENCH_CONTROL_SCMD $LLMDBENCH_CONTROL_PCMD $LLMDBENCH_CONTROL_KCMD $LLMDBENCH_CONTROL_HCMD kubectl kustomize"
@@ -170,7 +175,12 @@ if [[ $LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED -eq 0 ]]; then
 fi
 
 if [[ $LLMDBENCH_IMAGE_TAG == "auto" ]]; then
-  is_latest_tag=$(LLMDBENCH_CONTROL_CCMD search --list-tags ${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO} | tail -1 | awk '{ print $2 }' || true)
+
+  if [[ $LLMDBENCH_CONTROL_CCMD == "podman" ]]; then
+    is_latest_tag=$(LLMDBENCH_CONTROL_CCMD search --list-tags ${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO} | tail -1 | awk '{ print $2 }' || true)
+  else
+    is_latest_tag=$(skopeo list-tags docker://${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO} | jq -r .Tags[] | tail -1)
+  fi
   if [[ -z ${is_latest_tag} ]]; then
     echo "❌ Unable to find latest tag for image \"${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}\""
     exit 1

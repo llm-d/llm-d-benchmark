@@ -51,7 +51,7 @@ jobs:
             echo "OUTPUT_DIR=${{ github.event.inputs.output_dir }}" >> $GITHUB_ENV
             echo "Using provided output dir: ${{ github.event.inputs.output_dir }}"
           fi
-    
+
       - name: Set up kubeconfig from secret
         run: |
           mkdir -p ~/.kube
@@ -67,10 +67,10 @@ jobs:
           chmod +x ${BINARY}
           sudo cp -f $(which yq) || sudo cp -f ${BINARY} /usr/local/bin/yq
 
-      - name: Install make
+      - name: Install make, skopeo, curl, jq
         run: |
           sudo apt-get update
-          sudo apt-get install -y make
+          sudo apt-get install -y make skopeo curl jq
         shell: bash
 
       - name: Install oc
