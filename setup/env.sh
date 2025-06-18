@@ -143,8 +143,8 @@ else
 fi
 
 export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python3}
-is_podmanr=$(which podman || true)
-if [[ ! -z ${is_podmanr} ]]; then
+is_podman=$(which podman || true)
+if [[ ! -z ${is_podman} ]]; then
   export LLMDBENCH_CONTROL_CCMD=podman
 else
   is_docker=$(which docker || true)
