@@ -121,7 +121,7 @@ def main():
     endpoint_url = env_vars.get("LLMDBENCH_FMPERF_ENDPOINT_URL", "inference-gateway")
     workload_file = env_vars.get("LLMDBENCH_FMPERF_WORKLOAD_FILE", "llmdbench_workload.yaml")
     repetition = int(env_vars.get("LLMDBENCH_FMPERF_REPETITION", "1"))
-    namespace = env_vars.get("LLMDBENCH_FMPERF_NAMESPACE", "llmdbench")
+    namespace = env_vars.get("LLMDBENCH_HARNESS_NAMESPACE", "llmdbench")
     job_id = env_vars.get("LLMDBENCH_FMPERF_JOB_ID", stack_name)
 
     # Get results directory for configuration
