@@ -177,7 +177,7 @@ fi
 if [[ $LLMDBENCH_IMAGE_TAG == "auto" ]]; then
 
   if [[ $LLMDBENCH_CONTROL_CCMD == "podman" ]]; then
-    is_latest_tag=$(LLMDBENCH_CONTROL_CCMD search --list-tags ${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO} | tail -1 | awk '{ print $2 }' || true)
+    is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags ${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO} | tail -1 | awk '{ print $2 }' || true)
   else
     is_latest_tag=$(skopeo list-tags docker://${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO} | jq -r .Tags[] | tail -1)
   fi
