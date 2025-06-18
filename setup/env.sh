@@ -504,7 +504,7 @@ function check_storage_class_and_affinity {
   fi
 
   local annotation=$(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
-  local has_affinity=$($LLMDBENCH_CONTROL_KCMD get nodes | jq -r '.items[].metadata.annotations.[]' | grep $annotation || true)
+  local has_affinity=$($LLMDBENCH_CONTROL_KCMD get nodes -o json | jq -r '.items[].metadata.annotations.[]' | grep $annotation || true)
   if [[ -z $has_sc ]]; then
     echo "ERROR. There are no nodes on this cluster with the annotation \"${annotation}\" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)"
     return 1
