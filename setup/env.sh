@@ -185,6 +185,7 @@ if [[ $LLMDBENCH_IMAGE_TAG == "auto" ]]; then
     echo "❌ Unable to find latest tag for image \"${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}\""
     exit 1
   fi
+  export LLMDBENCH_IMAGE_TAG=${is_latest_tag}
 fi
 
 if [[ ! -z $LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO ]]; then
