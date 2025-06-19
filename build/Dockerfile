@@ -45,7 +45,6 @@ list = yes\n\
 " >> /etc/rsyncd.conf; \
 sed -i 's^\-e^^' /etc/rsyncd.conf
 
-
 RUN echo "#!/usr/bin/env bash" > /usr/local/bin/llm-d-benchmark.sh; echo -e "\
 mkdir -p ~/.kube\n\
 if [[ ! -z \${LLMDBENCH_BASE64_CONTEXT} ]]; then\n\
@@ -62,7 +61,6 @@ if [[ \$ec -ne 0 ]]; then\n\
   sleep 30\n\
 fi\n\
 mv -f ~/fixbashrc ~/.bashrc\n\
-cp -f /workspace/fmperf/pod_log_response.txt /requests/\${LLMDBENCH_FMPERF_STACK_NAME}/\n\
 python3 /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}\n\
 ec=\$?\n\
 if [[ \$ec -ne 0 ]]; then\n\
