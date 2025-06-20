@@ -104,15 +104,15 @@ cd llm-d-benchmark
 #### Standing up llm-d for experimentation and benchmarking
 
 ```
-export LLMDBENCH_CLUSTER_HOST="https://api.fmaas-platform-eval.fmaas.res.ibm.com"
+export LLMDBENCH_CLUSTER_URL="https://api.fmaas-platform-eval.fmaas.res.ibm.com"
 export LLMDBENCH_CLUSTER_TOKEN="..."
 ```
 
 > [!TIP]
-> You can simply use your current context. **After running kubectl/oc login**, just set `export LLMDBENCH_CLUSTER_HOST=auto` (and leave LLMDBENCH_CLUSTER_TOKEN unconfigured)
+> You can simply use your current context. **After running kubectl/oc login**, leaving `LLMDBENCH_CLUSTER_URL` undefined (or setting `export LLMDBENCH_CLUSTER_URL=auto`) will use your current context, with no need to configure `LLMDBENCH_CLUSTER_TOKEN`.
 
 > [!IMPORTANT]
-> No matter which method used (i.e., fully specify `LLMDBENCH_CLUSTER_HOST` and `LLMDBENCH_CLUSTER_TOKEN` or simply use the current context), there is an additional variable which will always require definition: `LLMDBENCH_HF_TOKEN`
+> No matter which method used (i.e., fully specify `LLMDBENCH_CLUSTER_URL` and `LLMDBENCH_CLUSTER_TOKEN` or simply use the current context), there is an additional variable which will always require definition: `LLMDBENCH_HF_TOKEN`
 
 > [!CAUTION]
 > Please make sure the environment variable `LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS` points to a storage class specific to your cluster. The default value will most likely fail.
