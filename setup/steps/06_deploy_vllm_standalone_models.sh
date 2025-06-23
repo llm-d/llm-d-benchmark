@@ -55,11 +55,11 @@ spec:
         - containerPort: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
         livenessProbe:
           httpGet: { path: /health, port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT} }
-          initialDelaySeconds: 120
+          initialDelaySeconds: ${LLMDBENCH_VLLM_STANDALONE_INITIAL_DELAY_PROBE}
           periodSeconds: 10
         readinessProbe:
           httpGet: { path: /health, port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT} }
-          initialDelaySeconds: 120
+          initialDelaySeconds: ${LLMDBENCH_VLLM_STANDALONE_INITIAL_DELAY_PROBE}
           periodSeconds: 5
         resources:
           limits:
