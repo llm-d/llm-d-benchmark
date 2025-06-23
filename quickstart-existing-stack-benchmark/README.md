@@ -7,7 +7,7 @@ It works with both standard Kubernetes clusters and OpenShift, and assumes the l
 
 The Kubernetes workflow consists of these main components:
 
-1. **`benchmark-job.yaml`** - Runs the benchmark experiment portion of `setup/run.sh`, [`fmperf-llm-d-benchmark.py`](../workload/harnesses/fmper-llm-d-benchmark.py)
+1. **`benchmark-job.yaml`** - Runs the benchmark experiment portion of `setup/run.sh`, [`fmperf-llm-d-benchmark.py`](../workload/harnesses/fmperf-llm-d-benchmark.py)
 2. **`analysis-job.yaml`** - Runs the analysis portion of `setup/run.sh`, [`fmperf-analyze_results.py`](../analysis/fmperf-analyze_results.py)
 
 This workflow is a simplified Kubernetes-native version of `setup/run.sh`, which provides command-line options for model selection,
