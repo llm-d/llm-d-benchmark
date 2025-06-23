@@ -50,18 +50,18 @@ mkdir -p ~/.kube\n\
 if [[ ! -z \${LLMDBENCH_BASE64_CONTEXT} ]]; then\n\
   echo \${LLMDBENCH_BASE64_CONTEXT} | base64 -d > ~/.kube/config\n\
 fi\n\
-if [[ ! -z \${LLMDBENCH_BASE64_FMPERF_WORKLOAD} ]]; then\n\
-  echo \${LLMDBENCH_BASE64_FMPERF_WORKLOAD} | base64 -d > /workspace/llmdbench_workload.yaml\n\
+if [[ ! -z \${LLMDBENCH_BASE64_HARNESS_WORKLOAD} ]]; then\n\
+  echo \${LLMDBENCH_BASE64_HARNESS_WORKLOAD} | base64 -d > /workspace/llmdbench_workload.yaml\n\
 fi\n\
 mv -f ~/.bashrc ~/fixbashrc\n\
-python3 /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_HARNESS}\n\
+/usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_HARNESS}\n\
 ec=\$?\n\
 if [[ \$ec -ne 0 ]]; then\n\
   echo \"execution of /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_HARNESS} failed, wating 30 seconds and trying again\"\n\
   sleep 30\n\
 fi\n\
 mv -f ~/fixbashrc ~/.bashrc\n\
-python3 /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}\n\
+/usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}\n\
 ec=\$?\n\
 if [[ \$ec -ne 0 ]]; then\n\
   echo \"execution of /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_ANALYZER} failed, wating 30 seconds and trying again\"\n\
@@ -87,21 +87,13 @@ RUN cd fmperf; \
     pip install --no-cache-dir -r requirements.txt && \
     python3 setup.py install
 
-#RUN mkdir /workspace/llm-d-benchmark
+RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
 
-COPY workload/harnesses/llm-d-benchmark.py /usr/local/bin/llm-d-benchmark.py
-COPY analysis/analyze_results.py /usr/local/bin/analyze_results.py
-
-#ADD scenarios /workspace/llm-d-benchmark/scenarios
-#ADD setup /workspace/llm-d-benchmark/setup
-#ADD workload /workspace/llm-d-benchmark/workload
-#RUN cd /workspace/llm-d-benchmark/; ln -s setup/run.sh run.sh
+ADD workload/harnesses/ /usr/local/bin/
+COPY analysis/fmperf-analyze_results.py /usr/local/bin/fmperf-analyze_results.py
 
 #RUN mkdir /root/.kube
 #RUN touch /root/.llmdbench_dependencies_checked
 #RUN touch /root/.llm-d-benchmark.image
-
-#ARG SCENARIO=none
-#ENV SCENARIO=${SCENARIO}
 
 ENTRYPOINT ["llm-d-benchmark.sh"]

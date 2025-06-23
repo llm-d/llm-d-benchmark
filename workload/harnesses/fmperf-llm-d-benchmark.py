@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Modified version of example_openshift.py to run in a Kubernetes pod.
 This script assumes it's running inside a pod and uses the environment variables
@@ -116,16 +118,16 @@ def wait_for_evaluation_job(cluster, job_name, namespace, timeout=7200):
 def main():
     logger.info("Starting benchmark run")
     env_vars = os.environ
-    stack_name = env_vars.get("LLMDBENCH_FMPERF_STACK_NAME", "llm-d-3b-instruct")
-    stack_type = env_vars.get("LLMDBENCH_FMPERF_STACK_TYPE", "llm-d")
-    endpoint_url = env_vars.get("LLMDBENCH_FMPERF_ENDPOINT_URL", "inference-gateway")
-    workload_file = env_vars.get("LLMDBENCH_FMPERF_WORKLOAD_FILE", "llmdbench_workload.yaml")
+    stack_name = env_vars.get("LLMDBENCH_HARNESS_STACK_NAME", "llm-d-3b-instruct")
+    stack_type = env_vars.get("LLMDBENCH_HARNESS_STACK_TYPE", "llm-d")
+    endpoint_url = env_vars.get("LLMDBENCH_HARNESS_STACK_ENDPOINT_URL", "inference-gateway")
+    workload_file = env_vars.get("LLMDBENCH_HARNESS_WORKLOAD_FILE", "llmdbench_workload.yaml")
     repetition = int(env_vars.get("LLMDBENCH_FMPERF_REPETITION", "1"))
     namespace = env_vars.get("LLMDBENCH_HARNESS_NAMESPACE", "llmdbench")
     job_id = env_vars.get("LLMDBENCH_FMPERF_JOB_ID", stack_name)
 
     # Get results directory for configuration
-    results_dir = env_vars.get("LLMDBENCH_FMPERF_RESULTS_DIR", "/requests")
+    results_dir = env_vars.get("LLMDBENCH_HARNESS_RESULTS_DIR", "/requests")
 
     logger.info(f"Using configuration:")
     logger.info(f"  Stack name: {stack_name}")

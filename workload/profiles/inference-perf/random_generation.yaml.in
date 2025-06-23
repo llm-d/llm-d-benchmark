@@ -9,12 +9,12 @@ load:
     duration: 60
   - rate: 8
     duration: 60
-api: 
+api:
   type: completion
 server:
   type: vllm
   model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
-  base_url: REPLACE_ENV_LLMDBENCH_FMPERF_ENDPOINT_URL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
   ignore_eos: true
 tokenizer:
   pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
