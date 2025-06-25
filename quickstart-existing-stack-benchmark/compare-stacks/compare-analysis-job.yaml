@@ -37,17 +37,17 @@ spec:
         - name: MPLBACKEND
           value: "Agg"
         # Environment variables from standalone-benchmark-env ConfigMap
-        - name: STANDALONE_LLMDBENCH_FMPERF_STACK_NAME
+        - name: STANDALONE_LLMDBENCH_HARNESS_STACK_NAME
           valueFrom:
             configMapKeyRef:
               name: standalone-benchmark-env
-              key: LLMDBENCH_FMPERF_STACK_NAME
+              key: LLMDBENCH_HARNESS_STACK_NAME
         # Environment variables from llm-d-benchmark-env ConfigMap
-        - name: LLMD_LLMDBENCH_FMPERF_STACK_NAME
+        - name: LLMD_LLMDBENCH_HARNESS_STACK_NAME
           valueFrom:
             configMapKeyRef:
               name: llm-d-benchmark-env
-              key: LLMDBENCH_FMPERF_STACK_NAME
+              key: LLMDBENCH_HARNESS_STACK_NAME
         volumeMounts:
         - name: standalone-results
           mountPath: /requests/standalone

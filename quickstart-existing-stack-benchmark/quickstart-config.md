@@ -76,17 +76,17 @@ metadata:
 data:
   # Core benchmark configuration
   LLMDBENCH_FMPERF_NAMESPACE: "llm-d-benchmark"           # Namespace for benchmark jobs
-  LLMDBENCH_FMPERF_STACK_TYPE: "vllm-prod"               # "vllm-prod" for standalone, "llm-d" for llm-d stack
-  LLMDBENCH_FMPERF_ENDPOINT_URL: "https://your-model-endpoint"  # UPDATE: Your model service endpoint
-  LLMDBENCH_FMPERF_STACK_NAME: "standalone-vllm-llama-3b"      # Unique identifier for this benchmark run
-  LLMDBENCH_FMPERF_WORKLOAD_FILE: "llmdbench_workload.yaml"    # Workload configuration file name
+  LLMDBENCH_HARNESS_STACK_TYPE: "vllm-prod"               # "vllm-prod" for standalone, "llm-d" for llm-d stack
+  LLMDBENCH_HARNESS_ENDPOINT_URL: "https://your-model-endpoint"  # UPDATE: Your model service endpoint
+  LLMDBENCH_HARNESS_STACK_NAME: "standalone-vllm-llama-3b"      # Unique identifier for this benchmark run
+  LLMDBENCH_HARNESS_WORKLOAD_FILE: "llmdbench_workload.yaml"    # Workload configuration file name
   LLMDBENCH_FMPERF_REPETITION: "1"                       # Number of times to repeat the benchmark
   LLMDBENCH_FMPERF_RESULTS_DIR: "/requests"              # Directory to store results (keep as /requests)
 ```
 
 ### Key Variables to Update
 
-#### 1. LLMDBENCH_FMPERF_ENDPOINT_URL (REQUIRED)
+#### 1. LLMDBENCH_HARNESS_ENDPOINT_URL (REQUIRED)
 
 This is the most critical variable to update. Point it to your deployed model service:
 
@@ -94,24 +94,24 @@ This is the most critical variable to update. Point it to your deployed model se
 
 Use internal service URL, `http://service-name.namespace.svc.cluster.local:port`
 ```yaml
-LLMDBENCH_FMPERF_ENDPOINT_URL: "http://vllm-service.vllm-namespace.svc.cluster.local:8000"
+LLMDBENCH_HARNESS_ENDPOINT_URL: "http://vllm-service.vllm-namespace.svc.cluster.local:8000"
 ```
 
 **For llm-d stack deployments:**
 
 Use internal service URL, `http://llm-d-inference-gateway.namespace.svc.cluster.local:80`
 ```yaml
-LLMDBENCH_FMPERF_ENDPOINT_URL: "http://llm-d-inference-gateway.llm-d.svc.cluster.local:80"
+LLMDBENCH_HARNESS_ENDPOINT_URL: "http://llm-d-inference-gateway.llm-d.svc.cluster.local:80"
 ```
 
-#### 2. LLMDBENCH_FMPERF_STACK_TYPE
+#### 2. LLMDBENCH_HARNESS_STACK_TYPE
 
 Set based on your deployment type:
 
 - **`"vllm-prod"`** for standalone vLLM deployments
 - **`"llm-d"`** for llm-d stack deployments
 
-#### 3. LLMDBENCH_FMPERF_STACK_NAME
+#### 3. LLMDBENCH_HARNESS_STACK_NAME
 
 Choose a descriptive name for your benchmark run:
 
@@ -167,9 +167,9 @@ export LLMDBENCH_VLLM_COMMON_REPLICAS=1
 **resources/benchmark-env.yaml:**
 ```yaml
 data:
-  LLMDBENCH_FMPERF_STACK_TYPE: "vllm-prod"
-  LLMDBENCH_FMPERF_ENDPOINT_URL: "http://vllm-service.vllm-ns.svc.cluster.local:8000"
-  LLMDBENCH_FMPERF_STACK_NAME: "standalone-vllm-3b-instruct"
+  LLMDBENCH_HARNESS_STACK_TYPE: "vllm-prod"
+  LLMDBENCH_HARNESS_ENDPOINT_URL: "http://vllm-service.vllm-ns.svc.cluster.local:8000"
+  LLMDBENCH_HARNESS_STACK_NAME: "standalone-vllm-3b-instruct"
   LLMDBENCH_FMPERF_JOB_ID: "standalone-vllm-3b-instruct"
 ```
 
@@ -187,9 +187,9 @@ data:
 **resources/benchmark-env.yaml:**
 ```yaml
 data:
-  LLMDBENCH_FMPERF_STACK_TYPE: "llm-d"
-  LLMDBENCH_FMPERF_ENDPOINT_URL: "http://llm-d-inference-gateway.llm-d.svc.cluster.local:80"
-  LLMDBENCH_FMPERF_STACK_NAME: "llm-d-70b-instruct"
+  LLMDBENCH_HARNESS_STACK_TYPE: "llm-d"
+  LLMDBENCH_HARNESS_ENDPOINT_URL: "http://llm-d-inference-gateway.llm-d.svc.cluster.local:80"
+  LLMDBENCH_HARNESS_STACK_NAME: "llm-d-70b-instruct"
   LLMDBENCH_FMPERF_JOB_ID: "llm-d-70b-instruct"
   LLMDBENCH_CONTROL_WAIT_TIMEOUT: "3600"
 ```

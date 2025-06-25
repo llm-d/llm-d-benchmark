@@ -386,8 +386,8 @@ def print_comparison_statistics(standalone_df, llmd_df):
 
 def main():
     # Get environment variables from ConfigMaps
-    standalone_stack_name = os.environ.get("STANDALONE_LLMDBENCH_FMPERF_STACK_NAME")
-    llmd_stack_name = os.environ.get("LLMD_LLMDBENCH_FMPERF_STACK_NAME")
+    standalone_stack_name = os.environ.get("STANDALONE_LLMDBENCH_HARNESS_STACK_NAME")
+    llmd_stack_name = os.environ.get("LLMD_LLMDBENCH_HARNESS_STACK_NAME")
     results_base_dir = os.environ.get("LLMDBENCH_FMPERF_RESULTS_DIR", "/requests")
 
     # Parse command line arguments (keeping for backward compatibility)
@@ -413,7 +413,7 @@ def main():
         llmd_dir = args.llmd_dir
         print(f"Using command line arguments for directories:")
     else:
-        print("Error: Either set environment variables (STANDALONE_LLMDBENCH_FMPERF_STACK_NAME, LLMD_LLMDBENCH_FMPERF_STACK_NAME)")
+        print("Error: Either set environment variables (STANDALONE_LLMDBENCH_HARNESS_STACK_NAME, LLMD_LLMDBENCH_HARNESS_STACK_NAME)")
         print("       or provide --standalone-dir and --llmd-dir arguments")
         return
 
