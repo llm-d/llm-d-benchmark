@@ -31,7 +31,7 @@ spec:
         env:
         - name: LLMDBENCH_CONTROL_WORK_DIR
           value: "/requests"
-        - name: LLMDBENCH_FMPERF_RESULTS_DIR
+        - name: LLMDBENCH_HARNESS_RESULTS_DIR
           value: "/requests"
         # Set matplotlib backend to non-interactive for headless operation
         - name: MPLBACKEND

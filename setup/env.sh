@@ -392,15 +392,14 @@ function llmdbench_execute_cmd {
   local counter=1
   local delay=10
 
+  command_tstamp=$(date +%s%N)
   if [[ ${dry_run} -eq 1 ]]; then
-
     _msg="---> would have executed the command \"${actual_cmd}\""
     echo ${_msg}
-    echo ${_msg} > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/$(date +%s%N)_command.log
+    echo ${_msg} > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_command.log
     return 0
   else
     _msg="---> will execute the command \"${actual_cmd}\""
-    command_tstamp=$(date +%s%N)
     echo ${_msg} > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_command.log
     while [[ "${counter}" -le "${attempts}" ]]; do
       command_tstamp=$(date +%s%N)

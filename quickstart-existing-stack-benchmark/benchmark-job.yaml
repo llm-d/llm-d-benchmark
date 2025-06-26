@@ -27,7 +27,7 @@ spec:
             drop:
               - ALL
         command: ["sh"]
-        args: ["-c", "ln -sf /workspace/config/llmdbench_workload.yaml /workspace/llmdbench_workload.yaml && python3 /workspace/workload/harnesses/llm-d-benchmark.py"]
+        args: ["-c", "ln -sf /workspace/config/llmdbench_workload.yaml /workspace/llmdbench_workload.yaml && python3 /workspace/workload/harnesses/fmperf-llm-d-benchmark.py"]
         envFrom:
         - configMapRef:
             name: benchmark-env

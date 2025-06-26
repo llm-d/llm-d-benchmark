@@ -12,7 +12,7 @@ data:
   LLMDBENCH_HARNESS_STACK_NAME: "standalone-vllm-llama-3b"
   LLMDBENCH_HARNESS_WORKLOAD_FILE: "llmdbench_workload.yaml"
   LLMDBENCH_FMPERF_REPETITION: "1"
-  LLMDBENCH_FMPERF_RESULTS_DIR: "/requests"
+  LLMDBENCH_HARNESS_RESULTS_DIR: "/requests"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -28,4 +28,4 @@ data:
   LLMDBENCH_HARNESS_STACK_NAME: "llm-d-llama-3b"
   LLMDBENCH_HARNESS_WORKLOAD_FILE: "llmdbench_workload.yaml"
   LLMDBENCH_FMPERF_REPETITION: "1"
-  LLMDBENCH_FMPERF_RESULTS_DIR: "/requests"
+  LLMDBENCH_HARNESS_RESULTS_DIR: "/requests"

@@ -81,7 +81,7 @@ data:
   LLMDBENCH_HARNESS_STACK_NAME: "standalone-vllm-llama-3b"      # Unique identifier for this benchmark run
   LLMDBENCH_HARNESS_WORKLOAD_FILE: "llmdbench_workload.yaml"    # Workload configuration file name
   LLMDBENCH_FMPERF_REPETITION: "1"                       # Number of times to repeat the benchmark
-  LLMDBENCH_FMPERF_RESULTS_DIR: "/requests"              # Directory to store results (keep as /requests)
+  LLMDBENCH_FMPERF_HARNESS_DIR: "/requests"              # Directory to store results (keep as /requests)
 ```
 
 ### Key Variables to Update

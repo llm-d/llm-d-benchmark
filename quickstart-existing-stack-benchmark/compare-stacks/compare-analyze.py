@@ -388,7 +388,7 @@ def main():
     # Get environment variables from ConfigMaps
     standalone_stack_name = os.environ.get("STANDALONE_LLMDBENCH_HARNESS_STACK_NAME")
     llmd_stack_name = os.environ.get("LLMD_LLMDBENCH_HARNESS_STACK_NAME")
-    results_base_dir = os.environ.get("LLMDBENCH_FMPERF_RESULTS_DIR", "/requests")
+    results_base_dir = os.environ.get("LLMDBENCH_HARNESS_RESULTS_DIR", "/requests")
 
     # Parse command line arguments (keeping for backward compatibility)
     parser = argparse.ArgumentParser(description='Compare benchmark results between two systems.')
