@@ -29,6 +29,7 @@ function show_usage {
     echo -e "Usage: $(echo $0 | rev | cut -d '/' -f 1 | rev) -t/--type [list of environment types targeted for cleaning (default=$LLMDBENCH_DEPLOY_METHODS)) \n \
               -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
               -d/--deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING) ] \n \
+              -p/--namespace [namespace where to deploy (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE)] \n \
               -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
               -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
               -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"deployer\") ] \n \
@@ -51,6 +52,13 @@ while [[ $# -gt 0 ]]; do
         ;;
         -m|--models)
         export LLMDBENCH_CLIOVERRIDE_DEPLOY_MODEL_LIST="$2"
+        shift
+        ;;
+        -p=*|--namespace=*)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -p|--namespace)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE="$2"
         shift
         ;;
         -c=*|--scenario=*)

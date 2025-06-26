@@ -108,27 +108,27 @@ jobs:
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c ocp_A100_standalone_llama-3b
+        run: ./setup/teardown.sh -c cicd -t standalone
 
       - name: Cleanup target cloud (deployer)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c ocp_A100_deployer_llama-3b -d
+        run: ./setup/teardown.sh -c cicd -t deployer -d
 
       - name: Standup (deployer)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/standup.sh -c ocp_A100_deployer_llama-3b
+        run: ./setup/standup.sh -c cicd -t deployer
 
       - name: Run benchmark
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c ocp_A100_deployer_llama-3b
+        run: ./setup/run.sh -c cicd -t deployer
 
       - name: Cleanup target cloud (deployer)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c ocp_A100_deployer_llama-3b
+        run: ./setup/teardown.sh -c cicd -t deployer -d
 
 
       - name: Install AWS CLI
