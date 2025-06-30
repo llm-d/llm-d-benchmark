@@ -178,6 +178,11 @@ spec:
         secretKeyRef:
           name: ${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}
           key: HF_TOKEN
+EOF
+
+is_pvc=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pvc --ignore-not-found | grep x${LLMDBENCH_HARNESS_PVC_NAME} || true)
+if [[ ! -z ${is_pvc} ]]; then
+  cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
     volumeMounts:
     - name: results
       mountPath: /requests
@@ -185,6 +190,9 @@ spec:
   - name: results
     persistentVolumeClaim:
       claimName: $LLMDBENCH_HARNESS_PVC_NAME
+EOF
+fi
+  cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
   restartPolicy: Never
 EOF
 }
