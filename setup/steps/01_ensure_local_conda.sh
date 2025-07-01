@@ -15,32 +15,36 @@ if ! conda -h &>/dev/null; then
   if [ $LLMDBENCH_CONTROL_DEPLOY_HOST_OS == "mac" ]; then
     announce "🛠️ Installing Miniforge for macOS..."
     llmdbench_execute_cmd "brew install --cask miniforge" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    ANACONDA_PATH='export PATH="/opt/homebrew/bin/conda:$PATH"'
+    conda_sh="/opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh"
   else
     # For Linux, you can use the official Miniforge installer script
     announce "🛠️ Installing Miniforge for Linux..."
     # Download and run the installer
     MINIFORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname -s)-$(uname -m).sh"
-   llmdbench_execute_cmd " wget -qO - $MINIFORGE_URL | bash -b -P /opt/miniconda" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    llmdbench_execute_cmd " wget -qO - $MINIFORGE_URL | bash -b -P /opt/miniconda" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    ANACONDA_PATH='export PATH="/opt/miniconda/bin/conda:$PATH"'
+    conda_sh="/opt/miniconda/etc/profile.d/conda.sh"
+  fi
+
+  if ! grep -Fxq "$ANACONDA_PATH" ~/.${LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL}rc && [[ "${LLMDBENCH_CONTROL_DRY_RUN}" -eq 0 ]]; then
+    echo "$ANACONDA_PATH" >> ~/.${LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL}rc
+    announce "✅ Anaconda path added to ~/.${LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL}rc"
+  else
+    announce "⏭️  Anaconda path already present in ~/.${LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL}rc"
+  fi
+else
+  conda_root=$(conda info --all --json | jq -r '.root_prefix')
+  if [ $LLMDBENCH_CONTROL_DEPLOY_HOST_OS == "mac" ]; then
+    conda_sh="${conda_root}/base/etc/profile.d/conda.sh"
+  else
+    conda_sh="${conda_root}/etc/profile.d/conda.sh"
   fi
 fi
 
-if [ $LLMDBENCH_CONTROL_DEPLOY_HOST_OS == "mac" ]; then
-  ANACONDA_PATH='export PATH="/opt/homebrew/bin/conda:$PATH"'
-else
-  ANACONDA_PATH='export PATH="/opt/miniconda/bin/conda:$PATH"'
-fi
-
-if ! grep -Fxq "$ANACONDA_PATH" ~/.${LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL}rc && [[ "${LLMDBENCH_CONTROL_DRY_RUN}" -eq 0 ]]; then
-  announce "$ANACONDA_PATH" >> ~/.${LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL}rc
-  announce "✅ Anaconda path added to ~/.${LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL}rc"
-else
-  announce "⏭️  Anaconda path already present in ~/.${LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL}rc"
-fi
-
-if [ "$LLMDBENCH_CONTROL_DEPLOY_HOST_OS" = "mac" ] && [ -f "/opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh" ]; then
-  llmdbench_execute_cmd "source \"/opt/homebrew/Caskroom/miniforge/base/etc/profile.d/conda.sh\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-elif [ "$LLMDBENCH_CONTROL_DEPLOY_HOST_OS" = "linux" ] && [ -f "/opt/miniconda/etc/profile.d/conda.sh" ]; then
-  llmdbench_execute_cmd "source \"/opt/miniconda/etc/profile.d/conda.sh\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+if [ -f "${conda_sh}" ]; then
+  announce "⏭️ running $conda_sh"
+  llmdbench_execute_cmd "source \"$conda_sh\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 else
   echo "❌ Could not find conda.sh for $LLMDBENCH_CONTROL_DEPLOY_HOST_OS. Please verify your Anaconda installation."
   if [[ "${BASH_SOURCE[0]}" == "${0}" ]]
