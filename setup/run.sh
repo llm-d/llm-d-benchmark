@@ -82,9 +82,11 @@ while [[ $# -gt 0 ]]; do
         ;;
         -p=*|--namespace=*)
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$(echo $key | cut -d '=' -f 2)
         ;;
         -p|--namespace)
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE="$2"
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE="$2"
         shift
         ;;
         -t=*|--methods=*)
@@ -180,7 +182,7 @@ spec:
           key: HF_TOKEN
 EOF
 
-is_pvc=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pvc --ignore-not-found | grep x${LLMDBENCH_HARNESS_PVC_NAME} || true)
+is_pvc=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pvc --ignore-not-found | grep ${LLMDBENCH_HARNESS_PVC_NAME} || true)
 if [[ ! -z ${is_pvc} ]]; then
   cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
     volumeMounts:
