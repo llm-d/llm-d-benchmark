@@ -23,6 +23,8 @@ fi
 export LLMDBENCH_ENV_VAR_LIST=$(env | grep ^LLMDBENCH | cut -d '=' -f 1)
 export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/)
 
+export LLMDBENCH_STEPS_DIR="$LLMDBENCH_CONTROL_DIR/steps"
+
 if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
 fi
@@ -199,6 +201,21 @@ fi
 EOF
 }
 
+function cleanup_pre_execution {
+  announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\"..."
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_HARNESS_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  announce "ℹ️ Done deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" (it will be now recreated)"
+}
+
+export LLMDBENCH_CURRENT_STEP=05
+source ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.sh > /dev/null 2>&1
+if [[ $? -ne 0 ]]; then
+  announce "❌ Error while attempting to setup the harness namespace"
+  exit 1
+fi
+unset LLMDBENCH_CURRENT_STEP
+
 for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
@@ -210,8 +227,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
     if [[ $LLMDBENCH_HARNESS_SKIP_RUN -eq 1 ]]; then
       announce "⏭️ Command line option \"-z\--skip\" invoked. Will skip experiment execution (and move straight to analysis)"
     else
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_HARNESS_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      cleanup_pre_execution
 
       export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=
       export LLMDBENCH_VLLM_COMMON_FQDN=".${LLMDBENCH_VLLM_COMMON_NAMESPACE}${LLMDBENCH_VLLM_COMMON_FQDN}"
@@ -311,7 +327,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
     fi
 
     if [[ -d ${LLMDBENCH_CONTROL_WORK_DIR}/results/analysis ]]; then
-      llmdbench_execute_cmd "mv ${LLMDBENCH_CONTROL_WORK_DIR}/results/analysis ${LLMDBENCH_CONTROL_WORK_DIR}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      llmdbench_execute_cmd "mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/analysis; mv -f ${LLMDBENCH_CONTROL_WORK_DIR}/results/analysis ${LLMDBENCH_CONTROL_WORK_DIR}/analysis" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     fi
 
     unset LLMDBENCH_DEPLOY_CURRENT_MODEL
