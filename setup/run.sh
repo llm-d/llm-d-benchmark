@@ -289,15 +289,17 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         else
           export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod --no-headers | grep ${LLMDBENCH_DEPLOY_METHODS} | head -n 1 | awk '{print $1}' || true)
           export LLMDBENCH_VLLM_COMMON_FQDN=
-          if [[ -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
-            announce "❌ ERROR: could not find an endpoint name for a stack deployed via method \"$LLMDBENCH_DEPLOY_METHODS\""
-            exit 1
-          else
+          if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
             announce "ℹ️ Stack Endpoint name detected is \"$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME\""
             export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r ".spec.containers[0].ports[0].containerPort")
             export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r ".status.podIP")
           fi
         fi
+      fi
+
+      if [[ -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
+        announce "❌ ERROR: could not find an endpoint name for a stack deployed via method \"$LLMDBENCH_DEPLOY_METHODS\""
+        exit 1
       fi
 
       export LLMDBENCH_HARNESS_STACK_ENDPOINT_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}${LLMDBENCH_VLLM_COMMON_FQDN}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT}"
