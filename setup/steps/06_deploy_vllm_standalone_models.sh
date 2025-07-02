@@ -53,25 +53,36 @@ spec:
         $(add_additional_env_to_yaml)
         ports:
         - containerPort: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
-        livenessProbe:
-          httpGet: { path: /health, port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT} }
+        startupProbe:
+          httpGet:
+            path: /health
+            port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
+          failureThreshold: 200
           initialDelaySeconds: ${LLMDBENCH_VLLM_STANDALONE_INITIAL_DELAY_PROBE}
+          periodSeconds: 30
+          timeoutSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
+          failureThreshold: 3
           periodSeconds: 10
         readinessProbe:
-          httpGet: { path: /health, port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT} }
-          initialDelaySeconds: ${LLMDBENCH_VLLM_STANDALONE_INITIAL_DELAY_PROBE}
+          httpGet:
+            path: /health
+            port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
+          failureThreshold: 3
           periodSeconds: 5
         resources:
           limits:
             cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
             memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
             $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
-            ephemeral-storage: "20Gi"
+            ephemeral-storage: ${LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE}
           requests:
             cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
             memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
             $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
-            ephemeral-storage: "10Gi"
+            ephemeral-storage: ${LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE}
         volumeMounts:
         - name: cache-volume
           mountPath: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
