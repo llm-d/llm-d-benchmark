@@ -114,8 +114,11 @@ llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WOR
 announce "✅ Namespace (${LLMDBENCH_HARNESS_NAMESPACE}), service account (${LLMDBENCH_HARNESS_SERVICE_ACCOUNT}) and rbac for harness created"
 
 for vol in ${LLMDBENCH_HARNESS_PVC_NAME}; do
-  announce "🔄 Creating PVC ${vol} for harness data storage..."
-  cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml
+
+  is_pvc=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pvc --ignore-not-found | grep ${LLMDBENCH_HARNESS_PVC_NAME} || true)
+  if [[ -z ${is_pvc} ]]; then
+    announce "🔄 Creating PVC \"${vol}\" for harness data storage..."
+    cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -129,8 +132,9 @@ spec:
       storage: ${LLMDBENCH_HARNESS_PVC_SIZE}
   storageClassName: ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS}
 EOF
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  announce "✅ PVC ${vol} for harness data storage created"
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  fi
+  announce "✅ PVC \"${vol}\" for harness data storage created"
 
   announce "🔄 Starting pod \"access-to-harness-data-${vol}\" to provide access to PVC ${vol} (harness data storage)..."
   cat <<EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_a_pod_access_to_harness_data.yaml

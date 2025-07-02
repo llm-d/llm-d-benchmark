@@ -431,7 +431,11 @@ function llmdbench_execute_cmd {
   then
     echo "ERROR while executing command \"${actual_cmd}\""
     echo
-    cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stderr.log
+    if [[ ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stderr.log ]]; then
+      cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stderr.log
+    else
+      echo "(stderr not captured)"
+    fi
   fi
 
   set -euo pipefail
