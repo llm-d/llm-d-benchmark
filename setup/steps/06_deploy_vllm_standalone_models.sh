@@ -77,12 +77,12 @@ spec:
             cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
             memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
             $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
-            ephemeral-storage: ${LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE_LIMIT}
+            ephemeral-storage: ${LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE}
           requests:
             cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
             memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
             $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
-            ephemeral-storage: ${LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE_REQUEST}
+            ephemeral-storage: ${LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE}
         volumeMounts:
         - name: cache-volume
           mountPath: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
