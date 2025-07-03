@@ -321,6 +321,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
       workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD "s^\.in$^^g")
 
+      announce "ℹ️ Selected workload profile is \"$workload_template_file_name\""
       render_template $workload_template_full_path ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_file_name
       export LLMDBENCH_BASE64_HARNESS_WORKLOAD=$(cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_file_name | base64 $LLMDBENCH_BASE64_ARGS)
 
