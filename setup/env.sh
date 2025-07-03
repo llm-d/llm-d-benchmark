@@ -196,7 +196,11 @@ if [[ ! -z $LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO ]]; then
 fi
 
 if [[ ! -z $LLMDBENCH_DEPLOY_SCENARIO ]]; then
-  export LLMDBENCH_SCENARIO_FULL_PATH=$(echo ${LLMDBENCH_MAIN_DIR}/scenarios/$LLMDBENCH_DEPLOY_SCENARIO'.sh' | $LLMDBENCH_CONTROL_SCMD 's^.sh.sh^.sh^g')
+  if [[ "$LLMDBENCH_DEPLOY_SCENARIO" == /* ]]; then
+    export LLMDBENCH_SCENARIO_FULL_PATH=$(echo $LLMDBENCH_DEPLOY_SCENARIO'.sh' | $LLMDBENCH_CONTROL_SCMD 's^.sh.sh^.sh^g')
+  else
+    export LLMDBENCH_SCENARIO_FULL_PATH=$(echo ${LLMDBENCH_MAIN_DIR}/scenarios/$LLMDBENCH_DEPLOY_SCENARIO'.sh' | $LLMDBENCH_CONTROL_SCMD 's^.sh.sh^.sh^g')
+  fi
   if [[ -f $LLMDBENCH_SCENARIO_FULL_PATH ]]; then
     source $LLMDBENCH_SCENARIO_FULL_PATH
   elif [[ $LLMDBENCH_SCENARIO_FULL_PATH == "${LLMDBENCH_MAIN_DIR}/scenarios/none.sh" ]]; then
@@ -230,6 +234,12 @@ for var in "${required_vars[@]}"; do
     exit 1
   fi
 done
+
+is_csv_model_list=$(echo $LLMDBENCH_DEPLOY_MODEL_LIST | grep ',' || true)
+if [[ ! -z $is_csv_model_list ]]; then
+    echo "❌ Currently, a comma-separated model list (env var LLMDBENCH_DEPLOY_MODEL_LIST, or  -m/--models) is not supported"
+    exit 1
+fi
 
 export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR:-$(mktemp -d -t ${LLMDBENCH_CONTROL_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)}
 
