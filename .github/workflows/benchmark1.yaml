@@ -70,7 +70,7 @@ jobs:
       - name: Install make, skopeo, curl, jq
         run: |
           sudo apt-get update
-          sudo apt-get install -y make skopeo curl jq
+          sudo apt-get install -y make skopeo curl jq rsync
         shell: bash
 
       - name: Install oc
