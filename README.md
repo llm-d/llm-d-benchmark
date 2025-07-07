@@ -75,14 +75,11 @@ Pieces of information identifying a particular cluster. This information include
 
 #### Harness
 
-Load Generator (python code), written using software facilites available at <https://github.com/fmperf-project/fmperf>.
-
-> [!NOTE]
-> This will be expanded with additional load generators in the future (e.g. [inference-perf](https://github.com/kubernetes-sigs/inference-perf) )
+Load Generator (python code) which drives the benchmark load. Today, llm-d-benchmark supports [fmperf]<https://github.com/fmperf-project/fmperf> and [inference-perf](https://github.com/kubernetes-sigs/inference-perf). There are ongoing efforts to consolidate and provide an easier way to support different load generators.
 
 #### Workload
 
-FMPerf workload specification, with load profile (e.g., `share-gpt` vs `long-input`) and load levels (e.g., QPS values). IMPORTANT: these definitions will be expanded with specifications for other load generators.
+Workload is the actual benchmark load specification which includes the LLM use case to benchmark, traffic pattern, input / output distribution and dataset. Supported workload profiles can be found under `workload/profiles`.
 
 > [!IMPORTANT]
 > The triple `<scenario>`,`<harness>`,`<workload>`, combined with the standup/teardown capabilities provided by llm-d-deployer (<https://github.com/llm-d/llm-d-deployer>) should provide enough information to allow an experiment to be reproduced.
@@ -91,6 +88,7 @@ FMPerf workload specification, with load profile (e.g., `share-gpt` vs `long-inp
 
 - llm-d-deployer (<https://github.com/llm-d/llm-d-deployer>)
 - fm-perf: <https://github.com/fmperf-project/fmperf>
+- inference-perf: <https://github.com/kubernetes-sigs/inference-perf>
 
 ### 📦 Repository Setup
 
@@ -196,10 +194,11 @@ To re-execute only individual steps (full name or number):
 ./setup/standup.sh -s 5,7
 ```
 
-Once llm-d is fully deployed, an experiment can be run
+Once llm-d is fully deployed, an experiment can be run. This script takes in different options where you can specify the harness, workload, etc. if they are not specified as a part of your scenario.
 
 ```
 ./run.sh
+./run.sh --harness inference-perf --workload chatbot_synthetic.yaml 
 ```
 
 > [!IMPORTANT]

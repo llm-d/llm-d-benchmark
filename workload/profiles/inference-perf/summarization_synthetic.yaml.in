@@ -22,18 +22,21 @@ data:
   type: random
   input_distribution:
     min: 10             # min length of the synthetic prompts
-    max: 2048           # max length of the synthetic prompts
-    mean: 1024          # mean length of the synthetic prompts
-    std: 500            # standard deviation of the length of the synthetic prompts
-    total_count: 100    # total number of prompts to generate to fit the above mentioned distribution constraints
+    max: 4096           # max length of the synthetic prompts
+    mean: 2048          # mean length of the synthetic prompts
+    std: 1024           # standard deviation of the length of the synthetic prompts
+    total_count: 1000   # total number of prompts to generate to fit the above mentioned distribution constraints
   output_distribution:
     min: 10             # min length of the output to be generated
     max: 512            # max length of the output to be generated
     mean: 256           # mean length of the output to be generated
-    std: 100            # standard deviation of the length of the output to be generated
-    total_count: 100    # total number of output lengths to generate to fit the above mentioned distribution constraints
+    std: 128            # standard deviation of the length of the output to be generated
+    total_count: 1000   # total number of output lengths to generate to fit the above mentioned distribution constraints
 report:
   request_lifecycle:
     summary: true
     per_stage: true
     per_request: true
+storage:
+  local_storage:
+    path: /requests
