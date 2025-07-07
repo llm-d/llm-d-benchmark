@@ -111,6 +111,13 @@ sleep 5
 
 source ${LLMDBENCH_STEPS_DIR}/00_ensure_llm-d-deployer.sh
 
+for resource in ${LLMDBENCH_CONTROL_RESOURCE_LIST//,/ }; do
+  has_resource=$($LLMDBENCH_CONTROL_KCMD get ${resource} --no-headers -o name 2>&1 | grep error || true)
+  if [[ ! -z ${has_resource} ]]; then
+    export LLMDBENCH_CONTROL_RESOURCE_LIST=$(echo ${LLMDBENCH_CONTROL_RESOURCE_LIST} | $LLMDBENCH_CONTROL_SCMD -e "s/${resource},/,/g" -e 's/,,/,/g' -e 's/^,//')
+  fi
+done
+
 announce "🧹 Cleaning up namespace: $LLMDBENCH_VLLM_COMMON_NAMESPACE"
 
 if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 1 ]]; then
