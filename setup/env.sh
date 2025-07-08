@@ -125,7 +125,14 @@ export LLMDBENCH_CONTROL_WARNING_DISPLAYED=${LLMDBENCH_CONTROL_WARNING_DISPLAYED
 export LLMDBENCH_CONTROL_WAIT_TIMEOUT=${LLMDBENCH_CONTROL_WAIT_TIMEOUT:-900}
 export LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS=${LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS:-0}
 export LLMDBENCH_CONTROL_RESOURCE_LIST=deployment,httproute,route,service,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,job
-export LLMDBENCH_CONTROL_KCMD=${LLMDBENCH_CONTROL_KCMD:-oc}
+
+is_oc=$(which oc || true)
+if [[ -z $is_oc ]]; then
+  export LLMDBENCH_CONTROL_KCMD=${LLMDBENCH_CONTROL_KCMD:-kubectl}
+else
+  export LLMDBENCH_CONTROL_KCMD=${LLMDBENCH_CONTROL_KCMD:-oc}
+fi
+
 export LLMDBENCH_CONTROL_HCMD=helm
 export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=${LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED:-0}
 
@@ -306,7 +313,7 @@ not_admin=$($LLMDBENCH_CONTROL_KCMD get crds 2>&1 | grep -i Forbidden || true)
 if [[ ! -z ${not_admin} ]]; then
   export LLMDBENCH_USER_IS_ADMIN=0
 else
-  is_ns=$($LLMDBENCH_CONTROL_KCMD get namespace | grep ${LLMDBENCH_VLLM_COMMON_NAMESPACE} || true)
+  is_ns=$($LLMDBENCH_CONTROL_KCMD get namespace -o name| grep -E "namespace/${LLMDBENCH_VLLM_COMMON_NAMESPACE}$" || true)
   if [[ ! -z ${is_ns} ]]; then
     export LLMDBENCH_CONTROL_PROXY_UID=$($LLMDBENCH_CONTROL_KCMD get namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} -o json | jq -e -r '.metadata.annotations["openshift.io/sa.scc.uid-range"]' | perl -F'/' -lane 'print $F[0]+1');
   fi
@@ -520,15 +527,40 @@ function check_storage_class_and_affinity {
     return 1
   fi
 
-  local annotation=$(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
-  local has_affinity=$($LLMDBENCH_CONTROL_KCMD get nodes -o json | jq -r '.items[].metadata.annotations[]' | grep $annotation || true)
+  local annotation1=$(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
+  local annotation2=$(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 2)
+  local has_affinity=$($LLMDBENCH_CONTROL_KCMD get nodes -o json | jq -r '.items[].metadata.labels' | grep -E "$annotation1.*$annotation2" || true)
   if [[ -z $has_affinity ]]; then
-    echo "ERROR. There are no nodes on this cluster with the annotation \"${annotation}\" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)"
+    echo "ERROR. There are no nodes on this cluster with the label \"${annotation1}:${annotation2}\" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)"
     return 1
   fi
 
 }
 export -f check_storage_class_and_affinity
+
+function not_valid_ip {
+
+    local  ip=$1
+    local  stat=1
+
+    echo ${ip} | grep -q '/'
+    if [[ $? -eq 0 ]]; then
+        local ip=$(echo $ip | cut -d '/' -f 1)
+    fi
+
+    if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        OIFS=$IFS
+        IFS='.'
+        ip=($ip)
+        IFS=$OIFS
+        [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
+        stat=$?
+    fi
+    if [[ $stat -eq 0 ]]; then
+      echo $ip
+    fi
+}
+export -f not_valid_ip
 
 function announce {
     # 1 - MESSAGE
