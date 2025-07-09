@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Copyright 2024-2025 IBM Corporation | IBM Confidential
 
 if [[ $0 != "-bash" ]]; then
     pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
