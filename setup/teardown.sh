@@ -32,6 +32,7 @@ function show_usage {
               -d/--deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING) ] \n \
               -p/--namespace [namespace where to deploy (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE)] \n \
               -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
+              -r/--release [deployer helm chart release name (default=$LLMDBENCH_VLLM_DEPLOYER_RELEASE)] \n \
               -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
               -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"deployer\") ] \n \
               -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
@@ -69,11 +70,18 @@ while [[ $# -gt 0 ]]; do
         export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO="$2"
         shift
         ;;
-        -t=*|--types=*)
+        -t=*|--methods=*)
         export LLMDBENCH_CLIOVERRIDE_DEPLOY_METHODS=$(echo $key | cut -d '=' -f 2)
         ;;
-        -t|--types)
+        -t|--methods)
         export LLMDBENCH_CLIOVERRIDE_DEPLOY_METHODS="$2"
+        shift
+        ;;
+        -r=*|--release=*)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_DEPLOYER_RELEASE=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -r|--release)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_DEPLOYER_RELEASE="$2"
         shift
         ;;
         -d|--deep)
@@ -152,9 +160,15 @@ EOF
       done
     done
   fi
-  for cr in llm-d-modelservice-endpoint-picker llm-d-modelservice-manager llm-d-modelservice-metrics-auth llm-d-modelservice-admin llm-d-modelservice-editor llm-d-modelservice-viewer; do
+
+  for crb in $(${LLMDBENCH_CONTROL_KCMD} get ClusterRoleBinding | grep ${LLMDBENCH_VLLM_DEPLOYER_RELEASE} | awk '{ print $1}'); do
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true ClusterRoleBinding $crb" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  done
+
+  for cr in ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-endpoint-picker ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-epp-metrics-scrape ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-manager ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-metrics-auth ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-admin ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-editor ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-viewer; do
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true ClusterRole $cr" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   done
+
 fi
 
 if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
