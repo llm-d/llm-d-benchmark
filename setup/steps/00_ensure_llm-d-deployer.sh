@@ -2,7 +2,7 @@
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
-  backup_suffix=$(date +%m.%d.%Y.%T)
+  backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
   announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$LLMDBENCH_CONTROL_WORK_DIR.$backup_suffix\"..."
   llmdbench_execute_cmd "mv -f $LLMDBENCH_CONTROL_WORK_DIR $LLMDBENCH_CONTROL_WORK_DIR.${backup_suffix}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   prepare_work_dir
