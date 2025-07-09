@@ -158,7 +158,7 @@ if [[ ! -z ${_e} ]]; then
 fi
 LLMDBENCH_STEP_LIST=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g')
 
-if [[ $LLMDBENCH_STEP_LIST == $(find $LLMDBENCH_STEPS_DIR -name "*.sh" | grep -v 11_ | sort | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e ':a;N;$!ba;s/\n/ /g') ]]; then
+if [[ $LLMDBENCH_STEP_LIST == $(find $LLMDBENCH_STEPS_DIR -name "*.sh" | sort | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e ':a;N;$!ba;s/\n/ /g') ]]; then
   export LLMDBENCH_CONTROL_STANDUP_ALL_STEPS=1
 fi
 
