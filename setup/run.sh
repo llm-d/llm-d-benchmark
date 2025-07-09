@@ -22,7 +22,7 @@ fi
 
 export LLMDBENCH_ENV_VAR_LIST=$(env | grep ^LLMDBENCH | cut -d '=' -f 1)
 export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/)
-
+export LLMDBENCH_CONTROL_CALLER=$(echo $0 | rev | cut -d '/' -f 1 | rev)
 export LLMDBENCH_STEPS_DIR="$LLMDBENCH_CONTROL_DIR/steps"
 
 if [ $0 != "-bash" ] ; then
@@ -45,7 +45,7 @@ function get_harness_list {
 }
 
 function show_usage {
-    echo -e "Usage: $(echo $0 | rev | cut -d '/' -f 1 | rev) -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
+    echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
              -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO)] \n \
              -m/--models [list the models to be run against (default=$LLMDBENCH_DEPLOY_MODEL_LIST)] \n \
              -p/--namespace [namespace where to deploy (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE)] \n \

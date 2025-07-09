@@ -179,7 +179,7 @@ EOF
     announce "🚀 (prefill) pods serving model ${model} ready"
 
     if [[ $LLMDBENCH_VLLM_DEPLOYER_ROUTE -ne 0 ]]; then
-      is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get route --ignore-not-found | grep llm-d-inference-gateway-route || true)
+      is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get route -o name --ignore-not-found | grep -E "/${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway-route$" || true)
       if [[ -z $is_route ]]
       then
         announce "📜 Exposing pods serving model ${model} as service..."

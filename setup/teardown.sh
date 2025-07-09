@@ -13,6 +13,7 @@ if [ $0 != "-bash" ] ; then
 fi
 
 export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
+export LLMDBENCH_CONTROL_CALLER=$(echo $0 | rev | cut -d '/' -f 1 | rev)
 
 export LLMDBENCH_STEPS_DIR="$LLMDBENCH_CONTROL_DIR/steps"
 
@@ -26,7 +27,7 @@ export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=
 
 
 function show_usage {
-    echo -e "Usage: $(echo $0 | rev | cut -d '/' -f 1 | rev) -t/--type [list of environment types targeted for cleaning (default=$LLMDBENCH_DEPLOY_METHODS)) \n \
+    echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -t/--type [list of environment types targeted for cleaning (default=$LLMDBENCH_DEPLOY_METHODS)) \n \
               -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
               -d/--deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING) ] \n \
               -p/--namespace [namespace where to deploy (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE)] \n \

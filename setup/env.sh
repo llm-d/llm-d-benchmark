@@ -319,7 +319,7 @@ else
   fi
 fi
 
-if [[ $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS == "default" ]]; then
+if [[ $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS == "default" && ${LLMDBENCH_CONTROL_CALLER} == "standup.sh" ]]; then
   has_default_sc=$($LLMDBENCH_CONTROL_KCMD get storageclass -o=jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{@.metadata.name}{"\n"}{end}' || true)
   if [[ -z $has_default_sc ]]; then
       echo "ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class\""
@@ -521,6 +521,10 @@ function render_template {
 export -f render_template
 
 function check_storage_class_and_affinity {
+  if [[ ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" ]]; then
+    return 0
+  fi
+
   local has_sc=$($LLMDBENCH_CONTROL_KCMD get storageclasses | grep $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS || true)
   if [[ -z $has_sc ]]; then
     echo "ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=$LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS but could not find such storage class"
