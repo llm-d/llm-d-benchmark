@@ -255,12 +255,17 @@ fi
 export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR:-$(mktemp -d -t ${LLMDBENCH_CONTROL_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)}
 export LLMDBENCH_CONTROL_WORK_DIR_SET=${LLMDBENCH_CONTROL_WORK_DIR_SET:-0}
 
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/results
+function prepare_work_dir {
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/results
+}
+export -f prepare_work_dir
+
+prepare_work_dir
 
 if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
   if [[ -f ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME} ]]; then
