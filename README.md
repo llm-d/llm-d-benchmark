@@ -75,7 +75,7 @@ Pieces of information identifying a particular cluster. This information include
 
 #### Harness
 
-Load Generator (python code) which drives the benchmark load. Today, llm-d-benchmark supports [fmperf]<https://github.com/fmperf-project/fmperf> and [inference-perf](https://github.com/kubernetes-sigs/inference-perf). There are ongoing efforts to consolidate and provide an easier way to support different load generators.
+Load Generator (python code) which drives the benchmark load. Today, llm-d-benchmark supports [fmperf](https://github.com/fmperf-project/fmperf) and [inference-perf](https://github.com/kubernetes-sigs/inference-perf). There are ongoing efforts to consolidate and provide an easier way to support different load generators.
 
 #### Workload
 
@@ -220,7 +220,7 @@ Finally, cleanup everything
 
 All the information collected inside the directory pointed by the environment variable `LLMDBENCH_CONTROL_WORK_DIR` should be enough to allow others to reproduce the experiment with the same parameters. In particular, all the parameters - always exposed as environment variables - applied to `llm-d` or `vllm` stacks can be found at `${LLMDBENCH_CONTROL_WORK_DIR}/environment/variables`
 
-A sample output of the contentx of `${LLMDBENCH_CONTROL_WORK_DIR}` for a very simple experiment is shown here
+A sample output of the content of `${LLMDBENCH_CONTROL_WORK_DIR}` for a very simple experiment is shown here
 
 ```
 ./analysis

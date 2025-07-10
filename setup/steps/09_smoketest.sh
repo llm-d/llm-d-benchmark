@@ -5,11 +5,15 @@ announce "🔍 Checking if current deployment was successfull..."
 if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
   pod_string=standalone
   route_string=standalone
-  service_ip=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | grep ${pod_string} | awk '{print $3}' || true)
+  service=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | grep ${pod_string})
+  service_name=$(echo "${service}" | awk '{print $1}')
+  service_ip=$(echo "${service}" | awk '{print $3}')
 else
   pod_string=decode
   route_string=${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway
-  service_ip=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | tail -n1 | awk '{print $3}')
+  service=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep inference-gateway)
+  service_name=$(echo "${service}" | awk '{print $1}')
+  service_ip=$(echo "${service}" | awk '{print $3}')
 fi
 
 for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
@@ -27,16 +31,23 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
 
   announce "🚀 Testing all pods \"${pod_string}\" (port ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT})..."
   for pod_ip in $pod_ip_list; do
+    announce "       🚀 Testing pod ip \"${pod_ip}\" ..."
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --attach --restart=Never --rm --image=${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}:${LLMDBENCH_IMAGE_TAG} --quiet --command -- bash -c \"curl --no-progress-meter http://${pod_ip}:${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}/v1/models\" | jq .object | grep list" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 2
+    announce "       ✅ Pod ip \"${pod_ip}\" responds successfully"
   done
   announce "✅ All pods respond successfully"
 
   if [[ -z $service_ip ]]; then
-    announce "❌ Unable to find IP for service/gateway \"${pod_string}\"!"
+    announce "❌ Unable to find IP for service/gateway \"${service}\"!"
     exit 1
   fi
 
-  announce "🚀 Testing service/gateway \"${service_ip}\" (port 80)..."
+  if [[ -z $(not_valid_ip ${service_ip}) ]]; then
+    announce "❌ Invalid IP (\"${service_ip}\") for service/gateway \"${service_name}\"!"
+    exit 1
+  fi
+
+  announce "🚀 Testing service/gateway \"${service_name}\" (\"${service_ip}\") (port 80)..."
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-gateway -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --attach --restart=Never --rm --image=${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}:${LLMDBENCH_IMAGE_TAG} --quiet --command -- bash -c \"curl --no-progress-meter http://${service_ip}:80/v1/models\" | jq .object | grep list" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 2
   announce "✅ Service responds successfully"
 

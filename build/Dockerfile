@@ -91,6 +91,8 @@ RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
 
 ADD workload/harnesses/ /usr/local/bin/
 COPY analysis/fmperf-analyze_results.py /usr/local/bin/fmperf-analyze_results.py
+COPY analysis/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
+COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
 
 #RUN mkdir /root/.kube
 #RUN touch /root/.llmdbench_dependencies_checked

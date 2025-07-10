@@ -47,9 +47,12 @@ export LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT=${LLMDBENCH_VLLM_STANDALONE_PVC_
 export LLMDBENCH_VLLM_STANDALONE_IMAGE=${LLMDBENCH_VLLM_STANDALONE_IMAGE:-"vllm/vllm-openai:latest"}
 export LLMDBENCH_VLLM_STANDALONE_ROUTE=${LLMDBENCH_VLLM_STANDALONE_ROUTE:-1}
 export LLMDBENCH_VLLM_STANDALONE_HTTPROUTE=${LLMDBENCH_VLLM_STANDALONE_HTTPROUTE:-0}
-export LLMDBENCH_VLLM_STANDALONE_ENVVARS_TO_YAML=${LLMDBENCH_VLLM_STANDALONE_ENVVARS_TO_YAML:-LLMDBENCH_VLLM_STANDALONE_VLLM_ALLOW_LONG_MAX_MODEL_LEN}
+export LLMDBENCH_VLLM_STANDALONE_ENVVARS_TO_YAML=${LLMDBENCH_VLLM_STANDALONE_ENVVARS_TO_YAML:-LLMDBENCH_VLLM_STANDALONE_VLLM_ALLOW_LONG_MAX_MODEL_LEN,LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE}
 export LLMDBENCH_VLLM_STANDALONE_VLLM_ALLOW_LONG_MAX_MODEL_LEN=${LLMDBENCH_VLLM_STANDALONE_VLLM_ALLOW_LONG_MAX_MODEL_LEN:-1}
-export LLMDBENCH_VLLM_STANDALONE_ARGS=${LLMDBENCH_VLLM_STANDALONE_ARGS:-"vllm____serve____REPLACE_MODEL____--port____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_INFERENCE_PORT____--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN____--disable-log-requests____--gpu-memory-utilization____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL____--tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR"}
+# VLLM_SERVER_DEV_MODE="1" necessary to enable sleep/wake_up server endpoints
+export LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE=${LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE:-1}
+export LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT=${LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT:-"auto"}
+export LLMDBENCH_VLLM_STANDALONE_ARGS=${LLMDBENCH_VLLM_STANDALONE_ARGS:-"vllm____serve____REPLACE_MODEL____--enable-sleep-mode____--load-format____REPLACE_ENV_LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT____--port____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_INFERENCE_PORT____--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN____--disable-log-requests____--gpu-memory-utilization____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL____--tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR"}
 export LLMDBENCH_VLLM_STANDALONE_INITIAL_DELAY_PROBE=${LLMDBENCH_VLLM_STANDALONE_INITIAL_DELAY_PROBE:-240}
 export LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE=${LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE:-"20Gi"}
 
@@ -116,7 +119,7 @@ export LLMDBENCH_HARNESS_PVC_SIZE="${LLMDBENCH_HARNESS_PVC_SIZE:-20Gi}"
 export LLMDBENCH_HARNESS_CONTAINER_IMAGE=${LLMDBENCH_HARNESS_CONTAINER_IMAGE:-lmcache/lmcache-benchmark:main}
 export LLMDBENCH_HARNESS_SKIP_RUN=${LLMDBENCH_HARNESS_SKIP_RUN:-}
 
-export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME:-llmdbench-fmperf-launcher}
+export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME:-llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher}
 export LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY="${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY:-0}"
 
 # LLM-D-Benchmark deployment specific variables
@@ -130,10 +133,18 @@ export LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED=${LLMDBENCH_CONTROL_DEPENDENCIES_C
 export LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED=${LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED:-0}
 export LLMDBENCH_CONTROL_PERMISSIONS_CHECKED=${LLMDBENCH_CONTROL_PERMISSIONS_CHECKED:-0}
 export LLMDBENCH_CONTROL_WARNING_DISPLAYED=${LLMDBENCH_CONTROL_WARNING_DISPLAYED:-0}
+export LLMDBENCH_CONTROL_STANDUP_ALL_STEPS=${LLMDBENCH_CONTROL_STANDUP_ALL_STEPS:-0}
 export LLMDBENCH_CONTROL_WAIT_TIMEOUT=${LLMDBENCH_CONTROL_WAIT_TIMEOUT:-900}
 export LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS=${LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS:-0}
 export LLMDBENCH_CONTROL_RESOURCE_LIST=deployment,httproute,route,service,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,job
-export LLMDBENCH_CONTROL_KCMD=${LLMDBENCH_CONTROL_KCMD:-oc}
+
+is_oc=$(which oc || true)
+if [[ -z $is_oc ]]; then
+  export LLMDBENCH_CONTROL_KCMD=${LLMDBENCH_CONTROL_KCMD:-kubectl}
+else
+  export LLMDBENCH_CONTROL_KCMD=${LLMDBENCH_CONTROL_KCMD:-oc}
+fi
+
 export LLMDBENCH_CONTROL_HCMD=helm
 export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=${LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED:-0}
 
@@ -250,13 +261,19 @@ if [[ ! -z $is_csv_model_list ]]; then
 fi
 
 export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR:-$(mktemp -d -t ${LLMDBENCH_CONTROL_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)}
+export LLMDBENCH_CONTROL_WORK_DIR_SET=${LLMDBENCH_CONTROL_WORK_DIR_SET:-0}
 
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
-mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/results
+function prepare_work_dir {
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/results
+}
+export -f prepare_work_dir
+
+prepare_work_dir
 
 if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
   if [[ -f ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME} ]]; then
@@ -269,7 +286,9 @@ if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
     ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
     export LLMDBENCH_CONTROL_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)
     if [[ $LLMDBENCH_CONTROL_WARNING_DISPLAYED -eq 0 ]]; then
+      echo ""
       echo "WARNING: environment variable LLMDBENCH_CLUSTER_URL=$LLMDBENCH_CLUSTER_URL. Will attempt to use current context \"${current_context}\"."
+      echo ""
       export LLMDBENCH_CONTROL_WARNING_DISPLAYED=1
       sleep 5
     fi
@@ -314,13 +333,13 @@ not_admin=$($LLMDBENCH_CONTROL_KCMD get crds 2>&1 | grep -i Forbidden || true)
 if [[ ! -z ${not_admin} ]]; then
   export LLMDBENCH_USER_IS_ADMIN=0
 else
-  is_ns=$($LLMDBENCH_CONTROL_KCMD get namespace | grep ${LLMDBENCH_VLLM_COMMON_NAMESPACE} || true)
+  is_ns=$($LLMDBENCH_CONTROL_KCMD get namespace -o name| grep -E "namespace/${LLMDBENCH_VLLM_COMMON_NAMESPACE}$" || true)
   if [[ ! -z ${is_ns} ]]; then
     export LLMDBENCH_CONTROL_PROXY_UID=$($LLMDBENCH_CONTROL_KCMD get namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} -o json | jq -e -r '.metadata.annotations["openshift.io/sa.scc.uid-range"]' | perl -F'/' -lane 'print $F[0]+1');
   fi
 fi
 
-if [[ $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS == "default" ]]; then
+if [[ $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS == "default" && ${LLMDBENCH_CONTROL_CALLER} == "standup.sh" ]]; then
   has_default_sc=$($LLMDBENCH_CONTROL_KCMD get storageclass -o=jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{@.metadata.name}{"\n"}{end}' || true)
   if [[ -z $has_default_sc ]]; then
       echo "ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class\""
@@ -522,21 +541,50 @@ function render_template {
 export -f render_template
 
 function check_storage_class_and_affinity {
+  if [[ ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" ]]; then
+    return 0
+  fi
+
   local has_sc=$($LLMDBENCH_CONTROL_KCMD get storageclasses | grep $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS || true)
   if [[ -z $has_sc ]]; then
     echo "ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=$LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS but could not find such storage class"
     return 1
   fi
 
-  local annotation=$(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
-  local has_affinity=$($LLMDBENCH_CONTROL_KCMD get nodes -o json | jq -r '.items[].metadata.annotations[]' | grep $annotation || true)
+  local annotation1=$(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
+  local annotation2=$(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 2)
+  local has_affinity=$($LLMDBENCH_CONTROL_KCMD get nodes -o json | jq -r '.items[].metadata.labels' | grep -E "$annotation1.*$annotation2" || true)
   if [[ -z $has_affinity ]]; then
-    echo "ERROR. There are no nodes on this cluster with the annotation \"${annotation}\" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)"
+    echo "ERROR. There are no nodes on this cluster with the label \"${annotation1}:${annotation2}\" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)"
     return 1
   fi
 
 }
 export -f check_storage_class_and_affinity
+
+function not_valid_ip {
+
+    local  ip=$1
+    local  stat=1
+
+    echo ${ip} | grep -q '/'
+    if [[ $? -eq 0 ]]; then
+        local ip=$(echo $ip | cut -d '/' -f 1)
+    fi
+
+    if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        OIFS=$IFS
+        IFS='.'
+        ip=($ip)
+        IFS=$OIFS
+        [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
+        stat=$?
+    fi
+    if [[ $stat -eq 0 ]]; then
+      echo $ip
+    fi
+}
+export -f not_valid_ip
 
 function announce {
     # 1 - MESSAGE
