@@ -75,7 +75,7 @@ Pieces of information identifying a particular cluster. This information include
 
 #### Harness
 
-Load Generator (python code) which drives the benchmark load. Today, llm-d-benchmark supports [fmperf]<https://github.com/fmperf-project/fmperf> and [inference-perf](https://github.com/kubernetes-sigs/inference-perf). There are ongoing efforts to consolidate and provide an easier way to support different load generators.
+Load Generator (python code) which drives the benchmark load. Today, llm-d-benchmark supports [fmperf](https://github.com/fmperf-project/fmperf) and [inference-perf](https://github.com/kubernetes-sigs/inference-perf). There are ongoing efforts to consolidate and provide an easier way to support different load generators.
 
 #### Workload
 
@@ -198,7 +198,7 @@ Once llm-d is fully deployed, an experiment can be run. This script takes in dif
 
 ```
 ./run.sh
-./run.sh --harness inference-perf --workload chatbot_synthetic.yaml 
+./run.sh --harness inference-perf --workload chatbot_synthetic.yaml
 ```
 
 > [!IMPORTANT]
