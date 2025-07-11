@@ -4,8 +4,8 @@ base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
 dataset-name: random
 random-input-len: 10000
 random-output-len: 1000
-max-concurrency: 1024
-num-prompts: 1
+max-concurrency: 4
+num-prompts: 32
 percentile-metrics: "ttft,tpot,itl,e2el"
 metric-percentiles: "90,95,99"
-#ignore-eos: none
+ignore-eos: none
