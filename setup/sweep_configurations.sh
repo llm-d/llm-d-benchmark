@@ -114,6 +114,28 @@ if [[ $gen_and_quit == 1 ]]; then
   exit 0
 fi
 
+# Hack to set up deployer that supports heterogeneous P/D configurations
+if [[ ! -d /tmp/llm-d-deployer ]]; then
+  echo "Creating deployer in /tmp"
+  pushd . &>/dev/null
+  cd /tmp
+  # Check out main branch of llm-d-deployer
+  git clone https://github.com/llm-d/llm-d-deployer.git -b main
+  cd llm-d-deployer
+  #git checkout -q a51e9cae966d86c4f5a18e6111eaf33768581262
+  # Switch to draft PR that includes changes needed for heterogeneous P/D
+  git fetch origin pull/368/head:pr368 -q
+  git switch pr368 -q
+  git checkout -q 155838fc884186641615cd8056511bc0847f3b66
+  # Merge in necessary updates from main
+  git merge main -m "Merge main" -q
+  # Apply patch to allow Kubernetes v1.28.0
+  patch -p1 < ${LLMDBENCH_MAIN_DIR}/util/patches/llm-d-deployer.patch
+  popd . &>/dev/null
+else
+  echo "/tmp/llm-d-deployer repository exists, ensure it includes appropriate modifications!"
+fi
+
 # These are the configurations we will sweep over
 scenarios=($(ls -d $LLMDBENCH_MAIN_DIR/scenarios/${base_scenario}__* ))
 echo "Scenarios to sweep:"
