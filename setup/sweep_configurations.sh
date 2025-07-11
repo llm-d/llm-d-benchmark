@@ -1,8 +1,33 @@
 #!/usr/bin/env bash
 
-export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=benchmark-hf-token
-export LLMDBENCH_VLLM_DEPLOYER_RELEASE=benchmark-release
-export LLMDBENCH_VLLM_COMMON_NAMESPACE=benchmark-test
+# This script takes a base scenario and a list of prefill and decode
+# pod configurations (number of replicas and TP size), and for each combination
+# of configurations will perform "standup" (create an instance of llm-d serving
+# the model of interest in the desired configuration), "run" benchmarking, and
+# "teardown" of llm-d.
+#
+# In order to pull models from Hugging Face, before executing this script you
+# must export the environment variable LLMDBENCH_HF_TOKEN with your
+# Hugging Face token
+#   export LLMDBENCH_HF_TOKEN=my_secret_token
+#
+# This script will first generate a set of scenarios from a base scenario.
+# Base scenarios are located in the scenarios/ directory of this repository,
+# and end with the suffix "_base.sh". These base scenarios contain placeholder
+# strings for number of prefill and decode replicas, and tensor parallel size.
+# The generated scenarios will match the base scenario name, and have a suffix
+# specifying the configuration for prefill and decode.
+
+# These generated scenario files will be deleted and regenerated when this
+# script is executed, so should not be edited by hand. To delete these files
+# without performing any other operations, use the "--erase" flag.
+#
+# To generate these files for inspection without performing other operations,
+# supply the "--generate" flag.
+
+################################################################################
+# User variables
+################################################################################
 
 # Base scenario file to use
 base_scenario=ocp_H200_deployer_PD_base
@@ -11,8 +36,16 @@ base_scenario=ocp_H200_deployer_PD_base
 decode_conf_array=("1,4" "2,4" "4,4" "1,8" "2,8" "4,8")
 prefill_conf_array=("1,1" "2,1" "4,1" "1,2" "2,2" "4,2")
 
+export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=benchmark-hf-token
+export LLMDBENCH_VLLM_DEPLOYER_RELEASE=benchmark-release
+export LLMDBENCH_VLLM_COMMON_NAMESPACE=benchmark-test
+
+################################################################################
+# Main script
+################################################################################
+
 if [[ -z "${LLMDBENCH_HF_TOKEN}" ]]; then
-  echo "Must place HuggingFace token in environment variable: LLMDBENCH_HF_TOKEN"
+  echo "Must place Hugging Face token in environment variable: LLMDBENCH_HF_TOKEN"
   exit 1
 fi
 
@@ -28,12 +61,16 @@ fi
 export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
 
 erase_and_quit=0
+gen_and_quit=0
 while [[ $# -gt 0 ]]; do
   key="$1"
 
   case $key in
     -e|--erase) # Erase generated scenario files matching supplied base, then exit
     export erase_and_quit=1
+    ;;
+    -g|--generate) # Generate scenario files matching supplied base, then exit
+    export gen_and_quit=1
     ;;
     *)
     echo "ERROR: invalid option \"$key\""
@@ -72,9 +109,12 @@ for decode_conf in "${decode_conf_array[@]}"; do
   done
 done
 
+if [[ $gen_and_quit == 1 ]]; then
+  echo "Generated scenario files"
+  exit 0
+fi
 
 # These are the configurations we will sweep over
 scenarios=($(ls -d $LLMDBENCH_MAIN_DIR/scenarios/${base_scenario}__* ))
 echo "Scenarios to sweep:"
 printf "  %s\n" "${scenarios[@]}"
-
