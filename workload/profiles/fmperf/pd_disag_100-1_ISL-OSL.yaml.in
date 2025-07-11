@@ -1,0 +1,15 @@
+model_name: "REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL"
+image: "REPLACE_ENV_LLMDBENCH_HARNESS_CONTAINER_IMAGE"
+service_account: "REPLACE_ENV_LLMDBENCH_HARNESS_SERVICE_ACCOUNT"
+pvc_name: "REPLACE_ENV_LLMDBENCH_HARNESS_PVC_NAME"
+scenarios: "long-input"
+qps_values: "0.1 0.3 1 3 10 30 100 300 1000"
+num_users_warmup: 20
+num_users: 1
+num_rounds: 1
+system_prompt: 1
+chat_history: 10000
+answer_len: 100
+init_user_id: 1
+test_duration: 300
+use_chat_completions: true
