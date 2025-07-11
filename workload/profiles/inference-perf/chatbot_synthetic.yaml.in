@@ -39,4 +39,4 @@ report:
     per_request: true
 storage:
   local_storage:
-    path: /requests
+    path: /workspace

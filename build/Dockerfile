@@ -9,6 +9,7 @@ RUN apt-get update; \
     rsync \
     patch \
     curl \
+    yq \
     && apt-get clean && rm -rf /var/cache/apt
 
 RUN OC_FILE_NAME=openshift-client-$(uname -s | sed -e "s/Linux/linux/g" -e "s/Darwin/apple-darwin/g")$(echo "-$(uname -m)" | sed -e 's/-x86_64//g' -e 's/-amd64//g' -e 's/aarch64/arm64-rhel9/g').tar.gz; \
@@ -45,22 +46,68 @@ list = yes\n\
 " >> /etc/rsyncd.conf; \
 sed -i 's^\-e^^' /etc/rsyncd.conf
 
+WORKDIR /workspace
+
+ARG FM_PERF_REPO=https://github.com/fmperf-project/fmperf.git
+ARG FM_PERF_BRANCH=main
+RUN git clone --branch ${FM_PERF_BRANCH} ${FM_PERF_REPO}
+RUN cd fmperf; \
+    pip install --no-cache-dir -r requirements.txt && \
+    python3 setup.py install
+
+ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
+ARG INFERENCE_PERF_BRANCH=main
+RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
+RUN cd inference-perf; pip install .
+
+ARG VLLM_BENCHMARK_REPO=https://github.com/vllm-project/vllm.git
+ARG VLLM_BENCHMARK_BRANCH=main
+RUN git clone --branch ${VLLM_BENCHMARK_BRANCH} ${VLLM_BENCHMARK_REPO}
+RUN cd vllm; pip install vllm; cd ..; mv -f vllm vllm-benchmark
+
+RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
+
+ADD workload/harnesses/ /usr/local/bin/
+COPY analysis/fmperf-analyze_results.py /usr/local/bin/fmperf-analyze_results.py
+COPY analysis/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
+COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
+COPY analysis/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
+
 RUN echo "#!/usr/bin/env bash" > /usr/local/bin/llm-d-benchmark.sh; echo -e "\
+
+if [[ ! -z \$1 ]]; then\n\
+  export LLMDBENCH_RUN_EXPERIMENT_HARNESS=\$(find /usr/local/bin | grep \${1}.*-llm-d-benchmark | rev | cut -d '/' -f 1 | rev)\n\
+fi\n\
+if [[ ! -z \$2 ]]; then\n\
+  export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=\$(echo \$2\".yaml\" | sed \"s^.yaml.yaml^.yaml^g\")\n\
+else \n\
+  if [[ ! -z \${LLMDBENCH_BASE64_HARNESS_WORKLOAD_CONTENTS} ]]; then\n\
+    echo \${LLMDBENCH_BASE64_HARNESS_WORKLOAD_CONTENTS} | base64 -d > /workspace/\${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}\n\
+  fi\n\
+fi\n\
+export LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR=\$(echo \$LLMDBENCH_RUN_EXPERIMENT_HARNESS | sed \"s^-llm-d-benchmark^^g\" | cut -d '.' -f 1)\n\
 mkdir -p ~/.kube\n\
-if [[ ! -z \${LLMDBENCH_BASE64_CONTEXT} ]]; then\n\
-  echo \${LLMDBENCH_BASE64_CONTEXT} | base64 -d > ~/.kube/config\n\
+if [[ ! -z \${LLMDBENCH_BASE64_CONTEXT_CONTENTS} ]]; then\n\
+  echo \${LLMDBENCH_BASE64_CONTEXT_CONTENTS} | base64 -d > ~/.kube/config\n\
 fi\n\
-if [[ ! -z \${LLMDBENCH_BASE64_HARNESS_WORKLOAD} ]]; then\n\
-  echo \${LLMDBENCH_BASE64_HARNESS_WORKLOAD} | base64 -d > /workspace/llmdbench_workload.yaml\n\
-fi\n\
-mv -f ~/.bashrc ~/fixbashrc\n\
+if [[ -f ~/.bashrc ]]; then \n\
+  mv -f ~/.bashrc ~/fixbashrc\n\
+fi \n\
+if [[ -d \$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR ]]; then \n\
+  pushd /workspace/\$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR \n\
+  git fetch \n\
+  git checkout \$LLMDBENCH_HARNESS_GIT_BRANCH \n\
+  popd \n\
+fi \n\
 /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_HARNESS}\n\
 ec=\$?\n\
 if [[ \$ec -ne 0 ]]; then\n\
   echo \"execution of /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_HARNESS} failed, wating 30 seconds and trying again\"\n\
   sleep 30\n\
 fi\n\
-mv -f ~/fixbashrc ~/.bashrc\n\
+if [[ -f ~/fixbashrc ]]; then \n\
+  mv -f ~/fixbashrc ~/.bashrc\n\
+fi \n\
 /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}\n\
 ec=\$?\n\
 if [[ \$ec -ne 0 ]]; then\n\
@@ -72,26 +119,6 @@ exit \$ec\n\
 sed -i 's^\-e^^' /usr/local/bin/llm-d-benchmark.sh; \
 chmod +x /usr/local/bin/llm-d-benchmark.sh
 
-WORKDIR /workspace
-
-ARG FM_PERF_REPO=https://github.com/fmperf-project/fmperf.git
-ARG FM_PERF_BRANCH=main
-RUN git clone --branch ${FM_PERF_BRANCH} ${FM_PERF_REPO}
-
-ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
-ARG INFERENCE_PERF_BRANCH=main
-RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
-RUN cd inference-perf; pip install .
-
-RUN cd fmperf; \
-    pip install --no-cache-dir -r requirements.txt && \
-    python3 setup.py install
-
-RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
-
-ADD workload/harnesses/ /usr/local/bin/
-COPY analysis/fmperf-analyze_results.py /usr/local/bin/fmperf-analyze_results.py
-COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
 
 #RUN mkdir /root/.kube
 #RUN touch /root/.llmdbench_dependencies_checked
