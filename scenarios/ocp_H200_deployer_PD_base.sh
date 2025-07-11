@@ -50,4 +50,4 @@ export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=random_1k_concurrent_10-1_ISL-OSL.ya
 export LLMDBENCH_VLLM_DEPLOYER_BASECONFIGMAPREFNAME=basic-gpu-with-nixl-preset
 
 # Local directory to copy benchmark runtime files and results
-export LLMDBENCH_CONTROL_WORK_DIR=/files/benchmark_run_pd
+export LLMDBENCH_CONTROL_WORK_DIR=/files/benchmark_run_pd__suffix__
