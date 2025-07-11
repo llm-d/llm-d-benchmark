@@ -365,7 +365,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       else
         announce "ℹ️ Harness was started in \"debug mode\". The pod can be accessed through \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} exec -it pod/${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -- bash\""
         announce "ℹ️ In order to execute a given workload profile, run \"llm-d-benchmark.sh <[$(get_harness_list)]> [WORKLOAD FILE NAME]\" (all inside the pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\")"
-        announce "ℹ️ To collect results after an execution, \"$copy_results_cmd && $copy_analisys_cmd"
+        announce "ℹ️ To collect results after an execution, \"$copy_results_cmd && $copy_analysis_cmd"
       fi
     fi
 
