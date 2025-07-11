@@ -417,9 +417,9 @@ function model_attribute {
       true ;;
   esac
 
-  local modelcomponents=$(echo $model | cut -d '/' -f 2 | $LLMDBENCH_CONTROL_SCMD 's^-^\n^g' )
-  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf")
-  local parameters=$(echo "${modelcomponents}" | grep -Ei "^[0-9].*b")
+  local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
+  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat")
+  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^')
   local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" | cut -d '.' -f 1)
   local kind=$(echo "${modelcomponents}" | head -n 1 | cut -d '/' -f 1)
   local label=${kind}-${majorversion}-${parameters}

@@ -256,9 +256,21 @@ if [[ $? -ne 0 ]]; then
 fi
 unset LLMDBENCH_CURRENT_STEP
 
+function validate_model_name {
+  local _model_name=$1
+  for mparm in model type parameters majorversion kind label; do
+    if [[ -z $(model_attribute ${_model_name} ${mparm}) ]]; then
+      announce "❌ Invalid model name \"${_model_name}\""
+      exit 1
+    fi
+  done
+}
+
 for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
+
+    validate_model_name ${model}
 
     export LLMDBENCH_HARNESS_STACK_NAME=$(echo ${method} | $LLMDBENCH_CONTROL_SCMD 's^deployer^llm-d^g')-$(model_attribute $model parameters)-$(model_attribute $model type)
 
