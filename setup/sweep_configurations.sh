@@ -140,3 +140,13 @@ fi
 scenarios=($(ls -d $LLMDBENCH_MAIN_DIR/scenarios/${base_scenario}__* ))
 echo "Scenarios to sweep:"
 printf "  %s\n" "${scenarios[@]}"
+
+for ss in "${scenarios[@]}"; do
+  echo "**** Standing up scenario $ss****"
+  #$LLMDBENCH_MAIN_DIR/standup.sh -c $ss
+  echo "**** Running benchmarks for scenario $ss****"
+  # TODO replace this with inner loop for concurrencies
+  #$LLMDBENCH_MAIN_DIR/run.sh -c $ss
+  echo "**** Tearing down scenario $ss****"
+  #$LLMDBENCH_MAIN_DIR/teardown.sh -c $ss
+done
