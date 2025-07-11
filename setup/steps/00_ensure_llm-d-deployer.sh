@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
+if [[ ! -z ${LLMDBENCH_CONTROL_WORK_DIR} ]]; then
+  export LLMDBENCH_CONTROL_WORK_DIR_SET=1
+fi
+
 if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
   backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
   announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$LLMDBENCH_CONTROL_WORK_DIR.$backup_suffix\"..."

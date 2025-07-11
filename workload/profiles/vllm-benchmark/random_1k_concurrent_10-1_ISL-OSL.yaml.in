@@ -8,4 +8,4 @@ max-concurrency: 1024
 num-prompts: 1
 percentile-metrics: "ttft,tpot,itl,e2el"
 metric-percentiles: "90,95,99"
-ignore-eos: true
+#ignore-eos: none

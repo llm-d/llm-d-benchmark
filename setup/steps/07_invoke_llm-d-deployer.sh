@@ -18,20 +18,27 @@ sampleApplication:
       hfToken:
         name: llm-d-hf-token
         key: HF_TOKEN
-  resources:
-    limits:
-      $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
-    requests:
-      cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
-      memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
-      $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
   inferencePoolPort: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
   prefill:
     replicas: ${LLMDBENCH_VLLM_DEPLOYER_PREFILL_REPLICAS}
     extraArgs: $(render_string ${LLMDBENCH_VLLM_DEPLOYER_PREFILL_EXTRA_ARGS} $model)
+    resources:
+      limits:
+        $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_DEPLOYER_PREFILL_ACCELERATOR_NR}\"")
+      requests:
+        cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
+        memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
+        $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_DEPLOYER_PREFILL_ACCELERATOR_NR}\"")
   decode:
     replicas: ${LLMDBENCH_VLLM_DEPLOYER_DECODE_REPLICAS}
     extraArgs: $(render_string ${LLMDBENCH_VLLM_DEPLOYER_DECODE_EXTRA_ARGS} $model)
+    resources:
+      limits:
+        $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_DEPLOYER_DECODE_ACCELERATOR_NR}\"")
+      requests:
+        cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
+        memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
+        $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_DEPLOYER_DECODE_ACCELERATOR_NR}\"")
 
 gateway:
   gatewayClassName: ${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME}
@@ -130,9 +137,9 @@ modelservice:
 
   vllm:
     image:
-      registry: ghcr.io
-      repository: llm-d/llm-d
-      tag: 0.0.8
+      registry: $LLMDBENCH_LLMD_IMAGE_REGISTRY
+      repository: $LLMDBENCH_LLMD_IMAGE_REPO
+      tag: $LLMDBENCH_LLMD_IMAGE_TAG
 
     metrics:
       enabled: true

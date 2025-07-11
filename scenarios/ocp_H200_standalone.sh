@@ -40,4 +40,4 @@ export LLMDBENCH_HARNESS_NAME=vllm-benchmark
 export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=random_1k_concurrent_10-1_ISL-OSL.yaml
 
 # Local directory to copy benchmark runtime files and results
-export LLMDBENCH_CONTROL_WORK_DIR=/home/nick/benchmark_run_sa
+export LLMDBENCH_CONTROL_WORK_DIR=/files/benchmark_run_sa
