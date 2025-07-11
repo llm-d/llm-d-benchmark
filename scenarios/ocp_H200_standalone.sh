@@ -30,10 +30,14 @@ export LLMDBENCH_EPP_LOAD_AWARE_SCORER_WEIGHT=1.0
 export LLMDBENCH_CONTROL_WAIT_TIMEOUT=5000
 
 # Workload profile selection
+#export LLMDBENCH_HARNESS_NAME=fmperf
 # 10k/1k ISL/OSL
-export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=pd_disag_10-1_ISL-OSL.yaml
+#export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=pd_disag_10-1_ISL-OSL.yaml
 # 10k:100 ISL/OSL
 #export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=pd_disag_100-1_ISL-OSL.yaml
+export LLMDBENCH_HARNESS_NAME=vllm-benchmark
+# 10k/1k ISL/OSL with 1024 concurrent users
+export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=random_1k_concurrent_10-1_ISL-OSL.yaml
 
 # Local directory to copy benchmark runtime files and results
 export LLMDBENCH_CONTROL_WORK_DIR=/home/nick/benchmark_run_sa
