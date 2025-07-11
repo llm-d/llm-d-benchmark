@@ -2,15 +2,16 @@ load:
   type: constant
   stages:
   - rate: 1
-    duration: 60
+    duration: 120
   - rate: 2
-    duration: 60
+    duration: 120
   - rate: 4
-    duration: 60
+    duration: 120
   - rate: 8
-    duration: 60
+    duration: 120
 api:
   type: completion
+  streaming: true
 server:
   type: vllm
   model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
