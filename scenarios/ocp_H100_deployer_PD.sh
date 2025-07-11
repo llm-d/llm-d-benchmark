@@ -3,13 +3,23 @@
 # All parameters not defined here will be the default values found in
 # setup/env.sh
 
+# Custom image for llm-d-benchmark
+export LLMDBENCH_IMAGE_REGISTRY=quay.io
+export LLMDBENCH_IMAGE_REPO=namasluk/llm-d-benchmark
+export LLMDBENCH_IMAGE_TAG=0.1.7
+
+# Custom image for llm-d
+export LLMDBENCH_LLMD_IMAGE_REGISTRY=docker.io
+export LLMDBENCH_LLMD_IMAGE_REPO=robertgouldshaw2/vllm-nixl
+export LLMDBENCH_LLMD_IMAGE_TAG=nixl-oh-debug-fixed-0.3
+
 # Affinity to select node with appropriate GPU
-export LLMDBENCH_VLLM_COMMON_AFFINITY=gpu.nvidia.com/model:H200
+export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3
 
 # Pick a model
-export LLMDBENCH_DEPLOY_MODEL_LIST=RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic
+#export LLMDBENCH_DEPLOY_MODEL_LIST=RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic
 #export LLMDBENCH_DEPLOY_MODEL_LIST=meta-llama/Llama-3.3-70B-Instruct
-#export LLMDBENCH_DEPLOY_MODEL_LIST=Qwen/Qwen1.5-MoE-A2.7B-Chat
+export LLMDBENCH_DEPLOY_MODEL_LIST=Qwen/Qwen1.5-MoE-A2.7B-Chat
 
 # Common parameters across prefill and decode pods
 export LLMDBENCH_VLLM_COMMON_CPU_NR=32
