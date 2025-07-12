@@ -174,14 +174,14 @@ for sc in "${scenarios[@]}"; do
     export LLMDBENCH_RUN_EXPERIMENT_PARAMETER_MAX_CONCURRENCY="${wl%,*}"
     export LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS="${wl#*,}"
     export LLMDBENCH_RUN_EXPERIMENT_ID=$((id++))
-    if [ $id -lt $skip_to_id ]; then
+    if [ $LLMDBENCH_RUN_EXPERIMENT_ID -lt $skip_to_id ]; then
       printf "\033[1;31m**** Skipping ID $id: scenario $sc, concurrency $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_MAX_CONCURRENCY, prompts $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS ****\033[0m\n"
       continue
     fi
     printf "\033[1;33m**** $(date +'%Y-%m-%d %H:%M:%S'): Benchmarking scenario $sc, concurrency $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_MAX_CONCURRENCY, prompts $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS, ID $LLMDBENCH_RUN_EXPERIMENT_ID ****\033[0m\n"
     $LLMDBENCH_CONTROL_DIR/run.sh -c $sc -m $model -w $workload_profile
   done
-  if [ $id -ge $skip_to_id ]; then
+  if [ $LLMDBENCH_RUN_EXPERIMENT_ID -ge $skip_to_id ]; then
     printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Tearing down scenario $sc****\033[0m\n"
     $LLMDBENCH_CONTROL_DIR/teardown.sh -c $sc
   fi
