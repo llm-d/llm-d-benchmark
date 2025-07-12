@@ -29,12 +29,26 @@
 # User variables
 ################################################################################
 
-# Base scenario file to use
+# Model to test
+#model=RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic
+#model=meta-llama/Llama-3.3-70B-Instruct
+model=Qwen/Qwen1.5-MoE-A2.7B-Chat
+
+# Base scenario file to use, located in scenarios/ of this repository
 base_scenario=ocp_H200_deployer_PD_base
+#base_scenario=ocp_H100_deployer_PD_base
 
 # Decode and pod configurations, where each pair is "(number of replicas),(TP size)"
+# DO NOT PUT COMMAS BETWEEN PAIRS!
 decode_conf_array=("1,4" "2,4" "4,4" "1,8" "2,8" "4,8")
 prefill_conf_array=("1,1" "2,1" "4,1" "1,2" "2,2" "4,2")
+
+# Workload profile to use, located in workload/profiles/vllm-benchmark/ of this repository
+workload_profile=random_1k_concurrent_10-1_ISL-OSL
+
+# Benchmark workloads, each pair is "(max concurrency),(number of prompts)"
+# DO NOT PUT COMMAS BETWEEN PAIRS!
+workload_array=("1,20" "8,160" "16,320" "32,640" "64,1280" "128,2560" "256,5120" "512,10240" "1024,20480")
 
 export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=benchmark-hf-token
 export LLMDBENCH_VLLM_DEPLOYER_RELEASE=benchmark-release
@@ -82,6 +96,8 @@ done
 
 # Ensure scenario name excludes suffix or path
 base_scenario=$(echo "$base_scenario" | sed 's^.sh^^g' | rev | cut -d '/' -f 1 | rev)
+# Ensure workload profile name excludes suffix or path
+workload_profile=$(echo "$workload_profile" | sed 's^.in^^g' | sed 's^.yaml^^g'| rev | cut -d '/' -f 1 | rev)
 
 if [ ! -e $LLMDBENCH_MAIN_DIR/scenarios/$base_scenario.sh ]; then
   echo "Could not find base scenario file: $LLMDBENCH_MAIN_DIR/scenarios/$base_scenario.sh"
@@ -137,16 +153,23 @@ else
 fi
 
 # These are the configurations we will sweep over
-scenarios=($(ls -d $LLMDBENCH_MAIN_DIR/scenarios/${base_scenario}__* ))
+scenarios=($(ls -d $LLMDBENCH_MAIN_DIR/scenarios/${base_scenario}__* | sed -e 's/.sh$//' | rev | cut -d '/' -f 1 | rev))
 echo "Scenarios to sweep:"
 printf "  %s\n" "${scenarios[@]}"
 
-for ss in "${scenarios[@]}"; do
-  echo "**** Standing up scenario $ss****"
-  #$LLMDBENCH_MAIN_DIR/standup.sh -c $ss
-  echo "**** Running benchmarks for scenario $ss****"
-  # TODO replace this with inner loop for concurrencies
-  #$LLMDBENCH_MAIN_DIR/run.sh -c $ss
-  echo "**** Tearing down scenario $ss****"
-  #$LLMDBENCH_MAIN_DIR/teardown.sh -c $ss
+export LLMDBENCH_DEPLOY_MODEL_LIST=$model
+ii=1
+for sc in "${scenarios[@]}"; do
+  printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Standing up scenario $sc****\033[0m\n"
+  $LLMDBENCH_CONTROL_DIR/standup.sh -c $sc
+  printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Running benchmarks for scenario $sc****\033[0m\n"
+  for wl in ${workload_array[@]}; do
+    export LLMDBENCH_RUN_EXPERIMENT_PARAMETER_MAX_CONCURRENCY="${wl%,*}"
+    export LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS="${wl#*,}"
+    export LLMDBENCH_RUN_EXPERIMENT_ID=$((ii++))
+    printf "\033[1;33m**** $(date +'%Y-%m-%d %H:%M:%S'): Benchmarking scenario $sc, concurrency $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_MAX_CONCURRENCY, requests $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_REQUESTS, ID $LLMDBENCH_RUN_EXPERIMENT_ID ****\033[0m\n"
+    $LLMDBENCH_CONTROL_DIR/run.sh -m $model -w $workload_profile
+  done
+  printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Tearing down scenario $sc****\033[0m\n"
+  $LLMDBENCH_CONTROL_DIR/teardown.sh -c $sc
 done
