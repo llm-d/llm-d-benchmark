@@ -5,7 +5,7 @@ dataset-name: random
 random-input-len: 10000
 random-output-len: 1000
 max-concurrency: REPLACE_ENV_LLMDBENCH_RUN_EXPERIMENT_PARAMETER_MAX_CONCURRENCY
-num-prompts: 32
+num-prompts: REPLACE_ENV_LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS
 percentile-metrics: "ttft,tpot,itl,e2el"
 metric-percentiles: "90,95,99"
 ignore-eos: none
