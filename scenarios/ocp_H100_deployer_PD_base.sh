@@ -6,7 +6,7 @@
 # Custom image for llm-d-benchmark
 export LLMDBENCH_IMAGE_REGISTRY=quay.io
 export LLMDBENCH_IMAGE_REPO=namasluk/llm-d-benchmark
-export LLMDBENCH_IMAGE_TAG=0.1.10
+export LLMDBENCH_IMAGE_TAG=0.1.11
 
 # Custom image for llm-d
 export LLMDBENCH_LLMD_IMAGE_REGISTRY=docker.io
