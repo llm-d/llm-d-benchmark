@@ -38,10 +38,10 @@ model=Qwen/Qwen1.5-MoE-A2.7B-Chat
 base_scenario=ocp_H200_deployer_PD_base
 #base_scenario=ocp_H100_deployer_PD_base
 
-# Decode and pod configurations, where each pair is "(number of replicas),(TP size)"
+# Prefill and decode pod configurations, where each pair is "(number of replicas),(TP size)"
 # DO NOT PUT COMMAS BETWEEN PAIRS!
-decode_conf_array=("1,4" "2,4" "4,4" "1,8" "2,8" "4,8")
 prefill_conf_array=("1,1" "2,1" "4,1" "1,2" "2,2" "4,2")
+decode_conf_array=("1,4" "2,4" "4,4" "1,8" "2,8" "4,8")
 
 # Workload profile to use, located in workload/profiles/vllm-benchmark/ of this repository
 workload_profile=random_1k_concurrent_10-1_ISL-OSL
