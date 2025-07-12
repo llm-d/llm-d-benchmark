@@ -168,7 +168,7 @@ for sc in "${scenarios[@]}"; do
     export LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS="${wl#*,}"
     export LLMDBENCH_RUN_EXPERIMENT_ID=$((ii++))
     printf "\033[1;33m**** $(date +'%Y-%m-%d %H:%M:%S'): Benchmarking scenario $sc, concurrency $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_MAX_CONCURRENCY, prompts $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS, ID $LLMDBENCH_RUN_EXPERIMENT_ID ****\033[0m\n"
-    $LLMDBENCH_CONTROL_DIR/run.sh -m $model -w $workload_profile
+    $LLMDBENCH_CONTROL_DIR/run.sh -c $sc -m $model -w $workload_profile
   done
   printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Tearing down scenario $sc****\033[0m\n"
   $LLMDBENCH_CONTROL_DIR/teardown.sh -c $sc
