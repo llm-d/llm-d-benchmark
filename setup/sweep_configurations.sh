@@ -55,8 +55,7 @@ export LLMDBENCH_VLLM_DEPLOYER_RELEASE=benchmark-release
 export LLMDBENCH_VLLM_COMMON_NAMESPACE=benchmark-test
 
 # If the run fails partly through, skip all runs prior to this ID.
-# This will work if the environment is already stood up to the correct scenario.
-# If not you need to manually stand up that scenario (TODO to make this automatic).
+# You may need to manually stand up the scenario (TODO to make this automatic)
 skip_to_id=1
 
 ################################################################################
@@ -164,8 +163,9 @@ printf "  %s\n" "${scenarios[@]}"
 
 export LLMDBENCH_DEPLOY_MODEL_LIST=$model
 id=1
+export LLMDBENCH_RUN_EXPERIMENT_ID=$id
 for sc in "${scenarios[@]}"; do
-  if [ $id -ge $skip_to_id ]; then
+  if [ $LLMDBENCH_RUN_EXPERIMENT_ID -ge $skip_to_id ]; then
     printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Standing up scenario $sc****\033[0m\n"
     $LLMDBENCH_CONTROL_DIR/standup.sh -c $sc
     printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Running benchmarks for scenario $sc****\033[0m\n"
@@ -175,7 +175,7 @@ for sc in "${scenarios[@]}"; do
     export LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS="${wl#*,}"
     export LLMDBENCH_RUN_EXPERIMENT_ID=$((id++))
     if [ $LLMDBENCH_RUN_EXPERIMENT_ID -lt $skip_to_id ]; then
-      printf "\033[1;31m**** Skipping ID $id: scenario $sc, concurrency $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_MAX_CONCURRENCY, prompts $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS ****\033[0m\n"
+      printf "\033[1;31m**** Skipping ID $LLMDBENCH_RUN_EXPERIMENT_ID: scenario $sc, concurrency $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_MAX_CONCURRENCY, prompts $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS ****\033[0m\n"
       continue
     fi
     printf "\033[1;33m**** $(date +'%Y-%m-%d %H:%M:%S'): Benchmarking scenario $sc, concurrency $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_MAX_CONCURRENCY, prompts $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS, ID $LLMDBENCH_RUN_EXPERIMENT_ID ****\033[0m\n"
