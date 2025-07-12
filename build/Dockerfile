@@ -77,6 +77,8 @@ RUN echo "#!/usr/bin/env bash" > /usr/local/bin/llm-d-benchmark.sh; echo -e "\
 
 if [[ ! -z \$1 ]]; then\n\
   export LLMDBENCH_RUN_EXPERIMENT_HARNESS=\$(find /usr/local/bin | grep \${1}.*-llm-d-benchmark | rev | cut -d '/' -f 1 | rev)\n\
+  export LLMDBENCH_RUN_EXPERIMENT_ANALYZER=\$(find /usr/local/bin | grep \${1}.*-analyze_results | rev | cut -d '/' -f 1 | rev)\n\
+  export LLMDBENCH_HARNESS_RESULTS_DIR=/requests/\$(echo \$LLMDBENCH_RUN_EXPERIMENT_HARNESS | sed \"s^-llm-d-benchmark^^g\" | cut -d '.' -f 1)_\${LLMDBENCH_RUN_EXPERIMENT_ID}_\${LLMDBENCH_HARNESS_STACK_NAME}\n\
 fi\n\
 if [[ ! -z \$2 ]]; then\n\
   export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=\$(echo \$2\".yaml\" | sed \"s^.yaml.yaml^.yaml^g\")\n\

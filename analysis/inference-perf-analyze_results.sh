@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 
-inference-perf --analyze "/requests/$LLMDBENCH_HARNESS_STACK_NAME"
+inference-perf --analyze "$LLMDBENCH_HARNESS_RESULTS_DIR"
 
 exit 0
