@@ -15,7 +15,7 @@ export LLMDBENCH_IMAGE_TAG=${LLMDBENCH_IMAGE_TAG:-auto}
 export LLMDBENCH_DEPLOYER_GIT_REPO="${LLMDBENCH_DEPLOYER_GIT_REPO:-https://github.com/llm-d/llm-d-deployer.git}"
 export LLMDBENCH_DEPLOYER_DIR="${LLMDBENCH_DEPLOYER_DIR:-/tmp}"
 export LLMDBENCH_DEPLOYER_GIT_BRANCH="${LLMDBENCH_DEPLOYER_GIT_BRANCH:-main}"
-export LLMDBENCH_HARNESS_GIT_REPO="${LLMDBENCH_HARNESS_GIT_REPO:-https://github.com/fmperf-project/fmperf.git}"
+export LLMDBENCH_HARNESS_GIT_REPO="${LLMDBENCH_HARNESS_GIT_REPO:-auto}"
 export LLMDBENCH_HARNESS_DIR="${LLMDBENCH_HARNESS_DIR:-/tmp}"
 export LLMDBENCH_HARNESS_GIT_BRANCH="${LLMDBENCH_HARNESS_GIT_BRANCH:-main}"
 
@@ -41,6 +41,7 @@ export LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT=${LLMDBENCH_VLLM_COMMON_PVC_DO
 export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME:-"llm-d-hf-token"}
 export LLMDBENCH_VLLM_COMMON_INFERENCE_PORT=${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT:-"8000"}
 export LLMDBENCH_VLLM_COMMON_FQDN=${LLMDBENCH_VLLM_COMMON_FQDN:-".svc.cluster.local"}
+export LLMDBENCH_VLLM_COMMON_TIMEOUT=${LLMDBENCH_VLLM_COMMON_TIMEOUT:-3600}
 
 # Standalone-specific parameters
 export LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT=${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT:-/models}
@@ -113,6 +114,7 @@ export LLMDBENCH_HARNESS_SKIP_RUN=${LLMDBENCH_HARNESS_SKIP_RUN:-}
 
 export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME:-llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher}
 export LLMDBENCH_RUN_EXPERIMENT_ID=${LLMDBENCH_RUN_EXPERIMENT_ID:-$(date +%s)}
+export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX=${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX:-/requests}
 export LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY="${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY:-0}"
 
 # LLM-D-Benchmark deployment specific variables
@@ -130,6 +132,59 @@ export LLMDBENCH_CONTROL_STANDUP_ALL_STEPS=${LLMDBENCH_CONTROL_STANDUP_ALL_STEPS
 export LLMDBENCH_CONTROL_WAIT_TIMEOUT=${LLMDBENCH_CONTROL_WAIT_TIMEOUT:-900}
 export LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS=${LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS:-0}
 export LLMDBENCH_CONTROL_RESOURCE_LIST=deployment,httproute,route,service,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,job
+
+function model_attribute {
+  local model=$1
+  local attribute=$2
+
+  # Do not use associative arrays. Not supported by MacOS with older bash versions
+
+  case "$model" in
+    "llama-3b")
+      local model=meta-llama/Llama-3.2-3B-Instruct ;;
+    "llama-8b")
+      local model=meta-llama/Llama-3.1-8B-Instruct ;;
+    "llama-70b")
+      local model=meta-llama/Llama-3.1-70B-Instruct ;;
+    "llama-17b")
+      local model=meta-llama/Llama-4-Scout-17B-16E-Instruct ;;
+    *)
+      true ;;
+  esac
+
+  local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
+  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision")
+  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^')
+  local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" | cut -d '.' -f 1)
+  local kind=$(echo "${modelcomponents}" | head -n 1 | cut -d '/' -f 1)
+  local label=${kind}-${majorversion}-${parameters}
+
+  if [[ $attribute != "model" ]];
+  then
+    echo ${!attribute} | tr '[:upper:]' '[:lower:]'
+  else
+    echo ${!attribute}
+  fi
+}
+export -f model_attribute
+
+function resolve_harness_git_repo {
+  local harness_name=$1
+
+  if [[ $LLMDBENCH_HARNESS_GIT_REPO == "auto" ]]; then
+    case "$harness_name" in
+      "fmperf")
+          echo "https://github.com/fmperf-project/fmperf.git" ;;
+      "vllm"|"vllm-benchmark")
+          echo "https://github.com/vllm-project/vllm.git";;
+      "inference-perf")
+          echo "https://github.com/kubernetes-sigs/inference-perf.git";;
+      *)
+          echo "Unknown harness: $harness_name"
+          exit 1;;
+    esac
+  fi
+}
 
 is_oc=$(which oc || true)
 if [[ -z $is_oc ]]; then
@@ -266,6 +321,13 @@ function prepare_work_dir {
 }
 export -f prepare_work_dir
 
+export LLMDBENCH_CURRENT_STEP=${LLMDBENCH_CURRENT_STEP:-}
+if [[ $LLMDBENCH_CURRENT_STEP == "00" && $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
+  backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
+  announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix\"..."
+  llmdbench_execute_cmd "mv -f $LLMDBENCH_CONTROL_WORK_DIR $(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').${backup_suffix}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+fi
+
 prepare_work_dir
 
 if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
@@ -370,50 +432,6 @@ if [[ $LLMDBENCH_CONTROL_PERMISSIONS_CHECKED -eq 0 && ${LLMDBENCH_CONTROL_CHECK_
 fi
 
 export LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL=${SHELL:5}
-
-function model_attribute {
-  local model=$1
-  local attribute=$2
-
-  # Do not use associative arrays. Not supported by MacOS with older bash versions
-#  declare -A LLMDBENCH_MODEL_ALIAS_TO_NAME
-#  LLMDBENCH_MODEL_ALIAS_TO_NAME["llama-3b"]="meta-llama/Llama-3.2-3B-Instruct"
-#  LLMDBENCH_MODEL_ALIAS_TO_NAME["llama-8b"]="meta-llama/Llama-3.1-8B-Instruct"
-#  LLMDBENCH_MODEL_ALIAS_TO_NAME["llama-70b"]="meta-llama/Llama-3.1-70B-Instruct"
-#  LLMDBENCH_MODEL_ALIAS_TO_NAME["llama-17b"]="RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic" #pragma: allowlist secret
-#  is_alias=$(echo ${LLMDBENCH_MODEL_ALIAS_TO_NAME[${model}]} || true)
-#  if [[ ! -z ${is_alias} ]]; then
-#    local model=$is_alias
-#  fi
-
-  case "$model" in
-    "llama-3b")
-      local model=meta-llama/Llama-3.2-3B-Instruct ;;
-    "llama-8b")
-      local model=meta-llama/Llama-3.1-8B-Instruct ;;
-    "llama-70b")
-      local model=meta-llama/Llama-3.1-70B-Instruct ;;
-    "llama-17b")
-      local model=RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic ;;
-    *)
-      true ;;
-  esac
-
-  local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
-  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat")
-  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^')
-  local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" | cut -d '.' -f 1)
-  local kind=$(echo "${modelcomponents}" | head -n 1 | cut -d '/' -f 1)
-  local label=${kind}-${majorversion}-${parameters}
-
-  if [[ $attribute != "model" ]];
-  then
-    echo ${!attribute} | tr '[:upper:]' '[:lower:]'
-  else
-    echo ${!attribute}
-  fi
-}
-export -f model_attribute
 
 function llmdbench_execute_cmd {
   set +euo pipefail

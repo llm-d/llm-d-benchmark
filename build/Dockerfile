@@ -96,11 +96,22 @@ if [[ -f ~/.bashrc ]]; then \n\
   mv -f ~/.bashrc ~/fixbashrc\n\
 fi \n\
 if [[ -d \$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR ]]; then \n\
-  pushd /workspace/\$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR \n\
-  git fetch \n\
-  git checkout \$LLMDBENCH_HARNESS_GIT_BRANCH \n\
+  pushd /workspace/\$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR\n\
+  current_repo=\$(git remote -v | grep \(fetch\) | awk '{ print \$2 }')\n\
+  if [[ \$current_repo == \$LLMDBENCH_HARNESS_GIT_REPO ]]; then\n\
+    git fetch\n\
+  else\n\
+    popd\n\
+    rm -rf /workspace/\$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR\n\
+    git clone \$LLMDBENCH_HARNESS_GIT_REPO\n\
+    pushd /workspace/\$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR\n\
+  fi\n\
+  git checkout \$LLMDBENCH_HARNESS_GIT_BRANCH\n\
   popd \n\
-fi \n\
+fi\n\
+if [[ ! -f /workspace/vllm-benchmark ]]; then\n\
+  mv /workspace/vllm /workspace/vllm-benchmark\n\
+fi\n\
 /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_HARNESS}\n\
 ec=\$?\n\
 if [[ \$ec -ne 0 ]]; then\n\

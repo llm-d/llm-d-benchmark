@@ -7,7 +7,7 @@ else
   announce "🛠️  Cloning and setting up harness locally..."
   pushd ${LLMDBENCH_HARNESS_DIR} &>/dev/null
   if [[ ! -d ${LLMDBENCH_HARNESS_NAME} ]]; then
-    llmdbench_execute_cmd "cd ${LLMDBENCH_HARNESS_DIR}; git clone \"${LLMDBENCH_HARNESS_GIT_REPO}\" -b \"${LLMDBENCH_HARNESS_GIT_BRANCH}\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    llmdbench_execute_cmd "cd ${LLMDBENCH_HARNESS_DIR}; git clone \"$(resolve_harness_git_repo $LLMDBENCH_HARNESS_NAME)\" -b \"${LLMDBENCH_HARNESS_GIT_BRANCH}\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   else
     pushd ${LLMDBENCH_HARNESS_NAME} &>/dev/null
     llmdbench_execute_cmd "cd ${LLMDBENCH_HARNESS_DIR}/${LLMDBENCH_HARNESS_NAME}; git checkout ${LLMDBENCH_HARNESS_GIT_BRANCH}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}

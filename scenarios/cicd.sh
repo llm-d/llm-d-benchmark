@@ -1,5 +1,5 @@
 export LLMDBENCH_CONTROL_WORK_DIR=/tmp/cicd/
-export LLMDBENCH_DEPLOY_MODEL_LIST=llama-3b
+export LLMDBENCH_DEPLOY_MODEL_LIST=meta-llama/Llama-3.2-1B-Instruct
 export LLMDBENCH_VLLM_COMMON_NAMESPACE=llmdbenchcicd
 export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-A100-SXM4-80GB
 export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=ocs-storagecluster-cephfs
