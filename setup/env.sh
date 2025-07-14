@@ -6,10 +6,13 @@ export LLMDBENCH_CLUSTER_TOKEN="${LLMDBENCH_CLUSTER_TOKEN:-sha256~sVYh-xxx}"
 
 export LLMDBENCH_HF_TOKEN="${LLMDBENCH_HF_TOKEN:-}"
 
-# Image
+# Images
 export LLMDBENCH_IMAGE_REGISTRY=${LLMDBENCH_IMAGE_REGISTRY:-ghcr.io}
 export LLMDBENCH_IMAGE_REPO=${LLMDBENCH_IMAGE_REPO:-llm-d/llm-d-benchmark}
 export LLMDBENCH_IMAGE_TAG=${LLMDBENCH_IMAGE_TAG:-auto}
+export LLMDBENCH_LLMD_IMAGE_REGISTRY=${LLMDBENCH_LLMD_IMAGE_REGISTRY:-ghcr.io}
+export LLMDBENCH_LLMD_IMAGE_REPO=${LLMDBENCH_LLMD_IMAGE_REPO:-llm-d/llm-d}
+export LLMDBENCH_LLMD_IMAGE_TAG=${LLMDBENCH_LLMD_IMAGE_TAG:-auto}
 
 # External repositories
 export LLMDBENCH_DEPLOYER_GIT_REPO="${LLMDBENCH_DEPLOYER_GIT_REPO:-https://github.com/llm-d/llm-d-deployer.git}"
@@ -59,8 +62,10 @@ export LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE=${LLMDBENCH_VLLM_STANDALONE_E
 # Deployer-specific parameters
 export LLMDBENCH_VLLM_DEPLOYER_VALUES_FILE=${LLMDBENCH_VLLM_DEPLOYER_VALUES_FILE:-"fromenv"}
 export LLMDBENCH_VLLM_DEPLOYER_PREFILL_REPLICAS=${LLMDBENCH_VLLM_DEPLOYER_PREFILL_REPLICAS:-1}
+export LLMDBENCH_VLLM_DEPLOYER_PREFILL_ACCELERATOR_NR=${LLMDBENCH_VLLM_DEPLOYER_PREFILL_ACCELERATOR_NR:-LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}
 export LLMDBENCH_VLLM_DEPLOYER_PREFILL_EXTRA_ARGS=${LLMDBENCH_VLLM_DEPLOYER_PREFILL_EXTRA_ARGS:-"[--disable-log-requests]"}
 export LLMDBENCH_VLLM_DEPLOYER_DECODE_REPLICAS=${LLMDBENCH_VLLM_DEPLOYER_DECODE_REPLICAS:-1}
+export LLMDBENCH_VLLM_DEPLOYER_DECODE_ACCELERATOR_NR=${LLMDBENCH_VLLM_DEPLOYER_DECODE_ACCELERATOR_NR:-LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}
 export LLMDBENCH_VLLM_DEPLOYER_DECODE_EXTRA_ARGS=${LLMDBENCH_VLLM_DEPLOYER_DECODE_EXTRA_ARGS:-"[--disable-log-requests]"}
 export LLMDBENCH_VLLM_DEPLOYER_BASECONFIGMAPREFNAME=${LLMDBENCH_VLLM_DEPLOYER_BASECONFIGMAPREFNAME:-"basic-gpu-with-nixl-and-redis-lookup-preset"}
 export LLMDBENCH_VLLM_DEPLOYER_MODELSERVICE_REPLICAS=${LLMDBENCH_VLLM_DEPLOYER_MODELSERVICE_REPLICAS:-1}
@@ -203,6 +208,20 @@ if [[ $LLMDBENCH_IMAGE_TAG == "auto" ]]; then
   export LLMDBENCH_IMAGE_TAG=${is_latest_tag}
 fi
 
+if [[ $LLMDBENCH_LLMD_IMAGE_TAG == "auto" ]]; then
+
+  if [[ $LLMDBENCH_CONTROL_CCMD == "podman" ]]; then
+    is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags ${LLMDBENCH_LLMD_IMAGE_REGISTRY}/${LLMDBENCH_LLMD_IMAGE_REPO} | tail -1 | awk '{ print $2 }' || true)
+  else
+    is_latest_tag=$(skopeo list-tags docker://${LLMDBENCH_LLMD_IMAGE_REGISTRY}/${LLMDBENCH_LLMD_IMAGE_REPO} | jq -r .Tags[] | tail -1)
+  fi
+  if [[ -z ${is_latest_tag} ]]; then
+    echo "❌ Unable to find latest tag for image \"${LLMDBENCH_LLMD_IMAGE_REGISTRY}/${LLMDBENCH_LLMD_IMAGE_REPO}\""
+    exit 1
+  fi
+  export LLMDBENCH_LLMD_IMAGE_TAG=${is_latest_tag}
+fi
+
 if [[ ! -z $LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO ]]; then
   export LLMDBENCH_DEPLOY_SCENARIO=$LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO
 fi
@@ -265,6 +284,12 @@ function prepare_work_dir {
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/results
 }
 export -f prepare_work_dir
+
+# if [[ $LLMDBENCH_CURRENT_STEP == "00" && $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
+#   backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
+#   announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$LLMDBENCH_CONTROL_WORK_DIR.$backup_suffix\"..."
+#   llmdbench_execute_cmd "mv -f $LLMDBENCH_CONTROL_WORK_DIR $LLMDBENCH_CONTROL_WORK_DIR.${backup_suffix}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+# fi
 
 prepare_work_dir
 
@@ -401,7 +426,7 @@ function model_attribute {
 
   local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
   local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat")
-  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^')
+  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^')
   local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" | cut -d '.' -f 1)
   local kind=$(echo "${modelcomponents}" | head -n 1 | cut -d '/' -f 1)
   local label=${kind}-${majorversion}-${parameters}

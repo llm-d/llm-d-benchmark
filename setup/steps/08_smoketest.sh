@@ -47,6 +47,11 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     exit 1
   fi
 
+  # Hack to ensure gateway is operational
+  announce "HACK: Restarting kgateway pod to ensure gateway is operational"
+  ${LLMDBENCH_CONTROL_KCMD} delete pod -l kgateway=kgateway -n kgateway-system
+  ${LLMDBENCH_CONTROL_KCMD} wait --for=condition=Ready=True pod -l kgateway=kgateway -n kgateway-system
+
   announce "🚀 Testing service/gateway \"${service_name}\" (\"${service_ip}\") (port 80)..."
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-gateway -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --attach --restart=Never --rm --image=${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}:${LLMDBENCH_IMAGE_TAG} --quiet --command -- bash -c \"curl --no-progress-meter http://${service_ip}:80/v1/models\" | jq .object | grep list" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 2
   announce "✅ Service responds successfully"
