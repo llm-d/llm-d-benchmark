@@ -98,6 +98,7 @@ export LLMDBENCH_VLLM_DEPLOYER_EPP_DECODE_ENABLE_SESSION_AWARE_SCORER=${LLMDBENC
 export LLMDBENCH_VLLM_DEPLOYER_EPP_DECODE_SESSION_AWARE_SCORER_WEIGHT=${LLMDBENCH_VLLM_DEPLOYER_EPP_DECODE_SESSION_AWARE_SCORER_WEIGHT:-1}
 
 # Harness and Experiment
+export LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST=$(ls ${LLMDBENCH_MAIN_DIR}/workload/profiles/)
 export LLMDBENCH_HARNESS_NAME=${LLMDBENCH_HARNESS_NAME:-vllm-benchmark}
 export LLMDBENCH_HARNESS_EXECUTABLE=${LLMDBENCH_HARNESS_EXECUTABLE:-llm-d-benchmark.sh}
 export LLMDBENCH_HARNESS_CONDA_ENV_NAME="${LLMDBENCH_HARNESS_CONDA_ENV_NAME:-${LLMDBENCH_HARNESS_NAME}-env}"
@@ -317,7 +318,9 @@ function prepare_work_dir {
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
-  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/results
+  for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
+    mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$profile_type
+  done
 }
 export -f prepare_work_dir
 
@@ -514,10 +517,14 @@ function add_additional_env_to_yaml {
 export -f add_additional_env_to_yaml
 
 function render_string {
+  set +euo pipefail
   local string=$1
-  local model=$2
+  local model=${2:-}
 
-  echo "s^REPLACE_MODEL^$(model_attribute $model model)^g" > $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  if [[ ! -z $model ]]; then
+    echo "s^REPLACE_MODEL^$(model_attribute $model model)^g" > $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  fi
+
   islist=$(echo $string | grep "\[" || true)
   if [[ ! -z $islist ]]; then
     echo "s^____^\", \"^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
@@ -526,13 +533,26 @@ function render_string {
   else
     echo "s^____^ ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
+
   for entry in $(echo ${string} | $LLMDBENCH_CONTROL_SCMD -e 's/____/ /g' -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^]^\n^g' -e 's^ ^^g' | grep -E "REPLACE_ENV" | uniq); do
-    parameter_name=$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_ENV_^\n______^g" -e "s^\"^^g" -e "s^'^^g" | grep "______" |  $LLMDBENCH_CONTROL_SCMD -e "s^______^^g")
+    default_value=$(echo $entry | $LLMDBENCH_CONTROL_SCMD -e "s^++++default=^\n^" | tail -1)
+    parameter_name=$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_ENV_^\n______^g" -e "s^\"^^g" -e "s^'^^g" | grep "______" | $LLMDBENCH_CONTROL_SCMD -e "s^++++default=.*^^" -e "s^______^^g")
     entry=REPLACE_ENV_${parameter_name}
     value=$(echo ${!parameter_name})
+    if [[ -z $value && -z $default_value ]]; then
+      echo "ERROR: variable \"$entry\" not defined!"
+      exit 1
+    fi
+    if [[ -z $value && ! -z $default_value ]]; then
+      value=$default_value
+      echo "s^++++default=$default_value^^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    fi
     echo "s^${entry}^${value}^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   done
-  echo ${string} | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  if [[ ! -z $model ]]; then
+    echo ${string} | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  fi
+  set -euo pipefail
 }
 export -f render_string
 
@@ -542,10 +562,7 @@ function render_template {
 
   rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   for entry in $(cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' | grep -E "REPLACE_ENV" | uniq); do
-    parameter_name=$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_ENV_^\n______^g" -e "s^\"^^g" -e "s^'^^g" | grep "______" |  $LLMDBENCH_CONTROL_SCMD -e "s^______^^g")
-    entry=REPLACE_ENV_${parameter_name}
-    value=$(echo ${!parameter_name})
-    echo "s^${entry}^${value}^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    render_string $entry
   done
   cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands > $output_file_path
 }

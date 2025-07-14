@@ -121,7 +121,7 @@ def main():
     stack_name = env_vars.get("LLMDBENCH_HARNESS_STACK_NAME", "llm-d-3b-instruct")
     stack_type = env_vars.get("LLMDBENCH_HARNESS_STACK_TYPE", "llm-d")
     endpoint_url = env_vars.get("LLMDBENCH_HARNESS_STACK_ENDPOINT_URL", "inference-gateway")
-    workload_file = env_vars.get("LLMDBENCH_HARNESS_WORKLOAD_FILE", "llmdbench_workload.yaml")
+    workload_file = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME", "llmdbench_workload.yaml")
     repetition = int(env_vars.get("LLMDBENCH_FMPERF_REPETITION", "1"))
     namespace = env_vars.get("LLMDBENCH_HARNESS_NAMESPACE", "llmdbench")
     job_id = env_vars.get("LLMDBENCH_FMPERF_JOB_ID", stack_name)
@@ -139,7 +139,7 @@ def main():
     logger.info(f"  Job ID: {job_id}")
     logger.info(f"  Results directory (PVC): {results_dir}")
 
-    workload_file_path = os.path.join("/workspace", workload_file)
+    workload_file_path = os.path.join("/workspace/profiles/fmperf", workload_file)
     logger.info(f"Loading workload configuration from {workload_file_path}")
     workload_spec = LMBenchmarkWorkload.from_yaml(workload_file_path)
 

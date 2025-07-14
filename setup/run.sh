@@ -171,6 +171,13 @@ export LLMDBENCH_EXPERIMENT_ID=${LLMDBENCH_EXPERIMENT_ID:-"default"}
 export LLMDBENCH_BASE64_CONTEXT_CONTENTS=$(cat $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx | base64 $LLMDBENCH_BASE64_ARGS)
 
 create_harness_pod() {
+
+  is_pvc=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pvc --ignore-not-found | grep ${LLMDBENCH_HARNESS_PVC_NAME} || true)
+  if [[ -z ${is_pvc} ]]; then
+      announce "❌ PVC \"${LLMDBENCH_HARNESS_PVC_NAME}\" not created on namespace \"${LLMDBENCH_HARNESS_NAMESPACE}\" unable to continue"
+      exit 1
+  fi
+
   cat <<EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
 apiVersion: v1
 kind: Pod
@@ -203,10 +210,8 @@ spec:
       value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}"
     - name: LLMDBENCH_BASE64_CONTEXT_CONTENTS
       value: "$LLMDBENCH_BASE64_CONTEXT_CONTENTS"
-    - name: LLMDBENCH_BASE64_HARNESS_WORKLOAD_CONTENTS
-      value: "${LLMDBENCH_BASE64_HARNESS_WORKLOAD_CONTENTS}"
     - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME
-      value: "llmdbench_workload.yaml"
+      value: "$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE"
     - name: LLMDBENCH_RUN_EXPERIMENT_ID
       value: "${LLMDBENCH_RUN_EXPERIMENT_ID}"
     - name: LLMDBENCH_HARNESS_NAME
@@ -230,20 +235,29 @@ spec:
         secretKeyRef:
           name: ${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}
           key: HF_TOKEN
-EOF
-
-is_pvc=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pvc --ignore-not-found | grep ${LLMDBENCH_HARNESS_PVC_NAME} || true)
-if [[ ! -z ${is_pvc} ]]; then
-  cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
     volumeMounts:
     - name: results
       mountPath: /requests
+EOF
+  for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
+    cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
+    - name: ${profile_type}-profiles
+      mountPath: /workspace/profiles/${profile_type}
+EOF
+  done
+  cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
   volumes:
   - name: results
     persistentVolumeClaim:
       claimName: $LLMDBENCH_HARNESS_PVC_NAME
 EOF
-fi
+  for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
+    cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
+  - name: ${profile_type}-profiles
+    configMap:
+      name: ${profile_type}-profiles
+EOF
+  done
   cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
   restartPolicy: Never
 EOF
@@ -346,11 +360,17 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         exit 1
       fi
 
-      workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD "s^\.in$^^g")
+      announce "🛠️ Rendering all workload profile templates under \"$LLMDBENCH_MAIN_DIR/workload/profiles/\"..."
+      for workload_template_full_path in $(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name '*.yaml.in'); do
+        workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
+        workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD "s^\.in$^^g")
+        render_template $workload_template_full_path ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/$workload_template_file_name
+      done
 
-      announce "ℹ️ Selected workload profile is \"$workload_template_file_name\""
-      render_template $workload_template_full_path ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_file_name
-      export LLMDBENCH_BASE64_HARNESS_WORKLOAD_CONTENTS=$(cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_file_name | base64 $LLMDBENCH_BASE64_ARGS)
+      for workload_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
+        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete configmap $workload_type-profiles --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} create configmap $workload_type-profiles --from-file=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      done
 
       create_harness_pod
 
