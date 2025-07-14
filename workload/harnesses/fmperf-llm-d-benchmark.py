@@ -127,7 +127,7 @@ def main():
     job_id = env_vars.get("LLMDBENCH_FMPERF_JOB_ID", stack_name)
 
     # Get results directory for configuration
-    results_dir = env_vars.get("LLMDBENCH_HARNESS_RESULTS_DIR", "/requests")
+    results_dir = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", "/requests")
 
     logger.info(f"Using configuration:")
     logger.info(f"  Stack name: {stack_name}")
