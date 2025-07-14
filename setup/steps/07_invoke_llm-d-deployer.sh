@@ -40,15 +40,15 @@ modelservice:
   replicas: $LLMDBENCH_VLLM_DEPLOYER_MODELSERVICE_REPLICAS
 
   image:
-    registry: ghcr.io
-    repository: llm-d/llm-d-model-service
-    tag: "0.0.10"
+    registry: $LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REGISTRY
+    repository: ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REPO}
+    tag: $(get_latest_image ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REPO} ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_TAG} 1)
 
   epp:
     image:
-      registry: ghcr.io
-      repository: llm-d/llm-d-inference-scheduler
-      tag: 0.0.4
+      registry: ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REGISTRY}
+      repository: ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REPO}
+      tag: $(get_latest_image ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REPO} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG} 1)
 
     metrics:
       enabled: true
@@ -130,24 +130,24 @@ modelservice:
 
   vllm:
     image:
-      registry: ghcr.io
-      repository: llm-d/llm-d
-      tag: 0.0.8
+      registry: $LLMDBENCH_LLMD_IMAGE_REGISTRY
+      repository: $LLMDBENCH_LLMD_IMAGE_REPO
+      tag: $(get_latest_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_TAG} 1)
 
     metrics:
       enabled: true
 
   routingProxy:
     image:
-      registry: ghcr.io
-      repository: llm-d/llm-d-routing-sidecar
-      tag: "0.0.6"
+      registry: ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REGISTRY}
+      repository: ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REPO}
+      tag: $(get_latest_image ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REPO} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG} 1)
 
   inferenceSimulator:
     image:
-      registry: ghcr.io
-      repository: llm-d/llm-d-inference-sim
-      tag: "v0.1.2"
+      registry: ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REGISTRY}
+      repository: ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REPO}
+      tag: $(get_latest_image ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REPO} ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_TAG} 1)
 EOF
       LLMDBENCH_VLLM_DEPLOYER_VALUES_FILE=$LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_deployer_values.yaml
     fi
@@ -178,7 +178,7 @@ EOF
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s --for=condition=Ready=True pod -l llm-d.ai/model=$(model_attribute $model model | tr '[:upper:]' '[:lower:]') -l llm-d.ai/role=prefill" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "🚀 (prefill) pods serving model ${model} ready"
 
-    if [[ $LLMDBENCH_VLLM_DEPLOYER_ROUTE -ne 0 ]]; then
+    if [[ $LLMDBENCH_VLLM_DEPLOYER_ROUTE -ne 0 && $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -ne 0 ]]; then
       is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get route -o name --ignore-not-found | grep -E "/${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway-route$" || true)
       if [[ -z $is_route ]]
       then
@@ -189,7 +189,15 @@ EOF
       announce "✅ Model \"${model}\" and associated service deployed."
     fi
 
+    reconfigure_gateway_after_deploy
+
     announce "✅ llm-d-deployer completed model deployment"
+
+    srl=deployment,service,route,pods,secrets
+    announce "ℹ️ A snapshot of the relevant (model-specific) resources on namespace \"${LLMDBENCH_VLLM_COMMON_NAMESPACE}\":"
+    if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 0 ]]; then
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} get --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} $srl" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0
+    fi
   done
 else
   announce "⏭️ Environment types are \"${LLMDBENCH_DEPLOY_METHODS}\". Skipping this step."

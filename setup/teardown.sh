@@ -197,7 +197,6 @@ else
   deployment
   service
   secret
-  pvc
   gateway
   httproute
   route
@@ -209,6 +208,7 @@ else
   rolebinding
   serviceaccount
   pod
+  pvc
 )
 
   for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; do

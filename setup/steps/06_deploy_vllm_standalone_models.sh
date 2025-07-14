@@ -36,7 +36,7 @@ spec:
                 - $(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 2)
       containers:
       - name: vllm-standalone-$(model_attribute $model label)
-        image: ${LLMDBENCH_VLLM_STANDALONE_IMAGE}
+        image: $(get_latest_image ${LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY} ${LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO} ${LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG})
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
         args:
@@ -159,7 +159,7 @@ EOF
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-standalone-$(model_attribute $model label)" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "🚀 (standalone) pods serving model ${model} ready"
 
-    if [[ $LLMDBENCH_VLLM_STANDALONE_ROUTE -ne 0 ]]; then
+    if [[ $LLMDBENCH_VLLM_STANDALONE_ROUTE -ne 0 && $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -ne 0 ]]; then
       is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get route --ignore-not-found | grep vllm-standalone-$(model_attribute $model label)-route || true)
       if [[ -z $is_route ]]
       then

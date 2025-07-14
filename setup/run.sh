@@ -190,7 +190,7 @@ spec:
   serviceAccountName: $LLMDBENCH_HARNESS_SERVICE_ACCOUNT
   containers:
   - name: harness
-    image: ${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}:${LLMDBENCH_IMAGE_TAG}
+    image: $(get_latest_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_TAG})
     imagePullPolicy: Always
     command: ["sh", "-c"]
     args:

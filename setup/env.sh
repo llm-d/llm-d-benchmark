@@ -6,10 +6,28 @@ export LLMDBENCH_CLUSTER_TOKEN="${LLMDBENCH_CLUSTER_TOKEN:-sha256~sVYh-xxx}"
 
 export LLMDBENCH_HF_TOKEN="${LLMDBENCH_HF_TOKEN:-}"
 
-# Image
+# Images
 export LLMDBENCH_IMAGE_REGISTRY=${LLMDBENCH_IMAGE_REGISTRY:-ghcr.io}
 export LLMDBENCH_IMAGE_REPO=${LLMDBENCH_IMAGE_REPO:-llm-d/llm-d-benchmark}
 export LLMDBENCH_IMAGE_TAG=${LLMDBENCH_IMAGE_TAG:-auto}
+export LLMDBENCH_LLMD_IMAGE_REGISTRY=${LLMDBENCH_LLMD_IMAGE_REGISTRY:-ghcr.io}
+export LLMDBENCH_LLMD_IMAGE_REPO=${LLMDBENCH_LLMD_IMAGE_REPO:-llm-d/llm-d}
+export LLMDBENCH_LLMD_IMAGE_TAG=${LLMDBENCH_LLMD_IMAGE_TAG:-0.0.8}
+export LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REGISTRY=${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REGISTRY:-ghcr.io}
+export LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REPO=${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REPO:-llm-d/llm-d-model-service}
+export LLMDBENCH_LLMD_MODELSERVICE_IMAGE_TAG=${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_TAG:-0.0.10}
+export LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REGISTRY=${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REGISTRY:-ghcr.io}
+export LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REPO=${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REPO:-llm-d/llm-d-inference-scheduler}
+export LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG=${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG:-0.0.4}
+export LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REGISTRY=${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REGISTRY:-ghcr.io}
+export LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REPO=${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REPO:-llm-d/llm-d-routing-sidecar}
+export LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG=${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG:-0.0.6}
+export LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REGISTRY=${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REGISTRY:-ghcr.io}
+export LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REPO=${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REPO:-llm-d/llm-d-inference-sim}
+export LLMDBENCH_LLMD_INFERENCESIM_IMAGE_TAG=${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_TAG:-v0.1.2}
+export LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY=${LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY:-vllm}
+export LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO=${LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO:-vllm-openai}
+export LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG=${LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG:-latest}
 
 # External repositories
 export LLMDBENCH_DEPLOYER_GIT_REPO="${LLMDBENCH_DEPLOYER_GIT_REPO:-https://github.com/llm-d/llm-d-deployer.git}"
@@ -45,7 +63,6 @@ export LLMDBENCH_VLLM_COMMON_TIMEOUT=${LLMDBENCH_VLLM_COMMON_TIMEOUT:-3600}
 
 # Standalone-specific parameters
 export LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT=${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT:-/models}
-export LLMDBENCH_VLLM_STANDALONE_IMAGE=${LLMDBENCH_VLLM_STANDALONE_IMAGE:-"vllm/vllm-openai:latest"}
 export LLMDBENCH_VLLM_STANDALONE_ROUTE=${LLMDBENCH_VLLM_STANDALONE_ROUTE:-1}
 export LLMDBENCH_VLLM_STANDALONE_HTTPROUTE=${LLMDBENCH_VLLM_STANDALONE_HTTPROUTE:-0}
 export LLMDBENCH_VLLM_STANDALONE_ENVVARS_TO_YAML=${LLMDBENCH_VLLM_STANDALONE_ENVVARS_TO_YAML:-LLMDBENCH_VLLM_STANDALONE_VLLM_ALLOW_LONG_MAX_MODEL_LEN,LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE}
@@ -68,6 +85,7 @@ export LLMDBENCH_VLLM_DEPLOYER_MODELSERVICE_REPLICAS=${LLMDBENCH_VLLM_DEPLOYER_M
 export LLMDBENCH_VLLM_DEPLOYER_ROUTE=${LLMDBENCH_VLLM_DEPLOYER_ROUTE:-1}
 export LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME=${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME:-kgateway}
 export LLMDBENCH_VLLM_DEPLOYER_RELEASE=${LLMDBENCH_VLLM_DEPLOYER_RELEASE:-"llm-d"}
+export LLMDBENCH_VLLM_DEPLOYER_RECONFIGURE_GATEWAY_AFTER_DEPLOY=${LLMDBENCH_VLLM_DEPLOYER_RECONFIGURE_GATEWAY_AFTER_DEPLOY:-0}
 
 # Endpoint Picker Parameters, Deployer-specific
 export LLMDBENCH_VLLM_DEPLOYER_EPP_ENABLE_KVCACHE_AWARE_SCORER=${LLMDBENCH_VLLM_DEPLOYER_EPP_ENABLE_KVCACHE_AWARE_SCORER:-false}
@@ -243,22 +261,33 @@ then
   export LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED=1
 fi
 
+function get_latest_image {
+  local image_registry=$1
+  local image_repo=$2
+  local image_tag=$3
+  local tag_only=${4:-0}
+
+  is_latest_tag=$image_tag
+  if [[ $image_tag == "auto" ]]; then
+    if [[ $LLMDBENCH_CONTROL_CCMD == "podman" ]]; then
+      is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags ${image_registry}/${image_repo} | tail -1 | awk '{ print $2 }' || true)
+    else
+      is_latest_tag=$(skopeo list-tags docker://${image_registry}/${image_repo} | jq -r .Tags[] | tail -1)
+    fi
+    if [[ -z ${is_latest_tag} ]]; then
+      echo "❌ Unable to find latest tag for image \"${image_registry}/${image_repo}\""
+      exit 1
+    fi
+  fi
+  if [[ $tag_only -eq 1 ]]; then
+    echo ${is_latest_tag}
+  else
+    echo $image_registry/$image_repo:${is_latest_tag}
+  fi
+}
+
 if [[ $LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED -eq 0 ]]; then
   return 0
-fi
-
-if [[ $LLMDBENCH_IMAGE_TAG == "auto" ]]; then
-
-  if [[ $LLMDBENCH_CONTROL_CCMD == "podman" ]]; then
-    is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags ${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO} | tail -1 | awk '{ print $2 }' || true)
-  else
-    is_latest_tag=$(skopeo list-tags docker://${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO} | jq -r .Tags[] | tail -1)
-  fi
-  if [[ -z ${is_latest_tag} ]]; then
-    echo "❌ Unable to find latest tag for image \"${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}\""
-    exit 1
-  fi
-  export LLMDBENCH_IMAGE_TAG=${is_latest_tag}
 fi
 
 if [[ ! -z $LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO ]]; then
@@ -508,6 +537,15 @@ function extract_environment {
   echo "$envlist" > ${LLMDBENCH_CONTROL_WORK_DIR}/environment/variables
 }
 export -f extract_environment
+
+function reconfigure_gateway_after_deploy {
+  if [[ $LLMDBENCH_VLLM_DEPLOYER_RECONFIGURE_GATEWAY_AFTER_DEPLOY -eq 1 ]]; then
+    if [[ $LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME == "kgateway" ]]; then
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace kgateway-system delete pod -l kgateway=kgateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace kgateway-system  wait --for=condition=Ready=True pod -l kgateway=kgateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    fi
+  fi
+}
 
 function add_additional_env_to_yaml {
   local output="REPLACEFIRSTNEWLINE"
