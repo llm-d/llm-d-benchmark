@@ -154,7 +154,7 @@ function model_attribute {
 
   local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
   local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision")
-  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^')
+  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^')
   local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" | cut -d '.' -f 1)
   local kind=$(echo "${modelcomponents}" | head -n 1 | cut -d '/' -f 1)
   local label=${kind}-${majorversion}-${parameters}
