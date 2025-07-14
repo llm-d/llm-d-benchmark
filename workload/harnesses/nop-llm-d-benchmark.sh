@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
 # Placeholder, to be populated later.
-
-exit 0
+mkdir -p "$LLMDBENCH_HARNESS_RESULTS_DIR"
+export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
+exit $LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC

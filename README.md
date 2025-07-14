@@ -198,7 +198,7 @@ Once llm-d is fully deployed, an experiment can be run. This script takes in dif
 
 ```
 ./run.sh
-./run.sh --harness inference-perf --workload chatbot_synthetic.yaml 
+./run.sh --harness inference-perf --workload chatbot_synthetic.yaml
 ```
 
 > [!IMPORTANT]

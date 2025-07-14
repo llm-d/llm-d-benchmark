@@ -105,7 +105,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_HELM_REPOSITORY=${LLMDBENCH_VLLM_MODELSERVICE
 export LLMDBENCH_VLLM_MODELSERVICE_HELM_REPOSITORY_URL=${LLMDBENCH_VLLM_MODELSERVICE_HELM_REPOSITORY_URL:-"https://llm-d-incubation.github.io/llm-d-modelservice/"}
 
 # Harness and Experiment
-export LLMDBENCH_HARNESS_NAME=${LLMDBENCH_HARNESS_NAME:-fmperf}
+export LLMDBENCH_HARNESS_NAME=${LLMDBENCH_HARNESS_NAME:-vllm-benchmark}
 export LLMDBENCH_HARNESS_EXECUTABLE=${LLMDBENCH_HARNESS_EXECUTABLE:-llm-d-benchmark.sh}
 export LLMDBENCH_HARNESS_CONDA_ENV_NAME="${LLMDBENCH_HARNESS_CONDA_ENV_NAME:-${LLMDBENCH_HARNESS_NAME}-env}"
 export LLMDBENCH_HARNESS_WAIT_TIMEOUT=${LLMDBENCH_HARNESS_WAIT_TIMEOUT:-900}
@@ -113,13 +113,14 @@ export LLMDBENCH_HARNESS_WAIT_TIMEOUT=${LLMDBENCH_HARNESS_WAIT_TIMEOUT:-900}
 #export LLMDBENCH_HARNESS_NAMESPACE=${LLMDBENCH_HARNESS_NAMESPACE:-${LLMDBENCH_HARNESS_NAME}}
 export LLMDBENCH_HARNESS_NAMESPACE=${LLMDBENCH_VLLM_COMMON_NAMESPACE}
 export LLMDBENCH_HARNESS_SERVICE_ACCOUNT=${LLMDBENCH_HARNESS_SERVICE_ACCOUNT:-${LLMDBENCH_HARNESS_NAME}-runner}
-export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE="${LLMDBENCH_HARNESS_EXPERIMENT_PROFILE:-sanity_short-input.yaml}"
+export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE="${LLMDBENCH_HARNESS_EXPERIMENT_PROFILE:-simple-random.yaml}"
 export LLMDBENCH_HARNESS_PVC_NAME="${LLMDBENCH_HARNESS_PVC_NAME:-"workload-pvc"}"
 export LLMDBENCH_HARNESS_PVC_SIZE="${LLMDBENCH_HARNESS_PVC_SIZE:-20Gi}"
 export LLMDBENCH_HARNESS_CONTAINER_IMAGE=${LLMDBENCH_HARNESS_CONTAINER_IMAGE:-lmcache/lmcache-benchmark:main}
 export LLMDBENCH_HARNESS_SKIP_RUN=${LLMDBENCH_HARNESS_SKIP_RUN:-}
 
 export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME:-llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher}
+export LLMDBENCH_RUN_EXPERIMENT_ID=${LLMDBENCH_RUN_EXPERIMENT_ID:-$(date +%s)}
 export LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY="${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY:-0}"
 
 # LLM-D-Benchmark deployment specific variables
@@ -406,9 +407,9 @@ function model_attribute {
       true ;;
   esac
 
-  local modelcomponents=$(echo $model | cut -d '/' -f 2 | $LLMDBENCH_CONTROL_SCMD 's^-^\n^g' )
-  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf")
-  local parameters=$(echo "${modelcomponents}" | grep -Ei "^[0-9].*b")
+  local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
+  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat")
+  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^')
   local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" | cut -d '.' -f 1)
   local kind=$(echo "${modelcomponents}" | head -n 1 | cut -d '/' -f 1)
   local label=${kind}-${majorversion}-${parameters}

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-inference-perf --config_file /workspace/llmdbench_workload.yaml
-mkdir -p "/requests/$LLMDBENCH_HARNESS_STACK_NAME"
-find /workspace -name '*.json' -exec mv -t "/requests/$LLMDBENCH_HARNESS_STACK_NAME"/ {} +
-exit 0
+mkdir -p "$LLMDBENCH_HARNESS_RESULTS_DIR"
+inference-perf --config_file /workspace/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} > >(tee -a $LLMDBENCH_HARNESS_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_HARNESS_RESULTS_DIR/stderr.log >&2)
+export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
+find /workspace -name '*.json' -exec mv -t "$LLMDBENCH_HARNESS_RESULTS_DIR"/ {} +
+exit $LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC
