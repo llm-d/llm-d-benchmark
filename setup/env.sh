@@ -428,6 +428,12 @@ function model_attribute {
   local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat")
   local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^')
   local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" | cut -d '.' -f 1)
+  # Hack for shorter name
+  if [[ $model == "rs-test/llama-scout-fp8" ]]; then
+    type="instruct"
+    parameters="17b"
+    majorversion="4"
+  fi
   local kind=$(echo "${modelcomponents}" | head -n 1 | cut -d '/' -f 1)
   local label=${kind}-${majorversion}-${parameters}
 
