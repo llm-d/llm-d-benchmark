@@ -183,6 +183,8 @@ function resolve_harness_git_repo {
           echo "Unknown harness: $harness_name"
           exit 1;;
     esac
+  else
+    echo "${LLMDBENCH_HARNESS_GIT_REPO}"
   fi
 }
 
