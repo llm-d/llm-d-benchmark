@@ -132,7 +132,7 @@ modelservice:
     image:
       registry: $LLMDBENCH_LLMD_IMAGE_REGISTRY
       repository: $LLMDBENCH_LLMD_IMAGE_REPO
-      tag: $(get_latest_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_TAG} 1)
+      tag: $(get_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_TAG} 1)
 
     metrics:
       enabled: true
