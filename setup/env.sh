@@ -261,7 +261,7 @@ then
   export LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED=1
 fi
 
-function get_latest_image {
+function get_image {
   local image_registry=$1
   local image_repo=$2
   local image_tag=$3
