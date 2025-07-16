@@ -231,7 +231,11 @@ def main():
         logger.info("2. Save results to the PVC at:")
         logger.info(f" {results_dir}/{stack_name}/")
 
-        eval_log_file = f"/requests/{harness_name}_{experiment_id}_{stack_name}/eval-pod-log.log"
+        stem = "/eval-pod-lod.log"
+        eval_log_file = results_dir
+        if eval_log_file == "/requests": # customize eval path if default dir is /requests
+            eval_log_file = f"{results_dir}/{harness_name}_{experiment_id}_{stack_name}"
+        eval_log_file += stem
 
         job_name = f"lmbenchmark-evaluate-{job_id}"
         logger.info(f"Waiting for evaluation job {job_name} to complete...")
