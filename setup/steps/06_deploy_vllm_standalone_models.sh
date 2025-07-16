@@ -5,6 +5,29 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
 
   extract_environment
 
+  # create prepropcessor configmap
+  configmapfile=$LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_a_configmap_preprocess.yaml
+  cat <<EOF > $configmapfile
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-d-benchmark-preprocess
+  namespace: ${LLMDBENCH_VLLM_COMMON_NAMESPACE}
+data:
+EOF
+
+  preprocessfile=$(find ${LLMDBENCH_MAIN_DIR}/workload/preprocesses -name standalone*)
+  preprocessfilename=$(echo ${preprocessfile} | rev | cut -d '/' -f1 | rev)
+
+  echo "  $preprocessfilename: |" >> "$configmapfile"
+  while IFS= read -r line; do
+      echo "    $line" >> "$configmapfile"
+  done < "$preprocessfile"
+
+  announce "🚚 Creating configmap with contents of file $preprocessfilename ..."
+
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $configmapfile" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     modelfn=$(echo ${model} | ${LLMDBENCH_CONTROL_SCMD} 's^/^___^g' )
     cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_a_deployment_${modelfn}.yaml
@@ -38,11 +61,42 @@ spec:
       - name: vllm-standalone-$(model_attribute $model label)
         image: $(get_image ${LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY} ${LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO} ${LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME} ${LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG})
         imagePullPolicy: Always
-        command: ["/bin/sh", "-c"]
+        command:
+        - /bin/bash
         args:
-        - >
-          $(render_string $LLMDBENCH_VLLM_STANDALONE_ARGS $model)
+        - "-c"
+        - |
+          export LLMDBENCH_VLLM_TENSORIZER_URI=""
+
+          # installs dependencies for load formats
+          extraargs="{}"
+          if [[ \${LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT} == "fastsafetensors" ]]; then
+            pip install --root-user-action=ignore fastsafetensors==0.1.14
+          elif [[ \${LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT} == "tensorizer" ]]; then
+            pip install --root-user-action=ignore tensorizer==2.10.1
+            # path to save serialized file
+            export LLMDBENCH_VLLM_TENSORIZER_URI="\${HF_HOME}/\${LLMDBENCH_VLLM_STANDALONE_MODEL}/v1/model.tensors"
+            extraargs="{ \"tensorizer_uri\": \"\$LLMDBENCH_VLLM_TENSORIZER_URI\" }"
+          elif [[ \${LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT} == "runai_streamer" ]]; then
+            pip install --root-user-action=ignore runai==0.4.1
+            pip install --root-user-action=ignore runai-model-streamer==0.13.2
+            # controls the level of concurrency and number of OS threads
+            # reading tensors from the file to the CPU buffer
+            # https://github.com/run-ai/runai-model-streamer/blob/master/docs/src/env-vars.md
+            extraargs="{ \"concurrency\": 32 }"
+          fi
+
+          echo "vllm extra arguments: '\${extraargs}'"
+
+          # run preprocess
+          /dev/preprocess/$preprocessfilename
+
+          $(render_string $LLMDBENCH_VLLM_STANDALONE_ARGS $model) --model-loader-extra-config "\${extraargs}"
         env:
+        - name: LLMDBENCH_VLLM_STANDALONE_MODEL
+          value: "$(model_attribute $model model)"
+        - name: LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT
+          value: "${LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT}"
         - name: HF_HOME
           value: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
         - name: HUGGING_FACE_HUB_TOKEN
@@ -84,11 +138,17 @@ spec:
             $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
             ephemeral-storage: ${LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE}
         volumeMounts:
+        - name: preprocess
+          mountPath: /dev/preprocess
         - name: cache-volume
           mountPath: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
         - name: shm
           mountPath: /dev/shm
       volumes:
+      - name: preprocess
+        configMap:
+          name: llm-d-benchmark-preprocess
+          defaultMode: 0500
       - name: cache-volume
         persistentVolumeClaim:
           claimName: ${LLMDBENCH_VLLM_COMMON_PVC_NAME}
