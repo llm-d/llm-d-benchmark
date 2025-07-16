@@ -36,7 +36,7 @@ spec:
                 - $(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 2)
       containers:
       - name: vllm-standalone-$(model_attribute $model label)
-        image: $(get_latest_image ${LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY} ${LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO} ${LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG})
+        image: $(get_image ${LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY} ${LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO} ${LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG})
         imagePullPolicy: Always
         command: ["/bin/sh", "-c"]
         args:
