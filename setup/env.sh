@@ -12,13 +12,29 @@ export LLMDBENCH_IMAGE_REPO=${LLMDBENCH_IMAGE_REPO:-llm-d/llm-d-benchmark}
 export LLMDBENCH_IMAGE_TAG=${LLMDBENCH_IMAGE_TAG:-auto}
 export LLMDBENCH_LLMD_IMAGE_REGISTRY=${LLMDBENCH_LLMD_IMAGE_REGISTRY:-ghcr.io}
 export LLMDBENCH_LLMD_IMAGE_REPO=${LLMDBENCH_LLMD_IMAGE_REPO:-llm-d/llm-d}
-export LLMDBENCH_LLMD_IMAGE_TAG=${LLMDBENCH_LLMD_IMAGE_TAG:-auto}
+export LLMDBENCH_LLMD_IMAGE_TAG=${LLMDBENCH_LLMD_IMAGE_TAG:-0.0.8}
+export LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REGISTRY=${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REGISTRY:-ghcr.io}
+export LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REPO=${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REPO:-llm-d/llm-d-model-service}
+export LLMDBENCH_LLMD_MODELSERVICE_IMAGE_TAG=${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_TAG:-0.0.10}
+export LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REGISTRY=${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REGISTRY:-ghcr.io}
+export LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REPO=${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REPO:-llm-d/llm-d-inference-scheduler}
+export LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG=${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG:-0.0.4}
+export LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REGISTRY=${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REGISTRY:-ghcr.io}
+export LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REPO=${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REPO:-llm-d/llm-d-routing-sidecar}
+export LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG=${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG:-0.0.6}
+export LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REGISTRY=${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REGISTRY:-ghcr.io}
+export LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REPO=${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REPO:-llm-d/llm-d-inference-sim}
+export LLMDBENCH_LLMD_INFERENCESIM_IMAGE_TAG=${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_TAG:-v0.1.2}
+export LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY=${LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY:-vllm}
+export LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO=${LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO:-vllm-openai}
+export LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG=${LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG:-latest}
+
 
 # External repositories
 export LLMDBENCH_DEPLOYER_GIT_REPO="${LLMDBENCH_DEPLOYER_GIT_REPO:-https://github.com/llm-d/llm-d-deployer.git}"
 export LLMDBENCH_DEPLOYER_DIR="${LLMDBENCH_DEPLOYER_DIR:-/tmp}"
 export LLMDBENCH_DEPLOYER_GIT_BRANCH="${LLMDBENCH_DEPLOYER_GIT_BRANCH:-main}"
-export LLMDBENCH_HARNESS_GIT_REPO="${LLMDBENCH_HARNESS_GIT_REPO:-https://github.com/fmperf-project/fmperf.git}"
+export LLMDBENCH_HARNESS_GIT_REPO="${LLMDBENCH_HARNESS_GIT_REPO:-auto}"
 export LLMDBENCH_HARNESS_DIR="${LLMDBENCH_HARNESS_DIR:-/tmp}"
 export LLMDBENCH_HARNESS_GIT_BRANCH="${LLMDBENCH_HARNESS_GIT_BRANCH:-main}"
 
@@ -44,10 +60,10 @@ export LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT=${LLMDBENCH_VLLM_COMMON_PVC_DO
 export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME:-"llm-d-hf-token"}
 export LLMDBENCH_VLLM_COMMON_INFERENCE_PORT=${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT:-"8000"}
 export LLMDBENCH_VLLM_COMMON_FQDN=${LLMDBENCH_VLLM_COMMON_FQDN:-".svc.cluster.local"}
+export LLMDBENCH_VLLM_COMMON_TIMEOUT=${LLMDBENCH_VLLM_COMMON_TIMEOUT:-3600}
 
 # Standalone-specific parameters
 export LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT=${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT:-/models}
-export LLMDBENCH_VLLM_STANDALONE_IMAGE=${LLMDBENCH_VLLM_STANDALONE_IMAGE:-"vllm/vllm-openai:latest"}
 export LLMDBENCH_VLLM_STANDALONE_ROUTE=${LLMDBENCH_VLLM_STANDALONE_ROUTE:-1}
 export LLMDBENCH_VLLM_STANDALONE_HTTPROUTE=${LLMDBENCH_VLLM_STANDALONE_HTTPROUTE:-0}
 export LLMDBENCH_VLLM_STANDALONE_ENVVARS_TO_YAML=${LLMDBENCH_VLLM_STANDALONE_ENVVARS_TO_YAML:-LLMDBENCH_VLLM_STANDALONE_VLLM_ALLOW_LONG_MAX_MODEL_LEN,LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE}
@@ -72,6 +88,7 @@ export LLMDBENCH_VLLM_DEPLOYER_MODELSERVICE_REPLICAS=${LLMDBENCH_VLLM_DEPLOYER_M
 export LLMDBENCH_VLLM_DEPLOYER_ROUTE=${LLMDBENCH_VLLM_DEPLOYER_ROUTE:-1}
 export LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME=${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME:-kgateway}
 export LLMDBENCH_VLLM_DEPLOYER_RELEASE=${LLMDBENCH_VLLM_DEPLOYER_RELEASE:-"llm-d"}
+export LLMDBENCH_VLLM_DEPLOYER_RECONFIGURE_GATEWAY_AFTER_DEPLOY=${LLMDBENCH_VLLM_DEPLOYER_RECONFIGURE_GATEWAY_AFTER_DEPLOY:-0}
 
 # Endpoint Picker Parameters, Deployer-specific
 export LLMDBENCH_VLLM_DEPLOYER_EPP_ENABLE_KVCACHE_AWARE_SCORER=${LLMDBENCH_VLLM_DEPLOYER_EPP_ENABLE_KVCACHE_AWARE_SCORER:-false}
@@ -102,6 +119,7 @@ export LLMDBENCH_VLLM_DEPLOYER_EPP_DECODE_ENABLE_SESSION_AWARE_SCORER=${LLMDBENC
 export LLMDBENCH_VLLM_DEPLOYER_EPP_DECODE_SESSION_AWARE_SCORER_WEIGHT=${LLMDBENCH_VLLM_DEPLOYER_EPP_DECODE_SESSION_AWARE_SCORER_WEIGHT:-1}
 
 # Harness and Experiment
+export LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST=$(ls ${LLMDBENCH_MAIN_DIR}/workload/profiles/)
 export LLMDBENCH_HARNESS_NAME=${LLMDBENCH_HARNESS_NAME:-vllm-benchmark}
 export LLMDBENCH_HARNESS_EXECUTABLE=${LLMDBENCH_HARNESS_EXECUTABLE:-llm-d-benchmark.sh}
 export LLMDBENCH_HARNESS_CONDA_ENV_NAME="${LLMDBENCH_HARNESS_CONDA_ENV_NAME:-${LLMDBENCH_HARNESS_NAME}-env}"
@@ -118,6 +136,7 @@ export LLMDBENCH_HARNESS_SKIP_RUN=${LLMDBENCH_HARNESS_SKIP_RUN:-}
 
 export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME:-llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher}
 export LLMDBENCH_RUN_EXPERIMENT_ID=${LLMDBENCH_RUN_EXPERIMENT_ID:-$(date +%s)}
+export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX=${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX:-/requests}
 export LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY="${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY:-0}"
 
 # LLM-D-Benchmark deployment specific variables
@@ -135,6 +154,67 @@ export LLMDBENCH_CONTROL_STANDUP_ALL_STEPS=${LLMDBENCH_CONTROL_STANDUP_ALL_STEPS
 export LLMDBENCH_CONTROL_WAIT_TIMEOUT=${LLMDBENCH_CONTROL_WAIT_TIMEOUT:-900}
 export LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS=${LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS:-0}
 export LLMDBENCH_CONTROL_RESOURCE_LIST=deployment,httproute,route,service,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,job
+
+function model_attribute {
+  local model=$1
+  local attribute=$2
+
+  # Do not use associative arrays. Not supported by MacOS with older bash versions
+
+  case "$model" in
+    "llama-3b")
+      local model=meta-llama/Llama-3.2-3B-Instruct ;;
+    "llama-8b")
+      local model=meta-llama/Llama-3.1-8B-Instruct ;;
+    "llama-70b")
+      local model=meta-llama/Llama-3.1-70B-Instruct ;;
+    "llama-17b")
+      local model=meta-llama/Llama-4-Scout-17B-16E-Instruct ;;
+    *)
+      true ;;
+  esac
+
+  local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
+  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision")
+  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^')
+  local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" | cut -d '.' -f 1)
+  # Hack for shorter name
+  if [[ $model == "rs-test/llama-scout-fp8" ]]; then
+    type="instruct"
+    parameters="17b"
+    majorversion="4"
+  fi
+  local kind=$(echo "${modelcomponents}" | head -n 1 | cut -d '/' -f 1)
+  local label=${kind}-${majorversion}-${parameters}
+
+  if [[ $attribute != "model" ]];
+  then
+    echo ${!attribute} | tr '[:upper:]' '[:lower:]'
+  else
+    echo ${!attribute}
+  fi
+}
+export -f model_attribute
+
+function resolve_harness_git_repo {
+  local harness_name=$1
+
+  if [[ $LLMDBENCH_HARNESS_GIT_REPO == "auto" ]]; then
+    case "$harness_name" in
+      "fmperf")
+          echo "https://github.com/fmperf-project/fmperf.git" ;;
+      "vllm"|"vllm-benchmark")
+          echo "https://github.com/vllm-project/vllm.git";;
+      "inference-perf")
+          echo "https://github.com/kubernetes-sigs/inference-perf.git";;
+      *)
+          echo "Unknown harness: $harness_name"
+          exit 1;;
+    esac
+  else
+    echo "${LLMDBENCH_HARNESS_GIT_REPO}"
+  fi
+}
 
 is_oc=$(which oc || true)
 if [[ -z $is_oc ]]; then
@@ -190,36 +270,33 @@ then
   export LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED=1
 fi
 
+function get_image {
+  local image_registry=$1
+  local image_repo=$2
+  local image_tag=$3
+  local tag_only=${4:-0}
+
+  is_latest_tag=$image_tag
+  if [[ $image_tag == "auto" ]]; then
+    if [[ $LLMDBENCH_CONTROL_CCMD == "podman" ]]; then
+      is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags ${image_registry}/${image_repo} | tail -1 | awk '{ print $2 }' || true)
+    else
+      is_latest_tag=$(skopeo list-tags docker://${image_registry}/${image_repo} | jq -r .Tags[] | tail -1)
+    fi
+    if [[ -z ${is_latest_tag} ]]; then
+      echo "❌ Unable to find latest tag for image \"${image_registry}/${image_repo}\""
+      exit 1
+    fi
+  fi
+  if [[ $tag_only -eq 1 ]]; then
+    echo ${is_latest_tag}
+  else
+    echo $image_registry/$image_repo:${is_latest_tag}
+  fi
+}
+
 if [[ $LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED -eq 0 ]]; then
   return 0
-fi
-
-if [[ $LLMDBENCH_IMAGE_TAG == "auto" ]]; then
-
-  if [[ $LLMDBENCH_CONTROL_CCMD == "podman" ]]; then
-    is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags ${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO} | tail -1 | awk '{ print $2 }' || true)
-  else
-    is_latest_tag=$(skopeo list-tags docker://${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO} | jq -r .Tags[] | tail -1)
-  fi
-  if [[ -z ${is_latest_tag} ]]; then
-    echo "❌ Unable to find latest tag for image \"${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}\""
-    exit 1
-  fi
-  export LLMDBENCH_IMAGE_TAG=${is_latest_tag}
-fi
-
-if [[ $LLMDBENCH_LLMD_IMAGE_TAG == "auto" ]]; then
-
-  if [[ $LLMDBENCH_CONTROL_CCMD == "podman" ]]; then
-    is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags ${LLMDBENCH_LLMD_IMAGE_REGISTRY}/${LLMDBENCH_LLMD_IMAGE_REPO} | tail -1 | awk '{ print $2 }' || true)
-  else
-    is_latest_tag=$(skopeo list-tags docker://${LLMDBENCH_LLMD_IMAGE_REGISTRY}/${LLMDBENCH_LLMD_IMAGE_REPO} | jq -r .Tags[] | tail -1)
-  fi
-  if [[ -z ${is_latest_tag} ]]; then
-    echo "❌ Unable to find latest tag for image \"${LLMDBENCH_LLMD_IMAGE_REGISTRY}/${LLMDBENCH_LLMD_IMAGE_REPO}\""
-    exit 1
-  fi
-  export LLMDBENCH_LLMD_IMAGE_TAG=${is_latest_tag}
 fi
 
 if [[ ! -z $LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO ]]; then
@@ -281,15 +358,18 @@ function prepare_work_dir {
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
-  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/results
+  for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
+    mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$profile_type
+  done
 }
 export -f prepare_work_dir
 
-# if [[ $LLMDBENCH_CURRENT_STEP == "00" && $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
-#   backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
-#   announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$LLMDBENCH_CONTROL_WORK_DIR.$backup_suffix\"..."
-#   llmdbench_execute_cmd "mv -f $LLMDBENCH_CONTROL_WORK_DIR $LLMDBENCH_CONTROL_WORK_DIR.${backup_suffix}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-# fi
+export LLMDBENCH_CURRENT_STEP=${LLMDBENCH_CURRENT_STEP:-}
+if [[ $LLMDBENCH_CURRENT_STEP == "00" && $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
+  backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
+  announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix\"..."
+  llmdbench_execute_cmd "mv -f $LLMDBENCH_CONTROL_WORK_DIR $(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').${backup_suffix}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+fi
 
 prepare_work_dir
 
@@ -396,56 +476,6 @@ fi
 
 export LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL=${SHELL:5}
 
-function model_attribute {
-  local model=$1
-  local attribute=$2
-
-  # Do not use associative arrays. Not supported by MacOS with older bash versions
-#  declare -A LLMDBENCH_MODEL_ALIAS_TO_NAME
-#  LLMDBENCH_MODEL_ALIAS_TO_NAME["llama-3b"]="meta-llama/Llama-3.2-3B-Instruct"
-#  LLMDBENCH_MODEL_ALIAS_TO_NAME["llama-8b"]="meta-llama/Llama-3.1-8B-Instruct"
-#  LLMDBENCH_MODEL_ALIAS_TO_NAME["llama-70b"]="meta-llama/Llama-3.1-70B-Instruct"
-#  LLMDBENCH_MODEL_ALIAS_TO_NAME["llama-17b"]="RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic" #pragma: allowlist secret
-#  is_alias=$(echo ${LLMDBENCH_MODEL_ALIAS_TO_NAME[${model}]} || true)
-#  if [[ ! -z ${is_alias} ]]; then
-#    local model=$is_alias
-#  fi
-
-  case "$model" in
-    "llama-3b")
-      local model=meta-llama/Llama-3.2-3B-Instruct ;;
-    "llama-8b")
-      local model=meta-llama/Llama-3.1-8B-Instruct ;;
-    "llama-70b")
-      local model=meta-llama/Llama-3.1-70B-Instruct ;;
-    "llama-17b")
-      local model=RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic ;;
-    *)
-      true ;;
-  esac
-
-  local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
-  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat")
-  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^')
-  local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" | cut -d '.' -f 1)
-  # Hack for shorter name
-  if [[ $model == "rs-test/llama-scout-fp8" ]]; then
-    type="instruct"
-    parameters="17b"
-    majorversion="4"
-  fi
-  local kind=$(echo "${modelcomponents}" | head -n 1 | cut -d '/' -f 1)
-  local label=${kind}-${majorversion}-${parameters}
-
-  if [[ $attribute != "model" ]];
-  then
-    echo ${!attribute} | tr '[:upper:]' '[:lower:]'
-  else
-    echo ${!attribute}
-  fi
-}
-export -f model_attribute
-
 function llmdbench_execute_cmd {
   set +euo pipefail
   local actual_cmd=$1
@@ -517,6 +547,15 @@ function extract_environment {
 }
 export -f extract_environment
 
+function reconfigure_gateway_after_deploy {
+  if [[ $LLMDBENCH_VLLM_DEPLOYER_RECONFIGURE_GATEWAY_AFTER_DEPLOY -eq 1 ]]; then
+    if [[ $LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME == "kgateway" ]]; then
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace kgateway-system delete pod -l kgateway=kgateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace kgateway-system  wait --for=condition=Ready=True pod -l kgateway=kgateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    fi
+  fi
+}
+
 function add_additional_env_to_yaml {
   local output="REPLACEFIRSTNEWLINE"
   for envvar in ${LLMDBENCH_VLLM_STANDALONE_ENVVARS_TO_YAML//,/ }; do
@@ -527,10 +566,14 @@ function add_additional_env_to_yaml {
 export -f add_additional_env_to_yaml
 
 function render_string {
+  set +euo pipefail
   local string=$1
-  local model=$2
+  local model=${2:-}
 
-  echo "s^REPLACE_MODEL^$(model_attribute $model model)^g" > $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  if [[ ! -z $model ]]; then
+    echo "s^REPLACE_MODEL^$(model_attribute $model model)^g" > $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  fi
+
   islist=$(echo $string | grep "\[" || true)
   if [[ ! -z $islist ]]; then
     echo "s^____^\", \"^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
@@ -539,13 +582,26 @@ function render_string {
   else
     echo "s^____^ ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
+
   for entry in $(echo ${string} | $LLMDBENCH_CONTROL_SCMD -e 's/____/ /g' -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^]^\n^g' -e 's^ ^^g' | grep -E "REPLACE_ENV" | uniq); do
-    parameter_name=$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_ENV_^\n______^g" -e "s^\"^^g" -e "s^'^^g" | grep "______" |  $LLMDBENCH_CONTROL_SCMD -e "s^______^^g")
+    default_value=$(echo $entry | $LLMDBENCH_CONTROL_SCMD -e "s^++++default=^\n^" | tail -1)
+    parameter_name=$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_ENV_^\n______^g" -e "s^\"^^g" -e "s^'^^g" | grep "______" | $LLMDBENCH_CONTROL_SCMD -e "s^++++default=.*^^" -e "s^______^^g")
     entry=REPLACE_ENV_${parameter_name}
     value=$(echo ${!parameter_name})
+    if [[ -z $value && -z $default_value ]]; then
+      echo "ERROR: variable \"$entry\" not defined!"
+      exit 1
+    fi
+    if [[ -z $value && ! -z $default_value ]]; then
+      value=$default_value
+      echo "s^++++default=$default_value^^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    fi
     echo "s^${entry}^${value}^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   done
-  echo ${string} | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  if [[ ! -z $model ]]; then
+    echo ${string} | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  fi
+  set -euo pipefail
 }
 export -f render_string
 
@@ -555,10 +611,7 @@ function render_template {
 
   rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   for entry in $(cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' | grep -E "REPLACE_ENV" | uniq); do
-    parameter_name=$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_ENV_^\n______^g" -e "s^\"^^g" -e "s^'^^g" | grep "______" |  $LLMDBENCH_CONTROL_SCMD -e "s^______^^g")
-    entry=REPLACE_ENV_${parameter_name}
-    value=$(echo ${!parameter_name})
-    echo "s^${entry}^${value}^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    render_string $entry
   done
   cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands > $output_file_path
 }

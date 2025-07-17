@@ -14,6 +14,7 @@ import json
 from datetime import datetime
 import sys
 import time
+from pathlib import Path
 
 import kubernetes
 from kubernetes import client
@@ -69,7 +70,7 @@ def update_workload_config(workload_spec, env_vars):
 
     return workload_spec
 
-def wait_for_evaluation_job(cluster, job_name, namespace, timeout=7200):
+def wait_for_evaluation_job(cluster, job_name, namespace, capture_log_file : str, timeout=7200):
     """Wait for the evaluation job to complete."""
     logger.info(f"Waiting for evaluation job {job_name} to complete...")
     start_time = time.time()
@@ -84,7 +85,10 @@ def wait_for_evaluation_job(cluster, job_name, namespace, timeout=7200):
             # Try to get the job
             job = k8s_client.read_namespaced_job(name=job_name, namespace=namespace)
 
-            # If we can get the job, check its status
+            # if job finished then get logs regardless
+            if job.status.succeeded or job.status.failed:
+                # saved to /requests/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}/eval-pod-log.log
+                logs = capture_pod_logs(job_name, namespace, capture_log_file)
             if job.status.succeeded:
                 logger.info(f"Evaluation job {job_name} completed successfully")
                 return True
@@ -115,19 +119,67 @@ def wait_for_evaluation_job(cluster, job_name, namespace, timeout=7200):
         remaining = int(timeout - (time.time() - start_time))
         logger.info(f"Still waiting for evaluation job... ({remaining} seconds remaining)")
 
+
+
+def capture_pod_logs(job_name, namespace, output_file : str):
+    """Capture logs from pods created by a job
+       Not specific to fmperf, as the pod logs are based on the job,
+       rather than fmperf specifically
+    """
+    try:
+        v1 = client.CoreV1Api()
+        
+        # get pods created by the job using label selector
+        label_selector = f"job-name={job_name}"
+        pods = v1.list_namespaced_pod(
+            namespace=namespace,
+            label_selector=label_selector
+        )
+        
+        if not pods.items:
+            logger.error(f"No pods found for job {job_name}")
+            return None
+        
+        # get logs from the first pod 
+        pod = pods.items[0]
+        pod_name = pod.metadata.name
+        
+        logger.info(f"Capturing logs from pod: {pod_name}")
+        
+        logs = v1.read_namespaced_pod_log(
+            name=pod_name,
+            namespace=namespace,
+            pretty=True
+        )
+
+        # create dir is parent path doesnt exist
+        Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+        with open(output_file, 'w') as f:
+            f.write(logs)
+        logger.info(f"Wrote logs to: {output_file}")
+            
+        return logs
+        
+    except Exception as e:
+        logger.error(f"Error capturing logs for job {job_name}: {e}")
+        return None
+
+
 def main():
     logger.info("Starting benchmark run")
     env_vars = os.environ
     stack_name = env_vars.get("LLMDBENCH_HARNESS_STACK_NAME", "llm-d-3b-instruct")
+    harness_name = env_vars.get("LLMDBENCH_HARNESS_NAME", "fmperf")
+    experiment_id = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_ID", "abc123")
     stack_type = env_vars.get("LLMDBENCH_HARNESS_STACK_TYPE", "llm-d")
     endpoint_url = env_vars.get("LLMDBENCH_HARNESS_STACK_ENDPOINT_URL", "inference-gateway")
-    workload_file = env_vars.get("LLMDBENCH_HARNESS_WORKLOAD_FILE", "llmdbench_workload.yaml")
+    workload_file = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME", "llmdbench_workload.yaml")
     repetition = int(env_vars.get("LLMDBENCH_FMPERF_REPETITION", "1"))
     namespace = env_vars.get("LLMDBENCH_HARNESS_NAMESPACE", "llmdbench")
     job_id = env_vars.get("LLMDBENCH_FMPERF_JOB_ID", stack_name)
 
     # Get results directory for configuration
-    results_dir = env_vars.get("LLMDBENCH_HARNESS_RESULTS_DIR", "/requests")
+    results_dir = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", "/requests")
 
     logger.info(f"Using configuration:")
     logger.info(f"  Stack name: {stack_name}")
@@ -139,7 +191,7 @@ def main():
     logger.info(f"  Job ID: {job_id}")
     logger.info(f"  Results directory (PVC): {results_dir}")
 
-    workload_file_path = os.path.join("/workspace", workload_file)
+    workload_file_path = os.path.join("/workspace/profiles/fmperf", workload_file)
     logger.info(f"Loading workload configuration from {workload_file_path}")
     workload_spec = LMBenchmarkWorkload.from_yaml(workload_file_path)
 
@@ -177,16 +229,24 @@ def main():
         logger.info("The evaluation job will:")
         logger.info("1. Run the benchmark tests")
         logger.info("2. Save results to the PVC at:")
-        logger.info(f"   {results_dir}/{stack_name}/")
+        logger.info(f" {results_dir}/{stack_name}/")
 
-        # Wait for the evaluation job to complete
+        stem = "/eval-pod-lod.log"
+        eval_log_file = results_dir
+        if eval_log_file == "/requests": # customize eval path if default dir is /requests
+            eval_log_file = f"{results_dir}/{harness_name}_{experiment_id}_{stack_name}"
+        eval_log_file += stem
+
         job_name = f"lmbenchmark-evaluate-{job_id}"
         logger.info(f"Waiting for evaluation job {job_name} to complete...")
-        if wait_for_evaluation_job(cluster, job_name, namespace):
+
+        # Wait for the evaluation job to complete
+        if wait_for_evaluation_job(cluster, job_name, namespace, eval_log_file):
             logger.info("Evaluation job completed successfully")
         else:
             logger.error("Evaluation job failed or timed out")
             raise Exception("Evaluation job failed or timed out")
+        
 
     except Exception as e:
         logger.error(f"Benchmark run failed: {str(e)}")
