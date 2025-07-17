@@ -7,6 +7,7 @@ provided by the job configuration.
 """
 
 import os
+import subprocess
 import urllib3
 import yaml
 import logging
@@ -70,7 +71,7 @@ def update_workload_config(workload_spec, env_vars):
 
     return workload_spec
 
-def wait_for_evaluation_job(cluster, job_name, namespace, capture_log_file : str, timeout=7200):
+def wait_for_evaluation_job(cluster, job_name, namespace, capture_log_file, data_dir : str, timeout=7200):
     """Wait for the evaluation job to complete."""
     logger.info(f"Waiting for evaluation job {job_name} to complete...")
     start_time = time.time()
@@ -91,7 +92,12 @@ def wait_for_evaluation_job(cluster, job_name, namespace, capture_log_file : str
                 logs = capture_pod_logs(job_name, namespace, capture_log_file)
             if job.status.succeeded:
                 logger.info(f"Evaluation job {job_name} completed successfully")
-                return True
+                if move_data_result(capture_log_file, data_dir):
+                    logger.info(f"Data moved to {data_dir}")
+                    return True
+                else:
+                    logger.error(f"Failed to move data to {data_dir}")
+                    return False
             if job.status.failed:
                 logger.error(f"Evaluation job {job_name} failed")
                 return False
@@ -165,6 +171,50 @@ def capture_pod_logs(job_name, namespace, output_file : str):
         return None
 
 
+def move_data_result(capture_log_file, data_dir):
+    """Move the data result from the file mentioned in the log to the specified data directory."""
+
+    sed_cmd =  's/^.*Finished benchmarking, dumping summary to \\(.*.csv\\).*$/\\1/p'
+    os_command = [ 'sed', '-n', sed_cmd, capture_log_file ]
+    result = subprocess.run(os_command, capture_output=True, text=True)
+    if result.returncode != 0:
+        logger.error(f"Error finding result data: {result.stderr}")
+        return False
+
+    if not os.path.exists(data_dir):
+        # create missing directory
+        try:
+            os.makedirs(data_dir, exist_ok=True)
+            logger.info(f"Created data directory: {data_dir}")
+        except Exception as e:
+            logger.error(f"Error creating data directory {data_dir}: {e}")
+            return False
+
+    data_files = set(result.stdout.strip().split("\n"))
+    files_moved = []
+
+    for data_file in data_files:
+        if not data_file:
+            continue
+        data_file = data_file.strip()
+        if not os.path.exists(data_file):
+            logger.error(f"Data file does not exist: {data_file}")
+            continue    # ignore the missing temp warm up files
+
+        try:
+            destination = os.path.join(data_dir, os.path.basename(data_file))
+            os.rename(data_file, destination)
+            files_moved.append(data_file)
+            logger.info(f"Moved data file '{data_file}' to '{destination}'")
+        except Exception as e:
+            logger.error(f"Error moving data file '{data_file}' to '{destination}', result: {e}")
+            return False
+    if not files_moved:
+        logger.error("No data files were moved, check the log file for details.")
+        return False
+    return True
+
+
 def main():
     logger.info("Starting benchmark run")
     env_vars = os.environ
@@ -232,16 +282,17 @@ def main():
         logger.info(f" {results_dir}/{stack_name}/")
 
         stem = "/eval-pod-lod.log"
-        eval_log_file = results_dir
-        if eval_log_file == "/requests": # customize eval path if default dir is /requests
-            eval_log_file = f"{results_dir}/{harness_name}_{experiment_id}_{stack_name}"
-        eval_log_file += stem
+        eval_path = results_dir
+        if eval_path == "/requests": # customize eval path if default dir is /requests
+            eval_path = f"{results_dir}/{harness_name}_{experiment_id}_{stack_name}"
+        eval_log_file = eval_path + stem
+        eval_data_dir = f"{eval_path}/analysis/data/"
 
         job_name = f"lmbenchmark-evaluate-{job_id}"
         logger.info(f"Waiting for evaluation job {job_name} to complete...")
 
         # Wait for the evaluation job to complete
-        if wait_for_evaluation_job(cluster, job_name, namespace, eval_log_file):
+        if wait_for_evaluation_job(cluster, job_name, namespace, eval_log_file, eval_data_dir):
             logger.info("Evaluation job completed successfully")
         else:
             logger.error("Evaluation job failed or timed out")
