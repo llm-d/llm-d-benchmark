@@ -66,11 +66,21 @@ jobs:
           curl -L https://github.com/mikefarah/yq/releases/download/${VERSION}/${BINARY} -o ${BINARY}
           chmod +x ${BINARY}
           sudo cp -f $(which yq) || sudo cp -f ${BINARY} /usr/local/bin/yq
+        shell: bash
 
       - name: Install make, skopeo, curl, jq
         run: |
           sudo apt-get update
           sudo apt-get install -y make skopeo curl jq rsync
+        shell: bash
+
+      - name: Install helmfile
+        run: |
+          export VERSION=v0.144.0
+          export BINARY=helmfile_linux_amd64
+          curl -L https://github.com/roboll/helmfile/releases/download/$VERSION/helmfile_darwin_arm64 -o ${BINARY}
+          chmod +x ${BINARY}
+          sudo cp -f ${BINARY} /usr/local/bin/helmfile
         shell: bash
 
       - name: Install oc
@@ -83,6 +93,7 @@ jobs:
           sudo chmod +x /usr/local/bin/oc
           sudo chmod +x /usr/local/bin/kubectl
           rm openshift-client-*.tar.gz
+        shell: bash
 
       - name: Install Kustomize
         uses: multani/action-setup-kustomize@v1
@@ -102,7 +113,7 @@ jobs:
 
       - name: Install Helm
         run: |
-          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 && chmod 700 get_helm.sh && ./get_helm.sh
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 && chmod 700 get_helm.sh && ./get_helm.sh && helm plugin install https://github.com/databus23/helm-diff
         shell: bash
 
       - name: Cleanup target cloud (standalone)

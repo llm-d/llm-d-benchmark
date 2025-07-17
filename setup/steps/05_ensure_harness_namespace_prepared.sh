@@ -148,7 +148,7 @@ metadata:
 spec:
   containers:
   - name: rsync
-    image: $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_TAG})
+    image: $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG})
     imagePullPolicy: Always
     securityContext:
       runAsUser: 0

@@ -118,7 +118,7 @@ source ${LLMDBENCH_CONTROL_DIR}/env.sh
 extract_environment
 sleep 5
 
-source ${LLMDBENCH_STEPS_DIR}/00_ensure_llm-d-deployer.sh
+source ${LLMDBENCH_STEPS_DIR}/00_ensure_llm-d-infra.sh
 
 for resource in ${LLMDBENCH_CONTROL_RESOURCE_LIST//,/ }; do
   has_resource=$($LLMDBENCH_CONTROL_KCMD get ${resource} --no-headers -o name 2>&1 | grep error || true)
@@ -131,6 +131,10 @@ announce "🧹 Cleaning up namespace: $LLMDBENCH_VLLM_COMMON_NAMESPACE"
 
 if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 1 ]]; then
 
+  for chartname in $($LLMDBENCH_CONTROL_HCMD list --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --output json | jq -r '.[].name'); do
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_HCMD} uninstall $chartname --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  done
+
   if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
     hclist=$($LLMDBENCH_CONTROL_HCMD --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE list --no-headers | grep llm-d || true)
     hclist=$(echo "${hclist}" | awk '{ print $1 }')
@@ -142,7 +146,6 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 1 ]]; then
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE --ignore-not-found=true route llm-d-inference-gateway-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE --ignore-not-found=true job download-model" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   else
-
     for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; do
       for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
         cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/teardown.yaml
@@ -175,6 +178,7 @@ EOF
 fi
 
 if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
+
   for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; do
     allres=$(${LLMDBENCH_CONTROL_KCMD} --namespace $tgtns get ${LLMDBENCH_CONTROL_RESOURCE_LIST} -o name)
     tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt|secret/${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}" || true)
