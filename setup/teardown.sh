@@ -32,17 +32,14 @@ function show_usage {
               -d/--deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING) ] \n \
               -p/--namespace [namespace where to deploy (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE)] \n \
               -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
-              -r/--release [deployer helm chart release name (default=$LLMDBENCH_VLLM_DEPLOYER_RELEASE)] \n \
+              -r/--release [modelservice helm chart release name (default=$LLMDBENCH_VLLM_MODELSERVICE_RELEASE)] \n \
               -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
-              -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"deployer\") ] \n \
+              -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\") ] \n \
               -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
               -h/--help (show this help) \n\
 
               * [models] can be specified with a full name (e.g., \"ibm-granite/granite-3.3-2b-instruct\") or as an alias. The following aliases are available \n\
-                  - llama-3b -> meta-llama/Llama-3.2-3B-Instruct \n\
-                  - llama-8b -> meta-llama/Llama-3.1-8B-Instruct \n\
-                  - llama-17b -> meta-llama/Llama-4-Scout-17B-16E-Instruct \n\
-                  - llama-70b -> meta-llama/Llama-3.1-70B-Instruct"
+$(get_model_aliases_list)"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -78,10 +75,10 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
         -r=*|--release=*)
-        export LLMDBENCH_CLIOVERRIDE_VLLM_DEPLOYER_RELEASE=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_MODELSERVICE_RELEASE=$(echo $key | cut -d '=' -f 2)
         ;;
         -r|--release)
-        export LLMDBENCH_CLIOVERRIDE_VLLM_DEPLOYER_RELEASE="$2"
+        export LLMDBENCH_CLIOVERRIDE_VLLM_MODELSERVICE_RELEASE="$2"
         shift
         ;;
         -d|--deep)
@@ -144,23 +141,8 @@ for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; 
       announce "✅ Helm release \"${hc}\" fully deleted."
     done
 
-    if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 1 ]]; then
-        cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/teardown.yaml
-sampleApplication:
-  enabled: true
-  baseConfigMapRefName: basic-gpu-with-nixl-and-redis-lookup-preset
-  model:
-    modelArtifactURI: pvc://$LLMDBENCH_VLLM_COMMON_PVC_NAME/models/$(model_attribute $model model)
-    modelName: "$(model_attribute $model model)"
-EOF
-        llmd_opts="--skip-infra --uninstall --namespace $tgtns --values-file $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/teardown.yaml --context $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx"
-        announce "🚀 Calling llm-d-deployer with options \"${llmd_opts}\"..."
-        llmdbench_execute_cmd "cd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart; export HF_TOKEN=$LLMDBENCH_HF_TOKEN; ./llmd-installer.sh --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --storage-class ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS} --storage-size ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE} $llmd_opts" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-        announce "✅ llm-d-deployer completed uninstall"
-    fi
-
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true route infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true route ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true route ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true job download-model" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     done
   done
@@ -171,7 +153,7 @@ for crot in ClusterRoleBinding ClusterRole; do
   done
 done
 
-for cr in ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-endpoint-picker ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-epp-metrics-scrape ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-manager ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-metrics-auth ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-admin ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-editor ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-viewer; do
+for cr in ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-endpoint-picker ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-epp-metrics-scrape ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-manager ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-metrics-auth ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-admin ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-editor ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-viewer; do
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true ClusterRole $cr" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 done
 
@@ -185,11 +167,11 @@ if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
     allres=$(${LLMDBENCH_CONTROL_KCMD} --namespace $tgtns get ${LLMDBENCH_CONTROL_RESOURCE_LIST} -o name)
     tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt|secret/${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}" || true)
 
-    if [[ ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 && ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE} -eq 0 ]]; then
+    if [[ ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 && ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE} -eq 0 ]]; then
       tgtres=$(echo "$tgtres" | grep -E "standalone|download-model|testinference|fmperf|lmbenchmark" || true)
     fi
 
-    if [[ ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 0 && ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE} -eq 1 ]]; then
+    if [[ ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 0 && ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE} -eq 1 ]]; then
       tgtres=$(echo "$tgtres" | grep -E "p2p|inference-gateway|inferencepool|llm-route|base-model|endpoint-picker|inference-route|inference-gateway-secret|inference-gateway-params|inference-gateway|fmperf|lmbenchmark" || true)
     fi
 
@@ -229,7 +211,7 @@ if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 1 ]]; then
 # Optional: delete cloned repos if they exist
   announce "🧼 Cleaning up local Git clones..."
   sleep 10
-  llmdbench_execute_cmd "rm -rf ${LLMDBENCH_DEPLOYER_DIR}/llm-d-deployer ${LLMDBENCH_HARNESS_DIR}/fmperf" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  llmdbench_execute_cmd "rm -rf ${LLMDBENCH_INFRA_DIR}/llm-d-infra ${LLMDBENCH_HARNESS_DIR}/fmperf" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 fi
 
 announce "✅ Cleanup complete. Namespaces \"${LLMDBENCH_VLLM_COMMON_NAMESPACE},${LLMDBENCH_HARNESS_NAMESPACE}\" are now cleared (except shared cluster-scoped resources like Gateway Provider)."

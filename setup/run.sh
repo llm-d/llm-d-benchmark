@@ -40,16 +40,12 @@ export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=
 export LLMDBENCH_HARNESS_SKIP_RUN=0
 export LLMDBENCH_HARNESS_DEBUG=0
 
-function get_harness_list {
-  ls ${LLMDBENCH_MAIN_DIR}/workload/harnesses | $LLMDBENCH_CONTROL_SCMD -e 's^inference-perf^inference_perf^' -e 's^vllm-benchmark^vllm_benchmark^' | cut -d '-' -f 1 | $LLMDBENCH_CONTROL_SCMD -n -e 's^inference_perf^inference-perf^' -e 's^vllm_benchmark^vllm-benchmark^' -e 'H;${x;s/\n/,/g;s/^,//;p;}'
-}
-
 function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
              -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO)] \n \
              -m/--models [list the models to be run against (default=$LLMDBENCH_DEPLOY_MODEL_LIST)] \n \
              -p/--namespace [namespace where to deploy (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE)] \n \
-             -t/--methods [eployment method (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\", \"deployer\" or any other string - pod name or service name - matching a resource on cluster)] \n \
+             -t/--methods [eployment method (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\", \"modelservice\" or any other string - pod name or service name - matching a resource on cluster)] \n \
              -l/--harness [harness used to generate load (default=$LLMDBENCH_HARNESS_NAME, possible values $(get_harness_list)] \n \
              -w/--workload [workload to be used by the harness (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE, possible values (check \"workload/profiles\" dir)] \n \
              -k/--pvc [name of the PVC used to store the results (default=$LLMDBENCH_HARNESS_PVC_NAME)] \n \
@@ -60,10 +56,7 @@ function show_usage {
              -h/--help (show this help) \n\
 
               * [models] can be specified with a full name (e.g., \"ibm-granite/granite-3.3-2b-instruct\") or as an alias. The following aliases are available \n\
-                  - llama-3b -> meta-llama/Llama-3.2-3B-Instruct \n\
-                  - llama-8b -> meta-llama/Llama-3.1-8B-Instruct \n\
-                  - llama-17b -> meta-llama/Llama-4-Scout-17B-16E-Instruct \n\
-                  - llama-70b -> meta-llama/Llama-3.1-70B-Instruct"
+$(get_model_aliases_list)"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -170,106 +163,6 @@ export LLMDBENCH_EXPERIMENT_ID=${LLMDBENCH_EXPERIMENT_ID:-"default"}
 
 export LLMDBENCH_BASE64_CONTEXT_CONTENTS=$(cat $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx | base64 $LLMDBENCH_BASE64_ARGS)
 
-create_harness_pod() {
-
-  is_pvc=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pvc --ignore-not-found | grep ${LLMDBENCH_HARNESS_PVC_NAME} || true)
-  if [[ -z ${is_pvc} ]]; then
-      announce "❌ PVC \"${LLMDBENCH_HARNESS_PVC_NAME}\" not created on namespace \"${LLMDBENCH_HARNESS_NAMESPACE}\" unable to continue"
-      exit 1
-  fi
-
-  cat <<EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}
-  namespace: ${LLMDBENCH_HARNESS_NAMESPACE}
-  labels:
-    app: ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}
-spec:
-  serviceAccountName: $LLMDBENCH_HARNESS_SERVICE_ACCOUNT
-  containers:
-  - name: harness
-    image: $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG})
-    imagePullPolicy: Always
-    command: ["sh", "-c"]
-    args:
-    - "${LLMDBENCH_HARNESS_EXECUTABLE}"
-    env:
-    - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
-      value: "1"
-    - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY
-      value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY}"
-    - name: LLMDBENCH_HARNESS_GIT_REPO
-      value: "$(resolve_harness_git_repo $LLMDBENCH_HARNESS_NAME)"
-    - name: LLMDBENCH_HARNESS_GIT_BRANCH
-      value: "${LLMDBENCH_HARNESS_GIT_BRANCH}"
-    - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS
-      value: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
-    - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
-      value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}"
-    - name: LLMDBENCH_BASE64_CONTEXT_CONTENTS
-      value: "$LLMDBENCH_BASE64_CONTEXT_CONTENTS"
-    - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME
-      value: "$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE"
-    - name: LLMDBENCH_RUN_EXPERIMENT_ID
-      value: "${LLMDBENCH_RUN_EXPERIMENT_ID}"
-    - name: LLMDBENCH_HARNESS_NAME
-      value: "${LLMDBENCH_HARNESS_NAME}"
-    - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
-      value: $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
-    - name: LLMDBENCH_CONTROL_WORK_DIR
-      value: "${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}"
-    - name: LLMDBENCH_HARNESS_NAMESPACE
-      value: "${LLMDBENCH_HARNESS_NAMESPACE}"
-    - name: LLMDBENCH_HARNESS_STACK_TYPE
-      value: "${LLMDBENCH_HARNESS_STACK_TYPE}"
-    - name: LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
-      value: "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL}"
-    - name: LLMDBENCH_HARNESS_STACK_NAME
-      value: "$LLMDBENCH_HARNESS_STACK_NAME"
-    - name: HF_TOKEN_SECRET
-      value: "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}"
-    - name: HUGGING_FACE_HUB_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: ${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}
-          key: HF_TOKEN
-    volumeMounts:
-    - name: results
-      mountPath: /requests
-EOF
-  for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
-    cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
-    - name: ${profile_type}-profiles
-      mountPath: /workspace/profiles/${profile_type}
-EOF
-  done
-  cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
-  volumes:
-  - name: results
-    persistentVolumeClaim:
-      claimName: $LLMDBENCH_HARNESS_PVC_NAME
-EOF
-  for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
-    cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
-  - name: ${profile_type}-profiles
-    configMap:
-      name: ${profile_type}-profiles
-EOF
-  done
-  cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
-  restartPolicy: Never
-EOF
-}
-
-function cleanup_pre_execution {
-  announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\"..."
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_HARNESS_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  announce "ℹ️ Done deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" (it will be now recreated)"
-}
-
 export LLMDBENCH_CURRENT_STEP=05
 source ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.sh > /dev/null 2>&1
 if [[ $? -ne 0 ]]; then
@@ -278,23 +171,13 @@ if [[ $? -ne 0 ]]; then
 fi
 unset LLMDBENCH_CURRENT_STEP
 
-function validate_model_name {
-  local _model_name=$1
-  for mparm in model type parameters majorversion kind label; do
-    if [[ -z $(model_attribute ${_model_name} ${mparm}) ]]; then
-      announce "❌ Invalid model name \"${_model_name}\""
-      exit 1
-    fi
-  done
-}
-
 for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
 
     validate_model_name ${model}
 
-    export LLMDBENCH_HARNESS_STACK_NAME=$(echo ${method} | $LLMDBENCH_CONTROL_SCMD 's^deployer^llm-d^g')-$(model_attribute $model parameters)-$(model_attribute $model type)
+    export LLMDBENCH_HARNESS_STACK_NAME=$(echo ${method} | $LLMDBENCH_CONTROL_SCMD 's^modelservice^llm-d^g')-$(model_attribute $model parameters)-$(model_attribute $model type)
 
     export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
 
@@ -315,20 +198,14 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
       fi
 
-      if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 1 ]]; then
-        export LLMDBENCH_HARNESS_STACK_TYPE=llm-d
-        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway | awk '{print $1}')
-        export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
-      fi
-
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
         export LLMDBENCH_HARNESS_STACK_TYPE=llm-d
-        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^infra-${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway | awk '{print $1}')
+        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway | awk '{print $1}')
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
       fi
 
-      if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
-        announce "🔍 Deployment method - $LLMDBENCH_DEPLOY_METHODS - is neither \"standalone\" nor \"deployer\" nor \"modelservice\". Trying to find a matching endpoint name..."
+      if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
+        announce "🔍 Deployment method - $LLMDBENCH_DEPLOY_METHODS - is neither \"standalone\" nor \"modelservice\". Trying to find a matching endpoint name..."
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | awk '{print $1}' | grep -x ${LLMDBENCH_DEPLOY_METHODS} || true)
         if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then

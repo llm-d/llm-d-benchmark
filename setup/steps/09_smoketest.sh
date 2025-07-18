@@ -10,11 +10,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
   service_ip=$(echo "${service}" | awk '{print $3}')
 else
   pod_string=decode
-  route_string=${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway
-
-  if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 1 ]]; then
-    service=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway)
-  fi
+  route_string=${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway
 
   if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
   service=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway)
@@ -40,7 +36,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   announce "🚀 Testing all pods \"${pod_string}\" (port ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT})..."
   for pod_ip in $pod_ip_list; do
     announce "       🚀 Testing pod ip \"${pod_ip}\" ..."
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --attach --restart=Never --rm --image=$(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) --quiet --command -- bash -c \"curl --no-progress-meter http://${pod_ip}:${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}/v1/models\" | jq .object | grep list" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 5
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --attach --restart=Never --rm --image=$(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) --quiet --command -- bash -c \"curl --no-progress-meter http://${pod_ip}:${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}/v1/models\" | jq .object | grep list" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 2
     announce "       ✅ Pod ip \"${pod_ip}\" responds successfully"
   done
   announce "✅ All pods respond successfully"
@@ -56,7 +52,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   fi
 
   announce "🚀 Testing service/gateway \"${service_name}\" (\"${service_ip}\") (port 80)..."
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-gateway -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --attach --restart=Never --rm --image=$(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) --quiet --command -- bash -c \"curl --no-progress-meter http://${service_ip}:80/v1/models\" | jq .object | grep list" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 5
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-gateway-$(get_rand_string) -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --attach --restart=Never --rm --image=$(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) --quiet --command -- bash -c \"curl --no-progress-meter http://${service_ip}:80/v1/models\" | jq .object | grep list" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 2
   announce "✅ Service responds successfully"
 
   route_url=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get route --no-headers --ignore-not-found | grep ${route_string} | awk '{print $2}'  || true)

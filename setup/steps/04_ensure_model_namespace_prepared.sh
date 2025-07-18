@@ -3,10 +3,18 @@ source "${LLMDBENCH_CONTROL_DIR}/env.sh"
 
 main() {
   announce "🔍 Checking if \"${LLMDBENCH_VLLM_COMMON_NAMESPACE}\" is prepared."
-  check_storage_class_and_affinity
+
+  check_storage_class
   if [[ $? -ne 0 ]]
   then
-    announce "❌ Failed to check storage class and affinity"
+    announce "❌ Failed to check storage class"
+    exit 1
+  fi
+
+  check_affinity
+  if [[ $? -ne 0 ]]
+  then
+    announce "❌ Failed to check affinity"
     exit 1
   fi
 

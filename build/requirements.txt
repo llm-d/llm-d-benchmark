@@ -6,3 +6,5 @@ seaborn>=0.12.0
 kubernetes>=28.0.0
 requests
 pybase64
+kubernetes_asyncio
+asyncio

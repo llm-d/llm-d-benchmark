@@ -4,7 +4,29 @@ This repository provides an automated workflow for benchmarking LLM inference us
 
 ### Goal
 
-To provide a single source of automation for repeatable and reproducible experiments and performance evaluation on `llm-d`.
+Provide a single source of automation for repeatable and reproducible experiments and performance evaluation on `llm-d`.
+
+### 📦 Repository Setup
+
+```
+git clone https://github.com/llm-d/llm-d-benchmark.git
+cd llm-d-benchmark
+./setup/install_deps.sh
+```
+
+## Quickstart
+
+#### Standup an `llm-d` stack model (default deployment method is `llm-d-modelservice`, serving `llama-1b`), run a harness (default `vllm-benchmark`) with a load profile (default `simple-random`) and teardown the stack
+
+```
+./e2e.sh
+```
+
+####  Run harness `inference-perf` with load profile `chatbot_synthetic` againsta a pre-deployed stack
+
+```
+./run.sh --harness inference-perf --workload chatbot_synthetic --method <a string that matches a inference service or pod>`
+```
 
 ### Architecture
 
@@ -75,220 +97,31 @@ Pieces of information identifying a particular cluster. This information include
 
 #### Harness
 
-Load Generator (python code) which drives the benchmark load. Today, llm-d-benchmark supports [fmperf](https://github.com/fmperf-project/fmperf) and [inference-perf](https://github.com/kubernetes-sigs/inference-perf). There are ongoing efforts to consolidate and provide an easier way to support different load generators.
+Load Generator (python code) which drives the benchmark load. Today, llm-d-benchmark supports [fmperf](https://github.com/fmperf-project/fmperf), [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git) and the benchmarks found on the `benchmarks` folder on [vllm](https://github.com/vllm-project/vllm.git). There are ongoing efforts to consolidate and provide an easier way to support different load generators.
 
 #### Workload
 
 Workload is the actual benchmark load specification which includes the LLM use case to benchmark, traffic pattern, input / output distribution and dataset. Supported workload profiles can be found under `workload/profiles`.
 
 > [!IMPORTANT]
-> The triple `<scenario>`,`<harness>`,`<workload>`, combined with the standup/teardown capabilities provided by llm-d-deployer (<https://github.com/llm-d/llm-d-deployer>) should provide enough information to allow an experiment to be reproduced.
+> The triple `<scenario>`,`<harness>`,`<workload>`, combined with the standup/teardown capabilities provided by [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git) and [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git) should provide enough information to allow an experiment to be reproduced.
 
 ### Dependecies
 
-- llm-d-deployer (<https://github.com/llm-d/llm-d-deployer>)
-- fm-perf: <https://github.com/fmperf-project/fmperf>
-- inference-perf: <https://github.com/kubernetes-sigs/inference-perf>
+- [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git)
+- [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git)
+- [fmperf](https://github.com/fmperf-project/fmperf)
+- [inference-perf](https://github.com/kubernetes-sigs/inference-perf)
+- [guidellm](https://github.com/vllm-project/guidellm.git)
+- [vllm](https://github.com/vllm-project/vllm.git)
 
-### 📦 Repository Setup
+## Topics
 
-```
-git clone https://github.com/llm-d/llm-d-benchmark.git
-cd llm-d-benchmark
-```
-
-## Quickstart
-
-#### Standing up llm-d for experimentation and benchmarking
-
-```
-export LLMDBENCH_CLUSTER_URL="https://api.fmaas-platform-eval.fmaas.res.ibm.com"
-export LLMDBENCH_CLUSTER_TOKEN="..."
-```
-
-> [!TIP]
-> You can simply use your current context. **After running kubectl/oc login**, leaving `LLMDBENCH_CLUSTER_URL` undefined (or setting `export LLMDBENCH_CLUSTER_URL=auto`) will use your current context, with no need to configure `LLMDBENCH_CLUSTER_TOKEN`.
-
-> [!IMPORTANT]
-> No matter which method used (i.e., fully specify `LLMDBENCH_CLUSTER_URL` and `LLMDBENCH_CLUSTER_TOKEN` or simply use the current context), there is an additional variable which will always require definition: `LLMDBENCH_HF_TOKEN`
-
-> [!CAUTION]
-> Please make sure the environment variable `LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS` points to a storage class specific to your cluster. The default value will most likely fail.
-
-A complete list of available variables (and its default values) can be found by running
- `cat setup/env.sh | grep "^export LLMDBENCH_" | sort`
-
-> [!NOTE]
-> The `namespaces` specified by the environment variables `LLMDBENCH_VLLM_COMMON_NAMESPACE` and `LLMDBENCH_FMPERF_SERVICE_ACCOUNT` will be automatically created.
-
-> [!TIP]
-> If you want all generated `yaml` files and all data collected to reside on the same directory, set the environment variable `LLMDBENCH_CONTROL_WORK_DIR` explicitly before starting execution.
-
-#### List of "standup steps"
-
-Run the command line with the option `-h` in order to produce a list of steps
-
-```
-./setup/standup.sh -h
-```
-
-> [!NOTE]
-> Each individual "step file" is named in a way that briefly describes each one the multiple steps required for a full deployment.
-
-> [!TIP]
-> Steps 0-5 can be considered "preparation" and can be skipped in most deployments.
-
-#### to dry-run
-
-```
-./setup/standup.sh -n
-```
-
-### Deployment
-
-vLLM instances can be deployed by one of the following methods:
-
-- "standalone" (a simple deployment with services associated to the deployment)
-- "deployer" (invoking \"llm-d-deployer\").
-
-This is controlled by the environment variable LLMDBENCH_DEPLOY_METHODS (default "deployer"). The value of the environment variable can be overriden by the paraemeter `-t/--types` (applicable for both `teardown.sh` and `standup.sh`)
-
-> [!WARNING]
-> At this time, only **one simultaneous** deployment method is supported
-
-All available models are listed and controlled by the variable `LLMDBENCH_DEPLOY_MODEL_LIST`. The value of the above mentioned environment variable can be overriden by the paraemeter `-m/--model` (applicable for both `teardown.sh` and `standup.sh`).
-
-> [!WARNING]
-> At this time, only **one simultaneous** model is supported
-
-> [!TIP]
-> The following aliases can be used in place of the full model name, for convenience (_llama-3b_ -> `meta-llama/Llama-3.2-3B-Instruct`, _llama-8b_ -> `meta-llama/Llama-3.1-8B-Instruct`, _llama-70b_ -> `meta-llama/Llama-3.1-70B-Instruct`, _llama-17b_ -> `RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic`)
-
-### Scenarios
-
-All relevant variables to a particular experiment are stored in a "scenario" (folder aptly named).
-
-The expectation is that an experiment is run by initially executing:
-
-```
-source scenario/<scenario name>
-```
-
-### Lifecycle (Standup/Run/Teardown)
-
-At this point, with all the environment variables set (tip, `env | grep ^LLMDBENCH_ | sort`) you should be ready to deploy and test
-
-```
-./setup/standup.sh
-```
-
-> [!NOTE]
-> The scenario can also be indicated as part of the command line optios for `standup.sh` (e.g. `./setup/standup.sh -c ocp_H100MIG_deployer_llama-3b`)
-
-To re-execute only individual steps (full name or number):
-
-```
-./setup/standup.sh --step 08_smoketest.sh
-./setup/standup.sh -s 7
-./setup/standup.sh -s 3-5
-./setup/standup.sh -s 5,7
-```
-
-Once llm-d is fully deployed, an experiment can be run. This script takes in different options where you can specify the harness, workload, etc. if they are not specified as a part of your scenario.
-
-```
-./run.sh
-./run.sh --harness inference-perf --workload chatbot_synthetic.yaml
-```
-
-> [!IMPORTANT]
-> This command will run an experiment, collect data and perform an initial analysis (generating statistics and plots). One can go straight to the analysis by adding the option `-z`/`--skip` to the above command
-
-> [!NOTE]
-> The scenario can also be indicated as part of the command line optios for `run.sh` (e.g., `./run.sh -c ocp_L40_standalone_llama-8b`)
-
-Finally, cleanup everything
-
-```
-./setup/teardown.sh
-```
-
-> [!NOTE]
-> The scenario can also be indicated as part of the command line optios for `teardown.sh` (e.g., `./teardown.sh -c kubernetes_H200_deployer_llama-8b`)
-
-## Reproducibility
-
-All the information collected inside the directory pointed by the environment variable `LLMDBENCH_CONTROL_WORK_DIR` should be enough to allow others to reproduce the experiment with the same parameters. In particular, all the parameters - always exposed as environment variables - applied to `llm-d` or `vllm` stacks can be found at `${LLMDBENCH_CONTROL_WORK_DIR}/environment/variables`
-
-A sample output of the content of `${LLMDBENCH_CONTROL_WORK_DIR}` for a very simple experiment is shown here
-
-```
-./analysis
-./analysis/data
-./analysis/data/stats.txt
-./analysis/plots
-./analysis/plots/latency_analysis.png
-./analysis/plots/README.md
-./analysis/plots/throughput_analysis.png
-./setup
-./setup/yamls
-./setup/yamls/05_pvc_workload-pvc.yaml
-./setup/yamls/pod_benchmark-launcher.yaml
-./setup/yamls/05_b_service_access_to_fmperf_data.yaml
-./setup/yamls/07_deployer_values.yaml
-./setup/yamls/05_namespace_sa_rbac_secret.yaml
-./setup/yamls/04_prepare_namespace_llama-3b.yaml
-./setup/yamls/05_a_pod_access_to_fmperf_data.yaml
-./setup/yamls/03_cluster-monitoring-config_configmap.yaml
-./setup/commands
-./setup/commands/1748350741979704000_command.log
-...
-./setup/commands/1748350166902915000_command.log
-./setup/sed-commands
-./results
-./results/LMBench_short_input_qps0.5.csv
-./results/pod_log_response.txt
-./environment
-./environment/context.ctx
-./environment/variables
-./workload
-./workload/harnesses
-./workload/profiles
-./workload/profiles/sanity_short-input.yaml
-```
-
-## Observability
-
-As of today, observability, via Grafana dashboards, is considered to be outside of the scope for `llm-d-benchmark`. Please refer to the [installation guide on llm-d-deployer](https://github.com/llm-d/llm-d-deployer/tree/main/quickstart#grafana-dashboards) for instructions on how to enable it.
-
-### Examples
-
-These plots, automatically generated, were used to showcase the difference between a baseline `vLLM` deployment and `llm-d` (for models Llama 4 Scout and Lllama 3.1 70B)
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)">
-    <img alt="vllm vs llm-d comparison" src="./docs/images/scenarios_1_2_3_comparison.png" width=100%>
-  </picture>
-</p>
-
-## Quickstart K8s Benchmark Launcher for Existing Stacks
-
-For a simplified workflow that includes analysis of benchmark results, check out the `quickstart-existing-stack-benchmark` launcher. This workflow provides:
-
-- Easy deployment and execution of benchmarks on Kubernetes
-- Support for comparing multiple LLM models
-- Generation of comprehensive performance visualizations
-
-### Quickstart Workflows
-
-1. **Single Model Benchmark**: Run benchmarks for a single model with automated analysis
-   - See [Single Model Quickstart](quickstart-existing-stack-benchmark/README.md) for details
-
-2. **Multi-Model Comparison**: Compare performance across multiple LLM models
-   - See [Multi-Model Comparison Quickstart](quickstart-existing-stack-benchmark/Compare-README.md) for details
-
-To get started, navigate to the `quickstart-existing-stack-benchmark` directory and follow the instructions in the respective README files.
+#### [Lifecycle](docs/lifecycle.md)
+#### [Reproducibility](docs/lifecycle.md)
+#### [Observability](docs/observability.md)
+#### [Quickstart](docs/quickstart.md)
+#### [FAQ](docs/faq.md)
 
 ## Contribute
 

@@ -17,12 +17,12 @@ inferenceExtension:
     tag: $(get_image ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REPO} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_NAME} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG} 1)
     pullPolicy: Always
   extProcPort: 9002
-  pluginsConfigFile: "${LLMDBENCH_VLLM_DEPLOYER_GAIE_PRESETS}"
+  pluginsConfigFile: "${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS}"
 
   # using upstream GIE default-plugins, see: https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/config/charts/inferencepool/templates/epp-config.yaml#L7C3-L56C33
   pluginsCustomConfig:
-    ${LLMDBENCH_VLLM_DEPLOYER_GAIE_PRESETS}: |
-$(cat $LLMDBENCH_VLLM_DEPLOYER_GAIE_PRESETS_FULL_PATH | $LLMDBENCH_CONTROL_SCMD -e 's|^|      |')
+    ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS}: |
+$(cat $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH | $LLMDBENCH_CONTROL_SCMD -e 's|^|      |')
 inferencePool:
   targetPortNumber: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
   modelServerType: vllm
