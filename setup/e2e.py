@@ -69,7 +69,6 @@ def handle_sweep(args) -> None:
 
 
 def handle_batch(args) -> None:
-
     print("Mode: Batch")
     run_script = check_script_exists("run.sh")
 
@@ -78,10 +77,8 @@ def handle_batch(args) -> None:
         print(f"Error: Missing <file>\nBatch usage: python3 ./setup/e2e.py batch <file>")
     else:
         batch_file = args[0] 
-
         with open(batch_file, 'r') as f:
             lines = f.readlines()
-        
         for line in lines:
             cur_run_args = line.split(' ')
             run_command(run_script, cur_run_args)
