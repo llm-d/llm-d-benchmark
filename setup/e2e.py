@@ -68,6 +68,24 @@ def handle_sweep(args) -> None:
     print("sweep.sh execution complete")
 
 
+def handle_batch(args) -> None:
+
+    print("Mode: Batch")
+    run_script = check_script_exists("run.sh")
+
+    # args contains <file> and args, it should require a input file for now
+    if len(args) == 0:
+        print(f"Error: Missing <file>\nBatch usage: python3 ./setup/e2e.py batch <file>")
+    else:
+        batch_file = args[0] 
+
+        with open(batch_file, 'r') as f:
+            lines = f.readlines()
+        
+        for line in lines:
+            cur_run_args = line.split(' ')
+            run_command(run_script, cur_run_args)
+
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Runs an end to end workload, wrapping standup.sh, run.sh, sweep.sh, and teardown.sh",
@@ -75,18 +93,20 @@ def get_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "command",
-        choices=["run", "sweep"],
+        choices=["run", "sweep", "batch"],
         help=(
             "The command to execute:\n"
-            "  run    - Runs a SINGLE end-to-end test (standup -> run -> teardown).\n"
-            "  sweep  - Delegates to sweep.sh for running multiple configurations."
+            "   run [args...]              - Runs a single end to end test ( standup -> run -> teardown )\n"
+            "   batch <file>               - Runs multiple run.sh calls from a file against a single deployment\n"
+            "   sweep [args...]            - Delegates to sweep.sh to run different workloads on a single profile\n"
         )
     )
     parser.add_argument(
         "script_args",
         nargs=argparse.REMAINDER,
-        help="All subsequent arguments are passed directly to the underlying script(s)."
+        help="All subsequent arguments are passed directly to the underlying script(s)"
     )
+
     return parser
 
 
@@ -95,7 +115,7 @@ def main() -> None:
     # we only use the parser for initial validation and the help message
     parser = get_parser()
     
-    if len(sys.argv) < 2 or sys.argv[1] not in ["run", "sweep"]:
+    if len(sys.argv) < 2 or sys.argv[1] not in ["run", "sweep", "batch"]:
         parser.print_help()
         sys.exit(1)
 
@@ -105,6 +125,8 @@ def main() -> None:
 
     if command == "run":
         handle_run(passthrough_args)
+    elif command == "batch":
+        handle_batch(passthrough_args)
     elif command == "sweep":
         handle_sweep(passthrough_args)
 
