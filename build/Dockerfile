@@ -78,15 +78,16 @@ RUN echo "#!/usr/bin/env bash" > /usr/local/bin/llm-d-benchmark.sh; echo -e "\
 if [[ ! -z \$1 ]]; then\n\
   export LLMDBENCH_RUN_EXPERIMENT_HARNESS=\$(find /usr/local/bin | grep \${1}.*-llm-d-benchmark | rev | cut -d '/' -f 1 | rev)\n\
   export LLMDBENCH_RUN_EXPERIMENT_ANALYZER=\$(find /usr/local/bin | grep \${1}.*-analyze_results | rev | cut -d '/' -f 1 | rev)\n\
-  export LLMDBENCH_HARNESS_RESULTS_DIR=/requests/\$(echo \$LLMDBENCH_RUN_EXPERIMENT_HARNESS | sed \"s^-llm-d-benchmark^^g\" | cut -d '.' -f 1)_\${LLMDBENCH_RUN_EXPERIMENT_ID}_\${LLMDBENCH_HARNESS_STACK_NAME}\n\
+  export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR=/requests/\$(echo \$LLMDBENCH_RUN_EXPERIMENT_HARNESS | sed \"s^-llm-d-benchmark^^g\" | cut -d '.' -f 1)_\${LLMDBENCH_RUN_EXPERIMENT_ID}_\${LLMDBENCH_HARNESS_STACK_NAME}\n\
 fi\n\
 if [[ ! -z \$2 ]]; then\n\
-  export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=\$(echo \$2\".yaml\" | sed \"s^.yaml.yaml^.yaml^g\")\n\
+  export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=\$2\n\
 else \n\
   if [[ ! -z \${LLMDBENCH_BASE64_HARNESS_WORKLOAD_CONTENTS} ]]; then\n\
     echo \${LLMDBENCH_BASE64_HARNESS_WORKLOAD_CONTENTS} | base64 -d > /workspace/\${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}\n\
   fi\n\
 fi\n\
+export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=\$(echo \$LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME\".yaml\" | sed \"s^.yaml.yaml^.yaml^g\")\n\
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR=\$(echo \$LLMDBENCH_RUN_EXPERIMENT_HARNESS | sed \"s^-llm-d-benchmark^^g\" | cut -d '.' -f 1)\n\
 mkdir -p ~/.kube\n\
 if [[ ! -z \${LLMDBENCH_BASE64_CONTEXT_CONTENTS} ]]; then\n\
@@ -96,11 +97,22 @@ if [[ -f ~/.bashrc ]]; then \n\
   mv -f ~/.bashrc ~/fixbashrc\n\
 fi \n\
 if [[ -d \$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR ]]; then \n\
-  pushd /workspace/\$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR \n\
-  git fetch \n\
-  git checkout \$LLMDBENCH_HARNESS_GIT_BRANCH \n\
+  pushd /workspace/\$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR\n\
+  current_repo=\$(git remote -v | grep \(fetch\) | awk '{ print \$2 }')\n\
+  if [[ \$current_repo == \$LLMDBENCH_HARNESS_GIT_REPO ]]; then\n\
+    git fetch\n\
+  else\n\
+    popd\n\
+    rm -rf /workspace/\$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR\n\
+    git clone \$LLMDBENCH_HARNESS_GIT_REPO\n\
+    pushd /workspace/\$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR\n\
+  fi\n\
+  git checkout \$LLMDBENCH_HARNESS_GIT_BRANCH\n\
   popd \n\
-fi \n\
+fi\n\
+if [[ ! -d /workspace/vllm-benchmark ]]; then\n\
+  mv /workspace/vllm /workspace/vllm-benchmark\n\
+fi\n\
 /usr/local/bin/\${LLMDBENCH_RUN_EXPERIMENT_HARNESS}\n\
 ec=\$?\n\
 if [[ \$ec -ne 0 ]]; then\n\

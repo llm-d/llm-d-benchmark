@@ -171,6 +171,13 @@ export LLMDBENCH_EXPERIMENT_ID=${LLMDBENCH_EXPERIMENT_ID:-"default"}
 export LLMDBENCH_BASE64_CONTEXT_CONTENTS=$(cat $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx | base64 $LLMDBENCH_BASE64_ARGS)
 
 create_harness_pod() {
+
+  is_pvc=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pvc --ignore-not-found | grep ${LLMDBENCH_HARNESS_PVC_NAME} || true)
+  if [[ -z ${is_pvc} ]]; then
+      announce "❌ PVC \"${LLMDBENCH_HARNESS_PVC_NAME}\" not created on namespace \"${LLMDBENCH_HARNESS_NAMESPACE}\" unable to continue"
+      exit 1
+  fi
+
   cat <<EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
 apiVersion: v1
 kind: Pod
@@ -183,7 +190,7 @@ spec:
   serviceAccountName: $LLMDBENCH_HARNESS_SERVICE_ACCOUNT
   containers:
   - name: harness
-    image: ${LLMDBENCH_IMAGE_REGISTRY}/${LLMDBENCH_IMAGE_REPO}:${LLMDBENCH_IMAGE_TAG}
+    image: $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_TAG})
     imagePullPolicy: Always
     command: ["sh", "-c"]
     args:
@@ -193,26 +200,26 @@ spec:
       value: "1"
     - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY
       value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY}"
+    - name: LLMDBENCH_HARNESS_GIT_REPO
+      value: "$(resolve_harness_git_repo $LLMDBENCH_HARNESS_NAME)"
     - name: LLMDBENCH_HARNESS_GIT_BRANCH
       value: "${LLMDBENCH_HARNESS_GIT_BRANCH}"
     - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS
       value: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
     - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
       value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}"
-    - name: LLMDBENCH_CONTROL_WORK_DIR
-      value: "${LLMDBENCH_HARNESS_RESULTS_DIR}"
     - name: LLMDBENCH_BASE64_CONTEXT_CONTENTS
       value: "$LLMDBENCH_BASE64_CONTEXT_CONTENTS"
-    - name: LLMDBENCH_BASE64_HARNESS_WORKLOAD_CONTENTS
-      value: "${LLMDBENCH_BASE64_HARNESS_WORKLOAD_CONTENTS}"
     - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME
-      value: "llmdbench_workload.yaml"
+      value: "$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE"
     - name: LLMDBENCH_RUN_EXPERIMENT_ID
       value: "${LLMDBENCH_RUN_EXPERIMENT_ID}"
     - name: LLMDBENCH_HARNESS_NAME
       value: "${LLMDBENCH_HARNESS_NAME}"
-    - name: LLMDBENCH_HARNESS_RESULTS_DIR
-      value: $LLMDBENCH_HARNESS_RESULTS_DIR
+    - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
+      value: $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
+    - name: LLMDBENCH_CONTROL_WORK_DIR
+      value: "${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}"
     - name: LLMDBENCH_HARNESS_NAMESPACE
       value: "${LLMDBENCH_HARNESS_NAMESPACE}"
     - name: LLMDBENCH_HARNESS_STACK_TYPE
@@ -228,20 +235,29 @@ spec:
         secretKeyRef:
           name: ${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}
           key: HF_TOKEN
-EOF
-
-is_pvc=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pvc --ignore-not-found | grep ${LLMDBENCH_HARNESS_PVC_NAME} || true)
-if [[ ! -z ${is_pvc} ]]; then
-  cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
     volumeMounts:
     - name: results
       mountPath: /requests
+EOF
+  for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
+    cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
+    - name: ${profile_type}-profiles
+      mountPath: /workspace/profiles/${profile_type}
+EOF
+  done
+  cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
   volumes:
   - name: results
     persistentVolumeClaim:
       claimName: $LLMDBENCH_HARNESS_PVC_NAME
 EOF
-fi
+  for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
+    cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
+  - name: ${profile_type}-profiles
+    configMap:
+      name: ${profile_type}-profiles
+EOF
+  done
   cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
   restartPolicy: Never
 EOF
@@ -282,7 +298,8 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
     export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
 
-    export LLMDBENCH_HARNESS_RESULTS_DIR=/requests/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}
+    export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX=${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}
+    export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR=$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX/$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX
 
     if [[ $LLMDBENCH_HARNESS_SKIP_RUN -eq 1 ]]; then
       announce "⏭️ Command line option \"-z\--skip\" invoked. Will skip experiment execution (and move straight to analysis)"
@@ -343,11 +360,17 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         exit 1
       fi
 
-      workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD "s^\.in$^^g")
+      announce "🛠️ Rendering all workload profile templates under \"$LLMDBENCH_MAIN_DIR/workload/profiles/\"..."
+      for workload_template_full_path in $(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name '*.yaml.in'); do
+        workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
+        workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD "s^\.in$^^g")
+        render_template $workload_template_full_path ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/$workload_template_file_name
+      done
 
-      announce "ℹ️ Selected workload profile is \"$workload_template_file_name\""
-      render_template $workload_template_full_path ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_file_name
-      export LLMDBENCH_BASE64_HARNESS_WORKLOAD_CONTENTS=$(cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_file_name | base64 $LLMDBENCH_BASE64_ARGS)
+      for workload_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
+        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete configmap $workload_type-profiles --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} create configmap $workload_type-profiles --from-file=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      done
 
       create_harness_pod
 
@@ -362,10 +385,10 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} logs -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -f\"..."
 
       LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pod -l app=llm-d-benchmark-harness --no-headers -o name | $LLMDBENCH_CONTROL_SCMD 's|^pod/||g')
-      llmdbench_execute_cmd "mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}/ && mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/analysis/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}/" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      llmdbench_execute_cmd "mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}/ && mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/analysis/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}/" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
-      copy_results_cmd="${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} cp $LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME:${LLMDBENCH_HARNESS_RESULTS_DIR} ${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}"
-      copy_analysis_cmd="rsync -az --inplace --delete ${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}/analysis/ ${LLMDBENCH_CONTROL_WORK_DIR}/analysis/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}/ && rm -rf ${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}/analysis"
+      copy_results_cmd="${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} cp $LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME:${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR} ${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}"
+      copy_analysis_cmd="rsync -az --inplace --delete ${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}/analysis/ ${LLMDBENCH_CONTROL_WORK_DIR}/analysis/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}/ && rm -rf ${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}/analysis"
 
       if [[ $LLMDBENCH_HARNESS_DEBUG -eq 0 && ${LLMDBENCH_HARNESS_WAIT_TIMEOUT} -ne 0 ]]; then
         announce "⏳ Waiting for pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be in \"Completed\" state (timeout=${LLMDBENCH_HARNESS_WAIT_TIMEOUT}s)..."
@@ -376,7 +399,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         #llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
         announce "✅ Pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\""
 
-        announce "🏗️  Collecting results for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL) to \"${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}\"..."
+        announce "🏗️  Collecting results for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL) to \"${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}\"..."
         llmdbench_execute_cmd "${copy_results_cmd}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
         announce "✅ Results for model \"$model\" collected successfully"
       elif [[ $LLMDBENCH_HARNESS_WAIT_TIMEOUT -eq 0 ]]; then
@@ -409,7 +432,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       announce "✅ Data analysis done."
     fi
 
-    if [[ -d ${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}/analysis && $LLMDBENCH_HARNESS_DEBUG -eq 0 && ${LLMDBENCH_HARNESS_WAIT_TIMEOUT} -ne 0 ]]; then
+    if [[ -d ${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}/analysis && $LLMDBENCH_HARNESS_DEBUG -eq 0 && ${LLMDBENCH_HARNESS_WAIT_TIMEOUT} -ne 0 ]]; then
       llmdbench_execute_cmd "$copy_analysis_cmd" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     fi
 
