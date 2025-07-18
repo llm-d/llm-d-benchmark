@@ -291,27 +291,6 @@ else
   fi
 fi
 
-if [[ $LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED -eq 0 && ! -f ~/.llmdbench_dependencies_checked ]]
-then
-  deplist="$LLMDBENCH_CONTROL_SCMD $LLMDBENCH_CONTROL_PCMD $LLMDBENCH_CONTROL_KCMD $LLMDBENCH_CONTROL_HCMD helmfile kubectl kustomize rsync"
-  echo "Checking dependencies \"$deplist\""
-  for req in $deplist kubectl kustomize; do
-    echo -n "Checking dependency \"${req}\"..."
-    is_req=$(which ${req} || true)
-    if [[ -z ${is_req} ]]; then
-      echo "❌ Dependency \"${req}\" is missing"
-      exit 1
-    fi
-    echo "done"
-  done
-  is_helmdiff=$($LLMDBENCH_CONTROL_HCMD plugin list | grep diff || true)
-  if [[ -z $is_helmdiff ]]; then
-    helm plugin install https://github.com/databus23/helm-diff
-  fi
-  touch ~/.llmdbench_dependencies_checked
-  export LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED=1
-fi
-
 function get_image {
   local image_registry=$1
   local image_repo=$2

@@ -1,6 +1,28 @@
 #!/usr/bin/env bash
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
+if [[ $LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED -eq 0 ]]
+then
+  deplist="$LLMDBENCH_CONTROL_SCMD $LLMDBENCH_CONTROL_PCMD $LLMDBENCH_CONTROL_KCMD $LLMDBENCH_CONTROL_HCMD helmfile kubectl kustomize rsync"
+  echo "Checking dependencies \"$deplist\""
+  for req in $deplist kubectl kustomize; do
+    echo -n "Checking dependency \"${req}\"..."
+    is_req=$(which ${req} || true)
+    if [[ -z ${is_req} ]]; then
+      echo "❌ Dependency \"${req}\" is missing"
+      exit 1
+    fi
+    echo "done"
+  done
+  is_helmdiff=$($LLMDBENCH_CONTROL_HCMD plugin list | grep diff || true)
+  if [[ -z $is_helmdiff ]]; then
+    helm plugin install https://github.com/databus23/helm-diff
+  fi
+  rm -f ~/.llmdbench_dependencies_checked
+  export LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED=1
+fi
+
+
 announce "💾 Cloning and setting up llm-d-infra..."
 pushd $LLMDBENCH_INFRA_DIR &>/dev/null
 if [[ ! -d llm-d-infra ]]; then
