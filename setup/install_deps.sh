@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # common deps 
-tools="gsed python3 oc helm helmfile kubectl kustomize rsync pytorch"
+tools="gsed python3 oc helm helmfile kubectl kustomize rsync"
 
 # get package manager
 if command -v apt &> /dev/null; then
