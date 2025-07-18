@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
-
+set -x
 if [[ $LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED -eq 0 ]]
 then
-  deplist="$LLMDBENCH_CONTROL_SCMD $LLMDBENCH_CONTROL_PCMD $LLMDBENCH_CONTROL_KCMD $LLMDBENCH_CONTROL_HCMD helmfile kubectl kustomize rsync"
-  echo "Checking dependencies \"$deplist\""
+  deplist="$LLMDBENCH_CONTROL_SCMD $LLMDBENCH_CONTROL_PCMD $(echo $LLMDBENCH_CONTROL_KCMD | awk '{ print $1}') $(echo $LLMDBENCH_CONTROL_HCMD | awk '{ print $1}') helmfile kubectl kustomize rsync"
   for req in $deplist kubectl kustomize; do
     echo -n "Checking dependency \"${req}\"..."
     is_req=$(which ${req} || true)
     if [[ -z ${is_req} ]]; then
-      echo "❌ Dependency \"${req}\" is missing"
+      echo "❌ Dependency \"${req}\" is missing. Please install it and try again."
       exit 1
     fi
     echo "done"
   done
+  echo
   is_helmdiff=$($LLMDBENCH_CONTROL_HCMD plugin list | grep diff || true)
   if [[ -z $is_helmdiff ]]; then
     helm plugin install https://github.com/databus23/helm-diff
@@ -21,7 +21,6 @@ then
   rm -f ~/.llmdbench_dependencies_checked
   export LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED=1
 fi
-
 
 announce "💾 Cloning and setting up llm-d-infra..."
 pushd $LLMDBENCH_INFRA_DIR &>/dev/null
@@ -46,5 +45,5 @@ else
   popd &>/dev/null
 fi
 popd &>/dev/null
-
+set +x
 announce "✅ llm-d-deployer is present at \"${LLMDBENCH_DEPLOYER_DIR}\""
