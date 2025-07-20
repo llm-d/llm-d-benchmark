@@ -24,6 +24,8 @@ spec:
     metadata:
       labels:
         app: vllm-standalone-$(model_attribute $model label)
+      annotations:
+        $(add_annotations)
     spec:
       affinity:
         nodeAffinity:

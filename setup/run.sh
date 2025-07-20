@@ -62,7 +62,7 @@ function show_usage {
               * [models] can be specified with a full name (e.g., \"ibm-granite/granite-3.3-2b-instruct\") or as an alias. The following aliases are available \n\
                   - llama-3b -> meta-llama/Llama-3.2-3B-Instruct \n\
                   - llama-8b -> meta-llama/Llama-3.1-8B-Instruct \n\
-                  - llama-17b -> RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic \n\
+                  - llama-17b -> meta-llama/Llama-4-Scout-17B-16E-Instruct \n\
                   - llama-70b -> meta-llama/Llama-3.1-70B-Instruct"
 }
 
@@ -317,12 +317,18 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 1 ]]; then
         export LLMDBENCH_HARNESS_STACK_TYPE=llm-d
-        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | tail -n1 | awk '{print $1}')
+        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway | awk '{print $1}')
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
       fi
 
-      if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 ]]; then
-        announce "🔍 Deployment method - $LLMDBENCH_DEPLOY_METHODS - is neither \"standalone\" nor \"deployer\". Trying to find a matching endpoint name..."
+      if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
+        export LLMDBENCH_HARNESS_STACK_TYPE=llm-d
+        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^infra-${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway | awk '{print $1}')
+        export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
+      fi
+
+      if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
+        announce "🔍 Deployment method - $LLMDBENCH_DEPLOY_METHODS - is neither \"standalone\" nor \"deployer\" nor \"modelservice\". Trying to find a matching endpoint name..."
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | awk '{print $1}' | grep -x ${LLMDBENCH_DEPLOY_METHODS} || true)
         if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then

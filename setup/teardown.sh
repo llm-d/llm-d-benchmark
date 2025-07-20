@@ -41,7 +41,7 @@ function show_usage {
               * [models] can be specified with a full name (e.g., \"ibm-granite/granite-3.3-2b-instruct\") or as an alias. The following aliases are available \n\
                   - llama-3b -> meta-llama/Llama-3.2-3B-Instruct \n\
                   - llama-8b -> meta-llama/Llama-3.1-8B-Instruct \n\
-                  - llama-17b -> RedHatAI/Llama-4-Scout-17B-16E-Instruct-FP8-dynamic \n\
+                  - llama-17b -> meta-llama/Llama-4-Scout-17B-16E-Instruct \n\
                   - llama-70b -> meta-llama/Llama-3.1-70B-Instruct"
 }
 
@@ -129,25 +129,22 @@ done
 
 announce "🧹 Cleaning up namespace: $LLMDBENCH_VLLM_COMMON_NAMESPACE"
 
-if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 1 ]]; then
+for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; do
+  hclist=
+  for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
+    if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
+      hclist=$($LLMDBENCH_CONTROL_HCMD --namespace $tgtns list --no-headers | grep -E "gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}|ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}" || true)
+    fi
 
-  for chartname in $($LLMDBENCH_CONTROL_HCMD list --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --output json | jq -r '.[].name'); do
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_HCMD} uninstall $chartname --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  done
-
-  if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
-    hclist=$($LLMDBENCH_CONTROL_HCMD --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE list --no-headers | grep llm-d || true)
     hclist=$(echo "${hclist}" | awk '{ print $1 }')
+
     for hc in ${hclist}; do
       announce "🗑️  Deleting Helm release \"${hc}\"..."
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_HCMD} uninstall ${hc} --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       announce "✅ Helm release \"${hc}\" fully deleted."
     done
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE --ignore-not-found=true route llm-d-inference-gateway-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE --ignore-not-found=true job download-model" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  else
-    for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; do
-      for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
+
+    if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_DEPLOYER_ACTIVE -eq 1 ]]; then
         cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/teardown.yaml
 sampleApplication:
   enabled: true
@@ -160,22 +157,27 @@ EOF
         announce "🚀 Calling llm-d-deployer with options \"${llmd_opts}\"..."
         llmdbench_execute_cmd "cd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart; export HF_TOKEN=$LLMDBENCH_HF_TOKEN; ./llmd-installer.sh --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --storage-class ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS} --storage-size ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE} $llmd_opts" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
         announce "✅ llm-d-deployer completed uninstall"
-      done
+    fi
+
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true route infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true route ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true job download-model" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     done
-  fi
-
-  for crb in $(${LLMDBENCH_CONTROL_KCMD} get ClusterRoleBinding | grep ${LLMDBENCH_VLLM_DEPLOYER_RELEASE} | awk '{ print $1}'); do
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true ClusterRoleBinding $crb" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   done
 
-  for cr in ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-endpoint-picker ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-epp-metrics-scrape ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-manager ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-metrics-auth ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-admin ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-editor ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-viewer; do
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true ClusterRole $cr" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+for crot in ClusterRoleBinding ClusterRole; do
+  for cro in $(${LLMDBENCH_CONTROL_KCMD} get $crot | grep ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE} | awk '{ print $1}'); do
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true $crot $cro" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   done
+done
 
-  for workload_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete ConfigMap $workload_type-profiles --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  done
-fi
+for cr in ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-endpoint-picker ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-epp-metrics-scrape ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-manager ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-metrics-auth ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-admin ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-editor ${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-modelservice-viewer; do
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true ClusterRole $cr" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+done
+
+for workload_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete ConfigMap $workload_type-profiles --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+done
 
 if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
 
