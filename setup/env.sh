@@ -628,7 +628,7 @@ function render_string {
     echo "s^____^ ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
 
-  for entry in $(echo ${string} | $LLMDBENCH_CONTROL_SCMD -e 's/____/ /g' -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^]^\n^g' -e 's^ ^^g' | grep -E "REPLACE_ENV" | uniq); do
+  for entry in $(echo ${string} | $LLMDBENCH_CONTROL_SCMD -e 's/____/ /g' -e 's^-^\n^g' -e 's^:^\n^g' -e 's^/^\n^g' -e 's^ ^\n^g' -e 's^]^\n^g' -e 's^ ^^g' | grep -E "REPLACE_ENV" | uniq); do
     default_value=$(echo $entry | $LLMDBENCH_CONTROL_SCMD -e "s^++++default=^\n^" | tail -1)
     parameter_name=$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_ENV_^\n______^g" -e "s^\"^^g" -e "s^'^^g" | grep "______" | $LLMDBENCH_CONTROL_SCMD -e "s^++++default=.*^^" -e "s^______^^g")
     entry=REPLACE_ENV_${parameter_name}
@@ -746,10 +746,8 @@ create_namespace() {
   local namespace="$2"
   require_var "namespace" "${namespace}"
   announce "📦 Creating namespace ${namespace}..."
-  ${kcmd} create namespace "${namespace}" --dry-run=client -o yaml | ${kcmd} apply -f - &>/dev/null || {
-    announce "❌ Failed to create/apply namespace ${namespace}"
-    exit 1
-  }
+  llmdbench_execute_cmd "${kcmd} create namespace \"${namespace}\" --dry-run=client -o yaml > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_namespace.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  llmdbench_execute_cmd "${kcmd} apply -f ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_namespace.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   announce "✅ Namespace ready"
 }
 export -f create_namespace
@@ -768,13 +766,8 @@ create_or_update_hf_secret() {
   announce "🔐 Creating/updating HF token secret..."
 
   llmdbench_execute_cmd "${kcmd} delete secret ${secret_name} -n ${namespace} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  ${kcmd} create secret generic "${secret_name}" \
-    --namespace "${namespace}" \
-    --from-literal="${secret_key}=${hf_token}" \
-    --dry-run=client -o yaml | ${kcmd} apply -n "${namespace}" -f - &>/dev/null || {
-    announce "❌ Failed to create/apply secret ${secret_name}"
-    exit 1
-  }
+  llmdbench_execute_cmd "${kcmd} create secret generic \"${secret_name}\" --from-literal=\"${secret_key}=${hf_token}\" --dry-run=client -o yaml > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_secret.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  llmdbench_execute_cmd "${kcmd} apply -n "${namespace}" -f ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_secret.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   announce "✅ HF token secret created"
 }
 export -f create_or_update_hf_secret
