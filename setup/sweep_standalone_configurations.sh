@@ -42,13 +42,18 @@ base_scenario=ocp_H100_standalone_base
 # DO NOT PUT COMMAS BETWEEN PAIRS!
 conf_array=("1,1" "1,2" "1,4" "1,8" "2,1" "2,4" "2,8" "4,8")
 
+# Benchmarking harness
+export LLMDBENCH_HARNESS_NAME=vllm-benchmark
+
 # Workload profile to use, located in workload/profiles/vllm-benchmark/ of this repository
-workload_profile=random_1k_concurrent_10-1_ISL-OSL
-#workload_profile=random_100_concurrent_100-1_ISL-OSL
+# workload_profile=random_concurrent_10k-1k_ISL-OSL
+# workload_profile=random_concurrent_10k-100_ISL-OSL
+# workload_profile=random_concurrent_20k-1k_ISL-OSL
+workload_profile=random_concurrent_30k-300_ISL-OSL
 
 # Benchmark workloads, each pair is "(max concurrency),(number of prompts)"
 # DO NOT PUT COMMAS BETWEEN PAIRS!
-workload_array=("1,20" "8,160" "16,320" "32,640" "64,1280" "128,2560" "256,5120" "512,10240" "1024,20480")
+workload_array=("1,10" "4,40" "8,80" "16,160" "32,320" "64,1264080" "128,1280" "256,2560" "512,5120" "1024,10240")
 
 export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=benchmark-hf-token
 export LLMDBENCH_VLLM_DEPLOYER_RELEASE=benchmark-release
