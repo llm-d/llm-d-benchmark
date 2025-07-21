@@ -7,6 +7,8 @@ else
     target_os=linux
 fi
 
+rm -f ~/.llmdbench_dependencies_checked
+
 # common deps
 tools="gsed python3 curl git oc kubectl helm helmfile kustomize rsync make skopeo jq yq"
 
@@ -86,7 +88,7 @@ function install_kustomize_linux {
 
 for tool in $tools; do
     if command -v $tool &> /dev/null; then
-        echo "$tool already installed"
+        echo "$tool already installed" >> ~/.llmdbench_dependencies_checked
         continue
     fi
     echo "Installing $tool..."
