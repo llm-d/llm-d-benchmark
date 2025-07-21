@@ -2,6 +2,14 @@
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
+
+  if [[ $LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION == "auto" ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION=$($LLMDBENCH_CONTROL_HCMD search repo llm-d-modelservice | tail -1 | awk '{print $2}' || true)
+    if [[ -z $LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION ]]; then
+      announce "❌ Unable to find a version for model service helm chart!"
+    fi
+  fi
+
   announce "🔍 Ensuring gateway infrastructure (${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME}) is setup..."
   if [[ $LLMDBENCH_USER_IS_ADMIN -eq 1 ]]; then
     llmd_opts="--namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --gateway ${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME} --context $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx --release infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}"
@@ -40,7 +48,7 @@ releases:
   - name: ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}
     namespace: ${LLMDBENCH_VLLM_COMMON_NAMESPACE}
     chart: llm-d-modelservice/llm-d-modelservice
-    version: 0.0.19
+    version: ${LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION}
     installed: true
     needs:
       -  ${LLMDBENCH_VLLM_COMMON_NAMESPACE}/infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}
