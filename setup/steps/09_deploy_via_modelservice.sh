@@ -76,6 +76,25 @@ decode:
         cpu: "$LLMDBENCH_VLLM_DEPLOYER_DECODE_CPU_NR"
         $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_DEPLOYER_DECODE_ACCELERATOR_NR}\"")
         $(echo "$LLMDBENCH_VLLM_DEPLOYER_DECODE_NETWORK_RESOURCE: \"${LLMDBENCH_VLLM_DEPLOYER_DECODE_NETWORK_NR}\"" | $LLMDBENCH_CONTROL_SCMD -e 's/^: \"\"//')
+    startupProbe:
+      httpGet:
+        path: /health
+        port: 8200
+      failureThreshold: 60
+      initialDelaySeconds: 15
+      periodSeconds: 30
+      timeoutSeconds: 5
+    livenessProbe:
+      tcpSocket:
+        port: 8200
+      failureThreshold: 3
+      periodSeconds: 5
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8200
+      failureThreshold: 3
+      periodSeconds: 5
     mountModelVolume: true
     volumeMounts:
     - name: metrics-volume
@@ -132,6 +151,25 @@ prefill:
         cpu: "$LLMDBENCH_VLLM_DEPLOYER_PREFILL_CPU_NR"
         $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_DEPLOYER_PREFILL_ACCELERATOR_NR}\"")
         $(echo "$LLMDBENCH_VLLM_DEPLOYER_PREFILL_NETWORK_RESOURCE: \"${LLMDBENCH_VLLM_DEPLOYER_PREFILL_NETWORK_NR}\"" | $LLMDBENCH_CONTROL_SCMD -e 's/^: \"\"//')
+    startupProbe:
+      httpGet:
+        path: /health
+        port: 8000
+      failureThreshold: 60
+      initialDelaySeconds: 15
+      periodSeconds: 30
+      timeoutSeconds: 5
+    livenessProbe:
+      tcpSocket:
+        port: 8000
+      failureThreshold: 3
+      periodSeconds: 5
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8000
+      failureThreshold: 3
+      periodSeconds: 5
     mountModelVolume: true
     volumeMounts:
     - name: metrics-volume
