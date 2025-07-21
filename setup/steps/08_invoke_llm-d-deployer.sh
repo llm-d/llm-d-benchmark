@@ -48,14 +48,14 @@ modelservice:
 
   image:
     registry: $LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REGISTRY
-    repository: ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REPO}
-    tag: $(get_image ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REPO} ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_TAG} 1)
+    repository: ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REPO}/${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_NAME}
+    tag: $(get_image ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_REPO} ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_NAME} ${LLMDBENCH_LLMD_MODELSERVICE_IMAGE_TAG} 1)
 
   epp:
     image:
       registry: ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REGISTRY}
-      repository: ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REPO}
-      tag: $(get_image ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REPO} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG} 1)
+      repository: ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REPO}/${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_NAME}
+      tag: $(get_image ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REPO} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_NAME} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG} 1)
 
     metrics:
       enabled: true
@@ -138,8 +138,8 @@ modelservice:
   vllm:
     image:
       registry: $LLMDBENCH_LLMD_IMAGE_REGISTRY
-      repository: $LLMDBENCH_LLMD_IMAGE_REPO
-      tag: $(get_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_TAG} 1)
+      repository: $LLMDBENCH_LLMD_IMAGE_REPO/${LLMDBENCH_LLMD_IMAGE_NAME}
+      tag: $(get_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_NAME} ${LLMDBENCH_LLMD_IMAGE_TAG} 1)
 
     metrics:
       enabled: true
@@ -147,42 +147,46 @@ modelservice:
   routingProxy:
     image:
       registry: ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REGISTRY}
-      repository: ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REPO}
-      tag: $(get_image ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REPO} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG} 1)
+      repository: ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REPO}/${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_NAME}
+      tag: $(get_image ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REPO} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_NAME} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG} 1)
 
   inferenceSimulator:
     image:
       registry: ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REGISTRY}
-      repository: ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REPO}
-      tag: $(get_image ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REPO} ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_TAG} 1)
+      repository: ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REPO}/${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_NAME}
+      tag: $(get_image ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_REPO} ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_NAME} ${LLMDBENCH_LLMD_INFERENCESIM_IMAGE_TAG} 1)
 EOF
       LLMDBENCH_VLLM_DEPLOYER_VALUES_FILE=$LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_deployer_values.yaml
     fi
 
+    sanitized_model_name=$(model_attribute $model as_label)
     llmd_opts="--skip-infra --release ${LLMDBENCH_VLLM_DEPLOYER_RELEASE} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --storage-class ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS} --storage-size ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE} --values-file $LLMDBENCH_VLLM_DEPLOYER_VALUES_FILE --gateway ${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME} --context $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx"
     announce "🚀 Calling llm-d-deployer with options \"${llmd_opts}\"..."
     llmdbench_execute_cmd "cd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart; export HF_TOKEN=$LLMDBENCH_HF_TOKEN; ./llmd-installer.sh $llmd_opts" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0
     announce "✅ llm-d-deployer completed successfully"
 
-    # FIXME: newer versions of kubectl/oc already support "--for=create".
-    announce "⏳ waiting 30s until prefill/decode pods are created..."
-    llmdbench_execute_cmd "sleep 30" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    announce "✅ waited 30s until prefill/decode pods are created"
+    announce "⏳ waiting for (decode) pods serving model ${model} to be created..."
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=$((LLMDBENCH_CONTROL_WAIT_TIMEOUT / 2))s --for=create pod -l llm-d.ai/model=$sanitized_model_name,llm-d.ai/role=decode" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 2
+    announce "✅ (decode) pods serving model ${model} created"
 
-    announce "⏳ Waiting for (decode) pods serving model ${model} to be in \"Running\" state (timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s)..."
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod  -l llm-d.ai/model=$(model_attribute $model model | tr '[:upper:]' '[:lower:]') -l llm-d.ai/role=decode" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    announce "⏳ waiting for (prefill) pods serving model ${model} to be created..."
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=$((LLMDBENCH_CONTROL_WAIT_TIMEOUT / 2))s --for=create pod -l llm-d.ai/model=$sanitized_model_name,llm-d.ai/role=prefill" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 2
+    announce "✅ (prefill) pods serving model ${model} created"
+
+    announce "⏳ Waiting for (decode) pods serving model ${model} to be in \"Running\" state (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod  -l llm-d.ai/model=$sanitized_model_name,llm-d.ai/role=decode" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "🚀 (decode) pods serving model ${model} running"
 
-    announce "⏳ Waiting for (prefill) pods serving model ${model} to be in \"Running\" state (timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s)..."
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod  -l llm-d.ai/model=$(model_attribute $model model | tr '[:upper:]' '[:lower:]') -l llm-d.ai/role=prefill" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    announce "⏳ Waiting for (prefill) pods serving model ${model} to be in \"Running\" state (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod  -l llm-d.ai/model=$sanitized_model_name,llm-d.ai/role=prefill" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "🚀 (prefill) pods serving model ${model} running"
 
-    announce "⏳ Waiting for (decode) pods serving ${model} to be Ready (timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s)..."
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s --for=condition=Ready=True pod -l llm-d.ai/model=$(model_attribute $model model | tr '[:upper:]' '[:lower:]') -l llm-d.ai/role=decode" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    announce "⏳ Waiting for (decode) pods serving ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l llm-d.ai/model=$sanitized_model_name,llm-d.ai/role=decode" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "🚀 (decode) pods serving model ${model} ready"
 
-    announce "⏳ Waiting for (prefill) pods serving ${model} to be Ready (timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s)..."
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s --for=condition=Ready=True pod -l llm-d.ai/model=$(model_attribute $model model | tr '[:upper:]' '[:lower:]') -l llm-d.ai/role=prefill" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    announce "⏳ Waiting for (prefill) pods serving ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l llm-d.ai/model=$sanitized_model_name,llm-d.ai/role=prefill" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "🚀 (prefill) pods serving model ${model} ready"
 
     if [[ $LLMDBENCH_VLLM_DEPLOYER_ROUTE -ne 0 && $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -ne 0 ]]; then
@@ -190,7 +194,7 @@ EOF
       if [[ -z $is_route ]]
       then
         announce "📜 Exposing pods serving model ${model} as service..."
-        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} expose service/${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --target-port=${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT} --name=${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} expose service/${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway --target-port=${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT} --name=${LLMDBENCH_VLLM_DEPLOYER_RELEASE}-inference-gateway-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
         announce "✅ Service for pods service model ${model} created"
       fi
       announce "✅ Model \"${model}\" and associated service deployed."

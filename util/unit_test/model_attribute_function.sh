@@ -25,11 +25,11 @@ export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
 
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
-model_list="meta-llama/Llama-3.2-3B-Instruct RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic meta-llama/Llama-4-Scout-17B-16E-Instruct Qwen/Qwen1.5-MoE-A2.7B-Chat ibm-granite/granite-speech-3.3-8b ibm-granite/granite-vision-3.3-2b"
+model_list="meta-llama/Llama-3.2-3B-Instruct RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic meta-llama/Llama-4-Scout-17B-16E-Instruct Qwen/Qwen1.5-MoE-A2.7B-Chat ibm-granite/granite-speech-3.3-8b ibm-granite/granite-vision-3.3-2b facebook/opt-125m"
 for i in $model_list
 do
   echo "-----------"
-  for j in modelcomponents model type parameters majorversion kind label
+  for j in model modelcomponents provider type parameters majorversion kind label folder as_label
   do
     echo "$j : $(model_attribute $i $j)"
   done

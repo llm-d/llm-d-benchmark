@@ -1,18 +1,14 @@
 #!/usr/bin/env bash
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
-announce "🔍 Checking if Gateway Provider is setup..."
+announce "🔍 Ensuring gateway infrastructure (${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME}) is setup..."
 if [[ $LLMDBENCH_USER_IS_ADMIN -eq 1 ]]; then
-  if [[ ${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME} == "kgateway" && $(${LLMDBENCH_CONTROL_KCMD} get pods -n kgateway-system --no-headers --ignore-not-found --field-selector status.phase=Running | wc -l) -ne 0 ]]; then
-    announce "⏭️  Gateway Provider is already setup, skipping installation"
-  else
-    llmd_opts="--infra-only --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --gateway ${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME}"
-    announce "🚀 Calling llm-d-deployer with options \"${llmd_opts}\"..."
-    pushd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart &>/dev/null
-    llmdbench_execute_cmd "cd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart; export KUBECONFIG=$LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx; export HF_TOKEN=$LLMDBENCH_HF_TOKEN; ./llmd-installer.sh $llmd_opts" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0
-    popd &>/dev/null
-    announce "✅ llm-d-deployer prepared namespace"
-  fi
+  llmd_opts="--namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --gateway ${LLMDBENCH_VLLM_DEPLOYER_GATEWAY_CLASS_NAME} --context $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx --release infra-${LLMDBENCH_VLLM_DEPLOYER_RELEASE}"
+  announce "🚀 Calling llm-d-infra with options \"${llmd_opts}\"..."
+  pushd $LLMDBENCH_DEPLOYER_DIR/llm-d-infra/quickstart &>/dev/null
+  llmdbench_execute_cmd "export HF_TOKEN=$LLMDBENCH_HF_TOKEN; ./llmd-infra-installer.sh $llmd_opts" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0
+  popd &>/dev/null
+  announce "✅ llm-d-infra prepared namespace"
 
   wiev1=$(${LLMDBENCH_CONTROL_KCMD} get crd -o "custom-columns=NAME:.metadata.name,VERSIONS:spec.versions[*].name" | grep -E "workload.*istio.*v1," || true)
   if [[ -z ${wiev1} ]]; then
@@ -23,6 +19,49 @@ if [[ $LLMDBENCH_USER_IS_ADMIN -eq 1 ]]; then
   else
     announce "⏭️  The CRDs from istio present are recent enough, skipping application of newer CRDs"
   fi
+
+  llmdbench_execute_cmd "mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm/${LLMDBENCH_VLLM_DEPLOYER_RELEASE}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
+  cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_DEPLOYER_RELEASE}/helmfile.yaml
+repositories:
+  - name: llm-d-modelservice
+    url: https://llm-d-incubation.github.io/llm-d-modelservice/
+
+releases:
+  - name: infra-${LLMDBENCH_VLLM_DEPLOYER_RELEASE}
+    namespace: ${LLMDBENCH_VLLM_COMMON_NAMESPACE}
+    chart: oci://ghcr.io/llm-d-incubation/llm-d-infra/llm-d-infra
+    version: 1.0.1
+    installed: true
+    labels:
+      managedBy: llm-d-infra-installer
+
+  - name: ms-${LLMDBENCH_VLLM_DEPLOYER_RELEASE}
+    namespace: ${LLMDBENCH_VLLM_COMMON_NAMESPACE}
+    chart: llm-d-modelservice/llm-d-modelservice
+    version: 0.0.10
+    installed: true
+    needs:
+      -  ${LLMDBENCH_VLLM_COMMON_NAMESPACE}/infra-${LLMDBENCH_VLLM_DEPLOYER_RELEASE}
+    values:
+      - ms-${LLMDBENCH_VLLM_DEPLOYER_RELEASE}/values.yaml
+    labels:
+      managedBy: helmfile
+
+  - name: gaie-${LLMDBENCH_VLLM_DEPLOYER_RELEASE}
+    namespace: ${LLMDBENCH_VLLM_COMMON_NAMESPACE}
+    chart: oci://us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/charts/inferencepool
+    # version: v0.5.0-rc2
+    version: v0
+    installed: true
+    needs:
+      -  ${LLMDBENCH_VLLM_COMMON_NAMESPACE}/infra-${LLMDBENCH_VLLM_DEPLOYER_RELEASE}
+    values:
+      - gaie-${LLMDBENCH_VLLM_DEPLOYER_RELEASE}/values.yaml
+    labels:
+      managedBy: helmfile
+EOF
+
 else
     announce "❗No privileges to setup Gateway Provider. Will assume an user with proper privileges already performed this action."
 fi

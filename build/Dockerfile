@@ -65,6 +65,16 @@ ARG VLLM_BENCHMARK_BRANCH=main
 RUN git clone --branch ${VLLM_BENCHMARK_BRANCH} ${VLLM_BENCHMARK_REPO}
 RUN cd vllm; pip install vllm; cd ..; mv -f vllm vllm-benchmark
 
+ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
+ARG GUIDELLM_BRANCH=main
+RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
+RUN cd guidellm; pip install guidellm
+
+RUN echo "fmperf: ${FM_PERF_REPO}" > /workspace/repos.txt; \
+    echo "inference-perf: ${INFERENCE_PERF_REPO}" >> /workspace/repos.txt; \
+    echo "vllm-benchmark: ${VLLM_BENCHMARK_REPO}" >> /workspace/repos.txt; \
+    echo "guidellm: ${GUIDELLM_REPO}" >> /workspace/repos.txt
+
 RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
 
 ADD workload/harnesses/ /usr/local/bin/
@@ -72,12 +82,14 @@ COPY analysis/fmperf-analyze_results.py /usr/local/bin/fmperf-analyze_results.py
 COPY analysis/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
 COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
 COPY analysis/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
+COPY analysis/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
 
 RUN echo "#!/usr/bin/env bash" > /usr/local/bin/llm-d-benchmark.sh; echo -e "\
 
 if [[ ! -z \$1 ]]; then\n\
   export LLMDBENCH_RUN_EXPERIMENT_HARNESS=\$(find /usr/local/bin | grep \${1}.*-llm-d-benchmark | rev | cut -d '/' -f 1 | rev)\n\
   export LLMDBENCH_RUN_EXPERIMENT_ANALYZER=\$(find /usr/local/bin | grep \${1}.*-analyze_results | rev | cut -d '/' -f 1 | rev)\n\
+  export LLMDBENCH_HARNESS_GIT_REPO=\$(cat /workspace/repos.txt | grep ^\${1}: | cut -d \":\" -f 2,3 | tr -d ' ')\n\
   export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR=/requests/\$(echo \$LLMDBENCH_RUN_EXPERIMENT_HARNESS | sed \"s^-llm-d-benchmark^^g\" | cut -d '.' -f 1)_\${LLMDBENCH_RUN_EXPERIMENT_ID}_\${LLMDBENCH_HARNESS_STACK_NAME}\n\
 fi\n\
 if [[ ! -z \$2 ]]; then\n\

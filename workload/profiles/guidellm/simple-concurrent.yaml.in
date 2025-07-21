@@ -1,0 +1,5 @@
+target: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+rate-type: concurrent
+rate: 2
+max-seconds: 30
+data: prompt_tokens=256,output_tokens=128

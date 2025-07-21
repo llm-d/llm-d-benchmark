@@ -16,5 +16,6 @@ export LLMDBENCH_HARNESS_NAME=inference-perf
 export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=chatbot_synthetic.yaml
 export LLMDBENCH_HARNESS_PVC_SIZE=1Ti
 export LLMDBENCH_IMAGE_REGISTRY=ghcr.io
-export LLMDBENCH_IMAGE_REPO=llm-d/llm-d-benchmark
+export LLMDBENCH_IMAGE_REPO=llm-d
+export LLMDBENCH_IMAGE_NAME=llm-d-benchmark
 export LLMDBENCH_IMAGE_TAG=v0.1.5

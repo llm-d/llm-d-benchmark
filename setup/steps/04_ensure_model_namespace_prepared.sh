@@ -1,44 +1,70 @@
 #!/usr/bin/env bash
-source ${LLMDBENCH_CONTROL_DIR}/env.sh
+source "${LLMDBENCH_CONTROL_DIR}/env.sh"
 
-announce "🔍 Checking if \"${LLMDBENCH_VLLM_COMMON_NAMESPACE}\" is prepared."
-check_storage_class_and_affinity
-llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} delete job download-model --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+main() {
+  announce "🔍 Checking if \"${LLMDBENCH_VLLM_COMMON_NAMESPACE}\" is prepared."
+  check_storage_class_and_affinity
+  if [[ $? -ne 0 ]]
+  then
+    announce "❌ Failed to check storage class and affinity"
+    exit 1
+  fi
 
-for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
-  modelfn=$(echo ${model} | ${LLMDBENCH_CONTROL_SCMD} 's^/^___^g' )
-  cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_prepare_namespace_${modelfn}.yaml
-sampleApplication:
-  enabled: true
-  baseConfigMapRefName: basic-gpu-with-nixl-and-redis-lookup-preset
-  model:
-    modelArtifactURI: pvc://$LLMDBENCH_VLLM_COMMON_PVC_NAME/models/$(model_attribute $model model)
-    modelName: "$(model_attribute $model model)"
-EOF
+  for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" delete job download-model --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
-  llmd_opts="--namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --skip-infra --download-pvc-only --storage-class ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS} --storage-size ${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE} --download-model $(model_attribute $model model) --download-timeout ${LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT} --values-file $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_prepare_namespace_${modelfn}.yaml --context $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx"
-  announce "🚀 Calling llm-d-deployer with options \"${llmd_opts}\"..."
-  pushd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart &>/dev/null
-  llmdbench_execute_cmd "cd $LLMDBENCH_DEPLOYER_DIR/llm-d-deployer/quickstart; export HF_TOKEN=$LLMDBENCH_HF_TOKEN; ./llmd-installer.sh $llmd_opts" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0 3
-  popd &>/dev/null
-  announce "✅ llm-d-deployer prepared namespace"
-done
+    local MODEL_ARTIFACT_URI="pvc://${LLMDBENCH_VLLM_COMMON_PVC_NAME}/models/$(model_attribute "${model}" model)"
+    local PROTOCOL="${MODEL_ARTIFACT_URI%%://*}"
+    local DOWNLOAD_MODEL="$(model_attribute "${model}" model)"
 
-if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} \
-adm \
-policy \
-add-scc-to-user \
-anyuid \
--z ${LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT} \
--n $LLMDBENCH_VLLM_COMMON_NAMESPACE" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    local PVC_AND_MODEL_PATH="${MODEL_ARTIFACT_URI#*://}"
+    local PVC_NAME="${PVC_AND_MODEL_PATH%%/*}"
+    local MODEL_PATH="${PVC_AND_MODEL_PATH#*/}"
 
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} \
-adm \
-policy \
-add-scc-to-user \
-privileged \
--z ${LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT} \
--n $LLMDBENCH_VLLM_COMMON_NAMESPACE" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-fi
-announce "✅ Namespace \"${LLMDBENCH_VLLM_COMMON_NAMESPACE}\" prepared."
+    create_namespace "${LLMDBENCH_CONTROL_KCMD}" "${LLMDBENCH_VLLM_COMMON_NAMESPACE}"
+    create_or_update_hf_secret "${LLMDBENCH_CONTROL_KCMD}" "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}" ${LLMDBENCH_VLLM_COMMON_HF_TOKEN_KEY} "${LLMDBENCH_HF_TOKEN}"
+
+    validate_and_create_pvc \
+      "${LLMDBENCH_CONTROL_KCMD}" \
+      "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
+      "${DOWNLOAD_MODEL}" \
+      "${PVC_NAME}" \
+      "${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE}" \
+      "${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS}"
+
+    launch_download_job \
+      "${LLMDBENCH_CONTROL_KCMD}" \
+      "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
+      "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}" \
+      "${DOWNLOAD_MODEL}" \
+      "${MODEL_PATH}" \
+      "${PVC_NAME}"
+
+    wait_for_download_job \
+      "${LLMDBENCH_CONTROL_KCMD}" \
+      "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
+      "${LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT}"
+
+    announce "✅ llm-d-deployer prepared namespace"
+
+    if [[ "${LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT}" -eq 1 ]]; then
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} \
+        adm policy add-scc-to-user anyuid \
+        -z ${LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT} \
+        -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
+        "${LLMDBENCH_CONTROL_DRY_RUN}" "${LLMDBENCH_CONTROL_VERBOSE}" 1 1 1
+
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} \
+        adm policy add-scc-to-user privileged \
+        -z ${LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT} \
+        -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
+        "${LLMDBENCH_CONTROL_DRY_RUN}" "${LLMDBENCH_CONTROL_VERBOSE}" 1 1 1
+    fi
+
+    announce "✅ Namespace \"${LLMDBENCH_VLLM_COMMON_NAMESPACE}\" prepared."
+  done
+
+  return 0
+}
+
+main
