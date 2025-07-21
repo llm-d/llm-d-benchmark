@@ -40,7 +40,7 @@ releases:
   - name: infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}
     namespace: ${LLMDBENCH_VLLM_COMMON_NAMESPACE}
     chart: oci://ghcr.io/llm-d-incubation/llm-d-infra/llm-d-infra
-    version: 1.0.1
+    version: 1.0.6
     installed: true
     labels:
       managedBy: llm-d-infra-installer
@@ -60,8 +60,7 @@ releases:
   - name: gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}
     namespace: ${LLMDBENCH_VLLM_COMMON_NAMESPACE}
     chart: oci://us-central1-docker.pkg.dev/k8s-staging-images/gateway-api-inference-extension/charts/inferencepool
-    # version: v0.5.0-rc2
-    version: v0
+    version: v0.5.0
     installed: true
     needs:
       -  ${LLMDBENCH_VLLM_COMMON_NAMESPACE}/infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}

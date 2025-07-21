@@ -68,7 +68,7 @@ spec:
             path: /health
             port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
           failureThreshold: 200
-          initialDelaySeconds: ${LLMDBENCH_VLLM_STANDALONE_INITIAL_DELAY_PROBE}
+          initialDelaySeconds: ${LLMDBENCH_VLLM_COMMON_INITIAL_DELAY_PROBE}
           periodSeconds: 30
           timeoutSeconds: 5
         livenessProbe:

@@ -79,14 +79,14 @@ decode:
     startupProbe:
       httpGet:
         path: /health
-        port: 8200
+        port: ${LLMDBENCH_VLLM_DEPLOYER_DECODE_INFERENCE_PORT}
       failureThreshold: 60
-      initialDelaySeconds: 15
+      initialDelaySeconds: ${LLMDBENCH_VLLM_COMMON_INITIAL_DELAY_PROBE}
       periodSeconds: 30
       timeoutSeconds: 5
     livenessProbe:
       tcpSocket:
-        port: 8200
+        port: ${LLMDBENCH_VLLM_DEPLOYER_DECODE_INFERENCE_PORT}
       failureThreshold: 3
       periodSeconds: 5
     readinessProbe:
@@ -154,20 +154,20 @@ prefill:
     startupProbe:
       httpGet:
         path: /health
-        port: 8000
+        port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
       failureThreshold: 60
-      initialDelaySeconds: 15
+      initialDelaySeconds: ${LLMDBENCH_VLLM_COMMON_INITIAL_DELAY_PROBE}
       periodSeconds: 30
       timeoutSeconds: 5
     livenessProbe:
       tcpSocket:
-        port: 8000
+        port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
       failureThreshold: 3
       periodSeconds: 5
     readinessProbe:
       httpGet:
         path: /health
-        port: 8000
+        port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
       failureThreshold: 3
       periodSeconds: 5
     mountModelVolume: true
