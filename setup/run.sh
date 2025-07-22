@@ -243,12 +243,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         exit 1
       fi
 
-      announce "🛠️ Rendering all workload profile templates under \"$LLMDBENCH_MAIN_DIR/workload/profiles/\"..."
-      for workload_template_full_path in $(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name '*.yaml.in'); do
-        workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
-        workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD "s^\.in$^^g")
-        render_template $workload_template_full_path ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/$workload_template_file_name
-      done
+      render_workload_templates
 
       for workload_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
         llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete configmap $workload_type-profiles --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}

@@ -275,8 +275,8 @@ function render_string {
   fi
 
   for entry in $(echo ${string} | $LLMDBENCH_CONTROL_SCMD -e 's/____/ /g' -e 's^-^\n^g' -e 's^:^\n^g' -e 's^/^\n^g' -e 's^ ^\n^g' -e 's^]^\n^g' -e 's^ ^^g' | grep -E "REPLACE_ENV" | uniq); do
-    default_value=$(echo $entry | $LLMDBENCH_CONTROL_SCMD -e "s^++++default=^\n^" | tail -1)
     parameter_name=$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_ENV_^\n______^g" -e "s^\"^^g" -e "s^'^^g" | grep "______" | $LLMDBENCH_CONTROL_SCMD -e "s^++++default=.*^^" -e "s^______^^g")
+    default_value=$(echo $entry | $LLMDBENCH_CONTROL_SCMD -e "s^++++default=^\n^" | tail -1 | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_ENV_${parameter_name}^^g")
     entry=REPLACE_ENV_${parameter_name}
     value=$(echo ${!parameter_name})
     if [[ -z $value && -z $default_value ]]; then
@@ -286,8 +286,15 @@ function render_string {
     if [[ -z $value && ! -z $default_value ]]; then
       value=$default_value
       echo "s^++++default=$default_value^^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+      echo "s^${entry}^${value}^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     fi
-    echo "s^${entry}^${value}^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    if [[ ! -z $value && -z $default_value ]]; then
+      echo "s^${entry}^${value}^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    fi
+    if [[ ! -z $value && ! -z $default_value ]]; then
+      echo "s^++++default=$default_value^^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+      echo "s^${entry}^${value}^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    fi
   done
   if [[ ! -z $model ]]; then
     echo ${string} | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
@@ -630,7 +637,6 @@ function get_harness_list {
 export -f get_harness_list
 
 function create_harness_pod {
-
   is_pvc=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pvc --ignore-not-found | grep ${LLMDBENCH_HARNESS_PVC_NAME} || true)
   if [[ -z ${is_pvc} ]]; then
       announce "❌ PVC \"${LLMDBENCH_HARNESS_PVC_NAME}\" not created on namespace \"${LLMDBENCH_HARNESS_NAMESPACE}\" unable to continue"
@@ -722,6 +728,23 @@ EOF
 EOF
 }
 export -f create_harness_pod
+
+function render_workload_templates {
+    local workload=${1:-all}
+    if [[ $workload == "all" ]]; then
+      workload_template_list=$(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name "*.yaml.in")
+    else
+      workload_template_list=$(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name "${workload}.yaml.in")
+    fi
+    announce "🛠️ Rendering all workload profile templates under \"$LLMDBENCH_MAIN_DIR/workload/profiles/\"..."
+    for workload_template_full_path in $workload_template_list; do
+      workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
+      workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD "s^\.in$^^g")
+      render_template $workload_template_full_path ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/$workload_template_file_name
+    done
+    announce "✅ Done rendering all workload profile templates to \"${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/\""
+}
+export -f render_workload_templates
 
 function cleanup_pre_execution {
   announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\"..."

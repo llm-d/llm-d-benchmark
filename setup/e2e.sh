@@ -27,6 +27,8 @@ export LLMDBENCH_CONTROL_DRY_RUN=${LLMDBENCH_CONTROL_DRY_RUN:-0}
 export LLMDBENCH_CONTROL_VERBOSE=${LLMDBENCH_CONTROL_VERBOSE:-0}
 export LLMDBENCH_DEPLOY_SCENARIO=
 export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=
+export LLMDBENCH_HARNESS_SKIP_RUN=0
+export LLMDBENCH_HARNESS_DEBUG=0
 
 LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name "*.sh" | grep -v 11_ | sort | rev | cut -d '/' -f 1 | rev)
 
@@ -198,6 +200,10 @@ echo
 echo
 echo
 echo
+if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
+  announce "⏭️  Option \"--debug\" or environment variable \"LLMDBENCH_HARNESS_DEBUG\" was set to \"1\". Will not execute teardown"
+  exit 0
+fi
 $LLMDBENCH_MAIN_DIR/setup/teardown.sh
 ec=$?
 if [[ $ec -ne 0 ]]; then
