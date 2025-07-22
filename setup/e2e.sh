@@ -37,7 +37,7 @@ function show_usage {
             -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
             -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
             -p/--namespace [namespace where to deploy (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE)] \n \
-            -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"deployer\") ] \n \
+            -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\") ] \n \
             -a/--affinity [kubernetes node affinity] (default=$LLMDBENCH_VLLM_COMMON_AFFINITY) \n \
             -l/--harness [harness used to generate load (default=$LLMDBENCH_HARNESS_NAME, possible values $(get_harness_list)] \n \
             -w/--workload [workload to be used by the harness (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE, possible values (check \"workload/profiles\" dir)] \n \
@@ -46,7 +46,7 @@ function show_usage {
             --wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means "do not wait\""] \n \
             --debug [execute harness in \"debug-mode\" (default=$LLMDBENCH_HARNESS_DEBUG)] \n \
             -b/--annotations [kubernetes pod annotations] (default=$LLMDBENCH_VLLM_COMMON_ANNOTATIONS) \n \
-            -r/--release [deployer helm chart release name (default=$LLMDBENCH_VLLM_MODELSERVICE_RELEASE)] \n \
+            -r/--release [modelservice helm chart release name (default=$LLMDBENCH_VLLM_MODELSERVICE_RELEASE)] \n \
             -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
             -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
             --deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING) ] \n \

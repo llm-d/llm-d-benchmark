@@ -78,7 +78,7 @@ At this point, with all the environment variables set (tip, `env | grep ^LLMDBEN
 ```
 
 > [!NOTE]
-> The scenario can also be indicated as part of the command line optios for `standup.sh` (e.g. `./setup/standup.sh -c ocp_H100MIG_deployer_llama-3b`)
+> The scenario can also be indicated as part of the command line optios for `standup.sh` (e.g. `./setup/standup.sh -c ocp_H100MIG_modelservice_llama-3b`)
 
 To re-execute only individual steps (full name or number):
 
@@ -109,4 +109,4 @@ Finally, cleanup everything
 ```
 
 > [!NOTE]
-> The scenario can also be indicated as part of the command line optios for `teardown.sh` (e.g., `./teardown.sh -c kubernetes_H200_deployer_llama-8b`)
+> The scenario can also be indicated as part of the command line optios for `teardown.sh` (e.g., `./teardown.sh -c kubernetes_H200_modelservice_llama-8b`)

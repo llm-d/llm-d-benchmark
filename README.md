@@ -93,7 +93,7 @@ For a discussion of relevant workloads, please consult this [document](https://d
 
 #### Scenarios
 
-Pieces of information identifying a particular cluster. This information includes, but it is not limited to, GPU model, llm model and llm-d parameters (an environment file, and optionally a `values.yaml` file for llm-d-deployer)
+Pieces of information identifying a particular cluster. This information includes, but it is not limited to, GPU model, llm model and llm-d parameters (an environment file, and optionally a `values.yaml` file for modelservice helm charts)
 
 #### Harness
 

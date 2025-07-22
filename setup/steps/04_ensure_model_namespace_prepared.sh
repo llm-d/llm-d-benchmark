@@ -53,8 +53,6 @@ main() {
       "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
       "${LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT}"
 
-    announce "✅ llm-d-deployer prepared namespace"
-
     if [[ "${LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT}" -eq 1 ]]; then
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} \
         adm policy add-scc-to-user anyuid \

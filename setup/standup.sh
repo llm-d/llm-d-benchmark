@@ -33,10 +33,10 @@ function show_usage {
             -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
             -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
             -p/--namespace [namespace where to deploy (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE)] \n \
-            -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"deployer\") ] \n \
+            -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\") ] \n \
             -a/--affinity [kubernetes node affinity] (default=$LLMDBENCH_VLLM_COMMON_AFFINITY) \n \
             -b/--annotations [kubernetes pod annotations] (default=$LLMDBENCH_VLLM_COMMON_ANNOTATIONS) \n \
-            -r/--release [deployer helm chart release name (default=$LLMDBENCH_VLLM_MODELSERVICE_RELEASE)] \n \
+            -r/--release [modelservice helm chart release name (default=$LLMDBENCH_VLLM_MODELSERVICE_RELEASE)] \n \
             -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
             -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
             -h/--help (show this help)\n \
