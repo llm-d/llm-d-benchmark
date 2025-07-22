@@ -3,10 +3,18 @@ source "${LLMDBENCH_CONTROL_DIR}/env.sh"
 
 main() {
   announce "🔍 Checking if \"${LLMDBENCH_VLLM_COMMON_NAMESPACE}\" is prepared."
-  check_storage_class_and_affinity
+
+  check_storage_class
   if [[ $? -ne 0 ]]
   then
-    announce "❌ Failed to check storage class and affinity"
+    announce "❌ Failed to check storage class"
+    exit 1
+  fi
+
+  check_affinity
+  if [[ $? -ne 0 ]]
+  then
+    announce "❌ Failed to check affinity"
     exit 1
   fi
 
@@ -44,8 +52,6 @@ main() {
       "${LLMDBENCH_CONTROL_KCMD}" \
       "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
       "${LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT}"
-
-    announce "✅ llm-d-deployer prepared namespace"
 
     if [[ "${LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT}" -eq 1 ]]; then
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} \

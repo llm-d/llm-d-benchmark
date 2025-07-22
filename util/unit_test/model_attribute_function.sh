@@ -36,10 +36,10 @@ do
   echo "-----------"
 done
 
-for method in deployer standalone
+for method in modelservice standalone
 do
   for model in $model_list
   do
-    echo "$(echo ${method} | $LLMDBENCH_CONTROL_SCMD 's^deployer^llm-d^g')-$(model_attribute $model parameters)-$(model_attribute $model type)"
+    echo "$(echo ${method} | $LLMDBENCH_CONTROL_SCMD 's^modelservice^llm-d^g')-$(model_attribute $model parameters)-$(model_attribute $model type)"
   done
 done
