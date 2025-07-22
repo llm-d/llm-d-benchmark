@@ -25,7 +25,7 @@ cd llm-d-benchmark
 ####  Run harness `inference-perf` with load profile `chatbot_synthetic` againsta a pre-deployed stack
 
 ```
-./run.sh --harness inference-perf --workload chatbot_synthetic --method <a string that matches a inference service or pod>`
+./run.sh --harness inference-perf --workload chatbot_synthetic --methods <a string that matches a inference service or pod>`
 ```
 
 ### Architecture
