@@ -396,7 +396,11 @@ function not_valid_ip {
 export -f not_valid_ip
 
 function get_rand_string {
-  openssl rand -base64 4 | tr -dc 'a-zA-Z0-9' |tr '[:upper:]' '[:lower:]' | head -c 16
+  if [[ -x $(command -v openssl) ]]; then
+    openssl rand -base64 4 | tr -dc 'a-zA-Z0-9' | tr '[:upper:]' '[:lower:]' | head -c 16
+  else
+    tr -dc 'a-zA-Z0-9' </dev/urandom | tr '[:upper:]' '[:lower:]' | head -c 16
+  fi 
 }
 export -f get_rand_string
 
