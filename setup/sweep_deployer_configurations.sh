@@ -35,8 +35,8 @@
 model=Qwen/Qwen1.5-MoE-A2.7B-Chat
 
 # Base scenario file to use, located in scenarios/ of this repository
-base_scenario=ocp_H100_deployer_PD_base
-#base_scenario=ocp_H200_deployer_PD_base
+base_scenario=ocp_H100_modelservice_PD_base
+#base_scenario=ocp_H200_modelservice_PD_base
 
 
 # Prefill and decode pod configurations, where each pair is "(number of replicas),(TP size)"
@@ -48,8 +48,8 @@ decode_conf_array=("1,4" "2,4" "4,4" "1,8" "2,8" "4,8")
 export LLMDBENCH_HARNESS_NAME=vllm-benchmark
 
 # Workload profile to use, located in workload/profiles/vllm-benchmark/ of this repository
-# workload_profile=random_concurrent_10k-1k_ISL-OSL
 # workload_profile=random_concurrent_10k-100_ISL-OSL
+# workload_profile=random_concurrent_10k-1k_ISL-OSL
 # workload_profile=random_concurrent_20k-1k_ISL-OSL
 workload_profile=random_concurrent_30k-300_ISL-OSL
 
@@ -139,28 +139,6 @@ done
 if [[ $gen_and_quit == 1 ]]; then
   echo "Generated scenario files"
   exit 0
-fi
-
-# Hack to set up deployer that supports heterogeneous P/D configurations
-if [[ ! -d /tmp/llm-d-deployer ]]; then
-  echo "Creating deployer in /tmp"
-  pushd . &>/dev/null
-  cd /tmp
-  # Check out main branch of llm-d-deployer
-  git clone https://github.com/llm-d/llm-d-deployer.git -b main
-  cd llm-d-deployer
-  #git checkout -q a51e9cae966d86c4f5a18e6111eaf33768581262
-  # Switch to draft PR that includes changes needed for heterogeneous P/D
-  git fetch origin pull/368/head:pr368 -q
-  git switch pr368 -q
-  git checkout -q 155838fc884186641615cd8056511bc0847f3b66
-  # Merge in necessary updates from main
-  git merge main -m "Merge main" -q
-  # Apply patch to allow Kubernetes v1.28.0
-  patch -p1 < ${LLMDBENCH_MAIN_DIR}/util/patches/llm-d-deployer.patch
-  popd . &>/dev/null
-else
-  echo "/tmp/llm-d-deployer repository exists, ensure it includes appropriate modifications!"
 fi
 
 # These are the configurations we will sweep over

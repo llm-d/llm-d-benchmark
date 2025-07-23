@@ -2,7 +2,7 @@
 # values found in setup/env.sh
 
 # Affinity to select node with appropriate GPU
-export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3
+export LLMDBENCH_VLLM_COMMON_AFFINITY=gpu.nvidia.com/model:H200
 
 # Common parameters across prefill and decode pods
 export LLMDBENCH_VLLM_COMMON_CPU_NR=32
@@ -29,9 +29,6 @@ export LLMDBENCH_VLLM_DEPLOYER_EPP_DECODE_ENABLE_LOAD_AWARE_SCORER=true
 # Timeout for benchmark operations
 export LLMDBENCH_CONTROL_WAIT_TIMEOUT=900000
 export LLMDBENCH_HARNESS_WAIT_TIMEOUT=900000
-
-# llm-d-deployer preset
-export LLMDBENCH_VLLM_DEPLOYER_BASECONFIGMAPREFNAME=basic-gpu-with-nixl-preset
 
 # Local directory to copy benchmark runtime files and results
 export LLMDBENCH_CONTROL_WORK_DIR=~/benchmark_run_pd__suffix__
