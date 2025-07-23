@@ -53,7 +53,7 @@ workload_profile=random_concurrent_30k-300_ISL-OSL
 
 # Benchmark workloads, each pair is "(max concurrency),(number of prompts)"
 # DO NOT PUT COMMAS BETWEEN PAIRS!
-workload_array=("1,10" "4,40" "8,80" "16,160" "32,320" "64,1264080" "128,1280" "256,2560" "512,5120" "1024,10240")
+workload_array=("1,10" "4,40" "8,80" "16,160" "32,320" "64,640" "128,1280" "256,2560" "512,5120" "1024,10240")
 
 export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=benchmark-hf-token
 export LLMDBENCH_VLLM_DEPLOYER_RELEASE=benchmark-release

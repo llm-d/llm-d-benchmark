@@ -38,11 +38,10 @@ model=Qwen/Qwen1.5-MoE-A2.7B-Chat
 base_scenario=ocp_H100_modelservice_PD_base
 #base_scenario=ocp_H200_modelservice_PD_base
 
-
-# Prefill and decode pod configurations, where each pair is "(number of replicas),(TP size)"
+# Prefill and decode pod configurations, where each pair is
+# "(number of prefill replicas),(prefill TP size),(number of decode replicas),(decode TP size)"
 # DO NOT PUT COMMAS BETWEEN PAIRS!
-prefill_conf_array=("1,1" "2,1" "4,1" "1,2" "2,2" "4,2")
-decode_conf_array=("1,4" "2,4" "4,4" "1,8" "2,8" "4,8")
+pd_conf_array=("6,2,1,4" "4,2,1,8" "8,1,1,8" "4,2,2,4" "4,2,4,2" "2,2,4,4")
 
 # Benchmarking harness
 export LLMDBENCH_HARNESS_NAME=vllm-benchmark
@@ -55,7 +54,7 @@ workload_profile=random_concurrent_30k-300_ISL-OSL
 
 # Benchmark workloads, each pair is "(max concurrency),(number of prompts)"
 # DO NOT PUT COMMAS BETWEEN PAIRS!
-workload_array=("1,10" "4,40" "8,80" "16,160" "32,320" "64,1264080" "128,1280" "256,2560" "512,5120" "1024,10240")
+workload_array=("1,10" "4,40" "8,80" "16,160" "32,320" "64,640" "128,1280" "256,2560" "512,5120" "1024,10240")
 
 export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=benchmark-hf-token
 export LLMDBENCH_VLLM_DEPLOYER_RELEASE=benchmark-release
@@ -123,17 +122,17 @@ if [[ $erase_and_quit == 1 ]]; then
 fi
 
 # Generate scenario files
-for decode_conf in "${decode_conf_array[@]}"; do
-  decode_replicas="${decode_conf%,*}" 
-  decode_tp="${decode_conf#*,}"
-  for prefill_conf in "${prefill_conf_array[@]}"; do
-    prefill_replicas="${prefill_conf%,*}" 
-    prefill_tp="${prefill_conf#*,}"
+scenarios=()
+for pd_conf in "${pd_conf_array[@]}"; do
+  prefill_replicas=$(echo $pd_conf | cut -d "," -f 1 )
+  prefill_tp=$(echo $pd_conf | cut -d "," -f 2 )
+  decode_replicas=$(echo $pd_conf | cut -d "," -f 3 )
+  decode_tp=$(echo $pd_conf | cut -d "," -f 4 )
 
-    scenario_suffix="__${prefill_replicas}P-TP${prefill_tp}_${decode_replicas}D-TP${decode_tp}"
-    scenario_file="$LLMDBENCH_MAIN_DIR/scenarios/${base_scenario}${scenario_suffix}.sh"
-    sed -e "s/__p_rep__/${prefill_replicas}/g" -e "s/__p_tp__/${prefill_tp}/g" -e "s/__d_rep__/${decode_replicas}/g" -e "s/__d_tp__/${decode_tp}/g" -e "s/__suffix__/${scenario_suffix}/g" $LLMDBENCH_MAIN_DIR/scenarios/$base_scenario.sh > $scenario_file
-  done
+  scenario_suffix="__${prefill_replicas}P-TP${prefill_tp}_${decode_replicas}D-TP${decode_tp}"
+  scenario_file="$LLMDBENCH_MAIN_DIR/scenarios/${base_scenario}${scenario_suffix}.sh"
+  sed -e "s/__p_rep__/${prefill_replicas}/g" -e "s/__p_tp__/${prefill_tp}/g" -e "s/__d_rep__/${decode_replicas}/g" -e "s/__d_tp__/${decode_tp}/g" -e "s/__suffix__/${scenario_suffix}/g" $LLMDBENCH_MAIN_DIR/scenarios/$base_scenario.sh > $scenario_file
+  scenarios+=("${base_scenario}${scenario_suffix}")
 done
 
 if [[ $gen_and_quit == 1 ]]; then
@@ -142,7 +141,6 @@ if [[ $gen_and_quit == 1 ]]; then
 fi
 
 # These are the configurations we will sweep over
-scenarios=($(ls -d $LLMDBENCH_MAIN_DIR/scenarios/${base_scenario}__* | sed -e 's/.sh$//' | rev | cut -d '/' -f 1 | rev))
 echo "Scenarios to sweep:"
 printf "  %s\n" "${scenarios[@]}"
 
