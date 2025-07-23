@@ -3,10 +3,25 @@ source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
 
+  check_storage_class
+  if [[ $? -ne 0 ]]
+  then
+    announce "❌ Failed to check storage class"
+    exit 1
+  fi
+
+  check_affinity
+  if [[ $? -ne 0 ]]
+  then
+    announce "❌ Failed to check affinity"
+    exit 1
+  fi
+
   extract_environment
 
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     modelfn=$(echo ${model} | ${LLMDBENCH_CONTROL_SCMD} 's^/^___^g' )
+    export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
     cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_a_deployment_${modelfn}.yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -42,10 +57,9 @@ spec:
         imagePullPolicy: Always
         command:
         - /bin/bash
-        args:
         - "-c"
-        - |
-          $(render_string $LLMDBENCH_VLLM_STANDALONE_ARGS $model) --model-loader-extra-config "\${LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG}"
+        args:
+        $(add_command_line_options ${LLMDBENCH_VLLM_STANDALONE_ARGS} $model)
         env:
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL
           value: "$(model_attribute $model model)"
@@ -62,7 +76,7 @@ spec:
             secretKeyRef:
               name: ${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}
               key: HF_TOKEN
-        $(add_additional_env_to_yaml)
+        $(add_additional_env_to_yaml $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML)
         ports:
         - containerPort: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
         startupProbe:

@@ -2,11 +2,26 @@
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
+
+  check_storage_class
+  if [[ $? -ne 0 ]]
+  then
+    announce "❌ Failed to check storage class"
+    exit 1
+  fi
+
+  check_affinity
+  if [[ $? -ne 0 ]]
+  then
+    announce "❌ Failed to check affinity"
+    exit 1
+  fi
+
   extract_environment
 
   # deploy models
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
-
+    export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
     llmdbench_execute_cmd "mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
     cat << EOF > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/values.yaml
@@ -50,9 +65,9 @@ decode:
   containers:
   - name: "vllm"
     image: "$(get_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_NAME} ${LLMDBENCH_LLMD_IMAGE_TAG} 0)"
-    modelCommand: vllmServe
+    modelCommand: ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND}
     args:
-      $(render_string ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS} $model)
+      $(add_command_line_options ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS})
     env:
       - name: VLLM_NIXL_SIDE_CHANNEL_HOST
         valueFrom:
@@ -60,7 +75,7 @@ decode:
             fieldPath: status.podIP
       - name: HF_HOME
         value: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
-      $(add_additional_env_to_yaml)
+      $(add_additional_env_to_yaml $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML)
     resources:
       limits:
         memory: $LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM
@@ -123,9 +138,9 @@ prefill:
   containers:
   - name: "vllm"
     image: "$(get_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_NAME} ${LLMDBENCH_LLMD_IMAGE_TAG} 0)"
-    modelCommand: vllmServe
+    modelCommand: ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND}
     args:
-      $(render_string ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS} $model)
+      $(add_command_line_options ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS})
     env:
       - name: VLLM_IS_PREFILL
         value: "1"
@@ -135,7 +150,7 @@ prefill:
             fieldPath: status.podIP
       - name: HF_HOME
         value: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
-      $(add_additional_env_to_yaml)
+      $(add_additional_env_to_yaml $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML)
     resources:
       limits:
         memory: $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM
@@ -230,6 +245,7 @@ EOF
 
     announce "✅ modelservice completed model deployment"
 
+    unset LLMDBENCH_DEPLOY_CURRENT_MODEL
   done
 
 else

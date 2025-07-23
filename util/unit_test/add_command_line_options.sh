@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+
+# Copyright 2025 The llm-d Authors.
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+# http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+set -euo pipefail
+
+if [[ $0 != "-bash" ]]; then
+    pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
+fi
+
+export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/../../setup)
+export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
+export LLMDBENCH_CONTROL_CLUSTER_NAME=unit-test
+
+source ${LLMDBENCH_CONTROL_DIR}/env.sh
+export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR:-$(mktemp -d -t ${LLMDBENCH_CONTROL_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)}
+prepare_work_dir
+export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute llama-3b model)
+export LLMDBENCH_VLLM_STANDALONE_ARGS="REPLACE_ENV_LLMDBENCH_VLLM_STANDALONE_PREPROCESS____;____vllm____serve____REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL____--enable-sleep-mode____--load-format____REPLACE_ENV_LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT____--port____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_INFERENCE_PORT____--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN____--disable-log-requests____--gpu-memory-utilization____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL____--tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR"
+export LLMDBENCH_CURRENT_STEP=06
+cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment.yaml
+        imagePullPolicy: Always
+        command:
+        - /bin/bash
+        - "-c"
+        args:
+        $(add_command_line_options ${LLMDBENCH_VLLM_STANDALONE_ARGS})
+        env:
+EOF
+cat $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment.yaml
+echo "-----------"
+cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/command_as_file.txt
+          vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+--tensor-parallel-size 8 \
+--disable-log-requests \
+--max-model-len 25000 \
+--block-size 128
+EOF
+export LLMDBENCH_VLLM_STANDALONE_ARGS=$LLMDBENCH_CONTROL_WORK_DIR/command_as_file.txt
+cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment.yaml
+        imagePullPolicy: Always
+        command:
+        - /bin/bash
+        - "-c"
+        args:
+        $(add_command_line_options ${LLMDBENCH_VLLM_STANDALONE_ARGS})
+        env:
+EOF
+cat $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment.yaml
+echo "-----------"
+export LLMDBENCH_CURRENT_STEP=08
+cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_values.yaml
+    modelCommand: ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND}
+    args:
+      $(add_command_line_options ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS})
+    env:
+EOF
+cat $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_values.yaml
+echo "-----------"
+cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/command_as_file.txt
+- |
+        vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+--host 0.0.0.0 \
+--port 8200 \
+--block-size 64 \
+--prefix-caching-hash-algo sha256_cbor_64bit \
+--enforce-eager \
+--kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"}' \
+--kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://gaie-kv-events-epp.llm-d.svc.cluster.local:5557\",\"topic\":\"kv@\${POD_IP}REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL\"}"
+EOF
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS=$LLMDBENCH_CONTROL_WORK_DIR/command_as_file.txt
+cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_values.yaml
+    modelCommand: ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND}
+    args:
+      $(add_command_line_options ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS})
+    env:
+EOF
+cat $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_values.yaml

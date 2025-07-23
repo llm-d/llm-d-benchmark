@@ -32,10 +32,16 @@ param1: a
 param2: REPLACE_ENV_LLMDBENCH_UNITEST_RENDER_PARAM_WITHOUT_DEFAULT
 param3: REPLACE_ENV_LLMDBENCH_UNITEST_RENDER_PARAM_WITH_DEFAULT++++default=z
 EOF
+cat $LLMDBENCH_MAIN_DIR/workload/profiles/nop/unitest.yaml.in
+echo "-----------"
 export LLMDBENCH_UNITEST_RENDER_PARAM_WITHOUT_DEFAULT=b
+echo "export LLMDBENCH_UNITEST_RENDER_PARAM_WITHOUT_DEFAULT=b"
 render_workload_templates unitest
 cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/unitest.yaml
+echo "-----------"
 export LLMDBENCH_UNITEST_RENDER_PARAM_WITH_DEFAULT=c
+echo "export LLMDBENCH_UNITEST_RENDER_PARAM_WITH_DEFAULT=c"
 render_workload_templates unitest
 cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/unitest.yaml
+echo "-----------"
 rm -rf $LLMDBENCH_MAIN_DIR/workload/profiles/nop/unitest.yaml.in
