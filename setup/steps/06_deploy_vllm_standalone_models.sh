@@ -53,6 +53,8 @@ spec:
           value: "${LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT}"
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG
           value: "{}"
+        - name: VLLM_LOGGING_LEVEL
+          value: "${LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL}"
         - name: HF_HOME
           value: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
         - name: HUGGING_FACE_HUB_TOKEN
