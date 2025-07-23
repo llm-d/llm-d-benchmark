@@ -3,10 +3,18 @@ source "${LLMDBENCH_CONTROL_DIR}/env.sh"
 
 main() {
   announce "🔍 Checking if \"${LLMDBENCH_VLLM_COMMON_NAMESPACE}\" is prepared."
-  check_storage_class_and_affinity
+
+  check_storage_class
   if [[ $? -ne 0 ]]
   then
-    announce "❌ Failed to check storage class and affinity"
+    announce "❌ Failed to check storage class"
+    exit 1
+  fi
+
+  check_affinity
+  if [[ $? -ne 0 ]]
+  then
+    announce "❌ Failed to check affinity"
     exit 1
   fi
 
@@ -45,8 +53,6 @@ main() {
       "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
       "${LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT}"
 
-    announce "✅ llm-d-deployer prepared namespace"
-
     if [[ "${LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT}" -eq 1 ]]; then
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} \
         adm policy add-scc-to-user anyuid \
@@ -63,6 +69,36 @@ main() {
 
     announce "✅ Namespace \"${LLMDBENCH_VLLM_COMMON_NAMESPACE}\" prepared."
   done
+
+  announce "🚚 Creating configmap with contents of all files under workload/preprocesses ..."
+
+  # create prepropcessors configmap
+  configmapfile=$LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_configmap_preprocesses.yaml
+  cat <<EOF > $configmapfile
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-d-benchmark-preprocesses
+  namespace: ${LLMDBENCH_VLLM_COMMON_NAMESPACE}
+data:
+EOF
+
+  file_paths=()
+  while IFS= read -r -d '' path; do
+    file_paths+=("$path")
+  done < <(find ${LLMDBENCH_MAIN_DIR}/workload/preprocesses -type f -print0)
+
+  for path in "${file_paths[@]}"; do
+    filename=$(echo ${path} | rev | cut -d '/' -f1 | rev)
+    echo "  $filename: |" >> "$configmapfile"
+    while IFS= read -r line || [ -n "$line" ]; do
+      echo "    $line" >> "$configmapfile"
+    done < "$path"
+  done
+
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $configmapfile" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
+  announce "✅ Configmap \"${configmapfile}\" created."
 
   return 0
 }
