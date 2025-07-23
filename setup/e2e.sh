@@ -125,10 +125,10 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
         -r=*|--release=*)
-        export LLMDBENCH_CLIOVERRIDE_VLLM_DEPLOYER_RELEASE=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_MODELSERVICE_RELEASE=$(echo $key | cut -d '=' -f 2)
         ;;
         -r|--release)
-        export LLMDBENCH_CLIOVERRIDE_VLLM_DEPLOYER_RELEASE="$2"
+        export LLMDBENCH_CLIOVERRIDE_VLLM_MODELSERVICE_RELEASE="$2"
         shift
         ;;
         -a=*|--affinity=*)

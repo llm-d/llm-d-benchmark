@@ -30,9 +30,9 @@
 ################################################################################
 
 # Model to test
-#model=RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic
+model=RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic
 #model=meta-llama/Llama-3.3-70B-Instruct
-model=Qwen/Qwen1.5-MoE-A2.7B-Chat
+#model=Qwen/Qwen1.5-MoE-A2.7B-Chat
 
 # Base scenario file to use, located in scenarios/ of this repository
 base_scenario=ocp_H100_modelservice_PD_base
@@ -57,7 +57,7 @@ workload_profile=random_concurrent_30k-300_ISL-OSL
 workload_array=("1,10" "4,40" "8,80" "16,160" "32,320" "64,640" "128,1280" "256,2560" "512,5120" "1024,10240")
 
 export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=benchmark-hf-token
-export LLMDBENCH_VLLM_DEPLOYER_RELEASE=benchmark-release
+export LLMDBENCH_VLLM_MODELSERVICE_RELEASE=benchmark-release
 export LLMDBENCH_VLLM_COMMON_NAMESPACE=benchmark-test
 
 # If the run fails partly through, skip all runs prior to this ID.
