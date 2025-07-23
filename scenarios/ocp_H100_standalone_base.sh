@@ -1,4 +1,4 @@
-# This is the companion to ocp_H200_deployer_PD.sh, for comparing bare vLLM
+# This is the companion to ocp_H200_modelservice_PD.sh, for comparing bare vLLM
 # to disaggregated heterogeneous configurations.
 #
 # All parameters not defined here or exported externally will be the default
