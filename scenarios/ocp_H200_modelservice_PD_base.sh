@@ -1,0 +1,34 @@
+# All parameters not defined here or exported externally will be the default
+# values found in setup/env.sh
+
+# Affinity to select node with appropriate GPU
+export LLMDBENCH_VLLM_COMMON_AFFINITY=gpu.nvidia.com/model:H200
+
+# Common parameters across prefill and decode pods
+export LLMDBENCH_VLLM_COMMON_CPU_NR=32
+export LLMDBENCH_VLLM_COMMON_CPU_MEM=128Gi
+export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=32768
+export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=128
+
+# Prefill parameters
+export LLMDBENCH_VLLM_DEPLOYER_PREFILL_REPLICAS=__p_rep__
+export LLMDBENCH_VLLM_DEPLOYER_PREFILL_ACCELERATOR_NR=__p_tp__
+export LLMDBENCH_VLLM_DEPLOYER_PREFILL_EXTRA_ARGS="[--tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_DEPLOYER_PREFILL_ACCELERATOR_NR____--disable-log-requests____--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN____--block-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE]"
+
+# Decode parameters
+export LLMDBENCH_VLLM_DEPLOYER_DECODE_REPLICAS=__d_rep__
+export LLMDBENCH_VLLM_DEPLOYER_DECODE_ACCELERATOR_NR=__d_tp__
+export LLMDBENCH_VLLM_DEPLOYER_DECODE_EXTRA_ARGS="[--tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_DEPLOYER_DECODE_ACCELERATOR_NR____--disable-log-requests____--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN____--block-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE]"
+
+# EPP parameters
+export LLMDBENCH_VLLM_DEPLOYER_EPP_PD_ENABLED=true
+export LLMDBENCH_VLLM_DEPLOYER_EPP_PD_PROMPT_LEN_THRESHOLD=1
+export LLMDBENCH_VLLM_DEPLOYER_EPP_PREFILL_ENABLE_LOAD_AWARE_SCORER=true
+export LLMDBENCH_VLLM_DEPLOYER_EPP_DECODE_ENABLE_LOAD_AWARE_SCORER=true
+
+# Timeout for benchmark operations
+export LLMDBENCH_CONTROL_WAIT_TIMEOUT=900000
+export LLMDBENCH_HARNESS_WAIT_TIMEOUT=900000
+
+# Local directory to copy benchmark runtime files and results
+export LLMDBENCH_CONTROL_WORK_DIR=~/benchmark_run_pd__suffix__
