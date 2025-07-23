@@ -182,7 +182,7 @@ export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=1
 
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 extract_environment
-echo $
+echo
 $LLMDBENCH_MAIN_DIR/setup/standup.sh
 ec=$?
 if [[ $ec -ne 0 ]]; then
