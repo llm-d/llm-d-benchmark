@@ -10,23 +10,21 @@ fi
 rm -f ~/.llmdbench_dependencies_checked
 
 # common deps
-tools="gsed python3 curl git oc kubectl helm helmfile kustomize rsync make skopeo jq yq"
+tools="sed python3 curl git oc kubectl helm helmfile kustomize rsync make skopeo jq yq openssl"
 
 # get package manager
-if command -v apt &> /dev/null; then
+if [ "$target_os" = "mac" ]; then
+    PKG_MGR="brew install"
+elif command -v apt &> /dev/null; then
     PKG_MGR="sudo apt install -y"
-    tools=$(echo $tools | sed 's/gsed /sed openssl /g')
 elif command -v apt-get &> /dev/null; then
     PKG_MGR="sudo apt-get install -y"
 elif command -v brew &> /dev/null; then
     PKG_MGR="brew install"
-    tools=$(echo $tools | sed 's/ oc / openshift-cli openssl /g')
 elif command -v yum &> /dev/null; then
     PKG_MGR="sudo yum install -y"
-    tools=$(echo $tools | sed 's/gsed /sed openssl /g')
 elif command -v dnf &> /dev/null; then
     PKG_MGR="sudo dnf install -y"
-    tools=$(echo $tools | sed 's/gsed /sed openssl /g')
 else
     echo "No supported package manager found (apt, apt-get, brew, yum, dnf)"
     exit 1
@@ -76,6 +74,14 @@ function install_oc_linux {
     sudo chmod +x /usr/local/bin/kubectl
     rm openshift-client-*.tar.gz
     set +euo pipefail
+}
+
+function install_oc_mac {
+    brew install openshift-cli
+}
+
+function install_sed_mac {
+    brew install gsed
 }
 
 function install_kustomize_linux {
