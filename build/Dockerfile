@@ -85,11 +85,11 @@ COPY analysis/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-an
 COPY analysis/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
 
 RUN echo "#!/usr/bin/env bash" > /usr/local/bin/llm-d-benchmark.sh; echo -e "\
-
+\
 if [[ ! -z \$1 ]]; then\n\
   export LLMDBENCH_RUN_EXPERIMENT_HARNESS=\$(find /usr/local/bin | grep \${1}.*-llm-d-benchmark | rev | cut -d '/' -f 1 | rev)\n\
   export LLMDBENCH_RUN_EXPERIMENT_ANALYZER=\$(find /usr/local/bin | grep \${1}.*-analyze_results | rev | cut -d '/' -f 1 | rev)\n\
-  export LLMDBENCH_HARNESS_GIT_REPO=\$(cat /workspace/repos.txt | grep ^\${1}: | cut -d \":\" -f 2,3 | tr -d ' ')\n\
+  export LLMDBENCH_HARNESS_GIT_REPO=\${LLMDBENCH_HARNESS_GIT_REPO-\$(cat /workspace/repos.txt | grep ^\${1}: | cut -d \":\" -f 2,3 | tr -d ' ')}\n\
   export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR=/requests/\$(echo \$LLMDBENCH_RUN_EXPERIMENT_HARNESS | sed \"s^-llm-d-benchmark^^g\" | cut -d '.' -f 1)_\${LLMDBENCH_RUN_EXPERIMENT_ID}_\${LLMDBENCH_HARNESS_STACK_NAME}\n\
 fi\n\
 if [[ ! -z \$2 ]]; then\n\
@@ -120,6 +120,23 @@ if [[ -d \$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR ]]; then \n\
     pushd /workspace/\$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR\n\
   fi\n\
   git checkout \$LLMDBENCH_HARNESS_GIT_BRANCH\n\
+  case \${LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR} in\n\
+    fmperf*)\n\
+      pip install --no-cache-dir -r requirements.txt && pip install -e .\n\
+      ;;\n\
+    inference-perf*)\n\
+      pip install -e .\n\
+      ;;\n\
+    vllm-benchmark*)\n\
+      VLLM_USE_PRECOMPILED=1 pip install -e .\n\
+      pushd ..\n\
+      mv -f vllm vllm-benchmark\n\
+      popd\n\
+      ;;\n\
+    guidellm*)\n\
+      pip install -e .\n\
+      ;;\n\
+  esac\n\
   popd \n\
 fi\n\
 if [[ ! -d /workspace/vllm-benchmark ]]; then\n\

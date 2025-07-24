@@ -59,46 +59,11 @@ jobs:
           chmod 600 ~/.kube/config
         shell: bash
 
-      - name: Install yq
-        run: |
-          export VERSION=v4.45.4
-          export BINARY=yq_linux_amd64
-          curl -L https://github.com/mikefarah/yq/releases/download/${VERSION}/${BINARY} -o ${BINARY}
-          chmod +x ${BINARY}
-          sudo cp -f $(which yq) || sudo cp -f ${BINARY} /usr/local/bin/yq
-        shell: bash
-
-      - name: Install make, skopeo, curl, jq
+      - name: Run install_deps.sh
         run: |
           sudo apt-get update
-          sudo apt-get install -y make skopeo curl jq rsync
+          ./setup/install_deps.sh
         shell: bash
-
-      - name: Install helmfile
-        run: |
-          export VERSION=v0.144.0
-          export BINARY=helmfile_linux_amd64
-          curl -L https://github.com/roboll/helmfile/releases/download/$VERSION/helmfile_darwin_arm64 -o ${BINARY}
-          chmod +x ${BINARY}
-          sudo cp -f ${BINARY} /usr/local/bin/helmfile
-        shell: bash
-
-      - name: Install oc
-        run: |
-          OC_FILE_NAME=openshift-client-$(uname -s | sed -e "s/Linux/linux/g" -e "s/Darwin/apple-darwin/g")$(echo "-$(uname -m)" | sed -e 's/-x86_64//g' -e 's/-amd64//g' -e 's/aarch64/arm64-rhel9/g').tar.gz
-          curl https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/$OC_FILE_NAME  -o $OC_FILE_NAME
-          tar xzf $OC_FILE_NAME
-          sudo mv oc /usr/local/bin/
-          sudo mv kubectl /usr/local/bin/
-          sudo chmod +x /usr/local/bin/oc
-          sudo chmod +x /usr/local/bin/kubectl
-          rm openshift-client-*.tar.gz
-        shell: bash
-
-      - name: Install Kustomize
-        uses: multani/action-setup-kustomize@v1
-        with:
-          version: 5.6.0
 
       - name: Populate python deps
         run: |
@@ -111,35 +76,36 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
 
-      - name: Install Helm
-        run: |
-          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 && chmod 700 get_helm.sh && ./get_helm.sh && helm plugin install https://github.com/databus23/helm-diff
-        shell: bash
+      - name: Cleanup target cloud (modelservice)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/teardown.sh -c cicd -t modelservice -d
 
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c cicd -t standalone
+        run: ./setup/teardown.sh -c cicd -t standalone -d
 
-      - name: Cleanup target cloud (deployer)
+      - name: Standup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c cicd -t deployer -d
+        run: ./setup/standup.sh -c cicd -t standalone
 
-      - name: Standup (deployer)
+      - name: Run benchmark (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/standup.sh -c cicd -t deployer
+        run: ./setup/run.sh -c cicd -t standalone
 
-      - name: Run benchmark
+      - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c cicd -t deployer
+        run: ./setup/teardown.sh -c cicd -t standalone -d
 
-      - name: Cleanup target cloud (deployer)
+      - name: E2E target cloud (modelservice)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c cicd -t deployer -d
+        run: ./setup/e2e.sh -c cicd -t modelservice --deep
+
 
       - name: Install AWS CLI
         run: |
