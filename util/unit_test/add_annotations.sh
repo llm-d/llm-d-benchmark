@@ -32,35 +32,11 @@ export LLMDBENCH_VLLM_STANDALONE_ARGS="REPLACE_ENV_LLMDBENCH_VLLM_STANDALONE_PRE
 export LLMDBENCH_CURRENT_STEP=06
 export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE=1
 export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE=0
+export LLMDBENCH_VLLM_COMMON_ANNOTATIONS="deployed-by:$(id -un),modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute"
 cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment.yaml
-        imagePullPolicy: Always
-        command:
-        - /bin/bash
-        - "-c"
-        args:
-        $(add_command_line_options ${LLMDBENCH_VLLM_STANDALONE_ARGS})
-        env:
-EOF
-cat $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment.yaml
-echo "-----------"
-echo
-echo
-cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/command_as_file.txt
-vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
---tensor-parallel-size 8 \
---disable-log-requests \
---max-model-len 25000 \
---block-size 128
-EOF
-export LLMDBENCH_VLLM_STANDALONE_ARGS=$LLMDBENCH_CONTROL_WORK_DIR/command_as_file.txt
-cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment.yaml
-        imagePullPolicy: Always
-        command:
-        - /bin/bash
-        - "-c"
-        args:
-        $(add_command_line_options ${LLMDBENCH_VLLM_STANDALONE_ARGS})
-        env:
+      annotations:
+        $(add_annotations)
+    spec:
 EOF
 cat $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment.yaml
 echo "-----------"
@@ -69,34 +45,10 @@ echo
 export LLMDBENCH_CURRENT_STEP=08
 export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE=1
 export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE=0
+export LLMDBENCH_VLLM_COMMON_ANNOTATIONS="deployed-by:$(id -un),modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute"
 cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_values.yaml
-    modelCommand: ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND}
-    args:
-      $(add_command_line_options ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS})
-    env:
-EOF
-cat $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_values.yaml
-echo "-----------"
-echo
-echo
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND=custom
-
-cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/command_as_file.txt
-vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
---host 0.0.0.0 \
---port 8200 \
---block-size 64 \
---prefix-caching-hash-algo sha256_cbor_64bit \
---enforce-eager \
---kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"}' \
---kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://gaie-kv-events-epp.llm-d.svc.cluster.local:5557\",\"topic\":\"kv@\${POD_IP}REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL\"}"
-EOF
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS=$LLMDBENCH_CONTROL_WORK_DIR/command_as_file.txt
-cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_values.yaml
-    modelCommand: ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND}
-    $(add_command $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND)
-    args:
-      $(add_command_line_options ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS})
-    env:
+  annotations:
+      $(add_annotations)
+  containers:
 EOF
 cat $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_values.yaml

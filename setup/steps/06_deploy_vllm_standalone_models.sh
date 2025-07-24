@@ -59,10 +59,10 @@ spec:
         - /bin/bash
         - "-c"
         args:
-        $(add_command_line_options ${LLMDBENCH_VLLM_STANDALONE_ARGS} $model)
+        $(add_command_line_options ${LLMDBENCH_VLLM_STANDALONE_ARGS})
         env:
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL
-          value: "$(model_attribute $model model)"
+          value: "${LLMDBENCH_DEPLOY_CURRENT_MODEL}"
         - name: LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT
           value: "${LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT}"
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG

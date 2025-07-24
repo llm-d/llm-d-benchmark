@@ -225,11 +225,11 @@ function add_annotations {
   done
 
   if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
-    local spacen="        "
+    local spacen=$(printf '%*s' 8 '')
   fi
 
   if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-    local spacen="      "
+    local spacen=$(printf '%*s' 6 '')
   fi
 
   echo -e ${output} | $LLMDBENCH_CONTROL_SCMD -e 's^REPLACEFIRSTNEWLINEREPLACE_NEWLINEREPLACE_SPACESN^^' -e 's^REPLACE_NEWLINE^\n^g' -e "s^REPLACE_SPACESN^$spacen^g" -e '/^*$/d'
@@ -241,7 +241,7 @@ function add_additional_env_to_yaml {
   local model=${2:-none}
 
   if [[ -f ${object_to_render} ]]; then
-    render_template $object_to_render none ${model} 1
+    render_template $object_to_render none 0 1
   else
     local output="REPLACEFIRSTNEWLINE"
     for envvar in ${LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML//,/ }; do
@@ -249,16 +249,16 @@ function add_additional_env_to_yaml {
     done
 
     if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
-      local spacen="        "
-      local spacev="          "
+      local spacen=$(printf '%*s' 8 '')
+      local spacev=$(printf '%*s' 10 '')
     fi
 
     if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-      local spacen="      "
-      local spacev="        "
+      local spacen=$(printf '%*s' 6 '')
+      local spacev=$(printf '%*s' 8 '')
     fi
 
-    echo -e ${output} | $LLMDBENCH_CONTROL_SCMD -e 's^REPLACEFIRSTNEWLINEREPLACE_NEWLINEREPLACE_SPACESN^^' -e 's^REPLACE_NEWLINE^\n^g' -e "s^REPLACE_SPACESN^$spacen^g"  -e "s^REPLACE_SPACESV^$spacev^g"  -e '/^*$/d'
+    echo -e ${output} | $LLMDBENCH_CONTROL_SCMD -e 's^REPLACEFIRSTNEWLINEREPLACE_NEWLINEREPLACE_SPACESN^^' -e 's^REPLACE_NEWLINE^\n^g' -e "s^REPLACE_SPACESN^$spacen^g"  -e "s^REPLACE_SPACESV^$spacev^g" -e "s^REPLACE_SPACESC^$spacev^g"  -e '/^*$/d'
   fi
 }
 export -f add_additional_env_to_yaml
@@ -270,20 +270,12 @@ function render_string {
   echo $string | grep -q "\["
   if [[ $? -eq 0 ]]; then
 
-    grep -q 's^____^", "^g' $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
-    if [[ $? -ne 0 ]]; then
-      echo "s^____^\", \"^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
-    fi
+    echo "s^____--^\"\nREPLACE_SPACESC- \"--^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+      echo "s^____^ ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
 
-    grep -q 's^\\\[^- "^g' $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
-    if [[ $? -ne 0 ]]; then
       echo "s^\[^- \"^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
-    fi
 
-    grep -q 's^\\\]^" ' $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
-    if [[ $? -ne 0 ]]; then
       echo "s^\]^\" ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
-    fi
   else
     echo "s^____^ ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
@@ -319,7 +311,7 @@ function render_template {
   local template_file_path=$1
   local output_file_path=${2:-"none"}
   local cmdline_mode=${3:-0}
-
+  local env_var_mode=${4:-0}
   rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   touch $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
 
@@ -328,40 +320,77 @@ function render_template {
   done
 
   if [[ $cmdline_mode -eq 1 ]]; then
-  if [[ $LLMDBENCH_CURRENT_STEP == "06" ]]; then
+    if [[ $LLMDBENCH_CURRENT_STEP == "06" ]]; then
+      echo "  - |"
+      local spacec=$(printf '%*s' 12 '')
+    fi
+
+    if [[ $LLMDBENCH_CURRENT_STEP == "08" ]]; then
       echo "- |"
-      local spacec="          "
-  fi
-  if [[ $LLMDBENCH_CURRENT_STEP == "08" ]]; then
-    local spacec="        "
-  fi
+      local spacec=$(printf '%*s' 8 '')
+    fi
+    echo "s^REPLACE_SPACESC^$spacec^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     echo "s^ --^\\n$spacec--^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     echo "s^\\n^ \\\\\n^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
+
+  if [[ $env_var_mode -eq 1 ]]; then
+    if [[ $LLMDBENCH_CURRENT_STEP == "06" ]]; then
+      local spacec=$(printf '%*s' 8 '')
+    fi
+    if [[ $LLMDBENCH_CURRENT_STEP == "08" ]]; then
+      local spacec=$(printf '%*s' 6 '')
+    fi
+    echo "s^REPLACE_SPACESC^$spacec^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  fi
+
   if [[ $output_file_path != "none" ]]; then
     cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands > $output_file_path
   fi
-  cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+
+  if [[ $cmdline_mode -eq 1 ]]; then
+    echo "REPLACE_SPACESC$(cat ${template_file_path})" | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  fi
+
+  if [[ $env_var_mode -eq 1 ]]; then
+    echo "$(cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -e 's^\^^REPLACE_SPACESC^g')" | $LLMDBENCH_CONTROL_SCMD -e '1s^REPLACE_SPACESC^^' | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  fi
 }
 export -f render_template
+
+function add_command {
+  local model_command=$1
+  if [[ $model_command == "custom" ]]; then
+    echo "command:"
+    echo "      - /bin/sh"
+    echo "      - '-c'"
+  fi
+}
+export -f add_command
 
 function add_command_line_options {
   local object_to_render=${1}
 
   if [[ $LLMDBENCH_CURRENT_STEP == "06" ]]; then
-      local spacec="          "
+      local preamble=REPLACE_SPACESC
+      local spacec=$(printf '%*s' 12 '')
   fi
 
   if [[ $LLMDBENCH_CURRENT_STEP == "08" ]]; then
-    local spacec=" "
+    local preamble=
+    local spacec=$(printf '%*s' 6 '')
   fi
 
   if [[ -f ${object_to_render} ]]; then
     render_template $object_to_render none 1
   else
+    if [[ $LLMDBENCH_CURRENT_STEP == "06" ]]; then
+      echo "  - |"
+    fi
     rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     touch $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
-    echo "XXXX$(render_string $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^;^;\n^g" -e "s^ --^\nXXXX--^g" -e "s^\n^ \\\\\n^g" |  $LLMDBENCH_CONTROL_SCMD -e "s^\^ ^XXXX^g" -e "s^XXXX^$spacec^g"
+
+    echo "$preamble$(render_string $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^;^;\n^g" -e "s^ --^\nREPLACE_SPACESC--^g" -e "s^\n^ \\\\\n^g" |  $LLMDBENCH_CONTROL_SCMD -e "s^\^ ^REPLACE_SPACESC^g" -e "s^REPLACE_SPACESC^$spacec^g"
   fi
 }
 export -f add_command_line_options

@@ -24,7 +24,7 @@ export LLMDBENCH_CONTROL_DRY_RUN=${LLMDBENCH_CONTROL_DRY_RUN:-0}
 export LLMDBENCH_CONTROL_VERBOSE=${LLMDBENCH_CONTROL_VERBOSE:-0}
 export LLMDBENCH_DEPLOY_SCENARIO=
 export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=
-
+export LLMDBENCH_CURRENT_STEP=
 
 function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -t/--type [list of environment types targeted for cleaning (default=$LLMDBENCH_DEPLOY_METHODS)) \n \
