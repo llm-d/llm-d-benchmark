@@ -19,6 +19,11 @@ from pathlib import Path
 
 import kubernetes
 from kubernetes import client
+from kubernetes_asyncio import client as k8s_async_client
+from kubernetes_asyncio import config as k8s_async_config
+from kubernetes_asyncio import watch as k8s_async_watch
+
+import asyncio
 
 from fmperf.Cluster import Cluster
 from fmperf import LMBenchmarkWorkload
@@ -71,63 +76,48 @@ def update_workload_config(workload_spec, env_vars):
 
     return workload_spec
 
-def wait_for_evaluation_job(cluster, job_name, namespace, capture_log_file, data_dir : str, timeout=7200):
+async def wait_for_evaluation_job(cluster, job_name, namespace, capture_log_file, data_dir : str, timeout=7200):
     """Wait for the evaluation job to complete."""
     logger.info(f"Waiting for evaluation job {job_name} to complete...")
-    start_time = time.time()
-    k8s_client = client.BatchV1Api()
 
-    while True:
-        if time.time() - start_time > timeout:
-            logger.error(f"Timeout waiting for evaluation job after {timeout} seconds")
-            return False
+    # use async config loading
+    await k8s_async_config.load_kube_config()
+    api_client = k8s_async_client.ApiClient()
+    batch_v1_api = k8s_async_client.BatchV1Api(api_client)
 
-        try:
-            # Try to get the job
-            job = k8s_client.read_namespaced_job(name=job_name, namespace=namespace)
+    try:
+        w = k8s_async_watch.Watch()
+        # sets up connection with kubernetes, async with manages the streams lifecycle
+        async with w.stream(
+            func=batch_v1_api.list_namespaced_job,
+            namespace=namespace,
+            field_selector=f"metadata.name={job_name}",
+            timeout_seconds=timeout  # replaces the manual timeout check
+        ) as stream:
+            async for event in stream: # replaces time.wait since we grab events as they come from stream sasynchronous
+                job_status = event['object'].status
 
-            # if job finished then get logs regardless
-            if job.status.succeeded or job.status.failed:
-                # saved to /requests/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}/eval-pod-log.log
-                logs = capture_pod_logs(job_name, namespace, capture_log_file)
-            if job.status.succeeded:
-                logger.info(f"Evaluation job {job_name} completed successfully")
-                if move_data_result(capture_log_file, data_dir):
-                    logger.info(f"Data moved to {data_dir}")
+                if job_status.succeded or job_status.failed: # save logs in both scenarios
+                    logs = capture_pod_logs(job_name, namespace, capture_log_file)
+                    if not move_data_result(capture_log_file, data_dir):
+                        return False
+                    
+                if job_status.succeeded:
+                    logger.info(f"Evaluation job {job_name} completed successfully.")
                     return True
-                else:
-                    logger.error(f"Failed to move data to {data_dir}")
+
+                elif job_status.failed:
+                    logger.error(f"Evaluation job {job_name} failed")
                     return False
-            if job.status.failed:
-                logger.error(f"Evaluation job {job_name} failed")
-                return False
-
-        except client.exceptions.ApiException as e:
-            if e.status == 404:
-                # Job is gone - check if it was deleted by the code (which would mean success)
-                # or if it failed
-                try:
-                    # Try to get the job one more time to see if it was in a successful state
-                    job = k8s_client.read_namespaced_job(name=job_name, namespace=namespace)
-                    if job.status.succeeded:
-                        logger.info(f"Job {job_name} completed successfully before deletion")
-                        return True
-                except client.exceptions.ApiException:
-                    # If we can't get the job at all, it might have failed
-                    logger.error(f"Job {job_name} disappeared without completing successfully")
-                    return False
-            else:
-                logger.error(f"Error checking job status: {str(e)}")
-                return False
-
-        # Wait before checking again
-        time.sleep(30)
-        remaining = int(timeout - (time.time() - start_time))
-        logger.info(f"Still waiting for evaluation job... ({remaining} seconds remaining)")
+                
+    except asyncio.TimeoutError:
+        logger.error(f"Timeout waiting for evaluation job {job_name} after {timeout} seconds.")
+        return False
+    finally:
+        await api_client.close()
 
 
-
-def capture_pod_logs(job_name, namespace, output_file : str):
+async def capture_pod_logs(job_name, namespace, output_file : str):
     """Capture logs from pods created by a job
        Not specific to fmperf, as the pod logs are based on the job,
        rather than fmperf specifically
