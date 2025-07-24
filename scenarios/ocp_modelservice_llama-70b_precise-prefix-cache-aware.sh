@@ -6,12 +6,11 @@ export LLMDBENCH_VLLM_COMMON_CPU_MEM=64Gi
 export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=250000
 export LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR=4
 export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
-export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=250000
 
-export LLMDBENCH_LLMD_IMAGE_REGISTRY=quay.io
-export LLMDBENCH_LLMD_IMAGE_REPO=wseaton
-export LLMDBENCH_LLMD_IMAGE_NAME=vllm
-export LLMDBENCH_LLMD_IMAGE_TAG=llmd-multistage-6
+#export LLMDBENCH_LLMD_IMAGE_REGISTRY=quay.io
+#export LLMDBENCH_LLMD_IMAGE_REPO=wseaton
+#export LLMDBENCH_LLMD_IMAGE_NAME=vllm
+#export LLMDBENCH_LLMD_IMAGE_TAG=llmd-multistage-6
 
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR=1
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=4
@@ -30,9 +29,9 @@ vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR \
 --max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
 --prefix-caching-hash-algo sha256_cbor_64bit \
---enforce-eager \
 --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"}' \
---kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://gaie-kv-events-epp.llm-d.svc.cluster.local:5557\",\"topic\":\"kv@\${POD_IP}@QREPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL\"}"
+--kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://gaie-kv-events-epp.llm-d.svc.cluster.local:5557\",\"topic\":\"kv@\${POD_IP}@QREPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL\"}" \
+--enforce-eager
 EOF
 
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
@@ -52,4 +51,6 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
   value: "5557"
 - name: VLLM_LOGGING_LEVEL
   value: DEBUG
+- name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+  value: "1"
 EOF

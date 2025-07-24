@@ -269,13 +269,18 @@ function render_string {
 
   echo $string | grep -q "\["
   if [[ $? -eq 0 ]]; then
-
-    echo "s^____--^\"\nREPLACE_SPACESC- \"--^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    if [[ $LLMDBENCH_CURRENT_STEP == "06" ]]; then
+      echo "s^____--^\"\nREPLACE_SPACESC- \"--^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
       echo "s^____^ ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
-
       echo "s^\[^- \"^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
-
       echo "s^\]^\" ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    fi
+    if [[ $LLMDBENCH_CURRENT_STEP == "08" ]]; then
+      echo "s^____--^\"\nREPLACE_SPACESC- \"--^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+      echo "s^____^\"\nREPLACE_SPACESC- \"^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+      echo "s^\[^- \"^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+      echo "s^\]^\" ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    fi
   else
     echo "s^____^ ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi

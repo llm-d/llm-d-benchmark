@@ -62,6 +62,7 @@ cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment.
         $(add_command_line_options ${LLMDBENCH_VLLM_STANDALONE_ARGS})
         env:
 EOF
+rm -rf $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
 cat $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_a_deployment.yaml
 echo "-----------"
 echo
@@ -75,12 +76,13 @@ cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_values.yaml
       $(add_command_line_options ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS})
     env:
 EOF
+rm -rf $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
 cat $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_values.yaml
 echo "-----------"
 echo
 echo
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND=custom
-
+rm -rf $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
 cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/command_as_file.txt
 vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --host 0.0.0.0 \
