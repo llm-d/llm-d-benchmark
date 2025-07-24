@@ -26,7 +26,7 @@ export LLMDBENCH_CONTROL_DRY_RUN=${LLMDBENCH_CONTROL_DRY_RUN:-0}
 export LLMDBENCH_CONTROL_VERBOSE=${LLMDBENCH_CONTROL_VERBOSE:-0}
 export LLMDBENCH_DEPLOY_SCENARIO=
 export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=
-LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name "*.sh" | grep -v 11_ | sort | rev | cut -d '/' -f 1 | rev)
+LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name "*.sh" -o -name "*.py" | grep -v 11_ | sort | rev | cut -d '/' -f 1 | rev)
 
 function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e 's/ /,/g') \n \
@@ -153,7 +153,15 @@ run_step() {
     if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
       echo -e "[DRY RUN] $script_path\n"
     fi
-    source $script_path
+
+    if [[ $script_path == *.sh ]]; then
+      source $script_path
+    elif [[ $script_path == *.py ]]; then 
+      python $script_path
+    else
+      announce "ERROR: Unsupported script type for \"$script_path\""
+    fi
+
     echo
   else
     announce "ERROR: unable to run step \"${script_name}\""
