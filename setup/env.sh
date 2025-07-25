@@ -129,7 +129,6 @@ export LLMDBENCH_HARNESS_PVC_SIZE="${LLMDBENCH_HARNESS_PVC_SIZE:-20Gi}"
 export LLMDBENCH_HARNESS_CONTAINER_IMAGE=${LLMDBENCH_HARNESS_CONTAINER_IMAGE:-lmcache/lmcache-benchmark:main}
 export LLMDBENCH_HARNESS_SKIP_RUN=${LLMDBENCH_HARNESS_SKIP_RUN:-}
 
-export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME:-llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher}
 export LLMDBENCH_RUN_EXPERIMENT_ID=${LLMDBENCH_RUN_EXPERIMENT_ID:-$(date +%s)}
 export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX=${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX:-/requests}
 export LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY="${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY:-0}"
@@ -273,15 +272,14 @@ overridevarlist=$(env | grep _CLIOVERRIDE_ | cut -d '=' -f 1 || true)
 if [[ -n "$overridevarlist" ]]; then
   for overridevar in $overridevarlist; do
     actualvar=$(echo "$overridevar" | sed 's/_CLIOVERRIDE//g')
-
     if [[ -n "${!overridevar:-}" ]]; then
       export $actualvar=${!overridevar}
-      if [[ "${LLMDBENCH_CONTROL_VERBOSE:-0}" -eq 1 && "${LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED:-0}" -eq 0 ]]; then
+      if [[ ${LLMDBENCH_CONTROL_VERBOSE} -eq 1 && ${LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED} -eq 0 ]]; then
         echo "Environment variable $actualvar was overridden by command line options"
       fi
     fi
   done
-
+  echo
   export LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED=1
 fi
 

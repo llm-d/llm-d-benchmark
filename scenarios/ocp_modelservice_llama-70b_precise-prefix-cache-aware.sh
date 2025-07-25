@@ -3,8 +3,7 @@ export LLMDBENCH_DEPLOY_MODEL_LIST=llama-70b
 export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
 export LLMDBENCH_VLLM_COMMON_CPU_NR=16
 export LLMDBENCH_VLLM_COMMON_CPU_MEM=64Gi
-export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=250000
-export LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR=4
+export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
 export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
 
 export LLMDBENCH_LLMD_IMAGE_REGISTRY=quay.io
@@ -14,22 +13,22 @@ export LLMDBENCH_LLMD_IMAGE_TAG=llmd-multistage-6
 
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=4
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=4
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_INFERENCE_PORT=8200
 export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS=default
 
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
-vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --host 0.0.0.0 \
 --port REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_INFERENCE_PORT \
 --block-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE \
---tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR \
+--tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR \
 --max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
 --prefix-caching-hash-algo sha256_cbor_64bit \
 --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"}' \
---kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://gaie-kv-events-epp.llm-d.svc.cluster.local:5557\",\"topic\":\"kv@\${POD_IP}@QREPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL\"}" \
+--kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://gaie-REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_RELEASE-epp.REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NAMESPACE.svc.cluster.local:5557\",\"topic\":\"kv@\${POD_IP}@QREPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL\"}" \
 --enforce-eager
 EOF
 
@@ -42,8 +41,6 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
     fieldRef:
       apiVersion: v1
       fieldPath: status.podIP
-- name: CUDA_VISIBLE_DEVICES
-  value: "0"
 - name: UCX_TLS
   value: "cuda_ipc,cuda_copy,tcp"
 - name: VLLM_NIXL_SIDE_CHANNEL_PORT
@@ -53,3 +50,6 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
   value: "1"
 EOF
+
+# Local directory to copy benchmark runtime files and results
+#export LLMDBENCH_CONTROL_WORK_DIR=~/benchmark_run_experiment__suffix__

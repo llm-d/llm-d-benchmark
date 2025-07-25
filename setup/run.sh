@@ -136,6 +136,7 @@ while [[ $# -gt 0 ]]; do
         ;;
         -v|--verbose)
         export LLMDBENCH_CLIOVERRIDE_CONTROL_VERBOSE=1
+        export LLMDBENCH_CONTROL_VERBOSE=1
         export LLMDBENCH_ENV_VAR_LIST=$LLMDBENCH_ENV_VAR_LIST" LLMDBENCH_CONTROL_VERBOSE"
         ;;
         -h|--help)
@@ -175,6 +176,9 @@ export LLMDBENCH_CURRENT_STEP=99
 for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
+
+
+    export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher
 
     validate_model_name ${model}
 
@@ -220,6 +224,12 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
             export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r ".status.podIP")
           fi
         fi
+      fi
+
+      if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
+        export LLMDBENCH_HARNESS_STACK_TYPE=mock
+        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=mock
+        export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=1234
       fi
 
       if [[ -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then

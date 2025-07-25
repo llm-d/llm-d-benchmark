@@ -84,14 +84,14 @@ echo
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND=custom
 rm -rf $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
 cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/command_as_file.txt
-vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --host 0.0.0.0 \
 --port 8200 \
 --block-size 64 \
 --prefix-caching-hash-algo sha256_cbor_64bit \
 --enforce-eager \
 --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"}' \
---kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://gaie-kv-events-epp.llm-d.svc.cluster.local:5557\",\"topic\":\"kv@\${POD_IP}REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL\"}"
+--kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://gaie-REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_RELEASE-epp.REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NAMESPACE.svc.cluster.local:5557\",\"topic\":\"kv@\${POD_IP}@QREPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL\"}"
 EOF
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS=$LLMDBENCH_CONTROL_WORK_DIR/command_as_file.txt
 cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/${LLMDBENCH_CURRENT_STEP}_values.yaml
