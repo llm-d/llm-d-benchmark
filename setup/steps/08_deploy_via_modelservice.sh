@@ -28,7 +28,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
 multinode: false
 
 modelArtifacts:
-  uri: "pvc://${LLMDBENCH_VLLM_COMMON_PVC_NAME}/${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}/models/$(model_attribute $model model)"
+  uri: "pvc://${LLMDBENCH_VLLM_COMMON_PVC_NAME}/models/$(model_attribute $model model)"
   size: $LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE
   authSecretName: "llm-d-hf-token"
 
@@ -39,14 +39,13 @@ routing:
     - group: gateway.networking.k8s.io
       kind: Gateway
       name: infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway
-
+  proxy:
+    secure: false
   inferenceModel:
     create: false
-
   inferencePool:
     create: false
     name: gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}
-
   httpRoute:
     create: $(echo $LLMDBENCH_VLLM_MODELSERVICE_ROUTE | $LLMDBENCH_CONTROL_SCMD -e 's/^0/false/' -e 's/1/true/')
 
@@ -64,6 +63,7 @@ decode:
       $(add_annotations)
   containers:
   - name: "vllm"
+    mountModelVolume: true
     image: "$(get_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_NAME} ${LLMDBENCH_LLMD_IMAGE_TAG} 0)"
     modelCommand: ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND}
     $(add_command $LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND)
@@ -107,12 +107,9 @@ decode:
         port: 8200
       failureThreshold: 3
       periodSeconds: 5
-    mountModelVolume: true
     volumeMounts:
     - name: metrics-volume
       mountPath: /.config
-    - name: model-storage
-      mountPath: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
     - name: shm
       mountPath: /dev/shm
     - name: torch-compile-cache
@@ -138,6 +135,7 @@ prefill:
       $(add_annotations)
   containers:
   - name: "vllm"
+    mountModelVolume: true
     image: "$(get_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_NAME} ${LLMDBENCH_LLMD_IMAGE_TAG} 0)"
     modelCommand: ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND}
     $(add_command $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND)
@@ -183,12 +181,9 @@ prefill:
         port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
       failureThreshold: 3
       periodSeconds: 5
-    mountModelVolume: true
     volumeMounts:
     - name: metrics-volume
       mountPath: /.config
-    - name: model-storage
-      mountPath: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
     - name: shm
       mountPath: /dev/shm
     - name: torch-compile-cache

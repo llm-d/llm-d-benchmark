@@ -14,9 +14,9 @@
 # This script will first generate a set of scenarios from a base scenario.
 # Base scenarios are located in the scenarios/ directory of this repository,
 # and end with the suffix "_base.sh". These base scenarios contain placeholder
-# strings for number of prefill and decode replicas, and tensor parallel size.
+# strings for number of replicas, and tensor parallel size.
 # The generated scenarios will match the base scenario name, and have a suffix
-# specifying the configuration for prefill and decode.
+# specifying the configuration for replicas and tensor parallel size.
 
 # These generated scenario files will be deleted and regenerated when this
 # script is executed, so should not be edited by hand. To delete these files
@@ -30,18 +30,17 @@
 ################################################################################
 
 # Model to test
-model=RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic
+#model=RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic
 #model=meta-llama/Llama-3.3-70B-Instruct
-#model=Qwen/Qwen1.5-MoE-A2.7B-Chat
+model=Qwen/Qwen1.5-MoE-A2.7B-Chat
 
 # Base scenario file to use, located in scenarios/ of this repository
-base_scenario=ocp_H100_modelservice_PD_base
-#base_scenario=ocp_H200_modelservice_PD_base
+base_scenario=ocp_H100_standalone_base
+#base_scenario==ocp_H200_standalone_base
 
-# Prefill and decode pod configurations, where each pair is
-# "(number of prefill replicas),(prefill TP size),(number of decode replicas),(decode TP size)"
+# Pod configurations, where each pair is "(number of replicas),(TP size)"
 # DO NOT PUT COMMAS BETWEEN PAIRS!
-pd_conf_array=("6,2,1,4" "4,2,1,8" "8,1,1,8" "4,2,2,4" "4,2,4,2" "2,2,4,4")
+conf_array=("1,1" "1,2" "1,4" "1,8" "2,1" "2,4" "2,8" "4,8")
 
 # Benchmarking harness
 export LLMDBENCH_HARNESS_NAME=vllm-benchmark
@@ -82,7 +81,7 @@ export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/)
 if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
 fi
-export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
+export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../..)
 
 erase_and_quit=0
 gen_and_quit=0
@@ -95,6 +94,8 @@ while [[ $# -gt 0 ]]; do
     ;;
     -g|--generate) # Generate scenario files matching supplied base, then exit
     export gen_and_quit=1
+    -n|--dry-run)
+    export LLMDBENCH_CONTROL_DRY_RUN=1
     ;;
     *)
     echo "ERROR: invalid option \"$key\""
@@ -122,17 +123,12 @@ if [[ $erase_and_quit == 1 ]]; then
 fi
 
 # Generate scenario files
-scenarios=()
-for pd_conf in "${pd_conf_array[@]}"; do
-  prefill_replicas=$(echo $pd_conf | cut -d "," -f 1 )
-  prefill_tp=$(echo $pd_conf | cut -d "," -f 2 )
-  decode_replicas=$(echo $pd_conf | cut -d "," -f 3 )
-  decode_tp=$(echo $pd_conf | cut -d "," -f 4 )
-
-  scenario_suffix="__${prefill_replicas}P-TP${prefill_tp}_${decode_replicas}D-TP${decode_tp}"
+for conf in "${conf_array[@]}"; do
+  replicas="${conf%,*}"
+  tp="${conf#*,}"
+  scenario_suffix="__${replicas}R-TP${tp}"
   scenario_file="$LLMDBENCH_MAIN_DIR/scenarios/${base_scenario}${scenario_suffix}.sh"
-  sed -e "s/__p_rep__/${prefill_replicas}/g" -e "s/__p_tp__/${prefill_tp}/g" -e "s/__d_rep__/${decode_replicas}/g" -e "s/__d_tp__/${decode_tp}/g" -e "s/__suffix__/${scenario_suffix}/g" $LLMDBENCH_MAIN_DIR/scenarios/$base_scenario.sh > $scenario_file
-  scenarios+=("${base_scenario}${scenario_suffix}")
+  sed -e "s/__rep__/${replicas}/g" -e "s/__tp__/${tp}/g" -e "s/__suffix__/${scenario_suffix}/g" $LLMDBENCH_MAIN_DIR/scenarios/$base_scenario.sh > $scenario_file
 done
 
 if [[ $gen_and_quit == 1 ]]; then
@@ -141,6 +137,7 @@ if [[ $gen_and_quit == 1 ]]; then
 fi
 
 # These are the configurations we will sweep over
+scenarios=($(ls -d $LLMDBENCH_MAIN_DIR/scenarios/${base_scenario}__* | sed -e 's/.sh$//' | rev | cut -d '/' -f 1 | rev))
 echo "Scenarios to sweep:"
 printf "  %s\n" "${scenarios[@]}"
 
@@ -150,7 +147,7 @@ export LLMDBENCH_RUN_EXPERIMENT_ID=$id
 for sc in "${scenarios[@]}"; do
   if [ $LLMDBENCH_RUN_EXPERIMENT_ID -ge $skip_to_id ]; then
     printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Standing up scenario $sc****\033[0m\n"
-    $LLMDBENCH_CONTROL_DIR/standup.sh -c $sc
+    $LLMDBENCH_MAIN_DIR/setup/standup.sh -c $sc
     printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Running benchmarks for scenario $sc****\033[0m\n"
   fi
   for wl in ${workload_array[@]}; do
@@ -162,10 +159,10 @@ for sc in "${scenarios[@]}"; do
       continue
     fi
     printf "\033[1;33m**** $(date +'%Y-%m-%d %H:%M:%S'): Benchmarking scenario $sc, concurrency $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_MAX_CONCURRENCY, prompts $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS, ID $LLMDBENCH_RUN_EXPERIMENT_ID ****\033[0m\n"
-    $LLMDBENCH_CONTROL_DIR/run.sh -c $sc -m $model -w $workload_profile
+    $LLMDBENCH_MAIN_DIR/setup/run.sh -c $sc -m $model -w $workload_profile
   done
   if [ $LLMDBENCH_RUN_EXPERIMENT_ID -ge $skip_to_id ]; then
     printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Tearing down scenario $sc****\033[0m\n"
-    $LLMDBENCH_CONTROL_DIR/teardown.sh -c $sc
+    $LLMDBENCH_MAIN_DIR/setup/teardown.sh -c $sc
   fi
 done
