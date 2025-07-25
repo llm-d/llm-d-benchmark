@@ -62,7 +62,7 @@ ARG GUIDELLM_COMMIT=72374efdf7d4432173fafec3924dc94ac3b11449
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
-    pip install guidellm
+    pip install .
 
 RUN echo "fmperf: ${FM_PERF_REPO}" > /workspace/repos.txt; \
     echo "inference-perf: ${INFERENCE_PERF_REPO}" >> /workspace/repos.txt; \
