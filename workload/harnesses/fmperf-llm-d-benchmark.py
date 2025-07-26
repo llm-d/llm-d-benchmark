@@ -76,17 +76,18 @@ def update_workload_config(workload_spec, env_vars):
 
     return workload_spec
 
-async def wait_for_evaluation_job(cluster, job_name, namespace, capture_log_file, data_dir : str, timeout=7200):
-    """Wait for the evaluation job to complete."""
-    logger.info(f"Waiting for evaluation job {job_name} to complete...")
+
+async def wait_for_job(job_name, namespace, timeout=7200):
+    """Wait for the  job to complete"""
+    logger.info(f"Waiting for job {job_name} to complete...")
 
     # use async config loading
     await k8s_async_config.load_kube_config()
     api_client = k8s_async_client.ApiClient()
     batch_v1_api = k8s_async_client.BatchV1Api(api_client)
-
     try:
         w = k8s_async_watch.Watch()
+
         # sets up connection with kubernetes, async with manages the streams lifecycle
         async with w.stream(
             func=batch_v1_api.list_namespaced_job,
@@ -94,14 +95,9 @@ async def wait_for_evaluation_job(cluster, job_name, namespace, capture_log_file
             field_selector=f"metadata.name={job_name}",
             timeout_seconds=timeout  # replaces the manual timeout check
         ) as stream:
+
             async for event in stream: # replaces time.wait since we grab events as they come from stream sasynchronous
                 job_status = event['object'].status
-
-                if job_status.succeded or job_status.failed: # save logs in both scenarios
-                    logs = capture_pod_logs(job_name, namespace, capture_log_file)
-                    if not move_data_result(capture_log_file, data_dir):
-                        return False
-                    
                 if job_status.succeeded:
                     logger.info(f"Evaluation job {job_name} completed successfully.")
                     return True
@@ -109,39 +105,42 @@ async def wait_for_evaluation_job(cluster, job_name, namespace, capture_log_file
                 elif job_status.failed:
                     logger.error(f"Evaluation job {job_name} failed")
                     return False
+
                 
     except asyncio.TimeoutError:
-        logger.error(f"Timeout waiting for evaluation job {job_name} after {timeout} seconds.")
+        logger.info(f"Timeout waiting for evaluation job {job_name} after {timeout} seconds.")
         return False
+    except Exception as e:
+        logger.error(f"Error occured while waiting for job {job_name} : {e}")
     finally:
         await api_client.close()
 
 
-async def capture_pod_logs(job_name, namespace, output_file : str):
+def capture_pod_logs(job_name, namespace, output_file : str):
     """Capture logs from pods created by a job
        Not specific to fmperf, as the pod logs are based on the job,
        rather than fmperf specifically
     """
     try:
         v1 = client.CoreV1Api()
-        
+
         # get pods created by the job using label selector
         label_selector = f"job-name={job_name}"
         pods = v1.list_namespaced_pod(
             namespace=namespace,
             label_selector=label_selector
         )
-        
+
         if not pods.items:
             logger.error(f"No pods found for job {job_name}")
             return None
-        
-        # get logs from the first pod 
+
+        # get logs from the first pod
         pod = pods.items[0]
         pod_name = pod.metadata.name
-        
+
         logger.info(f"Capturing logs from pod: {pod_name}")
-        
+
         logs = v1.read_namespaced_pod_log(
             name=pod_name,
             namespace=namespace,
@@ -153,9 +152,9 @@ async def capture_pod_logs(job_name, namespace, output_file : str):
         with open(output_file, 'w') as f:
             f.write(logs)
         logger.info(f"Wrote logs to: {output_file}")
-            
+
         return logs
-        
+
     except Exception as e:
         logger.error(f"Error capturing logs for job {job_name}: {e}")
         return None
@@ -256,7 +255,7 @@ def main():
     logger.info("Starting benchmark run")
 
     try:
-        # Run benchmark which will create the evaluation job
+        # run benchmark which will create the evaluation job
         results = run_benchmark(
             cluster=cluster,
             stack_spec=stack_spec,
@@ -282,11 +281,11 @@ def main():
         logger.info(f"Waiting for evaluation job {job_name} to complete...")
 
         # Wait for the evaluation job to complete
-        if wait_for_evaluation_job(cluster, job_name, namespace, eval_log_file, eval_data_dir):
-            logger.info("Evaluation job completed successfully")
-        else:
-            logger.error("Evaluation job failed or timed out")
-            raise Exception("Evaluation job failed or timed out")
+        asyncio.run(wait_for_job(job_name, namespace))
+
+        logs = capture_pod_logs(job_name, namespace, eval_log_file)
+        if move_data_result(eval_log_file, eval_data_dir):
+            logger.info(f"Data moved to {eval_data_dir}")
         
 
     except Exception as e:
