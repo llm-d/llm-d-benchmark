@@ -4,9 +4,11 @@
 Startup logs benchmark
 """
 
+from __future__ import annotations
 from dataclasses import dataclass, fields
 from datetime import datetime
 from enum import StrEnum
+import io
 import json
 import os
 import re
@@ -27,6 +29,106 @@ logger = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT = 60.0  # time (seconds) to wait for request
 MAX_VLLM_WAIT = 15.0 * 60.0  # time (seconds) to wait for vllm to respond
+
+DEFINED_CATEGORIES = [
+    {
+        "title": "Detect Platform",
+        "start": "No plugins for group",
+        "end": "detected platform",
+    },
+    {
+        "title": "Add CLI Args",
+        "start": "All plugins in this group will be loaded",
+        "end": "vLLM API server version",
+    },
+    {
+        "title": "Get Model Info",
+        "start": "non-default args:",
+        "end": "Using max model len",
+    },
+    {
+        "title": "Worker Initialization",
+        "start": "Setting max_num_batched_tokens",
+        "end": "Initializing a V1 LLM engine",
+    },
+    {
+        "title": "Model Loading",
+        "start": "Starting to load model",
+        "end": "Model loading took",
+    },
+    {
+        "title": "Pytorch Compilation",
+        "start": "Start compiling function",
+        "end": "torch.compile takes",
+        "children": [
+            {
+                "title": "Dynamo",
+                "start": "Start compiling function",
+                "end": "Dynamo bytecode transform",
+            },
+            {
+                "title": "Inductor",
+                "start": "De-functionalized",
+                "end": "Compiling a graph",
+            },
+            {
+                "title": "Dynamo Serialization",
+                "start": "Computation graph saved",
+                "end": "torch.compile takes",
+            },
+        ],
+    },
+    {
+        "title": "CUDA Graph Capture",
+        "start": "Capturing CUDA graph shapes:   0%",
+        "end": "Capturing CUDA graph shapes: 100%",
+    },
+    {
+        "title": "API Server Starts",
+        "start": "EngineCore waiting for work",
+        "end": "Available routes are",
+    },
+]
+
+
+@dataclass
+class LogCategory:
+    """Log category"""
+
+    key: int = 0
+    title: str = ""
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    start: str = ""
+    end: str = ""
+    start_line: str = ""
+    end_line: str = ""
+    next: LogCategory | None = None
+    parent: LogCategory | None = None
+    root_child: LogCategory | None = None
+
+    @staticmethod
+    def header() -> list[str]:
+        """csv header"""
+        return [
+            "key",
+            "title",
+            "parent",
+            "elapsed",
+        ]
+
+    def row(self) -> list[str]:
+        """csv row"""
+        elapsed = ""
+        if self.start_time is not None and self.end_time is not None:
+            time_difference = self.end_time - self.start_time
+            elapsed = f"{time_difference.total_seconds():.3f}"
+        return [
+            f"{self.key}",
+            self.title,
+            f"{self.parent.key}" if self.parent is not None else "",
+            elapsed,
+        ]
 
 
 class LoadFormat(StrEnum):
@@ -68,8 +170,8 @@ class LogResult:
     def header() -> list[str]:
         """csv header"""
         header = []
-        for field in fields(LogResult):
-            header.append(field.name)
+        for f in fields(LogResult):
+            header.append(f.name)
 
         return header
 
@@ -269,6 +371,178 @@ def get_pod_logs(v1: client.CoreV1Api, namespace: str, pod_name: str) -> bytes:
     return response.data
 
 
+def extract_datetime(log_line: str) -> datetime | None:
+    """extracts datetime"""
+
+    # MM-DD HH:MM:SS.MMM
+    datetime_pattern = r"\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{3}"
+    match = re.search(datetime_pattern, log_line)
+    if match is None:
+        # MM-DD HH:MM:SS
+        datetime_pattern = r"\d{2}-\d{2} \d{2}:\d{2}:\d{2}"
+        match = re.search(datetime_pattern, log_line)
+
+    if match is None:
+        logger.info("Timestamp not found in log line '%s'", log_line)
+        return None
+
+    value = match.group()
+
+    # Define the format string that matches the input time string
+    time_format = "%m-%d %H:%M:%S.%f" if "." in value else "%m-%d %H:%M:%S"
+
+    try:
+        return datetime.strptime(value, time_format)
+    except ValueError:
+        logger.info(
+            "Failed converting time value '%s' using format '%s'",
+            value,
+            time_format,
+        )
+        return None
+
+
+def initialize_log_categories(
+    key: list[int], defined_categories: list[Any], parent: LogCategory
+) -> LogCategory:
+    """initialize categories"""
+    root_log_category = None
+    prev_log_category = None
+    for defined_category in defined_categories:
+        log_category = LogCategory()
+        log_category.key = key[0]
+        key[0] = log_category.key + 1
+        if root_log_category is None:
+            root_log_category = log_category
+        if prev_log_category is not None:
+            prev_log_category.next = log_category
+        prev_log_category = log_category
+
+        log_category.title = defined_category.get("title")
+        log_category.start = defined_category.get("start")
+        log_category.end = defined_category.get("end")
+        log_category.parent = parent
+        if log_category.parent is not None and log_category.parent.root_child is None:
+            log_category.parent.root_child = log_category
+
+        defined_children = defined_category.get("children")
+        if defined_children is not None:
+            _ = initialize_log_categories(key, defined_children, log_category)
+
+    return root_log_category
+
+
+def categorize_logs(vllm_model: str, logs: str) -> LogCategory:
+    """parse logs and categorize it"""
+
+    key = [1]
+    root_log_category = initialize_log_categories(key, DEFINED_CATEGORIES, None)
+    populate_log_categories(vllm_model, logs, root_log_category)
+    # add uncategorized categories
+    add_uncategorized_categories(key, root_log_category)
+    return root_log_category
+
+
+def populate_log_categories(vllm_model: str, logs: str, root_log_category: LogCategory):
+    """populate categories from log lines"""
+
+    tensorizer_serialization_end = f"End model {vllm_model} serialization"
+    # log list
+    log_list = logs.splitlines()
+    index = 0
+
+    # look for possible tensorizer serialization end
+    idx = 0
+    while idx < len(log_list):
+        if tensorizer_serialization_end in log_list[idx]:
+            # skips tensorizer serialization lines
+            index = idx + 1
+            logger.info(
+                "Skip tensorizer serialization. Start from log line %d: %s",
+                index,
+                log_list[index],
+            )
+            break
+
+        idx += 1
+
+    while index < len(log_list):
+        index = populate_log_category(index, log_list, root_log_category)
+        index += 1
+
+
+def add_uncategorized_categories(key: list[int], log_category: LogCategory):
+    """add filler uncategorized categories"""
+
+    category = log_category
+    while category is not None:
+        if category.root_child is not None:
+            add_uncategorized_categories(key, category.root_child)
+
+        # if exists a gap, create uncategorized
+        next_category = category.next
+        if (
+            next_category is not None
+            and category.end_time is not None
+            and next_category.start_time is not None
+            and category.end_time < next_category.start_time
+        ):
+            log_category = LogCategory()
+            log_category.key = key[0]
+            key[0] = log_category.key + 1
+            log_category.title = "Uncategorized"
+            log_category.start_time = category.end_time
+            log_category.end_time = next_category.start_time
+            log_category.parent = category.parent
+            log_category.next = next_category
+            category.next = log_category
+            # skip the uncategorized created category
+            category = category.next
+
+        category = category.next
+
+
+def populate_log_category(
+    index: int, log_list: list[str], log_category: LogCategory
+) -> int:
+    """populate category from log line"""
+
+    category = log_category
+    while category is not None and index < len(log_list):
+        if category.start_line == "" and category.start in log_list[index]:
+            category.start_time = extract_datetime(log_list[index])
+            # if date extract failed, try next log line
+            while category.start_time is None:
+                index += 1
+                if index >= len(log_list):
+                    return index
+
+                category.start_time = extract_datetime(log_list[index])
+
+            if category.start_time is not None:
+                category.start_line = log_list[index]
+
+        if category.end_line == "" and category.end in log_list[index]:
+            category.end_time = extract_datetime(log_list[index])
+            # if date extract failed, try next log line
+            while category.end_time is None:
+                index += 1
+                if index >= len(log_list):
+                    return index
+
+                category.end_time = extract_datetime(log_list[index])
+
+            if category.end_time is not None:
+                category.end_line = log_list[index]
+
+        if category.root_child is not None:
+            index = populate_log_category(index, log_list, category.root_child)
+
+        category = category.next
+
+    return index
+
+
 def parse_logs(logs: str) -> LogResult:
     """parse vllm logs"""
 
@@ -407,6 +681,52 @@ def write_log_results_to_csv(log_results: list[LogResult], file_path: str):
     logger.info("csv file saved to path: %s", file_path)
 
 
+def write_log_categories_to_csv(log_category: LogCategory, file: io.BufferedWriter):
+    """writes csv log results"""
+
+    category = log_category
+    while category is not None:
+        file.write(f"{','.join(category.row())}\n")
+        if category.root_child is not None:
+            write_log_categories_to_csv(category.root_child, file)
+        category = category.next
+
+
+def write_log_categories_to_log(log_category: LogCategory, file: io.BufferedWriter):
+    """write logs category tree"""
+    category = log_category
+    while category is not None:
+        elapsed = ""
+        if category.start_time is not None and category.end_time is not None:
+            time_difference = category.end_time - category.start_time
+            elapsed = f"{time_difference.total_seconds():.2f}"
+
+        file.write(f"Log category : {category.key} '{category.title}'\n")
+        parent_key = f"{category.parent.key}" if category.parent is not None else ""
+        file.write(f"   parent    : {parent_key}\n")
+        time_format = "%m-%d %H:%M:%S.%f"
+        date_str = (
+            category.start_time.strftime(time_format)[:-3]
+            if category.start_time is not None
+            else ""
+        )
+        file.write(f"   start date: {date_str}\n")
+        date_str = (
+            category.end_time.strftime(time_format)[:-3]
+            if category.end_time is not None
+            else ""
+        )
+        file.write(f"   end date  : {date_str}\n")
+        file.write(f"   elapsed   : {elapsed}\n")
+        file.write(f"   start     : {category.start}\n")
+        file.write(f"   end       : {category.end}\n")
+        file.write(f"   start line: {category.start_line}\n")
+        file.write(f"   end line. : {category.end_line}\n")
+        if category.root_child is not None:
+            write_log_categories_to_log(category.root_child, file)
+        category = category.next
+
+
 def main():
     """main entry point"""
 
@@ -458,6 +778,9 @@ def main():
     log_result.vllm_version = vllm_version
     log_result.model = vllm_model
 
+    # categorize logs
+    root_log_category = categorize_logs(vllm_model, pod_logs.decode("utf-8"))
+
     os.makedirs(requests_dir, exist_ok=True)
 
     # write vllm log file
@@ -474,15 +797,28 @@ def main():
     # append new result to list
     log_results.append(log_result)
 
-    # write csv file
+    # write log results csv file
     write_log_results_to_csv(log_results, cvs_filepath)
+
+    # write log categories csv file
+    csv_categories_filepath = os.path.join(requests_dir, "nop_categories.csv")
+    with open(csv_categories_filepath, "w", encoding="utf-8", newline="") as file:
+        file.write(f"{','.join(LogCategory.header())}\n")
+        write_log_categories_to_csv(root_log_category, file)
+        logger.info("csv categories file saved to path: %s", csv_categories_filepath)
+
+    # write log categories log file
+    log_categories_filepath = os.path.join(requests_dir, "nop_categories.log")
+    with open(log_categories_filepath, "w", encoding="utf-8", newline="") as file:
+        write_log_categories_to_log(root_log_category, file)
+        logger.info("log categories file saved to path: %s", log_categories_filepath)
 
 
 if __name__ == "__main__":
     try:
         logger.info("Starting harness run")
         main()
-    except Exception as e:
-        logger.error("Error running harness: %s", str(e))
+    except Exception:
+        logger.exception("Error running harness")
     finally:
         logger.info("End harness run")

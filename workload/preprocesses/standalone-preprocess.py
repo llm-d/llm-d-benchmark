@@ -2,6 +2,7 @@
 
 """Serialize tensorizer file if needed"""
 
+import json
 import logging
 import multiprocessing
 import os
@@ -11,7 +12,6 @@ import threading
 import time
 
 import psutil
-
 
 # Configure logging
 logging.basicConfig(
@@ -144,7 +144,7 @@ def serialize_model(model: str, tensorizer_uri: str) -> None:
         raise RuntimeError(f"Serialize process exited with code '{process.exitcode}'")
 
 
-def get_env_variables(keys: list[str]) -> list[str]:
+def get_env_variables(dicts: list[dict]) -> list[str]:
     """get environment variables"""
 
     logger.info("Environment variables:")
@@ -153,17 +153,65 @@ def get_env_variables(keys: list[str]) -> list[str]:
 
     envs = []
     missing_envs = []
-    for key in keys:
-        value = env_vars.get(key)
-        if value is None:
-            missing_envs.append(key)
+    for env_dict in dicts:
+        name = env_dict["name"]
+        value = env_vars.get(name)
+        if value is None and env_dict["required"]:
+            missing_envs.append(name)
         else:
             envs.append(value)
-            logger.info("  '%s': '%s'", key, value)
+            logger.info("  '%s': '%s'", name, value)
 
     if len(missing_envs) > 0:
         raise RuntimeError(f"Env. variables not found: {','.join(missing_envs)}.")
     return envs
+
+
+def logging_config(path: str) -> None:
+    """create custom logging config"""
+
+    # first clear config path env.
+    if "VLLM_LOGGING_CONFIG_PATH" in os.environ:
+        del os.environ["VLLM_LOGGING_CONFIG_PATH"]
+
+    from vllm.logger import DEFAULT_LOGGING_CONFIG
+
+    json_data = DEFAULT_LOGGING_CONFIG
+    formatters = json_data.get("formatters")
+    if formatters is not None:
+        vllm_formatter = formatters.get("vllm")
+        if vllm_formatter is not None:
+            format_str = vllm_formatter.get("format")
+            if format_str is not None:
+                vllm_formatter["format"] = format_str.replace(
+                    "%(asctime)s", "%(asctime)s.%(msecs)03d"
+                )
+
+    # change default config
+    json_string = json.dumps(json_data, indent=4)
+    logger.info("custom log config: %s", json_string)
+
+    with open(path, "w", encoding="utf-8") as file:
+        file.write(json_string)
+        logger.info("custom log config saved path: %s", path)
+
+
+def create_logging_config(path: str):
+    """process create custom logging config"""
+
+    process = multiprocessing.Process(
+        target=logging_config,
+        args=(path,),
+    )
+    process.start()
+
+    # Wait for the child process to finish
+    process.join()
+
+    if process.exitcode is not None and process.exitcode != 0:
+        raise RuntimeError(
+            f"Custom logging config process exited with code '{process.exitcode}'"
+        )
 
 
 def preprocess_run() -> str:
@@ -171,15 +219,21 @@ def preprocess_run() -> str:
 
     envs = get_env_variables(
         [
-            "LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT",
-            "LLMDBENCH_VLLM_STANDALONE_MODEL",
-            "LLMDBENCH_VLLM_TENSORIZER_URI",
+            {"name": "LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT", "required": True},
+            {"name": "LLMDBENCH_VLLM_STANDALONE_MODEL", "required": True},
+            {"name": "LLMDBENCH_VLLM_TENSORIZER_URI", "required": True},
+            {"name": "VLLM_LOGGING_CONFIG_PATH", "required": False},
         ]
     )
 
     load_format = envs[0].strip().lower()
     model = envs[1].strip()
     tensorizer_uri = envs[2]
+    logging_config_path = envs[3]
+
+    if logging_config_path is not None and logging_config_path != "":
+        # create custom configuration and save to this path
+        create_logging_config(logging_config_path.strip())
 
     if load_format == "tensorizer":
         # first serialize model in order to run tokenizer library later
@@ -199,7 +253,7 @@ if __name__ == "__main__":
     try:
         logger.info("Start preprocess run")
         preprocess_run()
-    except Exception as e:
-        logger.error("Error running preprocess: %s", str(e))
+    except Exception:
+        logger.exception("Error running preprocess")
     finally:
         logger.info("End preprocess run")
