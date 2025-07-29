@@ -28,9 +28,9 @@ tokenizer:
 data:
   type: shared_prefix
   shared_prefix:
-    num_groups: REPLACE_ENV_LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_GROUPS++++default=32                # Number of distinct shared prefixes
+    num_groups: 32                # Number of distinct shared prefixes
     num_prompts_per_group: 32     # Number of unique questions per shared prefix
-    system_prompt_len: REPLACE_ENV_LLMDBENCH_RUN_EXPERIMENT_PARAMETER_SYSTEM_PROMPT_LEN++++default=2048       # Length of the shared prefix (in tokens)
+    system_prompt_len: 2048       # Length of the shared prefix (in tokens)
     question_len: 256             # Length of the unique question part (in tokens)
     output_len: 256               # Target length for the model's generated output (in tokens)
 report:
