@@ -41,7 +41,7 @@ class Host(BaseModel):
 
 
 class EngineDetails(BaseModel):
-    """Inverence engine details."""
+    """Inference engine details."""
 
     name: str
     version: Optional[str] = None
@@ -50,7 +50,7 @@ class EngineDetails(BaseModel):
 
 
 class Platform(BaseModel):
-    """Software platform details endompassing all inference engines."""
+    """Software platform details encompassing all inference engines."""
 
     engine: list[EngineDetails]
     """Details on inference engines, list corresponds 1:1 with scenario.host.accelerator."""
@@ -232,12 +232,31 @@ class Requests(BaseModel):
 class Latency(BaseModel):
     """Response latency performance metrics."""
 
-    request_latency: Optional[Statistics] = None
-    normalized_time_per_output_token: Optional[Statistics] = None
-    time_per_output_token: Optional[Statistics] = None
     time_to_first_token: Statistics
+    """Time to generate the first token (TTFT)."""
+    normalized_time_per_output_token: Optional[Statistics] = None
+    """Typical time to generate an output token, including first (NTPOT)."""
+    # NOTE: TPOT and ITL can be terms for the same quantity, but can also have
+    # different meanings within a tool. Care must be taken when choosing which
+    # quantity to use, especially when comparing results across different tools.
+    #
+    # From GKE
+    # https://cloud.google.com/kubernetes-engine/docs/concepts/machine-learning/inference
+    # TPOT is calculated across the entire request
+    # TPOT = (request_latency - time_to_first_token) / (total_output_tokens - 1)
+    # ITL is measured between consecutive output tokens, and those results
+    # aggregated to produce statistics.
+    #
+    # vLLM's benchmarking tools
+    # https://github.com/vllm-project/vllm/issues/6531#issuecomment-2684695288
+    # Obtaining TPOT statistics appears consistent with GKE definition, but
+    # ITL is calculated across multiple requests.
+    time_per_output_token: Optional[Statistics] = None
+    """Time to generate an output token, excluding first (TPOT, may differ from ITL depending on tool)."""
     inter_token_latency: Optional[Statistics] = None
-    e2e: Optional[Statistics] = None
+    """Latency between generated tokens, excluding first (ITL, may differ from TPOT depending on tool)."""
+    request_latency: Optional[Statistics] = None
+    """End-to-end request latency."""
 
     @model_validator(mode='after')
     def check_units(self):
