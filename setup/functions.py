@@ -6,7 +6,7 @@ import os
 import time
 from pathlib import Path
 import subprocess
-
+import inspect 
 import pykube
 from pykube.exceptions import PyKubeError
 
@@ -21,30 +21,40 @@ from kubernetes_asyncio import watch as k8s_async_watch
 
 import asyncio
 
+import logging 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-def announce(message: str, logfile: Union[str, int, None] = 1):
-    formatted_message = re.sub(r'\t+', ' ', message.replace('\n', ' '))
 
-    timestamp = datetime.now().astimezone().strftime('%a %b %d %H:%M:%S %Z %Y')
+def announce(message: str, logfile : str = None):
+    work_dir = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", '.')
+    log_dir = os.path.join(work_dir, 'logs')
+    
+    # ensure logs dir exists
+    os.makedirs(log_dir, exist_ok=True)
 
-    # get the script path relative to the current working directory
+
+    if not logfile:
+        cur_step = os.getenv("CURRENT_STEP_NAME", 'step')
+        logfile = cur_step + '.log'
+    
+    logpath = os.path.join(log_dir, logfile)
+
+    logger.info(message)
+
     try:
-        script_name = os.path.relpath(sys.argv[0])
-    except ValueError:
-        script_name = Path(sys.argv[0]).name
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        log_line = f"{timestamp} : {message}"
+        with open(logpath, 'a', encoding='utf-8') as f:
+            f.write(log_line + '\n')
+    except IOError as e:
+        logger.error(f"Could not write to log file '{logpath}'. Reason: {e}")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred with logfile '{logpath}'. Reason: {e}")
 
-    log_line = f"==> {timestamp} - {script_name} - {formatted_message}"
-
-    if logfile == "silent" or logfile == 0:
-        pass
-    elif logfile == 1 or logfile is None:
-        print(log_line)
-    else:
-        try:
-            with open(logfile, 'a', encoding='utf-8') as f:
-                f.write(log_line + '\n')
-        except IOError as e:
-            print(f"Error: Could not write to log file {logfile}. {e}", file=sys.stderr)
 
 
         
@@ -70,14 +80,15 @@ def llmdbench_execute_cmd(
         try:
             (log_dir / f"{command_tstamp}_command.log").write_text(msg + '\n')
         except IOError as e:
-            announce(f"Error writing to dry run log: {e}", file=sys.stderr)
+            announce(f"Error writing to dry run log: {e}")
         return 0
 
-    msg = f"---> will execute the command \"{actual_cmd}\""
-    try:
-        (log_dir / f"{command_tstamp}_command.log").write_text(msg + '\n')
-    except IOError as e:
-        announce(f"Error writing to command log: {e}", file=sys.stderr)
+    if verbose:
+        msg = f"---> will execute the command \"{actual_cmd}\""
+        try:
+            (log_dir / f"{command_tstamp}_command.log").write_text(msg + '\n')
+        except IOError as e:
+            announce(f"Error writing to command log: {e}")
 
     ecode = -1
     last_stdout_log = None
@@ -109,7 +120,7 @@ def llmdbench_execute_cmd(
             ecode = result.returncode
 
         except Exception as e:
-            announce(f"An unexpected error occurred while running the command: {e}", file=sys.stderr)
+            announce(f"An unexpected error occurred while running the command: {e}")
             ecode = -1
 
         if ecode == 0:
@@ -121,20 +132,19 @@ def llmdbench_execute_cmd(
 
     if ecode != 0:
         announce(f"\nERROR while executing command \"{actual_cmd}\"")
-        announce()
         
         if last_stdout_log and last_stdout_log.exists():
             try:
-                announce(last_stdout_log.read_text(), end="")
+                announce(last_stdout_log.read_text())
             except IOError:
                 announce("(stdout not captured)")
         else:
             announce("(stdout not captured)")
         
-        # Print stderr log if it exists
+        # print stderr log if it exists
         if last_stderr_log and last_stderr_log.exists():
             try:
-                announce(last_stderr_log.read_text(), end="")
+                announce(last_stderr_log.read_text())
             except IOError:
                 announce("(stderr not captured)")
         else:
@@ -148,9 +158,9 @@ def llmdbench_execute_cmd(
 
 
 
-def create_namespace(api: pykube.HTTPClient, namespace_name: str, dry_run: bool = False):
+def create_namespace(api: pykube.HTTPClient, namespace_name: str, dry_run: bool = False, verbose: bool = False):
     if not namespace_name:
-        announce("Error: namespace_name cannot be empty.", file=sys.stderr)
+        announce("Error: namespace_name cannot be empty.")
         return
 
     announce(f"Ensuring namespace '{namespace_name}' exists...")
@@ -167,7 +177,7 @@ def create_namespace(api: pykube.HTTPClient, namespace_name: str, dry_run: bool 
                 ns.create()
                 announce(f"✅ Namespace '{namespace_name}' created successfully.")
     except PyKubeError as e:
-        announce(f"Failed to create or check namespace '{namespace_name}': {e}", file=sys.stderr)
+        announce(f"Failed to create or check namespace '{namespace_name}': {e}")
 
 
 def validate_and_create_pvc(
@@ -235,7 +245,7 @@ def validate_and_create_pvc(
                 pvc.create()
                 announce(f"PVC '{pvc_name}' created successfully.")
     except PyKubeError as e:
-        announce(f"Failed to create or check PVC '{pvc_name}': {e}", file=sys.stderr)
+        announce(f"Failed to create or check PVC '{pvc_name}': {e}")
         sys.exit(1)
 
 
@@ -317,7 +327,7 @@ spec:
         yaml_file_path.write_text(job_yaml)
         announce(f"Generated YAML file at: {yaml_file_path}")
     except IOError as e:
-        announce(f"Error writing YAML file: {e}", file=sys.stderr)
+        announce(f"Error writing YAML file: {e}")
         sys.exit(1)
 
     delete_cmd = f"{kcmd} delete job {job_name} -n {namespace} --ignore-not-found=true"

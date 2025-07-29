@@ -14,8 +14,8 @@ import subprocess
 
 current_file = Path(__file__).resolve()
 
-# get the projects root directory by going up 1 parent directories
-project_root = current_file.parents[1]
+# get the projects root directory by going up 2 parent directories
+project_root = current_file.parents[2]
 
 #add the project root to the system path
 sys.path.insert(0, str(project_root))
@@ -64,11 +64,14 @@ def exec_command(command: str, print_out = True) -> Tuple[bool, str]:
 # ==================
 
 def main():
+
+    os.environ['CURRENT_STEP_NAME'] =  os.path.splitext(os.path.basename(__file__))[0]
+
     vllm_namespace =        os.getenv("LLMDBENCH_VLLM_COMMON_NAMESPACE", "default-namespace")
     kcmd =                  os.getenv("LLMDBENCH_CONTROL_KCMD", "kubectl")
     dry_run =               os.getenv("LLMDBENCH_CONTROL_DRY_RUN", "false") == "1"
     control_dir =           os.getenv("LLMDBENCH_CONTROL_DIR", "")
-    verbose =               os.getenv("LLMDBENCH_CONTROL_VERBOSE", "false") 
+    verbose =               os.getenv("LLMDBENCH_CONTROL_VERBOSE", "0")  == "1"
     model_list_str =        os.getenv("LLMDBENCH_DEPLOY_MODEL_LIST", "")
     scmd =                  os.getenv("LLMDBENCH_CONTROL_SCMD", "sed") # Not used directly, but shows it's read
     work_dir =              os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
@@ -91,7 +94,7 @@ def main():
         announce("DRY RUN enabled. No actual changes will be made.")
 
     try:
-        api = pykube.HTTPClient(pykube.KubeConfig.from_env())
+        api = pykube.HTTPClient(pykube.KubeConfig.from_file(os.path.expanduser('~/.kube/config')))
     except FileNotFoundError:
         print("Kubeconfig file not found. Ensure you are logged into a cluster.")
         sys.exit(1)

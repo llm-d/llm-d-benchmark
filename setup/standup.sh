@@ -154,7 +154,7 @@ run_step() {
     if [[ $script_path == *.sh ]]; then
       source $script_path
     elif [[ $script_path == *.py ]]; then 
-      python $script_path
+      python3 $script_path
     else
       announce "ERROR: Unsupported script type for \"$script_path\""
     fi
