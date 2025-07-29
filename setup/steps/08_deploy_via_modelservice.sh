@@ -22,15 +22,21 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
   # deploy models
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
+
+    # If LLMDBENCH_VLLM_MODELSERVICE_URI is not defined, set it to pvc://
+    if [[ -n "$LLMDBENCH_VLLM_MODELSERVICE_URI" ]]; then
+      export LLMDBENCH_VLLM_MODELSERVICE_URI="pvc://${LLMDBENCH_VLLM_COMMON_PVC_NAME}/models/$(model_attribute $model model)"
+    fi
     llmdbench_execute_cmd "mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
     cat << EOF > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/values.yaml
 multinode: false
 
 modelArtifacts:
-  uri: "pvc://${LLMDBENCH_VLLM_COMMON_PVC_NAME}/models/$(model_attribute $model model)"
+  uri: $LLMDBENCH_VLLM_MODELSERVICE_URI
   size: $LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE
   authSecretName: "llm-d-hf-token"
+  name: $(model_attribute $model model)
 
 routing:
   modelName: $(model_attribute $model model)
