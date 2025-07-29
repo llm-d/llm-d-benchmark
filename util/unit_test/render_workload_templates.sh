@@ -20,28 +20,54 @@ if [[ $0 != "-bash" ]]; then
     pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
 fi
 
-export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/../../setup)
-export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
+export LLMDBENCH_SETUP_DIR=$(realpath $(pwd)/../../setup)
+export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_SETUP_DIR}/../)
 export LLMDBENCH_CONTROL_CLUSTER_NAME=unit-test
 
-source ${LLMDBENCH_CONTROL_DIR}/env.sh
-export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR:-$(mktemp -d -t ${LLMDBENCH_CONTROL_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)}
+source ${LLMDBENCH_SETUP_DIR}/env.sh
+export LLMDBENCH_CONTROL_WORK_DIR=$(mktemp -d -t ${LLMDBENCH_CONTROL_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)
 prepare_work_dir
   cat << EOF > $LLMDBENCH_MAIN_DIR/workload/profiles/nop/unitest.yaml.in
 param1: a
-param2: REPLACE_ENV_LLMDBENCH_UNITEST_RENDER_PARAM_WITHOUT_DEFAULT
-param3: REPLACE_ENV_LLMDBENCH_UNITEST_RENDER_PARAM_WITH_DEFAULT++++default=z
+param2: REPLACE_ENV_LLMDBENCH_UNITEST_RENDER_PARAM_WITHOUT_DEFAULT                # comment
+param3: REPLACE_ENV_LLMDBENCH_UNITEST_RENDER_PARAM_WITH_DEFAULT++++default=z      # another comment
+param4:
+  param4a: XYZ
+  parambb: ABC
 EOF
-cat $LLMDBENCH_MAIN_DIR/workload/profiles/nop/unitest.yaml.in
+cat $LLMDBENCH_MAIN_DIR/workload/profiles/nop/unitest.yaml.in | yq .
 echo "-----------"
 export LLMDBENCH_UNITEST_RENDER_PARAM_WITHOUT_DEFAULT=b
 echo "export LLMDBENCH_UNITEST_RENDER_PARAM_WITHOUT_DEFAULT=b"
 render_workload_templates unitest
-cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/unitest.yaml
+find ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/
+cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/unitest.yaml | yq .
 echo "-----------"
 export LLMDBENCH_UNITEST_RENDER_PARAM_WITH_DEFAULT=c
 echo "export LLMDBENCH_UNITEST_RENDER_PARAM_WITH_DEFAULT=c"
 render_workload_templates unitest
-cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/unitest.yaml
+find ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/
+cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/unitest.yaml | yq .
 echo "-----------"
+cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/run_parameters.yaml
+factors:
+  - param1
+  - param4a
+levels:
+  param1: "40,60"
+  param4a: "80000,5000,1000"
+treatments:
+  - "40,8000"
+  - "60,5000"
+  - "60,1000"
+EOF
+rm ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/unitest.yaml
+generate_profile_parameter_treatments $LLMDBENCH_CONTROL_WORK_DIR/run_parameters.yaml nop
+ls ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/treatment_list
+cat -n ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/treatment_list/*
+echo
+echo
+render_workload_templates unitest
+find ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/
+cat -n ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/unitest*
 rm -rf $LLMDBENCH_MAIN_DIR/workload/profiles/nop/unitest.yaml.in

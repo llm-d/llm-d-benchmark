@@ -116,9 +116,6 @@ function prepare_work_dir {
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
-  for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
-    mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$profile_type
-  done
 }
 export -f prepare_work_dir
 
@@ -241,7 +238,7 @@ function add_additional_env_to_yaml {
   local model=${2:-none}
 
   if [[ -f ${object_to_render} ]]; then
-    render_template $object_to_render none 0 1
+    render_template $object_to_render none none  0 1
   else
     local output="REPLACEFIRSTNEWLINE"
     for envvar in ${LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML//,/ }; do
@@ -315,15 +312,22 @@ export -f render_string
 function render_template {
   local template_file_path=$1
   local output_file_path=${2:-"none"}
-  local cmdline_mode=${3:-0}
-  local env_var_mode=${4:-0}
+  local additional_replace_commands=${3:-"none"}
+  local cmdline_mode=${4:-0}
+  local env_var_mode=${5:-0}
+
   rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   touch $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+
+  if [[ $additional_replace_commands != "none" ]]; then
+    cat $additional_replace_commands >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  fi
 
   for entry in $(cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' -e 's^\.^\n^g' -e 's^\/^\n^g' | grep -E "REPLACE_ENV" | uniq); do
     render_string $entry &>/dev/null
   done
 
+  echo "s^#.*^^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   if [[ $cmdline_mode -eq 1 ]]; then
     if [[ $LLMDBENCH_CURRENT_STEP == "06" ]]; then
       echo "  - |"
@@ -387,7 +391,7 @@ function add_command_line_options {
   fi
 
   if [[ -f ${object_to_render} ]]; then
-    render_template $object_to_render none 1
+    render_template $object_to_render none none 1 0
   else
     if [[ $LLMDBENCH_CURRENT_STEP == "06" ]]; then
       echo "  - |"
@@ -569,6 +573,12 @@ function validate_and_create_pvc {
   if ! ${kcmd} get storageclass "${pvc_class}" &>/dev/null; then
     announce "❌ StorageClass '${pvc_class}' not found"
     exit 1
+  fi
+
+
+  local has_pvc=$($LLMDBENCH_CONTROL_KCMD get pvc ${pvc_name} --output=custom-columns="CAPACITY:.status.capacity.storage" --no-headers --ignore-not-found || true)
+  if [[ ! -z $has_pvc ]]; then
+    local pvc_size=$has_pvc
   fi
 
   cat << EOF > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_storage_pvc_setup.yaml
@@ -757,10 +767,6 @@ spec:
       value: "1"
     - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY
       value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY}"
-    - name: LLMDBENCH_HARNESS_GIT_REPO
-      value: "$(resolve_harness_git_repo $LLMDBENCH_HARNESS_NAME)"
-    - name: LLMDBENCH_HARNESS_GIT_BRANCH
-      value: "${LLMDBENCH_HARNESS_GIT_BRANCH}"
     - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS
       value: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
     - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
@@ -823,20 +829,59 @@ export -f create_harness_pod
 
 function render_workload_templates {
     local workload=${1:-all}
+
+    local workload=$(echo $workload | $LLMDBENCH_CONTROL_SCMD 's^\.yaml^^g' )
     if [[ $workload == "all" ]]; then
       workload_template_list=$(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name "*.yaml.in")
     else
       workload_template_list=$(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name "${workload}.yaml.in")
     fi
-    announce "🛠️ Rendering $workload workload profile templates under \"$LLMDBENCH_MAIN_DIR/workload/profiles/\"..."
+    announce "🛠️ Rendering \"$workload\" workload profile templates under \"$LLMDBENCH_MAIN_DIR/workload/profiles/\"..."
     for workload_template_full_path in $workload_template_list; do
       workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
-      workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD "s^\.in$^^g")
-      render_template $workload_template_full_path ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/$workload_template_file_name &>/dev/null
+      workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e "s^\.yaml.in$^^g")
+      workload_output_file=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/$workload_template_file_name
+      mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/
+      treatment_list_dir=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/treatment_list
+      if [[ -d $treatment_list_dir ]]; then
+        for treatment in $(ls $treatment_list_dir); do
+            workload_output_file_suffix=$(echo ${treatment} | cut -d '_' -f 2 | cut -d '.' -f 1)
+            render_template $workload_template_full_path ${workload_output_file}_${workload_output_file_suffix}.yaml ${treatment_list_dir}/$treatment 0 0
+        done
+      else
+        render_template $workload_template_full_path $workload_output_file.yaml none 0 0
+      fi
     done
-    announce "✅ Done rendering $workload workload profile templates to \"${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/\""
+    announce "✅ Done rendering \"$workload\" workload profile templates to \"${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/\""
 }
 export -f render_workload_templates
+
+function generate_profile_parameter_treatments {
+  local run_parameter_file=$1
+  local harness_name=$2
+
+  if [[ ! -f $run_parameter_file ]]; then
+    return 0
+  fi
+
+  local output_dir=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$harness_name/treatment_list
+
+  rm -rf $output_dir
+  mkdir -p $output_dir
+
+  i=1
+  for treatment in $(cat $run_parameter_file | yq -r '.treatments[]'); do
+    echo "1i#treatment_$i.txt" >> $output_dir/treatment_$i.txt
+    local j=1
+    for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
+      local param=$(cat $run_parameter_file | yq -r ".factors[$(($j - 1))]")
+      echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_$i.txt
+      j=$((j+1))
+    done
+    i=$((i+1))
+  done
+}
+export -f generate_profile_parameter_treatments
 
 function cleanup_pre_execution {
   announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\"..."

@@ -31,6 +31,8 @@ sed -i 's^\-e^^' /etc/rsyncd.conf
 WORKDIR /workspace
 
 # Install harnesses
+RUN echo "$(git rev-parse --short HEAD)" > build.txt
+
 ARG FM_PERF_REPO=https://github.com/fmperf-project/fmperf.git
 ARG FM_PERF_BRANCH=main
 ARG FM_PERF_COMMIT=0b1f63acdafcc815847a22332c0e478cc41ebed2
@@ -64,10 +66,10 @@ RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
     pip install .
 
-RUN echo "fmperf: ${FM_PERF_REPO}" > /workspace/repos.txt; \
-    echo "inference-perf: ${INFERENCE_PERF_REPO}" >> /workspace/repos.txt; \
-    echo "vllm-benchmark: ${VLLM_BENCHMARK_REPO}" >> /workspace/repos.txt; \
-    echo "guidellm: ${GUIDELLM_REPO}" >> /workspace/repos.txt
+RUN echo "fmperf: ${FM_PERF_REPO} ${FM_PERF_BRANCH}" > /workspace/repos.txt; \
+    echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \
+    echo "vllm-benchmark: ${VLLM_BENCHMARK_REPO} ${VLLM_BENCHMARK_COMMIT}" >> /workspace/repos.txt; \
+    echo "guidellm: ${GUIDELLM_REPO} ${GUIDELLM_COMMIT}" >> /workspace/repos.txt
 
 RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
 
