@@ -26,7 +26,6 @@ data:
     mean: 50            # mean length of the output to be generated
     std: 10             # standard deviation of the length of the output to be generated
     total_count: 100    # total number of output lengths to generate to fit the above mentioned distribution constraints
-    total_count: 1000   # total number of output lengths to generate to fit the above mentioned distribution constraints
 report:
   request_lifecycle:
     summary: true
