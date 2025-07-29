@@ -215,7 +215,7 @@ def main():
     workload_file = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME", "llmdbench_workload.yaml")
     repetition = int(env_vars.get("LLMDBENCH_FMPERF_REPETITION", "1"))
     namespace = env_vars.get("LLMDBENCH_HARNESS_NAMESPACE", "llmdbench")
-    job_id = env_vars.get("LLMDBENCH_FMPERF_JOB_ID", stack_name)
+    job_id = env_vars.get("LLMDBENCH_FMPERF_JOB_ID", f"{stack_name}-{experiment_id}")
 
     # Get results directory for configuration
     results_dir = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", "/requests")
