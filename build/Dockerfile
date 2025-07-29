@@ -31,8 +31,6 @@ sed -i 's^\-e^^' /etc/rsyncd.conf
 WORKDIR /workspace
 
 # Install harnesses
-RUN echo "$(date)" > build.txt
-
 ARG FM_PERF_REPO=https://github.com/fmperf-project/fmperf.git
 ARG FM_PERF_BRANCH=main
 ARG FM_PERF_COMMIT=0b1f63acdafcc815847a22332c0e478cc41ebed2
