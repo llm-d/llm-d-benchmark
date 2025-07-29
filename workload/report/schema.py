@@ -53,12 +53,12 @@ class Platform(BaseModel):
     """Software platform details endompassing all inference engines."""
 
     engine: list[EngineDetails]
-    """Details on inference engines, list corresponds 1:1 with scenario.host.accelerator"""
+    """Details on inference engines, list corresponds 1:1 with scenario.host.accelerator."""
     metadata: Optional[Any] = None
 
 
 class Model(BaseModel):
-    """AI model details"""
+    """AI model details."""
     name: str
     quantization: Optional[str] = None
     adapters: Optional[list[dict[str, str]]] = None
@@ -331,7 +331,7 @@ class ResourceMetrics(BaseModel):
     """Hardware resource metrics."""
 
     accelerator: list[AcceleratorMetrics]
-    """Accelerator metrics, list corresponds 1:1 with scenario.host.accelerator"""
+    """Accelerator metrics, list corresponds 1:1 with scenario.host.accelerator."""
 
 
 class Metrics(BaseModel):
@@ -351,7 +351,7 @@ class BenchmarkRun(BaseModel):
     """Base class for a benchmark run."""
 
     version: str = '0.1'
-    """Version of the schema"""
+    """Version of the schema."""
     scenario: Scenario
     metrics: Metrics
     metadata: Optional[Any] = None
