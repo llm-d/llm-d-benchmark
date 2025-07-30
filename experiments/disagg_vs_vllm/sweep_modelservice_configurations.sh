@@ -47,10 +47,6 @@ pd_conf_array=("6,2,1,4" "4,2,1,8" "8,1,1,8" "4,2,2,4" "4,2,4,2" "2,2,4,4")
 export LLMDBENCH_HARNESS_NAME=vllm-benchmark
 
 # Workload profile to use, located in workload/profiles/vllm-benchmark/ of this repository
-# workload_profile=random_concurrent_10k-100_ISL-OSL
-# workload_profile=random_concurrent_10k-1k_ISL-OSL
-# workload_profile=random_concurrent_20k-1k_ISL-OSL
-# workload_profile=random_concurrent_30k-300_ISL-OSL
 workload_profile=random_concurrent
 
 # Benchmark workloads, each pair is "(max concurrency),(number of prompts)"
