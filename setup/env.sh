@@ -119,7 +119,8 @@ export LLMDBENCH_VLLM_MODELSERVICE_RECONFIGURE_GATEWAY_AFTER_DEPLOY=${LLMDBENCH_
 export LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST=$(ls ${LLMDBENCH_MAIN_DIR}/workload/profiles/)
 export LLMDBENCH_HARNESS_NAME=${LLMDBENCH_HARNESS_NAME:-inference-perf}
 export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE="${LLMDBENCH_HARNESS_EXPERIMENT_PROFILE:-sanity_random.yaml}"
-export LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS=${LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS:-non-existent}
+export LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS=${LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS:-}
+export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES=${LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES:-}
 export LLMDBENCH_HARNESS_EXECUTABLE=${LLMDBENCH_HARNESS_EXECUTABLE:-llm-d-benchmark.sh}
 export LLMDBENCH_HARNESS_CONDA_ENV_NAME="${LLMDBENCH_HARNESS_CONDA_ENV_NAME:-${LLMDBENCH_HARNESS_NAME}-env}"
 export LLMDBENCH_HARNESS_WAIT_TIMEOUT=${LLMDBENCH_HARNESS_WAIT_TIMEOUT:-3600}
@@ -245,6 +246,21 @@ if [[ $LLMDBENCH_CURRENT_STEP == "08" ]]; then
   export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_INFERENCE_PORT=${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_INFERENCE_PORT:-${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}}
 fi
 
+overridevarlist=$(env | grep _CLIOVERRIDE_ | cut -d '=' -f 1 || true)
+if [[ -n "$overridevarlist" ]]; then
+  for overridevar in $overridevarlist; do
+    actualvar=$(echo "$overridevar" | sed 's/_CLIOVERRIDE//g')
+    if [[ -n "${!overridevar:-}" ]]; then
+      export $actualvar=${!overridevar}
+      if [[ ${LLMDBENCH_CONTROL_VERBOSE} -eq 1 && ${LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED} -eq 0 ]]; then
+        echo "Environment variable $actualvar was overridden by command line options"
+      fi
+    fi
+  done
+  echo
+  export LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED=1
+fi
+
 if [[ ! -z $LLMDBENCH_DEPLOY_SCENARIO ]]; then
   if [[ "$LLMDBENCH_DEPLOY_SCENARIO" == /* ]]; then
     export LLMDBENCH_SCENARIO_FULL_PATH=$(echo $LLMDBENCH_DEPLOY_SCENARIO'.sh' | $LLMDBENCH_CONTROL_SCMD 's^.sh.sh^.sh^g')
@@ -273,19 +289,18 @@ else
   export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS=$(echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH | rev | cut -d '/' -f 1 | rev)
 fi
 
-overridevarlist=$(env | grep _CLIOVERRIDE_ | cut -d '=' -f 1 || true)
-if [[ -n "$overridevarlist" ]]; then
-  for overridevar in $overridevarlist; do
-    actualvar=$(echo "$overridevar" | sed 's/_CLIOVERRIDE//g')
-    if [[ -n "${!overridevar:-}" ]]; then
-      export $actualvar=${!overridevar}
-      if [[ ${LLMDBENCH_CONTROL_VERBOSE} -eq 1 && ${LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED} -eq 0 ]]; then
-        echo "Environment variable $actualvar was overridden by command line options"
-      fi
-    fi
-  done
-  echo
-  export LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED=1
+if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS ]]; then
+  if [[ "$LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS" == /* ]]; then
+    export LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS_FULL_PATH=$(echo $LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+  else
+    export LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS_FULL_PATH=$(echo ${LLMDBENCH_MAIN_DIR}/experiments/$LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+  fi
+  if [[ ! -f $LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS_FULL_PATH ]]; then
+    echo "❌ Treatments (experiment) file \"$LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS_FULL_PATH\" could not be found."
+    exit 1
+  else
+    export LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS=$LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS_FULL_PATH
+  fi
 fi
 
 required_vars=("LLMDBENCH_HF_TOKEN")

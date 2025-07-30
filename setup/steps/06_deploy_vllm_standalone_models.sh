@@ -111,7 +111,7 @@ spec:
             ephemeral-storage: ${LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE}
         volumeMounts:
         - name: preprocesses
-          mountPath: /workload/preprocesses
+          mountPath: /setup/preprocess
         - name: cache-volume
           mountPath: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
         - name: shm

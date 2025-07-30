@@ -116,6 +116,7 @@ function prepare_work_dir {
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/experiments
 }
 export -f prepare_work_dir
 
@@ -836,6 +837,17 @@ function render_workload_templates {
     else
       workload_template_list=$(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name "${workload}.yaml.in")
     fi
+
+    rm -f $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
+    touch $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
+    if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES ]]; then
+      for entry in $(echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
+        parm=$(echo $entry | cut -d '=' -f 1)
+        val=$(echo $entry | cut -d '=' -f 2)
+        echo "s^$parm:.*^$parm: $val^g" >> $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
+      done
+    fi
+
     announce "🛠️ Rendering \"$workload\" workload profile templates under \"$LLMDBENCH_MAIN_DIR/workload/profiles/\"..."
     for workload_template_full_path in $workload_template_list; do
       workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
@@ -849,7 +861,7 @@ function render_workload_templates {
             render_template $workload_template_full_path ${workload_output_file}_${workload_output_file_suffix}.yaml ${treatment_list_dir}/$treatment 0 0
         done
       else
-        render_template $workload_template_full_path $workload_output_file.yaml none 0 0
+        render_template $workload_template_full_path $workload_output_file.yaml $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt 0 0
       fi
     done
     announce "✅ Done rendering \"$workload\" workload profile templates to \"${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/\""
@@ -857,10 +869,10 @@ function render_workload_templates {
 export -f render_workload_templates
 
 function generate_profile_parameter_treatments {
-  local run_parameter_file=$1
-  local harness_name=$2
+  local harness_name=$1
+  local run_parameter_file=$2
 
-  if [[ ! -f $run_parameter_file ]]; then
+  if [[ -z $run_parameter_file ]]; then
     return 0
   fi
 
@@ -868,6 +880,8 @@ function generate_profile_parameter_treatments {
 
   rm -rf $output_dir
   mkdir -p $output_dir
+
+  cp -f $run_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/workload/experiments/
 
   i=1
   for treatment in $(cat $run_parameter_file | yq -r '.treatments[]'); do
@@ -878,6 +892,13 @@ function generate_profile_parameter_treatments {
       echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_$i.txt
       j=$((j+1))
     done
+    if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES ]]; then
+      for entry in $(echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
+        parm=$(echo $entry | cut -d '=' -f 1)
+        val=$(echo $entry | cut -d '=' -f 2)
+        echo "s^$parm:.*^$parm: $val^g" >> $output_dir/treatment_$i.txt
+      done
+    fi
     i=$((i+1))
   done
 }

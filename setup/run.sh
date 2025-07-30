@@ -50,7 +50,8 @@ function show_usage {
              -l/--harness [harness used to generate load (default=$LLMDBENCH_HARNESS_NAME, possible values $(get_harness_list)] \n \
              -w/--workload [workload to be used by the harness (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE, possible values (check \"workload/profiles\" dir)] \n \
              -k/--pvc [name of the PVC used to store the results (default=$LLMDBENCH_HARNESS_PVC_NAME)] \n \
-             -x/--experiments [path of yaml file containing a list of factors and levels for an experiment, useful for parameter sweeping (default=$LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS)] \n \
+             -e/--experiments [path of yaml file containing a list of factors and levels for an experiment, useful for parameter sweeping (default=$LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS)] \n \
+             -o/--overrides [comma-separated list of workload profile parameters to be overriden (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES)] \n \
              -z/--skip [skip the execution of the experiment, and only collect data (default=$LLMDBENCH_HARNESS_SKIP_RUN)] \n \
              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE)] \n \
              -s/--wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means "do not wait\""] \n \
@@ -122,11 +123,18 @@ while [[ $# -gt 0 ]]; do
         export LLMDBENCH_CLIOVERRIDE_HARNESS_EXPERIMENT_PROFILE="$2"
         shift
         ;;
-        -x=*|--experiment=*)
+        -e=*|--experiment=*)
         export LLMDBENCH_CLIOVERRIDE_HARNESS_EXPERIMENT_TREATMENTS=$(echo $key | cut -d '=' -f 2)
         ;;
-        -x|--experiment)
+        -e|--experiment)
         export LLMDBENCH_CLIOVERRIDE_HARNESS_EXPERIMENT_TREATMENTS="$2"
+        shift
+        ;;
+        -o=*|--overrides=*)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_EXPERIMENT_PROFILE_OVERRIDES=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -o|--overrides)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_EXPERIMENT_PROFILE_OVERRIDES="$2"
         shift
         ;;
         -t=*|--methods=*)
@@ -251,7 +259,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
       else
 
-        generate_profile_parameter_treatments $LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS ${LLMDBENCH_HARNESS_NAME}
+        generate_profile_parameter_treatments ${LLMDBENCH_HARNESS_NAME} ${LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS}
 
         workload_template_full_path=$(find ${LLMDBENCH_MAIN_DIR}/workload/profiles/${LLMDBENCH_HARNESS_NAME}/ | grep ${LLMDBENCH_HARNESS_EXPERIMENT_PROFILE} | head -n 1 || true)
         if [[ -z $workload_template_full_path ]]; then
