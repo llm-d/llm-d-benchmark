@@ -16,17 +16,17 @@ import time
 import logging
 from typing import Any
 from urllib.parse import urljoin, urlparse
+from pathlib import Path
 import pandas
 import requests
 
-from pathlib import Path
 from kubernetes import client, config
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
 REQUEST_TIMEOUT = 60.0  # time (seconds) to wait for request
 MAX_VLLM_WAIT = 15.0 * 60.0  # time (seconds) to wait for vllm to respond
@@ -36,6 +36,11 @@ DEFINED_CATEGORIES = [
         "title": "Detect Platform",
         "start": "No plugins for group",
         "end": "detected platform",
+    },
+    {
+        "title": "LLM Imports",
+        "start": "detected platform",
+        "end": "All plugins in this group will be loaded",
     },
     {
         "title": "Add CLI Args",
@@ -103,7 +108,9 @@ class LogCategory:
     start: str = ""
     end: str = ""
     start_line: str = ""
+    start_line_number: int = 0
     end_line: str = ""
+    end_line_number: int = 0
     next: LogCategory | None = None
     parent: LogCategory | None = None
     root_child: LogCategory | None = None
@@ -460,7 +467,7 @@ def populate_log_categories(vllm_model: str, logs: str, root_log_category: LogCa
             index = idx + 1
             logger.info(
                 "Skip tensorizer serialization. Start from log line %d: %s",
-                index,
+                index + 1,
                 log_list[index],
             )
             break
@@ -493,7 +500,11 @@ def add_uncategorized_categories(key: list[int], log_category: LogCategory):
             key[0] = log_category.key + 1
             log_category.title = "Uncategorized"
             log_category.start_time = category.end_time
+            log_category.start_line = category.end_line
+            log_category.start_line_number = category.end_line_number
             log_category.end_time = next_category.start_time
+            log_category.end_line = next_category.start_line
+            log_category.end_line_number = next_category.start_line_number
             log_category.parent = category.parent
             log_category.next = next_category
             category.next = log_category
@@ -522,6 +533,7 @@ def populate_log_category(
 
             if category.start_time is not None:
                 category.start_line = log_list[index]
+                category.start_line_number = index + 1
 
         if category.end_line == "" and category.end in log_list[index]:
             category.end_time = extract_datetime(log_list[index])
@@ -535,6 +547,7 @@ def populate_log_category(
 
             if category.end_time is not None:
                 category.end_line = log_list[index]
+                category.end_line_number = index + 1
 
         if category.root_child is not None:
             index = populate_log_category(index, log_list, category.root_child)
@@ -700,29 +713,33 @@ def write_log_categories_to_log(log_category: LogCategory, file: io.BufferedWrit
         elapsed = ""
         if category.start_time is not None and category.end_time is not None:
             time_difference = category.end_time - category.start_time
-            elapsed = f"{time_difference.total_seconds():.2f}"
+            elapsed = f"{time_difference.total_seconds():.3f}"
 
-        file.write(f"Log category : {category.key} '{category.title}'\n")
+        file.write(f"Log category   : {category.key} '{category.title}'\n")
         parent_key = f"{category.parent.key}" if category.parent is not None else ""
-        file.write(f"   parent    : {parent_key}\n")
+        file.write(f"  parent       : {parent_key}\n")
         time_format = "%m-%d %H:%M:%S.%f"
         date_str = (
             category.start_time.strftime(time_format)[:-3]
             if category.start_time is not None
             else ""
         )
-        file.write(f"   start date: {date_str}\n")
+        file.write(f"  start date   : '{date_str}'\n")
         date_str = (
             category.end_time.strftime(time_format)[:-3]
             if category.end_time is not None
             else ""
         )
-        file.write(f"   end date  : {date_str}\n")
-        file.write(f"   elapsed   : {elapsed}\n")
-        file.write(f"   start     : {category.start}\n")
-        file.write(f"   end       : {category.end}\n")
-        file.write(f"   start line: {category.start_line}\n")
-        file.write(f"   end line. : {category.end_line}\n")
+        file.write(f"  end date     : '{date_str}'\n")
+        file.write(f"  elapsed      : {elapsed}\n")
+        file.write(f"  start pattern: '{category.start}'\n")
+        file.write(f"  end pattern  : '{category.end}'\n")
+        file.write(
+            f"  start line   : {category.start_line_number} '{category.start_line}'\n"
+        )
+        file.write(
+            f"  end line     : {category.end_line_number} '{category.end_line}'\n"
+        )
         if category.root_child is not None:
             write_log_categories_to_log(category.root_child, file)
         category = category.next

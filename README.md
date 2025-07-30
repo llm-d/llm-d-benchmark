@@ -95,9 +95,26 @@ For a discussion of relevant workloads, please consult this [document](https://d
 
 Pieces of information identifying a particular cluster. This information includes, but it is not limited to, GPU model, llm model and llm-d parameters (an environment file, and optionally a `values.yaml` file for modelservice helm charts)
 
-#### Harness
+#### Harnesses
 
 Load Generator (python code) which drives the benchmark load. Today, llm-d-benchmark supports [fmperf](https://github.com/fmperf-project/fmperf), [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git) and the benchmarks found on the `benchmarks` folder on [vllm](https://github.com/vllm-project/vllm.git). There are ongoing efforts to consolidate and provide an easier way to support different load generators.
+
+The `nop` harness, combined with env. variables and when using in `standalone` mode, will parse the vLLM log and create reports with
+loading time statistics.
+
+The additional env. variables to set are:
+
+| Environment Variable                         | Example Values  |
+| -------------------------------------------- | -------------- |
+| LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT   | `safetensors, tensorizer, runai_streamer, fastsafetensors` |
+| LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL | `DEBUG, INFO, WARNING` etc |
+| LLMDBENCH_VLLM_STANDALONE_PREPROCESS         | `source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py` |
+
+The env. `LMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL` must be set to `DEBUG` so that the `nop` categories report finds all categories.
+
+The env. `LLMDBENCH_VLLM_STANDALONE_PREPROCESS` must be set to the above value for the `nop` harness in order to install load format
+dependencies, export additional env. variables and pre-serialize models when using the `tensorizer` load format.
+The preprocess scripts will run in the vLLM standalone pod before the vLLM server starts.
 
 #### Workload
 
@@ -106,7 +123,7 @@ Workload is the actual benchmark load specification which includes the LLM use c
 > [!IMPORTANT]
 > The triple `<scenario>`,`<harness>`,`<workload>`, combined with the standup/teardown capabilities provided by [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git) and [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git) should provide enough information to allow an experiment to be reproduced.
 
-### Dependecies
+### Dependencies
 
 - [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git)
 - [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git)
