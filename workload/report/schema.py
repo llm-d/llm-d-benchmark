@@ -360,7 +360,7 @@ class MemoryMetrics(BaseModel):
 
 
 class ComputeMetrics(BaseModel):
-    """Memory metrics."""
+    """Compute metrics."""
 
     utilization: Optional[Statistics] = None
 
