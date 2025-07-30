@@ -19,13 +19,14 @@ from urllib.parse import urljoin, urlparse
 import pandas
 import requests
 
+from pathlib import Path
 from kubernetes import client, config
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
 REQUEST_TIMEOUT = 60.0  # time (seconds) to wait for request
 MAX_VLLM_WAIT = 15.0 * 60.0  # time (seconds) to wait for vllm to respond
@@ -742,6 +743,20 @@ def main():
     endpoint_url = envs[1]
     control_work_dir = envs[2]
     requests_dir = control_work_dir
+
+    Path(requests_dir).mkdir(parents=True, exist_ok=True)
+
+    file_handler = logging.FileHandler(f"{requests_dir}/stdout.log")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
     domain = urlparse(endpoint_url).netloc
     arr = domain.split(".")
     if len(arr) == 0:

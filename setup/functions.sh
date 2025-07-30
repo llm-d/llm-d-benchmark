@@ -901,3 +901,24 @@ function validate_model_name {
   done
 }
 export -f validate_model_name
+
+function backup_work_dir {
+if [[ $LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP -eq 1 ]]; then
+  return 0
+fi
+
+if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
+  if [[ $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} != "e2s.sh" ]]; then
+    backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
+    backup_target=$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix
+    announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
+    llmdbench_execute_cmd "mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
+    prepare_work_dir
+    if [[ -f $backup_target/environment/context.ctx ]]; then
+      llmdbench_execute_cmd "cp -f $backup_target/environment/context.ctx $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    fi
+  fi
+fi
+}
+export -f backup_work_dir

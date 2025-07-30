@@ -304,12 +304,10 @@ fi
 
 export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR:-$(mktemp -d -t ${LLMDBENCH_CONTROL_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)}
 export LLMDBENCH_CONTROL_WORK_DIR_SET=${LLMDBENCH_CONTROL_WORK_DIR_SET:-0}
-
+export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=${LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP:-0}
 export LLMDBENCH_CURRENT_STEP=${LLMDBENCH_CURRENT_STEP:-}
-if [[ $LLMDBENCH_CURRENT_STEP == "00" && $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 && ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" ]]; then  backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
-  announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix\"..."
-  llmdbench_execute_cmd "mv -f $LLMDBENCH_CONTROL_WORK_DIR $(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').${backup_suffix}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-fi
+
+backup_work_dir
 
 prepare_work_dir
 
@@ -321,7 +319,12 @@ if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
     export LLMDBENCH_CONTROL_REMOTE_KUBECONFIG_FILENAME=config-${LLMDBENCH_CONTROL_CLUSTER_NAME}
   elif [[ -z $LLMDBENCH_CLUSTER_URL || $LLMDBENCH_CLUSTER_URL == "auto" ]]; then
     current_context=$(${LLMDBENCH_CONTROL_KCMD} config view -o json | jq -r '."current-context"' || true)
-    ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
+    if [[ -z ${current_context} ]]; then
+      echo "ERROR: unable to locate current context"
+      exit 1
+    else
+      ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
+    fi
     export LLMDBENCH_CONTROL_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)
     if [[ $LLMDBENCH_CONTROL_WARNING_DISPLAYED -eq 0 ]]; then
       echo ""
@@ -333,10 +336,11 @@ if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
     export LLMDBENCH_CONTROL_REMOTE_KUBECONFIG_FILENAME=config
   else
     current_context=$(${LLMDBENCH_CONTROL_KCMD} config view -o json | jq -r '."current-context"' || true)
-    if [[ ${current_context} ]]; then
-      ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
-    else
+    if [[ -z ${current_context} ]]; then
       echo "ERROR: unable to locate current context"
+      exit 1
+    else
+      ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
     fi
 
     export LLMDBENCH_CONTROL_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)

@@ -12,6 +12,7 @@ import urllib3
 import yaml
 import logging
 import json
+import shutil
 from datetime import datetime
 import sys
 import time
@@ -30,12 +31,10 @@ from fmperf import LMBenchmarkWorkload
 from fmperf.StackSpec import StackSpec
 from fmperf.utils import run_benchmark
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -106,7 +105,7 @@ async def wait_for_job(job_name, namespace, timeout=7200):
                     logger.error(f"Evaluation job {job_name} failed")
                     return False
 
-                
+
     except asyncio.TimeoutError:
         logger.info(f"Timeout waiting for evaluation job {job_name} after {timeout} seconds.")
         return False
@@ -205,8 +204,26 @@ def move_data_result(capture_log_file, data_dir):
 
 
 def main():
-    logger.info("Starting benchmark run")
+
     env_vars = os.environ
+
+    # Get results directory for configuration
+    results_dir = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", "/requests")
+
+    Path(results_dir).mkdir(parents=True, exist_ok=True)
+
+    file_handler = logging.FileHandler(f"{results_dir}/stdout.log")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    logger.info("Starting benchmark run")
     stack_name = env_vars.get("LLMDBENCH_HARNESS_STACK_NAME", "llm-d-3b-instruct")
     harness_name = env_vars.get("LLMDBENCH_HARNESS_NAME", "fmperf")
     experiment_id = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_ID", "abc123")
@@ -216,9 +233,6 @@ def main():
     repetition = int(env_vars.get("LLMDBENCH_FMPERF_REPETITION", "1"))
     namespace = env_vars.get("LLMDBENCH_HARNESS_NAMESPACE", "llmdbench")
     job_id = env_vars.get("LLMDBENCH_FMPERF_JOB_ID", f"{stack_name}-{experiment_id}")
-
-    # Get results directory for configuration
-    results_dir = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", "/requests")
 
     logger.info(f"Using configuration:")
     logger.info(f"  Stack name: {stack_name}")
@@ -233,6 +247,8 @@ def main():
     workload_file_path = os.path.join("/workspace/profiles/fmperf", workload_file)
     logger.info(f"Loading workload configuration from {workload_file_path}")
     workload_spec = LMBenchmarkWorkload.from_yaml(workload_file_path)
+
+    shutil.copy(workload_file_path, f"{results_dir}/{workload_file_path.split('/')[-1]}")
 
     logger.info("Updating workload configuration with environment variables")
     workload_spec = update_workload_config(workload_spec, env_vars)
@@ -286,7 +302,7 @@ def main():
         logs = capture_pod_logs(job_name, namespace, eval_log_file)
         if move_data_result(eval_log_file, eval_data_dir):
             logger.info(f"Data moved to {eval_data_dir}")
-        
+
 
     except Exception as e:
         logger.error(f"Benchmark run failed: {str(e)}")
