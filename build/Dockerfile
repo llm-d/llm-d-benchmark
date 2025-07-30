@@ -32,7 +32,7 @@ WORKDIR /workspace
 
 # Install harnesses
 
-# Required by fmperf
+# Required by our fmperf benchmark harness
 RUN pip install kubernetes_asyncio
 
 ARG FM_PERF_REPO=https://github.com/fmperf-project/fmperf.git
