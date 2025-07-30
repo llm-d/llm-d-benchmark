@@ -66,6 +66,8 @@ fi
 #  popd
 #fi
 
+env | grep ^LLMDBENCH | grep -v BASE64 | sort
+
 if [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC -ne 0 ]]; then
   /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}
   ec=$?
