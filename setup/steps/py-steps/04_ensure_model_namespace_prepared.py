@@ -67,25 +67,30 @@ def main():
 
     os.environ['CURRENT_STEP_NAME'] =  os.path.splitext(os.path.basename(__file__))[0]
 
-    vllm_namespace =        os.getenv("LLMDBENCH_VLLM_COMMON_NAMESPACE", "default-namespace")
-    kcmd =                  os.getenv("LLMDBENCH_CONTROL_KCMD", "kubectl")
-    dry_run =               os.getenv("LLMDBENCH_CONTROL_DRY_RUN", "false") == "1"
-    control_dir =           os.getenv("LLMDBENCH_CONTROL_DIR", "")
-    verbose =               os.getenv("LLMDBENCH_CONTROL_VERBOSE", "0")  == "1"
-    model_list_str =        os.getenv("LLMDBENCH_DEPLOY_MODEL_LIST", "")
-    scmd =                  os.getenv("LLMDBENCH_CONTROL_SCMD", "sed") # Not used directly, but shows it's read
-    work_dir =              os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
-    current_step =          os.getenv("LLMDBENCH_CURRENT_STEP", "step")
-    vllm_pvc_name =         os.getenv("LLMDBENCH_VLLM_COMMON_PVC_NAME", "model-cache-pvc")
-    vllm_storage_class =    os.getenv("LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS", "standard")
-    vllm_storage_size =     os.getenv("LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE", "20Gi")
-    vllm_download_timeout = os.getenv("LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT", "3600s")
-    vllm_hf_token_name =    os.getenv("LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME", "")
-    vllm_hf_token_key =     os.getenv("LLMDBENCH_VLLM_COMMON_HF_TOKEN_KEY", "")
-    hf_token =              os.getenv("LLMDBENCH_HF_TOKEN", "")
-    is_openshift =          os.getenv("LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT", "0") 
-    vllm_service_account =  os.getenv("LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT", "default")
-    main_dir =              os.getenv("LLMDBENCH_MAIN_DIR", '.')
+    ev = {}
+    for key in dict(os.environ).keys():
+        if 'LLMDBENCH_' in key:
+            ev.update({key.split('LLMDBENCH_')[1].lower():os.environ.get(key)})
+
+    vllm_namespace =        ev['vllm_common_namespace']
+    kcmd =                  ev['control_kcmd']
+    dry_run =               ev['control_dry_run'] == '1'
+    control_dir =           ev['control_dir']
+    verbose =               ev['control_verbose'] == '1'
+    model_list_str =        ev['deploy_model_list']
+    scmd =                  ev['control_scmd']
+    work_dir =              ev['control_work_dir']
+    current_step =          ev['current_step']
+    vllm_pvc_name =         ev['vllm_common_pvc_name']
+    vllm_storage_class =    ev['vllm_common_pvc_storage_class']
+    vllm_storage_size =     ev['vllm_common_pvc_model_cache_size']
+    vllm_download_timeout = ev['vllm_common_pvc_download_timeout']
+    vllm_hf_token_name =    ev['vllm_common_hf_token_name']
+    vllm_hf_token_key =     ev['vllm_common_hf_token_key']
+    hf_token =              ev['hf_token']
+    is_openshift =          ev['control_deploy_is_openshift'] == '1'
+    vllm_service_account =  ev['vllm_common_service_account']
+    main_dir =              ev['main_dir']
 
     exec_command(f'source \"{control_dir}/env.sh\"')
 
