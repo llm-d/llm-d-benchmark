@@ -191,6 +191,8 @@ EOF
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-standalone-$(model_attribute $model label)" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "🚀 (standalone) pods serving model ${model} ready"
 
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} logs --tail=-1 --prefix=true  -l app=vllm-standalone-$(model_attribute $model label) > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/logs/vllm-standalone.log" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
     if [[ $LLMDBENCH_VLLM_STANDALONE_ROUTE -ne 0 && $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -ne 0 ]]; then
       is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get route --ignore-not-found | grep vllm-standalone-$(model_attribute $model label)-route || true)
       if [[ -z $is_route ]]

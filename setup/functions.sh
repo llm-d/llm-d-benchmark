@@ -113,6 +113,7 @@ function prepare_work_dir {
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/logs
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
@@ -870,7 +871,7 @@ export -f render_workload_templates
 
 function generate_profile_parameter_treatments {
   local harness_name=$1
-  local run_parameter_file=$2
+  local run_parameter_file=${2:-}
 
   if [[ -z $run_parameter_file ]]; then
     return 0
@@ -939,6 +940,7 @@ if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_ST
     if [[ -f $backup_target/environment/context.ctx ]]; then
       llmdbench_execute_cmd "cp -f $backup_target/environment/context.ctx $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     fi
+    echo
   fi
 fi
 }
