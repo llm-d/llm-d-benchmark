@@ -548,6 +548,10 @@ if __name__ == "__main__":
 # scenario: # This section provides the specific environment and workload
 #   description: This is a heterogeneous accelerator setup with two lora adapters
 #   host:
+#     type:
+#       - prefill
+#       - decode
+#       - decode
 #     accelerator: # This is heterogeneous across prefill and decode, with 1 prefill and 2 decode
 #       - model: H100 # Prefill
 #         memory: 80
@@ -557,8 +561,6 @@ if __name__ == "__main__":
 #           tp: 1
 #           pp: 1
 #           ep: 1
-#         metadata:
-#           type: prefill
 #       - model: H100 # First decode
 #         memory: 80
 #         count: 8
@@ -567,8 +569,6 @@ if __name__ == "__main__":
 #           tp: 8
 #           pp: 1
 #           ep: 8
-#         metadata:
-#           type: decode
 #       - model: H100 # Second decode
 #         memory: 80
 #         count: 8
@@ -577,12 +577,6 @@ if __name__ == "__main__":
 #           tp: 8
 #           pp: 1
 #           ep: 8
-#         metadata:
-#           type: decode
-#     type:
-#       - prefill
-#       - decode
-#       - decode
 #   platform:
 #     engine: # This list correlates 1:1 with the items listed in scenario.host.accelerator
 #       - name: vllm # Prefill
