@@ -26,43 +26,9 @@ from functions import (announce,
                        launch_download_job, 
                        model_attribute,
                        create_namespace,
-                       kube_connect)
+                       kube_connect,
+                       llmdbench_execute_cmd)
                       
-
-
-def exec_command(command: str, print_out = True) -> Tuple[bool, str]:
-    result = None
-    try:
-        
-        # tee /dev/tty writes a copy of the output to the current terminal screen
-        # 2>&1 merges error messages with standard output so they are also printed and captured
-        # set -o pipefail ensures that if the original command fails, the whole pipe fails
-        modified_command = ""
-        if print_out:
-            # this version prints output to the screen using tee and allows it to be captured
-            modified_command = f"set -o pipefail; ({command}) 2>&1 | tee /dev/tty"
-        else:
-            # this runs silently but still merges stderr with stdout to be captured.
-            modified_command = f"set -o pipefail; ({command}) 2>&1"
-
-        # use --noprofile and --norc to ensure a clean bash environment
-        result = subprocess.run(
-            ["/bin/bash", "--noprofile", "--norc", "-c", modified_command],
-            check=True, capture_output=True, text=True
-        )
-    except subprocess.CalledProcessError as e:
-        print(f'Command: {command} failed ... {e}')
-
-    if result and result.returncode == 0:
-        return True, result.stdout
-    else:
-        return False, result.stderr
-
-
-
-# ==================
-# Main script logic 
-# ==================
 
 def main():
 
@@ -93,7 +59,7 @@ def main():
     vllm_service_account =  ev['vllm_common_service_account']
     main_dir =              ev['main_dir']
 
-    exec_command(f'source \"{control_dir}/env.sh\"')
+    llmdbench_execute_cmd(actual_cmd=f'source \"{control_dir}/env.sh\"', dry_run=dry_run, verbose=verbose)
 
     api = kube_connect()
     if dry_run:
