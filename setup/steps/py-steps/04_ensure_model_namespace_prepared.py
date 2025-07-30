@@ -25,7 +25,8 @@ from functions import (announce,
                        validate_and_create_pvc, 
                        launch_download_job, 
                        model_attribute,
-                       create_namespace)
+                       create_namespace,
+                       kube_connect)
                       
 
 
@@ -94,15 +95,11 @@ def main():
 
     exec_command(f'source \"{control_dir}/env.sh\"')
 
-    api = None
+    api = kube_connect()
     if dry_run:
         announce("DRY RUN enabled. No actual changes will be made.")
 
-    try:
-        api = pykube.HTTPClient(pykube.KubeConfig.from_file(os.path.expanduser('~/.kube/config')))
-    except FileNotFoundError:
-        print("Kubeconfig file not found. Ensure you are logged into a cluster.")
-        sys.exit(1)
+    
 
     announce(f'🔍 Preparing namespace "{vllm_namespace}"...')
     create_namespace(api=api, namespace_name=vllm_namespace, dry_run=dry_run)

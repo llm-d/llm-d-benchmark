@@ -57,6 +57,18 @@ def announce(message: str, logfile : str = None):
 
 
 
+def kube_connect(config_path : str = '~/.kube/config'):
+    api = None
+    try:
+        api = pykube.HTTPClient(pykube.KubeConfig.from_file(os.path.expanduser(config_path)))
+    except FileNotFoundError:
+        print("Kubeconfig file not found. Ensure you are logged into a cluster.")
+        sys.exit(1)
+
+    return api
+    
+
+
         
 def llmdbench_execute_cmd(
     actual_cmd: str,
