@@ -31,6 +31,10 @@ sed -i 's^\-e^^' /etc/rsyncd.conf
 WORKDIR /workspace
 
 # Install harnesses
+
+# Required by our fmperf benchmark harness
+RUN pip install kubernetes_asyncio
+
 ARG FM_PERF_REPO=https://github.com/fmperf-project/fmperf.git
 ARG FM_PERF_BRANCH=main
 ARG FM_PERF_COMMIT=0b1f63acdafcc815847a22332c0e478cc41ebed2
@@ -72,6 +76,7 @@ RUN echo "fmperf: ${FM_PERF_REPO} ${FM_PERF_BRANCH}" > /workspace/repos.txt; \
 RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
 
 ADD workload/harnesses/ /usr/local/bin/
+COPY workload/report/*.py /usr/local/bin/
 COPY analysis/fmperf-analyze_results.py /usr/local/bin/fmperf-analyze_results.py
 COPY analysis/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
 COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py

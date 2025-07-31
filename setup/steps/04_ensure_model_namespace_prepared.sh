@@ -70,7 +70,7 @@ main() {
     announce "✅ Namespace \"${LLMDBENCH_VLLM_COMMON_NAMESPACE}\" prepared."
   done
 
-  announce "🚚 Creating configmap with contents of all files under workload/preprocesses ..."
+  announce "🚚 Creating configmap with contents of all files under setup/preprocess ..."
 
   # create prepropcessors configmap
   configmapfile=$LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_configmap_preprocesses.yaml
@@ -86,7 +86,7 @@ EOF
   file_paths=()
   while IFS= read -r -d '' path; do
     file_paths+=("$path")
-  done < <(find ${LLMDBENCH_MAIN_DIR}/workload/preprocesses -type f -print0)
+  done < <(find ${LLMDBENCH_MAIN_DIR}/setup/preprocess -type f -print0)
 
   for path in "${file_paths[@]}"; do
     filename=$(echo ${path} | rev | cut -d '/' -f1 | rev)

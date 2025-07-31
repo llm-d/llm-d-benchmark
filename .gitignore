@@ -1,6 +1,11 @@
 # If you prefer the allow list template instead of the deny list, see community template:
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
+
+# OS Metadata
+Thumbs.db
+.DS_Store
+._*
+
 # Binaries for programs and plugins
 *.exe
 *.exe~
@@ -15,6 +20,12 @@
 **/*secrets.yaml
 **/*yaml.secrets
 
+# Generated scenarios
+scenarios/*__*.sh
+
+# VS Code
+.vscode/
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -28,21 +39,22 @@
 go.work
 go.work.sum
 
-.DS_Store
-
-.vscode/
-
-
-hack/setup/fmperf/
-hack/setup/gateway-api-inference-extension/
-hack/setup/llm-d-kv-cache-manager/
-
-util/rbac_audit_and_report.md
-
 # Log directories
 data/**/logs/
 **/logs/
 *.log
 
-**/venv
-**/*results
+# Python
+__pycache__/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
