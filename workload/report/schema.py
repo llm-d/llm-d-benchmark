@@ -239,6 +239,7 @@ class Statistics(BaseModel):
 
     units: Units
     mean: float
+    median: Optional[float | int] = None
     stddev: Optional[float] = None
     min: Optional[float | int] = None
     p10: Optional[float | int] = None
@@ -430,7 +431,7 @@ class BenchmarkRun(BaseModel):
         }
 
         # Get lengths for fields that are defined
-        for entity in entity_lengths:
+        for entity in entity_lengths.copy():
             try:
                 entity_lengths[entity] = len(attrgetter(entity)(self))
             except AttributeError:
