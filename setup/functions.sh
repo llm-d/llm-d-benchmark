@@ -28,14 +28,18 @@ function model_attribute {
   # Do not use associative arrays. Not supported by MacOS with older bash versions
 
   case "$model" in
-    "llama-1b") local model=meta-llama/Llama-3.2-1B-Instruct ;;
-    "llama-3b") local model=meta-llama/Llama-3.2-3B-Instruct ;;
-    "llama-8b") local model=meta-llama/Llama-3.1-8B-Instruct ;;
-    "llama-70b") local model=meta-llama/Llama-3.1-70B-Instruct ;;
-    "llama-17b") local model=meta-llama/Llama-4-Scout-17B-16E-Instruct ;;
+    "llama-1b") local model=meta-llama/Llama-3.2-1B-Instruct:llama-1b ;;
+    "llama-3b") local model=meta-llama/Llama-3.2-3B-Instruct:llama-3b ;;
+    "llama-8b") local model=meta-llama/Llama-3.1-8B-Instruct:llama-8b ;;
+    "llama-70b") local model=meta-llama/Llama-3.1-70B-Instruct:llama-70b ;;
+    "llama-17b") local model=meta-llama/Llama-4-Scout-17B-16E-Instruct:llama-17b ;;
     *)
       true ;;
   esac
+  
+  # model is of the form namespace/modelid:uniqueid
+  local modelid=$(echo $model | cut -d: -f2)
+  model=$(echo $model | cut -d: -f1)
 
   local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
   local provider=$(echo $model | cut -d '/' -f 1)
@@ -627,6 +631,7 @@ spec:
       containers:
         - name: downloader
           image: python:3.10
+          imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
             - mkdir -p "\${MOUNT_PATH}/\${MODEL_PATH}" && \
@@ -654,7 +659,6 @@ spec:
             - name: model-cache
               mountPath: /cache
       restartPolicy: OnFailure
-      imagePullPolicy: IfNotPresent
       volumes:
         - name: model-cache
           persistentVolumeClaim:

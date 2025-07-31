@@ -4,11 +4,13 @@ source ${LLMDBENCH_CONTROL_DIR}/env.sh
 if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
   extract_environment
 
+  model_number=0
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
 
-    llmdbench_execute_cmd "mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    llmdbench_execute_cmd "printf -v MODEL_NUM \"%02d\" \"$model_number\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    llmdbench_execute_cmd "mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
-    cat << EOF > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/values.yaml
+    cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/gaie-values.yaml
 inferenceExtension:
   replicas: 1
   image:
@@ -33,14 +35,16 @@ inferencePool:
 EOF
 
     announce "🚀 Installing helm chart \"gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}\" via helmfile..."
-    llmdbench_execute_cmd "helmfile --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --kubeconfig ${LLMDBENCH_CONTROL_WORK_DIR}/environment/context.ctx --selector name=gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/helmfile.yaml --skip-diff-on-install" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0
-    announce "✅ gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE} helm chart deployed successfully"
+    llmdbench_execute_cmd "helmfile --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --kubeconfig ${LLMDBENCH_CONTROL_WORK_DIR}/environment/context.ctx --selector name=gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-${MODEL_NUM} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/helmfile-${MODEL_NUM}.yaml --skip-diff-on-install" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    announce "✅ gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-${MODEL_NUM} helm chart deployed successfully"
 
-    srl=deployment,service,route,pods,secrets
+    srl=deployment,service,route,pods,secrets,inferencepool
     announce "ℹ️ A snapshot of the relevant (model-specific) resources on namespace \"${LLMDBENCH_VLLM_COMMON_NAMESPACE}\":"
     if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 0 ]]; then
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} get --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} $srl" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0
     fi
+
+  ((model_number++))
   done
 else
   announce "⏭️ Environment types are \"${LLMDBENCH_DEPLOY_METHODS}\". Skipping this step."
