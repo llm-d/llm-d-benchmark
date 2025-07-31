@@ -116,10 +116,20 @@ jobs:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: ./setup/teardown.sh -c cicd -t standalone -d
 
-      - name: E2E target cloud (modelservice)
+      - name: E2E target cloud (modelservice, inference-perf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: ./setup/e2e.sh -c cicd -t modelservice --deep
+
+      - name: E2E target cloud (modelservice, fmperf)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/e2e.sh -c cicd -t modelservice --deep -l fmperf
+
+      - name: E2E target cloud (modelservice, vllm-benchmark)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/e2e.sh -c cicd -t modelservice --deep -l vllm-benchmark
 
 
       - name: Install AWS CLI
