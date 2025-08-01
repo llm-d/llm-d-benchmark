@@ -126,6 +126,12 @@ jobs:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: ./setup/e2e.sh -c cicd -t modelservice --deep -l fmperf -w sanity_short-input
 
+      - name: E2E target cloud (modelservice, guidellm)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/e2e.sh -c cicd -t modelservice --deep -l guidellm
+
+
       - name: E2E target cloud (modelservice, vllm-benchmark)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
