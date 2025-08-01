@@ -33,6 +33,18 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
     llmdbench_execute_cmd "printf -v MODEL_NUM \"%02d\" \"$model_number\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     llmdbench_execute_cmd "mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
+    echo -n "" > $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-rules.yaml
+    if [[ "${LLMDBENCH_DEPLOY_MODEL_LIST}" != *","* ]]; then
+      cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-rules.yaml
+- backendRefs:
+      - group: inference.networking.x-k8s.io
+        kind: InferencePool
+        name: gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-${MODEL_NUM}
+        port: 8000
+        weight: 1
+EOF
+    fi
+
     cat << EOF >$LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-values.yaml
 multinode: false
 
@@ -57,11 +69,24 @@ routing:
     name: gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-${MODEL_NUM}
   httpRoute:
     create: $(echo $LLMDBENCH_VLLM_MODELSERVICE_ROUTE | $LLMDBENCH_CONTROL_SCMD -e 's/^0/false/' -e 's/1/true/')
-    matches:
-    - headers:
-      - name: x-model-name
-        type: Exact
-        value: "${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID}"
+    rules:
+    - backendRefs:
+      - group: inference.networking.x-k8s.io
+        kind: InferencePool
+        name: gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-${MODEL_NUM}
+        port: 8000
+        weight: 1
+      matches:
+      - path:
+          type: PathPrefix
+          value: /${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID}/
+      filters:
+      - type: URLRewrite
+        urlRewrite:
+          path:
+            type: ReplacePrefixMatch
+            replacePrefixMatch: /
+    $(cat $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-rules.yaml)
 
   epp:
     create: ${LLMDBENCH_VLLM_MODELSERVICE_EPP}
@@ -212,6 +237,8 @@ prefill:
   - name: torch-compile-cache
     emptyDir: {}
 EOF
+    # cleanup temp file
+    rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-rules.yaml
 
     announce "🚀 Installing helm chart \"ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}\" via helmfile..."
     llmdbench_execute_cmd "helmfile --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --kubeconfig ${LLMDBENCH_CONTROL_WORK_DIR}/environment/context.ctx --selector name=ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-${MODEL_NUM} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/helmfile-${MODEL_NUM}.yaml --skip-diff-on-install" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
