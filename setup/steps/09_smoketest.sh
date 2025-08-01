@@ -20,15 +20,18 @@ else
   service_ip=$(echo "${service}" | awk '{print $3}')
 fi
 
+model_number=0
 for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
 
   export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
+  export LLMDBENCH_DEPLOY_CURRENT_MODELID=$(model_attribute $model modelid)
+  llmdbench_execute_cmd "printf -v MODEL_NUM \"%02d\" \"$model_number\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
   if [[ $LLMDBENCH_CONTROL_DRY_RUN -ne 0 ]]; then
     pod_ip_list="127.0.0.4"
     service_ip="127.0.0.8"
   else
-    pod_ip_list=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.podIP}{"\n"}{end}' | grep ${pod_string} | awk '{print $2}')
+    pod_ip_list=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get pods -l llm-d.ai/model=ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-${MODEL_NUM}-llm-d-modelservice,llm-d.ai/role=decode -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.podIP}{"\n"}{end}' | awk '{print $2}')
   fi
 
   if [[ -z $pod_ip_list ]]; then
@@ -62,7 +65,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
 
   announce "🚀 Testing service/gateway \"${service_name}\" (\"${service_ip}\") (port 80)..."
 
-  received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${service_ip} 80)
+  received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${service_ip}:80/${LLMDBENCH_DEPLOY_CURRENT_MODELID} 80)
   if [[ ${received_model_name} == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
     announce "✅ Service responds successfully ($received_model_name)"
   else
@@ -72,7 +75,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   route_url=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get route --no-headers --ignore-not-found | grep ${route_string} | awk '{print $2}'  || true)
   if [[ ! -z $route_url ]]; then
     announce "🚀 Testing external route \"${route_url}\"..."
-    received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${route_url} 80)
+    received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${route_url}:80/${LLMDBENCH_DEPLOY_CURRENT_MODELID} 80)
 
     if [[ ${received_model_name} == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
       announce "✅ External route responds successfully ($received_model_name)"
@@ -80,4 +83,6 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
       announce "❌ External route responded with model name \"$received_model_name\" (instead of $LLMDBENCH_DEPLOY_CURRENT_MODEL)!"
     fi
   fi
+
+  ((model_number++))
 done

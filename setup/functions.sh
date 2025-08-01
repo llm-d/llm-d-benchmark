@@ -851,7 +851,7 @@ function get_model_name_from_pod {
 
     local url=$url/v1/models
 
-    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0 2)
+    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2)
     is_jq=$(echo $response | jq -r . || true)
 
     if [[ -z $is_jq ]]; then
