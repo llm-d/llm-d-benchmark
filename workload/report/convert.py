@@ -31,6 +31,53 @@ def import_yaml(file_path: str) -> dict[any, any]:
     return data
 
 
+def import_variables(file_path: str) -> dict[str, str]:
+    """Import a list of environment variable definitions from file as a dict.
+
+    Args:
+        file_path (str): Path to variable definition file.
+
+    Returns:
+        dict: Imported data.
+    """
+    if not os.path.isfile(file_path):
+        raise Exception('File does not exist: %s' % file_path)
+
+    envars = {}
+    with open(file_path, 'r', encoding='UTF-8') as file:
+        for line in file:
+            if not '=' in line:
+                continue
+            envar, value = line.strip().split('=', 1)
+            if re.search('^export ', envar):
+                envar = envar[7:].strip()
+            envars[envar] = value
+
+    return envars
+
+
+def update_dict(dest: dict[any, any], source: dict[any, any]) -> None:
+    """Deep update a dict using values from another dict. If a value is a dict,
+    then update that dict, otherwise overwrite with the new value.
+
+    Args:
+        dest (dict): dict to update.
+        source (dict): dict with new values to add to dest.
+    """
+    for key, val in source.items():
+        if key in dest and isinstance(dest[key], dict):
+            if not val:
+                # Do not "update" with null values
+                continue
+            if not isinstance(val, dict):
+                raise Exception("Cannot update dict type with non-dict: %s" % val)
+            update_dict(dest[key], val)
+        else:
+            dest[key] = val
+
+
+#TODO if a variables file exists, it is assumed it contains certain variable
+# definitions. If any are missing, this function will crash.
 def _import_llmd_benchmark_run_data(results_path: str) -> dict:
     """Import scenario data from llm-d-benchmark run givin the results path.
 
@@ -45,8 +92,65 @@ def _import_llmd_benchmark_run_data(results_path: str) -> dict:
         # We do not have this information available to us.
         return {}
 
-    # TODO
-    return {}
+    envars = import_variables(variables_file)
+
+    if envars['LLMDBENCH_DEPLOY_METHODS'] == 'standalone':
+        config = {
+            "scenario": {
+                "host": {
+                    "type": ['replica'] * int(envars['LLMDBENCH_VLLM_COMMON_REPLICAS']),
+                    "accelerator": [{
+                        "model": envars['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
+                        "count": int(envars['LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR']),
+                        "parallelism": {
+                            "tp": int(envars['LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR']),
+                        },
+                    }] * int(envars['LLMDBENCH_VLLM_COMMON_REPLICAS']),
+                },
+                "platform": {
+                    "engine": [{
+                        "name": envars['LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY'] + \
+                                envars['LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO'] + \
+                                envars['LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME'] + \
+                                envars['LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG'],
+                    }] * int(envars['LLMDBENCH_VLLM_COMMON_REPLICAS'])
+                },
+            },
+        }
+    else:
+        config = {
+            "scenario": {
+                "host": {
+                    "type": ['prefill'] * int(envars['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
+                            ['decode'] * int(envars['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
+                    "accelerator": [{
+                        "model": envars['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
+                        "count": int(envars['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR']),
+                        "parallelism": {
+                            "tp": int(envars['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR']),
+                        },
+                    }] * int(envars['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
+                    [{
+                        "model": envars['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
+                        "count": int(envars['LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR']),
+                        "parallelism": {
+                            "tp": int(envars['LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR']),
+                        },
+                    }] * int(envars['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
+                },
+                "platform": {
+                    "engine": [{
+                            "name": envars['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
+                                    envars['LLMDBENCH_LLMD_IMAGE_REPO'] + \
+                                    envars['LLMDBENCH_LLMD_IMAGE_NAME'] + \
+                                    envars['LLMDBENCH_LLMD_IMAGE_TAG'],
+                    }] * (int(envars['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
+                         int(envars['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
+                },
+            },
+        }
+
+    return config
 
 
 def _vllm_timestamp_to_epoch(date_str: str) -> int:
@@ -107,7 +211,7 @@ def import_vllm_benchmark(results_path: str) -> BenchmarkRun:
     # schema of BenchmarkRun
     br_dict = _import_llmd_benchmark_run_data(results_path)
     # Append to that dict the data from vLLM benchmark
-    br_dict.update({
+    update_dict(br_dict, {
         "scenario": {
             "model": {"name": results['model_id']},
             "load": {
