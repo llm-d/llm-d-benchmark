@@ -326,6 +326,7 @@ if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS ]]; then
   else
     export LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS=$LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS_FULL_PATH
   fi
+fi
 
 required_vars=("LLMDBENCH_HF_TOKEN")
 for var in "${required_vars[@]}"; do
