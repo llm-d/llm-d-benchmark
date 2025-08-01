@@ -67,6 +67,15 @@ function get_model_aliases_list {
 }
 export -f get_model_aliases_list
 
+
+function get_scheduler {
+  # check aiu afinity to add aiu scheduler
+  if [[ "${LLMDBENCH_VLLM_COMMON_AFFINITY}" == *"aiu"* ]]; then
+    echo "schedulerName: aiu-scheduler"
+  fi
+}
+export -f get_scheduler
+
 function resolve_harness_git_repo {
   local harness_name=$1
 
@@ -402,6 +411,11 @@ function add_command_line_options {
   else
     if [[ $LLMDBENCH_CURRENT_STEP == "06" ]]; then
       echo "  - |"
+      if [[ "${LLMDBENCH_VLLM_COMMON_AFFINITY}" == *"aiu"* ]]; then
+        local indent=$(printf '%*s' 12 '')
+        echo "${indent}source /etc/profile.d/ibm-aiu-setup.sh"
+        echo "${indent}source /opt/vllm/bin/activate"
+      fi
     fi
     rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     touch $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
