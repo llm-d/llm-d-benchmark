@@ -124,7 +124,7 @@ jobs:
       - name: E2E target cloud (modelservice, fmperf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c cicd -t modelservice --deep -l fmperf
+        run: ./setup/e2e.sh -c cicd -t modelservice --deep -l fmperf -w sanity_short-input.yaml.in
 
       - name: E2E target cloud (modelservice, vllm-benchmark)
         env:
