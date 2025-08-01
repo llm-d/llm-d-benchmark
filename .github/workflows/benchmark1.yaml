@@ -129,7 +129,7 @@ jobs:
       - name: E2E target cloud (modelservice, guidellm)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c cicd -t modelservice --deep -l guidellm
+        run: ./setup/e2e.sh -c cicd -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
 
 
       - name: E2E target cloud (modelservice, vllm-benchmark)
