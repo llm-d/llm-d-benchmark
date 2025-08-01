@@ -155,6 +155,13 @@ export LLMDBENCH_CONTROL_WAIT_TIMEOUT=${LLMDBENCH_CONTROL_WAIT_TIMEOUT:-900}
 export LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS=${LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS:-0}
 export LLMDBENCH_CONTROL_RESOURCE_LIST=deployment,httproute,route,service,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,job
 
+
+if [[ "${LLMDBENCH_VLLM_COMMON_AFFINITY}" == *"aiu"* ]]; then
+  # if using aiu remove the unsupported --enable-sleep-mode flag, this flag is unsupported for aiu
+  LLMDBENCH_VLLM_STANDALONE_ARGS=${LLMDBENCH_VLLM_STANDALONE_ARGS//____--enable-sleep-mode/}
+fi
+
+
 source $LLMDBENCH_MAIN_DIR/setup/functions.sh
 
 is_oc=$(which oc || true)
@@ -300,8 +307,8 @@ if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS ]]; then
     exit 1
   else
     export LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS=$LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS_FULL_PATH
+    fi
   fi
-fi
 
 required_vars=("LLMDBENCH_HF_TOKEN")
 for var in "${required_vars[@]}"; do
