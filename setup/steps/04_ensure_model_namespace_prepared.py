@@ -14,8 +14,8 @@ import subprocess
 
 current_file = Path(__file__).resolve()
 
-# get the projects root directory by going up 2 parent directories
-project_root = current_file.parents[2]
+# get the projects root directory by going up 1 parent directories
+project_root = current_file.parents[1]
 
 #add the project root to the system path
 sys.path.insert(0, str(project_root))
@@ -86,11 +86,10 @@ def main():
         )
 
         announce(f'🔽 Launching download job for model: "{model_name}"')
-
         launch_download_job(
             namespace=ev['vllm_common_namespace'],
             secret_name=ev['vllm_common_hf_token_name'],
-            download_model=model_name,
+            download_model=download_model,
             model_path=model_path,
             pvc_name=ev['vllm_common_pvc_name'],
             dry_run=ev['control_dry_run'] == '1',
