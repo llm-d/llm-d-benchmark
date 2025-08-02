@@ -20,10 +20,10 @@ if [[ $0 != "-bash" ]]; then
     pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
 fi
 
-export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/../../setup)
-export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
+export LLMDBENCH_SETUP_DIR=$(realpath $(pwd)/../../setup)
+export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_SETUP_DIR}/../)
 
-source ${LLMDBENCH_CONTROL_DIR}/env.sh
+source ${LLMDBENCH_SETUP_DIR}/env.sh
 
 model_list="meta-llama/Llama-3.2-3B-Instruct RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic meta-llama/Llama-4-Scout-17B-16E-Instruct Qwen/Qwen1.5-MoE-A2.7B-Chat ibm-granite/granite-speech-3.3-8b ibm-granite/granite-vision-3.3-2b facebook/opt-125m"
 for i in $model_list

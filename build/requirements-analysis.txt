@@ -1,0 +1,6 @@
+matplotlib>=3.7.0
+numpy>=1.22.0
+seaborn>=0.12.0
+pandas
+pydantic>=2.11.7
+PyYAML>=6.0.2

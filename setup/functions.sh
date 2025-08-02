@@ -113,12 +113,11 @@ function prepare_work_dir {
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/logs
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
-  for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
-    mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$profile_type
-  done
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/experiments
 }
 export -f prepare_work_dir
 
@@ -241,7 +240,7 @@ function add_additional_env_to_yaml {
   local model=${2:-none}
 
   if [[ -f ${object_to_render} ]]; then
-    render_template $object_to_render none 0 1
+    render_template $object_to_render none none  0 1
   else
     local output="REPLACEFIRSTNEWLINE"
     for envvar in ${LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML//,/ }; do
@@ -315,15 +314,22 @@ export -f render_string
 function render_template {
   local template_file_path=$1
   local output_file_path=${2:-"none"}
-  local cmdline_mode=${3:-0}
-  local env_var_mode=${4:-0}
+  local additional_replace_commands=${3:-"none"}
+  local cmdline_mode=${4:-0}
+  local env_var_mode=${5:-0}
+
   rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   touch $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
 
-  for entry in $(cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' | grep -E "REPLACE_ENV" | uniq); do
+  if [[ $additional_replace_commands != "none" ]]; then
+    cat $additional_replace_commands >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  fi
+
+  for entry in $(cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' -e 's^\.^\n^g' -e 's^\/^\n^g' | grep -E "REPLACE_ENV" | uniq); do
     render_string $entry &>/dev/null
   done
 
+  echo "s^#.*^^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   if [[ $cmdline_mode -eq 1 ]]; then
     if [[ $LLMDBENCH_CURRENT_STEP == "06" ]]; then
       echo "  - |"
@@ -387,7 +393,7 @@ function add_command_line_options {
   fi
 
   if [[ -f ${object_to_render} ]]; then
-    render_template $object_to_render none 1
+    render_template $object_to_render none none 1 0
   else
     if [[ $LLMDBENCH_CURRENT_STEP == "06" ]]; then
       echo "  - |"
@@ -571,6 +577,12 @@ function validate_and_create_pvc {
     exit 1
   fi
 
+
+  local has_pvc=$($LLMDBENCH_CONTROL_KCMD get pvc ${pvc_name} --output=custom-columns="CAPACITY:.status.capacity.storage" --no-headers --ignore-not-found || true)
+  if [[ ! -z $has_pvc ]]; then
+    local pvc_size=$has_pvc
+  fi
+
   cat << EOF > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_storage_pvc_setup.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -745,15 +757,18 @@ spec:
     command: ["sh", "-c"]
     args:
     - "${LLMDBENCH_HARNESS_EXECUTABLE}"
+    resources:
+      limits:
+        cpu: "${LLMDBENCH_HARNESS_CPU_NR}"
+        memory: ${LLMDBENCH_HARNESS_CPU_MEM}
+      requests:
+        cpu: "${LLMDBENCH_HARNESS_CPU_NR}"
+        memory: ${LLMDBENCH_HARNESS_CPU_MEM}
     env:
     - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
       value: "1"
     - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY
       value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY}"
-    - name: LLMDBENCH_HARNESS_GIT_REPO
-      value: "$(resolve_harness_git_repo $LLMDBENCH_HARNESS_NAME)"
-    - name: LLMDBENCH_HARNESS_GIT_BRANCH
-      value: "${LLMDBENCH_HARNESS_GIT_BRANCH}"
     - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS
       value: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
     - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
@@ -814,22 +829,113 @@ EOF
 }
 export -f create_harness_pod
 
+function get_model_name_from_pod {
+    local namespace=$1
+    local image=$2
+    local url=$3
+    local port=$4
+
+    has_protocol=$(echo $url | grep "http://" || true)
+    if [[ -z $has_protocol ]]; then
+      local url="http://$url"
+    fi
+
+    has_port=$(echo $url | grep  ":$port" || true)
+    if [[ -z $has_port ]]; then
+      local url="$url:$port"
+    fi
+
+    local url=$url/v1/models
+
+    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0 2)
+    is_jq=$(echo $response | jq -r . || true)
+
+    if [[ -z $is_jq ]]; then
+      return 1
+    fi
+    has_model=$(echo "$is_jq" | jq -r ".data[].id" || true)
+    if [[ -z $has_model ]]; then
+      return 1
+    fi
+    echo $has_model
+}
+export -f get_model_name_from_pod
+
 function render_workload_templates {
     local workload=${1:-all}
+
+    local workload=$(echo $workload | $LLMDBENCH_CONTROL_SCMD 's^\.yaml^^g' )
     if [[ $workload == "all" ]]; then
       workload_template_list=$(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name "*.yaml.in")
     else
       workload_template_list=$(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name "${workload}.yaml.in")
     fi
-    announce "🛠️ Rendering $workload workload profile templates under \"$LLMDBENCH_MAIN_DIR/workload/profiles/\"..."
+
+    rm -f $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
+    touch $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
+    if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES ]]; then
+      for entry in $(echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
+        parm=$(echo $entry | cut -d '=' -f 1)
+        val=$(echo $entry | cut -d '=' -f 2)
+        echo "s^$parm:.*^$parm: $val^g" >> $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
+      done
+    fi
+
+    announce "🛠️ Rendering \"$workload\" workload profile templates under \"$LLMDBENCH_MAIN_DIR/workload/profiles/\"..."
     for workload_template_full_path in $workload_template_list; do
       workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
-      workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD "s^\.in$^^g")
-      render_template $workload_template_full_path ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/$workload_template_file_name &>/dev/null
+      workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e "s^\.yaml.in$^^g")
+      workload_output_file=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/$workload_template_file_name
+      mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/
+      treatment_list_dir=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/treatment_list
+      if [[ -d $treatment_list_dir ]]; then
+        for treatment in $(ls $treatment_list_dir); do
+            workload_output_file_suffix=$(echo ${treatment} | cut -d '_' -f 2 | cut -d '.' -f 1)
+            render_template $workload_template_full_path ${workload_output_file}_${workload_output_file_suffix}.yaml ${treatment_list_dir}/$treatment 0 0
+        done
+      else
+        render_template $workload_template_full_path $workload_output_file.yaml $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt 0 0
+      fi
     done
-    announce "✅ Done rendering $workload workload profile templates to \"${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/\""
+    announce "✅ Done rendering \"$workload\" workload profile templates to \"${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/\""
 }
 export -f render_workload_templates
+
+function generate_profile_parameter_treatments {
+  local harness_name=$1
+  local run_parameter_file=${2:-}
+
+  if [[ -z $run_parameter_file ]]; then
+    return 0
+  fi
+
+  local output_dir=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$harness_name/treatment_list
+
+  rm -rf $output_dir
+  mkdir -p $output_dir
+
+  cp -f $run_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/workload/experiments/
+
+  i=1
+  for treatment in $(cat $run_parameter_file | yq -r '.treatments[]'); do
+    echo "1i#treatment_$i.txt" >> $output_dir/treatment_$i.txt
+    local j=1
+    for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
+      local param=$(cat $run_parameter_file | yq -r ".factors[$(($j - 1))]")
+      echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_$i.txt
+      j=$((j+1))
+    done
+    if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES ]]; then
+      for entry in $(echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
+        parm=$(echo $entry | cut -d '=' -f 1)
+        val=$(echo $entry | cut -d '=' -f 2)
+        echo "s^$parm:.*^$parm: $val^g" >> $output_dir/treatment_$i.txt
+      done
+    fi
+    i=$((i+1))
+  done
+}
+export -f generate_profile_parameter_treatments
 
 function cleanup_pre_execution {
   announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\"..."
@@ -849,3 +955,25 @@ function validate_model_name {
   done
 }
 export -f validate_model_name
+
+function backup_work_dir {
+if [[ $LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP -eq 1 ]]; then
+  return 0
+fi
+
+if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
+  if [[ $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} != "e2s.sh" ]]; then
+    backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
+    backup_target=$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix
+    announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
+    llmdbench_execute_cmd "mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
+    prepare_work_dir
+    if [[ -f $backup_target/environment/context.ctx ]]; then
+      llmdbench_execute_cmd "cp -f $backup_target/environment/context.ctx $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    fi
+    echo
+  fi
+fi
+}
+export -f backup_work_dir

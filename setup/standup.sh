@@ -111,6 +111,7 @@ while [[ $# -gt 0 ]]; do
         ;;
         -v|--verbose)
         export LLMDBENCH_CLIOVERRIDE_CONTROL_VERBOSE=1
+        export LLMDBENCH_CONTROL_VERBOSE=1
         ;;
         -h|--help)
         show_usage

@@ -22,15 +22,21 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
   # deploy models
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
+
+    # If LLMDBENCH_VLLM_MODELSERVICE_URI is not defined, set it to pvc://
+    if [[ -n "$LLMDBENCH_VLLM_MODELSERVICE_URI" ]]; then
+      export LLMDBENCH_VLLM_MODELSERVICE_URI="pvc://${LLMDBENCH_VLLM_COMMON_PVC_NAME}/models/$(model_attribute $model model)"
+    fi
     llmdbench_execute_cmd "mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
     cat << EOF > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/values.yaml
 multinode: false
 
 modelArtifacts:
-  uri: "pvc://${LLMDBENCH_VLLM_COMMON_PVC_NAME}/${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}/models/$(model_attribute $model model)"
+  uri: $LLMDBENCH_VLLM_MODELSERVICE_URI
   size: $LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE
   authSecretName: "llm-d-hf-token"
+  name: $(model_attribute $model model)
 
 routing:
   modelName: $(model_attribute $model model)
@@ -39,14 +45,13 @@ routing:
     - group: gateway.networking.k8s.io
       kind: Gateway
       name: infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway
-
+  proxy:
+    secure: false
   inferenceModel:
     create: false
-
   inferencePool:
     create: false
     name: gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}
-
   httpRoute:
     create: $(echo $LLMDBENCH_VLLM_MODELSERVICE_ROUTE | $LLMDBENCH_CONTROL_SCMD -e 's/^0/false/' -e 's/1/true/')
 
@@ -64,6 +69,7 @@ decode:
       $(add_annotations)
   containers:
   - name: "vllm"
+    mountModelVolume: true
     image: "$(get_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_NAME} ${LLMDBENCH_LLMD_IMAGE_TAG} 0)"
     modelCommand: ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND}
     $(add_command $LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND)
@@ -107,12 +113,9 @@ decode:
         port: 8200
       failureThreshold: 3
       periodSeconds: 5
-    mountModelVolume: true
     volumeMounts:
     - name: metrics-volume
       mountPath: /.config
-    - name: model-storage
-      mountPath: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
     - name: shm
       mountPath: /dev/shm
     - name: torch-compile-cache
@@ -138,6 +141,7 @@ prefill:
       $(add_annotations)
   containers:
   - name: "vllm"
+    mountModelVolume: true
     image: "$(get_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_NAME} ${LLMDBENCH_LLMD_IMAGE_TAG} 0)"
     modelCommand: ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND}
     $(add_command $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND)
@@ -183,12 +187,9 @@ prefill:
         port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
       failureThreshold: 3
       periodSeconds: 5
-    mountModelVolume: true
     volumeMounts:
     - name: metrics-volume
       mountPath: /.config
-    - name: model-storage
-      mountPath: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
     - name: shm
       mountPath: /dev/shm
     - name: torch-compile-cache
@@ -238,12 +239,18 @@ EOF
       announce "⏳ Waiting for (decode) pods serving ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l llm-d.ai/model=ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-llm-d-modelservice,llm-d.ai/role=decode" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       announce "🚀 (decode) pods serving model ${model} ready"
+
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} logs --tail=-1 --prefix=true -l llm-d.ai/model=ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-llm-d-modelservice,llm-d.ai/role=decode > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/logs/llm-d-decode.log" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
     fi
 
     if [[ $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS -gt 0 ]]; then
       announce "⏳ Waiting for (prefill) pods serving ${model} to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=condition=Ready=True pod -l llm-d.ai/model=ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-llm-d-modelservice,llm-d.ai/role=prefill" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       announce "🚀 (prefill) pods serving model ${model} ready"
+
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} logs --tail=-1 --prefix=true -l llm-d.ai/model=ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-llm-d-modelservice,llm-d.ai/role=prefill > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/logs/llm-d-prefill.log" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
     fi
 
     if [[ $LLMDBENCH_VLLM_MODELSERVICE_ROUTE -ne 0 && $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -ne 0 ]]; then

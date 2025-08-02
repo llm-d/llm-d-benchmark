@@ -12,6 +12,7 @@ import urllib3
 import yaml
 import logging
 import json
+import shutil
 from datetime import datetime
 import sys
 import time
@@ -19,18 +20,21 @@ from pathlib import Path
 
 import kubernetes
 from kubernetes import client
+from kubernetes_asyncio import client as k8s_async_client
+from kubernetes_asyncio import config as k8s_async_config
+from kubernetes_asyncio import watch as k8s_async_watch
+
+import asyncio
 
 from fmperf.Cluster import Cluster
 from fmperf import LMBenchmarkWorkload
 from fmperf.StackSpec import StackSpec
 from fmperf.utils import run_benchmark
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -71,60 +75,44 @@ def update_workload_config(workload_spec, env_vars):
 
     return workload_spec
 
-def wait_for_evaluation_job(cluster, job_name, namespace, capture_log_file, data_dir : str, timeout=7200):
-    """Wait for the evaluation job to complete."""
-    logger.info(f"Waiting for evaluation job {job_name} to complete...")
-    start_time = time.time()
-    k8s_client = client.BatchV1Api()
 
-    while True:
-        if time.time() - start_time > timeout:
-            logger.error(f"Timeout waiting for evaluation job after {timeout} seconds")
-            return False
+async def wait_for_job(job_name, namespace, timeout=7200):
+    """Wait for the  job to complete"""
+    logger.info(f"Waiting for job {job_name} to complete...")
 
-        try:
-            # Try to get the job
-            job = k8s_client.read_namespaced_job(name=job_name, namespace=namespace)
+    # use async config loading
+    await k8s_async_config.load_kube_config()
+    api_client = k8s_async_client.ApiClient()
+    batch_v1_api = k8s_async_client.BatchV1Api(api_client)
+    try:
+        w = k8s_async_watch.Watch()
 
-            # if job finished then get logs regardless
-            if job.status.succeeded or job.status.failed:
-                # saved to /requests/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}/eval-pod-log.log
-                logs = capture_pod_logs(job_name, namespace, capture_log_file)
-            if job.status.succeeded:
-                logger.info(f"Evaluation job {job_name} completed successfully")
-                if move_data_result(capture_log_file, data_dir):
-                    logger.info(f"Data moved to {data_dir}")
+        # sets up connection with kubernetes, async with manages the streams lifecycle
+        async with w.stream(
+            func=batch_v1_api.list_namespaced_job,
+            namespace=namespace,
+            field_selector=f"metadata.name={job_name}",
+            timeout_seconds=timeout  # replaces the manual timeout check
+        ) as stream:
+
+            async for event in stream: # replaces time.wait since we grab events as they come from stream sasynchronous
+                job_status = event['object'].status
+                if job_status.succeeded:
+                    logger.info(f"Evaluation job {job_name} completed successfully.")
                     return True
-                else:
-                    logger.error(f"Failed to move data to {data_dir}")
+
+                elif job_status.failed:
+                    logger.error(f"Evaluation job {job_name} failed")
                     return False
-            if job.status.failed:
-                logger.error(f"Evaluation job {job_name} failed")
-                return False
 
-        except client.exceptions.ApiException as e:
-            if e.status == 404:
-                # Job is gone - check if it was deleted by the code (which would mean success)
-                # or if it failed
-                try:
-                    # Try to get the job one more time to see if it was in a successful state
-                    job = k8s_client.read_namespaced_job(name=job_name, namespace=namespace)
-                    if job.status.succeeded:
-                        logger.info(f"Job {job_name} completed successfully before deletion")
-                        return True
-                except client.exceptions.ApiException:
-                    # If we can't get the job at all, it might have failed
-                    logger.error(f"Job {job_name} disappeared without completing successfully")
-                    return False
-            else:
-                logger.error(f"Error checking job status: {str(e)}")
-                return False
 
-        # Wait before checking again
-        time.sleep(30)
-        remaining = int(timeout - (time.time() - start_time))
-        logger.info(f"Still waiting for evaluation job... ({remaining} seconds remaining)")
-
+    except asyncio.TimeoutError:
+        logger.info(f"Timeout waiting for evaluation job {job_name} after {timeout} seconds.")
+        return False
+    except Exception as e:
+        logger.error(f"Error occured while waiting for job {job_name} : {e}")
+    finally:
+        await api_client.close()
 
 
 def capture_pod_logs(job_name, namespace, output_file : str):
@@ -134,24 +122,24 @@ def capture_pod_logs(job_name, namespace, output_file : str):
     """
     try:
         v1 = client.CoreV1Api()
-        
+
         # get pods created by the job using label selector
         label_selector = f"job-name={job_name}"
         pods = v1.list_namespaced_pod(
             namespace=namespace,
             label_selector=label_selector
         )
-        
+
         if not pods.items:
             logger.error(f"No pods found for job {job_name}")
             return None
-        
-        # get logs from the first pod 
+
+        # get logs from the first pod
         pod = pods.items[0]
         pod_name = pod.metadata.name
-        
+
         logger.info(f"Capturing logs from pod: {pod_name}")
-        
+
         logs = v1.read_namespaced_pod_log(
             name=pod_name,
             namespace=namespace,
@@ -163,9 +151,9 @@ def capture_pod_logs(job_name, namespace, output_file : str):
         with open(output_file, 'w') as f:
             f.write(logs)
         logger.info(f"Wrote logs to: {output_file}")
-            
+
         return logs
-        
+
     except Exception as e:
         logger.error(f"Error capturing logs for job {job_name}: {e}")
         return None
@@ -216,8 +204,26 @@ def move_data_result(capture_log_file, data_dir):
 
 
 def main():
-    logger.info("Starting benchmark run")
+
     env_vars = os.environ
+
+    # Get results directory for configuration
+    results_dir = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", "/requests")
+
+    Path(results_dir).mkdir(parents=True, exist_ok=True)
+
+    file_handler = logging.FileHandler(f"{results_dir}/stdout.log")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    logger.info("Starting benchmark run")
     stack_name = env_vars.get("LLMDBENCH_HARNESS_STACK_NAME", "llm-d-3b-instruct")
     harness_name = env_vars.get("LLMDBENCH_HARNESS_NAME", "fmperf")
     experiment_id = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_ID", "abc123")
@@ -226,10 +232,7 @@ def main():
     workload_file = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME", "llmdbench_workload.yaml")
     repetition = int(env_vars.get("LLMDBENCH_FMPERF_REPETITION", "1"))
     namespace = env_vars.get("LLMDBENCH_HARNESS_NAMESPACE", "llmdbench")
-    job_id = env_vars.get("LLMDBENCH_FMPERF_JOB_ID", stack_name)
-
-    # Get results directory for configuration
-    results_dir = env_vars.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", "/requests")
+    job_id = env_vars.get("LLMDBENCH_FMPERF_JOB_ID", f"{stack_name}-{experiment_id}")
 
     logger.info(f"Using configuration:")
     logger.info(f"  Stack name: {stack_name}")
@@ -244,6 +247,8 @@ def main():
     workload_file_path = os.path.join("/workspace/profiles/fmperf", workload_file)
     logger.info(f"Loading workload configuration from {workload_file_path}")
     workload_spec = LMBenchmarkWorkload.from_yaml(workload_file_path)
+
+    shutil.copy(workload_file_path, f"{results_dir}/{workload_file_path.split('/')[-1]}")
 
     logger.info("Updating workload configuration with environment variables")
     workload_spec = update_workload_config(workload_spec, env_vars)
@@ -266,7 +271,7 @@ def main():
     logger.info("Starting benchmark run")
 
     try:
-        # Run benchmark which will create the evaluation job
+        # run benchmark which will create the evaluation job
         results = run_benchmark(
             cluster=cluster,
             stack_spec=stack_spec,
@@ -292,12 +297,12 @@ def main():
         logger.info(f"Waiting for evaluation job {job_name} to complete...")
 
         # Wait for the evaluation job to complete
-        if wait_for_evaluation_job(cluster, job_name, namespace, eval_log_file, eval_data_dir):
-            logger.info("Evaluation job completed successfully")
-        else:
-            logger.error("Evaluation job failed or timed out")
-            raise Exception("Evaluation job failed or timed out")
-        
+        asyncio.run(wait_for_job(job_name, namespace))
+
+        logs = capture_pod_logs(job_name, namespace, eval_log_file)
+        if move_data_result(eval_log_file, eval_data_dir):
+            logger.info(f"Data moved to {eval_data_dir}")
+
 
     except Exception as e:
         logger.error(f"Benchmark run failed: {str(e)}")

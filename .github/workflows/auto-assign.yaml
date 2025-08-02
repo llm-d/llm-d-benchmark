@@ -1,0 +1,63 @@
+name: Auto Assign and Unassign
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  assign-unassign:
+    if: startsWith(github.event.comment.body, '/assign') || startsWith(github.event.comment.body, '/unassign')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign or unassign users
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.comment.body.trim();
+            const commenter = context.payload.comment.user.login;
+            const issue_number = context.payload.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const commandRegex = /^\/(assign|unassign)(?:\s+@?([\w-]+(?:\s+@?[\w-]+)*))?$/i;
+            const match = body.match(commandRegex);
+
+            if (!match) {
+              console.log("Comment is not a valid /assign or /unassign command.");
+              return;
+            }
+
+            const action = match[1]; // "assign" or "unassign"
+            let targets;
+
+            if (!match[2]) {
+              // No usernames provided — use commenter
+              targets = [commenter];
+            } else {
+              targets = match[2]
+                .split(/\s+/)
+                .map(user => user.replace(/^@/, '').trim())
+                .filter(Boolean);
+            }
+
+            console.log(`Performing /${action} for:`, targets);
+
+            if (action === 'assign') {
+              await github.rest.issues.addAssignees({
+                owner,
+                repo,
+                issue_number,
+                assignees: targets,
+              });
+            } else if (action === 'unassign') {
+              await github.rest.issues.removeAssignees({
+                owner,
+                repo,
+                issue_number,
+                assignees: targets,
+              });
+            }

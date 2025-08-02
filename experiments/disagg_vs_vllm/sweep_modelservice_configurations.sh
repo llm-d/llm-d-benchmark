@@ -47,10 +47,7 @@ pd_conf_array=("6,2,1,4" "4,2,1,8" "8,1,1,8" "4,2,2,4" "4,2,4,2" "2,2,4,4")
 export LLMDBENCH_HARNESS_NAME=vllm-benchmark
 
 # Workload profile to use, located in workload/profiles/vllm-benchmark/ of this repository
-# workload_profile=random_concurrent_10k-100_ISL-OSL
-# workload_profile=random_concurrent_10k-1k_ISL-OSL
-# workload_profile=random_concurrent_20k-1k_ISL-OSL
-workload_profile=random_concurrent_30k-300_ISL-OSL
+workload_profile=random_concurrent
 
 # Benchmark workloads, each pair is "(max concurrency),(number of prompts)"
 # DO NOT PUT COMMAS BETWEEN PAIRS!
@@ -82,7 +79,8 @@ export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/)
 if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
 fi
-export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
+
+export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../..)
 
 erase_and_quit=0
 gen_and_quit=0
@@ -95,6 +93,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     -g|--generate) # Generate scenario files matching supplied base, then exit
     export gen_and_quit=1
+    ;;
+    -n|--dry-run)
+    export LLMDBENCH_CONTROL_DRY_RUN=1
     ;;
     *)
     echo "ERROR: invalid option \"$key\""
@@ -150,7 +151,7 @@ export LLMDBENCH_RUN_EXPERIMENT_ID=$id
 for sc in "${scenarios[@]}"; do
   if [ $LLMDBENCH_RUN_EXPERIMENT_ID -ge $skip_to_id ]; then
     printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Standing up scenario $sc****\033[0m\n"
-    $LLMDBENCH_CONTROL_DIR/standup.sh -c $sc
+    $LLMDBENCH_MAIN_DIR/setup/standup.sh -c $sc
     printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Running benchmarks for scenario $sc****\033[0m\n"
   fi
   for wl in ${workload_array[@]}; do
@@ -162,10 +163,10 @@ for sc in "${scenarios[@]}"; do
       continue
     fi
     printf "\033[1;33m**** $(date +'%Y-%m-%d %H:%M:%S'): Benchmarking scenario $sc, concurrency $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_MAX_CONCURRENCY, prompts $LLMDBENCH_RUN_EXPERIMENT_PARAMETER_NUM_PROMPTS, ID $LLMDBENCH_RUN_EXPERIMENT_ID ****\033[0m\n"
-    $LLMDBENCH_CONTROL_DIR/run.sh -c $sc -m $model -w $workload_profile
+    $LLMDBENCH_MAIN_DIR/setup/run.sh -c $sc -m $model -w $workload_profile
   done
   if [ $LLMDBENCH_RUN_EXPERIMENT_ID -ge $skip_to_id ]; then
     printf "\033[1;32m**** $(date +'%Y-%m-%d %H:%M:%S'): Tearing down scenario $sc****\033[0m\n"
-    $LLMDBENCH_CONTROL_DIR/teardown.sh -c $sc
+    $LLMDBENCH_MAIN_DIR/setup/teardown.sh -c $sc
   fi
 done
