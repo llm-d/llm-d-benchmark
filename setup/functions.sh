@@ -704,7 +704,7 @@ function wait_for_download_job {
 }
 export -f wait_for_download_job
 
-function run_step {
+run_step() {
   local script_name=$1
 
   if [[ -f $script_name ]]; then
@@ -720,7 +720,15 @@ function run_step {
     if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
       echo -e "[DRY RUN] $script_path\n"
     fi
-    source $script_path
+
+    if [[ $script_path == *.sh ]]; then
+      source $script_path
+    elif [[ $script_path == *.py ]]; then 
+      python3 $script_path
+    else
+      announce "ERROR: Unsupported script type for \"$script_path\""
+    fi
+
     echo
   else
     announce "ERROR: unable to run step \"${script_name}\""
