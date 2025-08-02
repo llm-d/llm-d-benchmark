@@ -156,10 +156,15 @@ spec:
     volumeMounts:
     - name: requests
       mountPath: /requests
+    - name: cache-volume
+      mountPath: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
   volumes:
   - name: requests
     persistentVolumeClaim:
       claimName: $LLMDBENCH_HARNESS_PVC_NAME
+  - name: cache-volume
+    persistentVolumeClaim:
+      claimName: ${LLMDBENCH_VLLM_COMMON_PVC_NAME}
 EOF
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_a_pod_access_to_harness_data.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 

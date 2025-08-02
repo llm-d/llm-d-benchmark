@@ -39,6 +39,7 @@ export LLMDBENCH_DEPLOY_SCENARIO=
 export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=
 export LLMDBENCH_HARNESS_SKIP_RUN=${LLMDBENCH_HARNESS_SKIP_RUN:-0}
 export LLMDBENCH_HARNESS_DEBUG=${LLMDBENCH_HARNESS_DEBUG:-0}
+export LLMDBENCH_CURRENT_STEP=99
 
 function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
@@ -169,7 +170,7 @@ if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
   exit 1
 fi
-unset LLMDBENCH_CURRENT_STEP
+export LLMDBENCH_CURRENT_STEP=99
 
 for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
