@@ -704,7 +704,7 @@ function wait_for_download_job {
 }
 export -f wait_for_download_job
 
-run_step() {
+function run_step() {
   local script_name=$1
 
   if [[ -f $script_name ]]; then
