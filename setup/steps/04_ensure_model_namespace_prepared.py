@@ -51,7 +51,7 @@ def main():
     create_namespace(api=api, namespace_name=ev["vllm_common_namespace"], dry_run=ev["control_dry_run"] == '1')
 
 
-    if ev['hf_token']:
+    if ev["hf_token"]:
         announce(f"🔑 Creating or updating secret \"{ev["vllm_common_hf_token_name"]}\"...")
         secret_obj = {
             "apiVersion": "v1", "kind": "Secret",
@@ -116,7 +116,7 @@ def main():
         file_paths = sorted([p for p in preprocess_dir.rglob('*') if p.is_file()])
         # this loop reads every file and adds its content to the dictionary
         for path in file_paths:
-            config_map_data[path.name] = path.read_text(encoding='utf-8')
+            config_map_data[path.name] = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         print(f"Warning: Directory not found at {preprocess_dir}. Creating empty ConfigMap.")
 
