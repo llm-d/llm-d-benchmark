@@ -39,7 +39,7 @@ def main():
         if "LLMDBENCH_" in key:
             ev.update({key.split("LLMDBENCH_")[1].lower():os.environ.get(key)})
 
-    llmdbench_execute_cmd(actual_cmd=f"source \"{ev["control_dir"]}/env.sh\"", dry_run=ev["control_dry_run"] == '1', verbose=ev["control_verbose"] == '1')
+    llmdbench_execute_cmd(actual_cmd=f'source \"{ev["control_dir"]}/env.sh\"', dry_run=ev["control_dry_run"] == '1', verbose=ev["control_verbose"] == '1')
 
     api = kube_connect()
     if ev["control_dry_run"] == '1':
@@ -47,12 +47,12 @@ def main():
 
 
 
-    announce(f"🔍 Preparing namespace \"{ev["vllm_common_namespace"]}\"...")
+    announce(f'🔍 Preparing namespace \"{ev["vllm_common_namespace"]}\"...')
     create_namespace(api=api, namespace_name=ev["vllm_common_namespace"], dry_run=ev["control_dry_run"] == '1')
 
 
     if ev["hf_token"]:
-        announce(f"🔑 Creating or updating secret \"{ev["vllm_common_hf_token_name"]}\"...")
+        announce(f'🔑 Creating or updating secret \"{ev["vllm_common_hf_token_name"]}\"...')
         secret_obj = {
             "apiVersion": "v1", "kind": "Secret",
             "metadata": {"name": ev["vllm_common_hf_token_name"], "namespace": ev["vllm_common_namespace"]},
@@ -71,7 +71,7 @@ def main():
     for model_name in models:
 
         download_model = model_attribute(model=model_name, attribute="model")
-        model_artifact_uri = f"pvc://{ev["vllm_common_pvc_name"]}/models/{download_model}"
+        model_artifact_uri = f'pvc://{ev["vllm_common_pvc_name"]}/models/{download_model}'
         protocol, pvc_and_model_path = model_artifact_uri.split("://") # protocol var unused but exists in prev script
         pvc_name, model_path = pvc_and_model_path.split('/', 1) # split from first occurence
 
@@ -85,7 +85,7 @@ def main():
             dry_run=ev["control_dry_run"] == '1'
         )
 
-        announce(f"🔽 Launching download job for model: \"{model_name}\"")
+        announce(f'🔽 Launching download job for model: \"{model_name}\"')
         launch_download_job(
             namespace=ev["vllm_common_namespace"],
             secret_name=ev["vllm_common_hf_token_name"],
@@ -107,7 +107,7 @@ def main():
     #    add_scc_to_service_account(api, "anyuid", vllm_service_account, vllm_namespace, dry_run)
     #    add_scc_to_service_account(api, "privileged", vllm_service_account, vllm_namespace, dry_run)
 
-    announce("🚚 Creating configmap with contents of all files under workload/preprocesses...")
+    announce(f'🚚 Creating configmap with contents of all files under workload/preprocesses...')
     config_map_name = "llm-d-benchmark-preprocesses"
     config_map_data = {}
     preprocess_dir = Path(ev["main_dir"]) / "workload" / "preprocesses"
@@ -118,7 +118,7 @@ def main():
         for path in file_paths:
             config_map_data[path.name] = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        print(f"Warning: Directory not found at {preprocess_dir}. Creating empty ConfigMap.")
+        print(f'Warning: Directory not found at {preprocess_dir}. Creating empty ConfigMap.')
 
     cm_obj = {
         "apiVersion": "v1", "kind": "ConfigMap",
@@ -130,9 +130,9 @@ def main():
     if ev["control_dry_run"] != '1':
         if cm.exists(): cm.update()
         else: cm.create()
-        print(f"ConfigMap \"{config_map_name}\" created/updated.")
+        print(f'ConfigMap "{config_map_name}" created/updated.')
 
-    announce(f"✅ Namespace \"{ev["vllm_common_namespace"]}\" prepared successfully.")
+    announce(f'✅ Namespace "{ev["vllm_common_namespace"]}" prepared successfully.')
     return 0
 
 if __name__ == "__main__":
