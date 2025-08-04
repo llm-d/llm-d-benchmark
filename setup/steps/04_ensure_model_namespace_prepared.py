@@ -39,7 +39,7 @@ def main():
         if "LLMDBENCH_" in key:
             ev.update({key.split("LLMDBENCH_")[1].lower():os.environ.get(key)})
 
-    llmdbench_execute_cmd(actual_cmd=f'source \"{ev["control_dir"]}/env.sh\"', dry_run=ev["control_dry_run"] == '1', verbose=ev["control_verbose"] == '1')
+    llmdbench_execute_cmd(actual_cmd=f'source "{ev["control_dir"]}/env.sh"', dry_run=ev["control_dry_run"] == '1', verbose=ev["control_verbose"] == '1')
 
     api = kube_connect()
     if ev["control_dry_run"] == '1':
@@ -47,12 +47,12 @@ def main():
 
 
 
-    announce(f'🔍 Preparing namespace \"{ev["vllm_common_namespace"]}\"...')
+    announce(f'🔍 Preparing namespace "{ev["vllm_common_namespace"]}"...')
     create_namespace(api=api, namespace_name=ev["vllm_common_namespace"], dry_run=ev["control_dry_run"] == '1')
 
 
     if ev["hf_token"]:
-        announce(f'🔑 Creating or updating secret \"{ev["vllm_common_hf_token_name"]}\"...')
+        announce(f'🔑 Creating or updating secret "{ev["vllm_common_hf_token_name"]}"...')
         secret_obj = {
             "apiVersion": "v1", "kind": "Secret",
             "metadata": {"name": ev["vllm_common_hf_token_name"], "namespace": ev["vllm_common_namespace"]},
@@ -85,7 +85,7 @@ def main():
             dry_run=ev["control_dry_run"] == '1'
         )
 
-        announce(f'🔽 Launching download job for model: \"{model_name}\"')
+        announce(f'🔽 Launching download job for model: "{model_name}"')
         launch_download_job(
             namespace=ev["vllm_common_namespace"],
             secret_name=ev["vllm_common_hf_token_name"],
