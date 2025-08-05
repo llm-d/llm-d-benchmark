@@ -322,6 +322,8 @@ for var in "${required_vars[@]}"; do
   fi
 done
 
+export HF_TOKEN=${HF_TOKEN:-$LLMDBENCH_HF_TOKEN}
+
 is_csv_model_list=$(echo $LLMDBENCH_DEPLOY_MODEL_LIST | grep ',' || true)
 if [[ ! -z $is_csv_model_list ]]; then
     echo "❌ Currently, a comma-separated model list (env var LLMDBENCH_DEPLOY_MODEL_LIST, or  -m/--models) is not supported"
@@ -406,6 +408,12 @@ else
   if [[ ! -z ${is_ns} ]]; then
     export LLMDBENCH_CONTROL_PROXY_UID=$($LLMDBENCH_CONTROL_KCMD get namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} -o json | jq -e -r '.metadata.annotations["openshift.io/sa.scc.uid-range"]' | perl -F'/' -lane 'print $F[0]+1');
   fi
+fi
+
+export LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE=${LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE:-0}
+has_minikube=$($LLMDBENCH_CONTROL_KCMD get pods -n kube-system 2>&1 | grep 'etcd-minikube' || true)
+if [[ ! -z ${has_minikube} ]]; then
+  export LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE=1
 fi
 
 for mt in standalone modelservice; do

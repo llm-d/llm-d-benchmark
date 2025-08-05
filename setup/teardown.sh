@@ -142,9 +142,12 @@ for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; 
       announce "✅ Helm release \"${hc}\" fully deleted."
     done
 
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true route infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true route ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true job download-model" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
+
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true route infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true route ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true job download-model" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    fi
     done
 
     if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
@@ -184,13 +187,11 @@ if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
 
   done
 else
-  RESOURCE_KINDS=(
+  KUBERNETES_RESOURCE_KINDS=(
   deployment
   service
   secret
   gateway
-  httproute
-  route
   inferencemodel
   inferencepool
   configmap
@@ -201,6 +202,14 @@ else
   pod
   pvc
 )
+
+  OC_RESOURCE_KINDS=(httproute route)
+
+  if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
+    RESOURCE_KINDS=( "${KUBERNETES_RESOURCE_KINDS[@]}" "${OC_RESOURCE_KINDS[@]}" )
+  else
+    RESOURCE_KINDS=( "${KUBERNETES_RESOURCE_KINDS[@]}" )
+  fi
 
   for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; do
     for kind in "${RESOURCE_KINDS[@]}"; do
