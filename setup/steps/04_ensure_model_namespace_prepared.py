@@ -3,14 +3,12 @@ import sys
 import time
 import base64
 from pathlib import Path
-from typing import Tuple
 
 import pykube
 from pykube.exceptions import PyKubeError
 
 import asyncio
 
-import subprocess
 
 current_file = Path(__file__).resolve()
 
@@ -20,6 +18,7 @@ project_root = current_file.parents[1]
 #add the project root to the system path
 sys.path.insert(0, str(project_root))
 
+
 from functions import (announce, 
                        wait_for_job, 
                        validate_and_create_pvc, 
@@ -28,6 +27,68 @@ from functions import (announce,
                        create_namespace,
                        kube_connect,
                        llmdbench_execute_cmd)
+
+
+class SecurityContextConstraints(pykube.objects.APIObject):
+    version = "security.openshift.io/v1"
+    endpoint = "securitycontextconstraints"
+    kind = "SecurityContextConstraints"
+
+def is_openshift(api: pykube.HTTPClient) -> bool:
+    try:
+        # the priviledged scc is a standard built in component for oc
+        # if we get we are on oc
+        SecurityContextConstraints.objects(api).get(name="privileged")
+        announce("OpenShift cluster detected")
+        return True
+    except PyKubeError as e:
+        # a 404 error means the scc resource type itself doesnt exist
+        if e.code == 404:
+            announce("Standard Kubernetes cluster detected (not OpenShift)")
+            return False
+        # for other errors like 403, we might be on OpenShift but lack permissions
+        #  if we cant query sccs we cant modify them either
+        announce(f'Could not query SCCs due to an API error (perhaps permissions?): {e}. Assuming not OpenShift for SCC operations')
+        return False
+    except Exception as e:
+        #  other potential non pykube errors
+        announce(f'An unexpected error occurred while checking for OpenShift: {e}. Assuming not OpenShift for SCC operations')
+        return False
+
+def add_scc_to_service_account(api: pykube.HTTPClient, scc_name: str, service_account_name: str, namespace: str, dry_run: bool):
+    announce(f'Attempting to add SCC "{scc_name}" to Service Account "{service_account_name}" in namespace "{namespace}"...')
+
+    try:
+        # get the specified SecurityContextConstraints object
+        scc = SecurityContextConstraints.objects(api).get(name=scc_name)
+    except PyKubeError as e:
+        if e.code == 404:
+            announce(f'Warning: SCC "{scc_name}" not found. Skipping.')
+            return
+        else:
+            # re raise other API errors
+            raise e
+
+    # the username for a service account in scc is in the format:
+    # system:serviceaccount:<namespace>:<service_account_name>
+    sa_user_name = f'system:serviceaccount:{namespace}:{service_account_name}'
+
+    # ensure the users field exists in the scc object it might be None or not present
+    if "users" not in scc.obj or scc.obj["users"] is None:
+        scc.obj["users"] = []
+
+    # check if the service account is already in the list
+    if sa_user_name in scc.obj["users"]:
+        announce(f'Service Account "{sa_user_name}" already has SCC "{scc_name}". No changes needed')
+    else:
+        if dry_run:
+            announce(f'DRY RUN: Would add "{sa_user_name}" to SCC "{scc_name}"')
+        else:
+            announce(f'Adding "{sa_user_name}" to SCC "{scc_name}"...')
+            scc.obj["users"].append(sa_user_name)
+            scc.update()
+            announce(f'Successfully updated SCC "{scc_name}"')
+
                       
 
 def main():
@@ -102,10 +163,13 @@ def main():
             timeout=ev["vllm_common_pvc_download_timeout"],
         ))
 
-    # possibly needs to be impliment, is not very simple with pykube
-    #if is_openshift:
-    #    add_scc_to_service_account(api, "anyuid", vllm_service_account, vllm_namespace, dry_run)
-    #    add_scc_to_service_account(api, "privileged", vllm_service_account, vllm_namespace, dry_run)
+    if is_openshift(api):
+        vllm_namespace = ev["vllm_common_namespace"]
+        # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid
+        # some setups might also require privileged access for GPU resources
+        add_scc_to_service_account(api, "anyuid", ev["vllm_common_service_account"], ev["vllm_common_namespace"], ev["control_dry_run"]=='1')
+        add_scc_to_service_account(api, "privileged", ev["vllm_common_service_account"], ev["vllm_common_namespace"], ev["control_dry_run"]=='1')
+
 
     announce(f'🚚 Creating configmap with contents of all files under workload/preprocesses...')
     config_map_name = "llm-d-benchmark-preprocesses"
@@ -118,7 +182,7 @@ def main():
         for path in file_paths:
             config_map_data[path.name] = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        print(f'Warning: Directory not found at {preprocess_dir}. Creating empty ConfigMap.')
+        announce(f'Warning: Directory not found at {preprocess_dir}. Creating empty ConfigMap.')
 
     cm_obj = {
         "apiVersion": "v1", "kind": "ConfigMap",
@@ -130,7 +194,7 @@ def main():
     if ev["control_dry_run"] != '1':
         if cm.exists(): cm.update()
         else: cm.create()
-        print(f'ConfigMap "{config_map_name}" created/updated.')
+        announce(f'ConfigMap "{config_map_name}" created/updated.')
 
     announce(f'✅ Namespace "{ev["vllm_common_namespace"]}" prepared successfully.')
     return 0
