@@ -60,17 +60,19 @@ cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/unitest.yaml | yq .
 export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES=
 echo "------------------------------------------------------------------------------------------------------------------------------------"
 cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/run_parameters.yaml
-factors:
-  - param1
-  - param4a
-levels:
-  param1: "40,60"
-  param4a: "80000,5000,1000"
-treatments:
-  - "40,8000"
-  - "60,5000"
-  - "60,1000"
+run:
+  factors:
+    - param1
+    - param4a
+  levels:
+    param1: "40,60"
+    param4a: "80000,5000,1000"
+  treatments:
+    - "40,8000"
+    - "60,5000"
+    - "60,1000"
 EOF
+cat $LLMDBENCH_CONTROL_WORK_DIR/run_parameters.yaml | yq -r .
 rm ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/unitest.yaml
 generate_profile_parameter_treatments nop $LLMDBENCH_CONTROL_WORK_DIR/run_parameters.yaml
 ls -la ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/treatment_list
@@ -92,16 +94,18 @@ done
 rm ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/nop/unitest*.yaml
 echo "------------------------------------------------------------------------------------------------------------------------------------"
 cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/run_parameters.yaml
-factors:
-  - param1
-  - param4a
-levels:
-  param1: "40,60"
-  param4a: "80000,5000,1000"
-treatments:
-  - "40000000,8000000000000"
-  - "60000000,5000000000000"
+run:
+  factors:
+    - param1
+    - param4a
+  levels:
+    param1: "40,60"
+    param4a: "80000,5000,1000"
+  treatments:
+    - "40000000,8000000000000"
+    - "60000000,5000000000000"
 EOF
+cat $LLMDBENCH_CONTROL_WORK_DIR/run_parameters.yaml | yq -r .
 echo "export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES=\"param5=XXXXXXX,param6=YYYYYY\""
 export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES="param5=XXXXXXX,param6=YYYYYY"
 generate_profile_parameter_treatments nop $LLMDBENCH_CONTROL_WORK_DIR/run_parameters.yaml

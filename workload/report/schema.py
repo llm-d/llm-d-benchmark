@@ -509,7 +509,6 @@ def create_from_str(yaml_str: str) -> BenchmarkReport:
     """
     return BenchmarkReport(**yaml.safe_load(yaml_str))
 
-
 # If this is executed directly, print JSON schema.
 if __name__ == "__main__":
     print(make_json_schema())

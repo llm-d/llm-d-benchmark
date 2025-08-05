@@ -198,32 +198,39 @@ done
 export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=1
 
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
-extract_environment
-echo
-$LLMDBENCH_MAIN_DIR/setup/standup.sh
-ec=$?
-if [[ $ec -ne 0 ]]; then
-  exit $ec
-fi
-echo
-echo
-echo
-echo
-$LLMDBENCH_MAIN_DIR/setup/run.sh
-ec=$?
-if [[ $ec -ne 0 ]]; then
-  exit $ec
-fi
-echo
-echo
-echo
-echo
-if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
-  announce "⏭️  Option \"--debug\" or environment variable \"LLMDBENCH_HARNESS_DEBUG\" was set to \"1\". Will not execute teardown"
-  exit 0
-fi
-$LLMDBENCH_MAIN_DIR/setup/teardown.sh
-ec=$?
-if [[ $ec -ne 0 ]]; then
-  exit $ec
-fi
+
+sweeptmpdir=$(mktemp -d -t sweepXXX)
+generate_standup_parameter_scenarios $sweeptmpdir $LLMDBENCH_SCENARIO_FULL_PATH $LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS
+
+for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
+  export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=$sweeptmpdir/setup/treatment_list/$scenario
+
+  $LLMDBENCH_MAIN_DIR/setup/standup.sh
+  ec=$?
+  if [[ $ec -ne 0 ]]; then
+    exit $ec
+  fi
+  echo
+  echo
+  echo
+  echo
+  exit
+  $LLMDBENCH_MAIN_DIR/setup/run.sh
+  ec=$?
+  if [[ $ec -ne 0 ]]; then
+    exit $ec
+  fi
+  echo
+  echo
+  echo
+  echo
+  if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
+    announce "⏭️  Option \"--debug\" or environment variable \"LLMDBENCH_HARNESS_DEBUG\" was set to \"1\". Will not execute teardown"
+    exit 0
+  fi
+  $LLMDBENCH_MAIN_DIR/setup/teardown.sh
+  ec=$?
+  if [[ $ec -ne 0 ]]; then
+    exit $ec
+  fi
+done
