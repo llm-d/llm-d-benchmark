@@ -12,7 +12,7 @@ import re
 import sys
 import yaml
 
-from schema import BenchmarkRun, Units, WorkloadGenerator
+from schema import BenchmarkReport, Units, WorkloadGenerator
 
 
 def import_yaml(file_path: str) -> dict[any, any]:
@@ -79,13 +79,13 @@ def update_dict(dest: dict[any, any], source: dict[any, any]) -> None:
 #TODO if a variables file exists, it is assumed it contains certain variable
 # definitions. If any are missing, this function will crash.
 def _import_llmd_benchmark_run_data(results_path: str) -> dict:
-    """Import scenario data from llm-d-benchmark run givin the results path.
+    """Import scenario data from llm-d-benchmark run given the results path.
 
     Args:
         results_path (str): Path to results directory.
 
     Returns:
-        dict: Imported data about scenario following schema of BenchmarkRun.
+        dict: Imported data about scenario following schema of BenchmarkReport.
     """
     variables_file = os.path.join(results_path, os.pardir, os.pardir, 'environment', 'variables')
     if not os.path.isfile(variables_file):
@@ -176,14 +176,14 @@ def _vllm_timestamp_to_epoch(date_str: str) -> int:
     return datetime.datetime(year, month, day, hour, minute, second).timestamp()
 
 
-def import_vllm_benchmark(results_path: str) -> BenchmarkRun:
-    """Import data from a vLLM benchmark run as a BenchmarkRun.
+def import_vllm_benchmark(results_path: str) -> BenchmarkReport:
+    """Import data from a vLLM benchmark run as a BenchmarkReport.
 
     Args:
         results_path (str): Path to results directory.
 
     Returns:
-        BenchmarkRun: Imported data.
+        BenchmarkReport: Imported data.
     """
     if not os.path.exists(results_path):
         raise Exception('Invalid results path: %s' % results_path)
@@ -208,7 +208,7 @@ def import_vllm_benchmark(results_path: str) -> BenchmarkRun:
     results = import_yaml(os.path.join(results_path, results_files[-1]))
 
     # Import scenario details from llm-d-benchmark run as a dict following the
-    # schema of BenchmarkRun
+    # schema of BenchmarkReport
     br_dict = _import_llmd_benchmark_run_data(results_path)
     # Append to that dict the data from vLLM benchmark
     update_dict(br_dict, {
@@ -286,7 +286,7 @@ def import_vllm_benchmark(results_path: str) -> BenchmarkRun:
         },
     })
 
-    return BenchmarkRun(**br_dict)
+    return BenchmarkReport(**br_dict)
 
 
 if __name__ == "__main__":

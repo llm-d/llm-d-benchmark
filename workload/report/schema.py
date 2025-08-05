@@ -134,7 +134,7 @@ class Load(BaseModel):
 
 
 class Scenario(BaseModel):
-    """System configuration and workload details for benchmark run."""
+    """System configuration and workload details for benchmark."""
 
     description: Optional[str] = None
     host: Optional[Host] = None
@@ -406,8 +406,8 @@ class Metrics(BaseModel):
     metadata: Optional[Any] = None
 
 
-class BenchmarkRun(BaseModel):
-    """Base class for a benchmark run."""
+class BenchmarkReport(BaseModel):
+    """Base class for a benchmark report."""
 
     version: str = '0.1'
     """Version of the schema."""
@@ -453,10 +453,10 @@ class BenchmarkRun(BaseModel):
         return self
 
     def dump(self) -> dict[str, Any]:
-        """Convert BenchmarkRun to dict.
+        """Convert BenchmarkReport to dict.
 
         Returns:
-            dict: Defined fields of BenchmarkRun.
+            dict: Defined fields of BenchmarkReport.
         """
         return self.model_dump(
             mode="json",
@@ -465,13 +465,13 @@ class BenchmarkRun(BaseModel):
         )
 
     def print_json(self) -> None:
-        """Print BenchmarkRun as JSON."""
+        """Print BenchmarkReport as JSON."""
         print(
             json.dumps(self.dump(), indent=2)
         )
 
     def print_yaml(self) -> None:
-        """Print BenchmarkRun as YAML."""
+        """Print BenchmarkReport as YAML."""
         print(
             yaml.dump(self.dump(), indent=2)
         )
@@ -479,25 +479,25 @@ class BenchmarkRun(BaseModel):
 
 def make_json_schema() -> str:
     """
-    Create a JSON schema for the benchmark run.
+    Create a JSON schema for the benchmark report.
 
     Returns:
-        str: JSON schema of benchmark run.
+        str: JSON schema of benchmark report.
     """
-    return json.dumps(BenchmarkRun.model_json_schema(), indent=2)
+    return json.dumps(BenchmarkReport.model_json_schema(), indent=2)
 
 
-def create_from_str(yaml_str: str) -> BenchmarkRun:
+def create_from_str(yaml_str: str) -> BenchmarkReport:
     """
-    Create a BenchmarkRun instance from a JSON/YAML string.
+    Create a BenchmarkReport instance from a JSON/YAML string.
 
     Args:
         yaml_str (str): JSON/YAML string to import.
 
     Returns:
-        BenchmarkRun: Instance with values from string.
+        BenchmarkReport: Instance with values from string.
     """
-    return BenchmarkRun(**yaml.safe_load(yaml_str))
+    return BenchmarkReport(**yaml.safe_load(yaml_str))
 
 
 # If this is executed directly, print JSON schema.
