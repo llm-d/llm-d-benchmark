@@ -712,6 +712,11 @@ export -f wait_for_download_job
 function run_step {
   local script_name=$1
 
+  local step_nr=$(echo $script_name | cut -d '_' -f 1)
+
+  local script_implementaton=LLMDBENCH_CONTROL_STEP_${step_nr}_IMPLEMENTATION
+  local script_name=$script_name.${!script_implementaton}
+
   if [[ -f $script_name ]]; then
     local script_path=$script_name
   else
@@ -719,13 +724,20 @@ function run_step {
   fi
   if [ -f $script_path ]; then
     local step_id=$(basename "$script_path")
-    local step_nr=$(echo $step_id | cut -d '_' -f 1)
     export LLMDBENCH_CURRENT_STEP=${step_nr}
     announce "=== Running step: $step_id ==="
     if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
       echo -e "[DRY RUN] $script_path\n"
     fi
-    source $script_path
+
+    if [[ ${!script_implementaton} == sh ]]; then
+      source $script_path
+    elif [[ ${!script_implementaton} == py ]]; then
+      python3 $script_path
+    else
+      announce "ERROR: Unsupported script type for \"$script_path\""
+    fi
+
     echo
   else
     announce "ERROR: unable to run step \"${script_name}\""
