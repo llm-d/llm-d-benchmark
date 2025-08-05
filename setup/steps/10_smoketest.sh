@@ -20,12 +20,10 @@ else
   service_ip=$(echo "${service}" | awk '{print $3}')
 fi
 
-model_number=0
 for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
-
   export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
   export LLMDBENCH_DEPLOY_CURRENT_MODELID=$(model_attribute $model modelid)
-  llmdbench_execute_cmd "printf -v MODEL_NUM \"%02d\" \"$model_number\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  export LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL=$(model_attribute $model modelid_label)
 
   if [[ $LLMDBENCH_CONTROL_DRY_RUN -ne 0 ]]; then
     pod_ip_list="127.0.0.4"
@@ -33,7 +31,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   elif [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
     pod_ip_list=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.podIP}{"\n"}{end}' | grep ${pod_string} | awk '{print $2}')
   else
-    pod_ip_list=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get pods -l llm-d.ai/model=ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-${MODEL_NUM}-llm-d-modelservice,llm-d.ai/role=decode -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.podIP}{"\n"}{end}' | awk '{print $2}')
+    pod_ip_list=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get pods -l llm-d.ai/model=${LLMDBENCH_VLLM_COMMON_NAMESPACE}-${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-ms-llm-d-modelservice,llm-d.ai/role=decode -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.podIP}{"\n"}{end}' | awk '{print $2}')
   fi
 
   if [[ -z $pod_ip_list ]]; then
@@ -93,5 +91,4 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     fi
   fi
 
-  ((model_number++))
 done
