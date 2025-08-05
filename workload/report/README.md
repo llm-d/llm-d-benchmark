@@ -1,16 +1,44 @@
 # Benchmarking Report
 
-Example report
+A benchmarking report is a standard data format describing the cluster configuration, workload, and results of a benchmark run. The report acts as a common API for different benchmarking experiments. Each supported harness in llm-d-benchmark creates a benchmark report upon completion of a run, in addition to saving results in its native format.
+
+## Format Description
+
+A benchmark report describes the inference service configuration, workload, and aggregate results. Individual traces from single inference executions are not are not captured, rather statistics from multiple traces of identical scenarios are combined to create a report.
+
+The report has three top-level fields, `version`, `scenario`, and `metrics`.
+
+While each of these fields is required, some subfields may be optional or not apply to the specific benchmark being performed. For example, some metrics may not be captured or supported by a certain benchmarking toolset.
+
+### `version` Field
+
+The `version` field is used to track the specific data format. Should the schema change with future revisions, this field will identify the specific format used (with, for example, a corresponding [JSON Schema](https://json-schema.org/draft/2020-12)).
+
+### `scenario` Field
+
+The `scenario` describes precisely what was measured. This includes details about the inference platform (full stack, including versions and the important runtime arguments), cluster configuration (like GPUs and parallelism utilized), and workload. The content in this field should be detailed enough that it is sufficient to launch a repeat benchmarking experiment that will yield similar results (within some reasonable bound of variability).
+
+> [!NOTE]
+> With future revisions the `scenario` field could be used as an input format for executing benchmark runs. For this to be practical we would first need to standardize the definition of a workload, specifically in `scenario.load.args` which is currently the exact arguments (non-standard) sent to a particular harness. In addition, the input format would need a way to describe swept parameters. A benchmark report currently describes a single point in any sweep.
+
+### `metrics` Field
+
+The `metrics` field contains all of the results for the report. This does not include individual trace details, rather statistics for all runs that were captured in benchmarking for a particular scenario. This includes request-level performance metrics (like latencies and throughput), details about the inferencing service (like request queue lengths and KV cache size), and hardware metrics (such as GPU compute and memory utilization). Some of the underlying fields, such as the hardware metrics, more traditionally fall in the category of "observability" rather than "benchmarking".
+
+### Example Report
+
+The following report is primarily an illustration of the schema. The values within are filler material, and may be nonsensical.
+
 ```yaml
 version: '0.1' # Apply a version that updates with schema changes
 scenario: # This section provides the specific environment and workload
   description: This is a heterogeneous accelerator setup with two lora adapters
   host:
-    type:
+    type: # This will either be all "replica" or a mix of "prefill" and "decode"
       - prefill
       - decode
       - decode
-    accelerator: # This is heterogeneous across prefill and decode, with 1 prefill and 2 decode
+    accelerator: # This is heterogeneous across prefill and decode, with 1 prefill and 2 decode (defined in scenario.host.type)
       - model: H100 # Prefill
         memory: 80
         count: 1
@@ -76,10 +104,10 @@ scenario: # This section provides the specific environment and workload
     adapters:
     - lora: sql_adapter
     - lora: golang_adapter
-  load: # Unsure about best format here... in principle this should contain enough information to execute a load generator
+  load:
     name: inference-perf
     type: long-input
-    args:
+    args: # This section is currently unique to each harness. If this can be standardized, it may serve as a universal input to launcing benchmark runs.
       qps_values: 1.34
       num_users_warmpup: 20
       num_users: 15
@@ -279,9 +307,14 @@ metrics: # These are the aggregate results from benchmarking
           mean: 410.02
 ```
 
-Example construction of a `BenchmarkRun` object instance
+## Implementation and Usage
+
+The schema for a benchmarking report is defined through Python classes using [Pydantic](https://docs.pydantic.dev/latest/) in [schema.py](schema.py), where the base class is `BenchmarkReport`.  Instantiating an instance of `BenchmarkReport` will include various checks, such as ensuring compliance with the schema, proper use of units, and defining all required entities.
+
+
+Example construction of a `BenchmarkReport` object instance
 ```python
-br = BenchmarkRun(**{
+br = BenchmarkReport(**{
     "scenario": {
         "model": {"name": "deepseek-ai/DeepSeek-R1-0528"},
         "load": {"name": WorkloadGenerator.INFERENCE_PERF},
