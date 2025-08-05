@@ -143,25 +143,24 @@ for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; 
     done
 
     if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
-
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true route infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true route ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true job download-model" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     fi
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true job download-model" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  done
+
+  if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
+    for crot in ClusterRoleBinding ClusterRole; do
+      for cro in $(${LLMDBENCH_CONTROL_KCMD} get $crot | grep ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE} | awk '{ print $1}'); do
+        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true $crot $cro" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      done
     done
 
-    if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-      for crot in ClusterRoleBinding ClusterRole; do
-        for cro in $(${LLMDBENCH_CONTROL_KCMD} get $crot | grep ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE} | awk '{ print $1}'); do
-          llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true $crot $cro" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-        done
-      done
-
-      for cr in ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-endpoint-picker ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-epp-metrics-scrape ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-manager ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-metrics-auth ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-admin ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-editor ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-viewer; do
-        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true ClusterRole $cr" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-      done
-    fi
-  done
+    for cr in ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-endpoint-picker ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-epp-metrics-scrape ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-manager ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-metrics-auth ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-admin ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-editor ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-viewer; do
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true ClusterRole $cr" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    done
+  fi
+done
 
 for workload_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete ConfigMap $workload_type-profiles --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
