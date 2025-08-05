@@ -2,6 +2,7 @@
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 announce "💾 Cloning and setting up llm-d-infra..."
+
 pushd $LLMDBENCH_INFRA_DIR &>/dev/null
 if [[ ! -d llm-d-infra ]]; then
   llmdbench_execute_cmd "cd ${LLMDBENCH_INFRA_DIR}; git clone \"${LLMDBENCH_INFRA_GIT_REPO}\" -b \"${LLMDBENCH_INFRA_GIT_BRANCH}\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}

@@ -26,7 +26,7 @@ export LLMDBENCH_CONTROL_DRY_RUN=${LLMDBENCH_CONTROL_DRY_RUN:-0}
 export LLMDBENCH_CONTROL_VERBOSE=${LLMDBENCH_CONTROL_VERBOSE:-0}
 export LLMDBENCH_DEPLOY_SCENARIO=
 export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=
-LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name "*.sh" | grep -v 11_ | sort | rev | cut -d '/' -f 1 | rev)
+LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name "*.sh" -o -name "*.py" | $LLMDBENCH_CONTROL_SCMD -e "s^.sh^^g" -e "s^.py^^g" | grep -v 11_ | sort | rev | cut -d '/' -f 1 | rev | uniq)
 
 function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e 's/ /,/g') \n \
@@ -141,7 +141,7 @@ if [[ ! -z ${_e} ]]; then
 fi
 LLMDBENCH_STEP_LIST=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g')
 
-if [[ $LLMDBENCH_STEP_LIST == $(find $LLMDBENCH_STEPS_DIR -name "*.sh" | sort | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e ':a;N;$!ba;s/\n/ /g') ]]; then
+if [[ $LLMDBENCH_STEP_LIST == $(find $LLMDBENCH_STEPS_DIR -name "*.sh" -o -name "*.py" | $LLMDBENCH_CONTROL_SCMD -e "s^.sh^^g" -e "s^.py^^g" |  sort | rev | cut -d '/' -f 1 | rev | uniq | $LLMDBENCH_CONTROL_SCMD -e ':a;N;$!ba;s/\n/ /g' ) ]]; then
   export LLMDBENCH_CONTROL_STANDUP_ALL_STEPS=1
 fi
 
