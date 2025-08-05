@@ -62,8 +62,9 @@ releases:
       managedBy: helmfile
 EOF
 
-  ((model_number++))
+    ((model_number++))
   done
+  announce "✅ Completed gaie deployment"
 else
   announce "⏭️ Environment types are \"${LLMDBENCH_DEPLOY_METHODS}\". Skipping this step."
 fi
