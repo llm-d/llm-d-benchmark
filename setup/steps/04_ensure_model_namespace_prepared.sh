@@ -102,5 +102,3 @@ EOF
 
   return 0
 }
-
-main
