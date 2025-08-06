@@ -6,13 +6,13 @@ A benchmarking report is a standard data format describing the cluster configura
 
 A benchmark report describes the inference service configuration, workload, and aggregate results. Individual traces from single inference executions are not are not captured, rather statistics from multiple traces of identical scenarios are combined to create a report.
 
-The report has three top-level fields, `version`, `scenario`, and `metrics`.
+A [JSON Schema](https://json-schema.org/draft/2020-12) for the benchmark report is in [`report_json_schema.json`](report_json_schema.json). The report has three top-level fields, `version`, `scenario`, and `metrics`.
 
 While each of these fields is required, some subfields may be optional or not apply to the specific benchmark being performed. For example, some metrics may not be captured or supported by a certain benchmarking toolset.
 
 ### `version` Field
 
-The `version` field is used to track the specific data format. Should the schema change with future revisions, this field will identify the specific format used (with, for example, a corresponding [JSON Schema](https://json-schema.org/draft/2020-12)).
+The `version` field is used to track the specific data format. Should the schema change with future revisions, this field will identify the specific format used (with, for example, a corresponding JSON Schema).
 
 ### `scenario` Field
 
@@ -309,15 +309,15 @@ metrics: # These are the aggregate results from benchmarking
 
 ## Implementation and Usage
 
-The schema for a benchmarking report is defined through Python classes using [Pydantic](https://docs.pydantic.dev/latest/) in [schema.py](schema.py), where the base class is `BenchmarkReport`.  Instantiating an instance of `BenchmarkReport` will include various checks, such as ensuring compliance with the schema, proper use of units, and defining all required entities.
+The schema for a benchmarking report is defined through Python classes using [Pydantic](https://docs.pydantic.dev/latest/) in [schema.py](schema.py), where the base class is `BenchmarkReport`. If [schema.py](schema.py) is executed directly, the JSON Schema for the benchmark report will be printed out. Instantiating an instance of `BenchmarkReport` includes various checks, such as ensuring compliance with the schema, proper use of units, and defining all required entities.
 
 
 Example construction of a `BenchmarkReport` object instance
 ```python
-br = BenchmarkReport(**{
+br = schema.BenchmarkReport(**{
     "scenario": {
         "model": {"name": "deepseek-ai/DeepSeek-R1-0528"},
-        "load": {"name": WorkloadGenerator.INFERENCE_PERF},
+        "load": {"name": schema.WorkloadGenerator.INFERENCE_PERF},
         "host": {
             "accelerator": [{"model": "H100", "memory": 80, "count": 3}, {"model": "H100", "memory": 80, "count": 3}],
             "type": ["prefill", "decode"]
@@ -329,22 +329,22 @@ br = BenchmarkReport(**{
         "requests": {
             "total": 58,
             "input_length": {
-                "units": Units.COUNT,
+                "units": schema.Units.COUNT,
                 "mean": 1000,
             },
             "output_length": {
-                "units": Units.COUNT,
+                "units": schema.Units.COUNT,
                 "mean": 20000,
             },
         },
         "latency": {
             "time_to_first_token": {
-                "units": Units.MS,
+                "units": schema.Units.MS,
                 "mean": 3.4,
             },
         },
         "throughput": {"total_tokens_per_sec": 30.4},
-        "resources": {"accelerator": [{"power": {"units": Units.WATTS, "mean": 9.3}}, {"power": {"units": Units.WATTS, "mean": 9.3}}]},
+        "resources": {"accelerator": [{"power": {"units": schema.Units.WATTS, "mean": 9.3}}, {"power": {"units": schema.Units.WATTS, "mean": 9.3}}]},
     },
 })
 ```
