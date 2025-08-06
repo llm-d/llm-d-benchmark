@@ -7,6 +7,9 @@ from pydantic import BaseModel, model_validator
 import yaml
 
 
+# BenchmarkReport schema version
+VERSION = '0.1'
+
 class Parallelism(BaseModel):
     """Accelerator parallelism details."""
 
@@ -409,11 +412,18 @@ class Metrics(BaseModel):
 class BenchmarkReport(BaseModel):
     """Base class for a benchmark report."""
 
-    version: str = '0.1'
+    version: str = VERSION
     """Version of the schema."""
     scenario: Scenario
     metrics: Metrics
     metadata: Optional[Any] = None
+
+    @model_validator(mode='after')
+    def check_version(self):
+        """Ensure version is compatible."""
+        if self.version != VERSION:
+            raise ValueError(f'Invalid version "{self.version}", must be "{VERSION}".')
+        return self
 
     @model_validator(mode='after')
     def check_corresponding_lengths(self):
