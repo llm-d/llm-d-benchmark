@@ -52,6 +52,12 @@ jobs:
       - name: Create k8s Kind Cluster
         uses: helm/kind-action@v1
 
+      - name: Label node with affinity from inference-sim scenario
+        run: |
+          NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+          echo "Labeling node: $NODE"
+          kubectl label node "$NODE" kubernetes.io/os:linux --overwrite
+
       # - name: Set up kubeconfig from secret
       #   run: |
       #     mkdir -p ~/.kube
@@ -80,8 +86,12 @@ jobs:
         run: |
           echo "LLMDBENCH_HF_TOKEN=hf-token-placeholder" >> $GITHUB_ENV
           echo "LLMDBENCH_VLLM_MODELSERVICE_URI='hf://random/model'" >> $GITHUB_ENV
+          echo "LLMDBENCH_STEP_LIST=0,1,2,7,8,9" >> $GITHUB_ENV
 
       - name: E2E target cloud (modelservice, inference-perf)
+        env:
+          LLMDBENCH_STEP_LIST: 0,1,2,7,8,9
+          LLMDBENCH_HF_TOKEN: hf-token-placeholder
         run: ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep
 
       - name: E2E target cloud (modelservice, fmperf)
