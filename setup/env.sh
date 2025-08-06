@@ -281,14 +281,18 @@ if [[ ! -z $LLMDBENCH_DEPLOY_SCENARIO ]]; then
   else
     export LLMDBENCH_SCENARIO_FULL_PATH=$(echo ${LLMDBENCH_MAIN_DIR}/scenarios/$LLMDBENCH_DEPLOY_SCENARIO'.sh' | $LLMDBENCH_CONTROL_SCMD 's^.sh.sh^.sh^g')
   fi
-  if [[ -f $LLMDBENCH_SCENARIO_FULL_PATH ]]; then
-    source $LLMDBENCH_SCENARIO_FULL_PATH
-  elif [[ $LLMDBENCH_SCENARIO_FULL_PATH == "${LLMDBENCH_MAIN_DIR}/scenarios/none.sh" ]]; then
-    true
-  else
-    echo "❌ Scenario file \"$LLMDBENCH_SCENARIO_FULL_PATH\" could not be found."
-    exit 1
-  fi
+else
+  export LLMDBENCH_SCENARIO_FULL_PATH="${LLMDBENCH_MAIN_DIR}/scenarios/none.sh"
+  touch ${LLMDBENCH_MAIN_DIR}/scenarios/none.sh
+fi
+
+if [[ -f $LLMDBENCH_SCENARIO_FULL_PATH ]]; then
+  source $LLMDBENCH_SCENARIO_FULL_PATH
+elif [[ $LLMDBENCH_SCENARIO_FULL_PATH == "${LLMDBENCH_MAIN_DIR}/scenarios/none.sh" ]]; then
+  touch ${LLMDBENCH_MAIN_DIR}/scenarios/none.sh
+else
+  echo "❌ Scenario file \"$LLMDBENCH_SCENARIO_FULL_PATH\" could not be found."
+  exit 1
 fi
 
 if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS" == /* ]]; then

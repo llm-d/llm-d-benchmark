@@ -2,7 +2,7 @@
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-  
+
   # make sure llm-d-modelservice helm repo is available
   llmdbench_execute_cmd "$LLMDBENCH_CONTROL_HCMD repo add ${LLMDBENCH_VLLM_MODELSERVICE_CHART_NAME} ${LLMDBENCH_VLLM_MODELSERVICE_HELM_REPOSITORY_URL} --force-update" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   llmdbench_execute_cmd "$LLMDBENCH_CONTROL_HCMD repo update" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
@@ -62,7 +62,7 @@ releases:
       managedBy: helmfile
 EOF
 
-    ((model_number++))
+    model_number=$((model_number + 1))
   done
   announce "✅ Completed gaie deployment"
 else
