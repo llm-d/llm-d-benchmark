@@ -4,7 +4,7 @@ A benchmarking report is a standard data format describing the cluster configura
 
 ## Format Description
 
-A benchmark report describes the inference service configuration, workload, and aggregate results. Individual traces from single inference executions are not are not captured, rather statistics from multiple traces of identical scenarios are combined to create a report.
+A benchmark report describes the inference service configuration, workload, and aggregate results. Individual traces from single inference executions are not captured, rather statistics from multiple traces of identical scenarios are combined to create a report.
 
 A [JSON Schema](https://json-schema.org/draft/2020-12) for the benchmark report is in [`report_json_schema.json`](report_json_schema.json). The report has three top-level fields, `version`, `scenario`, and `metrics`.
 
