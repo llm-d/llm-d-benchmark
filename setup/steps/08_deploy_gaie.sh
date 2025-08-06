@@ -32,7 +32,7 @@ inferencePool:
   modelServers:
     matchLabels:
       llm-d.ai/inferenceServing: "true"
-      # llm-d.ai/model: ms-simple-llm-d-modelservice
+      llm-d.ai/model: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}
 EOF
 
     announce "🚀 Installing helm chart \"gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}\" via helmfile..."
