@@ -23,7 +23,7 @@ The `scenario` describes precisely what was measured. This includes details abou
 
 ### `metrics` Field
 
-The `metrics` field contains all of the results for the report. This does not include individual trace details, rather statistics for all runs that were captured in benchmarking for a particular scenario. This includes request-level performance metrics (like latencies and throughput), details about the inferencing service (like request queue lengths and KV cache size), and hardware metrics (such as GPU compute and memory utilization). Some of the underlying fields, such as the hardware metrics, more traditionally fall in the category of "observability" rather than "benchmarking".
+The `metrics` field contains all of the results for the report. This does not include individual trace details, rather statistics for all runs that were captured in benchmarking for a particular scenario. This includes request-level performance metrics (like latencies and throughput), details about the inference service (like request queue lengths and KV cache size), and hardware metrics (such as GPU compute and memory utilization). Some of the underlying fields, such as the hardware metrics, more traditionally fall in the category of "observability" rather than "benchmarking".
 
 ### Example Report
 
@@ -107,9 +107,9 @@ scenario: # This section provides the specific environment and workload
   load:
     name: inference-perf
     type: long-input
-    args: # This section is currently unique to each harness. If this can be standardized, it may serve as a universal input to launcing benchmark runs.
+    args: # This section is currently unique to each harness. If this can be standardized, it may serve as a universal input to launching benchmark runs.
       qps_values: 1.34
-      num_users_warmpup: 20
+      num_users_warmup: 20
       num_users: 15
       num_rounds: 20
       system_prompt: 1000
