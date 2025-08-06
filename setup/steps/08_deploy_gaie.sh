@@ -45,6 +45,8 @@ EOF
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} get --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} $srl" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0
     fi
 
+    unset LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL
+
     ((model_number++))
   done
   announce "✅ Completed model deployment"
