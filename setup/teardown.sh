@@ -131,7 +131,7 @@ for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; 
   hclist=
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-      hclist=$($LLMDBENCH_CONTROL_HCMD --namespace $tgtns list --no-headers | grep -E "gaie-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}|ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}" || true)
+      hclist=$($LLMDBENCH_CONTROL_HCMD --namespace $tgtns list --no-headers | grep -E "$tgtns-.*-gaie|$tgtns-.*-ms" || true)
     fi
 
     hclist=$(echo "${hclist}" | awk '{ print $1 }')
