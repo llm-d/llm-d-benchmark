@@ -49,12 +49,15 @@ jobs:
             echo "Using provided output dir: ${{ github.event.inputs.output_dir }}"
           fi
 
-      - name: Set up kubeconfig from secret
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-        shell: bash
+      - name: Create k8s Kind Cluster
+        uses: helm/kind-action@v1
+
+      # - name: Set up kubeconfig from secret
+      #   run: |
+      #     mkdir -p ~/.kube
+      #     echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
+      #     chmod 600 ~/.kube/config
+      #   shell: bash
 
       - name: Run install_deps.sh
         run: |
