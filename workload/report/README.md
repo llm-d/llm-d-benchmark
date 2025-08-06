@@ -311,8 +311,16 @@ metrics: # These are the aggregate results from benchmarking
 
 The schema for a benchmarking report is defined through Python classes using [Pydantic](https://docs.pydantic.dev/latest/) in [schema.py](schema.py), where the base class is `BenchmarkReport`. If [schema.py](schema.py) is executed directly, the JSON Schema for the benchmark report will be printed out. Instantiating an instance of `BenchmarkReport` includes various checks, such as ensuring compliance with the schema, proper use of units, and defining all required entities.
 
+### Requirements
 
-Example construction of a `BenchmarkReport` object instance
+```
+pydantic>=2.11.7
+PyYAML>=6.0.2
+```
+
+### Creating a `BenchmarkReport`
+
+An instance of `BenchmarkReport` may be created directly, for example:
 ```python
 br = schema.BenchmarkReport(**{
     "scenario": {
@@ -348,3 +356,14 @@ br = schema.BenchmarkReport(**{
     },
 })
 ```
+
+A `BenchmarkReport` may also be created from a JSON/YAML string with the `schema.create_from_str()` function. A JSON/YAML file may be imported as a `dict` with the `convert.import_yaml()` function, and this `dict` can then be unpacked to create a `BenchmarkReport`.
+```python
+br = BenchmarkReport(**convert.import_yaml('benchmark_report.json'))
+```
+
+A JSON or YAML printout of `BenchmarkReport` may be generated the `print_json()` and `print_yaml()` methods, respectively.
+
+### Transforming harness native formats to a benchmark report
+
+The native formats returned by different harnesses may be converted to a benchmark report using [convert.py](convert.py). This file when executed directly as a script will import the native results data of a harness and print to `stdout` a benchmark report. This file can also be used as a library, to import results files as a `BenchmarkReport`. This is done, for example, in the analysis Jupyter notebook [`analysis.ipynb`](../../analysis/analysis.ipynb).
