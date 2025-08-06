@@ -80,6 +80,7 @@ jobs:
 
       - name: Set up environment variables
         run: |
+          export LLMDBENCH_HF_TOKEN="hf-token-placeholder"
           export LLMDBENCH_VLLM_MODELSERVICE_URI="hf://random/model"
 
       - name: E2E target cloud (modelservice, inference-perf)
