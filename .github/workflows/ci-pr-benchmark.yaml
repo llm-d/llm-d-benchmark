@@ -73,11 +73,6 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
 
-      - name: Cleanup target cloud (modelservice)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c ocp_modelservice_inference-sim -t modelservice -d
-
       - name: Set up environment variables
         run: |
           echo "LLMDBENCH_HF_TOKEN=hf-token-placeholder" >> $GITHUB_ENV
