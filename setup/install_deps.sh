@@ -66,7 +66,7 @@ function install_helm_linux {
 function install_oc_linux {
     set -euo pipefail
     local oc_file_name=openshift-client-$(uname -s | sed -e "s/Linux/linux/g" -e "s/Darwin/apple-darwin/g")$(echo "-$(uname -m)" | sed -e 's/-x86_64//g' -e 's/-amd64//g' -e 's/aarch64/arm64-rhel9/g').tar.gz
-    curl https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/$oc_file_name  -o $oc_file_name
+    curl -L https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/$oc_file_name  -o $oc_file_name
     tar xzf $oc_file_name
     sudo mv oc /usr/local/bin/
     sudo mv kubectl /usr/local/bin/
