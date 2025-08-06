@@ -90,7 +90,7 @@ jobs:
 
       - name: E2E target cloud (modelservice, inference-perf)
         env:
-          LLMDBENCH_STEP_LIST: 0,1,2,7,8,9
+          LLMDBENCH_STEP_LIST: 00_ensure_llm-d-infra,01_ensure_local_conda,02_ensure_gateway_provider,07_deploy_setup,08_gaie,09_deploy_via_modelservice
           LLMDBENCH_HF_TOKEN: hf-token-placeholder
         run: ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep
 
