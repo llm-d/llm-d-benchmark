@@ -56,7 +56,7 @@ jobs:
         run: |
           NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
           echo "Labeling node: $NODE"
-          kubectl label node "$NODE" kubernetes.io/os:linux --overwrite
+          kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
 
       # - name: Set up kubeconfig from secret
       #   run: |
