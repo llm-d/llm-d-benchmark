@@ -193,14 +193,14 @@ export LLMDBENCH_CURRENT_STEP=99
 for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
+    export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
 
     export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher
 
-    validate_model_name ${model}
+    validate_model_name ${LLMDBENCH_DEPLOY_CURRENT_MODEL}
 
     export LLMDBENCH_HARNESS_STACK_NAME=$(echo ${method} | $LLMDBENCH_CONTROL_SCMD 's^modelservice^llm-d^g')-$(model_attribute $model parameters)-$(model_attribute $model type)
 
-    export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
     export LLMDBENCH_DEPLOY_CURRENT_TOKENIZER=$(model_attribute $model model)
 
     if [[ $LLMDBENCH_HARNESS_SKIP_RUN -eq 1 ]]; then
