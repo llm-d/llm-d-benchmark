@@ -325,6 +325,8 @@ for var in "${required_vars[@]}"; do
   fi
 done
 
+export HF_TOKEN=${HF_TOKEN:-$LLMDBENCH_HF_TOKEN}
+
 export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR:-$(mktemp -d -t ${LLMDBENCH_CONTROL_CLUSTER_NAME}-$(echo $0 | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e 's^.sh^^g' -e 's^./^^g')XXX)}
 export LLMDBENCH_CONTROL_WORK_DIR_SET=${LLMDBENCH_CONTROL_WORK_DIR_SET:-0}
 export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=${LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP:-0}
@@ -403,6 +405,12 @@ else
   if [[ ! -z ${is_ns} ]]; then
     export LLMDBENCH_CONTROL_PROXY_UID=$($LLMDBENCH_CONTROL_KCMD get namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} -o json | jq -e -r '.metadata.annotations["openshift.io/sa.scc.uid-range"]' | perl -F'/' -lane 'print $F[0]+1');
   fi
+fi
+
+export LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE=${LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE:-0}
+has_minikube=$($LLMDBENCH_CONTROL_KCMD get pods -n kube-system 2>&1 | grep 'etcd-minikube' || true)
+if [[ ! -z ${has_minikube} ]]; then
+  export LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE=1
 fi
 
 for mt in standalone modelservice; do

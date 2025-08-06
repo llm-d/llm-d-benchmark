@@ -288,7 +288,7 @@ EOF
 
     fi
 
-    if [[ $LLMDBENCH_VLLM_MODELSERVICE_ROUTE -ne 0 && $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -ne 0 ]]; then
+    if [[ $LLMDBENCH_VLLM_MODELSERVICE_ROUTE -ne 0 && $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
       is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get route -o name --ignore-not-found | grep -E "/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway-route$" || true)
       if [[ -z $is_route ]]
       then

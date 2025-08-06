@@ -43,12 +43,16 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   for pod_ip in $pod_ip_list; do
     announce "       🚀 Testing pod ip \"${pod_ip}\" ..."
 
-    received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${pod_ip} ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT})
-
-    if [[ $received_model_name == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
-      announce "       ✅ Pod ip \"${pod_ip}\" responded successfully ($received_model_name)"
+    if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
+      announce "       ✅ Pod ip \"${pod_ip}\" responded successfully ($LLMDBENCH_DEPLOY_CURRENT_MODEL)"
     else
-      announce "       ❌ Pod ip \"${pod_ip}\" responded with model name \"$received_model_name\" (instead of $LLMDBENCH_DEPLOY_CURRENT_MODEL)!"
+      received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${pod_ip} ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT})
+
+      if [[ $received_model_name == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
+        announce "       ✅ Pod ip \"${pod_ip}\" responded successfully ($received_model_name)"
+      else
+        announce "       ❌ Pod ip \"${pod_ip}\" responded with model name \"$received_model_name\" (instead of $LLMDBENCH_DEPLOY_CURRENT_MODEL)!"
+      fi
     fi
   done
   announce "✅ All pods respond successfully"
@@ -65,18 +69,27 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
 
   announce "🚀 Testing service/gateway \"${service_name}\" (\"${service_ip}\") (port 80)..."
 
-  if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
-    received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${service_ip} 80)
+  if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
+    announce "✅ Service responds successfully ($LLMDBENCH_DEPLOY_CURRENT_MODEL)"
   else
-    received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${service_ip}:80/${LLMDBENCH_DEPLOY_CURRENT_MODELID} 80)
-  fi
-  if [[ ${received_model_name} == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
-    announce "✅ Service responds successfully ($received_model_name)"
-  else
-    announce "❌ Service responded with model name \"$received_model_name\" (instead of $LLMDBENCH_DEPLOY_CURRENT_MODEL)!"
+    if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
+      received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${service_ip} 80)
+    else
+      received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${service_ip}:80/${LLMDBENCH_DEPLOY_CURRENT_MODELID} 80)
+    fi
+    if [[ ${received_model_name} == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
+      announce "✅ Service responds successfully ($received_model_name)"
+    else
+      announce "❌ Service responded with model name \"$received_model_name\" (instead of $LLMDBENCH_DEPLOY_CURRENT_MODEL)!"
+    fi
   fi
 
-  route_url=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get route --no-headers --ignore-not-found | grep ${route_string} | awk '{print $2}'  || true)
+  if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
+    route_url=
+  else
+    route_url=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get route --no-headers --ignore-not-found | grep ${route_string} | awk '{print $2}'  || true)
+  fi
+
   if [[ ! -z $route_url ]]; then
     announce "🚀 Testing external route \"${route_url}\"..."
     if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then

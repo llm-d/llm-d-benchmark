@@ -446,15 +446,19 @@ function check_affinity {
 
   if [[ ${LLMDBENCH_VLLM_COMMON_AFFINITY} == "auto" ]]; then
     if [[ ${LLMDBENCH_CONTROL_CALLER} == "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} == "e2e.sh" ]]; then
-      has_default_accelerator=$($LLMDBENCH_CONTROL_KCMD get nodes -o json | jq -r '.items[].metadata.labels' | grep -E "${accelerator_string}" | tail -1 | $LLMDBENCH_CONTROL_SCMD -e 's^"^^g' -e 's^,^^g' -e 's^ ^^g')
-      if [[ -z $has_default_accelerator ]]; then
-          announce "❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_AFFINITY=auto, but unable to find an accelerator on any node\""
-          exit 1
+      if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE -eq 0 ]]; then
+        has_default_accelerator=$($LLMDBENCH_CONTROL_KCMD get nodes -o json | jq -r '.items[].metadata.labels' | grep -E "${accelerator_string}" | tail -1 | $LLMDBENCH_CONTROL_SCMD -e 's^"^^g' -e 's^,^^g' -e 's^ ^^g' || true)
+        if [[ -z $has_default_accelerator ]]; then
+            announce "❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_AFFINITY=auto, but unable to find an accelerator on any node\""
+            exit 1
+        fi
+  #      export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=$(echo ${has_default_accelerator} | cut -d ':' -f 1)
+        export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=nvidia.com/gpu
+        export LLMDBENCH_VLLM_COMMON_AFFINITY=$has_default_accelerator
+        announce "ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"${has_default_accelerator}\""
+      else
+        announce "ℹ️ Minikube detected. Variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"kubernetes.io/os:linux\""
       fi
-#      export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=$(echo ${has_default_accelerator} | cut -d ':' -f 1)
-      export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=nvidia.com/gpu
-      export LLMDBENCH_VLLM_COMMON_AFFINITY=$has_default_accelerator
-      announce "ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"${has_default_accelerator}\""
     fi
   else
     local annotation1=$(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
@@ -634,7 +638,6 @@ spec:
       containers:
         - name: downloader
           image: python:3.10
-          imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
             - mkdir -p "\${MOUNT_PATH}/\${MODEL_PATH}" && \
@@ -662,11 +665,15 @@ spec:
             - name: model-cache
               mountPath: /cache
       restartPolicy: OnFailure
+#      imagePullPolicy: IfNotPresent
       volumes:
         - name: model-cache
           persistentVolumeClaim:
             claimName: ${pvc_name}
 EOF
+  if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
+    $LLMDBENCH_CONTROL_SCMD -i "s^#      imagePullPolicy: IfNotPresent^      imagePullPolicy: IfNotPresent^g" ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_download_pod_job.yaml
+  fi
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -n ${namespace} -f ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_download_pod_job.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 1 1
 }
 export -f launch_download_job
@@ -715,12 +722,11 @@ function run_step {
   local step_nr=$(echo $script_name | cut -d '_' -f 1)
 
   local script_implementaton=LLMDBENCH_CONTROL_STEP_${step_nr}_IMPLEMENTATION
-  local script_name=$script_name.${!script_implementaton}
 
-  if [[ -f $script_name ]]; then
-    local script_path=$script_name
+  if [[ -f $script_name.${!script_implementaton} ]]; then
+    local script_path=$script_name.${!script_implementaton}
   else
-    local script_path=$(ls ${LLMDBENCH_STEPS_DIR}/${script_name}*)
+    local script_path=$(ls ${LLMDBENCH_STEPS_DIR}/${script_name}*.${!script_implementaton})
   fi
   if [ -f $script_path ]; then
     local step_id=$(basename "$script_path")

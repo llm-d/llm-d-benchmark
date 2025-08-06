@@ -179,12 +179,15 @@ source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 export LLMDBENCH_BASE64_CONTEXT_CONTENTS=$(cat $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx | base64 $LLMDBENCH_BASE64_ARGS)
 
+set +euo pipefail
 export LLMDBENCH_CURRENT_STEP=05
 source ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.sh > /dev/null 2>&1
 if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
   exit 1
 fi
+set -euo pipefail
+
 export LLMDBENCH_CURRENT_STEP=99
 
 for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
@@ -251,12 +254,16 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       export LLMDBENCH_HARNESS_STACK_ENDPOINT_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}${LLMDBENCH_VLLM_COMMON_FQDN}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT}"
       announce "ℹ️ Stack Endpoint URL detected is \"$LLMDBENCH_HARNESS_STACK_ENDPOINT_URL\""
 
-      received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL} 80)
-      if [[ ${received_model_name} == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
-        announce "ℹ️ Stack model detected is $received_model_name"
+      if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
+        announce "ℹ️ Stack model detected is \"mock\""
       else
-        announce "❌ Stack model detected is \"$received_model_name\" (instead of $LLMDBENCH_DEPLOY_CURRENT_MODEL)!"
-        exit 1
+        received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL} 80)
+        if [[ ${received_model_name} == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
+          announce "ℹ️ Stack model detected is \"$received_model_name\""
+        else
+          announce "❌ Stack model detected is \"$received_model_name\" (instead of $LLMDBENCH_DEPLOY_CURRENT_MODEL)!"
+          exit 1
+        fi
       fi
 
       if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
