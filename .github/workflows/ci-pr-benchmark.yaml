@@ -17,7 +17,7 @@ on:
 jobs:
   run-benchmark:
     name: Inference Sim Benchmark Test
-    runs-on: [k8s-util]
+    runs-on: ubuntu-latest
     timeout-minutes: 240
 
     steps:
