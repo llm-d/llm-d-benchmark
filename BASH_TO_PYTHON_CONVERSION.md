@@ -123,7 +123,7 @@ Create unit tests in `util/unit_test/`:
 Use dry-run mode to compare outputs:
 ```bash
 # Test bash version
-LLMDBENCH_CONTROL_DRY_RUN=1 ./setup/standup.sh -s 00
+LLMDBENCH_CONTROL_STEP_00_IMPLEMENTATION=sh LLMDBENCH_CONTROL_DRY_RUN=1 ./setup/standup.sh -s 00
 
 # Test Python version  
 LLMDBENCH_CONTROL_STEP_00_IMPLEMENTATION=py LLMDBENCH_CONTROL_DRY_RUN=1 ./setup/standup.sh -s 00
@@ -146,6 +146,8 @@ Based on complexity analysis, recommended conversion order:
 6. `05_ensure_harness_namespace_prepared.sh` (208 lines)
 7. `06_deploy_vllm_standalone_models.sh` (214 lines)
 8. `08_deploy_via_modelservice.sh` (274 lines)
+
+Note: Step 10 environment variable exists but no corresponding script has been implemented yet.
 
 ## Contributing
 
