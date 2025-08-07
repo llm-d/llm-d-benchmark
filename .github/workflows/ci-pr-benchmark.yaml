@@ -68,7 +68,7 @@ jobs:
       - name: Run install_deps
         run: |
           sudo apt-get update
-          ./setup/install_deps
+          ./setup/install_deps.sh
         shell: bash
 
       - name: Populate python deps
