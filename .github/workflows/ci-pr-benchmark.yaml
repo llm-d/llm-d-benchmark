@@ -92,7 +92,9 @@ jobs:
         env:
           LLMDBENCH_STEP_LIST: 00_ensure_llm-d-infra.sh,01_ensure_local_conda.sh,02_ensure_gateway_provider.sh,07_deploy_setup.sh,08_gaie.sh,09_deploy_via_modelservice.sh
           LLMDBENCH_HF_TOKEN: hf-token-placeholder
-        run: ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep
+        run: |
+          export LLMDBENCH_STEP_LIST=00_ensure_llm-d-infra.sh,01_ensure_local_conda.sh,02_ensure_gateway_provider.sh,07_deploy_setup.sh,08_gaie.sh,09_deploy_via_modelservice.sh
+          ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep
 
       - name: E2E target cloud (modelservice, fmperf)
         run: ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep -l fmperf -w sanity_short-input
