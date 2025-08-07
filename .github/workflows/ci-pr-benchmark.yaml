@@ -90,7 +90,7 @@ jobs:
 
       - name: E2E target cloud (modelservice, inference-perf)
         env:
-          LLMDBENCH_CLIOVERRIDE_STEP_LIST: 00_ensure_llm-d-infra,01_ensure_local_conda,02_ensure_gateway_provider,07_deploy_setup,08_gaie,09_deploy_via_modelservice
+          LLMDBENCH_CLIOVERRIDE_STEP_LIST: 00_ensure_llm-d-infra,01_ensure_local_conda,02_ensure_gateway_provider,07_deploy_setup,08_deploy_gaie,09_deploy_via_modelservice
           LLMDBENCH_HF_TOKEN: hf-token-placeholder
         run: |
           # export LLMDBENCH_CLIOVERRIDE_STEP_LIST=00_ensure_llm-d-infra,01_ensure_local_conda,02_ensure_gateway_provider,07_deploy_setup,08_gaie,09_deploy_via_modelservice
