@@ -65,10 +65,10 @@ jobs:
       #     chmod 600 ~/.kube/config
       #   shell: bash
 
-      - name: Run install_deps.sh
+      - name: Run install_deps
         run: |
           sudo apt-get update
-          ./setup/install_deps.sh
+          ./setup/install_deps
         shell: bash
 
       - name: Populate python deps
@@ -90,17 +90,17 @@ jobs:
 
       - name: E2E target cloud (modelservice, inference-perf)
         env:
-          LLMDBENCH_CLIOVERRIDE_STEP_LIST: 00_ensure_llm-d-infra.sh,01_ensure_local_conda.sh,02_ensure_gateway_provider.sh,07_deploy_setup.sh,08_gaie.sh,09_deploy_via_modelservice.sh
+          LLMDBENCH_CLIOVERRIDE_STEP_LIST: 00_ensure_llm-d-infra,01_ensure_local_conda,02_ensure_gateway_provider,07_deploy_setup,08_gaie,09_deploy_via_modelservice
           LLMDBENCH_HF_TOKEN: hf-token-placeholder
         run: |
-          export LLMDBENCH_CLIOVERRIDE_STEP_LIST=00_ensure_llm-d-infra.sh,01_ensure_local_conda.sh,02_ensure_gateway_provider.sh,07_deploy_setup.sh,08_gaie.sh,09_deploy_via_modelservice.sh
-          ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep
+          # export LLMDBENCH_CLIOVERRIDE_STEP_LIST=00_ensure_llm-d-infra,01_ensure_local_conda,02_ensure_gateway_provider,07_deploy_setup,08_gaie,09_deploy_via_modelservice
+          ./setup/e2e -c ocp_modelservice_inference-sim -t modelservice --deep
 
       - name: E2E target cloud (modelservice, fmperf)
-        run: ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep -l fmperf -w sanity_short-input
+        run: ./setup/e2e -c ocp_modelservice_inference-sim -t modelservice --deep -l fmperf -w sanity_short-input
 
       - name: E2E target cloud (modelservice, guidellm)
-        run: ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
+        run: ./setup/e2e -c ocp_modelservice_inference-sim -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
 
       - name: E2E target cloud (modelservice, vllm-benchmark)
-        run: ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep -l vllm-benchmark
+        run: ./setup/e2e -c ocp_modelservice_inference-sim -t modelservice --deep -l vllm-benchmark
