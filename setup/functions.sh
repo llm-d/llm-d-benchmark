@@ -28,19 +28,14 @@ function model_attribute {
   # Do not use associative arrays. Not supported by MacOS with older bash versions
 
   case "$model" in
-    "llama-1b") local model=meta-llama/Llama-3.2-1B-Instruct:llama-1b ;;
-    "llama-3b") local model=meta-llama/Llama-3.2-3B-Instruct:llama-3b ;;
-    "llama-8b") local model=meta-llama/Llama-3.1-8B-Instruct:llama-8b ;;
-    "llama-70b") local model=meta-llama/Llama-3.1-70B-Instruct:llama-70b ;;
-    "llama-17b") local model=meta-llama/Llama-4-Scout-17B-16E-Instruct:llama-17b ;;
+    "llama-1b") local model=meta-llama/Llama-3.2-1B-Instruct ;;
+    "llama-3b") local model=meta-llama/Llama-3.2-3B-Instruct ;;
+    "llama-8b") local model=meta-llama/Llama-3.1-8B-Instruct ;;
+    "llama-70b") local model=meta-llama/Llama-3.1-70B-Instruct ;;
+    "llama-17b") local model=meta-llama/Llama-4-Scout-17B-16E-Instruct ;;
     *)
       true ;;
   esac
-  
-  # model is of the form namespace/modelid:uniqueid
-  local modelid=$(echo $model | cut -d: -f2)
-  model=$(echo $model | cut -d: -f1)
-  local modelid_label="$(echo -n $modelid | cut -d '/' -f 1 | cut -c1-8)-$(echo -n $modelid | sha256sum | awk '{print $1}' | cut -c1-8)-$(echo -n $modelid | cut -d '/' -f 2 | rev | cut -c1-8 | rev)"
 
   local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
   local provider=$(echo $model | cut -d '/' -f 1)
@@ -288,7 +283,7 @@ function render_string {
       echo "s^\[^- \"^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
       echo "s^\]^\" ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     fi
-    if [[ $LLMDBENCH_CURRENT_STEP == "09" ]]; then
+    if [[ $LLMDBENCH_CURRENT_STEP == "08" ]]; then
       echo "s^____--^\"\nREPLACE_SPACESC- \"--^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
       echo "s^____^\"\nREPLACE_SPACESC- \"^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
       echo "s^\[^- \"^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
@@ -350,7 +345,7 @@ function render_template {
       local spacec=$(printf '%*s' 12 '')
     fi
 
-    if [[ $LLMDBENCH_CURRENT_STEP == "09" ]]; then
+    if [[ $LLMDBENCH_CURRENT_STEP == "08" ]]; then
       echo "- |"
       local spacec=$(printf '%*s' 8 '')
     fi
@@ -363,7 +358,7 @@ function render_template {
     if [[ $LLMDBENCH_CURRENT_STEP == "06" ]]; then
       local spacec=$(printf '%*s' 8 '')
     fi
-    if [[ $LLMDBENCH_CURRENT_STEP == "09" ]]; then
+    if [[ $LLMDBENCH_CURRENT_STEP == "08" ]]; then
       local spacec=$(printf '%*s' 6 '')
     fi
     echo "s^REPLACE_SPACESC^$spacec^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
@@ -401,7 +396,7 @@ function add_command_line_options {
       local spacec=$(printf '%*s' 12 '')
   fi
 
-  if [[ $LLMDBENCH_CURRENT_STEP == "09" ]]; then
+  if [[ $LLMDBENCH_CURRENT_STEP == "08" ]]; then
     local preamble=
     local spacec=$(printf '%*s' 6 '')
   fi
@@ -460,19 +455,15 @@ function check_affinity {
 
   if [[ ${LLMDBENCH_VLLM_COMMON_AFFINITY} == "auto" ]]; then
     if [[ ${LLMDBENCH_CONTROL_CALLER} == "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} == "e2e.sh" ]]; then
-      if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE -eq 0 ]]; then
-        has_default_accelerator=$($LLMDBENCH_CONTROL_KCMD get nodes -o json | jq -r '.items[].metadata.labels' | grep -E "${accelerator_string}" | tail -1 | $LLMDBENCH_CONTROL_SCMD -e 's^"^^g' -e 's^,^^g' -e 's^ ^^g' || true)
-        if [[ -z $has_default_accelerator ]]; then
-            announce "❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_AFFINITY=auto, but unable to find an accelerator on any node\""
-            exit 1
-        fi
-  #      export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=$(echo ${has_default_accelerator} | cut -d ':' -f 1)
-        export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=nvidia.com/gpu
-        export LLMDBENCH_VLLM_COMMON_AFFINITY=$has_default_accelerator
-        announce "ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"${has_default_accelerator}\""
-      else
-        announce "ℹ️ Minikube detected. Variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"kubernetes.io/os:linux\""
+      has_default_accelerator=$($LLMDBENCH_CONTROL_KCMD get nodes -o json | jq -r '.items[].metadata.labels' | grep -E "${accelerator_string}" | tail -1 | $LLMDBENCH_CONTROL_SCMD -e 's^"^^g' -e 's^,^^g' -e 's^ ^^g')
+      if [[ -z $has_default_accelerator ]]; then
+          announce "❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_AFFINITY=auto, but unable to find an accelerator on any node\""
+          exit 1
       fi
+#      export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=$(echo ${has_default_accelerator} | cut -d ':' -f 1)
+      export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=nvidia.com/gpu
+      export LLMDBENCH_VLLM_COMMON_AFFINITY=$has_default_accelerator
+      announce "ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"${has_default_accelerator}\""
     fi
   else
     local annotation1=$(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
@@ -679,15 +670,12 @@ spec:
             - name: model-cache
               mountPath: /cache
       restartPolicy: OnFailure
-#      imagePullPolicy: IfNotPresent
+      imagePullPolicy: IfNotPresent
       volumes:
         - name: model-cache
           persistentVolumeClaim:
             claimName: ${pvc_name}
 EOF
-  if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
-    $LLMDBENCH_CONTROL_SCMD -i "s^#      imagePullPolicy: IfNotPresent^      imagePullPolicy: IfNotPresent^g" ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_download_pod_job.yaml
-  fi
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -n ${namespace} -f ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_download_pod_job.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 1 1
 }
 export -f launch_download_job
@@ -736,11 +724,12 @@ function run_step {
   local step_nr=$(echo $script_name | cut -d '_' -f 1)
 
   local script_implementaton=LLMDBENCH_CONTROL_STEP_${step_nr}_IMPLEMENTATION
+  local script_name=$script_name.${!script_implementaton}
 
-  if [[ -f $script_name.${!script_implementaton} ]]; then
-    local script_path=$script_name.${!script_implementaton}
+  if [[ -f $script_name ]]; then
+    local script_path=$script_name
   else
-    local script_path=$(ls ${LLMDBENCH_STEPS_DIR}/${script_name}*.${!script_implementaton})
+    local script_path=$(ls ${LLMDBENCH_STEPS_DIR}/${script_name}*)
   fi
   if [ -f $script_path ]; then
     local step_id=$(basename "$script_path")
@@ -884,7 +873,7 @@ function get_model_name_from_pod {
 
     local url=$url/v1/models
 
-    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2)
+    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 0 2)
     is_jq=$(echo $response | jq -r . || true)
 
     if [[ -z $is_jq ]]; then
