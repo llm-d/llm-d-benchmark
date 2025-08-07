@@ -20,9 +20,6 @@ Thumbs.db
 **/*secrets.yaml
 **/*yaml.secrets
 
-# Generated scenarios
-scenarios/*__*.sh
-
 # VS Code
 .vscode/
 

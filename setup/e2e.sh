@@ -202,6 +202,7 @@ source ${LLMDBENCH_CONTROL_DIR}/env.sh
 sweeptmpdir=$(mktemp -d -t sweepXXX)
 generate_standup_parameter_scenarios $sweeptmpdir $LLMDBENCH_SCENARIO_FULL_PATH $LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS
 
+rm -rf $LLMDBENCH_CONTROL_WORK_DIR
 for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
   export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=$sweeptmpdir/setup/treatment_list/$scenario
 

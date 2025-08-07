@@ -350,9 +350,10 @@ if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
     cp -f ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME} $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
     export LLMDBENCH_CONTROL_REMOTE_KUBECONFIG_FILENAME=config-${LLMDBENCH_CONTROL_CLUSTER_NAME}
   elif [[ -z $LLMDBENCH_CLUSTER_URL || $LLMDBENCH_CLUSTER_URL == "auto" ]]; then
+    export LLMDBENCH_CONTROL_KCMD=$(echo $LLMDBENCH_CONTROL_KCMD | $LLMDBENCH_CONTROL_SCMD "s^--kubeconfig $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx^^g")
     current_context=$(${LLMDBENCH_CONTROL_KCMD} config view -o json | jq -r '."current-context"' || true)
     if [[ -z ${current_context} ]]; then
-      echo "ERROR: unable to locate current context"
+      echo "ERROR: unable to locate current context (LLMDBENCH_CLUSTER_URL=$LLMDBENCH_CLUSTER_URL)"
       exit 1
     else
       ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
