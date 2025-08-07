@@ -55,6 +55,7 @@ spec:
       containers:
       - name: vllm-standalone-$(model_attribute $model label)
         image: $(get_image ${LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY} ${LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO} ${LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME} ${LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG})
+        imagePullPolicy: Always
         command:
         - /bin/bash
         - "-c"
