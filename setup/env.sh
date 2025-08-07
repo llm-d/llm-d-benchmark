@@ -170,11 +170,6 @@ export LLMDBENCH_CONTROL_STEP_09_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_09_IMPL
 export LLMDBENCH_CONTROL_STEP_10_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_10_IMPLEMENTATION:-sh}
 
 
-if [[ "${LLMDBENCH_VLLM_COMMON_AFFINITY}" == *"aiu"* ]]; then
-  # if using aiu remove the unsupported --enable-sleep-mode flag, this flag is unsupported for aiu
-  LLMDBENCH_VLLM_STANDALONE_ARGS=${LLMDBENCH_VLLM_STANDALONE_ARGS//____--enable-sleep-mode/}
-fi
-
 
 source $LLMDBENCH_MAIN_DIR/setup/functions.sh
 
