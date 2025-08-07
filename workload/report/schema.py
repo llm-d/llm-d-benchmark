@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from enum import StrEnum, auto
 import json
 from operator import attrgetter
@@ -243,13 +245,20 @@ class Statistics(BaseModel):
     units: Units
     mean: float
     median: Optional[float | int] = None
+    mode: Optional[float | int] = None
     stddev: Optional[float] = None
     min: Optional[float | int] = None
+    p001: Optional[float | int] = None
+    p01: Optional[float | int] = None
+    p05: Optional[float | int] = None
     p10: Optional[float | int] = None
+    p25: Optional[float | int] = None
     p50: Optional[float | int] = None
+    p75: Optional[float | int] = None
     p90: Optional[float | int] = None
     p95: Optional[float | int] = None
     p99: Optional[float | int] = None
+    p999: Optional[float | int] = None
     max: Optional[float | int] = None
 
 
@@ -259,7 +268,9 @@ class Requests(BaseModel):
     total: int
     """Total number of requests sent."""
     failures: Optional[int] = None
-    """Number of requests which did not result in a completed response."""
+    """Number of requests which responded with an error."""
+    incomplete: Optional[int] = None
+    """Number of requests which were not completed."""
     input_length: Statistics
     """Input sequence length."""
     output_length: Statistics

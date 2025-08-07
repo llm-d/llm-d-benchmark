@@ -548,6 +548,18 @@
           "default": null,
           "title": "Failures"
         },
+        "incomplete": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Incomplete"
+        },
         "input_length": {
           "$ref": "#/$defs/Statistics"
         },
@@ -706,6 +718,21 @@
           "default": null,
           "title": "Median"
         },
+        "mode": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mode"
+        },
         "stddev": {
           "anyOf": [
             {
@@ -733,6 +760,51 @@
           "default": null,
           "title": "Min"
         },
+        "p001": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P001"
+        },
+        "p01": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P01"
+        },
+        "p05": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P05"
+        },
         "p10": {
           "anyOf": [
             {
@@ -748,6 +820,21 @@
           "default": null,
           "title": "P10"
         },
+        "p25": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P25"
+        },
         "p50": {
           "anyOf": [
             {
@@ -762,6 +849,21 @@
           ],
           "default": null,
           "title": "P50"
+        },
+        "p75": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P75"
         },
         "p90": {
           "anyOf": [
@@ -807,6 +909,21 @@
           ],
           "default": null,
           "title": "P99"
+        },
+        "p999": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P999"
         },
         "max": {
           "anyOf": [
