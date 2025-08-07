@@ -185,7 +185,7 @@ def import_vllm_benchmark(results_path: str) -> BenchmarkReport:
     Returns:
         BenchmarkReport: Imported data.
     """
-    if not os.path.exists(results_path):
+    if not os.path.isdir(results_path):
         raise Exception('Invalid results path: %s' % results_path)
 
     results_files = []
@@ -289,6 +289,180 @@ def import_vllm_benchmark(results_path: str) -> BenchmarkReport:
     return BenchmarkReport(**br_dict)
 
 
+def import_guidellm(results_path: str) -> BenchmarkReport:
+    """Import data from a GuideLLM run as a BenchmarkReport.
+
+    Args:
+        results_path (str): Path to results directory.
+
+    Returns:
+        BenchmarkReport: Imported data.
+    """
+    if not os.path.isdir(results_path):
+        raise Exception('Invalid results path: %s' % results_path)
+    # The GuideLLM harness for llm-d-benchmark saves results to results.json
+    if not os.path.isfile(os.path.join(results_path, 'results.json')):
+        raise Exception('Missing "results.json": %s' % results_path)
+
+    # Everything falls under ['benchmarks'][0], so just grab that part
+    results = import_yaml(os.path.join(results_path, 'results.json'))['benchmarks'][0]
+
+    # Import scenario details from llm-d-benchmark run as a dict following the
+    # schema of BenchmarkReport
+    br_dict = _import_llmd_benchmark_run_data(results_path)
+    # Append to that dict the data from vLLM benchmark
+    update_dict(br_dict, {
+        "scenario": {
+            "model": {"name": results['worker']['backend_model']},
+            "load": {
+                "name": WorkloadGenerator.GUIDELLM,
+                "args": results['args'],
+            },
+        },
+        "metrics": {
+            "time": {
+                "duration": results['duration'],
+                "start": results['start_time'],
+                "stop": results['end_time'],
+            },
+            "requests": {
+                "total": results['request_totals']['total'],
+                "failures": results['request_totals']['errored'],
+                "incomplete": results['request_totals']['incomplete'],
+                "input_length": {
+                    "units": Units.COUNT,
+                    "mean": results['metrics']['prompt_token_count']['successful']['mean'],
+                    "median": results['metrics']['prompt_token_count']['successful']['median'],
+                    "mode": results['metrics']['prompt_token_count']['successful']['mode'],
+                    "stddev": results['metrics']['prompt_token_count']['successful']['std_dev'],
+                    "min": results['metrics']['prompt_token_count']['successful']['min'],
+                    "p001": results['metrics']['prompt_token_count']['successful']['percentiles']['p001'],
+                    "p01": results['metrics']['prompt_token_count']['successful']['percentiles']['p01'],
+                    "p05": results['metrics']['prompt_token_count']['successful']['percentiles']['p05'],
+                    "p10": results['metrics']['prompt_token_count']['successful']['percentiles']['p10'],
+                    "p25": results['metrics']['prompt_token_count']['successful']['percentiles']['p25'],
+                    "p50": results['metrics']['prompt_token_count']['successful']['percentiles']['p50'],
+                    "p75": results['metrics']['prompt_token_count']['successful']['percentiles']['p75'],
+                    "p90": results['metrics']['prompt_token_count']['successful']['percentiles']['p90'],
+                    "p95": results['metrics']['prompt_token_count']['successful']['percentiles']['p95'],
+                    "p99": results['metrics']['prompt_token_count']['successful']['percentiles']['p99'],
+                    "p999": results['metrics']['prompt_token_count']['successful']['percentiles']['p999'],
+                    "max": results['metrics']['prompt_token_count']['successful']['max'],
+                },
+                "output_length": {
+                    "units": Units.COUNT,
+                    "mean": results['metrics']['output_token_count']['successful']['mean'],
+                    "median": results['metrics']['output_token_count']['successful']['median'],
+                    "mode": results['metrics']['output_token_count']['successful']['mode'],
+                    "stddev": results['metrics']['output_token_count']['successful']['std_dev'],
+                    "min": results['metrics']['output_token_count']['successful']['min'],
+                    "p001": results['metrics']['output_token_count']['successful']['percentiles']['p001'],
+                    "p01": results['metrics']['output_token_count']['successful']['percentiles']['p01'],
+                    "p05": results['metrics']['output_token_count']['successful']['percentiles']['p05'],
+                    "p10": results['metrics']['output_token_count']['successful']['percentiles']['p10'],
+                    "p25": results['metrics']['output_token_count']['successful']['percentiles']['p25'],
+                    "p50": results['metrics']['output_token_count']['successful']['percentiles']['p50'],
+                    "p75": results['metrics']['output_token_count']['successful']['percentiles']['p75'],
+                    "p90": results['metrics']['output_token_count']['successful']['percentiles']['p90'],
+                    "p95": results['metrics']['output_token_count']['successful']['percentiles']['p95'],
+                    "p99": results['metrics']['output_token_count']['successful']['percentiles']['p99'],
+                    "p999": results['metrics']['output_token_count']['successful']['percentiles']['p999'],
+                    "max": results['metrics']['output_token_count']['successful']['max'],
+                },
+            },
+            "latency": {
+                "time_to_first_token": {
+                    "units": Units.MS,
+                    "mean": results['metrics']['time_to_first_token_ms']['successful']['mean'],
+                    "median": results['metrics']['time_to_first_token_ms']['successful']['median'],
+                    "mode": results['metrics']['time_to_first_token_ms']['successful']['mode'],
+                    "stddev": results['metrics']['time_to_first_token_ms']['successful']['std_dev'],
+                    "min": results['metrics']['time_to_first_token_ms']['successful']['min'],
+                    "p001": results['metrics']['time_to_first_token_ms']['successful']['percentiles']['p001'],
+                    "p01": results['metrics']['time_to_first_token_ms']['successful']['percentiles']['p01'],
+                    "p05": results['metrics']['time_to_first_token_ms']['successful']['percentiles']['p05'],
+                    "p10": results['metrics']['time_to_first_token_ms']['successful']['percentiles']['p10'],
+                    "p25": results['metrics']['time_to_first_token_ms']['successful']['percentiles']['p25'],
+                    "p50": results['metrics']['time_to_first_token_ms']['successful']['percentiles']['p50'],
+                    "p75": results['metrics']['time_to_first_token_ms']['successful']['percentiles']['p75'],
+                    "p90": results['metrics']['time_to_first_token_ms']['successful']['percentiles']['p90'],
+                    "p95": results['metrics']['time_to_first_token_ms']['successful']['percentiles']['p95'],
+                    "p99": results['metrics']['time_to_first_token_ms']['successful']['percentiles']['p99'],
+                    "p999": results['metrics']['time_to_first_token_ms']['successful']['percentiles']['p999'],
+                    "max": results['metrics']['time_to_first_token_ms']['successful']['max'],
+                },
+                "time_per_output_token": {
+                    "units": Units.MS_PER_TOKEN,
+                    "mean": results['metrics']['time_per_output_token_ms']['successful']['mean'],
+                    "median": results['metrics']['time_per_output_token_ms']['successful']['median'],
+                    "mode": results['metrics']['time_per_output_token_ms']['successful']['mode'],
+                    "stddev": results['metrics']['time_per_output_token_ms']['successful']['std_dev'],
+                    "min": results['metrics']['time_per_output_token_ms']['successful']['min'],
+                    "p001": results['metrics']['time_per_output_token_ms']['successful']['percentiles']['p001'],
+                    "p01": results['metrics']['time_per_output_token_ms']['successful']['percentiles']['p01'],
+                    "p05": results['metrics']['time_per_output_token_ms']['successful']['percentiles']['p05'],
+                    "p10": results['metrics']['time_per_output_token_ms']['successful']['percentiles']['p10'],
+                    "p25": results['metrics']['time_per_output_token_ms']['successful']['percentiles']['p25'],
+                    "p50": results['metrics']['time_per_output_token_ms']['successful']['percentiles']['p50'],
+                    "p75": results['metrics']['time_per_output_token_ms']['successful']['percentiles']['p75'],
+                    "p90": results['metrics']['time_per_output_token_ms']['successful']['percentiles']['p90'],
+                    "p95": results['metrics']['time_per_output_token_ms']['successful']['percentiles']['p95'],
+                    "p99": results['metrics']['time_per_output_token_ms']['successful']['percentiles']['p99'],
+                    "p999": results['metrics']['time_per_output_token_ms']['successful']['percentiles']['p999'],
+                    "max": results['metrics']['time_per_output_token_ms']['successful']['max'],
+                },
+                "inter_token_latency": {
+                    "units": Units.MS_PER_TOKEN,
+                    "mean": results['metrics']['inter_token_latency_ms']['successful']['mean'],
+                    "median": results['metrics']['inter_token_latency_ms']['successful']['median'],
+                    "mode": results['metrics']['inter_token_latency_ms']['successful']['mode'],
+                    "stddev": results['metrics']['inter_token_latency_ms']['successful']['std_dev'],
+                    "min": results['metrics']['inter_token_latency_ms']['successful']['min'],
+                    "p001": results['metrics']['inter_token_latency_ms']['successful']['percentiles']['p001'],
+                    "p01": results['metrics']['inter_token_latency_ms']['successful']['percentiles']['p01'],
+                    "p05": results['metrics']['inter_token_latency_ms']['successful']['percentiles']['p05'],
+                    "p10": results['metrics']['inter_token_latency_ms']['successful']['percentiles']['p10'],
+                    "p25": results['metrics']['inter_token_latency_ms']['successful']['percentiles']['p25'],
+                    "p50": results['metrics']['inter_token_latency_ms']['successful']['percentiles']['p50'],
+                    "p75": results['metrics']['inter_token_latency_ms']['successful']['percentiles']['p75'],
+                    "p90": results['metrics']['inter_token_latency_ms']['successful']['percentiles']['p90'],
+                    "p95": results['metrics']['inter_token_latency_ms']['successful']['percentiles']['p95'],
+                    "p99": results['metrics']['inter_token_latency_ms']['successful']['percentiles']['p99'],
+                    "p999": results['metrics']['inter_token_latency_ms']['successful']['percentiles']['p999'],
+                    "max": results['metrics']['inter_token_latency_ms']['successful']['max'],
+                },
+                "request_latency": {
+                    "units": Units.MS,
+                    "mean": results['metrics']['request_latency']['successful']['mean'],
+                    "median": results['metrics']['request_latency']['successful']['median'],
+                    "mode": results['metrics']['request_latency']['successful']['mode'],
+                    "stddev": results['metrics']['request_latency']['successful']['std_dev'],
+                    "min": results['metrics']['request_latency']['successful']['min'],
+                    "p001": results['metrics']['request_latency']['successful']['percentiles']['p001'],
+                    "p01": results['metrics']['request_latency']['successful']['percentiles']['p01'],
+                    "p05": results['metrics']['request_latency']['successful']['percentiles']['p05'],
+                    "p10": results['metrics']['request_latency']['successful']['percentiles']['p10'],
+                    "p25": results['metrics']['request_latency']['successful']['percentiles']['p25'],
+                    "p50": results['metrics']['request_latency']['successful']['percentiles']['p50'],
+                    "p75": results['metrics']['request_latency']['successful']['percentiles']['p75'],
+                    "p90": results['metrics']['request_latency']['successful']['percentiles']['p90'],
+                    "p95": results['metrics']['request_latency']['successful']['percentiles']['p95'],
+                    "p99": results['metrics']['request_latency']['successful']['percentiles']['p99'],
+                    "p999": results['metrics']['request_latency']['successful']['percentiles']['p999'],
+                    "max": results['metrics']['request_latency']['successful']['max'],
+                },
+            },
+            "throughput": {
+                "output_tokens_per_sec": results['metrics']['output_tokens_per_second']['successful']['mean'],
+                "total_tokens_per_sec": results['metrics']['tokens_per_second']['successful']['mean'],
+                "requests_per_sec": results['metrics']['requests_per_second']['successful']['mean'],
+            },
+        },
+    })
+
+    return BenchmarkReport(**br_dict)
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
@@ -309,7 +483,7 @@ if __name__ == "__main__":
         case WorkloadGenerator.FMPERF:
             raise NotImplementedError('Workload generator not yet supported')
         case WorkloadGenerator.GUIDELLM:
-            raise NotImplementedError('Workload generator not yet supported')
+            import_guidellm(args.results_path).print_yaml()
         case WorkloadGenerator.INFERENCE_PERF:
             raise NotImplementedError('Workload generator not yet supported')
         case WorkloadGenerator.VLLM_BENCHMARK:
