@@ -125,6 +125,7 @@ metrics: # These are the aggregate results from benchmarking
   requests:
     total: 32
     failures: 0
+    incomplete: 1
     input_length:
       units: count
       mean: 628.606060606061
