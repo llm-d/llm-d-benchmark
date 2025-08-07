@@ -214,7 +214,6 @@ for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
   echo
   echo
   echo
-  exit
   $LLMDBENCH_MAIN_DIR/setup/run.sh
   ec=$?
   if [[ $ec -ne 0 ]]; then
