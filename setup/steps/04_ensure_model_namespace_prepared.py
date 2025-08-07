@@ -164,7 +164,6 @@ def main():
         ))
 
     if is_openshift(api):
-        vllm_namespace = ev["vllm_common_namespace"]
         # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid
         # some setups might also require privileged access for GPU resources
         add_scc_to_service_account(api, "anyuid", ev["vllm_common_service_account"], ev["vllm_common_namespace"], ev["control_dry_run"]=='1')
