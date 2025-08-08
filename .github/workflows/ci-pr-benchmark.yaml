@@ -2,17 +2,6 @@ name: CI - PR Benchmark Run
 
 on:
   pull_request:
-  workflow_dispatch:
-    inputs:
-      input_dir:
-        description: 'Input directory for benchmark results'
-        required: false
-        default: '/tmp/cicd/analysis'
-      output_dir:
-        description: 'Output directory name (S3 prefix and artifact name)'
-        required: false
-        default: ''
-
 
 jobs:
   run-benchmark:
@@ -31,24 +20,6 @@ jobs:
           cat /etc/*os-*
         shell: bash
 
-      - name: Set input and output directory environment variables
-        run: |
-          DEFAULT_INPUT_DIR=/tmp/cicd/analysis
-          INPUT_DIR="${{ github.event.inputs.input_dir }}"
-          if [ -z "$INPUT_DIR" ]; then
-            INPUT_DIR="$DEFAULT_INPUT_DIR"
-          fi
-          echo "INPUT_DIR=$INPUT_DIR" >> $GITHUB_ENV
-
-          if [ -z "${{ github.event.inputs.output_dir }}" ]; then
-            timestamp=$(date -u +%Y%m%dT%H%M%SZ)
-            echo "OUTPUT_DIR=benchmark-results-${timestamp}" >> $GITHUB_ENV
-            echo "Using generated output dir: benchmark-results-${timestamp}"
-          else
-            echo "OUTPUT_DIR=${{ github.event.inputs.output_dir }}" >> $GITHUB_ENV
-            echo "Using provided output dir: ${{ github.event.inputs.output_dir }}"
-          fi
-
       - name: Create k8s Kind Cluster
         uses: helm/kind-action@v1
 
@@ -57,13 +28,6 @@ jobs:
           NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
           echo "Labeling node: $NODE"
           kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
-
-      # - name: Set up kubeconfig from secret
-      #   run: |
-      #     mkdir -p ~/.kube
-      #     echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
-      #     chmod 600 ~/.kube/config
-      #   shell: bash
 
       - name: Run install_deps
         run: |
@@ -82,25 +46,54 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
 
-      - name: Set up environment variables
+      - name: Create dummy PV and PVC
         run: |
-          echo "LLMDBENCH_HF_TOKEN=hf-token-placeholder" >> $GITHUB_ENV
-          echo "LLMDBENCH_VLLM_MODELSERVICE_URI='hf://random/model'" >> $GITHUB_ENV
-          echo "LLMDBENCH_STEP_LIST=0,1,2,7,8,9" >> $GITHUB_ENV
+          kubectl apply -f - <<EOF
+          apiVersion: v1
+          kind: PersistentVolume
+          metadata:
+            name: kind-pv
+          spec:
+            capacity:
+              storage: 1Gi
+            volumeMode: Filesystem
+            accessModes:
+              - ReadWriteOnce
+            persistentVolumeReclaimPolicy: Retain
+            storageClassName: manual
+            hostPath:
+              path: /tmp
+          EOF
 
-      - name: E2E target cloud (modelservice, inference-perf)
+          kubectl apply -f - <<EOF
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: model-pvc
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+            storageClassName: manual
+          EOF
+
+      - name: Standup a modelservice using llm-d-inference-sim
         env:
-          LLMDBENCH_CLIOVERRIDE_STEP_LIST: 00_ensure_llm-d-infra,01_ensure_local_conda,02_ensure_gateway_provider,07_deploy_setup,08_deploy_gaie,09_deploy_via_modelservice
           LLMDBENCH_HF_TOKEN: hf-token-placeholder
         run: |
-          # export LLMDBENCH_CLIOVERRIDE_STEP_LIST=00_ensure_llm-d-infra,01_ensure_local_conda,02_ensure_gateway_provider,07_deploy_setup,08_gaie,09_deploy_via_modelservice
-          ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep
+          ./setup/standup.sh -c kind_modelservice_inference-sim -t modelservice
 
-      - name: E2E target cloud (modelservice, fmperf)
-        run: ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep -l fmperf -w sanity_short-input
+      - name: Run harness (mock)
+        env:
+          LLMDBENCH_HF_TOKEN: hf-token-placeholder
+          LLMD_CONTROL_DRY_RUN: 1 # TODO: harness doesn't work now for kind bc no harness endpoint
+        run: |
+          ./setup/run.sh -c kind_modelservice_inference-sim
 
-      - name: E2E target cloud (modelservice, guidellm)
-        run: ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
-
-      - name: E2E target cloud (modelservice, vllm-benchmark)
-        run: ./setup/e2e.sh -c ocp_modelservice_inference-sim -t modelservice --deep -l vllm-benchmark
+      - name: Teardown
+        env:
+          LLMDBENCH_HF_TOKEN: hf-token-placeholder
+        run: |
+          ./setup/teardown.sh -c kind_modelservice_inference-sim

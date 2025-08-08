@@ -63,6 +63,7 @@ routing:
       kind: Gateway
       name: infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway
   proxy:
+    image: "$(get_image ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REPO} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_NAME} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG} 0)"
     secure: false
   inferenceModel:
     create: ${LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL}
@@ -302,7 +303,7 @@ EOF
     unset LLMDBENCH_DEPLOY_CURRENT_MODEL
     unset LLMDBENCH_DEPLOY_CURRENT_MODEL_ID
     unset LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL
-  
+
     ((model_number++))
   done
   announce "✅ modelservice completed model deployment"
