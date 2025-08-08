@@ -84,7 +84,7 @@ jobs:
       - name: Check PVC is bound
         run: |
           kubectl get pvc
-          if kubectl get pvc my-pvc -o jsonpath='{.status.phase}' | grep -q '^Bound$'; then
+          if kubectl get pvc model-pvc -o jsonpath='{.status.phase}' | grep -q '^Bound$'; then
             echo "model-pvc is bound"
           else
             echo "model-pvc is not bound"
