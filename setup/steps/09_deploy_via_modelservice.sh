@@ -248,8 +248,8 @@ EOF
     announce "✅ ${LLMDBENCH_VLLM_COMMON_NAMESPACE}-${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-ms helm chart deployed successfully"
 
     sleep 60s
-    for pod in $(kubectl get pods -o name); do
-        kubectl get "$pod" -o yaml
+    for pod in $(kubectl get pods -o name -n llmdbench); do
+        kubectl get "$pod" -n llmdbench -o yaml
     done
 
     if [[ $LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS -gt 0 ]]; then
@@ -265,8 +265,8 @@ EOF
     fi
 
     sleep 60s
-    for pod in $(kubectl get pods -o name); do
-        kubectl get "$pod" -o yaml
+    for pod in $(kubectl get pods -o name -n llmdbench); do
+        kubectl get "$pod" -n llmdbench -o yaml
     done
 
     if [[ $LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS -gt 0 ]]; then
