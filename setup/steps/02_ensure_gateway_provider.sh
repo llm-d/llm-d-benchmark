@@ -36,7 +36,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
       fi
 
     else
-        announce "❗No privileges to setup Gateway Provider. Will assume an user with proper privileges already performed this action."
+        announce "❗No privileges to setup Gateway Provider. Will assume a user with proper privileges already performed this action."
     fi
   fi
 

@@ -304,7 +304,7 @@ EOF
     unset LLMDBENCH_DEPLOY_CURRENT_MODEL_ID
     unset LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL
 
-    ((model_number++))
+    model_number=$((model_number + 1))
   done
   announce "✅ modelservice completed model deployment"
 
