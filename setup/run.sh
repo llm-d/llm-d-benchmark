@@ -323,56 +323,60 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           continue
         fi
 
-        create_harness_pod
-
-        announce "🚀 Starting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL)..."
-        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-        announce "✅ Pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" started"
-
-        announce "⏳ Waiting for pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
-        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-        announce "✅ Benchmark execution for model \"$model\" effectivelly started"
-
-        announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} logs -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -f\"..."
-
-        LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pod -l app=llm-d-benchmark-harness --no-headers -o name | $LLMDBENCH_CONTROL_SCMD 's|^pod/||g')
-        llmdbench_execute_cmd "mkdir -p ${local_results_dir}/ && mkdir -p ${local_analysis_dir}/" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-
-        copy_results_cmd="${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} cp --retries=5 $LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME:${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR} ${local_results_dir}"
-        copy_analysis_cmd="rsync -az --inplace --delete ${local_results_dir}/analysis/ ${local_analysis_dir}/ && rm -rf ${local_results_dir}/analysis"
-
-        if [[ $LLMDBENCH_HARNESS_DEBUG -eq 0 && ${LLMDBENCH_HARNESS_WAIT_TIMEOUT} -ne 0 ]]; then
-          announce "⏳ Waiting for pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be in \"Completed\" state (timeout=${LLMDBENCH_HARNESS_WAIT_TIMEOUT}s)..."
-          llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} wait --timeout=${LLMDBENCH_HARNESS_WAIT_TIMEOUT}s --for=condition=ready=False pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-          announce "✅ Benchmark execution for model \"$model\" completed"
-
-          is_pod_in_error=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pod/${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} --no-headers | grep " Error " || true)
-          if [ ! -z $is_pod_in_error ]; then
-            announce "❌ Final status of pod \"$LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME\" is \"Error\""
-            exit 1
-          fi
-
-          announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" ..."
-          llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-          announce "✅ Pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" deleted"
-
-          announce "🏗️ Collecting results for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL) to \"${local_results_dir}\"..."
-          llmdbench_execute_cmd "${copy_results_cmd}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-
-          if [[ -d ${local_results_dir}/analysis && $LLMDBENCH_HARNESS_DEBUG -eq 0 && ${LLMDBENCH_HARNESS_WAIT_TIMEOUT} -ne 0 ]]; then
-            llmdbench_execute_cmd "$copy_analysis_cmd" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-          fi
-
-          announce "✅ Results for model \"$model\" collected successfully"
-        elif [[ $LLMDBENCH_HARNESS_WAIT_TIMEOUT -eq 0 ]]; then
-          announce "ℹ️ Harness was started with LLMDBENCH_HARNESS_WAIT_TIMEOUT=0. Will NOT wait for pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be in \"Completed\" state. The pod can be accessed through \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} exec -it pod/${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -- bash\""
-          announce "ℹ️ To collect results after an execution, \"$copy_results_cmd && $copy_analysis_cmd"
-          break
+        if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
+          announce "ℹ️ Skipping \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\ creation"
         else
-          announce "ℹ️ Harness was started in \"debug mode\". The pod can be accessed through \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} exec -it pod/${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -- bash\""
-          announce "ℹ️ In order to execute a given workload profile, run \"llm-d-benchmark.sh <[$(get_harness_list)]> [WORKLOAD FILE NAME]\" (all inside the pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\")"
-          announce "ℹ️ To collect results after an execution, \"$copy_results_cmd && $copy_analysis_cmd"
-          break
+          create_harness_pod
+
+          announce "🚀 Starting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL)..."
+          llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+          announce "✅ Pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" started"
+
+          announce "⏳ Waiting for pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
+          llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+          announce "✅ Benchmark execution for model \"$model\" effectivelly started"
+
+          announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} logs -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -f\"..."
+
+          LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pod -l app=llm-d-benchmark-harness --no-headers -o name | $LLMDBENCH_CONTROL_SCMD 's|^pod/||g')
+          llmdbench_execute_cmd "mkdir -p ${local_results_dir}/ && mkdir -p ${local_analysis_dir}/" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
+          copy_results_cmd="${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} cp --retries=5 $LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME:${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR} ${local_results_dir}"
+          copy_analysis_cmd="rsync -az --inplace --delete ${local_results_dir}/analysis/ ${local_analysis_dir}/ && rm -rf ${local_results_dir}/analysis"
+
+          if [[ $LLMDBENCH_HARNESS_DEBUG -eq 0 && ${LLMDBENCH_HARNESS_WAIT_TIMEOUT} -ne 0 ]]; then
+            announce "⏳ Waiting for pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be in \"Completed\" state (timeout=${LLMDBENCH_HARNESS_WAIT_TIMEOUT}s)..."
+            llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} wait --timeout=${LLMDBENCH_HARNESS_WAIT_TIMEOUT}s --for=condition=ready=False pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+            announce "✅ Benchmark execution for model \"$model\" completed"
+
+            is_pod_in_error=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pod/${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} --no-headers | grep " Error " || true)
+            if [ ! -z $is_pod_in_error ]; then
+              announce "❌ Final status of pod \"$LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME\" is \"Error\""
+              exit 1
+            fi
+
+            announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" ..."
+            llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+            announce "✅ Pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" deleted"
+
+            announce "🏗️ Collecting results for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL) to \"${local_results_dir}\"..."
+            llmdbench_execute_cmd "${copy_results_cmd}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
+            if [[ -d ${local_results_dir}/analysis && $LLMDBENCH_HARNESS_DEBUG -eq 0 && ${LLMDBENCH_HARNESS_WAIT_TIMEOUT} -ne 0 ]]; then
+              llmdbench_execute_cmd "$copy_analysis_cmd" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+            fi
+
+            announce "✅ Results for model \"$model\" collected successfully"
+          elif [[ $LLMDBENCH_HARNESS_WAIT_TIMEOUT -eq 0 ]]; then
+            announce "ℹ️ Harness was started with LLMDBENCH_HARNESS_WAIT_TIMEOUT=0. Will NOT wait for pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be in \"Completed\" state. The pod can be accessed through \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} exec -it pod/${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -- bash\""
+            announce "ℹ️ To collect results after an execution, \"$copy_results_cmd && $copy_analysis_cmd"
+            break
+          else
+            announce "ℹ️ Harness was started in \"debug mode\". The pod can be accessed through \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} exec -it pod/${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -- bash\""
+            announce "ℹ️ In order to execute a given workload profile, run \"llm-d-benchmark.sh <[$(get_harness_list)]> [WORKLOAD FILE NAME]\" (all inside the pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\")"
+            announce "ℹ️ To collect results after an execution, \"$copy_results_cmd && $copy_analysis_cmd"
+            break
+          fi
         fi
       done
     fi
