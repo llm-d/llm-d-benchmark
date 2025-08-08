@@ -300,8 +300,8 @@ def main():
         asyncio.run(wait_for_job(job_name, namespace))
 
         logs = capture_pod_logs(job_name, namespace, eval_log_file)
-        if move_data_result(eval_log_file, eval_data_dir):
-            logger.info(f"Data moved to {eval_data_dir}")
+        # if move_data_result(eval_log_file, eval_data_dir):
+        #     logger.info(f"Data moved to {eval_data_dir}")
 
 
     except Exception as e:
