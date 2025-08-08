@@ -315,8 +315,10 @@ The schema for a benchmarking report is defined through Python classes using [Py
 ### Requirements
 
 ```
+numpy>=2.3.1
 pydantic>=2.11.7
 PyYAML>=6.0.2
+scipy>=1.16.0
 ```
 
 ### Creating a `BenchmarkReport`
@@ -363,7 +365,7 @@ A `BenchmarkReport` may also be created from a JSON/YAML string with the `schema
 br = BenchmarkReport(**convert.import_yaml('benchmark_report.json'))
 ```
 
-A JSON or YAML printout of `BenchmarkReport` may be generated the `print_json()` and `print_yaml()` methods, respectively.
+A JSON or YAML printout of `BenchmarkReport` may be generated the `print_json()` and `print_yaml()` methods, respectively. To save as a JSON/YAML file, use the `export_json()` or `export_yaml()` methods.
 
 ### Transforming harness native formats to a benchmark report
 
