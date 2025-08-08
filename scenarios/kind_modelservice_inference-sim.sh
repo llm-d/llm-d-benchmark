@@ -1,7 +1,4 @@
 # A scenario to capture running inference-sim on a Kind cluster without requiring GPUs
-
-# Skip model download step
-export LLMDBENCH_CLIOVERRIDE_STEP_LIST=00_ensure_llm-d-infra,01_ensure_local_conda,02_ensure_gateway_provider,07_deploy_setup,08_deploy_gaie,09_deploy_via_modelservice
 export LLMDBENCH_DEPLOY_METHODS=modelservice
 export LLMDBENCH_VLLM_COMMON_REPLICAS=1
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR=0
