@@ -21,7 +21,5 @@ export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=3Gi
 export LLMDBENCH_HARNESS_PVC_SIZE=3Gi
 export LLMDBENCH_VLLM_COMMON_PVC_NAME=model-pvc
 export LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT=0
-export LLMDBENCH_CONTROL_DRY_RUN=0
 export LLMDBENCH_CONTROL_RESOURCE_LIST=deployment,httproute,service,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,job
-
-#
+export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true

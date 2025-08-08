@@ -46,52 +46,6 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
 
-      # - name: Create dummy PV and PVC
-      #   run: |
-      #     kubectl apply -f - <<EOF
-      #     apiVersion: v1
-      #     kind: PersistentVolume
-      #     metadata:
-      #       name: kind-pv
-      #     spec:
-      #       capacity:
-      #         storage: 1Gi
-      #       volumeMode: Filesystem
-      #       accessModes:
-      #         - ReadWriteMany
-      #       persistentVolumeReclaimPolicy: Retain
-      #       storageClassName: manual
-      #       hostPath:
-      #         path: /tmp
-      #     EOF
-
-      # - name: Create dummy PVC
-      #   run: |
-      #     kubectl apply -f - <<EOF
-      #     apiVersion: v1
-      #     kind: PersistentVolumeClaim
-      #     metadata:
-      #       name: model-pvc
-      #       namespace: llmdbench
-      #     spec:
-      #       accessModes:
-      #         - ReadWriteMany
-      #       resources:
-      #         requests:
-      #           storage: 1Gi
-      #       storageClassName: manual
-      #     EOF
-
-      # - name: Check PVC is bound
-      #   run: |
-      #     kubectl get pvc
-      #     if kubectl get pvc model-pvc -o jsonpath='{.status.phase}' | grep -q '^Bound$'; then
-      #       echo "model-pvc is bound"
-      #     else
-      #       echo "model-pvc is not bound"
-      #       exit 1
-      #     fi
-
       - name: Standup a modelservice using llm-d-inference-sim
         env:
           LLMDBENCH_HF_TOKEN: hf-token-placeholder
@@ -103,7 +57,7 @@ jobs:
           LLMDBENCH_HF_TOKEN: hf-token-placeholder
           LLMD_CONTROL_DRY_RUN: 1 # TODO: harness doesn't work now for kind bc no harness endpoint
         run: |
-          ./setup/run.sh -c kind_modelservice_inference-sim
+          ./setup/run.sh -c kind_modelservice_inference-sim --dry-run
 
       - name: Teardown
         env:
