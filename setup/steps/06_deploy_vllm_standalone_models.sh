@@ -125,6 +125,7 @@ spec:
       - name: cache-volume
         persistentVolumeClaim:
           claimName: ${LLMDBENCH_VLLM_COMMON_PVC_NAME}
+#          readOnly: true
       - name: shm
         emptyDir:
           medium: Memory

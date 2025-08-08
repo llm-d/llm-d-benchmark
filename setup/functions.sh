@@ -116,10 +116,12 @@ function get_image {
 export -f get_image
 
 function prepare_work_dir {
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/scenario
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/logs
+  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/experiments
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
@@ -587,7 +589,6 @@ function validate_and_create_pvc {
     exit 1
   fi
 
-
   local has_pvc=$($LLMDBENCH_CONTROL_KCMD get pvc ${pvc_name} --output=custom-columns="CAPACITY:.status.capacity.storage" --no-headers --ignore-not-found || true)
   if [[ ! -z $has_pvc ]]; then
     local pvc_size=$has_pvc
@@ -925,6 +926,45 @@ function render_workload_templates {
 }
 export -f render_workload_templates
 
+function generate_standup_parameter_scenarios {
+  local scenario_dir=$1
+  local scenario_file=$2
+  local standup_parameter_file=${3:-}
+
+  local output_dir=${scenario_dir}/setup/treatment_list
+  rm -rf $output_dir
+  mkdir -p $output_dir
+
+  if [[ -z $standup_parameter_file || ! -s $standup_parameter_file || $(cat $standup_parameter_file | yq -r .setup) == "null" ]]; then
+    cp -f $scenario_file ${scenario_dir}/setup/treatment_list/treatment_1.sh
+    return 0
+  fi
+
+  mkdir -p ${scenario_dir}/setup/experiments/
+  cp -f $standup_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/setup/experiments/
+
+  i=1
+  for treatment in $(cat $standup_parameter_file | yq -r '.setup.treatments[]'); do
+    cat $scenario_file > $output_dir/treatment_$i.sh
+    $LLMDBENCH_CONTROL_SCMD -i "1i#treatment_$i"  $output_dir/treatment_$i.sh
+    local j=1
+    for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
+      local param=$(cat $standup_parameter_file | yq -r ".setup.factors[$(($j - 1))]")
+      has_param=$(cat $output_dir/treatment_$i.sh | grep "$param=" || true)
+      if [[ -z $has_param ]]; then
+        echo "$param=$value" >> $output_dir/treatment_$i.sh
+      else
+        $LLMDBENCH_CONTROL_SCMD -i "s^$param=.*^$param=$value^g"  $output_dir/treatment_$i.sh
+      fi
+      $LLMDBENCH_CONTROL_SCMD -i "s^REPLACE_TREATMENT_NR^treatment_$i^g"  $output_dir/treatment_$i.sh
+      $LLMDBENCH_CONTROL_SCMD -i "s^_treatment_nr^treatment_$i^g"  $output_dir/treatment_$i.sh
+      j=$((j+1))
+    done
+    i=$((i+1))
+  done
+}
+export -f generate_standup_parameter_scenarios
+
 function generate_profile_parameter_treatments {
   local harness_name=$1
   local run_parameter_file=${2:-}
@@ -941,11 +981,11 @@ function generate_profile_parameter_treatments {
   cp -f $run_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/workload/experiments/
 
   i=1
-  for treatment in $(cat $run_parameter_file | yq -r '.treatments[]'); do
+  for treatment in $(cat $run_parameter_file | yq -r '.run.treatments[]'); do
     echo "1i#treatment_$i.txt" >> $output_dir/treatment_$i.txt
     local j=1
     for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
-      local param=$(cat $run_parameter_file | yq -r ".factors[$(($j - 1))]")
+      local param=$(cat $run_parameter_file | yq -r ".run.factors[$(($j - 1))]")
       echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_$i.txt
       j=$((j+1))
     done
@@ -986,17 +1026,22 @@ if [[ $LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP -eq 1 ]]; then
 fi
 
 if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
-  if [[ $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} != "e2s.sh" ]]; then
+  if [[ $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" || $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "e2s.sh" ]]; then
     backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
     backup_target=$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix
-    announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
-    llmdbench_execute_cmd "mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
-    prepare_work_dir
-    if [[ -f $backup_target/environment/context.ctx ]]; then
-      llmdbench_execute_cmd "cp -f $backup_target/environment/context.ctx $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
+    if [[ $(ls $LLMDBENCH_CONTROL_WORK_DIR/setup/commands | wc -l) -ne 0 ]]; then
+      announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
+      # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
+      mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target
+      export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
+      prepare_work_dir
+      if [[ -f $backup_target/environment/context.ctx ]]; then
+        # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
+        cp -f $backup_target/environment/context.ctx $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
+      fi
+      echo
     fi
-    echo
   fi
 fi
 }

@@ -146,6 +146,9 @@ if [[ $LLMDBENCH_STEP_LIST == $(find $LLMDBENCH_STEPS_DIR -name "*.sh" -o -name 
   export LLMDBENCH_CONTROL_STANDUP_ALL_STEPS=1
 fi
 
+extract_environment
+sleep 5
+
 for step in ${LLMDBENCH_STEP_LIST//,/ }; do
   if [[ ${#step} -lt 2 ]]
   then
