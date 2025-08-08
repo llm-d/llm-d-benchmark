@@ -58,7 +58,7 @@ jobs:
               storage: 1Gi
             volumeMode: Filesystem
             accessModes:
-              - ReadWriteOnce
+              - ReadWriteMany
             persistentVolumeReclaimPolicy: Retain
             storageClassName: manual
             hostPath:
@@ -72,12 +72,21 @@ jobs:
             name: model-pvc
           spec:
             accessModes:
-              - ReadWriteOnce
+              - ReadWriteMany
             resources:
               requests:
                 storage: 1Gi
             storageClassName: manual
           EOF
+
+      - name: Check PVC is bound
+        run: |
+          if kubectl get pvc my-pvc -o jsonpath='{.status.phase}' | grep -q '^Bound$'; then
+            echo "model-pvc is bound"
+          else
+            echo "model-pvc is not bound"
+            exit 1
+          fi
 
       - name: Standup a modelservice using llm-d-inference-sim
         env:

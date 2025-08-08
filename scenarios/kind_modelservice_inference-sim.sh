@@ -24,5 +24,3 @@ export LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT=0
 export LLMDBENCH_CONTROL_DRY_RUN=0
 export LLMDBENCH_CONTROL_RESOURCE_LIST=deployment,httproute,service,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,job
 
-
-#
