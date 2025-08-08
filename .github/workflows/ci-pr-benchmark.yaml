@@ -65,6 +65,8 @@ jobs:
               path: /tmp
           EOF
 
+      - name: Create dummy PVC
+        run: |
           kubectl apply -f - <<EOF
           apiVersion: v1
           kind: PersistentVolumeClaim
@@ -81,6 +83,7 @@ jobs:
 
       - name: Check PVC is bound
         run: |
+          kubectl get pvc
           if kubectl get pvc my-pvc -o jsonpath='{.status.phase}' | grep -q '^Bound$'; then
             echo "model-pvc is bound"
           else
