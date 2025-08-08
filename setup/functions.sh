@@ -33,10 +33,11 @@ function model_attribute {
     "llama-8b") local model=meta-llama/Llama-3.1-8B-Instruct:llama-8b ;;
     "llama-70b") local model=meta-llama/Llama-3.1-70B-Instruct:llama-70b ;;
     "llama-17b") local model=meta-llama/Llama-4-Scout-17B-16E-Instruct:llama-17b ;;
+    "facebook/opt-125m") local model=facebook/opt-1.0-125m-hf:opt-125m ;;
     *)
       true ;;
   esac
-  
+
   # model is of the form namespace/modelid:uniqueid
   local modelid=$(echo $model | cut -d: -f2)
   model=$(echo $model | cut -d: -f1)
