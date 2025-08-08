@@ -27,7 +27,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
     export LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL=$(model_attribute $model modelid_label)
 
     # If LLMDBENCH_VLLM_MODELSERVICE_URI is not defined, set it to pvc://
-    if [[ -n "$LLMDBENCH_VLLM_MODELSERVICE_URI" ]]; then
+    if [[ -z "$LLMDBENCH_VLLM_MODELSERVICE_URI" ]]; then
       export LLMDBENCH_VLLM_MODELSERVICE_URI="pvc://${LLMDBENCH_VLLM_COMMON_PVC_NAME}/models/$(model_attribute $model model)"
     fi
 
