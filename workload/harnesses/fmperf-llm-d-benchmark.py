@@ -203,6 +203,39 @@ def move_data_result(capture_log_file, data_dir):
     return True
 
 
+def convert_data_result(capture_log_file):
+    """Convert the data file mentioned in the log to a benchmark report."""
+
+    sed_cmd =  's/^.*Finished benchmarking, dumping summary to \\(.*.csv\\).*$/\\1/p'
+    os_command = [ 'sed', '-n', sed_cmd, capture_log_file ]
+    result = subprocess.run(os_command, capture_output=True, text=True)
+    if result.returncode != 0:
+        logger.error(f"Error finding result data: {result.stderr}")
+        return False
+
+    data_files = set(result.stdout.strip().split("\n"))
+
+    for data_file in data_files:
+        data_file = data_file.strip()
+        if not data_file:
+            continue
+
+        if not os.path.exists(data_file):
+            logger.error(f"Data file does not exist: {data_file}")
+            continue    # ignore the missing temp warm up files
+
+        os_command = [
+            'convert.py',
+            data_file,
+            f'benchmark_report,_{os.path.basename(data_file)}.json',
+            '-w',
+            'fmperf'
+        ]
+        result = subprocess.run(os_command, capture_output=True, text=True)
+        if result.returncode != 0:
+            # Report error, but do not quit
+            logger.error(f"Error converting result data: {result.stderr}")
+
 def main():
 
     env_vars = os.environ
@@ -300,6 +333,7 @@ def main():
         asyncio.run(wait_for_job(job_name, namespace))
 
         logs = capture_pod_logs(job_name, namespace, eval_log_file)
+        convert_data_result(eval_log_file)
         # if move_data_result(eval_log_file, eval_data_dir):
         #     logger.info(f"Data moved to {eval_data_dir}")
 
