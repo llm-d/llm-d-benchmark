@@ -259,7 +259,10 @@ EOF
       announce "✅ (prefill) pods serving model ${model} created"
     fi
 
-    kubectl get po $(kubectl get pod -o name | grep decode) -o yaml
+    sleep 20s
+    for pod in $(kubectl get pods -o name); do
+        kubectl get "$pod" -o yaml
+    done
 
     if [[ $LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS -gt 0 ]]; then
       announce "⏳ Waiting for (decode) pods serving model ${model} to be in \"Running\" state (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
