@@ -169,6 +169,10 @@ done
 if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
 
   for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; do
+    if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
+      export LLMDBENCH_CONTROL_RESOURCE_LIST=$(echo $LLMDBENCH_CONTROL_RESOURCE_LIST | $LLMDBENCH_CONTROL_SCMD -e "s^httproute,^httproute,route,^g" -e "s^,route,route^,route^g")
+    fi
+
     allres=$(${LLMDBENCH_CONTROL_KCMD} --namespace $tgtns get ${LLMDBENCH_CONTROL_RESOURCE_LIST} -o name)
     tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt|secret/${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}" || true)
 
