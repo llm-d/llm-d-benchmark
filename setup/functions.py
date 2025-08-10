@@ -286,8 +286,8 @@ def launch_download_job(
         'mkdir -p "${MOUNT_PATH}/${MODEL_PATH}" && '
         'pip install huggingface_hub && '
         'export PATH="${PATH}:${HOME}/.local/bin" && '
-        'huggingface-cli login --token "${HF_TOKEN}" && '
-        'huggingface-cli download "${HF_MODEL_ID}" --local-dir "/cache/${MODEL_PATH}"'
+        'hf auth login --token "${HF_TOKEN}" && '
+        'hf download "${HF_MODEL_ID}" --local-dir "/cache/${MODEL_PATH}"'
     )
 
     job_name = 'download-model'
