@@ -31,7 +31,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
       mount_model_volume=true
     else
       export LLMDBENCH_VLLM_MODELSERVICE_URI="hf://$(model_attribute $model model)"
-      mount_model_volume=false
+      mount_model_volume=true
     fi
 
     # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
