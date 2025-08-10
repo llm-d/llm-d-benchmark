@@ -19,10 +19,10 @@ project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
 
-from functions import (announce, 
-                       wait_for_job, 
-                       validate_and_create_pvc, 
-                       launch_download_job, 
+from functions import (announce,
+                       wait_for_job,
+                       validate_and_create_pvc,
+                       launch_download_job,
                        model_attribute,
                        create_namespace,
                        kube_connect,
@@ -89,8 +89,6 @@ def add_scc_to_service_account(api: pykube.HTTPClient, scc_name: str, service_ac
             scc.update()
             announce(f'Successfully updated SCC "{scc_name}"')
 
-                      
-
 def main():
 
     os.environ["CURRENT_STEP_NAME"] =  os.path.splitext(os.path.basename(__file__))[0]
@@ -127,41 +125,42 @@ def main():
             announce("Secret created/updated.")
 
 
-    
+
     models = [model.strip() for model in ev["deploy_model_list"].split(',') if model.strip()]
     for model_name in models:
 
-        download_model = model_attribute(model=model_name, attribute="model")
-        model_artifact_uri = f'pvc://{ev["vllm_common_pvc_name"]}/models/{download_model}'
-        protocol, pvc_and_model_path = model_artifact_uri.split("://") # protocol var unused but exists in prev script
-        pvc_name, model_path = pvc_and_model_path.split('/', 1) # split from first occurence
+        if [[ ev["VLLM_MODELSERVICE_URI_PROTOCOL"]] == "pv" or ev["CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE"] == "1" ]
+            download_model = model_attribute(model=model_name, attribute="model")
+            model_artifact_uri = f'pvc://{ev["vllm_common_pvc_name"]}/models/{download_model}'
+            protocol, pvc_and_model_path = model_artifact_uri.split("://") # protocol var unused but exists in prev script
+            pvc_name, model_path = pvc_and_model_path.split('/', 1) # split from first occurence
 
-        validate_and_create_pvc(
-            api=api,
-            namespace=ev["vllm_common_namespace"],
-            download_model=download_model,
-            pvc_name=ev["vllm_common_pvc_name"],
-            pvc_size=ev["vllm_common_pvc_model_cache_size"],
-            pvc_class=ev["vllm_common_pvc_storage_class"],
-            dry_run=ev["control_dry_run"] == '1'
-        )
+            validate_and_create_pvc(
+                api=api,
+                namespace=ev["vllm_common_namespace"],
+                download_model=download_model,
+                pvc_name=ev["vllm_common_pvc_name"],
+                pvc_size=ev["vllm_common_pvc_model_cache_size"],
+                pvc_class=ev["vllm_common_pvc_storage_class"],
+                dry_run=ev["control_dry_run"] == '1'
+            )
 
-        announce(f'🔽 Launching download job for model: "{model_name}"')
-        launch_download_job(
-            namespace=ev["vllm_common_namespace"],
-            secret_name=ev["vllm_common_hf_token_name"],
-            download_model=download_model,
-            model_path=model_path,
-            pvc_name=ev["vllm_common_pvc_name"],
-            dry_run=ev["control_dry_run"] == '1',
-            verbose=ev["control_verbose"] == '1'
-        )
+            announce(f'🔽 Launching download job for model: "{model_name}"')
+            launch_download_job(
+                namespace=ev["vllm_common_namespace"],
+                secret_name=ev["vllm_common_hf_token_name"],
+                download_model=download_model,
+                model_path=model_path,
+                pvc_name=ev["vllm_common_pvc_name"],
+                dry_run=ev["control_dry_run"] == '1',
+                verbose=ev["control_verbose"] == '1'
+            )
 
-        asyncio.run(wait_for_job(
-            job_name="download-model",
-            namespace=ev["vllm_common_namespace"],
-            timeout=ev["vllm_common_pvc_download_timeout"],
-        ))
+            asyncio.run(wait_for_job(
+                job_name="download-model",
+                namespace=ev["vllm_common_namespace"],
+                timeout=ev["vllm_common_pvc_download_timeout"],
+            ))
 
     if is_openshift(api):
         # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid
@@ -188,7 +187,7 @@ def main():
         "metadata": {"name": config_map_name, "namespace": ev["vllm_common_namespace"]},
         "data": config_map_data
     }
-    
+
     cm = pykube.ConfigMap(api, cm_obj)
     if ev["control_dry_run"] != '1':
         if cm.exists(): cm.update()

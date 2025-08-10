@@ -156,16 +156,21 @@ spec:
     volumeMounts:
     - name: requests
       mountPath: /requests
-    - name: cache-volume
-      mountPath: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
+#    - name: cache-volume
+#      mountPath: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
   volumes:
   - name: requests
     persistentVolumeClaim:
       claimName: $LLMDBENCH_HARNESS_PVC_NAME
-  - name: cache-volume
-    persistentVolumeClaim:
-      claimName: ${LLMDBENCH_VLLM_COMMON_PVC_NAME}
+#  - name: cache-volume
+#    persistentVolumeClaim:
+#      claimName: ${LLMDBENCH_VLLM_COMMON_PVC_NAME}
 EOF
+
+  if [[ $LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL == "pvc" || ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 ]]; then
+    $LLMDBENCH_CONTROL_SCMD -i "s^\^#^^g" $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_a_pod_access_to_harness_data.yaml
+  fi
+
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_a_pod_access_to_harness_data.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
     cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_b_service_access_to_harness_data.yaml

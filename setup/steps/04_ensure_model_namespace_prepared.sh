@@ -32,26 +32,28 @@ main() {
     create_namespace "${LLMDBENCH_CONTROL_KCMD}" "${LLMDBENCH_VLLM_COMMON_NAMESPACE}"
     create_or_update_hf_secret "${LLMDBENCH_CONTROL_KCMD}" "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}" ${LLMDBENCH_VLLM_COMMON_HF_TOKEN_KEY} "${LLMDBENCH_HF_TOKEN}"
 
-    validate_and_create_pvc \
-      "${LLMDBENCH_CONTROL_KCMD}" \
-      "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
-      "${DOWNLOAD_MODEL}" \
-      "${PVC_NAME}" \
-      "${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE}" \
-      "${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS}"
+    if [[ $LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL == "pvc" || ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 ]]; then
+      validate_and_create_pvc \
+        "${LLMDBENCH_CONTROL_KCMD}" \
+        "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
+        "${DOWNLOAD_MODEL}" \
+        "${PVC_NAME}" \
+        "${LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE}" \
+        "${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS}"
 
-    launch_download_job \
-      "${LLMDBENCH_CONTROL_KCMD}" \
-      "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
-      "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}" \
-      "${DOWNLOAD_MODEL}" \
-      "${MODEL_PATH}" \
-      "${PVC_NAME}"
+      launch_download_job \
+        "${LLMDBENCH_CONTROL_KCMD}" \
+        "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
+        "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}" \
+        "${DOWNLOAD_MODEL}" \
+        "${MODEL_PATH}" \
+        "${PVC_NAME}"
 
-    wait_for_download_job \
-      "${LLMDBENCH_CONTROL_KCMD}" \
-      "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
-      "${LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT}"
+      wait_for_download_job \
+        "${LLMDBENCH_CONTROL_KCMD}" \
+        "${LLMDBENCH_VLLM_COMMON_NAMESPACE}" \
+        "${LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT}"
+    fi
 
     if [[ "${LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT}" -eq 1 ]]; then
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} \

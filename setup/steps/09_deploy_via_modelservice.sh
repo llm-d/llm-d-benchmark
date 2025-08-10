@@ -26,9 +26,12 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
     export LLMDBENCH_DEPLOY_CURRENT_MODEL_ID=$(model_attribute $model modelid)
     export LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL=$(model_attribute $model modelid_label)
 
-    # If LLMDBENCH_VLLM_MODELSERVICE_URI is not defined, set it to pvc://
-    if [[ -z "$LLMDBENCH_VLLM_MODELSERVICE_URI" ]]; then
+    if [[ $LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL == "pvc" || ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 ]]; then
       export LLMDBENCH_VLLM_MODELSERVICE_URI="pvc://${LLMDBENCH_VLLM_COMMON_PVC_NAME}/models/$(model_attribute $model model)"
+      mount_model_volume=true
+    else
+      export LLMDBENCH_VLLM_MODELSERVICE_URI="hf://$(model_attribute $model model)"
+      mount_model_volume=false
     fi
 
     # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
@@ -106,7 +109,7 @@ decode:
       $(add_annotations)
   containers:
   - name: "vllm"
-    mountModelVolume: true
+    mountModelVolume: $mount_model_volume
     image: "$(get_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_NAME} ${LLMDBENCH_LLMD_IMAGE_TAG} 0)"
     modelCommand: ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND}
     $(add_command $LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND)
@@ -178,7 +181,7 @@ prefill:
       $(add_annotations)
   containers:
   - name: "vllm"
-    mountModelVolume: true
+    mountModelVolume: $mount_model_volume
     image: "$(get_image ${LLMDBENCH_LLMD_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_IMAGE_REPO} ${LLMDBENCH_LLMD_IMAGE_NAME} ${LLMDBENCH_LLMD_IMAGE_TAG} 0)"
     modelCommand: ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND}
     $(add_command $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND)
