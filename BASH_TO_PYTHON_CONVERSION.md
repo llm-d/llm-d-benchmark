@@ -154,6 +154,7 @@ LLMDBENCH_CONTROL_STEP_00_IMPLEMENTATION=py LLMDBENCH_CONTROL_DRY_RUN=1 ./setup/
 
 - `04_ensure_model_namespace_prepared.sh` → `04_ensure_model_namespace_prepared.py`
 - `00_ensure_llm-d-infra.sh` → `00_ensure_llm-d-infra.py`
+- `01_ensure_local_conda.sh` → `01_ensure_local_conda.py`
 
 ## Next Steps
 
