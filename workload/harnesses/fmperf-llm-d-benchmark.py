@@ -203,38 +203,34 @@ def move_data_result(capture_log_file, data_dir):
     return True
 
 
-def convert_data_result(capture_log_file):
-    """Convert the data file mentioned in the log to a benchmark report."""
+def convert_data_result(capture_dir: str) -> None:
+    """Convert benchmark results CSV files to benchmark reports.
 
-    sed_cmd =  's/^.*Finished benchmarking, dumping summary to \\(.*.csv\\).*$/\\1/p'
-    os_command = [ 'sed', '-n', sed_cmd, capture_log_file ]
-    result = subprocess.run(os_command, capture_output=True, text=True)
-    if result.returncode != 0:
-        logger.error(f"Error finding result data: {result.stderr}")
-        return False
+    Args:
+        capture_dir (str): Directory where results CSVs should be converted.
+    """
 
-    data_files = set(result.stdout.strip().split("\n"))
+    if not os.path.isdir(capture_dir):
+        logger.error(f'Invalid directory: {capture_dir}')
+        return
 
-    for data_file in data_files:
-        data_file = data_file.strip()
-        if not data_file:
+    for data_file in os.listdir(capture_dir):
+        if data_file.lower()[-4:] != '.csv':
             continue
-
-        if not os.path.exists(data_file):
-            logger.error(f"Data file does not exist: {data_file}")
-            continue    # ignore the missing temp warm up files
-
+        data_file_full_path = os.path.join(capture_dir, data_file)
+        logger.info(f'Converting file to benchmark report: {data_file_full_path}')
         os_command = [
             'convert.py',
-            data_file,
-            f'benchmark_report,_{os.path.basename(data_file)}.json',
+            data_file_full_path,
+            os.path.join(capture_dir, f'benchmark_report,_{data_file}.yaml'),
             '-w',
-            'fmperf'
+            'fmperf',
+            '-f',
         ]
         result = subprocess.run(os_command, capture_output=True, text=True)
         if result.returncode != 0:
             # Report error, but do not quit
-            logger.error(f"Error converting result data: {result.stderr}")
+            logger.error(f'Error converting result data: {result.stderr}')
 
 def main():
 
@@ -333,9 +329,11 @@ def main():
         asyncio.run(wait_for_job(job_name, namespace))
 
         logs = capture_pod_logs(job_name, namespace, eval_log_file)
-        convert_data_result(eval_log_file)
-        # if move_data_result(eval_log_file, eval_data_dir):
-        #     logger.info(f"Data moved to {eval_data_dir}")
+        if move_data_result(eval_log_file, eval_path):
+            logger.info(f"Data moved to {eval_path}")
+        # Create benchmark report
+        logger.info(f"Performing benchmark report conversion")
+        convert_data_result(eval_path)
 
 
     except Exception as e:
