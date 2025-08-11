@@ -378,7 +378,7 @@ def import_guidellm(results_file: str) -> BenchmarkReport:
     # Import scenario details from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
     br_dict = _import_llmd_benchmark_run_data(os.path.dirname(results_file))
-    # Append to that dict the data from vLLM benchmark
+    # Append to that dict the data from GuideLLM
     update_dict(br_dict, {
         "scenario": {
             "model": {"name": results['worker']['backend_model']},
@@ -551,7 +551,7 @@ def import_fmperf(results_file: str) -> BenchmarkReport:
         model_name = br_dict['scenario']['model']['name']
     else:
         model_name = "unknown"
-    # Append to that dict the data from vLLM benchmark
+    # Append to that dict the data from fmperf
     duration = results['finish_time'][-1] - results['launch_time'][0]
     req_latency = results['finish_time'] - results['launch_time']
     tpot = (req_latency - results['ttft']) / (results['generation_tokens'] - 1)
@@ -705,6 +705,123 @@ def import_fmperf(results_file: str) -> BenchmarkReport:
     return BenchmarkReport(**br_dict)
 
 
+def import_inference_perf(results_file: str) -> BenchmarkReport:
+    """Import data from a Inference Perf run as a BenchmarkReport.
+
+    Args:
+        results_file (str): Results file to import.
+
+    Returns:
+        BenchmarkReport: Imported data.
+    """
+    check_file(results_file)
+
+    # Import results from Inference Perf
+    results = import_yaml(results_file)
+
+    # Import the "per_request_lifecycle_metrics.json" from Inference Perf, as
+    # it contains additional information we need (the model name)
+    per_req_file = os.path.join(
+        os.path.dirname(results_file),
+        'per_request_lifecycle_metrics.json'
+    )
+    per_req = import_yaml(per_req_file)
+
+    # Import scenario details from llm-d-benchmark run as a dict following the
+    # schema of BenchmarkReport
+    br_dict = _import_llmd_benchmark_run_data(os.path.dirname(results_file))
+    # Append to that dict the data from Inference Perf
+    update_dict(br_dict, {
+        "scenario": {
+            "model": {"name": yaml.safe_load(per_req[0]['request'])['model']},
+            "load": {
+                "name": WorkloadGenerator.INFERENCE_PERF,
+            },
+        },
+        "metrics": {
+            "time": {
+                "duration": results['load_summary']['send_duration'], # TODO this isn't exactly what we need, we may need to pull apart per_request_lifecycle_metrics.json
+            },
+            "requests": {
+                "total": results['load_summary']['count'],
+                "failures": results['failures']['count'],
+                "input_length": {
+                    "units": Units.COUNT,
+                    "mean": results['successes']['prompt_len']['mean'],
+                    "min": results['successes']['prompt_len']['min'],
+                    "p10": results['successes']['prompt_len']['p10'],
+                    "p50": results['successes']['prompt_len']['p50'],
+                    "p90": results['successes']['prompt_len']['p90'],
+                    "max": results['successes']['prompt_len']['max'],
+                },
+                "output_length": {
+                    "units": Units.COUNT,
+                    "mean": results['successes']['output_len']['mean'],
+                    "min": results['successes']['output_len']['min'],
+                    "p10": results['successes']['output_len']['p10'],
+                    "p50": results['successes']['output_len']['p50'],
+                    "p90": results['successes']['output_len']['p90'],
+                    "max": results['successes']['output_len']['max'],
+                },
+            },
+            "latency": {
+                "time_to_first_token": {
+                    "units": Units.MS,
+                    "mean": results['successes']['latency']['time_to_first_token']['mean'],
+                    "min": results['successes']['latency']['time_to_first_token']['min'],
+                    "p10": results['successes']['latency']['time_to_first_token']['p10'],
+                    "p50": results['successes']['latency']['time_to_first_token']['p50'],
+                    "p90": results['successes']['latency']['time_to_first_token']['p90'],
+                    "max": results['successes']['latency']['time_to_first_token']['max'],
+                },
+                "normalized_time_per_output_token": {
+                    "units": Units.MS_PER_TOKEN,
+                    "mean": results['successes']['latency']['normalized_time_per_output_token']['mean'],
+                    "min": results['successes']['latency']['normalized_time_per_output_token']['min'],
+                    "p10": results['successes']['latency']['normalized_time_per_output_token']['p10'],
+                    "p50": results['successes']['latency']['normalized_time_per_output_token']['p50'],
+                    "p90": results['successes']['latency']['normalized_time_per_output_token']['p90'],
+                    "max": results['successes']['latency']['normalized_time_per_output_token']['max'],
+                },
+                "time_per_output_token": {
+                    "units": Units.MS_PER_TOKEN,
+                    "mean": results['successes']['latency']['time_per_output_token']['mean'],
+                    "min": results['successes']['latency']['time_per_output_token']['min'],
+                    "p10": results['successes']['latency']['time_per_output_token']['p10'],
+                    "p50": results['successes']['latency']['time_per_output_token']['p50'],
+                    "p90": results['successes']['latency']['time_per_output_token']['p90'],
+                    "max": results['successes']['latency']['time_per_output_token']['max'],
+                },
+                "inter_token_latency": {
+                    "units": Units.MS_PER_TOKEN,
+                    "mean": results['successes']['latency']['inter_token_latency']['mean'],
+                    "min": results['successes']['latency']['inter_token_latency']['min'],
+                    "p10": results['successes']['latency']['inter_token_latency']['p10'],
+                    "p50": results['successes']['latency']['inter_token_latency']['p50'],
+                    "p90": results['successes']['latency']['inter_token_latency']['p90'],
+                    "max": results['successes']['latency']['inter_token_latency']['max'],
+                },
+                "request_latency": {
+                    "units": Units.MS,
+                    "mean": results['successes']['latency']['request_latency']['mean'],
+                    "min": results['successes']['latency']['request_latency']['min'],
+                    "p10": results['successes']['latency']['request_latency']['p10'],
+                    "p50": results['successes']['latency']['request_latency']['p50'],
+                    "p90": results['successes']['latency']['request_latency']['p90'],
+                    "max": results['successes']['latency']['request_latency']['max'],
+                },
+            },
+            "throughput": {
+                "output_tokens_per_sec": results['successes']['throughput']['output_tokens_per_sec'],
+                "total_tokens_per_sec": results['successes']['throughput']['total_tokens_per_sec'],
+                "requests_per_sec": results['successes']['throughput']['requests_per_sec'],
+            },
+        },
+    })
+
+    return BenchmarkReport(**br_dict)
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
@@ -746,7 +863,10 @@ if __name__ == "__main__":
             else:
                 import_guidellm(args.results_file).print_yaml()
         case WorkloadGenerator.INFERENCE_PERF:
-            raise NotImplementedError('Workload generator not yet supported')
+            if args.output_file:
+                import_inference_perf(args.results_file).export_yaml(args.output_file)
+            else:
+                import_inference_perf(args.results_file).print_yaml()
         case WorkloadGenerator.VLLM_BENCHMARK:
             if args.output_file:
                 import_vllm_benchmark(args.results_file).export_yaml(args.output_file)
