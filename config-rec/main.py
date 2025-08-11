@@ -117,64 +117,67 @@ def outputs(col, user_inputs):
     col.header("Optimal Configuration")
 
     selected_model = user_inputs['model'] if user_inputs['model'] else "(no model selected)"
-    col.write(f"Based on your inputs, we recommend the following configuration to serve `{selected_model}`.")
+    if selected_model == 'gemma3:1b':
+        col.warning("This model will not run on the specified hardware.")
+    else:
+        col.write(f"Based on your inputs, we recommend the following configuration to serve `{selected_model}`.")
 
-    col.write("This deployment will cost `$N/million input tokens`")
-    col.markdown("""**Estimated SLO**
-* Throughput: `XXX tokens/sec`
-* TTFT: `YYY s`
-* TPOT: `ZZZ s`
-""")
+        col.write("This deployment will cost `$N/million input tokens`")
+        col.markdown("""**Estimated SLO**
+    * Throughput: `XXX tokens/sec`
+    * TTFT: `YYY s`
+    * TPOT: `ZZZ s`
+    """)
 
-    vllm_command = f"""vllm serve {selected_model} \\
-    --block-size {str(user_inputs['block_size'])}
-    --pp {str(user_inputs['pp_size'])} \\
-    --dp {str(user_inputs['dp_size'])}  \\
-    --tp {str(user_inputs['tp_size'])}"""
+        vllm_command = f"""vllm serve {selected_model} \\
+        --block-size {str(user_inputs['block_size'])}
+        --pp {str(user_inputs['pp_size'])} \\
+        --dp {str(user_inputs['dp_size'])}  \\
+        --tp {str(user_inputs['tp_size'])}"""
 
-    if user_inputs['enable_prefix_caching']:
-        vllm_command += """ \\
-    -enable-prefix-caching"""
+        if user_inputs['enable_prefix_caching']:
+            vllm_command += """ \\
+        -enable-prefix-caching"""
 
-    if user_inputs['enable_chunked_prefill']:
-        vllm_command += """ \\
-    -enable_chunked_prefill"""
+        if user_inputs['enable_chunked_prefill']:
+            vllm_command += """ \\
+        -enable_chunked_prefill"""
 
-    col.code(vllm_command)
+        col.code(vllm_command)
 
-    col.write("**Routing configuration**")
-    col.code("""apiVersion: inference.networking.x-k8s.io/v1alpha1
-kind: EndpointPickerConfig
-plugins:
-- type: prefix-cache-scorer
-    parameters:
-    hashBlockSize: 5
-    maxPrefixBlocksToMatch: 256
-    lruCapacityPerServer: 31250
-- type: decode-filter
-- type: max-score-picker
-- type: single-profile-handler
-schedulingProfiles:
-- name: default
+        col.write("**Routing configuration**")
+        col.code("""apiVersion: inference.networking.x-k8s.io/v1alpha1
+    kind: EndpointPickerConfig
     plugins:
-    - pluginRef: decode-filter
-    - pluginRef: max-score-picker
-    - pluginRef: prefix-cache-scorer
-    weight: 50
-""", language='yaml')
+    - type: prefix-cache-scorer
+        parameters:
+        hashBlockSize: 5
+        maxPrefixBlocksToMatch: 256
+        lruCapacityPerServer: 31250
+    - type: decode-filter
+    - type: max-score-picker
+    - type: single-profile-handler
+    schedulingProfiles:
+    - name: default
+        plugins:
+        - pluginRef: decode-filter
+        - pluginRef: max-score-picker
+        - pluginRef: prefix-cache-scorer
+        weight: 50
+    """, language='yaml')
 
-    with col.container(border=True):
-        st.write("**Configuration Matrix**")
-        data = {
-            "DP": [1, 2, 3, 4, 5, 6],
-            "PP": [1, 2, 3, 4, 5, 6],
-            "TP": [1, 2, 3, 4, 5, 6],
-            "BlockSize": [1, 8, 16, 32, 64, 128],
-            "Cost ($/million tokens)": [1.15, 1.23, 1.43, 4.65, 5.23, 2.32],
-            "TTFT": [14.34, 21.34, 5.54, 3.34, 1.23, 1.43],
-            "TPOT": [14.34, 21.34, 5.54, 3.34, 1.23, 1.43]
-        }
-        st.dataframe(data)
+        with col.container(border=True):
+            st.write("**Configuration Matrix**")
+            data = {
+                "DP": [1, 2, 3, 4, 5, 6],
+                "PP": [1, 2, 3, 4, 5, 6],
+                "TP": [1, 2, 3, 4, 5, 6],
+                "BlockSize": [1, 8, 16, 32, 64, 128],
+                "Cost ($/million tokens)": [1.15, 1.23, 1.43, 4.65, 5.23, 2.32],
+                "TTFT": [14.34, 21.34, 5.54, 3.34, 1.23, 1.43],
+                "TPOT": [14.34, 21.34, 5.54, 3.34, 1.23, 1.43]
+            }
+            st.dataframe(data)
 
 if __name__ == '__main__':
 
