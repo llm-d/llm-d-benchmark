@@ -263,21 +263,6 @@ if [[ $LLMDBENCH_CURRENT_STEP == "09" ]]; then
   export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS=${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS:-"[--disable-log-requests____--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN____--tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR]"}
 fi
 
-overridevarlist=$(env | grep _CLIOVERRIDE_ | cut -d '=' -f 1 || true)
-if [[ -n "$overridevarlist" ]]; then
-  for overridevar in $overridevarlist; do
-    actualvar=$(echo "$overridevar" | sed 's/_CLIOVERRIDE//g')
-    if [[ -n "${!overridevar:-}" ]]; then
-      export $actualvar=${!overridevar}
-      if [[ ${LLMDBENCH_CONTROL_VERBOSE} -eq 1 && ${LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED} -eq 0 ]]; then
-        echo "Environment variable $actualvar was overridden by command line options"
-      fi
-    fi
-  done
-  echo
-  export LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED=1
-fi
-
 if [[ ! -z $LLMDBENCH_DEPLOY_SCENARIO ]]; then
   if [[ "$LLMDBENCH_DEPLOY_SCENARIO" == /* ]]; then
     export LLMDBENCH_SCENARIO_FULL_PATH=$(echo $LLMDBENCH_DEPLOY_SCENARIO'.sh' | $LLMDBENCH_CONTROL_SCMD 's^.sh.sh^.sh^g')
@@ -296,6 +281,21 @@ elif [[ $LLMDBENCH_SCENARIO_FULL_PATH == "${LLMDBENCH_MAIN_DIR}/scenarios/none.s
 else
   echo "❌ Scenario file \"$LLMDBENCH_SCENARIO_FULL_PATH\" could not be found."
   exit 1
+fi
+
+overridevarlist=$(env | grep _CLIOVERRIDE_ | cut -d '=' -f 1 || true)
+if [[ -n "$overridevarlist" ]]; then
+  for overridevar in $overridevarlist; do
+    actualvar=$(echo "$overridevar" | sed 's/_CLIOVERRIDE//g')
+    if [[ -n "${!overridevar:-}" ]]; then
+      export $actualvar=${!overridevar}
+      if [[ ${LLMDBENCH_CONTROL_VERBOSE} -eq 1 && ${LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED} -eq 0 ]]; then
+        echo "Environment variable $actualvar was overridden by command line options"
+      fi
+    fi
+  done
+  echo
+  export LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED=1
 fi
 
 if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS" == /* ]]; then
