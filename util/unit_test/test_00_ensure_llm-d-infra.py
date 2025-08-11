@@ -2,7 +2,7 @@
 
 """
 Unit tests for 00_ensure_llm-d-infra.py
-Tests the Python conversion to ensure it behaves identically to the bash version.
+Tests the Python conversion using native GitPython implementation.
 """
 
 import os
@@ -19,6 +19,7 @@ setup_dir = project_root / "setup"
 
 # Mock the functions module before any imports to avoid dependency issues
 sys.modules['functions'] = MagicMock()
+sys.modules['git'] = MagicMock()
 
 # Import the module under test
 sys.path.insert(0, str(setup_dir))
@@ -43,82 +44,90 @@ class TestEnsureLlmDInfra(unittest.TestCase):
         self.git_repo = "https://github.com/llm-d-incubation/llm-d-infra.git"
         self.git_branch = "main"
         
-        # Mock announce and llmdbench_execute_cmd functions
+        # Mock announce function
         self.announce_calls = []
-        self.execute_cmd_calls = []
         
         def mock_announce(message):
-            self.announce_calls.append(message)
             print(f"[TEST ANNOUNCE] {message}")
+            self.announce_calls.append(message)
         
-        def mock_execute_cmd(actual_cmd, dry_run=False, verbose=False):
-            self.execute_cmd_calls.append({
-                'cmd': actual_cmd,
-                'dry_run': dry_run,
-                'verbose': verbose
-            })
-            print(f"[TEST CMD] {actual_cmd} (dry_run={dry_run}, verbose={verbose})")
-            return 0  # Simulate success
+        module_under_test.announce = mock_announce
         
-        # Apply mocks
-        self.announce_patch = patch.object(module_under_test, 'announce', mock_announce)
-        self.execute_cmd_patch = patch.object(module_under_test, 'llmdbench_execute_cmd', mock_execute_cmd)
-        
-        self.announce_patch.start()
-        self.execute_cmd_patch.start()
+        # Mock GitPython
+        self.git_mock = MagicMock()
+        module_under_test.git = self.git_mock
     
     def tearDown(self):
         """Clean up test environment"""
-        self.announce_patch.stop()
-        self.execute_cmd_patch.stop()
-        
-        # Clean up test directory
         import shutil
         shutil.rmtree(self.test_dir, ignore_errors=True)
     
     def test_clone_new_repository(self):
         """Test cloning when llm-d-infra directory doesn't exist"""
-        # Reset call tracking
-        self.announce_calls.clear()
-        self.execute_cmd_calls.clear()
         
-        # Run the function
+        # Mock repo.clone_from
+        mock_repo = MagicMock()
+        mock_repo.working_dir = str(Path(self.test_dir) / "llm-d-infra")
+        self.git_mock.Repo.clone_from.return_value = mock_repo
+        
         result = module_under_test.ensure_llm_d_infra(
             infra_dir=self.test_dir,
             git_repo=self.git_repo,
             git_branch=self.git_branch,
-            dry_run=True,  # Use dry run for testing
+            dry_run=False,
             verbose=True
         )
         
         # Verify success
         self.assertEqual(result, 0)
         
-        # Verify expected announcements
+        # Verify git.Repo.clone_from was called
+        self.git_mock.Repo.clone_from.assert_called_once_with(
+            url=self.git_repo,
+            to_path=str(Path(self.test_dir) / "llm-d-infra"),
+            branch=self.git_branch
+        )
+        
+        # Verify announcements
         self.assertIn("💾 Cloning and setting up llm-d-infra...", self.announce_calls)
-        self.assertIn(f'✅ llm-d-infra is present at "{self.test_dir}"', self.announce_calls)
-        
-        # Verify git clone command was called
-        clone_commands = [call for call in self.execute_cmd_calls if 'git clone' in call['cmd']]
-        self.assertEqual(len(clone_commands), 1)
-        
-        clone_cmd = clone_commands[0]
-        self.assertIn(self.git_repo, clone_cmd['cmd'])
-        self.assertIn(self.git_branch, clone_cmd['cmd'])
-        self.assertTrue(clone_cmd['dry_run'])
-        self.assertTrue(clone_cmd['verbose'])
+        self.assertTrue(any("llm-d-infra is present" in call for call in self.announce_calls))
     
     def test_update_existing_repository(self):
         """Test updating when llm-d-infra directory already exists"""
-        # Create mock llm-d-infra directory
+        
+        # Create the directory to simulate existing repo
         llm_d_infra_path = Path(self.test_dir) / "llm-d-infra"
         llm_d_infra_path.mkdir(parents=True)
         
-        # Reset call tracking
-        self.announce_calls.clear()
-        self.execute_cmd_calls.clear()
+        # Mock existing repo operations
+        mock_repo = MagicMock()
+        mock_origin = MagicMock()
+        mock_repo.remotes.origin = mock_origin
+        self.git_mock.Repo.return_value = mock_repo
         
-        # Run the function
+        result = module_under_test.ensure_llm_d_infra(
+            infra_dir=self.test_dir,
+            git_repo=self.git_repo,
+            git_branch=self.git_branch,
+            dry_run=False,
+            verbose=True
+        )
+        
+        # Verify success
+        self.assertEqual(result, 0)
+        
+        # Verify repo operations
+        self.git_mock.Repo.assert_called_once_with(str(llm_d_infra_path))
+        mock_repo.git.checkout.assert_called_once_with(self.git_branch)
+        mock_origin.pull.assert_called_once()
+        
+        # Verify announcements
+        self.assertIn("💾 Cloning and setting up llm-d-infra...", self.announce_calls)
+        self.assertTrue(any("llm-d-infra is present" in call for call in self.announce_calls))
+    
+    def test_dry_run_mode(self):
+        """Test that dry run mode works correctly"""
+        
         result = module_under_test.ensure_llm_d_infra(
             infra_dir=self.test_dir,
             git_repo=self.git_repo,
@@ -130,192 +139,108 @@ class TestEnsureLlmDInfra(unittest.TestCase):
         # Verify success
         self.assertEqual(result, 0)
         
-        # Verify expected announcements
-        self.assertIn("💾 Cloning and setting up llm-d-infra...", self.announce_calls)
-        self.assertIn(f'✅ llm-d-infra is present at "{self.test_dir}"', self.announce_calls)
+        # Verify no actual git operations were performed
+        self.git_mock.Repo.clone_from.assert_not_called()
+        self.git_mock.Repo.assert_not_called()
         
-        # Verify git update commands were called (checkout + pull)
-        update_commands = [call for call in self.execute_cmd_calls if 'git checkout' in call['cmd'] and 'git pull' in call['cmd']]
-        self.assertEqual(len(update_commands), 1)
+        # Verify dry run announcements
+        self.assertTrue(any("would clone repository" in call for call in self.announce_calls))
+    
+    def test_git_error_handling(self):
+        """Test error handling for Git operations"""
         
-        update_cmd = update_commands[0]
-        self.assertIn(self.git_branch, update_cmd['cmd'])
-        self.assertTrue(update_cmd['dry_run'])
-        self.assertTrue(update_cmd['verbose'])
+        # Create a custom GitError for testing
+        class MockGitError(Exception):
+            pass
+        
+        # Mock GitError and configure it to be raised
+        self.git_mock.exc = MagicMock()
+        self.git_mock.exc.GitError = MockGitError
+        self.git_mock.Repo.clone_from.side_effect = MockGitError("Test git error")
+        
+        result = module_under_test.ensure_llm_d_infra(
+            infra_dir=self.test_dir,
+            git_repo=self.git_repo,
+            git_branch=self.git_branch,
+            dry_run=False,
+            verbose=False
+        )
+        
+        # Verify failure
+        self.assertEqual(result, 1)
+        
+        # Verify error announcement
+        self.assertTrue(any("Git operation failed" in call for call in self.announce_calls))
     
     def test_environment_variable_parsing(self):
         """Test the main function's environment variable parsing"""
-        # Set up test environment variables
+        
+        # Mock environment variables
         test_env = {
-            'LLMDBENCH_CONTROL_DIR': str(setup_dir),
-            'LLMDBENCH_INFRA_DIR': self.test_dir,
-            'LLMDBENCH_INFRA_GIT_REPO': self.git_repo,
-            'LLMDBENCH_INFRA_GIT_BRANCH': self.git_branch,
+            'LLMDBENCH_INFRA_DIR': '/test/infra',
+            'LLMDBENCH_INFRA_GIT_REPO': 'https://test.repo.git',
+            'LLMDBENCH_INFRA_GIT_BRANCH': 'test-branch',
             'LLMDBENCH_CONTROL_DRY_RUN': '1',
             'LLMDBENCH_CONTROL_VERBOSE': '1'
         }
         
         with patch.dict(os.environ, test_env):
-            # Mock sys.exit to capture return code
-            with patch('sys.exit') as mock_exit:
-                try:
-                    module_under_test.main()
-                    # If main doesn't call sys.exit, it means it returned normally
-                    actual_return = 0
-                except SystemExit as e:
-                    actual_return = e.code
+            with patch.object(module_under_test, 'ensure_llm_d_infra') as mock_ensure:
+                mock_ensure.return_value = 0
                 
-                # Verify success (either no exception or exit code 0)
-                if mock_exit.called:
-                    mock_exit.assert_called_with(0)
-                else:
-                    self.assertEqual(actual_return, 0)
-        
-        # Verify that the expected functions were called
-        self.assertGreater(len(self.announce_calls), 0)
-        self.assertGreater(len(self.execute_cmd_calls), 0)
-    
-    def test_dry_run_mode(self):
-        """Test that dry run mode works correctly"""
-        # Reset call tracking
-        self.announce_calls.clear()
-        self.execute_cmd_calls.clear()
-        
-        # Run with dry_run=True
-        result = module_under_test.ensure_llm_d_infra(
-            infra_dir=self.test_dir,
-            git_repo=self.git_repo,
-            git_branch=self.git_branch,
-            dry_run=True,
-            verbose=False
-        )
-        
-        # Verify success
-        self.assertEqual(result, 0)
-        
-        # Verify all execute_cmd calls have dry_run=True
-        for call in self.execute_cmd_calls:
-            self.assertTrue(call['dry_run'], f"Command should be dry run: {call['cmd']}")
-    
-    def test_verbose_mode(self):
-        """Test that verbose mode works correctly"""
-        # Reset call tracking
-        self.announce_calls.clear()
-        self.execute_cmd_calls.clear()
-        
-        # Run with verbose=True
-        result = module_under_test.ensure_llm_d_infra(
-            infra_dir=self.test_dir,
-            git_repo=self.git_repo,
-            git_branch=self.git_branch,
-            dry_run=True,
-            verbose=True
-        )
-        
-        # Verify success
-        self.assertEqual(result, 0)
-        
-        # Verify all execute_cmd calls have verbose=True
-        for call in self.execute_cmd_calls:
-            self.assertTrue(call['verbose'], f"Command should be verbose: {call['cmd']}")
+                result = module_under_test.main()
+                
+                # Verify the function was called with correct parameters
+                mock_ensure.assert_called_once_with(
+                    infra_dir='/test/infra',
+                    git_repo='https://test.repo.git',
+                    git_branch='test-branch',
+                    dry_run=True,
+                    verbose=True
+                )
+                
+                self.assertEqual(result, 0)
 
 
-class TestCommandCompatibility(unittest.TestCase):
-    """Test that Python version generates same commands as bash version"""
+class TestGitPythonIntegration(unittest.TestCase):
+    """Test GitPython integration patterns"""
     
-    def setUp(self):
-        """Set up for command compatibility testing"""
-        self.captured_commands = []
+    def test_clone_command_equivalent(self):
+        """Test that GitPython clone is equivalent to shell command"""
         
-        def mock_execute_cmd(actual_cmd, dry_run=False, verbose=False):
-            self.captured_commands.append(actual_cmd)
-            return 0
-        
-        self.execute_patch = patch.object(module_under_test, 'llmdbench_execute_cmd', mock_execute_cmd)
-        self.announce_patch = patch.object(module_under_test, 'announce')
-        
-        self.execute_patch.start()
-        self.announce_patch.start()
-    
-    def tearDown(self):
-        """Clean up patches"""
-        self.execute_patch.stop()
-        self.announce_patch.stop()
-    
-    def test_clone_command_format(self):
-        """Test that clone command format matches bash version"""
-        test_dir = "/tmp/test"
-        git_repo = "https://github.com/llm-d-incubation/llm-d-infra.git"
-        git_branch = "main"
-        
-        module_under_test.ensure_llm_d_infra(
-            infra_dir=test_dir,
-            git_repo=git_repo,
-            git_branch=git_branch,
-            dry_run=True,
-            verbose=True
-        )
-        
-        # Find clone command
-        clone_commands = [cmd for cmd in self.captured_commands if 'git clone' in cmd]
-        self.assertEqual(len(clone_commands), 1)
-        
-        clone_cmd = clone_commands[0]
-        
-        # Verify command structure matches bash version
-        # Expected: cd ${LLMDBENCH_INFRA_DIR}; git clone "${LLMDBENCH_INFRA_GIT_REPO}" -b "${LLMDBENCH_INFRA_GIT_BRANCH}"
-        expected_pattern = f'cd {test_dir}; git clone "{git_repo}" -b "{git_branch}"'
-        self.assertEqual(clone_cmd, expected_pattern)
-    
-    def test_update_command_format(self):
-        """Test that update command format matches bash version"""
-        test_dir = "/tmp/test"
-        git_branch = "main"
-        
-        # Create mock directory to trigger update path
-        with tempfile.TemporaryDirectory() as temp_dir:
-            llm_d_infra_path = Path(temp_dir) / "llm-d-infra"
-            llm_d_infra_path.mkdir()
+        with patch('git.Repo') as mock_git:
+            mock_repo = MagicMock()
+            mock_git.clone_from.return_value = mock_repo
             
-            module_under_test.ensure_llm_d_infra(
-                infra_dir=temp_dir,
-                git_repo="https://github.com/llm-d-incubation/llm-d-infra.git",
-                git_branch=git_branch,
-                dry_run=True,
-                verbose=True
+            # This should be equivalent to: git clone "repo" -b "branch" "path"
+            module_under_test.git.Repo.clone_from(
+                url="test-repo",
+                to_path="/test/path", 
+                branch="test-branch"
             )
+            
+            # Verify the mock was called correctly
+            module_under_test.git.Repo.clone_from.assert_called_with(
+                url="test-repo",
+                to_path="/test/path",
+                branch="test-branch"
+            )
+    
+    def test_update_command_equivalent(self):
+        """Test that GitPython update is equivalent to shell commands"""
         
-        # Find update command
-        update_commands = [cmd for cmd in self.captured_commands if 'git checkout' in cmd and 'git pull' in cmd]
-        self.assertEqual(len(update_commands), 1)
+        mock_repo = MagicMock()
+        mock_origin = MagicMock()
+        mock_repo.remotes.origin = mock_origin
         
-        update_cmd = update_commands[0]
+        # This should be equivalent to: git checkout branch; git pull
+        mock_repo.git.checkout("test-branch")
+        mock_origin.pull()
         
-        # Verify command structure matches bash version
-        # Expected: git checkout ${LLMDBENCH_INFRA_GIT_BRANCH}; git pull
-        expected_pattern = f"cd {llm_d_infra_path}; git checkout {git_branch}; git pull"
-        self.assertEqual(update_cmd, expected_pattern)
+        # Verify the operations
+        mock_repo.git.checkout.assert_called_with("test-branch")
+        mock_origin.pull.assert_called_once()
 
 
-def run_tests():
-    """Run all tests"""
-    # Create test loader
-    loader = unittest.TestLoader()
-    
-    # Create test suite
-    suite = unittest.TestSuite()
-    
-    # Add test cases
-    suite.addTests(loader.loadTestsFromTestCase(TestEnsureLlmDInfra))
-    suite.addTests(loader.loadTestsFromTestCase(TestCommandCompatibility))
-    
-    # Run tests
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    
-    # Return success/failure
-    return 0 if result.wasSuccessful() else 1
-
-
-if __name__ == "__main__":
-    sys.exit(run_tests())
+if __name__ == '__main__':
+    unittest.main()

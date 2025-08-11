@@ -48,21 +48,42 @@ from functions import announce, llmdbench_execute_cmd
 
 ### 3. Command Execution
 
-**Bash Pattern:**
-```bash
-llmdbench_execute_cmd "git clone repo" ${DRY_RUN} ${VERBOSE}
+**Prefer Native Python Libraries:**
+```python
+# Use native Python libraries instead of shell commands
+import git
+
+# Instead of: llmdbench_execute_cmd("git clone repo")
+repo = git.Repo.clone_from(url=git_repo, to_path=local_path, branch=git_branch)
 ```
 
-**Python Pattern:**
+**Shell Commands (when necessary):**
 ```python
+# Only use shell commands when no suitable Python library exists
 llmdbench_execute_cmd(
-    actual_cmd="git clone repo", 
+    actual_cmd="kubectl apply -f manifest.yaml", 
     dry_run=dry_run, 
     verbose=verbose
 )
 ```
 
-### 4. File Structure
+### 4. Recommended Python Libraries
+
+Use native Python libraries instead of shell commands whenever possible:
+
+- **Git operations**: `GitPython` instead of `git` commands
+- **Kubernetes operations**: `pykube` instead of `kubectl` commands  
+- **HTTP requests**: `requests` instead of `curl` commands
+- **File operations**: `pathlib.Path` instead of `mkdir`/`cp` commands
+- **JSON/YAML**: `json`/`yaml` libraries instead of `jq`/`yq` commands
+
+**Benefits:**
+- Better error handling and type safety
+- More testable and mockable code
+- Platform independence
+- Better integration with Python ecosystem
+
+### 5. File Structure
 
 **Bash Pattern:**
 ```bash

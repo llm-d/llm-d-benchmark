@@ -8,41 +8,20 @@ project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
 try:
-    from functions import announce, llmdbench_execute_cmd
+    from functions import announce
+    import git
 except ImportError as e:
     # Fallback for when dependencies are not available
-    print(f"Warning: Could not import functions module: {e}")
+    print(f"Warning: Could not import required modules: {e}")
     print("This script requires the llm-d environment to be properly set up.")
     print("Please run: ./setup/install_deps.sh")
-    print("Or use the unit tests for development: python3 ./util/unit_test/test_00_ensure_llm-d-infra.py")
-    import sys
+    print("And ensure GitPython is installed: pip install GitPython")
     sys.exit(1)
-
-
-def run_git_command(command: str, cwd: str, dry_run: bool, verbose: bool) -> int:
-    """
-    Execute a git command in the specified directory.
-    
-    Args:
-        command: Git command to execute
-        cwd: Working directory for the command
-        dry_run: If True, only print what would be executed
-        verbose: If True, print command output
-    
-    Returns:
-        Return code of the command (0 for success)
-    """
-    full_command = f"cd {cwd}; {command}"
-    return llmdbench_execute_cmd(
-        actual_cmd=full_command, 
-        dry_run=dry_run, 
-        verbose=verbose
-    )
 
 
 def ensure_llm_d_infra(infra_dir: str, git_repo: str, git_branch: str, dry_run: bool, verbose: bool) -> int:
     """
-    Ensure llm-d-infra repository is present and up-to-date.
+    Ensure llm-d-infra repository is present and up-to-date using GitPython.
     
     Args:
         infra_dir: Directory where llm-d-infra should be located
@@ -66,27 +45,53 @@ def ensure_llm_d_infra(infra_dir: str, git_repo: str, git_branch: str, dry_run: 
     try:
         if not llm_d_infra_path.exists():
             # Clone the repository
-            clone_command = f'git clone "{git_repo}" -b "{git_branch}"'
-            result = run_git_command(clone_command, infra_dir, dry_run, verbose)
-            if result != 0:
-                return result
+            if dry_run:
+                announce(f"---> would clone repository {git_repo} branch {git_branch} to {llm_d_infra_path}")
+            else:
+                if verbose:
+                    announce(f"---> cloning repository {git_repo} branch {git_branch} to {llm_d_infra_path}")
+                
+                repo = git.Repo.clone_from(
+                    url=git_repo,
+                    to_path=str(llm_d_infra_path),
+                    branch=git_branch
+                )
+                
+                if verbose:
+                    announce(f"---> successfully cloned to {repo.working_dir}")
         else:
             # Update existing repository
-            update_command = f"git checkout {git_branch}; git pull"
-            result = run_git_command(update_command, str(llm_d_infra_path), dry_run, verbose)
-            if result != 0:
-                return result
+            if dry_run:
+                announce(f"---> would checkout branch {git_branch} and pull latest changes in {llm_d_infra_path}")
+            else:
+                if verbose:
+                    announce(f"---> updating existing repository in {llm_d_infra_path}")
+                
+                repo = git.Repo(str(llm_d_infra_path))
+                
+                # Checkout the target branch
+                repo.git.checkout(git_branch)
+                
+                # Pull latest changes
+                origin = repo.remotes.origin
+                origin.pull()
+                
+                if verbose:
+                    announce(f"---> successfully updated to latest {git_branch}")
         
         announce(f'✅ llm-d-infra is present at "{infra_dir}"')
         return 0
         
+    except git.exc.GitError as e:
+        announce(f"❌ Git operation failed: {e}")
+        return 1
     except Exception as e:
         announce(f"❌ Error managing llm-d-infra repository: {e}")
         return 1
 
 
 def main():
-    """Main function following the pattern from 04_ensure_model_namespace_prepared.py"""
+    """Main function following the pattern from other Python steps"""
     
     # Set current step name for logging/tracking
     os.environ["CURRENT_STEP_NAME"] = os.path.splitext(os.path.basename(__file__))[0]
@@ -96,13 +101,6 @@ def main():
     for key, value in os.environ.items():
         if "LLMDBENCH_" in key:
             ev[key.split("LLMDBENCH_")[1].lower()] = value
-    
-    # Source env.sh for any additional setup (following established pattern)
-    llmdbench_execute_cmd(
-        actual_cmd=f'source "{ev["control_dir"]}/env.sh"', 
-        dry_run=ev.get("control_dry_run") == '1', 
-        verbose=ev.get("control_verbose") == '1'
-    )
     
     # Extract required environment variables with defaults
     infra_dir = ev.get("infra_dir", "/tmp")
