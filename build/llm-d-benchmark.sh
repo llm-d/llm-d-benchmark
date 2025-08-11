@@ -33,6 +33,7 @@ fi
 env | grep ^LLMDBENCH | grep -v BASE64 | sort
 
 # Repeat run until success
+echo "Running harness: /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
 while [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC -ne 0 ]]; do
   /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}
   ec=$?
@@ -44,11 +45,13 @@ while [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC -ne 0 ]]; do
     export LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC=0
   fi
 done
+echo "Harness completed: /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
 
 if [[ -f ~/fixbashrc ]]; then
   mv -f ~/fixbashrc ~/.bashrc
 fi
 
+echo "Running analysis: /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}"
 # Try to run analysis twice then give up
 /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}
 ec=$?
