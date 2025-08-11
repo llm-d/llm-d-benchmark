@@ -152,7 +152,7 @@ jobs:
         run: |
           aws configure set default.s3.signature_version s3v4
           aws s3 cp "$INPUT_DIR" "s3://${{ secrets.COS_BUCKET_NAME }}/$OUTPUT_DIR/" \
-            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }}
+            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }} || true
 
       - name: Archive benchmark results as GitHub artifact
         if: success() || failure()
