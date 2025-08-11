@@ -136,6 +136,10 @@ def update_dict(dest: dict[any, any], source: dict[any, any]) -> None:
 def _import_llmd_benchmark_run_data(results_path: str) -> dict:
     """Import scenario data from llm-d-benchmark run given the results path.
 
+    This step is required because llm-d-benchmark standup details are not
+    passed along to the harness pods. When a harness pod creates a benchmark
+    report, it will fill in only the details it knows.
+
     Args:
         results_path (str): Path to results directory.
 
@@ -178,6 +182,9 @@ def _import_llmd_benchmark_run_data(results_path: str) -> dict:
     else:
         config = {
             "scenario": {
+                "model": {
+                    "name": envars['LLMDBENCH_DEPLOY_MODEL_LIST'] # TODO this will only work if not a list of models
+                },
                 "host": {
                     "type": ['prefill'] * int(envars['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
                             ['decode'] * int(envars['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
@@ -209,6 +216,30 @@ def _import_llmd_benchmark_run_data(results_path: str) -> dict:
         }
 
     return config
+
+
+def import_benchmark_report(br_file: str) -> BenchmarkReport:
+    """Import benchmark report, and supplement with additional data from llm-d-benchmark run.
+
+    Args:
+        br_file (str): Benchmark report file to import.
+
+    Returns:
+        BenchmarkReport: Imported benchmark report supplemented with run data.
+    """
+    check_file(br_file)
+
+    # Import benchmark report as a dict following the schema of BenchmarkReport
+    br_dict = import_yaml(br_file)
+
+    # Append to that dict the data from llm-d-benchmark standup.
+    # We must append the data from the llm-d-benchmark to the data from the
+    # harness, rather than the reverse, as the fmperf harness does not record
+    # the model name (it will be filled in with "unknown" during benchmark
+    # report generation).
+    update_dict(br_dict, _import_llmd_benchmark_run_data(os.path.dirname(br_file)))
+
+    return BenchmarkReport(**br_dict)
 
 
 def _vllm_timestamp_to_epoch(date_str: str) -> int:
