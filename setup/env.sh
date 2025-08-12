@@ -145,7 +145,7 @@ export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX=${LLMDBENCH_RUN_EXPERIMENT_RE
 export LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY="${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY:-0}"
 
 # LLM-D-Benchmark deployment specific variables
-export LLMDBENCH_DEPLOY_MODEL_LIST=${LLMDBENCH_DEPLOY_MODEL_LIST:-"llama-1b"}
+export LLMDBENCH_DEPLOY_MODEL_LIST=${LLMDBENCH_DEPLOY_MODEL_LIST:-"meta-llama/Llama-3.2-1B-Instruct"}
 export LLMDBENCH_DEPLOY_METHODS=${LLMDBENCH_DEPLOY_METHODS:-"modelservice"}
 
 # Control variables
@@ -289,21 +289,6 @@ if [[ $LLMDBENCH_CURRENT_STEP == "09" ]]; then
   export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES=${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES:-$LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES}
 fi
 
-overridevarlist=$(env | grep _CLIOVERRIDE_ | cut -d '=' -f 1 || true)
-if [[ -n "$overridevarlist" ]]; then
-  for overridevar in $overridevarlist; do
-    actualvar=$(echo "$overridevar" | sed 's/_CLIOVERRIDE//g')
-    if [[ -n "${!overridevar:-}" ]]; then
-      export $actualvar=${!overridevar}
-      if [[ ${LLMDBENCH_CONTROL_VERBOSE} -eq 1 && ${LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED} -eq 0 ]]; then
-        echo "Environment variable $actualvar was overridden by command line options"
-      fi
-    fi
-  done
-  echo
-  export LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED=1
-fi
-
 if [[ ! -z $LLMDBENCH_DEPLOY_SCENARIO ]]; then
   if [[ "$LLMDBENCH_DEPLOY_SCENARIO" == /* ]]; then
     export LLMDBENCH_SCENARIO_FULL_PATH=$(echo $LLMDBENCH_DEPLOY_SCENARIO'.sh' | $LLMDBENCH_CONTROL_SCMD 's^.sh.sh^.sh^g')
@@ -322,6 +307,21 @@ elif [[ $LLMDBENCH_SCENARIO_FULL_PATH == "${LLMDBENCH_MAIN_DIR}/scenarios/none.s
 else
   echo "❌ Scenario file \"$LLMDBENCH_SCENARIO_FULL_PATH\" could not be found."
   exit 1
+fi
+
+overridevarlist=$(env | grep _CLIOVERRIDE_ | cut -d '=' -f 1 || true)
+if [[ -n "$overridevarlist" ]]; then
+  for overridevar in $overridevarlist; do
+    actualvar=$(echo "$overridevar" | sed 's/_CLIOVERRIDE//g')
+    if [[ -n "${!overridevar:-}" ]]; then
+      export $actualvar=${!overridevar}
+      if [[ ${LLMDBENCH_CONTROL_VERBOSE} -eq 1 && ${LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED} -eq 0 ]]; then
+        echo "Environment variable $actualvar was overridden by command line options"
+      fi
+    fi
+  done
+  echo
+  export LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED=1
 fi
 
 if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS" == /* ]]; then

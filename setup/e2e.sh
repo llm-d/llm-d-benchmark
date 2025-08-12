@@ -54,9 +54,7 @@ function show_usage {
             --deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING) ] \n \
             -h/--help (show this help)\n \
 
-            * [step list] can take of form of comma-separated single/double digits (e.g. \"-s 0,1,5\") or ranges (e.g. \"-s 1-7\") \n\
-            ** [models] can be specified with a full name (e.g., \"ibm-granite/granite-3.3-2b-instruct\") or as an alias. The following aliases are available \n\
-$(get_model_aliases_list)"
+            * [step list] can take of form of comma-separated single/double digits (e.g. \"-s 0,1,5\") or ranges (e.g. \"-s 1-7\")"
 }
 
 while [[ $# -gt 0 ]]; do

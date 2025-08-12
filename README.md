@@ -16,7 +16,7 @@ cd llm-d-benchmark
 
 ## Quickstart
 
-#### Standup an `llm-d` stack model (default deployment method is `llm-d-modelservice`, serving `llama-1b`), run a harness (default `vllm-benchmark`) with a load profile (default `simple-random`) and teardown the stack
+#### Standup an `llm-d` stack model (default deployment method is `llm-d-modelservice`, serving `meta-llama/Llama-3.2-1B-Instruct`), run a harness (default `vllm-benchmark`) with a load profile (default `simple-random`) and teardown the stack
 
 ```
 ./e2e.sh
