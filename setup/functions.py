@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import inspect
 import pykube
+import hashlib
 from pykube.exceptions import PyKubeError
 
 import yaml
@@ -408,8 +409,15 @@ async def wait_for_job(job_name, namespace, timeout=7200):
 
 def model_attribute(model: str, attribute: str) -> str:
 
+    model, modelid = model.split(':', 1) if ':' in model else (model, model)
+
     #  split the model name into provider and rest
     provider, model_part = model.split('/', 1) if '/' in model else ("", model)
+
+    hash_object = hashlib.sha256()
+    hash_object.update(modelid.encode('utf-8'))
+    digest = hash_object.hexdigest()
+    modelid_label = f"{provider[:8]}-{digest[:8]}-{model_part[-8:]}"
 
     # create a list of components from the model part
     # equiv  to: tr '[:upper:]' '[:lower:]' | sed -e 's^qwen^qwen-^g' -e 's^-^\n^g'
@@ -453,6 +461,8 @@ def model_attribute(model: str, attribute: str) -> str:
     # storing all attributes in a dictionary
     attributes = {
         "model": model,
+        "modelid": modelid,
+        "modelid_label": modelid_label,
         "provider": provider,
         "type": type_str,
         "parameters": parameters,
