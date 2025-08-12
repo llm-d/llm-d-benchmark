@@ -331,6 +331,26 @@ class TestCondaWorkflows(unittest.TestCase):
             module_under_test.update_shell_rc_file.assert_called_once()
             module_under_test.source_conda_script.assert_called_once()
             module_under_test.create_conda_environment.assert_called_once()
+    
+    def test_source_conda_script_dry_run(self):
+        """Test that source_conda_script works in dry run mode without file existence check"""
+        
+        # Mock announce function
+        announce_calls = []
+        def mock_announce(message):
+            announce_calls.append(message)
+        module_under_test.announce = mock_announce
+        
+        # Test dry run mode - should not check file existence
+        result = module_under_test.source_conda_script(
+            conda_sh=Path("/nonexistent/conda.sh"),
+            dry_run=True,
+            verbose=True
+        )
+        
+        # Verify success and correct announcement
+        self.assertEqual(result, 0)
+        self.assertTrue(any("would source" in call for call in announce_calls))
 
 
 if __name__ == '__main__':

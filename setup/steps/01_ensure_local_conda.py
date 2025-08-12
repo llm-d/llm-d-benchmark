@@ -168,12 +168,13 @@ def update_shell_rc_file(anaconda_path: str, shell_name: str, dry_run: bool):
 
 def source_conda_script(conda_sh: Path, dry_run: bool, verbose: bool):
     """Source conda.sh script"""
-    if not conda_sh.exists():
-        raise FileNotFoundError(f"Could not find conda.sh at {conda_sh}")
-    
     if dry_run:
         announce(f"---> would source {conda_sh}")
         return 0
+    
+    if not conda_sh.exists():
+        raise FileNotFoundError(f"Could not find conda.sh at {conda_sh}")
+    
     
     announce(f"⏭️ running {conda_sh}")
     
