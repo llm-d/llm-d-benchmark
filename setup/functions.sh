@@ -25,19 +25,6 @@ function model_attribute {
   local model=$1
   local attribute=$2
 
-  # Do not use associative arrays. Not supported by MacOS with older bash versions
-
-  case "$model" in
-    "llama-1b") local model=meta-llama/Llama-3.2-1B-Instruct:llama-1b ;;
-    "llama-3b") local model=meta-llama/Llama-3.2-3B-Instruct:llama-3b ;;
-    "llama-8b") local model=meta-llama/Llama-3.1-8B-Instruct:llama-8b ;;
-    "llama-70b") local model=meta-llama/Llama-3.1-70B-Instruct:llama-70b ;;
-    "llama-17b") local model=meta-llama/Llama-4-Scout-17B-16E-Instruct:llama-17b ;;
-    "facebook/opt-125m") local model=facebook/opt-1.0-125m-hf:opt-125m ;;
-    *)
-      true ;;
-  esac
-
   # model is of the form namespace/modelid:uniqueid
   local modelid=$(echo $model | cut -d: -f2)
   model=$(echo $model | cut -d: -f1)
@@ -62,11 +49,6 @@ function model_attribute {
   fi
 }
 export -f model_attribute
-
-function get_model_aliases_list {
-  cat ${LLMDBENCH_MAIN_DIR}/setup/functions.sh | grep -v /setup/functions.sh | grep ") local model=" | $LLMDBENCH_CONTROL_SCMD -e 's^ "^                 "^g' -e "s^) local model=^ -> ^g" -e "s^ ;;^^g"
-}
-export -f get_model_aliases_list
 
 function resolve_harness_git_repo {
   local harness_name=$1

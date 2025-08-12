@@ -402,17 +402,6 @@ async def wait_for_job(job_name, namespace, timeout=7200):
 
 def model_attribute(model: str, attribute: str) -> str:
    
-    model_aliases = {
-        "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
-        "llama-3b": "meta-llama/Llama-3.2-3B-Instruct",
-        "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
-        "llama-70b": "meta-llama/Llama-3.1-70B-Instruct",
-        "llama-17b": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
-    }
-
-    full_model_name = model_aliases.get(model, model)
-
-
     #  split the model name into provider and rest
     provider, model_part = full_model_name.split('/', 1) if '/' in full_model_name else ("", full_model_name)
 

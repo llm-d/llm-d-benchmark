@@ -38,8 +38,6 @@ function show_usage {
               -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
               -h/--help (show this help) \n\
 
-              * [models] can be specified with a full name (e.g., \"ibm-granite/granite-3.3-2b-instruct\") or as an alias. The following aliases are available \n\
-$(get_model_aliases_list)"
 }
 
 while [[ $# -gt 0 ]]; do

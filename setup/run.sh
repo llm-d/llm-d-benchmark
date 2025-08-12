@@ -58,8 +58,6 @@ function show_usage {
              -d/--debug [execute harness in \"debug-mode\" (default=$LLMDBENCH_HARNESS_DEBUG)] \n \
              -h/--help (show this help) \n\
 
-              * [models] can be specified with a full name (e.g., \"ibm-granite/granite-3.3-2b-instruct\") or as an alias. The following aliases are available \n\
-$(get_model_aliases_list)"
 }
 
 while [[ $# -gt 0 ]]; do
