@@ -403,7 +403,7 @@ async def wait_for_job(job_name, namespace, timeout=7200):
 def model_attribute(model: str, attribute: str) -> str:
    
     #  split the model name into provider and rest
-    provider, model_part = full_model_name.split('/', 1) if '/' in full_model_name else ("", full_model_name)
+    provider, model_part = model.split('/', 1) if '/' in model else ("", model)
 
     # create a list of components from the model part
     # equiv  to: tr '[:upper:]' '[:lower:]' | sed -e 's^qwen^qwen-^g' -e 's^-^\n^g'
@@ -434,18 +434,18 @@ def model_attribute(model: str, attribute: str) -> str:
 
     kind = model_components[0] if model_components else ""
     
-    as_label = full_model_name.lower().replace('/', '-').replace('.', '-')
+    as_label = model.lower().replace('/', '-').replace('.', '-')
     
     # build label and clean it up
     label_parts = [part for part in [kind, major_version, parameters] if part]
     label = '-'.join(label_parts)
     label = re.sub(r'-+', '-', label).strip('-') # replace multiple hyphens and strip from ends
 
-    folder = full_model_name.lower().replace('/', '_').replace('-', '_')
+    folder = model.lower().replace('/', '_').replace('-', '_')
 
     # storing all attributes in a dictionary 
     attributes = {
-        "model": full_model_name,
+        "model": model,
         "provider": provider,
         "type": type_str,
         "parameters": parameters,
