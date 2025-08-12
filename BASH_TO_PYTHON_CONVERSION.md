@@ -144,10 +144,10 @@ Create unit tests in `util/unit_test/`:
 Use dry-run mode to compare outputs:
 ```bash
 # Test bash version
-LLMDBENCH_CONTROL_STEP_00_IMPLEMENTATION=sh LLMDBENCH_CONTROL_DRY_RUN=1 ./setup/standup.sh -s 00
+LLMDBENCH_HF_TOKEN=token LLMDBENCH_CONTROL_STEP_00_IMPLEMENTATION=sh LLMDBENCH_CONTROL_DRY_RUN=1 ./setup/standup.sh -s 00
 
 # Test Python version  
-LLMDBENCH_CONTROL_STEP_00_IMPLEMENTATION=py LLMDBENCH_CONTROL_DRY_RUN=1 ./setup/standup.sh -s 00
+LLMDBENCH_HF_TOKEN=token LLMDBENCH_CONTROL_STEP_00_IMPLEMENTATION=py LLMDBENCH_CONTROL_DRY_RUN=1 ./setup/standup.sh -s 00
 ```
 
 ## Completed Conversions
