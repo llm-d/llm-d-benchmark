@@ -56,8 +56,7 @@ function show_usage {
              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE)] \n \
              -s/--wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means "do not wait\""] \n \
              -d/--debug [execute harness in \"debug-mode\" (default=$LLMDBENCH_HARNESS_DEBUG)] \n \
-             -h/--help (show this help) \n\
-
+             -h/--help (show this help)"
 }
 
 while [[ $# -gt 0 ]]; do

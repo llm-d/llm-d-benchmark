@@ -36,8 +36,7 @@ function show_usage {
               -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
               -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\") ] \n \
               -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
-              -h/--help (show this help) \n\
-
+              -h/--help (show this help)"
 }
 
 while [[ $# -gt 0 ]]; do
