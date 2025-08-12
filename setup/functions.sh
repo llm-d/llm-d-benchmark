@@ -377,6 +377,23 @@ function render_template {
 }
 export -f render_template
 
+function add_config {
+  local object_to_render=${1}
+  local -i num_spaces=${2:-0}
+  local label=${3:-}
+  
+  local spacec=$(printf '%*s' $num_spaces '')
+
+  if [[ -f ${object_to_render} ]]; then
+    if [[ -n $label ]]; then
+      echo "$label:"
+    else
+      echo ""
+    fi
+    echo "$(cat $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^\\n^\\\\\n^g" | $LLMDBENCH_CONTROL_SCMD -e "s#^#$spacec#g"
+  fi
+}
+
 function add_command {
   local model_command=$1
   if [[ $model_command == "custom" ]]; then
