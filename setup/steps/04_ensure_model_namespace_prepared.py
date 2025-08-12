@@ -128,8 +128,7 @@ def main():
 
     models = [model.strip() for model in ev["deploy_model_list"].split(',') if model.strip()]
     for model_name in models:
-
-        if [[ ev["VLLM_MODELSERVICE_URI_PROTOCOL"]] == "pvc" or ev["CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE"] == "1" ]
+        if ev["vllm_modelservice_uri_protocol"] == "pvc" or ev["CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE"] == "1" :
             download_model = model_attribute(model=model_name, attribute="model")
             model_artifact_uri = f'pvc://{ev["vllm_common_pvc_name"]}/models/{download_model}'
             protocol, pvc_and_model_path = model_artifact_uri.split("://") # protocol var unused but exists in prev script
