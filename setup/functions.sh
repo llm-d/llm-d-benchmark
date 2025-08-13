@@ -765,6 +765,8 @@ spec:
   - name: harness
     image: $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG})
     imagePullPolicy: Always
+    securityContext:
+      runAsUser: 0
     command: ["sh", "-c"]
     args:
     - "${LLMDBENCH_HARNESS_EXECUTABLE}"
