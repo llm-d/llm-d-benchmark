@@ -100,7 +100,7 @@ def main():
 
     llmdbench_execute_cmd(actual_cmd=f'source "{ev["control_dir"]}/env.sh"', dry_run=ev["control_dry_run"] == '1', verbose=ev["control_verbose"] == '1')
 
-    api = kube_connect()
+    api = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
     if ev["control_dry_run"] == '1':
         announce("DRY RUN enabled. No actual changes will be made.")
 
