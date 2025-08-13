@@ -33,7 +33,7 @@ def create_monitoring_configmap() -> dict:
             'namespace': 'openshift-monitoring'
         },
         'data': {
-            'config.yaml': 'enableUserWorkload: true\n'
+            'config.yaml': 'enableUserWorkload: true'
         }
     }
 
