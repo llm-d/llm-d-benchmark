@@ -369,9 +369,12 @@ spec:
     )
 
 
-async def wait_for_job(job_name, namespace, timeout=7200):
+async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False):
     """Wait for the  job to complete"""
     announce(f"Waiting for job {job_name} to complete...")
+
+    if dry_run :
+        return True
 
     # use async config loading
     await k8s_async_config.load_kube_config()

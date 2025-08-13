@@ -159,6 +159,7 @@ def main():
                 job_name="download-model",
                 namespace=ev["vllm_common_namespace"],
                 timeout=ev["vllm_common_pvc_download_timeout"],
+                dry_run=ev["control_dry_run"]
             ))
 
     if is_openshift(api):
