@@ -1,0 +1,66 @@
+name: CI - PR Benchmark Run
+
+on:
+  pull_request:
+
+jobs:
+  run-benchmark:
+    name: Inference Sim Benchmark Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Display OS used
+        run: |
+          cat /etc/*os-*
+        shell: bash
+
+      - name: Create k8s Kind Cluster
+        uses: helm/kind-action@v1
+
+      - name: Label node with affinity from inference-sim scenario
+        run: |
+          NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+          echo "Labeling node: $NODE"
+          kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
+
+      - name: Run install_deps
+        run: |
+          sudo apt-get update
+          ./setup/install_deps.sh
+        shell: bash
+
+      - name: Populate python deps
+        run: |
+          echo -e "pandas\ngrip>=4.6.0\nmatplotlib>=3.7.0\nnumpy>=1.22.0\nseaborn>=0.12.0\nkubernetes>=28.0.0" > requirements.txt
+
+      - name: Install python deps
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+
+      - name: Standup a modelservice using llm-d-inference-sim
+        env:
+          LLMDBENCH_HF_TOKEN: hf-token-placeholder
+        run: |
+          ./setup/standup.sh -c kind_modelservice_inference-sim -t modelservice -s 0,1,2,7,8,9
+
+      - name: Run harness (mock)
+        env:
+          LLMDBENCH_HF_TOKEN: hf-token-placeholder
+          LLMD_CONTROL_DRY_RUN: 1 # TODO: harness doesn't work now for kind bc no harness endpoint
+        run: |
+          ./setup/run.sh -c kind_modelservice_inference-sim --dry-run
+
+      - name: Teardown
+        env:
+          LLMDBENCH_HF_TOKEN: hf-token-placeholder
+        run: |
+          ./setup/teardown.sh -c kind_modelservice_inference-sim

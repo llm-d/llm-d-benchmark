@@ -66,7 +66,7 @@ function install_helm_linux {
 function install_oc_linux {
     set -euo pipefail
     local oc_file_name=openshift-client-$(uname -s | sed -e "s/Linux/linux/g" -e "s/Darwin/apple-darwin/g")$(echo "-$(uname -m)" | sed -e 's/-x86_64//g' -e 's/-amd64//g' -e 's/aarch64/arm64-rhel9/g').tar.gz
-    curl https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/$oc_file_name  -o $oc_file_name
+    curl -L https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/$oc_file_name  -o $oc_file_name
     tar xzf $oc_file_name
     sudo mv oc /usr/local/bin/
     sudo mv kubectl /usr/local/bin/
@@ -91,6 +91,7 @@ function install_kustomize_linux {
     sudo mv kustomize /usr/local/bin
     set +euo pipefail
 }
+
 pushd /tmp &>/dev/null
 for tool in $tools; do
     if command -v $tool &> /dev/null; then
@@ -113,4 +114,42 @@ for tool in $tools; do
     fi
     echo "---------------------------"
 done
+
+if ! command -v pip3 &> /dev/null; then
+    echo "pip3 not found. Attempting to install it..."
+    if [ "$target_os" = "mac" ]; then
+        echo "ERROR: pip3 not found. Please ensure python3 from Homebrew is correctly installed"
+        echo "Try running 'brew doctor' or 'brew reinstall python3'"
+        exit 1
+    elif [ "$target_os" = "linux" ]; then
+        PIP_PACKAGE="python3-pip"
+        echo "Attempting to install $PIP_PACKAGE using the system package manager..."
+        $PKG_MGR $PIP_PACKAGE
+    fi
+
+    # verify pip was installed successfully
+    if ! command -v pip3 &> /dev/null; then
+        echo "ERROR: Failed to install pip3. Please install it manually and re-run the script."
+        exit 1
+    fi
+    echo "pip3 installed successfully."
+fi
+
+python_deps="kubernetes pykube kubernetes-asyncio GitPython"
+
+for dep in $python_deps; do
+    # use pip3 show to check if the package is already installed
+    if pip3 show "$dep" &>/dev/null; then
+        echo "$dep is already installed." >> ~/.llmdbench_dependencies_checked
+        continue
+    else
+        echo "Installing $dep..."
+        if ! pip3 install "$dep"; then
+            echo "ERROR: Failed to install Python package '$dep'!"
+            exit 1
+        fi
+    fi
+done
+echo "---------------------------"
+
 popd &>/dev/null

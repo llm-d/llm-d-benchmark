@@ -1,1 +1,0 @@
-export LLMDBENCH_DEPLOY_MODEL_LIST=llama-3b

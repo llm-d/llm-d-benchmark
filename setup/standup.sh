@@ -41,9 +41,7 @@ function show_usage {
             -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
             -h/--help (show this help)\n \
 
-            * [step list] can take of form of comma-separated single/double digits (e.g. \"-s 0,1,5\") or ranges (e.g. \"-s 1-7\") \n\
-            ** [models] can be specified with a full name (e.g., \"ibm-granite/granite-3.3-2b-instruct\") or as an alias. The following aliases are available \n\
-$(get_model_aliases_list)"
+            * [step list] can take of form of comma-separated single/double digits (e.g. \"-s 0,1,5\") or ranges (e.g. \"-s 1-7\")"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -135,6 +133,7 @@ export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=1
 
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
+
 _e=$(echo ${LLMDBENCH_STEP_LIST} | grep "[0-9]-[0-9]" | grep -v 11_ || true)
 if [[ ! -z ${_e} ]]; then
   LLMDBENCH_STEP_LIST=$(eval echo $(echo {${LLMDBENCH_STEP_LIST}} | $LLMDBENCH_CONTROL_SCMD 's^-^..^g'))
@@ -144,6 +143,9 @@ LLMDBENCH_STEP_LIST=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD 's^,^ 
 if [[ $LLMDBENCH_STEP_LIST == $(find $LLMDBENCH_STEPS_DIR -name "*.sh" -o -name "*.py" | $LLMDBENCH_CONTROL_SCMD -e "s^.sh^^g" -e "s^.py^^g" |  sort | rev | cut -d '/' -f 1 | rev | uniq | $LLMDBENCH_CONTROL_SCMD -e ':a;N;$!ba;s/\n/ /g' ) ]]; then
   export LLMDBENCH_CONTROL_STANDUP_ALL_STEPS=1
 fi
+
+extract_environment
+sleep 5
 
 for step in ${LLMDBENCH_STEP_LIST//,/ }; do
   if [[ ${#step} -lt 2 ]]
