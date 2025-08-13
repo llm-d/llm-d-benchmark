@@ -25,7 +25,7 @@ function model_attribute {
   local model=$1
   local attribute=$2
 
-  local modelid=$(echo $model | cut -d/ -f2)
+  local modelid=$(echo $model | cut -d: -f2)
   local modelid_label="$(echo -n $modelid | cut -d '/' -f 1 | cut -c1-8)-$(echo -n $modelid | sha256sum | awk '{print $1}' | cut -c1-8)-$(echo -n $modelid | cut -d '/' -f 2 | rev | cut -c1-8 | rev)"
 
   # TODO handle this in a more appropriate way
