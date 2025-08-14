@@ -2,13 +2,13 @@
 A `yaml` file which contains a list of `standup` and `run` parameters of interest, termed `factors` and a list of values of interest, termed `levels` for each one of the `factors`. The each set of values for each factor produces a list of combinations termed `treatments`. These concepts and nomenclature follow the "Design of Experiments" (DOE) approach, and it allows a systematic and reproducible investigation on how different parameters affect the overall performance of a stack.
 
 ## Motivation
-While the triple `<scenario>`,`<harness>`,`<(workload) profile>`, contains all information required for the `llm-d-benchmark` to be able to carry out a `standup`->`run`->`teardown` cycle, it is clear that the large number of parameters on `llm-d` required an automated mechanism to sweep through a large number of combinations
+While the triplet `<scenario>`,`<harness>`,`<(workload) profile>`, contains all information required for the `llm-d-benchmark` to be able to carry out a `standup`->`run`->`teardown` cycle, in order to compare and validate performance of deployment patterns, a large number of parameters on `llm-d` must be swept. Hence, the need for an automated mechanism to loop through this (potentially) large parameter space.
 
 ## Use
-An experiment file has to be manually crafted as a `yaml`. Once crafted, it can used by the `e2e.sh` executable. It access is controlled by the following parameters
+An experiment file has to be manually crafted as a `yaml`. Once crafted, it can used by the `e2e.sh` executable. It access is controlled by the following parameters:
 
 > [!NOTE]
-> `./e2e.sh`, as the executable that **combines** `./setup/standup.sh`, `run.sh` and `setup/teardown.sh` into a singe operation, is the only one that can have an experiment file supplied to it.
+> `./e2e.sh` (executable which **combines** `./setup/standup.sh`, `run.sh` and `setup/teardown.sh`) is the only one that can have an experiment file supplied to it.
 
 
 | Variable                                     | Meaning                                        | Note                                                  |
@@ -71,6 +71,12 @@ run:
     - "1024,10240"
 ```
 
+** This particular example can be used with the following command :
+
+```
+./e2e.sh --scenario disaggregated_vs_llmd --experiments disaggregated_vs_llmd
+```
+
 2) Compare different parameters for GAIE (Gateway API Inference Extension), using a fixed set of `decode` `pods`. Once deployed, run a workload profile varying `num_groups` and `system_prompt_len`)
 
 > [!IMPORTANT]
@@ -97,4 +103,10 @@ run:
     - "40,8000"
     - "60,5000"
     - "60,1000"
+```
+
+** This particular example can be used with the following command
+
+```
+./e2e.sh --scenario precise-prefix-cache-aware --experiments precise-prefix-cache-aware
 ```

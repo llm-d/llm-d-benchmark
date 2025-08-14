@@ -16,7 +16,7 @@ cd llm-d-benchmark
 
 ## Quickstart
 
-#### Out of the box: **`standup`** a `llm-d` stack (default method is `llm-d-modelservice`, serving `meta-llama/Llama-3.2-1B-Instruct` model), **`run`** a harness (default `inference-perf`) with a load profile (default `sanity_random`) and then **`teardown`** the deployed stack.
+**Out of the box:** **`standup`** a `llm-d` stack (default method is `llm-d-modelservice`, serving `meta-llama/Llama-3.2-1B-Instruct` model), **`run`** a harness (default `inference-perf`) with a load profile (default `sanity_random`) and then **`teardown`** the deployed stack.
 
 ```
 ./e2e.sh
@@ -25,7 +25,7 @@ cd llm-d-benchmark
 > [!TIP]
 > The penultimate line on the output, starting with "ℹ️   The current work dir is" will indicate the current path for the generated standup files and collected performance data.
 
-#### The same above example could be explicitly split in three separate parts.
+The same above example could be explicitly split in three separate parts.
 
 ```
 ./setup/standup.sh
@@ -33,7 +33,7 @@ cd llm-d-benchmark
 ./setup/teardown.sh
 ```
 
-#### A user can elect to  **`standup`** an `llm-d` stack once, and the **`run`** the `inference-perf` harness with a different load profile (i.e., `chatbot_synthetic`)
+#### A user can elect to  **`standup`** an `llm-d` stack once, and then **`run`** the `inference-perf` harness with a different load profile (i.e., `chatbot_synthetic`)
 
 ```
 ./run.sh --harness inference-perf --workload chatbot_synthetic --methods <a string that matches a inference service or pod>`
@@ -79,18 +79,18 @@ Define a mix of workloads that express real-world use cases, allowing for `llm-d
 
 #### [Scenarios](docs/standup.md#scenarios)
 
-Pieces of information identifying a particular cluster. This information includes, but it is not limited to, GPU model, llm model and llm-d parameters (an environment file, and optionally a `values.yaml` file for modelservice helm charts)
+Pieces of information identifying a particular cluster. This information includes, but it is not limited to, GPU model, Large Language Model and `llm-d` parameters (an environment file, and optionally a `values.yaml` file for modelservice helm charts)
 
 #### [Harnesses](docs/run.md#harnesses)
 
-Load Generator (python code) which drives the benchmark load. Today, llm-d-benchmark supports [fmperf](https://github.com/fmperf-project/fmperf), [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git) and the benchmarks found on the `benchmarks` folder on [vllm](https://github.com/vllm-project/vllm.git) and "no op" (internally designed "nop") for users interested in benchmarking mostly model load times. There are ongoing efforts to consolidate and provide an easier way to support different load generators.
+A "harness" is a load generator (Python code) which drives the benchmark load. Today, llm-d-benchmark supports [fmperf](https://github.com/fmperf-project/fmperf), [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git), the benchmarks found on the `benchmarks` folder on [vllm](https://github.com/vllm-project/vllm.git), and "no op" (internally designed "nop") for users interested in benchmarking mostly model load times. There are ongoing efforts to consolidate and provide an easier way to support different load generators.
 
 #### (Workload) [Profiles](docs/run.md#profiles)
 
-Workload is the actual benchmark load specification which includes the LLM use case to benchmark, traffic pattern, input / output distribution and dataset. Supported workload profiles can be found under `workload/profiles`.
+A (workload) profile is the actual benchmark load specification which includes the LLM use case to benchmark, traffic pattern, input / output distribution, and dataset. Supported workload profiles can be found under [`workload/profiles`](./workload/profiles).
 
 > [!IMPORTANT]
-> The triple `<scenario>`,`<harness>`,`<(workload) profile>`, combined with the standup/teardown capabilities provided by [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git) and [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git) should provide enough information to allow a single experiment to be reproduced.
+> The triplet `<scenario>`,`<harness>`,`<(workload) profile>`, combined with the standup/teardown capabilities provided by [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git) and [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git) should provide enough information to allow a single experiment to be reproduced.
 
 #### [Experiments](docs/doe.md)
 A file describing a series of parameters - both `standup` and `run` - to be executed automatically. This file follows the "Design of Experiments" (DOE) approach, where each parameter (`factor`) is listed alongside with the target values (`levels`) resulting into a list of combinations (`treatments`).

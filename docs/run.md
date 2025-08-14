@@ -1,5 +1,5 @@
 ## Concept
-Use an specific harness to generate load against a stack service a large language model according to a specific workload profile
+Use a specific harness to generate load against a stack service a large language model according to a specific workload profile
 
 ## Metrics
 For a discussion of candidate relevant metrics, please consult this [document](https://docs.google.com/document/d/1SpSp1E6moa4HSrJnS4x3NpLuj88sMXr2tbofKlzTZpk/edit?resourcekey=0-ob5dR-AJxLQ5SvPlA4rdsg&tab=t.0#heading=h.qmzyorj64um1)
@@ -67,12 +67,14 @@ A (workload) profile has to be manually crafted as a `yaml`. Once crafted, it ca
 
 ### [fmperf](https://github.com/fmperf-project/fmperf)
 
+### [vLLM benchmark](https://github.com/vllm-project/vllm/tree/main/benchmarks)
+
 ### Nop (No Op)
 
-The `nop` harness, combined with env. variables and when using in `standalone` mode, will parse the vLLM log and create reports with
+The `nop` harness, combined with environment variables and when using in `standalone` mode, will parse the vLLM log and create reports with
 loading time statistics.
 
-The additional env. variables to set are:
+The additional environment variables to set are:
 
 | Environment Variable                         | Example Values  |
 | -------------------------------------------- | -------------- |
@@ -80,10 +82,11 @@ The additional env. variables to set are:
 | LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL | `DEBUG, INFO, WARNING` etc |
 | LLMDBENCH_VLLM_STANDALONE_PREPROCESS         | `source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py` |
 
-The env. `LMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL` must be set to `DEBUG` so that the `nop` categories report finds all categories.
+The variable `LMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL` must be set to `DEBUG` so that the `nop` categories report finds all categories.
 
 The env. `LLMDBENCH_VLLM_STANDALONE_PREPROCESS` must be set to the above value for the `nop` harness in order to install load format
-dependencies, export additional env. variables and pre-serialize models when using the `tensorizer` load format.
+dependencies, export additional environment variables and pre-serialize models when using the `tensorizer` load format.
+
 The preprocess scripts will run in the vLLM standalone pod before the vLLM server starts.
 
 ## Profiles
