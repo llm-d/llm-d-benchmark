@@ -279,8 +279,8 @@ def apply_istio_crds(kubectl_cmd: str, dry_run: bool, verbose: bool) -> int:
         dry_run=dry_run,
         verbose=verbose,
         silent=not verbose,
-        retry_interval=0,  # No retry interval
-        max_retries=3      # 3 retries as in original
+        attempts=3,        # 3 retries as in original
+        delay=0            # No retry delay
     )
     
     if result == 0:
