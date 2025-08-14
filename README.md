@@ -2,7 +2,7 @@
 
 This repository provides an automated workflow for benchmarking LLM inference using the `llm-d` stack. It includes tools for deployment, experiment execution, data collection, and teardown across multiple environments and deployment styles.
 
-### Goal
+### Main Goal
 
 Provide a single source of automation for repeatable and reproducible experiments and performance evaluation on `llm-d`.
 
@@ -16,74 +16,60 @@ cd llm-d-benchmark
 
 ## Quickstart
 
-#### Standup an `llm-d` stack model (default deployment method is `llm-d-modelservice`, serving `meta-llama/Llama-3.2-1B-Instruct`), run a harness (default `vllm-benchmark`) with a load profile (default `simple-random`) and teardown the stack
+#### Out of the box: **`standup`** a `llm-d` stack (default method is `llm-d-modelservice`, serving `meta-llama/Llama-3.2-1B-Instruct` model), **`run`** a harness (default `inference-perf`) with a load profile (default `sanity_random`) and then **`teardown`** the deployed stack.
 
 ```
 ./e2e.sh
 ```
 
-####  Run harness `inference-perf` with load profile `chatbot_synthetic` againsta a pre-deployed stack
+> [!TIP]
+> The penultimate line on the output, starting with "ℹ️   The current work dir is" will indicate the current path for the generated standup files and collected performance data.
+
+#### The same above example could be explicitly split in three separate parts.
+
+```
+./setup/standup.sh
+./run.sh
+./setup/teardown.sh
+```
+
+#### A user can elect to  **`standup`** an `llm-d` stack once, and the **`run`** the `inference-perf` harness with a different load profile (i.e., `chatbot_synthetic`)
 
 ```
 ./run.sh --harness inference-perf --workload chatbot_synthetic --methods <a string that matches a inference service or pod>`
 ```
 
+> [!TIP]
+> `./run.sh` can be used to run a particular workload against a pre-deployed stack (`llm-d` or otherwise)
+
 ### Architecture
 
-The benchmarking system drives synthetic or trace-based traffic into an llm-d-powered inference stack, orchestrated via Kubernetes. Requests are routed through a scalable load generator, with results collected and visualized for latency, throughput, and cache effectiveness.
+`llm-d-benchmark` stands up a stack (currently, both `llm-d` and "standalone" are supported) with a specific set of [Standup Parameters](docs/standup.md), and the run a specific harness with a specific set of [Run Parameters](docs/run.md)
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)">
-    <img alt="llm-d Logo" src="./docs/images/llm-d-benchmarking.jpg" width=100%>
+    <img alt="llm-d Logo" src="./docs/images/architecture.drawio.png" width=100%>
   </picture>
 </p>
 
 ### Goals
 
-#### Reproducibility
+#### [Reproducibility](docs/reproducibility.md)
 
 Each benchmark run collects enough information to enable the execution on different clusters/environments with minimal setup effort
 
-#### Flexibility
+#### [Flexibility](docs/flexibility.md)
 
 Multiple load generators and multiple load profiles available, in a plugable architecture that allows expansion
 
-#### Well defined set of Metrics
+#### Well defined set of [Metrics](docs/run.md#metrics)
 
 Define and measure a representative set of metrics that allows not only meaningful comparisons between different stacks, but also performance characterization for different components.
 
-For a discussion of candidate relevant metrics, please consult this [document](https://docs.google.com/document/d/1SpSp1E6moa4HSrJnS4x3NpLuj88sMXr2tbofKlzTZpk/edit?resourcekey=0-ob5dR-AJxLQ5SvPlA4rdsg&tab=t.0#heading=h.qmzyorj64um1)
-
-| Category | Metric | Unit |
-| ---------| ------- | ----- |
-| Throughput | Output tokens / second | tokens / second |
-| Throughput | Input tokens / second | tokens / second |
-| Throughput | Requests / second | qps |
-| Latency    | Time per output token (TPOT) | ms per output token |
-| Latency    | Time to first token (TTFT) | ms |
-| Latency    | Time per request (TTFT + TPOT * output length) | seconds per request |
-| Latency    | Normalized time per output token (TTFT/output length +TPOT) aka NTPOT | ms per output token |
-| Latency    | Inter Token Latency (ITL) - Time between decode tokens within a request | ms per output token |
-| Correctness | Failure rate | queries |
-| Experiment | Benchmark duration | seconds |
-
-### Relevant collection of Workloads
+#### Relevant collection of [Workloads](docs/run.md#workloads)
 
 Define a mix of workloads that express real-world use cases, allowing for `llm-d` performance characterization, evaluation, stress investigation.
-
-For a discussion of relevant workloads, please consult this [document](https://docs.google.com/document/d/1Ia0oRGnkPS8anB4g-_XPGnxfmOTOeqjJNb32Hlo_Tp0/edit?tab=t.0)
-
-| Workload                               | Use Case            | ISL    | ISV   | OSL    | OSV    | OSP    | Latency   |
-| -------------------------------------- | ------------------- | ------ | ----- | ------ | ------ | ------ | ----------|
-| Interactive Chat                       | Chat agent          | Medium | High  | Medium | Medium | Medium | Per token |
-| Classification of text                 | Sentiment analysis  | Medium |       | Short  | Low    | High   | Request   |
-| Classification of images               | Nudity filter       | Long   | Low   | Short  | Low    | High   | Request   |
-| Summarization / Information Retrieval  | Q&A from docs, RAG  | Long   | High  | Short  | Medium | Medium | Per token |
-| Text generation                        |                     | Short  | High  | Long   | Medium | Low    | Per token |
-| Translation                            |                     | Medium | High  | Medium | Medium | High   | Per token |
-| Code completion                        | Type ahead          | Long   | High  | Short  | Medium | Medium | Request |
-| Code generation                        | Adding a feature    | Long   | High  | Medium | High   | Medium | Request |
 
 ### Design and Roadmap
 
@@ -91,37 +77,23 @@ For a discussion of relevant workloads, please consult this [document](https://d
 
 ### Main concepts (identified by specific directories)
 
-#### Scenarios
+#### [Scenarios](docs/standup.md#scenarios)
 
 Pieces of information identifying a particular cluster. This information includes, but it is not limited to, GPU model, llm model and llm-d parameters (an environment file, and optionally a `values.yaml` file for modelservice helm charts)
 
-#### Harnesses
+#### [Harnesses](docs/run.md#harnesses)
 
-Load Generator (python code) which drives the benchmark load. Today, llm-d-benchmark supports [fmperf](https://github.com/fmperf-project/fmperf), [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git) and the benchmarks found on the `benchmarks` folder on [vllm](https://github.com/vllm-project/vllm.git). There are ongoing efforts to consolidate and provide an easier way to support different load generators.
+Load Generator (python code) which drives the benchmark load. Today, llm-d-benchmark supports [fmperf](https://github.com/fmperf-project/fmperf), [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git) and the benchmarks found on the `benchmarks` folder on [vllm](https://github.com/vllm-project/vllm.git) and "no op" (internally designed "nop") for users interested in benchmarking mostly model load times. There are ongoing efforts to consolidate and provide an easier way to support different load generators.
 
-The `nop` harness, combined with env. variables and when using in `standalone` mode, will parse the vLLM log and create reports with
-loading time statistics.
-
-The additional env. variables to set are:
-
-| Environment Variable                         | Example Values  |
-| -------------------------------------------- | -------------- |
-| LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT   | `safetensors, tensorizer, runai_streamer, fastsafetensors` |
-| LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL | `DEBUG, INFO, WARNING` etc |
-| LLMDBENCH_VLLM_STANDALONE_PREPROCESS         | `source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py` |
-
-The env. `LMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL` must be set to `DEBUG` so that the `nop` categories report finds all categories.
-
-The env. `LLMDBENCH_VLLM_STANDALONE_PREPROCESS` must be set to the above value for the `nop` harness in order to install load format
-dependencies, export additional env. variables and pre-serialize models when using the `tensorizer` load format.
-The preprocess scripts will run in the vLLM standalone pod before the vLLM server starts.
-
-#### Workload
+#### (Workload) [Profiles](docs/run.md#profiles)
 
 Workload is the actual benchmark load specification which includes the LLM use case to benchmark, traffic pattern, input / output distribution and dataset. Supported workload profiles can be found under `workload/profiles`.
 
 > [!IMPORTANT]
-> The triple `<scenario>`,`<harness>`,`<workload>`, combined with the standup/teardown capabilities provided by [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git) and [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git) should provide enough information to allow an experiment to be reproduced.
+> The triple `<scenario>`,`<harness>`,`<(workload) profile>`, combined with the standup/teardown capabilities provided by [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git) and [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git) should provide enough information to allow a single experiment to be reproduced.
+
+#### [Experiments](docs/doe.md)
+A file describing a series of parameters - both `standup` and `run` - to be executed automatically. This file follows the "Design of Experiments" (DOE) approach, where each parameter (`factor`) is listed alongside with the target values (`levels`) resulting into a list of combinations (`treatments`).
 
 ### Dependencies
 
