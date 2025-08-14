@@ -92,17 +92,11 @@ securityContext:
 EOF
 export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS=$(mktemp)
 cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS}
-- name: dshm
-  mountPath: /dev/shm
 - name: hf-cache
   mountPath: /huggingface-cache
 EOF
 export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES=$(mktemp)
 cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES}
-- name: dshm
-  emptyDir:
-    medium: Memory
-    sizeLimit: 1Gi
 - name: hf-cache
   hostPath:
     path: /mnt/local/hf-cache
