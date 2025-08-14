@@ -23,7 +23,7 @@ An experiment file has to be manually crafted as a `yaml`. Once crafted, it can 
 1) Compare `standalone` vllm with `llm-d` in a stack with a variable number of `prefill` and `decode` `pods`. Each time a new combination is deployed, run a workload profile with varying `max-concurrecy` and `num-prompts`
 
 > [!IMPORTANT]
-> The harness - `vllm-benchmark` and (workload) `profile` (`random_concurrent`) are **not** defined here, but on the [scenario](docs/standup.md#scenarios)
+> The harness - `vllm-benchmark` and (workload) `profile` (`random_concurrent`) are **not** defined here, but on the [scenario](standup.md#scenarios)
 
 ```
 setup:
@@ -74,7 +74,7 @@ run:
 2) Compare different parameters for GAIE (Gateway API Inference Extension), using a fixed set of `decode` `pods`. Once deployed, run a workload profile varying `num_groups` and `system_prompt_len`)
 
 > [!IMPORTANT]
-> The harness - `inference-perf` and (workload) `profile` (`shared_prefix_synthetic`) are **not** defined here, but on the [scenario](docs/standup.md)
+> The harness - `inference-perf` and (workload) `profile` (`shared_prefix_synthetic`) are **not** defined here, but on the [scenario](standup.md)
 
 ```
 setup:
