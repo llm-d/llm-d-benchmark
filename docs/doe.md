@@ -71,6 +71,9 @@ run:
     - "1024,10240"
 ```
 
+> [!NOTE]
+> The `NA` ("Not Applicable") is used to explicitate stand up parameters not used by particular methods (e.g., `LLMDBENCH_VLLM_COMMON_REPLICAS` is not really used when standing up an `llm-d` stack via `modelservice`).
+
 ** This particular example can be used with the following command :
 
 ```
