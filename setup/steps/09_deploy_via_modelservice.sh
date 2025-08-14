@@ -131,8 +131,6 @@ decode:
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      - name: HF_HOME
-        value: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
       $(add_additional_env_to_yaml $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML)
     resources:
       limits:
@@ -215,8 +213,6 @@ prefill:
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      - name: HF_HOME
-        value: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
       $(add_additional_env_to_yaml $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML)
     resources:
       limits:
