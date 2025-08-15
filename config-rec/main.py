@@ -64,8 +64,13 @@ def inputs(col):
         st.write("**Model Specification**")
         selected_model = st.text_input("Model (Hugging Face format)")
 
-        if selected_model:
+        if selected_model and selected_model != "":
+
             info = util.get_model_info_from_hf(selected_model)
+            if info is None:
+                st.warning("Model not found on Hugging Face. Please verify model name is in repo/modelID format.")
+                return None
+
             user_model.name = selected_model
             user_model.parameters = info.safetensors.total
 
@@ -76,6 +81,9 @@ def inputs(col):
             st.caption(f"Total parameters: {info.safetensors.parameters[user_model.precision]}")
             memory_req = round(user_model.get_memory_req() / 1e+9)
             st.caption(f"GPU memory requirement: {memory_req} GB")
+
+        else:
+            return None
 
     # Hardware
     with col.container(border=True):
@@ -155,11 +163,15 @@ The fraction of GPU memory to be used for the model executor, which can range fr
 
     return user_model
 
-def outputs(col, user_model: Model):
+def outputs(col, user_model: Model | None):
     """
     Determine the optimal configuration
     """
     col.header("Optimal Configuration")
+
+    if user_model is None:
+        col.warning("Input model configuration to begin search.")
+        return
 
     selected_model = user_model.name if user_model.name else "(no model selected)"
     if selected_model == 'gemma3:1b':
@@ -240,6 +252,6 @@ if __name__ == '__main__':
 
     # Input
     col1, col2 = st.columns(2)
-    user_inputs = inputs(col1)
+    user_model = inputs(col1)
 
-    outputs(col2, user_inputs)
+    outputs(col2, user_model)
