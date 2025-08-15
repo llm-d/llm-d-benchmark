@@ -9,6 +9,8 @@ import math
 
 from dataclasses import dataclass
 
+precisions = ["FP32", "FP/BF16", "FP/INT8", "FP/INT4"]
+
 @dataclass
 class Model:
     """Model stores info about a HuggingFace model"""
@@ -31,12 +33,19 @@ class Model:
         """
         Returns memory requirement for the model
         """
+
+        # memory = num_params * param_size  (BF/FP16 = 2 bytes per param) * 20% overhead
+        if "32" in self.precision:
+            return (self.parameters * 4) * 1.2
+
         if "16" in self.precision:
+            return (self.parameters * 2) * 1.2
 
-            # M = param * 4 bytes_per_param / (32 / quantization) * 1.2
-            # Assume 16-bit loading on GPU
-            return (self.parameters * 2) / (32 / 16) * 1.2
+        if "8" in self.precision:
+            return (self.parameters * 1) * 1.2
 
+        if "4" in self.precision:
+            return (self.parameters * 0.5) * 1.2
         else:
             return -1
 
@@ -75,12 +84,11 @@ def inputs(col):
             user_model.parameters = info.safetensors.total
 
             # Precisions supported
-            user_model.precision = st.selectbox("Select a precision",
-                                              options=info.safetensors.parameters.keys())
+            user_model.precision = st.selectbox("Select a precision",options=precisions)
 
-            st.caption(f"Total parameters: {info.safetensors.parameters[user_model.precision]}")
+            st.caption(f"Total parameters: {user_model.parameters}")
             memory_req = round(user_model.get_memory_req() / 1e+9)
-            st.caption(f"GPU memory requirement: {memory_req} GB")
+            st.caption(f"GPU memory requirement: ~{memory_req} GB")
 
         else:
             return None
@@ -97,7 +105,7 @@ def inputs(col):
             min_gpu_req = user_model.get_min_gpu_count()
 
         user_model.tp = st.number_input("Number accelerators available", step=1, min_value=min_gpu_req)
-        st.caption(f"Loading this model on the selected GPU in 16-bit mode requires a minimum of {min_gpu_req}, which does not yet account for KV cache.")
+        st.info(f"Loading this model on the selected GPU in {user_model.precision} mode requires a minimum of {min_gpu_req}, which does not yet account for KV cache.")
 
     # Router
     with col.container(border=True):
