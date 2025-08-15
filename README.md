@@ -57,11 +57,11 @@ The same above example could be explicitly split in three separate parts.
 
 #### [Reproducibility](docs/reproducibility.md)
 
-Each benchmark run collects enough information to enable the execution on different clusters/environments with minimal setup effort
+Each benchmark run collects enough information to enable the execution on different clusters/environments with minimal setup effort.
 
 #### [Flexibility](docs/flexibility.md)
 
-Multiple load generators and multiple load profiles available, in a plugable architecture that allows expansion
+Multiple load generators and multiple load profiles available, in a plugable architecture that allows expansion.
 
 #### Well defined set of [Metrics](docs/run.md#metrics)
 
@@ -79,7 +79,7 @@ Define a mix of workloads that express real-world use cases, allowing for `llm-d
 
 #### [Scenarios](docs/standup.md#scenarios)
 
-Pieces of information identifying a particular cluster. This information includes, but it is not limited to, GPU model, Large Language Model and `llm-d` parameters (an environment file, and optionally a `values.yaml` file for modelservice helm charts)
+Pieces of information identifying a particular cluster. This information includes, but it is not limited to, GPU model, large language model, and `llm-d` parameters (an environment file, and optionally a `values.yaml` file for modelservice helm charts).
 
 #### [Harnesses](docs/run.md#harnesses)
 

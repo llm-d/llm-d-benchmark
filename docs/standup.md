@@ -13,7 +13,7 @@ b) "llm-d", which leverages a combination of [llm-d-infra](https://github.com/ll
 All the information required for the deployment of a stack is contained on a "scenario file". This information is encoded in the form of environment variables, with [default values](../setup/env.sh) which can be then overriden inside a [scenario file](../scenarios)
 
 ## Use
-A scenario file has to be manually crafted as a text file with a list of `export LLMDBENCH_<VARIABLE NAME>` statements. Once crafted, it can used by `./setup/standup.sh`, `run.sh` or `setup/teardown.sh` executables. It access is controlled by the following parameters
+A scenario file has to be manually crafted as a text file with a list of `export LLMDBENCH_<VARIABLE NAME>` statements. Once crafted, it can used by `./setup/standup.sh`, `run.sh` or `setup/teardown.sh` executables. Its access is controlled by the following parameters.
 
 > [!NOTE]
 > `./e2e.sh` is an executable that **combines** `./setup/standup.sh`, `run.sh` and `setup/teardown.sh` into a singe operation. Therefore, the command line parameters supported by the former is a combination of the latter three.

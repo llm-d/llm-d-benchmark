@@ -1,5 +1,5 @@
 ## Concept
-Use a specific harness to generate load against a stack service a large language model according to a specific workload profile
+Use a specific harness to generate workloads against a stack serving a large language model, according to a specific workload profile.
 
 ## Metrics
 For a discussion of candidate relevant metrics, please consult this [document](https://docs.google.com/document/d/1SpSp1E6moa4HSrJnS4x3NpLuj88sMXr2tbofKlzTZpk/edit?resourcekey=0-ob5dR-AJxLQ5SvPlA4rdsg&tab=t.0#heading=h.qmzyorj64um1)
