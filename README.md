@@ -33,7 +33,7 @@ The same above example could be explicitly split in three separate parts.
 ./setup/teardown.sh
 ```
 
-#### A user can elect to  **`standup`** an `llm-d` stack once, and then **`run`** the `inference-perf` harness with a different load profile (i.e., `chatbot_synthetic`)
+A user can elect to  **`standup`** an `llm-d` stack once, and then **`run`** the `inference-perf` harness with a different load profile (i.e., `chatbot_synthetic`)
 
 ```
 ./run.sh --harness inference-perf --workload chatbot_synthetic --methods <a string that matches a inference service or pod>`
