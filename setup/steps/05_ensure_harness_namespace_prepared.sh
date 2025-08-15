@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
+check_storage_class
+if [[ $? -ne 0 ]]
+then
+  announce "❌ Failed to check storage class"
+  exit 1
+fi
+
 if [[ $LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY -eq 0 ]]; then
   announce "⏭️ Environment variable \"LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY\" is set to 0, skipping local setup of harness"
 else

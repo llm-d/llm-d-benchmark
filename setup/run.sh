@@ -56,10 +56,7 @@ function show_usage {
              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE)] \n \
              -s/--wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means "do not wait\""] \n \
              -d/--debug [execute harness in \"debug-mode\" (default=$LLMDBENCH_HARNESS_DEBUG)] \n \
-             -h/--help (show this help) \n\
-
-              * [models] can be specified with a full name (e.g., \"ibm-granite/granite-3.3-2b-instruct\") or as an alias. The following aliases are available \n\
-$(get_model_aliases_list)"
+             -h/--help (show this help)"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -227,11 +224,11 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
         announce "🔍 Deployment method - $LLMDBENCH_DEPLOY_METHODS - is neither \"standalone\" nor \"modelservice\". Trying to find a matching endpoint name..."
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
-        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | awk '{print $1}' | grep -x ${LLMDBENCH_DEPLOY_METHODS} || true)
+        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | awk '{print $1}' | grep ${LLMDBENCH_DEPLOY_METHODS} || true)
         if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
           export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r '.spec.ports[0].port')
         else
-          export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod --no-headers | awk '{print $1}' | grep -x ${LLMDBENCH_DEPLOY_METHODS} | head -n 1 || true)
+          export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod --no-headers | awk '{print $1}' | grep ${LLMDBENCH_DEPLOY_METHODS} | head -n 1 || true)
           export LLMDBENCH_VLLM_FQDN=
           if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
             announce "ℹ️ Stack Endpoint name detected is \"$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME\""
@@ -239,6 +236,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
             export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r ".status.podIP")
           fi
         fi
+        export LLMDBENCH_DEPLOY_CURRENT_MODEL="auto"
       fi
 
       if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
@@ -263,8 +261,11 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         announce "ℹ️ Stack model detected is \"mock\""
       else
         received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL} 80)
-        if [[ ${received_model_name} == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
+        if [[ $LLMDBENCH_DEPLOY_CURRENT_MODEL == "auto" ]]; then
+          export LLMDBENCH_DEPLOY_CURRENT_MODEL=$received_model_name
           announce "ℹ️ Stack model detected is \"$received_model_name\""
+        elif [[ ${received_model_name} == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
+          announce "ℹ️ Stack model detected is \"$received_model_name\", matches requested \"$LLMDBENCH_DEPLOY_CURRENT_MODEL\""
         else
           announce "❌ Stack model detected is \"$received_model_name\" (instead of $LLMDBENCH_DEPLOY_CURRENT_MODEL)!"
           exit 1

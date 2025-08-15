@@ -6,8 +6,9 @@ import os
 import time
 from pathlib import Path
 import subprocess
-import inspect 
+import inspect
 import pykube
+import hashlib
 from pykube.exceptions import PyKubeError
 
 import yaml
@@ -21,7 +22,7 @@ from kubernetes_asyncio import watch as k8s_async_watch
 
 import asyncio
 
-import logging 
+import logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 def announce(message: str, logfile : str = None):
     work_dir = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", '.')
     log_dir = os.path.join(work_dir, 'logs')
-    
+
     # ensure logs dir exists
     os.makedirs(log_dir, exist_ok=True)
 
@@ -40,7 +41,7 @@ def announce(message: str, logfile : str = None):
     if not logfile:
         cur_step = os.getenv("CURRENT_STEP_NAME", 'step')
         logfile = cur_step + '.log'
-    
+
     logpath = os.path.join(log_dir, logfile)
 
     logger.info(message)
@@ -66,10 +67,10 @@ def kube_connect(config_path : str = '~/.kube/config'):
         sys.exit(1)
 
     return api
-    
 
 
-        
+
+
 def llmdbench_execute_cmd(
     actual_cmd: str,
     dry_run: bool = True,
@@ -81,11 +82,11 @@ def llmdbench_execute_cmd(
 ) -> int:
     work_dir_str = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
     log_dir = Path(work_dir_str) / "setup" / "commands"
-    
+
     log_dir.mkdir(parents=True, exist_ok=True)
 
     command_tstamp = int(time.time() * 1_000_000_000)
-    
+
     if dry_run:
         msg = f"---> would have executed the command \"{actual_cmd}\""
         announce(msg)
@@ -105,11 +106,11 @@ def llmdbench_execute_cmd(
     ecode = -1
     last_stdout_log = None
     last_stderr_log = None
-    
+
     for counter in range(1, attempts + 1):
         command_tstamp = int(time.time() * 1_000_000_000)
-        
-        # log file paths 
+
+        # log file paths
         stdout_log = log_dir / f"{command_tstamp}_stdout.log"
         stderr_log = log_dir / f"{command_tstamp}_stderr.log"
         last_stdout_log = stdout_log
@@ -128,7 +129,7 @@ def llmdbench_execute_cmd(
                 # run with verbose
                 announce(msg)
                 result = subprocess.run(actual_cmd, shell=True, check=False)
-            
+
             ecode = result.returncode
 
         except Exception as e:
@@ -136,15 +137,15 @@ def llmdbench_execute_cmd(
             ecode = -1
 
         if ecode == 0:
-            break  
-        
+            break
+
         if counter < attempts:
             announce(f"Command failed with exit code {ecode}. Retrying in {delay} seconds... ({counter}/{attempts})")
             time.sleep(delay)
 
     if ecode != 0:
         announce(f"\nERROR while executing command \"{actual_cmd}\"")
-        
+
         if last_stdout_log and last_stdout_log.exists():
             try:
                 announce(last_stdout_log.read_text())
@@ -152,7 +153,7 @@ def llmdbench_execute_cmd(
                 announce("(stdout not captured)")
         else:
             announce("(stdout not captured)")
-        
+
         # print stderr log if it exists
         if last_stderr_log and last_stderr_log.exists():
             try:
@@ -206,12 +207,18 @@ def validate_and_create_pvc(
     if '/' not in download_model:
         announce(f"'{download_model}' is not in Hugging Face format <org>/<repo>")
         sys.exit(1)
-    
+
     announce(f"🔍 Checking storage class '{pvc_class}'...")
     try:
         k8s_config.load_kube_config()
         storage_v1_api = k8s_client.StorageV1Api()
-        
+
+        if pvc_class == "default" :
+            for x in storage_v1_api.list_storage_class().items :
+                if x.metadata.annotations and "storageclass.kubernetes.io/is-default-class" in x.metadata.annotations :
+                    if x.metadata.annotations["storageclass.kubernetes.io/is-default-class"] == "true" :
+                        announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to \"{x.metadata.name}\"")
+                        pvc_class = x.metadata.name
         storage_v1_api.read_storage_class(name=pvc_class)
         announce(f"StorageClass '{pvc_class}' found.")
 
@@ -270,7 +277,7 @@ def launch_download_job(
     dry_run: bool = False,
     verbose: bool = False
 ):
-    
+
     work_dir_str = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
     current_step = os.getenv("LLMDBENCH_CURRENT_STEP", "step")
     kcmd = os.getenv("LLMDBENCH_CONTROL_KCMD", "kubectl")
@@ -343,7 +350,7 @@ spec:
         sys.exit(1)
 
     delete_cmd = f"{kcmd} delete job {job_name} -n {namespace} --ignore-not-found=true"
-    
+
     announce(f"--> Deleting previous job '{job_name}' (if it exists) to prevent conflicts...")
     llmdbench_execute_cmd(
         actual_cmd=delete_cmd,
@@ -362,9 +369,12 @@ spec:
     )
 
 
-async def wait_for_job(job_name, namespace, timeout=7200):
+async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False):
     """Wait for the  job to complete"""
     announce(f"Waiting for job {job_name} to complete...")
+
+    if dry_run :
+        return True
 
     # use async config loading
     await k8s_async_config.load_kube_config()
@@ -391,7 +401,7 @@ async def wait_for_job(job_name, namespace, timeout=7200):
                     announce(f"Evaluation job {job_name} failed")
                     return False
 
-                
+
     except asyncio.TimeoutError:
         announce(f"Timeout waiting for evaluation job {job_name} after {timeout} seconds.")
         return False
@@ -401,40 +411,37 @@ async def wait_for_job(job_name, namespace, timeout=7200):
         await api_client.close()
 
 def model_attribute(model: str, attribute: str) -> str:
-   
-    model_aliases = {
-        "llama-1b": "meta-llama/Llama-3.2-1B-Instruct",
-        "llama-3b": "meta-llama/Llama-3.2-3B-Instruct",
-        "llama-8b": "meta-llama/Llama-3.1-8B-Instruct",
-        "llama-70b": "meta-llama/Llama-3.1-70B-Instruct",
-        "llama-17b": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
-    }
 
-    full_model_name = model_aliases.get(model, model)
-
+    model, modelid = model.split(':', 1) if ':' in model else (model, model)
 
     #  split the model name into provider and rest
-    provider, model_part = full_model_name.split('/', 1) if '/' in full_model_name else ("", full_model_name)
+    provider, model_part = model.split('/', 1) if '/' in model else ("", model)
+
+    hash_object = hashlib.sha256()
+    hash_object.update(modelid.encode('utf-8'))
+    digest = hash_object.hexdigest()
+    modelid_label = f"{provider[:8]}-{digest[:8]}-{model_part[-8:]}"
 
     # create a list of components from the model part
     # equiv  to: tr '[:upper:]' '[:lower:]' | sed -e 's^qwen^qwen-^g' -e 's^-^\n^g'
     model_components_str = model_part.lower().replace("qwen", "qwen-")
     model_components = model_components_str.split('-')
 
-    # get individual attributes using regex 
+    # get individual attributes using regex
     type_str = ""
     for comp in model_components:
-        if re.search(r"nstruct|hf|chat|speech|vision", comp, re.IGNORECASE):
+        if re.search(r"nstruct|hf|chat|speech|vision|opt", comp, re.IGNORECASE):
             type_str = comp
             break
 
     parameters = ""
     for comp in model_components:
         if re.search(r"[0-9].*[bm]", comp, re.IGNORECASE):
-            parameters = comp.replace('.', 'p')
+            parameters = re.sub(r'^[a-z]', '', comp, count=1)
+            parameters = parameters.replace('.', 'p')
             break
-    
-    major_version = ""
+
+    major_version = "1"
     for comp in model_components:
         # find component that starts with a digit but is not the parameter string
         if comp.isdigit() or (comp and comp[0].isdigit() and not re.search(r"b|m", comp, re.IGNORECASE)):
@@ -444,19 +451,21 @@ def model_attribute(model: str, attribute: str) -> str:
             break
 
     kind = model_components[0] if model_components else ""
-    
-    as_label = full_model_name.lower().replace('/', '-').replace('.', '-')
-    
+
+    as_label = model.lower().replace('/', '-').replace('.', '-')
+
     # build label and clean it up
     label_parts = [part for part in [kind, major_version, parameters] if part]
     label = '-'.join(label_parts)
     label = re.sub(r'-+', '-', label).strip('-') # replace multiple hyphens and strip from ends
 
-    folder = full_model_name.lower().replace('/', '_').replace('-', '_')
+    folder = model.lower().replace('/', '_').replace('-', '_')
 
-    # storing all attributes in a dictionary 
+    # storing all attributes in a dictionary
     attributes = {
-        "model": full_model_name,
+        "model": model,
+        "modelid": modelid,
+        "modelid_label": modelid_label,
         "provider": provider,
         "type": type_str,
         "parameters": parameters,
@@ -469,7 +478,7 @@ def model_attribute(model: str, attribute: str) -> str:
 
     # return requested attrib
     result = attributes.get(attribute, "")
-    
+
     # The original script lowercases everything except the model attribute
     if attribute != "model":
         return result.lower()

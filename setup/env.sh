@@ -140,7 +140,7 @@ export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX=${LLMDBENCH_RUN_EXPERIMENT_RE
 export LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY="${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY:-0}"
 
 # LLM-D-Benchmark deployment specific variables
-export LLMDBENCH_DEPLOY_MODEL_LIST=${LLMDBENCH_DEPLOY_MODEL_LIST:-"llama-1b"}
+export LLMDBENCH_DEPLOY_MODEL_LIST=${LLMDBENCH_DEPLOY_MODEL_LIST:-"meta-llama/Llama-3.2-1B-Instruct"}
 export LLMDBENCH_DEPLOY_METHODS=${LLMDBENCH_DEPLOY_METHODS:-"modelservice"}
 
 # Control variables
@@ -154,11 +154,11 @@ export LLMDBENCH_CONTROL_STANDUP_ALL_STEPS=${LLMDBENCH_CONTROL_STANDUP_ALL_STEPS
 export LLMDBENCH_CONTROL_WAIT_TIMEOUT=${LLMDBENCH_CONTROL_WAIT_TIMEOUT:-900}
 export LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS=${LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS:-0}
 export LLMDBENCH_CONTROL_RESOURCE_LIST=${LLMDBENCH_CONTROL_RESOURCE_LIST:-deployment,httproute,service,gateway,gatewayparameters,inferencepool,inferencemodel,cm,ing,pod,job}
-export LLMDBENCH_CONTROL_STEP_00_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_00_IMPLEMENTATION:-sh}
-export LLMDBENCH_CONTROL_STEP_01_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_01_IMPLEMENTATION:-sh}
+export LLMDBENCH_CONTROL_STEP_00_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_00_IMPLEMENTATION:-py}
+export LLMDBENCH_CONTROL_STEP_01_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_01_IMPLEMENTATION:-py}
 export LLMDBENCH_CONTROL_STEP_02_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_02_IMPLEMENTATION:-sh}
 export LLMDBENCH_CONTROL_STEP_03_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_03_IMPLEMENTATION:-sh}
-export LLMDBENCH_CONTROL_STEP_04_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_04_IMPLEMENTATION:-sh}
+export LLMDBENCH_CONTROL_STEP_04_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_04_IMPLEMENTATION:-py}
 export LLMDBENCH_CONTROL_STEP_05_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_05_IMPLEMENTATION:-sh}
 export LLMDBENCH_CONTROL_STEP_06_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_06_IMPLEMENTATION:-sh}
 export LLMDBENCH_CONTROL_STEP_07_IMPLEMENTATION=${LLMDBENCH_CONTROL_STEP_07_IMPLEMENTATION:-sh}
@@ -263,21 +263,6 @@ if [[ $LLMDBENCH_CURRENT_STEP == "09" ]]; then
   export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS=${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS:-"[--disable-log-requests____--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN____--tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR]"}
 fi
 
-overridevarlist=$(env | grep _CLIOVERRIDE_ | cut -d '=' -f 1 || true)
-if [[ -n "$overridevarlist" ]]; then
-  for overridevar in $overridevarlist; do
-    actualvar=$(echo "$overridevar" | sed 's/_CLIOVERRIDE//g')
-    if [[ -n "${!overridevar:-}" ]]; then
-      export $actualvar=${!overridevar}
-      if [[ ${LLMDBENCH_CONTROL_VERBOSE} -eq 1 && ${LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED} -eq 0 ]]; then
-        echo "Environment variable $actualvar was overridden by command line options"
-      fi
-    fi
-  done
-  echo
-  export LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED=1
-fi
-
 if [[ ! -z $LLMDBENCH_DEPLOY_SCENARIO ]]; then
   if [[ "$LLMDBENCH_DEPLOY_SCENARIO" == /* ]]; then
     export LLMDBENCH_SCENARIO_FULL_PATH=$(echo $LLMDBENCH_DEPLOY_SCENARIO'.sh' | $LLMDBENCH_CONTROL_SCMD 's^.sh.sh^.sh^g')
@@ -296,6 +281,21 @@ elif [[ $LLMDBENCH_SCENARIO_FULL_PATH == "${LLMDBENCH_MAIN_DIR}/scenarios/none.s
 else
   echo "❌ Scenario file \"$LLMDBENCH_SCENARIO_FULL_PATH\" could not be found."
   exit 1
+fi
+
+overridevarlist=$(env | grep _CLIOVERRIDE_ | cut -d '=' -f 1 || true)
+if [[ -n "$overridevarlist" ]]; then
+  for overridevar in $overridevarlist; do
+    actualvar=$(echo "$overridevar" | sed 's/_CLIOVERRIDE//g')
+    if [[ -n "${!overridevar:-}" ]]; then
+      export $actualvar=${!overridevar}
+      if [[ ${LLMDBENCH_CONTROL_VERBOSE} -eq 1 && ${LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED} -eq 0 ]]; then
+        echo "Environment variable $actualvar was overridden by command line options"
+      fi
+    fi
+  done
+  echo
+  export LLMDBENCH_CONTROL_OVERRIDE_COMMAND_DISPLAYED=1
 fi
 
 if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS" == /* ]]; then

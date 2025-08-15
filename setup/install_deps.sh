@@ -135,7 +135,7 @@ if ! command -v pip3 &> /dev/null; then
     echo "pip3 installed successfully."
 fi
 
-python_deps="kubernetes pykube kubernetes-asyncio"
+python_deps="kubernetes pykube kubernetes-asyncio GitPython PyYAML"
 
 for dep in $python_deps; do
     # use pip3 show to check if the package is already installed

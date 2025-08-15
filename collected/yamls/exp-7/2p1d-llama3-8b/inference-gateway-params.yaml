@@ -1,9 +1,0 @@
-apiVersion: gateway.kgateway.dev/v1alpha1
-kind: GatewayParameters
-metadata:
-  name: inference-gateway-params
-  namespace: $LLMDBENCH_CLUSTER_NAMESPACE
-spec:
-  kube:
-    service:
-      type: ClusterIP

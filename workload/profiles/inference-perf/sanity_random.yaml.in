@@ -5,6 +5,7 @@ load:
     duration: 30
 api:
   type: completion
+  streaming: true
 server:
   type: vllm
   model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL

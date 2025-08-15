@@ -485,6 +485,24 @@ class BenchmarkReport(BaseModel):
             by_alias=True,
         )
 
+    def export_json(self, filename) -> None:
+        """Save BenchmarkReport to JSON file.
+
+        Args:
+            filename: File to save BenchmarkReport to.
+        """
+        with open(filename, 'w') as file:
+            json.dump(self.dump(), file, indent=2)
+
+    def export_yaml(self, filename) -> None:
+        """Save BenchmarkReport to YAML file.
+
+        Args:
+            filename: File to save BenchmarkReport to.
+        """
+        with open(filename, 'w') as file:
+            yaml.dump(self.dump(), file, indent=2)
+
     def print_json(self) -> None:
         """Print BenchmarkReport as JSON."""
         print(

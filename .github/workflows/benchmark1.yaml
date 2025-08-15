@@ -99,12 +99,12 @@ jobs:
       - name: Run benchmark (standalone, fmperf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c cicd -t standalone -l fmperf
+        run: ./setup/run.sh -c cicd -t standalone -l fmperf -w sanity_short-input
 
       - name: Run benchmark (standalone, guidellm)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c cicd -t standalone -l guidellm
+        run: ./setup/run.sh -c cicd -t standalone -l guidellm -w sanity_concurrent
 
       - name: Run benchmark (standalone, vllm-benchmark)
         env:
@@ -124,7 +124,7 @@ jobs:
       - name: E2E target cloud (modelservice, fmperf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c cicd -t modelservice --deep -l fmperf -w sanity_short-input
+        run: ./setup/e2e.sh -c cicd -t modelservice --deep -l fmperf -w sanity_short-input.yaml
 
       - name: E2E target cloud (modelservice, guidellm)
         env:
@@ -152,7 +152,7 @@ jobs:
         run: |
           aws configure set default.s3.signature_version s3v4
           aws s3 cp "$INPUT_DIR" "s3://${{ secrets.COS_BUCKET_NAME }}/$OUTPUT_DIR/" \
-            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }}
+            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }} || true
 
       - name: Archive benchmark results as GitHub artifact
         if: success() || failure()

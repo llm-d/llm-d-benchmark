@@ -203,6 +203,35 @@ def move_data_result(capture_log_file, data_dir):
     return True
 
 
+def convert_data_result(capture_dir: str) -> None:
+    """Convert benchmark results CSV files to benchmark reports.
+
+    Args:
+        capture_dir (str): Directory where results CSVs should be converted.
+    """
+
+    if not os.path.isdir(capture_dir):
+        logger.error(f'Invalid directory: {capture_dir}')
+        return
+
+    for data_file in os.listdir(capture_dir):
+        if data_file.lower()[-4:] != '.csv':
+            continue
+        data_file_full_path = os.path.join(capture_dir, data_file)
+        logger.info(f'Converting file to benchmark report: {data_file_full_path}')
+        os_command = [
+            'convert.py',
+            data_file_full_path,
+            os.path.join(capture_dir, f'benchmark_report,_{data_file}.yaml'),
+            '-w',
+            'fmperf',
+            '-f',
+        ]
+        result = subprocess.run(os_command, capture_output=True, text=True)
+        if result.returncode != 0:
+            # Report error, but do not quit
+            logger.error(f'Error converting result data: {result.stderr}')
+
 def main():
 
     env_vars = os.environ
@@ -300,8 +329,11 @@ def main():
         asyncio.run(wait_for_job(job_name, namespace))
 
         logs = capture_pod_logs(job_name, namespace, eval_log_file)
-        if move_data_result(eval_log_file, eval_data_dir):
-            logger.info(f"Data moved to {eval_data_dir}")
+        if move_data_result(eval_log_file, eval_path):
+            logger.info(f"Data moved to {eval_path}")
+        # Create benchmark report
+        logger.info(f"Performing benchmark report conversion")
+        convert_data_result(eval_path)
 
 
     except Exception as e:

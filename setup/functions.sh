@@ -25,35 +25,22 @@ function model_attribute {
   local model=$1
   local attribute=$2
 
-  # Do not use associative arrays. Not supported by MacOS with older bash versions
-
-  case "$model" in
-    "llama-1b") local model=meta-llama/Llama-3.2-1B-Instruct:llama-1b ;;
-    "llama-3b") local model=meta-llama/Llama-3.2-3B-Instruct:llama-3b ;;
-    "llama-8b") local model=meta-llama/Llama-3.1-8B-Instruct:llama-8b ;;
-    "llama-70b") local model=meta-llama/Llama-3.1-70B-Instruct:llama-70b ;;
-    "llama-17b") local model=meta-llama/Llama-4-Scout-17B-16E-Instruct:llama-17b ;;
-    "facebook/opt-125m") local model=facebook/opt-1.0-125m-hf:opt-125m ;;
-    *)
-      true ;;
-  esac
-
-  # model is of the form namespace/modelid:uniqueid
   local modelid=$(echo $model | cut -d: -f2)
-  model=$(echo $model | cut -d: -f1)
   local modelid_label="$(echo -n $modelid | cut -d '/' -f 1 | cut -c1-8)-$(echo -n $modelid | sha256sum | awk '{print $1}' | cut -c1-8)-$(echo -n $modelid | cut -d '/' -f 2 | rev | cut -c1-8 | rev)"
 
   local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
   local provider=$(echo $model | cut -d '/' -f 1)
-  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision")
+  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision|opt")
   local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b|[0-9].*m" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^')
   local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" |  $LLMDBENCH_CONTROL_SCMD -e "s/$parameters//g" | cut -d '.' -f 1)
+  if [[ -z $majorversion ]]; then
+    local majorversion=1
+  fi
   local kind=$(echo "${modelcomponents}" | head -n 1 | cut -d '/' -f 1)
   local as_label=$(echo $model | tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e "s^/^-^g")
   local label=$(echo ${kind}-${majorversion}-${parameters} | $LLMDBENCH_CONTROL_SCMD -e 's^-$^^g' -e 's^--^^g')
   local as_label=$(echo $model | tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e "s^/^-^g" -e "s^\.^-^g")
   local folder=$(echo $model | tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^/^_^g' -e 's^-^_^g')
-
   if [[ $attribute != "model" ]];
   then
     echo ${!attribute} | tr '[:upper:]' '[:lower:]'
@@ -62,11 +49,6 @@ function model_attribute {
   fi
 }
 export -f model_attribute
-
-function get_model_aliases_list {
-  cat ${LLMDBENCH_MAIN_DIR}/setup/functions.sh | grep -v /setup/functions.sh | grep ") local model=" | $LLMDBENCH_CONTROL_SCMD -e 's^ "^                 "^g' -e "s^) local model=^ -> ^g" -e "s^ ;;^^g"
-}
-export -f get_model_aliases_list
 
 function resolve_harness_git_repo {
   local harness_name=$1
@@ -742,6 +724,10 @@ function run_step {
       source $script_path
     elif [[ ${!script_implementaton} == py ]]; then
       python3 $script_path
+      local ec=$?
+      if [[ $ec -ne 0 ]]; then
+        exit $ec
+      fi
     else
       announce "ERROR: Unsupported script type for \"$script_path\""
     fi
@@ -779,6 +765,8 @@ spec:
   - name: harness
     image: $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG})
     imagePullPolicy: Always
+    securityContext:
+      runAsUser: 0
     command: ["sh", "-c"]
     args:
     - "${LLMDBENCH_HARNESS_EXECUTABLE}"
