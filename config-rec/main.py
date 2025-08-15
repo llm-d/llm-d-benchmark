@@ -3,7 +3,53 @@ A streamlit frontend for the Config Recommendation Tool
 """
 
 import streamlit as st
+import util
+import db
+import math
 
+from dataclasses import dataclass
+
+@dataclass
+class Model:
+    """Model stores info about a HuggingFace model"""
+    name: str | None = None
+    parameters: int | None = None
+    precision: str | None = None    # ie: BF16
+    tp: int = 1
+    dp: int | None = None
+    pp: int | None = None
+    enable_prefix_caching: bool = False
+    enable_chunked_prefill: bool = False
+    block_size: int = 1
+    gpu_mem_utilization: float = 0.9
+    max_batched_tokens: int = 1
+
+    # GPU
+    gpu_spec: dict | None = None
+
+    def get_memory_req(self) -> int:
+        """
+        Returns memory requirement for the model
+        """
+        if "16" in self.precision:
+
+            # M = param * 4 bytes_per_param / (32 / quantization) * 1.2
+            # Assume 16-bit loading on GPU
+            return (self.parameters * 2) / (32 / 16) * 1.2
+
+        else:
+            return -1
+
+    def get_min_gpu_count(self) -> int:
+
+        # https://blog.eleuther.ai/transformer-math/
+        # https://ksingh7.medium.com/calculate-how-much-gpu-memory-you-need-to-serve-any-llm-67301a844f21
+        model_memory = self.get_memory_req()
+        if model_memory == -1:
+            return model_memory
+
+        gpu_memory_bytes =  self.gpu_spec['memory'] * 1e+9
+        return math.ceil(model_memory / gpu_memory_bytes)
 
 def inputs(col):
     """
@@ -11,33 +57,39 @@ def inputs(col):
     """
     col.header("Inputs")
 
-    user_inputs = {}
+    user_model = Model()
 
     # Model
     with col.container(border=True):
         st.write("**Model Specification**")
-        selected_model = st.selectbox("Model", options=[
-            "deepseek-r1:1.5b", "gemma3:1b",
-            "qwen3:4b", "qwen2.5:0.5b",
-            "llama3.1:8b", "llama3.2:1b",
-            "granite3.3:2b", "granite3.3:8b"],
-            index=None,
-        )
+        selected_model = st.text_input("Model (Hugging Face format)")
 
         if selected_model:
-            st.caption("This model is....")
+            info = util.get_model_info_from_hf(selected_model)
+            user_model.name = selected_model
+            user_model.parameters = info.safetensors.total
+
+            # Precisions supported
+            user_model.precision = st.selectbox("Select a precision",
+                                              options=info.safetensors.parameters.keys())
+
+            st.caption(f"Total parameters: {info.safetensors.parameters[user_model.precision]}")
+            memory_req = round(user_model.get_memory_req() / 1e+9)
+            st.caption(f"GPU memory requirement: {memory_req} GB")
 
     # Hardware
     with col.container(border=True):
         st.write("**Hardware Specification**")
-        st.selectbox("Accelerator", options=[
-            "NVIDIA-A100",
-            "NVIDIA-H100",
-            "NVIDIA-L40S",
-            "AMD-MI300X"
-        ])
+        selected_gpu = st.selectbox("Accelerator", options=db.gpu_specs.keys())
+        if selected_gpu:
+            user_model.gpu_spec = db.gpu_specs[selected_gpu]
+            st.caption(f"GPU memory: {user_model.gpu_spec['memory']} GB")
 
-        st.number_input("Number accelerators available", step=1, min_value=1)
+            # Calculate the minimum number of GPUs required
+            min_gpu_req = user_model.get_min_gpu_count()
+
+        user_model.tp = st.number_input("Number accelerators available", step=1, min_value=min_gpu_req)
+        st.caption(f"Loading this model on the selected GPU in 16-bit mode requires a minimum of {min_gpu_req}, which does not yet account for KV cache.")
 
     # Router
     with col.container(border=True):
@@ -53,25 +105,25 @@ def inputs(col):
 
         # ------------------------------------------------------------------------------------------
         st.write("*Cache Config*")
-        selected_block_size = st.select_slider("Block size", options=[1, 8, 16, 32, 64, 128], help="Size of a contiguous cache block in number of tokens. This is ignored on neuron devices and set to `--max-model-len`. On CUDA devices, only block sizes up to 32 are supported. On HPU devices, block size defaults to 128.")
-        st.number_input("GPU memory utilization",
+        user_model.block_size = st.select_slider("Block size", options=[1, 8, 16, 32, 64, 128], help="Size of a contiguous cache block in number of tokens. This is ignored on neuron devices and set to `--max-model-len`. On CUDA devices, only block sizes up to 32 are supported. On HPU devices, block size defaults to 128.")
+        user_model.gpu_mem_utilization = st.number_input("GPU memory utilization",
                         value=0.9,
                         min_value=0.0,
                         max_value=1.0,
                         step=0.1,
                         help="""\
 The fraction of GPU memory to be used for the model executor, which can range from 0 to 1. For example, a value of 0.5 would imply 50%% GPU memory utilization. If unspecified, will use the default value of 0.9. This is a per-instance limit, and only applies to the current vLLM instance. It does not matter if you have another vLLM instance running on the same GPU. For example, if you have two vLLM instances running on the same GPU, you can set the GPU memory utilization to 0.5 for each instance.""")
-        enable_prefix_caching = st.checkbox("Enable prefix caching")
+        user_model.enable_prefix_caching = st.checkbox("Enable prefix caching")
 
         # ------------------------------------------------------------------------------------------
         st.write("*vLLM Config*")
-        pp_size = st.slider("Pipeline parallel size", step=1, min_value=1, max_value=10, help="partition model layers across GPUs")
-        dp_size = st.slider("Data parallel size", step=1, min_value=1, max_value=10, help="partition input tensor across devices")
-        tp_size = st.slider("Tensor parallelism", step=1, min_value=1, max_value=10, help="partition model parameters across GPUs")
+        user_model.pp = st.slider("Pipeline parallel size", step=1, min_value=1, max_value=10, help="partition model layers across GPUs")
+        user_model.dp = st.slider("Data parallel size", step=1, min_value=1, max_value=10, help="partition input tensor across devices")
+        user_model.tp = st.slider("Tensor parallelism", step=1, min_value=user_model.get_min_gpu_count(), max_value=10, help="partition model parameters across GPUs")
 
         # ------------------------------------------------------------------------------------------
         st.write("*Scheduler Config*")
-        enable_chunked_prefill = st.checkbox("Enable chunked prefill")
+        user_model.enable_chunked_prefill = st.checkbox("Enable chunked prefill")
         st.number_input("Max num batched tokens", min_value=1, max_value=2048, step=1)
 
     # Workload
@@ -100,46 +152,40 @@ The fraction of GPU memory to be used for the model executor, which can range fr
             st.slider("Max latency (TPOT)", min_value=1.0, max_value=1000.0, step=0.01)
 
     # Populate user input
-    user_inputs['model'] = selected_model
-    user_inputs['block_size'] = selected_block_size
-    user_inputs['pp_size'] = pp_size
-    user_inputs['dp_size'] = dp_size
-    user_inputs['tp_size'] = dp_size
-    user_inputs['enable_prefix_caching'] = enable_prefix_caching
-    user_inputs['enable_chunked_prefill'] = enable_chunked_prefill
 
-    return user_inputs
+    return user_model
 
-def outputs(col, user_inputs):
+def outputs(col, user_model: Model):
     """
     Determine the optimal configuration
     """
     col.header("Optimal Configuration")
 
-    selected_model = user_inputs['model'] if user_inputs['model'] else "(no model selected)"
+    selected_model = user_model.name if user_model.name else "(no model selected)"
     if selected_model == 'gemma3:1b':
         col.warning("This model will not run on the specified hardware.")
     else:
         col.write(f"Based on your inputs, we recommend the following configuration to serve `{selected_model}`.")
 
-        col.write("This deployment will cost `$N/million input tokens`")
+        col.write("This suggested deployment will cost `$N/million input tokens`")
         col.markdown("""**Estimated SLO**
-    * Throughput: `XXX tokens/sec`
-    * TTFT: `YYY s`
-    * TPOT: `ZZZ s`
+
+* Throughput: `XXX tokens/sec`
+* TTFT: `YYY s`
+* TPOT: `ZZZ s`
     """)
 
-        vllm_command = f"""vllm serve {selected_model} \\
-        --block-size {str(user_inputs['block_size'])}
-        --pp {str(user_inputs['pp_size'])} \\
-        --dp {str(user_inputs['dp_size'])}  \\
-        --tp {str(user_inputs['tp_size'])}"""
+        vllm_command = f"""vllm serve {user_model.name} \\
+        --block-size {str(user_model.block_size)}
+        --pp {str(user_model.pp)} \\
+        --dp {str(user_model.dp)}  \\
+        --tp {str(user_model.tp)}"""
 
-        if user_inputs['enable_prefix_caching']:
+        if user_model.enable_prefix_caching:
             vllm_command += """ \\
         -enable-prefix-caching"""
 
-        if user_inputs['enable_chunked_prefill']:
+        if user_model.enable_chunked_prefill:
             vllm_command += """ \\
         -enable_chunked_prefill"""
 
