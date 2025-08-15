@@ -100,6 +100,8 @@ def main():
 
     llmdbench_execute_cmd(actual_cmd=f'source "{ev["control_dir"]}/env.sh"', dry_run=ev["control_dry_run"] == '1', verbose=ev["control_verbose"] == '1')
 
+
+
     api = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
     if ev["control_dry_run"] == '1':
         announce("DRY RUN enabled. No actual changes will be made.")
@@ -162,7 +164,7 @@ def main():
                 dry_run=ev["control_dry_run"]
             ))
 
-    if is_openshift(api):
+    if is_openshift(api) and ev["deploy_methods"] == "modelservice" :
         # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid
         # some setups might also require privileged access for GPU resources
         add_scc_to_service_account(api, "anyuid", ev["vllm_common_service_account"], ev["vllm_common_namespace"], ev["control_dry_run"]=='1')
