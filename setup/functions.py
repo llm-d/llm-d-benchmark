@@ -484,3 +484,69 @@ def model_attribute(model: str, attribute: str) -> str:
         return result.lower()
     else:
         return result
+
+
+def extract_environment():
+    """
+    Extract and display environment variables for debugging.
+    Equivalent to the bash extract_environment function.
+    """
+    
+    ev = {}
+    for key, value in os.environ.items():
+        if "LLMDBENCH_" in key:
+            ev[key.split("LLMDBENCH_")[1].lower()] = value
+    
+    # Get environment variables that start with LLMDBENCH, excluding sensitive ones
+    env_vars = []
+    for key, value in os.environ.items():
+        if key.startswith("LLMDBENCH_") and not any(sensitive in key.upper() for sensitive in ["TOKEN", "USER", "PASSWORD", "EMAIL"]):
+            env_vars.append(f"{key}={value}")
+    
+    env_vars.sort()
+    
+    # Check if environment variables have been displayed before
+    envvar_displayed = int(os.environ.get("LLMDBENCH_CONTROL_ENVVAR_DISPLAYED", 0))
+    
+    if envvar_displayed == 0:
+        print("\n\nList of environment variables which will be used")
+        for var in env_vars:
+            print(var)
+        print("\n\n")
+        os.environ["LLMDBENCH_CONTROL_ENVVAR_DISPLAYED"] = "1"
+    
+    # Write environment variables to file
+    work_dir = os.environ.get("LLMDBENCH_CONTROL_WORK_DIR", ".")
+    env_dir = Path(work_dir) / "environment"
+    env_dir.mkdir(parents=True, exist_ok=True)
+    
+    with open(env_dir / "variables", "w") as f:
+        for var in env_vars:
+            f.write(var + "\n")
+
+
+def get_image(image_registry: str, image_repo: str, image_name: str, image_tag: str, tag_only: str = "0") -> str:
+    """
+    Construct container image reference.
+    Equivalent to the bash get_image function.
+    
+    Args:
+        image_registry: Container registry
+        image_repo: Repository/organization  
+        image_name: Image name
+        image_tag: Image tag
+        tag_only: If "1", return only the tag
+    
+    Returns:
+        Full image reference or just tag
+    """
+    # For simplicity, we'll not implement the "auto" tag resolution here
+    # since it requires external tools (skopeo/podman)
+    if image_tag == "auto":
+        announce("⚠️ Auto tag resolution not implemented in Python version, using 'latest'")
+        image_tag = "latest"
+    
+    if tag_only == "1":
+        return image_tag
+    else:
+        return f"{image_registry}/{image_repo}/{image_name}:{image_tag}"
