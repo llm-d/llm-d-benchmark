@@ -67,7 +67,7 @@ jobs:
 
       - name: Populate python deps
         run: |
-          echo -e "pandas\ngrip>=4.6.0\nmatplotlib>=3.7.0\nnumpy>=1.22.0\nseaborn>=0.12.0\nkubernetes>=28.0.0" > requirements.txt
+          echo -e "pandas\ngrip>=4.6.0\nmatplotlib>=3.7.0\nnumpy>=1.22.0\nseaborn>=0.12.0\nkubernetes>=28.0.0\npykube\nkubernetes-asyncio\nGitPython" > requirements.txt
 
       - name: Install python deps
         uses: actions/setup-python@v5
