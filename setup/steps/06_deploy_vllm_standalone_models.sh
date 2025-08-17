@@ -16,7 +16,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
     announce "❌ Failed to check affinity"
     exit 1
   fi
-  
+
   extract_environment
 
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
@@ -185,6 +185,11 @@ EOF
   done
 
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
+
+    announce "⏳ Waiting for (standalone) pods serving model ${model} to be created..."
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=$((LLMDBENCH_CONTROL_WAIT_TIMEOUT / 2))s --for=create pod -l app=vllm-standalone-$(model_attribute $model label)" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE} 1 2
+    announce "✅ (standalone) pods serving model ${model} created"
+
     announce "⏳ Waiting for (standalone) pods serving model ${model} to be in \"Running\" state (timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s)..."
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=vllm-standalone-$(model_attribute $model label)" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "🚀 (standalone) pods serving model ${model} running"
@@ -192,7 +197,7 @@ EOF
     announce "⏳ Waiting for (standalone) pods serving ${model} to be Ready (timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s)..."
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} wait --timeout=${LLMDBENCH_VLLM_COMMON_TIMEOUT}s --for=condition=Ready=True pod -l app=vllm-standalone-$(model_attribute $model label)" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "🚀 (standalone) pods serving model ${model} ready"
-    
+
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} logs --tail=-1 --prefix=true  -l app=vllm-standalone-$(model_attribute $model label) > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/logs/vllm-standalone.log" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
     if [[ $LLMDBENCH_VLLM_STANDALONE_ROUTE -ne 0 && $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then

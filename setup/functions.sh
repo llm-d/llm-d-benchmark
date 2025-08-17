@@ -28,19 +28,14 @@ function model_attribute {
   local modelid=$(echo $model | cut -d: -f2)
   local modelid_label="$(echo -n $modelid | cut -d '/' -f 1 | cut -c1-8)-$(echo -n $modelid | sha256sum | awk '{print $1}' | cut -c1-8)-$(echo -n $modelid | cut -d '/' -f 2 | rev | cut -c1-8 | rev)"
 
-  # TODO handle this in a more appropriate way
-  # Hack to get all attributes for facebook/opt-125m
-  case "$model" in
-    "facebook/opt-125m") local model_hack=facebook/opt-1.0-125m-hf ;;
-    *)
-      model_hack=$model ;;
-  esac
-
-  local modelcomponents=$(echo $model_hack | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
+  local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
   local provider=$(echo $model | cut -d '/' -f 1)
-  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision")
+  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision|opt")
   local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b|[0-9].*m" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^')
   local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" |  $LLMDBENCH_CONTROL_SCMD -e "s/$parameters//g" | cut -d '.' -f 1)
+  if [[ -z $majorversion ]]; then
+    local majorversion=1
+  fi
   local kind=$(echo "${modelcomponents}" | head -n 1 | cut -d '/' -f 1)
   local as_label=$(echo $model | tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e "s^/^-^g")
   local label=$(echo ${kind}-${majorversion}-${parameters} | $LLMDBENCH_CONTROL_SCMD -e 's^-$^^g' -e 's^--^^g')
@@ -729,6 +724,10 @@ function run_step {
       source $script_path
     elif [[ ${!script_implementaton} == py ]]; then
       python3 $script_path
+      local ec=$?
+      if [[ $ec -ne 0 ]]; then
+        exit $ec
+      fi
     else
       announce "ERROR: Unsupported script type for \"$script_path\""
     fi
@@ -766,6 +765,8 @@ spec:
   - name: harness
     image: $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG})
     imagePullPolicy: Always
+    securityContext:
+      runAsUser: 0
     command: ["sh", "-c"]
     args:
     - "${LLMDBENCH_HARNESS_EXECUTABLE}"
