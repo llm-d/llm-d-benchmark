@@ -28,7 +28,7 @@ See [list of dependencies](https://github.com/deanlorenz/llm-d-benchmark?tab=rea
 
 Set up the stack for benchmarking. Since you are starting from an existing stack, you may need to restart some pods to create a clean baseline. For this simple example, if you want to compare different setups (e.g., various `epp` configurations) then you have to set up each configuration manually and rerun the example for each. 
 
-In this example, the benchmark sends requests to an `inference-gateway` endpoint. Replace `inference-gateway` with the name of the pod if you want to benchmark a single `vllm` instead.
+In this example, the benchmark sends requests to an `infra-inference-scheduling-inference-gateway` endpoint. Replace `infra-inference-scheduling-inference-gateway` with the name your inference gateway service. Alternatively, use a pod name if you want to benchmark a single `vllm` instead.
 
 
 ## Benchmarking Steps
@@ -93,27 +93,43 @@ storage:
 
 If you want to create your own `inference-perf` profile then save your custom `yaml` specification with a `.yaml.in` suffix in the same directory.
 
-⚠️ Unless you know exactly what you are doing, you should only edit the `load` and `data` sections. `load` tell `inference-perf` how many sub-test ("_stages_") to run; each stage has a desired QPS and duration. `data` defines how to create the Data Set; the configuration parameters are different for each `type`.
+⚠️ Unless you know exactly what you are doing, you should only edit the `load` and `data` sections. `load` tell `inference-perf` how many sub-test ("_stages_") to run; each stage has a desired QPS (Queries Per Second) and duration. `data` defines how to create the _DataSet_; the configuration parameters are different for each `type`.
 
 
-### 2. Log on into your cluster
+### 2. Log on into your cluster and namespace
 Run `oc login ...`
 
+Then, run 
+```bash
+oc project <_namespace-name_>
+```
+or, if using `kubectl`
+```bash
+kubectl config set-context --current --namespace=<_namespace-name_>
+```
 
 ### 3. Gather required parameters (mostly information about your `llm-d` stack)
 
-* **Namespace**:
-  The K8S namespace / RHOS project being use.
+* **Work Directory**: 
+  Choose a local work directory to save the results on your computer. 
+
+* **Harness Profile**: 
+  The name of your `.yaml.in` file _without the suffix_, e.g., `shared_prefix_synthetic`
+
+* **PVC**: 
+  A Persistent Volume Claim for storing benchmarking results. Must be one of the available PVCs in the cluster.
+
   <details>
   <summary>Click to view bash code snippet</summary>
 
   ```bash
-  oc config current-context | awk -F / '{print $1}'
+  oc get persistentvolumeclaims -o name
   ```
   </details>
 
-* **Hugging-Face Token**: 
-  Can obtain the one used in exiting `llm-d` stack.
+
+* **Hugging-Face Token [Optional]**: 
+  If none is specified then the `HF_TOKEN` used in the existing `llm-d` stack will be used.
   <details>
   <summary>Click to view bash code snippet</summary>
 
@@ -122,6 +138,19 @@ Run `oc login ...`
   ```
   </details>
 
+<!--
+* **Namespace**:
+  The K8S namespace / RHOS project being use.
+  <details>
+  <summary>Click to view bash code snippet</summary>
+  
+  ```bash
+  oc config current-context | awk -F / '{print $1}'
+  ```
+  </details>
+-->
+
+<!--
 * **Model**: 
   The exact model name of the LLM being served by your `llm-d` stack. 
 
@@ -136,42 +165,21 @@ Run `oc login ...`
   curl -s http://<HOST>:<PORT>/v1/models | jq '.data[].root'`
   ```
   </details>
-
-* **PVC X2**: 
-  2 Persistent Volume Claims; one _Common PVC_ for storing the model and cache and one _Harness PVC_ for storing benchmarking results. Must be one of the available PVCs in the cluster.
-
-  <details>
-  <summary>Click to view bash code snippet</summary>
-
-  ```bash
-  oc get persistentvolumeclaims -o name
-  ```
-  </details>
-
-* **Work Directory**: 
-  Choose a local work directory to save the results on your computer. 
-
-* **Harness Profile**: 
-  The name of your `.yaml.in` file _without the suffix_, e.g., `shared_prefix_synthetic`
-
+-->
 
 ### 4. Create Environment Configuration File
 Prepare a file `./myenv.sh` with the following content: (file name must have a `.sh` suffix)
 
 ```bash
-export LLMDBENCH_DEPLOY_METHODS="inference-gateway"
+export LLMDBENCH_DEPLOY_METHODS="infra-inference-scheduling-inference-gateway"
 export LLMDBENCH_HARNESS_NAME="inference-perf"
-export LLMDBENCH_HF_TOKEN=$(oc get secrets llm-d-hf-token -o jsonpath='{.data.*}' | base64 -d)
+# export LLMDBENCH_HF_TOKEN=<_your Hugging Face token_>
 
-# For example "/tmp"
-export LLMDBENCH_CONTROL_WORK_DIR="<_name of your local Working Direcotry_>"
+# Work Directory; for example "/tmp/<_namespace_>"
+export LLMDBENCH_CONTROL_WORK_DIR="<_name of your local Work Direcotry_>"
 
-# 2 different Persistent Volume Claims
-export LLMDBENCH_VLLM_COMMON_PVC_NAME="<_name of your Common PVC_>"
+# Persistent Volume Claim
 export LLMDBENCH_HARNESS_PVC_NAME="<_name of your Harness PVC_>"
-
-# For example "meta-llama/Llama-3.1-70B-Instruct"
-export $LLMDBENCH_DEPLOY_MODEL_LIST="_exact full name of your Model_>"
 
 # This is a timeout (seconds) for running a full test
 # If time expires the benchmark will still run but results will not be collected to local computer.
@@ -185,7 +193,6 @@ export LLMDBENCH_HARNESS_WAIT_TIMEOUT=3600
 
 ```bash
 run.sh \
-  -p "$(oc config current-context | awk -F / '{print $1}')"  `# your <namespace>` \
   -c "$(realpath ./myenv.sh)"  `# use full path` \
   -w "shared_prefix_synthetic" `# <name of the Harness Profile>.yaml.in` \
   # -s 10000  # uncomment to setup timeout on command line. 
