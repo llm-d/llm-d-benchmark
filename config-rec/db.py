@@ -43,3 +43,83 @@ gpu_specs = {
          "memory": 16
      }
 }
+
+benchmark_data = {
+    "Model": [
+        "ibm-granite/granite-3.3-8b-instruct",
+        "ibm-granite/granite-3.2-8b-instruct",
+              ],
+    "Accelerator": [
+        "NVIDIA-A100-40GB",
+        "NVIDIA-A100-40GB",
+                    ],
+    "Memory": [
+        40,
+        40,
+    ],
+    "TP": [
+        1,
+        2,
+    ],
+    "Replicas": [
+        1,
+        2,
+        ],
+    "Prefill": [
+        1,
+        2,
+    ],
+    "Prefill TP": [
+        1,
+        2,
+    ],
+    "Decode": [
+        1,
+        2,
+    ],
+    "Decode Replicas": [
+        1,
+        1,
+    ],
+    "Number of Accelerators": [
+        4,
+        10,
+    ],
+    "Is PD": [
+        True,
+        True
+    ],
+    "TTFT": [
+        10,
+        20,
+    ],
+    "TPOT": [
+        20,
+        10,
+    ],
+    "Request latency": [
+        2,
+        3,
+    ],
+    "Request/s": [
+        2,
+        3,
+    ],
+    "Input tokens/s": [
+        10,
+        20,
+    ],
+    "Output tokens/s": [
+        20,
+        10,
+    ],
+    "Total tokens/s": [
+        100,
+        200
+    ],
+    "Cost": [
+        0.23,
+        0.19,
+    ]
+
+}

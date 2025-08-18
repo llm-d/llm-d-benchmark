@@ -15,5 +15,5 @@ pip install -r config-rec/requirements.txt
 ## Run
 
 ```
-streamlit run config-rec/main.py
+streamlit run config-rec/Home.py
 ```
