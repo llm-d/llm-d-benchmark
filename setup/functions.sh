@@ -25,7 +25,7 @@ function model_attribute {
   local model=$1
   local attribute=$2
 
-  local modelid=$(echo $model | cut -d: -f2)
+  local modelid=$(echo $model | cut -d: -f2 | $LLMDBENCH_CONTROL_SCMD -e "s^/^-^g" -e "s^\.^-^g")
   local modelid_label="$(echo -n $modelid | cut -d '/' -f 1 | cut -c1-8)-$(echo -n $modelid | sha256sum | awk '{print $1}' | cut -c1-8)-$(echo -n $modelid | cut -d '/' -f 2 | rev | cut -c1-8 | rev)"
 
   local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
@@ -333,6 +333,7 @@ function render_template {
     echo "s^REPLACE_SPACESC^$spacec^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     echo "s^ --^\\n$spacec--^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     echo "s^\\n^ \\\\\n^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    # echo "s/^[[:space]]*$//" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
 
   if [[ $env_var_mode -eq 1 ]]; then
