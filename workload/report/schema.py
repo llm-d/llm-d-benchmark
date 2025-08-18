@@ -120,12 +120,15 @@ class WorkloadGenerator(StrEnum):
             Inference Perf
         VLLM_BENCHMARK: str
             benchmark_serving from vLLM
+        NOP: str
+            vLLM Load times
     """
 
     FMPERF = auto()
     GUIDELLM = auto()
     INFERENCE_PERF = 'inference-perf'
     VLLM_BENCHMARK = 'vllm-benchmark'
+    NOP = 'nop'
 
 
 class Load(BaseModel):
@@ -196,6 +199,8 @@ class Units(StrEnum):
             Gigabytes per second
         TB_PER_S: str
             Terabytes per second
+        GIB_PER_S: str
+            GiB per second
         MS_PER_TOKEN: str
             Milliseconds per token
         WATTS: str
@@ -221,6 +226,8 @@ class Units(StrEnum):
     MBIT_PER_S = 'Mbit/s'
     GBIT_PER_S = 'Gbit/s'
     TBIT_PER_S = 'Tbit/s'
+    GIB_PER_S = "GiB/s"
+
     MB_PER_S = 'MB/s'
     GB_PER_S = 'GB/s'
     TB_PER_S = 'TB/s'
