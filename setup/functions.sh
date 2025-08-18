@@ -746,9 +746,7 @@ export -f get_harness_list
 
 function add_env_vars_to_pod {
     local varpattern=$1
-    if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-      varlist=$(env | grep -E "$varpattern" | cut -d "=" -f 1)
-    fi
+    varlist=$(env | grep -E "$varpattern" | cut -d "=" -f 1)
     echo "#    "
     for envvar in $varlist; do
       echo "    - name: ${envvar}"
