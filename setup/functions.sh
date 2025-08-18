@@ -744,6 +744,17 @@ function get_harness_list {
 }
 export -f get_harness_list
 
+function add_env_vars_to_pod {
+    local varpattern=$1
+    varlist=$(env | grep -E "$varpattern" | cut -d "=" -f 1)
+    echo "#    "
+    for envvar in $varlist; do
+      echo "    - name: ${envvar}"
+      echo "      value: \"${!envvar}\"" | $LLMDBENCH_CONTROL_SCMD -e 's^____\"\$^____REPLACE_ENV_^g' -e 's^: ""$^: " "^g' -e 's^""^"^g'
+    done
+}
+export -f add_env_vars_to_pod
+
 function create_harness_pod {
   is_pvc=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pvc --ignore-not-found | grep ${LLMDBENCH_HARNESS_PVC_NAME} || true)
   if [[ -z ${is_pvc} ]]; then
@@ -810,6 +821,7 @@ spec:
       value: "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
       value: "${LLMDBENCH_HARNESS_SANITIZED_STACK_NAME}"
+    $(add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD)
     - name: HF_TOKEN_SECRET
       value: "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}"
     - name: HUGGING_FACE_HUB_TOKEN
