@@ -8,7 +8,7 @@ A benchmark report describes the inference service configuration, workload, and 
 
 A [JSON Schema](https://json-schema.org/draft/2020-12) for the benchmark report is in [`report_json_schema.json`](report_json_schema.json). The report has three top-level fields, `version`, `scenario`, and `metrics`.
 
-While each of these fields is required, some subfields may be optional or not apply to the specific benchmark being performed. For example, some metrics may not be captured or supported by a certain benchmarking toolset.
+While each of these fields is required, some subfields may be optional or not apply to the specific benchmark being performed. For example, some metrics may not be captured or supported by a certain benchmarking toolset. In cases where one desires to capture information that is not part of the standard benchmark report schema, a `metadata` field may be placed almost anywhere under `scenario` or `metrics` to add arbitrary data.
 
 ### `version` Field
 
@@ -369,4 +369,4 @@ A JSON or YAML printout of `BenchmarkReport` may be generated the `print_json()`
 
 ### Transforming harness native formats to a benchmark report
 
-The native formats returned by different harnesses may be converted to a benchmark report using [convert.py](convert.py). This file when executed directly as a script will import the native results data of a harness and print to `stdout` a benchmark report. This file can also be used as a library, to import results files as a `BenchmarkReport`. This is done, for example, in the analysis Jupyter notebook [`analysis.ipynb`](../../analysis/analysis.ipynb).
+The native formats returned by different harnesses may be converted to a benchmark report using [convert.py](convert.py). This file when executed directly as a script will import the native results data of a harness and print to `stdout` a benchmark report, or save a report to file if a second argument is provided. [convert.py](convert.py) can also be used as a library, to import results files as a `BenchmarkReport` object. This is done, for example, in the analysis Jupyter notebook [`analysis.ipynb`](../../analysis/analysis.ipynb).

@@ -44,7 +44,7 @@ A user can elect to  **`standup`** an `llm-d` stack once, and then **`run`** the
 
 ### Architecture
 
-`llm-d-benchmark` stands up a stack (currently, both `llm-d` and "standalone" are supported) with a specific set of [Standup Parameters](docs/standup.md), and the run a specific harness with a specific set of [Run Parameters](docs/run.md)
+`llm-d-benchmark` stands up a stack (currently, both `llm-d` and "standalone" are supported) with a specific set of [Standup Parameters](docs/standup.md), and the run a specific harness with a specific set of [Run Parameters](docs/run.md). Results are saved in the native format of the [harness](#harnesses) chosen, as well as a universal [Benchmark Report](docs/benchmark_report.md).
 
 <p align="center">
   <picture>
