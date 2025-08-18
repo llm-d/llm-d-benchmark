@@ -751,6 +751,9 @@ function create_harness_pod {
       exit 1
   fi
 
+  # Sanitize the stack name to make it a valid k8s/OpenShift resource name
+  local SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | sed 's|[/:]|-|g')
+
   cat <<EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
 apiVersion: v1
 kind: Pod
@@ -805,7 +808,7 @@ spec:
     - name: LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
       value: "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
-      value: "$LLMDBENCH_HARNESS_STACK_NAME"
+      value: "${SANITIZED_STACK_NAME}"
     - name: HF_TOKEN_SECRET
       value: "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}"
     - name: HUGGING_FACE_HUB_TOKEN
@@ -840,6 +843,7 @@ EOF
   restartPolicy: Never
 EOF
 }
+
 export -f create_harness_pod
 
 function get_model_name_from_pod {
@@ -992,9 +996,14 @@ export -f generate_profile_parameter_treatments
 function cleanup_pre_execution {
   announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\"..."
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_HARNESS_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
+  # Sanitize the stack name to make it a valid K8s/OpenShift resource name
+  local SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | sed 's|[/:]|-|g')
+
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${SANITIZED_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   announce "ℹ️ Done deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" (it will be now recreated)"
 }
+
 export -f cleanup_pre_execution
 
 function validate_model_name {
