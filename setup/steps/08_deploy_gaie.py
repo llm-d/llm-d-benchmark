@@ -31,6 +31,8 @@ def main():
         model_list = ev.get("deploy_model_list", "").replace(",", " ").split()
         
         for model in model_list:
+            announce(f"🔄 Processing model {model_number + 1}/{len(model_list)}: {model}")
+            
             # Get model attribute
             model_id_label = model_attribute(model, "modelid_label")
             os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL"] = model_id_label

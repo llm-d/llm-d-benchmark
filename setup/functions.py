@@ -540,13 +540,46 @@ def get_image(image_registry: str, image_repo: str, image_name: str, image_tag: 
     Returns:
         Full image reference or just tag
     """
-    # For simplicity, we'll not implement the "auto" tag resolution here
-    # since it requires external tools (skopeo/podman)
+    is_latest_tag = image_tag
+    
     if image_tag == "auto":
-        announce("⚠️ Auto tag resolution not implemented in Python version, using 'latest'")
-        image_tag = "latest"
+        ccmd = os.getenv("LLMDBENCH_CONTROL_CCMD", "skopeo")
+        image_full_name = f"{image_registry}/{image_repo}/{image_name}"
+        
+        if ccmd == "podman":
+            # Use podman search to get latest tag
+            cmd = f"{ccmd} search --list-tags {image_full_name}"
+            try:
+                result = subprocess.run(cmd.split(), capture_output=True, text=True, check=False)
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split('\n')
+                    if len(lines) > 0:
+                        # Get the last line and extract the tag (second column)
+                        last_line = lines[-1]
+                        parts = last_line.split()
+                        if len(parts) >= 2:
+                            is_latest_tag = parts[1]
+                # The || true part in bash means we don't fail if command fails
+            except:
+                pass
+        else:
+            # Use skopeo to get latest tag
+            cmd = f"skopeo list-tags docker://{image_full_name}"
+            try:
+                result = subprocess.run(cmd.split(), capture_output=True, text=True, check=True)
+                import json
+                tags_data = json.loads(result.stdout)
+                if tags_data.get("Tags"):
+                    # Use jq -r .Tags[] | tail -1 equivalent
+                    is_latest_tag = tags_data["Tags"][-1]
+            except:
+                is_latest_tag = ""
+        
+        if not is_latest_tag:
+            announce(f"❌ Unable to find latest tag for image \"{image_full_name}\"")
+            sys.exit(1)
     
     if tag_only == "1":
-        return image_tag
+        return is_latest_tag
     else:
-        return f"{image_registry}/{image_repo}/{image_name}:{image_tag}"
+        return f"{image_registry}/{image_repo}/{image_name}:{is_latest_tag}"
