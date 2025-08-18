@@ -84,7 +84,7 @@ function get_image {
       is_latest_tag=$(skopeo list-tags docker://${image_registry}/${image_repo}/${image_name} | jq -r .Tags[] | tail -1)
     fi
     if [[ -z ${is_latest_tag} ]]; then
-      announce "❌ Unable to find latest tag for image \"${image_registry}/${image_repo}/${image_name}\""
+      announce "❌ Unable to find latest tag for image \"${image_registry}/${image_repo}/${image_name}\"" >&2
       exit 1
     fi
   fi
@@ -854,13 +854,15 @@ function get_model_name_from_pod {
 
     has_protocol=$(echo $url | grep "http://" || true)
     if [[ -z $has_protocol ]]; then
-      local url="http://$url"
+        local url="http://$url"
     fi
 
-    has_port=$(echo $url | grep  ":$port" || true)
-    if [[ -z $has_port ]]; then
-      local url="$url:$port"
+    # Check if the URL already contains a port number.
+    # If not, append the default port provided.
+    if ! echo "$url" | grep -q ':[0-9]'; then
+        url="$url:$port"
     fi
+    # --- END: Corrected Port Logic ---
 
     local url=$url/v1/models
 
@@ -868,14 +870,15 @@ function get_model_name_from_pod {
     is_jq=$(echo $response | jq -r . || true)
 
     if [[ -z $is_jq ]]; then
-      return 1
+        return 1
     fi
     has_model=$(echo "$is_jq" | jq -r ".data[].id" || true)
     if [[ -z $has_model ]]; then
-      return 1
+        return 1
     fi
     echo $has_model
 }
+
 export -f get_model_name_from_pod
 
 function render_workload_templates {
