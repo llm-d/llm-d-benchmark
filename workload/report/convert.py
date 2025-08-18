@@ -10,6 +10,7 @@ import datetime
 import os
 import re
 import sys
+from typing import Any
 import yaml
 
 import numpy as np
@@ -32,7 +33,7 @@ def check_file(file_path: str) -> None:
         exit(2)
 
 
-def import_yaml(file_path: str) -> dict[any, any]:
+def import_yaml(file_path: str) -> dict[Any, Any]:
     """Import a JSON/YAML file as a dict.
 
     Args:
@@ -47,7 +48,7 @@ def import_yaml(file_path: str) -> dict[any, any]:
     return data
 
 
-def import_csv_with_header(file_path: str) -> dict[str, list[any]]:
+def import_csv_with_header(file_path: str) -> dict[str, list[Any]]:
     """Import a CSV file where the first line is a header.
 
     Args:
@@ -61,7 +62,7 @@ def import_csv_with_header(file_path: str) -> dict[str, list[any]]:
         for ii, line in enumerate(file):
             if ii == 0:
                 headers: list[str] = list(map(str.strip, line.split(',')))
-                data: dict[str, list[any]] = {}
+                data: dict[str, list[Any]] = {}
                 for hdr in headers:
                     data[hdr] = []
                 continue
@@ -111,7 +112,7 @@ def import_variables(file_path: str) -> dict[str, str]:
     return envars
 
 
-def update_dict(dest: dict[any, any], source: dict[any, any]) -> None:
+def update_dict(dest: dict[Any, Any], source: dict[Any, Any]) -> None:
     """Deep update a dict using values from another dict. If a value is a dict,
     then update that dict, otherwise overwrite with the new value.
 
