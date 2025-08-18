@@ -2,6 +2,8 @@
 Mocks DB storing info about GPU specs, model specs, etc.
 """
 from dataclasses import dataclass
+import pickle
+import pandas as pd
 
 @dataclass
 class GPUSpec:
@@ -44,82 +46,39 @@ gpu_specs = {
      }
 }
 
-benchmark_data = {
-    "Model": [
-        "ibm-granite/granite-3.3-8b-instruct",
-        "ibm-granite/granite-3.2-8b-instruct",
-              ],
-    "Accelerator": [
-        "NVIDIA-A100-40GB",
-        "NVIDIA-A100-40GB",
-                    ],
-    "Memory": [
-        40,
-        40,
-    ],
-    "TP": [
-        1,
-        2,
-    ],
-    "Replicas": [
-        1,
-        2,
-        ],
-    "Prefill": [
-        1,
-        2,
-    ],
-    "Prefill TP": [
-        1,
-        2,
-    ],
-    "Decode": [
-        1,
-        2,
-    ],
-    "Decode Replicas": [
-        1,
-        1,
-    ],
-    "Number of Accelerators": [
-        4,
-        10,
-    ],
-    "Is PD": [
-        True,
-        True
-    ],
-    "TTFT": [
-        10,
-        20,
-    ],
-    "TPOT": [
-        20,
-        10,
-    ],
-    "Request latency": [
-        2,
-        3,
-    ],
-    "Request/s": [
-        2,
-        3,
-    ],
-    "Input tokens/s": [
-        10,
-        20,
-    ],
-    "Output tokens/s": [
-        20,
-        10,
-    ],
-    "Total tokens/s": [
-        100,
-        200
-    ],
-    "Cost": [
-        0.23,
-        0.19,
-    ]
+columns = ['Name', 'Model', 'GPU', 'DP', 'TP', 'PP', 'EP', 'Replicas',
+       'P_DP', 'P_TP', 'P_PP', 'P_EP', 'P_Replicas', 'D_DP', 'D_TP', 'D_PP',
+       'D_EP', 'D_Replicas', 'Concurrency', 'ISL', 'OSL', 'Backend',
+       'Duration', 'Completed', 'Request_Throughput',
+       'Output_Token_Throughput', 'Total_Token_Throughput', 'Mean_TTFT_ms',
+       'Mean_TPOT_ms', 'Mean_ITL_ms', 'Mean_E2EL_ms', 'Is_PD', 'Num_GPUs',
+       'Thpt_per_GPU', 'Thpt_per_User']
 
-}
+input_cols = ['Model', 'GPU', 'DP', 'TP', 'PP', 'EP', 'Replicas',
+       'P_DP', 'P_TP', 'P_PP', 'P_EP', 'P_Replicas', 'D_DP', 'D_TP', 'D_PP',
+       'D_EP', 'D_Replicas', 'Concurrency', 'ISL', 'OSL', 'Backend', 'Is_PD',
+       'Num_GPUs']
+
+output_cols = ['Request_Throughput',
+       'Output_Token_Throughput', 'Total_Token_Throughput', 'Mean_TTFT_ms',
+       'Mean_TPOT_ms', 'Mean_ITL_ms', 'Mean_E2EL_ms',
+       'Thpt_per_GPU', 'Thpt_per_User']
+
+def get_color_by_col(input: str):
+    """
+    Removes the selected input from input_cols
+    """
+    color_by = input_cols.copy()
+    color_by.remove(input)
+    return color_by
+
+def read_benchmark_data():
+    with open("./config-rec/df.pkl", 'rb') as file:
+        data = pickle.load(file)
+        df = pd.DataFrame(data)
+        print(df.columns)
+
+        # Clean data
+        df.drop('Directory', axis=1, inplace=True)
+
+        return df
