@@ -750,7 +750,7 @@ function add_env_vars_to_pod {
     echo "#    "
     for envvar in $varlist; do
       echo "    - name: ${envvar}"
-      echo "      value: \"${!envvar}\""
+      echo "      value: \"${!envvar}\"" | $LLMDBENCH_CONTROL_SCMD -e 's^____\"\$^____REPLACE_ENV_^g' -e 's^: ""$^: " "^g' -e 's^""^"^g'
     done
 }
 export -f add_env_vars_to_pod
