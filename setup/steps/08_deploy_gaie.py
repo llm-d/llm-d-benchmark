@@ -122,7 +122,7 @@ inferencePool:
                     actual_cmd=kubectl_cmd,
                     dry_run=int(ev.get("control_dry_run", 0)),
                     verbose=int(ev.get("control_verbose", 0)),
-                    exit_on_failure=False
+                    fatal=False
                 )
             
             # Clean up environment variable
