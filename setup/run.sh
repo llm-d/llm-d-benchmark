@@ -178,6 +178,9 @@ export LLMDBENCH_BASE64_CONTEXT_CONTENTS=$(cat $LLMDBENCH_CONTROL_WORK_DIR/envir
 
 set +euo pipefail
 export LLMDBENCH_CURRENT_STEP=05
+if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
+  export LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL="NA"
+fi
 source ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.sh > /dev/null 2>&1
 if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
@@ -210,23 +213,26 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       export LLMDBENCH_VLLM_FQDN=".${LLMDBENCH_VLLM_COMMON_NAMESPACE}${LLMDBENCH_VLLM_COMMON_FQDN}"
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
+        export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="^LLMDBENCH_VLLM_COMMON|^LLMDBENCH_VLLM_STANDALONE"
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | grep standalone | awk '{print $1}' || true)
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
       fi
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
+        export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="^LLMDBENCH_VLLM_COMMON|^LLMDBENCH_VLLM_MODELSERVICE|^LLMDBENCH_VLLM_INFRA|^LLMDBENCH_VLLM_GAIE"
         export LLMDBENCH_HARNESS_STACK_TYPE=llm-d
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway | awk '{print $1}')
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
       fi
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
+        export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="^LLMDBENCH_VLLM_COMMON_NAMESPACE"
         announce "🔍 Deployment method - $LLMDBENCH_DEPLOY_METHODS - is neither \"standalone\" nor \"modelservice\". Trying to find a matching endpoint name..."
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | awk '{print $1}' | grep ${LLMDBENCH_DEPLOY_METHODS} || true)
         if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
-          export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r '.spec.ports[0].port')
+          export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r '.spec.ports[] | select(.port == 80) | .port')
         else
           export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod --no-headers | awk '{print $1}' | grep ${LLMDBENCH_DEPLOY_METHODS} | head -n 1 || true)
           export LLMDBENCH_VLLM_FQDN=
@@ -325,7 +331,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         fi
 
         if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
-          announce "ℹ️ Skipping \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\ creation"
+          announce "ℹ️ Skipping \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" creation"
         else
           create_harness_pod
 

@@ -84,7 +84,7 @@ function get_image {
       is_latest_tag=$(skopeo list-tags docker://${image_registry}/${image_repo}/${image_name} | jq -r .Tags[] | tail -1)
     fi
     if [[ -z ${is_latest_tag} ]]; then
-      announce "❌ Unable to find latest tag for image \"${image_registry}/${image_repo}/${image_name}\""
+      announce "❌ Unable to find latest tag for image \"${image_registry}/${image_repo}/${image_name}\"" >&2
       exit 1
     fi
   fi
@@ -744,12 +744,27 @@ function get_harness_list {
 }
 export -f get_harness_list
 
+function add_env_vars_to_pod {
+    local varpattern=$1
+    varlist=$(env | grep -E "$varpattern" | cut -d "=" -f 1)
+    echo "#    "
+    for envvar in $varlist; do
+      echo "    - name: ${envvar}"
+      echo "      value: \"${!envvar}\"" | $LLMDBENCH_CONTROL_SCMD -e 's^____\"\$^____REPLACE_ENV_^g' -e 's^: ""$^: " "^g' -e 's^""^"^g'
+    done
+}
+export -f add_env_vars_to_pod
+
 function create_harness_pod {
   is_pvc=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pvc --ignore-not-found | grep ${LLMDBENCH_HARNESS_PVC_NAME} || true)
   if [[ -z ${is_pvc} ]]; then
       announce "❌ PVC \"${LLMDBENCH_HARNESS_PVC_NAME}\" not created on namespace \"${LLMDBENCH_HARNESS_NAMESPACE}\" unable to continue"
       exit 1
   fi
+
+  # Sanitize the stack name to make it a valid k8s/OpenShift resource name
+  local LLMDBENCH_HARNESS_SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | $LLMDBENCH_CONTROL_SCMD 's|[/:]|-|g')
+
 
   cat <<EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
 apiVersion: v1
@@ -805,7 +820,8 @@ spec:
     - name: LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
       value: "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
-      value: "$LLMDBENCH_HARNESS_STACK_NAME"
+      value: "${LLMDBENCH_HARNESS_SANITIZED_STACK_NAME}"
+    $(add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD)
     - name: HF_TOKEN_SECRET
       value: "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}"
     - name: HUGGING_FACE_HUB_TOKEN
@@ -840,6 +856,7 @@ EOF
   restartPolicy: Never
 EOF
 }
+
 export -f create_harness_pod
 
 function get_model_name_from_pod {
@@ -850,13 +867,15 @@ function get_model_name_from_pod {
 
     has_protocol=$(echo $url | grep "http://" || true)
     if [[ -z $has_protocol ]]; then
-      local url="http://$url"
+        local url="http://$url"
     fi
 
-    has_port=$(echo $url | grep  ":$port" || true)
-    if [[ -z $has_port ]]; then
-      local url="$url:$port"
+    # Check if the URL already contains a port number.
+    # If not, append the default port provided.
+    if ! echo "$url" | grep -q ':[0-9]'; then
+        url="$url:$port"
     fi
+    # --- END: Corrected Port Logic ---
 
     local url=$url/v1/models
 
@@ -864,14 +883,15 @@ function get_model_name_from_pod {
     is_jq=$(echo $response | jq -r . || true)
 
     if [[ -z $is_jq ]]; then
-      return 1
+        return 1
     fi
     has_model=$(echo "$is_jq" | jq -r ".data[].id" || true)
     if [[ -z $has_model ]]; then
-      return 1
+        return 1
     fi
     echo $has_model
 }
+
 export -f get_model_name_from_pod
 
 function render_workload_templates {
@@ -992,9 +1012,13 @@ export -f generate_profile_parameter_treatments
 function cleanup_pre_execution {
   announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\"..."
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_HARNESS_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
+  # Sanitize the stack name to make it a valid K8s/OpenShift resource name
+  local LLMDBENCH_HARNESS_SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | $LLMDBENCH_CONTROL_SCMD 's|[/:]|-|g')
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_HARNESS_SANITIZED_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   announce "ℹ️ Done deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" (it will be now recreated)"
 }
+
 export -f cleanup_pre_execution
 
 function validate_model_name {

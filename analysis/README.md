@@ -28,7 +28,7 @@ Next you will need to create a virtual environment, where we will install the re
   ```
   C:\> <venv_path>\Scripts\activate.bat
   ```
-- Install packages from [../build/requirements-analysis.txt](../build/requirements-analysis.txt) \
+- Install packages from [../build/requirements-analysis.txt](../build/requirements-analysis.txt)
   ```bash
   pip install -r build/requirements-analysis.txt
   ```
