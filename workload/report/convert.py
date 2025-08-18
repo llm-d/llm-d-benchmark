@@ -67,8 +67,8 @@ def import_csv_with_header(file_path: str) -> dict[str, list[any]]:
                 continue
             row_vals = list(map(str.strip, line.split(',')))
             if len(row_vals) != len(headers):
-                sys.stderr.write('Warning: line %d of "%s" does not match header length, skipping: %ds != %d\n' %
-                ii + 1, file_path, len(row_vals), len(headers))
+                sys.stderr.write('Warning: line %d of "%s" does not match header length, skipping: %d != %d\n' %
+                (ii + 1, file_path, len(row_vals), len(headers)))
                 continue
             for jj, val in enumerate(row_vals):
                 # Try converting the value to an int or float
