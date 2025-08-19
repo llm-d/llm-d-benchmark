@@ -591,47 +591,57 @@ def check_storage_class():
     Equivalent to the bash check_storage_class function.
     """
     caller = os.environ.get("LLMDBENCH_CONTROL_CALLER", "")
-    if caller not in ["standup.sh", "e2e.sh"]:
+    if caller not in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
         return True
     
     storage_class = os.environ.get("LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS", "")
-    kcmd = os.environ.get("LLMDBENCH_CONTROL_KCMD", "kubectl")
     
-    # Handle default storage class
-    if storage_class == "default":
-        if caller in ["standup.sh", "e2e.sh"]:
-            try:
-                # Find default storage class
-                result = subprocess.run([
-                    kcmd, "get", "storageclass", 
-                    "-o=jsonpath={range .items[?(@.metadata.annotations.storageclass\\.kubernetes\\.io/is-default-class==\"true\")]}{@.metadata.name}{\"\\n\"}{end}"
-                ], capture_output=True, text=True, check=False)
-                
-                if result.returncode == 0 and result.stdout.strip():
-                    has_default_sc = result.stdout.strip()
-                    announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to \"{has_default_sc}\"")
-                    os.environ["LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS"] = has_default_sc
-                    storage_class = has_default_sc
-                else:
-                    announce("❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class")
-                    return False
-            except Exception as e:
-                announce(f"❌ Error checking default storage class: {e}")
-                return False
-    
-    # Verify storage class exists
     try:
-        result = subprocess.run([
-            kcmd, "get", "storageclasses"
-        ], capture_output=True, text=True, check=False)
+        # Use pykube to connect to Kubernetes
+        api = kube_connect()
         
-        if result.returncode == 0 and storage_class in result.stdout:
-            return True
-        else:
+        # Handle default storage class
+        if storage_class == "default":
+            if caller in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
+                try:
+                    # Find default storage class using pykube
+                    storage_classes = pykube.StorageClass.objects(api)
+                    default_sc = None
+                    
+                    for sc in storage_classes:
+                        annotations = sc.metadata.get("annotations", {})
+                        if annotations.get("storageclass.kubernetes.io/is-default-class") == "true":
+                            default_sc = sc.name
+                            break
+                    
+                    if default_sc:
+                        announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to \"{default_sc}\"")
+                        os.environ["LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS"] = default_sc
+                        storage_class = default_sc
+                    else:
+                        announce("❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class")
+                        return False
+                except Exception as e:
+                    announce(f"❌ Error checking default storage class: {e}")
+                    return False
+        
+        # Verify storage class exists using pykube
+        try:
+            sc = pykube.StorageClass.objects(api).get(name=storage_class)
+            if sc.exists():
+                return True
+            else:
+                announce(f"❌ ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS={storage_class} but could not find such storage class")
+                return False
+        except pykube.exceptions.ObjectDoesNotExist:
             announce(f"❌ ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS={storage_class} but could not find such storage class")
             return False
+        except Exception as e:
+            announce(f"❌ Error checking storage class: {e}")
+            return False
+            
     except Exception as e:
-        announce(f"❌ Error checking storage class: {e}")
+        announce(f"❌ Error connecting to Kubernetes: {e}")
         return False
 
 
@@ -641,25 +651,22 @@ def check_affinity():
     Equivalent to the bash check_affinity function.
     """
     caller = os.environ.get("LLMDBENCH_CONTROL_CALLER", "")
-    if caller not in ["standup.sh", "e2e.sh"]:
+    if caller not in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
         return True
     
     affinity = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY", "")
-    kcmd = os.environ.get("LLMDBENCH_CONTROL_KCMD", "kubectl")
     is_minikube = int(os.environ.get("LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE", 0))
     
-    # Handle auto affinity detection
-    if affinity == "auto":
-        if caller in ["standup.sh", "e2e.sh"] and is_minikube == 0:
-            try:
-                # Get node labels to find accelerators
-                result = subprocess.run([
-                    kcmd, "get", "nodes", "-o", "json"
-                ], capture_output=True, text=True, check=False)
-                
-                if result.returncode == 0:
-                    import json
-                    nodes_data = json.loads(result.stdout)
+    try:
+        # Use pykube to connect to Kubernetes
+        api = kube_connect()
+        
+        # Handle auto affinity detection
+        if affinity == "auto":
+            if caller in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"] and is_minikube == 0:
+                try:
+                    # Get node labels to find accelerators using pykube
+                    nodes = pykube.Node.objects(api)
                     
                     accelerator_patterns = [
                         "nvidia.com/gpu.product",
@@ -668,8 +675,8 @@ def check_affinity():
                     ]
                     
                     found_accelerator = None
-                    for node in nodes_data.get("items", []):
-                        labels = node.get("metadata", {}).get("labels", {})
+                    for node in nodes:
+                        labels = node.metadata.get("labels", {})
                         for pattern in accelerator_patterns:
                             for label_key, label_value in labels.items():
                                 if pattern in label_key:
@@ -687,14 +694,41 @@ def check_affinity():
                     else:
                         announce("❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_AFFINITY=auto, but unable to find an accelerator on any node")
                         return False
-                else:
-                    announce("❌ Error getting node information for affinity detection")
+                except Exception as e:
+                    announce(f"❌ Error checking affinity: {e}")
                     return False
-            except Exception as e:
-                announce(f"❌ Error checking affinity: {e}")
-                return False
-    
-    return True
+        else:
+            # Validate manually specified affinity using pykube
+            if affinity and ":" in affinity:
+                annotation_key, annotation_value = affinity.split(":", 1)
+                try:
+                    nodes = pykube.Node.objects(api)
+                    found_matching_node = False
+                    
+                    for node in nodes:
+                        labels = node.metadata.get("labels", {})
+                        if labels.get(annotation_key) == annotation_value:
+                            found_matching_node = True
+                            break
+                    
+                    if not found_matching_node:
+                        announce(f"❌ ERROR. There are no nodes on this cluster with the label \"{annotation_key}:{annotation_value}\" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)")
+                        return False
+                except Exception as e:
+                    announce(f"❌ Error validating affinity: {e}")
+                    return False
+        
+        # Handle auto accelerator resource detection
+        accelerator_resource = os.environ.get("LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE", "")
+        if accelerator_resource == "auto":
+            os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"] = "nvidia.com/gpu"
+            announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE automatically set to \"nvidia.com/gpu\"")
+        
+        return True
+        
+    except Exception as e:
+        announce(f"❌ Error connecting to Kubernetes: {e}")
+        return False
 
 
 def add_annotations():
