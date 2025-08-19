@@ -583,3 +583,205 @@ def get_image(image_registry: str, image_repo: str, image_name: str, image_tag: 
         return is_latest_tag
     else:
         return f"{image_registry}/{image_repo}/{image_name}:{is_latest_tag}"
+
+
+def check_storage_class():
+    """
+    Check and validate storage class configuration.
+    Equivalent to the bash check_storage_class function.
+    """
+    caller = os.environ.get("LLMDBENCH_CONTROL_CALLER", "")
+    if caller not in ["standup.sh", "e2e.sh"]:
+        return True
+    
+    storage_class = os.environ.get("LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS", "")
+    kcmd = os.environ.get("LLMDBENCH_CONTROL_KCMD", "kubectl")
+    
+    # Handle default storage class
+    if storage_class == "default":
+        if caller in ["standup.sh", "e2e.sh"]:
+            try:
+                # Find default storage class
+                result = subprocess.run([
+                    kcmd, "get", "storageclass", 
+                    "-o=jsonpath={range .items[?(@.metadata.annotations.storageclass\\.kubernetes\\.io/is-default-class==\"true\")]}{@.metadata.name}{\"\\n\"}{end}"
+                ], capture_output=True, text=True, check=False)
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    has_default_sc = result.stdout.strip()
+                    announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to \"{has_default_sc}\"")
+                    os.environ["LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS"] = has_default_sc
+                    storage_class = has_default_sc
+                else:
+                    announce("❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class")
+                    return False
+            except Exception as e:
+                announce(f"❌ Error checking default storage class: {e}")
+                return False
+    
+    # Verify storage class exists
+    try:
+        result = subprocess.run([
+            kcmd, "get", "storageclasses"
+        ], capture_output=True, text=True, check=False)
+        
+        if result.returncode == 0 and storage_class in result.stdout:
+            return True
+        else:
+            announce(f"❌ ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS={storage_class} but could not find such storage class")
+            return False
+    except Exception as e:
+        announce(f"❌ Error checking storage class: {e}")
+        return False
+
+
+def check_affinity():
+    """
+    Check and validate affinity configuration.
+    Equivalent to the bash check_affinity function.
+    """
+    caller = os.environ.get("LLMDBENCH_CONTROL_CALLER", "")
+    if caller not in ["standup.sh", "e2e.sh"]:
+        return True
+    
+    affinity = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY", "")
+    kcmd = os.environ.get("LLMDBENCH_CONTROL_KCMD", "kubectl")
+    is_minikube = int(os.environ.get("LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE", 0))
+    
+    # Handle auto affinity detection
+    if affinity == "auto":
+        if caller in ["standup.sh", "e2e.sh"] and is_minikube == 0:
+            try:
+                # Get node labels to find accelerators
+                result = subprocess.run([
+                    kcmd, "get", "nodes", "-o", "json"
+                ], capture_output=True, text=True, check=False)
+                
+                if result.returncode == 0:
+                    import json
+                    nodes_data = json.loads(result.stdout)
+                    
+                    accelerator_patterns = [
+                        "nvidia.com/gpu.product",
+                        "gpu.nvidia.com/class", 
+                        "cloud.google.com/gke-accelerator"
+                    ]
+                    
+                    found_accelerator = None
+                    for node in nodes_data.get("items", []):
+                        labels = node.get("metadata", {}).get("labels", {})
+                        for pattern in accelerator_patterns:
+                            for label_key, label_value in labels.items():
+                                if pattern in label_key:
+                                    found_accelerator = f"{label_key}:{label_value}"
+                                    break
+                            if found_accelerator:
+                                break
+                        if found_accelerator:
+                            break
+                    
+                    if found_accelerator:
+                        os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"] = "nvidia.com/gpu"
+                        os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"] = found_accelerator
+                        announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"{found_accelerator}\"")
+                    else:
+                        announce("❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_AFFINITY=auto, but unable to find an accelerator on any node")
+                        return False
+                else:
+                    announce("❌ Error getting node information for affinity detection")
+                    return False
+            except Exception as e:
+                announce(f"❌ Error checking affinity: {e}")
+                return False
+    
+    return True
+
+
+def add_annotations():
+    """
+    Generate pod annotations YAML.
+    Equivalent to the bash add_annotations function.
+    """
+    annotations = os.environ.get("LLMDBENCH_VLLM_COMMON_ANNOTATIONS", "")
+    if not annotations:
+        return ""
+    
+    # Determine indentation based on environment type
+    standalone_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE", 0))
+    modelservice_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE", 0))
+    
+    if standalone_active == 1:
+        indent = "        "  # 8 spaces
+    elif modelservice_active == 1:
+        indent = "      "    # 6 spaces
+    else:
+        indent = "        "  # default 8 spaces
+    
+    # Parse annotations (comma-separated key:value pairs)
+    annotation_lines = []
+    for entry in annotations.split(","):
+        if ":" in entry:
+            key, value = entry.split(":", 1)
+            annotation_lines.append(f"{indent}{key.strip()}: {value.strip()}")
+    
+    return "\n".join(annotation_lines)
+
+
+def add_command_line_options(args_string):
+    """
+    Generate command line options for container args.
+    Equivalent to the bash add_command_line_options function.
+    """
+    current_step = os.environ.get("LLMDBENCH_CURRENT_STEP", "")
+    
+    if current_step == "06":
+        # For step 06 (standalone), format as YAML list item
+        if args_string:
+            return f"        - |\n          {args_string}"
+        else:
+            return "        - |"
+    elif current_step == "09":
+        # For step 09 (modelservice), different formatting
+        if args_string:
+            return f"      {args_string}"
+        else:
+            return ""
+    else:
+        return args_string or ""
+
+
+def add_additional_env_to_yaml(env_vars_string):
+    """
+    Generate additional environment variables YAML.
+    Equivalent to the bash add_additional_env_to_yaml function.
+    """
+    if not env_vars_string:
+        return ""
+    
+    # Determine indentation based on environment type
+    standalone_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE", 0))
+    modelservice_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE", 0))
+    
+    if standalone_active == 1:
+        name_indent = "        "  # 8 spaces
+        value_indent = "          "  # 10 spaces
+    elif modelservice_active == 1:
+        name_indent = "      "    # 6 spaces  
+        value_indent = "        "  # 8 spaces
+    else:
+        name_indent = "        "  # default 8 spaces
+        value_indent = "          "  # default 10 spaces
+    
+    # Parse environment variables (comma-separated list)
+    env_lines = []
+    for envvar in env_vars_string.split(","):
+        envvar = envvar.strip()
+        if envvar:
+            # Remove LLMDBENCH_VLLM_STANDALONE_ prefix if present
+            clean_name = envvar.replace("LLMDBENCH_VLLM_STANDALONE_", "")
+            env_value = os.environ.get(envvar, "")
+            
+            env_lines.append(f"{name_indent}- name: {clean_name}")
+            env_lines.append(f"{value_indent}value: \"{env_value}\"")
+    
+    return "\n".join(env_lines)
