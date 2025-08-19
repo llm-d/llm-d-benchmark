@@ -78,8 +78,12 @@ if __name__ == "__main__":
         ]
 
         display_basic_data()
-        select_slo(benchmark_data)
-        pareto_plots(benchmark_data)
-        table(benchmark_data)
 
-        # table(df)
+        if benchmark_data.empty:
+            st.warning("The configuration selected returned no result.")
+        else:
+            select_slo(benchmark_data)
+            pareto_plots(benchmark_data)
+            table(benchmark_data)
+
+            # table(df)

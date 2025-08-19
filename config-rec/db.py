@@ -15,8 +15,8 @@ gpu_specs = {
     # https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-us-nvidia-1758950-r4-web.pdf
     # https://medium.com/@bijit211987/top-nvidia-gpus-for-llm-inference-8a5316184a10
     # https://www.databasemart.com/blog/best-nvidia-gpus-for-llm-inference-2025?srsltid=AfmBOopcvcdN6yzBF24k7_DyRS_csYOmNyDLJK7zq9Rg89weW6AQAx5F
-    "NVIDIA-A100-80GB-HBM3": {
-        "name": "NVIDIA-A100-80GB-HBM3",
+    "NVIDIA-H100-80GB-HBM3": {
+        "name": "NVIDIA-H100-80GB-HBM3",
         "memory": 80
     },
     "NVIDIA-A100-40GB": {
