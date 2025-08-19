@@ -3,6 +3,178 @@ Main Page
 """
 
 import streamlit as st
+import db
+import util
+import pandas as pd
+import plotly.express as px
+
+def init_session_state():
+    """
+    Inits session state for data persistence
+    """
+
+    if 'scenario' not in st.session_state:
+        st.session_state['scenario'] = util.Scenario()
+    if 'gpu_spec' not in st.session_state:
+        st.session_state["gpu_spec"] = db.gpu_specs
+
+@st.dialog("Register a new accelerator")
+def register_new_accelerator():
+    """
+    Dialog to register a new accelerator type
+    """
+    acc_name = st.text_input("Name", placeholder="NVIDIA-A100-40GB")
+    acc_mem = st.number_input("Memory (GB)", min_value=1, step=1)
+
+    if st.button("Register", use_container_width=True):
+        if acc_name:
+            st.session_state["gpu_spec"][acc_name] = {
+                "name": acc_name,
+                "memory": acc_mem
+            }
+            st.rerun()
+
+def capacity_planner():
+    """
+    Get model inputs like model name, precision
+    """
+
+    st.subheader("Capacity Planner")
+    st.caption("Determine if your model will fit on _n_ XXX GPU.")
+
+    user_scenario = st.session_state['scenario']
+
+    # Model
+    with st.container(border=True):
+        st.write("**Model Specification**")
+        selected_model = st.text_input("Model (Hugging Face format)",
+                                       value=user_scenario.model_name,
+                                       placeholder="ibm-granite/granite-3.3-8b-instruct",
+                                       )
+
+        if selected_model and selected_model != "":
+
+            info = util.get_model_info_from_hf(selected_model)
+            if info is None:
+                st.warning("Model not found on Hugging Face. Please verify model name is in repo/modelID format.")
+                return None
+
+            user_scenario.model_name = selected_model
+            user_scenario.parameters = info.safetensors.total
+
+            # Precisions supported
+            selected_precision_index = util.PRECISIONS.index(user_scenario.precision) if user_scenario.precision else 0
+            user_scenario.precision = st.selectbox("Select a precision",
+                                                index=selected_precision_index,
+                                                options=util.PRECISIONS,
+                                                )
+
+            st.caption(f"Total parameters: {user_scenario.parameters}")
+            st.caption(f"GPU memory requirement: ~{user_scenario.get_gpu_mem_in_gb()} GB")
+
+        else:
+            return None
+
+    # Hardware
+    with st.container(border=True):
+        st.write("**Hardware Specification**")
+
+        col1, col2 = st.columns([0.7, 0.3])
+
+        gpu_spec_options = list(st.session_state['gpu_spec'].keys())
+        gpu_spec_accelerator_index = gpu_spec_options.index(user_scenario.gpu_spec['name']) if user_scenario.gpu_spec else 0
+        selected_gpu = col1.selectbox("Accelerator",
+                                      index=gpu_spec_accelerator_index,
+                                      options=gpu_spec_options,
+                                      )
+        if selected_gpu:
+            user_scenario.gpu_spec = st.session_state['gpu_spec'][selected_gpu]
+            st.caption(f"GPU memory: {user_scenario.gpu_spec['memory']} GB")
+
+            # Calculate the minimum number of GPUs required
+            min_gpu_req = user_scenario.get_min_gpu_count()
+
+        default_value = min_gpu_req if user_scenario.gpu_count_avail is None else user_scenario.gpu_count_avail
+        user_scenario.gpu_count_avail = st.number_input("Number accelerators available",
+                                        value=default_value,
+                                        step=1,
+                                        min_value=min_gpu_req)
+
+        # Dialog for registering new accelerator data
+        col2.info("Don't see your accelerator? Register a new one below")
+        if col2.button("Register new accelerator", use_container_width=True):
+            register_new_accelerator()
+
+        st.success(f"Loading this model on the selected GPU in {user_scenario.precision} mode requires a minimum of {min_gpu_req}, which does not yet account for KV cache.")
+
+def kv_cache_estimator():
+    """
+    Estimate total memory needed for KV cache
+    """
+
+    user_scenario = st.session_state['scenario']
+
+    st.subheader("KV Cache Estimator")
+    st.caption("Estimate KV cache memory requirements for the selected model based on workload.")
+
+    # Workload
+    with st.container(border=True):
+        st.write("**Workload Characteristics**")
+
+        workload_list = list(db.workload.keys())
+        scenario_workload_index = 0 if user_scenario.workload is None else workload_list.index(user_scenario.workload['name'])
+
+        selected_workload = st.selectbox("Workload",
+                                        index=scenario_workload_index,
+                                         options=workload_list,
+        )
+        if selected_workload:
+            user_scenario.workload = db.workload[selected_workload]
+
+            isl_str = user_scenario.workload['itl']
+            osl_str = user_scenario.workload['otl']
+            isl = util.length_description_to_token(isl_str)
+            osl = util.length_description_to_token(osl_str)
+
+            st.caption(f"""This workload uses the XXX dataset. This workload is primarily for YYY purposes.
+* Input Sequence Length (ISL): {isl_str} / ~{isl}
+* Output Sequence Length (OSL): {osl_str} / ~{osl}
+            """)
+
+            col1, col2 = st.columns(2)
+            user_scenario.isl = col1.number_input("Input sequence length (prompt + context)",
+                                                value=isl if user_scenario.isl is None else user_scenario.isl,
+                                                min_value=1,
+                                                step=1,
+                                                )
+
+            user_scenario.osl = col2.number_input("Output sequence length",
+                                                value=osl if user_scenario.osl is None else user_scenario.osl,
+                                                min_value=1,
+                                                step=1,
+                                                )
+
+
+            st.info(f"Estimated KV cache size requirement: ~{user_scenario.get_kv_cache_req()} GB")
+
+
+        data = pd.DataFrame(
+            {"Model Size": [0], "KV Cache": [0]}
+        )
+
+        # Display GPU + KV chart
+        if user_scenario.model_name:
+            data['Model Size'] = [user_scenario.get_gpu_mem_in_gb()]
+        if user_scenario.workload:
+            data['KV Cache']= [user_scenario.get_kv_cache_req()]
+
+        # Transpose to make it horizontal
+        df = data.T
+        df.columns = ["Memory (GB)"]
+
+        st.write("Model Memory vs KV Cache Size")
+        st.bar_chart(df)
+
 
 if __name__ == '__main__':
 
@@ -16,13 +188,10 @@ if __name__ == '__main__':
     st.title("Configuration Recommendation")
     st.caption("Finding the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements.")
 
+    init_session_state()
 
-    st.write("Some help on how to use this tool...")
-    st.write("""Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-""")
+    # Model spec input
+    capacity_planner()
 
-    # # Input
-    # col1, col2 = st.columns(2)
-    # user_model = inputs(col1)
-
-    # outputs(col2, user_model)
+    # KV cache estimation
+    kv_cache_estimator()
