@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
 
 """
-Startup logs benchmark
+Benchmark 'nop' harness
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, fields
+import ast
+from dataclasses import dataclass, field, fields
 from datetime import datetime
 from enum import StrEnum
 import io
 import json
 import os
 import re
+import subprocess
 import time
 import logging
 from typing import Any
 from urllib.parse import urljoin, urlparse
 from pathlib import Path
-import pandas
 import requests
+import yaml
 
 from kubernetes import client, config
 
@@ -98,10 +100,9 @@ DEFINED_CATEGORIES = [
 
 
 @dataclass
-class LogCategory:
-    """Log category"""
+class BenchmarkCategory:
+    """Benchmark category"""
 
-    key: int = 0
     title: str = ""
     start_time: datetime | None = None
     end_time: datetime | None = None
@@ -111,32 +112,38 @@ class LogCategory:
     start_line_number: int = 0
     end_line: str = ""
     end_line_number: int = 0
-    next: LogCategory | None = None
-    parent: LogCategory | None = None
-    root_child: LogCategory | None = None
+    next: BenchmarkCategory | None = None
+    parent: BenchmarkCategory | None = None
+    root_child: BenchmarkCategory | None = None
+
+    def dump(self) -> list[dict[str, Any]]:
+        """Convert LogCategory to list.
+
+        Returns:
+            list: Defined fields of LogCategory.
+        """
+        return BenchmarkCategory._dump(self)
 
     @staticmethod
-    def header() -> list[str]:
-        """csv header"""
-        return [
-            "key",
-            "title",
-            "parent",
-            "elapsed",
-        ]
+    def _dump(benchmark_category: BenchmarkCategory) -> list[dict[str, Any]]:
+        categories = []
+        category = benchmark_category
+        while category is not None:
+            dump_dict = {}
+            dump_dict["title"] = category.title
+            dump_dict["elapsed"] = (
+                (category.end_time - category.start_time).total_seconds()
+                if category.start_time is not None and category.end_time is not None
+                else 0.0
+            )
 
-    def row(self) -> list[str]:
-        """csv row"""
-        elapsed = ""
-        if self.start_time is not None and self.end_time is not None:
-            time_difference = self.end_time - self.start_time
-            elapsed = f"{time_difference.total_seconds():.3f}"
-        return [
-            f"{self.key}",
-            self.title,
-            f"{self.parent.key}" if self.parent is not None else "",
-            elapsed,
-        ]
+            if category.root_child is not None:
+                dump_dict["categories"] = BenchmarkCategory._dump(category.root_child)
+
+            categories.append(dump_dict)
+            category = category.next
+
+        return categories
 
 
 class LoadFormat(StrEnum):
@@ -157,39 +164,188 @@ class LoadFormat(StrEnum):
     RUNAI_STREAMER_SHARDED = "runai_streamer_sharded"
     FASTSAFETENSORS = "fastsafetensors"
 
+    def dump(self) -> str:
+        """Convert LoadFormat to str.
+
+        Returns:
+            str: LoadFormat value.
+        """
+        return self.value
+
 
 @dataclass
-class LogResult:
-    """Results of one benchmark run"""
+class ModelScenario:
+    """Model Scenario"""
 
-    time: str = ""
-    vllm_version: str = ""
-    sleep_mode: bool = False
-    model: str = ""
+    name: str = ""
+
+    def dump(self) -> dict[str, Any]:
+        """Convert ModelScenario to dict.
+
+        Returns:
+            dict: Defined fields of ModelScenario.
+        """
+        dump_dict = {}
+        for f in fields(self):
+            dump_dict[f.name] = getattr(self, f.name)
+
+        return dump_dict
+
+
+@dataclass
+class PlatformEngineScenario:
+    """Platform Engine Scenario"""
+
+    name: str = ""
+    version: str = ""
+    args: dict[str, Any] = field(default_factory=dict)
+
+    def dump(self) -> dict[str, Any]:
+        """Convert PlatformEngineScenario to dict.
+
+        Returns:
+            dict: Defined fields of PlatformEngineScenario.
+        """
+        dump_dict = {}
+        for f in fields(self):
+            dump_dict[f.name] = getattr(self, f.name)
+
+        return dump_dict
+
+
+@dataclass
+class PlatformScenario:
+    """Platform Scenario"""
+
+    engine: PlatformEngineScenario = field(default_factory=PlatformEngineScenario)
+
+    def dump(self) -> dict[str, Any]:
+        """Convert PlatformScenario to dict.
+
+        Returns:
+            dict: Defined fields of PlatformScenario.
+        """
+        return {"engine": self.engine.dump()}
+
+
+@dataclass
+class BenchmarkScenario:
+    """Benchmark Scenario"""
+
     load_format: LoadFormat = LoadFormat.UNKNOWN
+    sleep_mode: bool = False
+    model: ModelScenario = field(default_factory=ModelScenario)
+    platform: PlatformScenario = field(default_factory=PlatformScenario)
+
+    def dump(self) -> dict[str, Any]:
+        """Convert BenchmarkScenario to dict.
+
+        Returns:
+            dict: Defined fields of BenchmarkScenario.
+        """
+        dump_dict = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            dump_dict[f.name] = (
+                value.dump()
+                if hasattr(value, "dump") and callable(value.dump)
+                else value
+            )
+
+        return dump_dict
+
+
+@dataclass
+class MetricsTime:
+    """Timing details of benchmark run."""
+
+    start: float = 0.0
+    """Start time of benchmark run, in seconds from Unix epoch."""
+    stop: float = 0.0
+    """End time of benchmark run, in seconds from Unix epoch."""
+
+    def dump(self) -> dict[str, Any]:
+        """Convert MetricsTime to dict.
+
+        Returns:
+            dict: Defined fields of MetricsTime.
+        """
+        dump_dict = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            dump_dict[f.name] = (
+                value.dump()
+                if hasattr(value, "dump") and callable(value.dump)
+                else value
+            )
+        dump_dict["duration"] = self.stop - self.start
+        return dump_dict
+
+
+@dataclass
+class BenchmarkMetrics:
+    """Benchmark Metrics"""
+
+    time: MetricsTime = field(default_factory=MetricsTime)
     load_time: float = 0.0
     size: float = 0.0
     sleep: float = 0.0
     gpu_freed: float = 0.0
     gpu_in_use: float = 0.0
     wake: float = 0.0
+    root_category: BenchmarkCategory | None = None
 
-    @staticmethod
-    def header() -> list[str]:
-        """csv header"""
-        header = []
-        for f in fields(LogResult):
-            header.append(f.name)
+    def dump(self) -> dict[str, Any]:
+        """Convert BenchmarkMetrics to dict.
 
-        return header
+        Returns:
+            dict: Defined fields of BenchmarkMetrics.
+        """
+        dump_dict = {}
+        for f in fields(self):
+            if f.name == "root_category":
+                continue
 
-    def row(self) -> list[Any]:
-        """csv row"""
-        row = []
-        for name in LogResult.header():
-            row.append(getattr(self, name))
+            value = getattr(self, f.name)
+            dump_dict[f.name] = (
+                value.dump()
+                if hasattr(value, "dump") and callable(value.dump)
+                else value
+            )
+        transfer_rate = 0.0
+        if self.load_time != 0.0:
+            transfer_rate = self.size / self.load_time
+        dump_dict["transfer_rate"] = transfer_rate
 
-        return row
+        if self.root_category is not None:
+            dump_dict["categories"] = self.root_category.dump()
+        return dump_dict
+
+
+@dataclass
+class BenchmarkResult:
+    """Results of one benchmark run"""
+
+    version: str = "0.1"
+    scenario: BenchmarkScenario = field(default_factory=BenchmarkScenario)
+    metrics: BenchmarkMetrics = field(default_factory=BenchmarkMetrics)
+
+    def dump(self) -> dict[str, Any]:
+        """Convert BenchmarkResult to dict.
+
+        Returns:
+            dict: Defined fields of BenchmarkResult.
+        """
+        dump_dict = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            dump_dict[f.name] = (
+                value.dump()
+                if hasattr(value, "dump") and callable(value.dump)
+                else value
+            )
+
+        return dump_dict
 
 
 def get_env_variables(keys: list[str]) -> list[str]:
@@ -317,9 +473,9 @@ def wake(base_url: str, timeout: float):
             raise RuntimeError(f"Server failed sleeping status after {elapsed} secs.")
 
 
-def get_vllm_pod_name(
+def get_vllm_pod_info(
     v1: client.CoreV1Api, namespace: str, deployment_name: str
-) -> str:
+) -> dict[str, str]:
     """get vllm pod name"""
 
     selectors = get_deployment_selectors(namespace, deployment_name)
@@ -329,13 +485,13 @@ def get_vllm_pod_name(
         )
 
     selector = selectors[0]
-    pod_names = get_pod_names(v1, namespace, selector)
-    if len(pod_names) == 0:
+    pod_infos = get_pod_infos(v1, namespace, selector)
+    if len(pod_infos) == 0:
         raise RuntimeError(
             f"No pods found on namespace {namespace} with selector 'app={selector}'."
         )
 
-    return pod_names[0]
+    return pod_infos[0]
 
 
 def get_deployment_selectors(namespace: str, name: str) -> list[str]:
@@ -357,17 +513,21 @@ def get_deployment_selectors(namespace: str, name: str) -> list[str]:
     return selectors
 
 
-def get_pod_names(v1: client.CoreV1Api, namespace: str, selector: str) -> list[str]:
+def get_pod_infos(
+    v1: client.CoreV1Api, namespace: str, selector: str
+) -> list[dict[str, str]]:
     """get pods by selector"""
 
     pod_list = v1.list_namespaced_pod(
         namespace=namespace, label_selector=f"app={selector}"
     )
-    pod_names = []
+    pod_infos = []
     for pod in pod_list.items:
-        pod_names.append(pod.metadata.name)
+        image = pod.spec.containers[0].image
+        name = pod.metadata.name
+        pod_infos.append({"name": name, "image": image})
 
-    return pod_names
+    return pod_infos
 
 
 def get_pod_logs(v1: client.CoreV1Api, namespace: str, pod_name: str) -> bytes:
@@ -410,48 +570,50 @@ def extract_datetime(log_line: str) -> datetime | None:
         return None
 
 
-def initialize_log_categories(
-    key: list[int], defined_categories: list[Any], parent: LogCategory
-) -> LogCategory:
+def initialize_benchmark_categories(
+    defined_categories: list[Any], parent: BenchmarkCategory
+) -> BenchmarkCategory:
     """initialize categories"""
-    root_log_category = None
-    prev_log_category = None
+    root_benchmark_category = None
+    prev_benchmark_category = None
     for defined_category in defined_categories:
-        log_category = LogCategory()
-        log_category.key = key[0]
-        key[0] = log_category.key + 1
-        if root_log_category is None:
-            root_log_category = log_category
-        if prev_log_category is not None:
-            prev_log_category.next = log_category
-        prev_log_category = log_category
+        benchmark_category = BenchmarkCategory()
+        if root_benchmark_category is None:
+            root_benchmark_category = benchmark_category
+        if prev_benchmark_category is not None:
+            prev_benchmark_category.next = benchmark_category
+        prev_benchmark_category = benchmark_category
 
-        log_category.title = defined_category.get("title")
-        log_category.start = defined_category.get("start")
-        log_category.end = defined_category.get("end")
-        log_category.parent = parent
-        if log_category.parent is not None and log_category.parent.root_child is None:
-            log_category.parent.root_child = log_category
+        benchmark_category.title = defined_category.get("title")
+        benchmark_category.start = defined_category.get("start")
+        benchmark_category.end = defined_category.get("end")
+        benchmark_category.parent = parent
+        if (
+            benchmark_category.parent is not None
+            and benchmark_category.parent.root_child is None
+        ):
+            benchmark_category.parent.root_child = benchmark_category
 
         defined_children = defined_category.get("children")
         if defined_children is not None:
-            _ = initialize_log_categories(key, defined_children, log_category)
+            _ = initialize_benchmark_categories(defined_children, benchmark_category)
 
-    return root_log_category
+    return root_benchmark_category
 
 
-def categorize_logs(vllm_model: str, logs: str) -> LogCategory:
+def categorize_logs(vllm_model: str, logs: str) -> BenchmarkCategory:
     """parse logs and categorize it"""
 
-    key = [1]
-    root_log_category = initialize_log_categories(key, DEFINED_CATEGORIES, None)
-    populate_log_categories(vllm_model, logs, root_log_category)
+    root_benchmark_category = initialize_benchmark_categories(DEFINED_CATEGORIES, None)
+    populate_benchmark_categories(vllm_model, logs, root_benchmark_category)
     # add uncategorized categories
-    add_uncategorized_categories(key, root_log_category)
-    return root_log_category
+    add_uncategorized_categories(root_benchmark_category)
+    return root_benchmark_category
 
 
-def populate_log_categories(vllm_model: str, logs: str, root_log_category: LogCategory):
+def populate_benchmark_categories(
+    vllm_model: str, logs: str, root_benchmark_category: BenchmarkCategory
+):
     """populate categories from log lines"""
 
     tensorizer_serialization_end = f"End model {vllm_model} serialization"
@@ -475,17 +637,17 @@ def populate_log_categories(vllm_model: str, logs: str, root_log_category: LogCa
         idx += 1
 
     while index < len(log_list):
-        index = populate_log_category(index, log_list, root_log_category)
+        index = populate_benchmark_category(index, log_list, root_benchmark_category)
         index += 1
 
 
-def add_uncategorized_categories(key: list[int], log_category: LogCategory):
+def add_uncategorized_categories(benchmark_category: BenchmarkCategory):
     """add filler uncategorized categories"""
 
-    category = log_category
+    category = benchmark_category
     while category is not None:
         if category.root_child is not None:
-            add_uncategorized_categories(key, category.root_child)
+            add_uncategorized_categories(category.root_child)
 
         # if exists a gap, create uncategorized
         next_category = category.next
@@ -495,31 +657,29 @@ def add_uncategorized_categories(key: list[int], log_category: LogCategory):
             and next_category.start_time is not None
             and category.end_time < next_category.start_time
         ):
-            log_category = LogCategory()
-            log_category.key = key[0]
-            key[0] = log_category.key + 1
-            log_category.title = "Uncategorized"
-            log_category.start_time = category.end_time
-            log_category.start_line = category.end_line
-            log_category.start_line_number = category.end_line_number
-            log_category.end_time = next_category.start_time
-            log_category.end_line = next_category.start_line
-            log_category.end_line_number = next_category.start_line_number
-            log_category.parent = category.parent
-            log_category.next = next_category
-            category.next = log_category
+            benchmark_category = BenchmarkCategory()
+            benchmark_category.title = "Uncategorized"
+            benchmark_category.start_time = category.end_time
+            benchmark_category.start_line = category.end_line
+            benchmark_category.start_line_number = category.end_line_number
+            benchmark_category.end_time = next_category.start_time
+            benchmark_category.end_line = next_category.start_line
+            benchmark_category.end_line_number = next_category.start_line_number
+            benchmark_category.parent = category.parent
+            benchmark_category.next = next_category
+            category.next = benchmark_category
             # skip the uncategorized created category
             category = category.next
 
         category = category.next
 
 
-def populate_log_category(
-    index: int, log_list: list[str], log_category: LogCategory
+def populate_benchmark_category(
+    index: int, log_list: list[str], benchmark_category: BenchmarkCategory
 ) -> int:
     """populate category from log line"""
 
-    category = log_category
+    category = benchmark_category
     while category is not None and index < len(log_list):
         if category.start_line == "" and category.start in log_list[index]:
             category.start_time = extract_datetime(log_list[index])
@@ -550,18 +710,19 @@ def populate_log_category(
                 category.end_line_number = index + 1
 
         if category.root_child is not None:
-            index = populate_log_category(index, log_list, category.root_child)
+            index = populate_benchmark_category(index, log_list, category.root_child)
 
         category = category.next
 
     return index
 
 
-def parse_logs(logs: str) -> LogResult:
+def parse_logs(logs: str) -> BenchmarkResult:
     """parse vllm logs"""
 
     # Strings to be searched on logging ouput in order to extract values
 
+    server_non_default_args = "non-default args:"
     model_sleep_mode = "'enable_sleep_mode':"
     model_load_format = "load_format=LoadFormat."
     # Model loading took 15.2209 GB and 12.221976 seconds
@@ -574,24 +735,40 @@ def parse_logs(logs: str) -> LogResult:
     # Sleep mode freed 69.50 GiB memory, 0.75 GiB memory is still in use.
     model_gpu_freed = "Sleep mode freed"
 
-    log_result = LogResult()
-    log_result.time = datetime.now().astimezone().isoformat()
+    benchmark_result = BenchmarkResult()
 
     # loop from the bottom to catch latest statistics before old ones
     sleep_mode = ""
+    args = None
     for line in reversed(logs.splitlines()):
         if (
-            sleep_mode != ""
-            and log_result.load_format != LoadFormat.UNKNOWN
-            and log_result.load_time != 0
-            and log_result.sleep != 0
-            and log_result.gpu_freed != 0
-            and log_result.gpu_in_use != 0
-            and log_result.wake != 0
+            args is not None
+            and sleep_mode != ""
+            and benchmark_result.scenario.load_format != LoadFormat.UNKNOWN
+            and benchmark_result.metrics.load_time != 0
+            and benchmark_result.metrics.sleep != 0
+            and benchmark_result.metrics.gpu_freed != 0
+            and benchmark_result.metrics.gpu_in_use != 0
+            and benchmark_result.metrics.wake != 0
         ):
             break
 
         line = line.strip()
+
+        if args is None:
+            start_index = line.find(server_non_default_args)
+            if start_index >= 0:
+                start_index += len(server_non_default_args)
+                args = line[start_index:].strip()
+                try:
+                    benchmark_result.scenario.platform.engine.args = ast.literal_eval(
+                        args
+                    )
+                except Exception:
+                    logger.exception(
+                        "log args dict parsing returned error converting: %s",
+                        args,
+                    )
 
         if sleep_mode == "":
             start_index = line.find(model_sleep_mode)
@@ -602,9 +779,9 @@ def parse_logs(logs: str) -> LogResult:
                     end_index = line.find("}", start_index)
                 if end_index >= 0:
                     sleep_mode = line[start_index:end_index].strip().lower()
-                    log_result.sleep_mode = "true" == sleep_mode
+                    benchmark_result.scenario.sleep_mode = "true" == sleep_mode
 
-        if log_result.load_format == LoadFormat.UNKNOWN:
+        if benchmark_result.scenario.load_format == LoadFormat.UNKNOWN:
             start_index = line.find(model_load_format)
             if start_index >= 0:
                 start_index += len(model_load_format)
@@ -613,36 +790,36 @@ def parse_logs(logs: str) -> LogResult:
                     format_name = line[start_index:end_index].strip()
                     for f in LoadFormat:
                         if f.name == format_name:
-                            log_result.load_format = f
+                            benchmark_result.scenario.load_format = f
                             break
 
-        if log_result.load_time == 0:
+        if benchmark_result.metrics.load_time == 0:
             floats = find_floats_in_line(model_load_string, line)
             if len(floats) > 1:
-                log_result.size = floats[0]
-                log_result.load_time = floats[1]
+                benchmark_result.metrics.size = floats[0]
+                benchmark_result.metrics.load_time = floats[1]
                 continue
 
-        if log_result.sleep == 0 and model_sleep_string in line:
+        if benchmark_result.metrics.sleep == 0 and model_sleep_string in line:
             floats = find_floats_in_line(model_took_string, line)
             if len(floats) > 0:
-                log_result.sleep = floats[0]
+                benchmark_result.metrics.sleep = floats[0]
                 continue
 
-        if log_result.gpu_freed == 0:
+        if benchmark_result.metrics.gpu_freed == 0:
             floats = find_floats_in_line(model_gpu_freed, line)
             if len(floats) > 1:
-                log_result.gpu_freed = floats[0]
-                log_result.gpu_in_use = floats[1]
+                benchmark_result.metrics.gpu_freed = floats[0]
+                benchmark_result.metrics.gpu_in_use = floats[1]
                 continue
 
-        if log_result.wake == 0 and model_wake_string in line:
+        if benchmark_result.metrics.wake == 0 and model_wake_string in line:
             floats = find_floats_in_line(model_took_string, line)
             if len(floats) > 0:
-                log_result.wake = floats[0]
+                benchmark_result.metrics.wake = floats[0]
                 continue
 
-    return log_result
+    return benchmark_result
 
 
 def find_floats_in_line(key: str, line: str) -> list[float]:
@@ -659,94 +836,81 @@ def extract_floats(text) -> list[float]:
     return [float(num) for num in re.findall(r"[-+]?\d*\.\d+|\d+", text)]
 
 
-def read_log_results_from_csv(file_path: str) -> list[LogResult]:
-    """read csv log results"""
+def convert_result(result_filepath: str, output_filepath: str) -> tuple[str, str, int]:
+    """converts result to universal format"""
 
-    log_results = []
-    if not os.path.isfile(file_path):
-        logger.info("no csv file found on path: %s", file_path)
-        return log_results
+    try:
+        cmd = ["convert.py", result_filepath, output_filepath, "-w", "nop", "-f"]
+        with subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=False,
+        ) as proc:
+            stdout, stderr = proc.communicate()
+            out_str = stdout.strip().decode("ascii")
+            err_str = stderr.strip().decode("ascii")
+            if proc.returncode != 0:
+                logger.info(
+                    "convert.py returned with error %s converting: %s",
+                    proc.returncode,
+                    result_filepath,
+                )
+            else:
+                logger.info("convert.py succeeded converting: %s", result_filepath)
 
-    df = pandas.read_csv(file_path, encoding="utf-8")
-
-    log_result_header = LogResult.header()
-
-    for _, row in df.iterrows():
-        log_result = LogResult()
-        for name in log_result_header:
-            value = row.get(name)
-            if value is not None:
-                setattr(log_result, name, value)
-        log_results.append(log_result)
-
-    logger.info("csv file found on path: %s", file_path)
-    return log_results
-
-
-def write_log_results_to_csv(log_results: list[LogResult], file_path: str):
-    """writes csv log results"""
-
-    data = []
-    for log_result in log_results:
-        data.append(log_result.row())
-
-    df = pandas.DataFrame(data, columns=LogResult.header())
-    df.to_csv(file_path, index=False, encoding="utf-8")
-    logger.info("csv file saved to path: %s", file_path)
+            if err_str != "":
+                logger.info("convert.py stderr: %s", err_str)
+            if out_str != "":
+                logger.info("convert.py stdout: %s", out_str)
+    except Exception:
+        logger.exception("convert.py returned error converting: %s", result_filepath)
 
 
-def write_log_categories_to_csv(log_category: LogCategory, file: io.BufferedWriter):
-    """writes csv log results"""
-
-    category = log_category
-    while category is not None:
-        file.write(f"{','.join(category.row())}\n")
-        if category.root_child is not None:
-            write_log_categories_to_csv(category.root_child, file)
-        category = category.next
-
-
-def write_log_categories_to_log(log_category: LogCategory, file: io.BufferedWriter):
-    """write logs category tree"""
-    category = log_category
+def write_benchmark_categories_to_log(
+    level: int, benchmark_category: BenchmarkCategory, file: io.BufferedWriter
+):
+    """write benchmark category tree log"""
+    blank_string = "  " * level if level > 0 else ""
+    category = benchmark_category
     while category is not None:
         elapsed = ""
         if category.start_time is not None and category.end_time is not None:
             time_difference = category.end_time - category.start_time
             elapsed = f"{time_difference.total_seconds():.3f}"
 
-        file.write(f"Log category   : {category.key} '{category.title}'\n")
-        parent_key = f"{category.parent.key}" if category.parent is not None else ""
-        file.write(f"  parent       : {parent_key}\n")
+        file.write(f"{blank_string}Log category   : '{category.title}'\n")
         time_format = "%m-%d %H:%M:%S.%f"
         date_str = (
             category.start_time.strftime(time_format)[:-3]
             if category.start_time is not None
             else ""
         )
-        file.write(f"  start date   : '{date_str}'\n")
+        file.write(f"{blank_string}  start date   : '{date_str}'\n")
         date_str = (
             category.end_time.strftime(time_format)[:-3]
             if category.end_time is not None
             else ""
         )
-        file.write(f"  end date     : '{date_str}'\n")
-        file.write(f"  elapsed      : {elapsed}\n")
-        file.write(f"  start pattern: '{category.start}'\n")
-        file.write(f"  end pattern  : '{category.end}'\n")
+        file.write(f"{blank_string}  end date     : '{date_str}'\n")
+        file.write(f"{blank_string}  elapsed      : {elapsed}\n")
+        file.write(f"{blank_string}  start pattern: '{category.start}'\n")
+        file.write(f"{blank_string}  end pattern  : '{category.end}'\n")
         file.write(
-            f"  start line   : {category.start_line_number} '{category.start_line}'\n"
+            f"{blank_string}  start line   : {category.start_line_number} '{category.start_line}'\n"
         )
         file.write(
-            f"  end line     : {category.end_line_number} '{category.end_line}'\n"
+            f"{blank_string}  end line     : {category.end_line_number} '{category.end_line}'\n"
         )
         if category.root_child is not None:
-            write_log_categories_to_log(category.root_child, file)
+            write_benchmark_categories_to_log(level + 1, category.root_child, file)
         category = category.next
 
 
 def main():
     """main entry point"""
+
+    start_time = datetime.now().timestamp()
 
     envs = get_env_variables(
         [
@@ -784,10 +948,14 @@ def main():
 
     v1 = client.CoreV1Api()
 
-    pod_name = ""
+    pod_info = None
     try:
-        pod_name = get_vllm_pod_name(v1, namespace, arr[0])
-        logger.info("vLLM standalone pod name: %s", pod_name)
+        pod_info = get_vllm_pod_info(v1, namespace, arr[0])
+        logger.info(
+            "vLLM standalone pod name: %s image: %s",
+            pod_info["name"],
+            pod_info["image"],
+        )
     except Exception as e:
         logger.info(
             "Skipping harness because vLLM standalone pod not found: %s", str(e)
@@ -797,21 +965,24 @@ def main():
     vllm_version = get_vllm_version(endpoint_url, REQUEST_TIMEOUT)
     vllm_model = get_vllm_model(endpoint_url, REQUEST_TIMEOUT)
 
-    pod_logs = get_pod_logs(v1, namespace, pod_name)
-    log_result = parse_logs(pod_logs.decode("utf-8"))
-    if log_result.sleep_mode:
+    pod_logs = get_pod_logs(v1, namespace, pod_info["name"])
+    benchmark_result = parse_logs(pod_logs.decode("utf-8"))
+    if benchmark_result.scenario.sleep_mode:
         logger.info("Request sleep/wake")
         sleep(endpoint_url, 1, REQUEST_TIMEOUT)
         wake(endpoint_url, REQUEST_TIMEOUT)
         # get logs again with latest sleep/wake statistics
-        pod_logs = get_pod_logs(v1, namespace, pod_name)
-        log_result = parse_logs(pod_logs.decode("utf-8"))
+        pod_logs = get_pod_logs(v1, namespace, pod_info["name"])
+        benchmark_result = parse_logs(pod_logs.decode("utf-8"))
 
-    log_result.vllm_version = vllm_version
-    log_result.model = vllm_model
+    benchmark_result.scenario.model.name = vllm_model
+    benchmark_result.scenario.platform.engine.name = pod_info["image"]
+    benchmark_result.scenario.platform.engine.version = vllm_version
 
     # categorize logs
-    root_log_category = categorize_logs(vllm_model, pod_logs.decode("utf-8"))
+    benchmark_result.metrics.root_category = categorize_logs(
+        vllm_model, pod_logs.decode("utf-8")
+    )
 
     os.makedirs(requests_dir, exist_ok=True)
 
@@ -821,29 +992,29 @@ def main():
         file.write(pod_logs)
         logger.info("vllm log file saved to path: %s", logs_filepath)
 
-    cvs_filepath = os.path.join(requests_dir, "nop.csv")
+    benchmark_result.metrics.time.start = start_time
+    benchmark_result.metrics.time.stop = datetime.now().timestamp()
 
-    # read possible existent csv file
-    log_results = read_log_results_from_csv(cvs_filepath)
+    # write results yaml file
+    result_filepath = os.path.join(requests_dir, "result.yaml")
+    with open(result_filepath, "w", encoding="utf-8", newline="") as file:
+        yaml.dump(benchmark_result.dump(), file, indent=2, sort_keys=False)
+        logger.info("result yaml file saved to path: %s", result_filepath)
 
-    # append new result to list
-    log_results.append(log_result)
-
-    # write log results csv file
-    write_log_results_to_csv(log_results, cvs_filepath)
-
-    # write log categories csv file
-    csv_categories_filepath = os.path.join(requests_dir, "nop_categories.csv")
-    with open(csv_categories_filepath, "w", encoding="utf-8", newline="") as file:
-        file.write(f"{','.join(LogCategory.header())}\n")
-        write_log_categories_to_csv(root_log_category, file)
-        logger.info("csv categories file saved to path: %s", csv_categories_filepath)
+    benchmark_report_filepath = os.path.join(requests_dir, "benchmark_report")
+    os.makedirs(benchmark_report_filepath, exist_ok=True)
+    benchmark_report_filepath = os.path.join(benchmark_report_filepath, "result.yaml")
+    convert_result(result_filepath, benchmark_report_filepath)
 
     # write log categories log file
-    log_categories_filepath = os.path.join(requests_dir, "nop_categories.log")
+    log_categories_filepath = os.path.join(requests_dir, "categories.log")
     with open(log_categories_filepath, "w", encoding="utf-8", newline="") as file:
-        write_log_categories_to_log(root_log_category, file)
-        logger.info("log categories file saved to path: %s", log_categories_filepath)
+        write_benchmark_categories_to_log(
+            0, benchmark_result.metrics.root_category, file
+        )
+        logger.info(
+            "benchmark categories log file saved to path: %s", log_categories_filepath
+        )
 
 
 if __name__ == "__main__":

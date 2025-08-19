@@ -31,5 +31,3 @@ export LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL=DEBUG
 # run preprocessor python that will change the debug log date format and pre-serialize a model when using
 # tensorizer load format
 export LLMDBENCH_VLLM_STANDALONE_PREPROCESS="source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
-
-export LLMDBENCH_VLLM_STANDALONE_IMAGE=vllm/vllm-openai:v0.10.0
