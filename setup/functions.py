@@ -68,8 +68,31 @@ def kube_connect(config_path : str = '~/.kube/config'):
 
     return api
 
+class SecurityContextConstraints(pykube.objects.APIObject):
+    version = "security.openshift.io/v1"
+    endpoint = "securitycontextconstraints"
+    kind = "SecurityContextConstraints"
 
-
+def is_openshift(api: pykube.HTTPClient) -> bool:
+    try:
+        # the priviledged scc is a standard built in component for oc
+        # if we get we are on oc
+        SecurityContextConstraints.objects(api).get(name="privileged")
+        announce("OpenShift cluster detected")
+        return True
+    except PyKubeError as e:
+        # a 404 error means the scc resource type itself doesnt exist
+        if e.code == 404:
+            announce("Standard Kubernetes cluster detected (not OpenShift)")
+            return False
+        # for other errors like 403, we might be on OpenShift but lack permissions
+        #  if we cant query sccs we cant modify them either
+        announce(f'Could not query SCCs due to an API error (perhaps permissions?): {e}. Assuming not OpenShift for SCC operations')
+        return False
+    except Exception as e:
+        #  other potential non pykube errors
+        announce(f'An unexpected error occurred while checking for OpenShift: {e}. Assuming not OpenShift for SCC operations')
+        return False
 
 def llmdbench_execute_cmd(
     actual_cmd: str,
@@ -168,6 +191,28 @@ def llmdbench_execute_cmd(
         sys.exit(ecode)
 
     return ecode
+
+
+
+def environment_variable_to_dict(ev: dict = {}) :
+    for key in dict(os.environ).keys():
+        if "LLMDBENCH_" in key:
+            ev.update({key.split("LLMDBENCH_")[1].lower():os.environ.get(key)})
+
+    for mandatory_key in [ "control_dry_run", "control_verbose", "run_experiment_analyze_locally"] :
+        if mandatory_key not in ev :
+            ev[mandatory_key] = 0
+
+        ev[mandatory_key] = bool(int(ev[mandatory_key]))
+
+    ev["infra_dir"] = ev.get("infra_dir", "/tmp")
+    ev["infra_git_repo"]  = ev.get("infra_git_repo", "https://github.com/llm-d-incubation/llm-d-infra.git")
+    ev["infra_git_branch"] = ev.get("infra_git_branch", "main")
+    ev["control_deploy_host_os"] = ev.get("control_deploy_host_os", "mac")
+    ev["control_deploy_host_shell"] = ev.get("control_deploy_host_shell", "bash")
+    ev["harness_conda_env_name"] = ev.get("harness_conda_env_name", "llmdbench-env")
+    ev["control_work_dir"] = ev.get("control_work_dir", ".")
+    ev["control_kcmd"] = ev.get("control_kcmd", "kubectl")
 
 
 
@@ -306,6 +351,7 @@ kind: Job
 metadata:
   name: {job_name}
 spec:
+  backoffLimit: 3
   template:
     spec:
       containers:
@@ -349,8 +395,8 @@ spec:
         announce(f"Error writing YAML file: {e}")
         sys.exit(1)
 
+    #FIXME (USE PYKUBE)
     delete_cmd = f"{kcmd} delete job {job_name} -n {namespace} --ignore-not-found=true"
-
     announce(f"--> Deleting previous job '{job_name}' (if it exists) to prevent conflicts...")
     llmdbench_execute_cmd(
         actual_cmd=delete_cmd,
@@ -358,7 +404,7 @@ spec:
         verbose=verbose,
         silent=True
     )
-
+    #FIXME (USE PYKUBE)
     apply_cmd = f"{kcmd} apply -n {namespace} -f {yaml_file_path}"
     llmdbench_execute_cmd(
         actual_cmd=apply_cmd,
@@ -381,6 +427,7 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
     api_client = k8s_async_client.ApiClient()
     batch_v1_api = k8s_async_client.BatchV1Api(api_client)
     try:
+
         w = k8s_async_watch.Watch()
 
         # sets up connection with kubernetes, async with manages the streams lifecycle
@@ -485,41 +532,64 @@ def model_attribute(model: str, attribute: str) -> str:
     else:
         return result
 
+#FIXME (USE PYKUBE)
+def apply_configmap(yaml_file: Path, kubectl_cmd: str, dry_run: bool, verbose: bool) -> int:
+    """
+    Apply ConfigMap using kubectl/oc command.
+
+    Args:
+        yaml_file: Path to the YAML file to apply
+        kubectl_cmd: kubectl or oc command to use
+        dry_run: If True, only print what would be executed
+        verbose: If True, print detailed output
+
+    Returns:
+        int: Command exit code (0 for success)
+    """
+    cmd = f"{kubectl_cmd} apply -f {yaml_file}"
+
+    return llmdbench_execute_cmd(
+        actual_cmd=cmd,
+        dry_run=dry_run,
+        verbose=verbose,
+        silent=not verbose
+    )
+
 
 def extract_environment():
     """
     Extract and display environment variables for debugging.
     Equivalent to the bash extract_environment function.
     """
-    
+
     ev = {}
     for key, value in os.environ.items():
         if "LLMDBENCH_" in key:
             ev[key.split("LLMDBENCH_")[1].lower()] = value
-    
+
     # Get environment variables that start with LLMDBENCH, excluding sensitive ones
     env_vars = []
     for key, value in os.environ.items():
         if key.startswith("LLMDBENCH_") and not any(sensitive in key.upper() for sensitive in ["TOKEN", "USER", "PASSWORD", "EMAIL"]):
             env_vars.append(f"{key}={value}")
-    
+
     env_vars.sort()
-    
+
     # Check if environment variables have been displayed before
     envvar_displayed = int(os.environ.get("LLMDBENCH_CONTROL_ENVVAR_DISPLAYED", 0))
-    
+
     if envvar_displayed == 0:
         print("\n\nList of environment variables which will be used")
         for var in env_vars:
             print(var)
         print("\n\n")
         os.environ["LLMDBENCH_CONTROL_ENVVAR_DISPLAYED"] = "1"
-    
+
     # Write environment variables to file
     work_dir = os.environ.get("LLMDBENCH_CONTROL_WORK_DIR", ".")
     env_dir = Path(work_dir) / "environment"
     env_dir.mkdir(parents=True, exist_ok=True)
-    
+
     with open(env_dir / "variables", "w") as f:
         for var in env_vars:
             f.write(var + "\n")
@@ -529,23 +599,23 @@ def get_image(image_registry: str, image_repo: str, image_name: str, image_tag: 
     """
     Construct container image reference.
     Equivalent to the bash get_image function.
-    
+
     Args:
         image_registry: Container registry
-        image_repo: Repository/organization  
+        image_repo: Repository/organization
         image_name: Image name
         image_tag: Image tag
         tag_only: If "1", return only the tag
-    
+
     Returns:
         Full image reference or just tag
     """
     is_latest_tag = image_tag
-    
+
     if image_tag == "auto":
         ccmd = os.getenv("LLMDBENCH_CONTROL_CCMD", "skopeo")
         image_full_name = f"{image_registry}/{image_repo}/{image_name}"
-        
+
         if ccmd == "podman":
             # Use podman search to get latest tag
             cmd = f"{ccmd} search --list-tags {image_full_name}"
@@ -574,11 +644,11 @@ def get_image(image_registry: str, image_repo: str, image_name: str, image_tag: 
                     is_latest_tag = tags_data["Tags"][-1]
             except:
                 is_latest_tag = ""
-        
+
         if not is_latest_tag:
             announce(f"❌ Unable to find latest tag for image \"{image_full_name}\"")
             sys.exit(1)
-    
+
     if tag_only == "1":
         return is_latest_tag
     else:
