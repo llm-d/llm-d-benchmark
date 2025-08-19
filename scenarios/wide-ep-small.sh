@@ -1,3 +1,7 @@
+# Based on work in progress for llm-d CICD. 
+# See https://github.com/llm-d-incubation/llm-d-infra/pull/151/files#diff-c7c92811d800af0f4c7c6cac3bed19b85033bb0c0595a0f8e3f60b5310328bc5
+# It's purpose is to drive development of setup/steps/09_deploy_via_modelservice.sh
+
 # Fill in desired values
 export LLMDBENCH_HF_TOKEN=
 export LLMDBENCH_VLLM_COMMON_NAMESPACE=
