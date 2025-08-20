@@ -2,16 +2,10 @@
 # See https://github.com/llm-d-incubation/llm-d-infra/pull/151/files#diff-c7c92811d800af0f4c7c6cac3bed19b85033bb0c0595a0f8e3f60b5310328bc5
 # It's purpose is to drive development of setup/steps/09_deploy_via_modelservice.sh
 
-# Fill in desired values
+# Fill in required/desired values
 export LLMDBENCH_HF_TOKEN=
-export LLMDBENCH_VLLM_COMMON_NAMESPACE=
-export LLMDBENCH_CONTROL_WORK_DIR=
-
-# Temporary for run.sh
-export LLMDBENCH_IMAGE_REGISTRY=quay.io
-export LLMDBENCH_IMAGE_REPO=namasluk
-export LLMDBENCH_IMAGE_NAME=llm-d-benchmark
-export LLMDBENCH_IMAGE_TAG=c-ip1
+# export LLMDBENCH_VLLM_COMMON_NAMESPACE=
+# export LLMDBENCH_CONTROL_WORK_DIR=
 
 # Cluster specific configuration (fusion6/pokprod001)
 export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=ocs-storagecluster-cephfs

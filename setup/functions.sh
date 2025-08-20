@@ -333,7 +333,6 @@ function render_template {
     echo "s^REPLACE_SPACESC^$spacec^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     echo "s^ --^\\n$spacec--^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     echo "s^\\n^ \\\\\n^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
-    # echo "s/^[[:space]]*$//" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
 
   if [[ $env_var_mode -eq 1 ]]; then
