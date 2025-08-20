@@ -157,7 +157,7 @@ def kv_cache_estimator():
                                                 )
 
 
-            st.info(f"Estimated KV cache size requirement: ~{user_scenario.get_kv_cache_req()} GB")
+            #st.info(f"Estimated KV cache size requirement: ~{user_scenario.get_kv_cache_req()} GB")
 
 
         model_size = 0
@@ -172,16 +172,16 @@ def kv_cache_estimator():
         if model_size > 0 and kv_cache > 0:
             free = user_scenario.free_memory()
 
-        labels = ["Model Size", "KV Cache", "Free"]
+        labels = ["Model", "KV Cache", "Free"]
         sizes = [model_size, kv_cache, free]
         colors = ["#ff9999", "#66b3ff", "#99ff99"]
 
+
         # Create donut chart
         fig, ax = plt.subplots(figsize=(4, 4))
-        wedges, texts, autotexts = ax.pie(
+        wedges, texts = ax.pie(
             sizes,
             colors=colors,
-            autopct="%1.1f%%",           # Show percentage labels
             startangle=90,               # Start at top
             wedgeprops=dict(width=0.4)   # <-- Makes it a donut
         )
@@ -189,32 +189,34 @@ def kv_cache_estimator():
 
         # Draw labels outside the chart with connection lines
         # `labeldistance` and `arrowprops` allow pointing labels
-        bbox_props = dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=0.7)
         kw = dict(arrowprops=dict(arrowstyle="-"),
-                bbox=bbox_props, zorder=0, va="center")
+                zorder=0, va="center")
 
-        for i, p in enumerate(wedges):
-            ang = (p.theta2 - p.theta1)/2. + p.theta1
-            y = np.sin(np.deg2rad(ang))
-            x = np.cos(np.deg2rad(ang))
-            horizontal_alignment = {-1: "right", 1: "left"}[int(np.sign(x))]
+        for ii, pp in enumerate(wedges):
+            ang = (pp.theta2 - pp.theta1)/2. + pp.theta1
+            yy = np.sin(np.deg2rad(ang))
+            xx = np.cos(np.deg2rad(ang))
+            horizontalalignment = {-1: "right", 1: "left"}[int(np.sign(xx))]
             connectionstyle = f"angle,angleA=0,angleB={ang}"
             kw["arrowprops"].update({"connectionstyle": connectionstyle})
-            ax.annotate(f"{labels[i]} ({sizes[i]})", xy=(x, y), xytext=(1.2*np.sign(x), 1.2*y),
-                        horizontalalignment=horizontal_alignment, **kw)
+            ax.annotate(f"{labels[ii]} {sizes[ii]:.1f} GB", xy=(xx,yy), xytext=(1.3*np.sign(xx), 1.3*yy),
+                        horizontalalignment=horizontalalignment, **kw, fontsize='14')
 
         # Add internal label
-        ax.text(0, 0, f"Total available\n{user_scenario.gpu_count_avail * user_scenario.gpu_spec['memory']} GB", ha="center", va="center",
-            fontsize=14, fontweight="bold")
+        ax.text(0, 0, f"Total\n{user_scenario.gpu_count_avail * user_scenario.gpu_spec['memory']} GB", ha="center", va="center",
+            fontsize=16, fontweight="bold")
 
 
         # Equal aspect ratio ensures it's circular
         ax.axis("equal")
         plt.rcParams['axes.titley'] = 1.1
-        ax.set_title('Memory Requirements', fontsize='16')
+        ax.set_title('Memory Utilization', fontsize='20')
 
         # Render in Streamlit
-        st.pyplot(fig, use_container_width=True)
+        col1, col2, _ = st.columns([.5, 1, .5])
+        with col2:
+            st.pyplot(fig)
+        #st.pyplot(fig, use_container_width=False)
 
 if __name__ == '__main__':
 

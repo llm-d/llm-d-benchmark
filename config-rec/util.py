@@ -80,7 +80,7 @@ class Scenario:
         # TODO
         # Check out https://lmcache.ai/kv_cache_calculator.html
         # 1 token = ~ 1MB
-        return (self.isl + self.osl) / 10000
+        return (self.isl + self.osl) / 1000
 
 def get_model_info_from_hf(model_name: str, hf_token: str | None = None):
     """
