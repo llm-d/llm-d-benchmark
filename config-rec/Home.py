@@ -50,7 +50,8 @@ def capacity_planner():
     with st.container(border=True):
         st.write("**Model Specification**")
         selected_model = st.text_input("Model (Hugging Face format)",
-                                       value=user_scenario.model_name,
+                                       #value=user_scenario.model_name,
+                                       value='RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic',
                                        placeholder="ibm-granite/granite-3.3-8b-instruct",
                                        )
 
@@ -213,10 +214,9 @@ def kv_cache_estimator():
         ax.set_title('Memory Utilization', fontsize='20')
 
         # Render in Streamlit
-        col1, col2, _ = st.columns([.5, 1, .5])
-        with col2:
+        _, col, _ = st.columns([.5, 1, .5])
+        with col:
             st.pyplot(fig)
-        #st.pyplot(fig, use_container_width=False)
 
 if __name__ == '__main__':
 

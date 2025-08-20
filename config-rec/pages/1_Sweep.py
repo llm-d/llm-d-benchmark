@@ -34,7 +34,7 @@ def table(benchmark_data):
     """
     Display table of benchmark data
     """
-    st.subheader("Benchmark data")
+    st.subheader("Optimal configurations")
     st.dataframe(benchmark_data, use_container_width=True)
 
 def select_slo(benchmark_data):
@@ -46,12 +46,12 @@ def select_slo(benchmark_data):
 
     st.subheader("Select SLO requirements")
     col1, col2, col3 = st.columns(3)
-    user_scenario.ttft = col1.number_input("Max TTFT (ms)", min_value=0.00)
-    user_scenario.tpot = col2.number_input("Max TPOT (ms)", min_value=0.00)
-    user_scenario.throughput = col3.number_input("Min total tokens throughput (tokens/s)",
+    user_scenario.ttft = col1.number_input("Max TTFT (ms)", min_value=0, value=5000, step=10)
+    user_scenario.tpot = col2.number_input("Max TPOT (ms)", min_value=0, value=30, step=1)
+    user_scenario.throughput = col3.number_input("Min total token throughput (tokens/s)",
                                                  min_value=0,
                                                  step=1,
-                                                 value=100,
+                                                 value=5000,
                                                  max_value=1000000,
                                                  )
 
@@ -82,7 +82,6 @@ def pareto_plots(runs_selected):
     Pareto plots
     """
 
-    st.warning("Some plots here, TODO")
     user_scenario = st.session_state['scenario']
 
     runs_filtered = runs_selected[
@@ -132,9 +131,12 @@ def pareto_plots(runs_selected):
     ax.axis([0, None, 0, None])
     ax.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
-    st.pyplot(fig)
+    _, col, _ = st.columns([.5, 1, .5])
+    with col:
+        st.pyplot(fig)
     plt.show()
-    st.write(user_scenario.ttft)
+
+    return runs_pareto_front
 
 if __name__ == "__main__":
     st.title("Parameter Sweep and Search")
@@ -163,7 +165,31 @@ if __name__ == "__main__":
             st.warning("The configuration selected returned no result.")
         else:
             select_slo(benchmark_data)
-            pareto_plots(benchmark_data)
-            table(benchmark_data)
-
-            # table(df)
+            # Plot configurations and get DataFrame with Pareto front configs.
+            pareto_front = pareto_plots(benchmark_data)
+            # Show only specific columns in results table
+            table(pareto_front[[
+                'Name',
+                'Concurrency',
+                'Request_Throughput',
+                'Output_Token_Throughput',
+                'Total_Token_Throughput',
+                'Mean_TTFT_ms',
+                'Mean_TPOT_ms',
+                'Mean_ITL_ms',
+                'Mean_E2EL_ms',
+                'Thpt_per_GPU',
+                'Thpt_per_User',
+            ]].rename(columns={
+                'Name': 'Replicas/Parallelism',
+                'Concurrency': 'Batch Size',
+                'Request_Throughput': 'Request Thpt',
+                'Output_Token_Throughput': 'Output Token Thpt',
+                'Total_Token_Throughput': 'Total Token Thpt',
+                'Mean_TTFT_ms': 'TTFT (ms)',
+                'Mean_TPOT_ms': 'TPOT (ms)',
+                'Mean_ITL_ms': 'ITL (ms)',
+                'Mean_E2EL_ms': 'E2EL (ms)',
+                'Thpt_per_GPU': 'Thpt/GPU (tok/s)',
+                'Thpt_per_User': 'Thpt/User (tok/s)',
+            }))
