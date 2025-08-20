@@ -114,13 +114,13 @@ def capacity_planner():
             st.warning(f"Loading this model on the selected GPU requires at least `{min_gpu_req}`")
             st.number_input("Number accelerators available",
                             key='selected_gpu_count_avail',
-                            value=min_gpu_req,
+                            value=None,
                             step=1,
                             on_change=update_gpu_count_avail,
                             min_value=0,
                             )
 
-            if user_scenario.gpu_count_avail < min_gpu_req:
+            if user_scenario.gpu_count_avail is None or user_scenario.gpu_count_avail < min_gpu_req:
                 st.error("Not enough GPU memory to load the model.")
 
         # Dialog for registering new accelerator data
@@ -179,12 +179,9 @@ def kv_cache_estimator():
                                 on_change=update_osl,
                                 )
 
-
-            #st.info(f"Estimated KV cache size requirement: ~{user_scenario.get_kv_cache_req()} GB")
-
-        total = user_scenario.gpu_count_avail * user_scenario.gpu_spec['memory']
         model_size = 0
         kv_cache = 0
+        total = 0
         free = 0
 
         # Display GPU + KV pie chart
@@ -192,13 +189,16 @@ def kv_cache_estimator():
             model_size = user_scenario.get_gpu_mem_in_gb()
         if user_scenario.workload:
             kv_cache = user_scenario.get_kv_cache_req()
-        free = total - model_size - kv_cache
+        if user_scenario.gpu_count_avail  is not None:
+            total = user_scenario.gpu_count_avail * user_scenario.gpu_spec['memory']
+            free = total - model_size - kv_cache
+
         if free < 0:
             st.warning(f'Memory usage exceeds available by {-free:.1f} GB')
             free = 0
 
         # Display chart iff model and cache size are selected
-        if model_size > 0 and kv_cache > 0 and user_scenario.gpu_count_avail >= user_scenario.get_min_gpu_count():
+        if model_size > 0 and kv_cache > 0 and user_scenario.gpu_count_avail is not None and user_scenario.gpu_count_avail >= user_scenario.get_min_gpu_count():
             labels = ["Model", "KV Cache", "Free"]
             sizes = [model_size, kv_cache, free]
             colors = ["#ff9999", "#66b3ff", "#99ff99"]

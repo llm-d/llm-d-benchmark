@@ -23,8 +23,8 @@ class Scenario:
     max_batched_tokens: int = 1
     gpu_count_avail: int | None = None
     workload: dict | None = None
-    isl: int | None = None
-    osl: int | None = None
+    isl: int = 300
+    osl: int = 300
     ttft: float | None = None
     tpot: float | None = None
     throughput: float | None = None
