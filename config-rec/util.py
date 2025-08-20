@@ -27,6 +27,7 @@ class Scenario:
     osl: int | None = None
     ttft: float | None = None
     tpot: float | None = None
+    throughput: float | None = None
 
     # GPU
     gpu_spec: dict | None = None
@@ -54,6 +55,13 @@ class Scenario:
     def get_gpu_mem_in_gb(self) -> int:
         """Round gpu memory req"""
         return round(self.get_memory_req() / 1e+9)
+
+    def free_memory(self) -> int:
+        """
+        free = gpu_count_avail * GB - model size - KV cache
+        """
+
+        return self.gpu_count_avail * self.gpu_spec['memory'] - self.get_gpu_mem_in_gb()
 
     def get_min_gpu_count(self) -> int:
 

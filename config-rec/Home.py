@@ -2,11 +2,13 @@
 Main Page
 """
 
+from matplotlib import pyplot as plt
 import streamlit as st
 import db
 import util
 import pandas as pd
 import plotly.express as px
+import numpy as np
 
 def init_session_state():
     """
@@ -158,23 +160,61 @@ def kv_cache_estimator():
             st.info(f"Estimated KV cache size requirement: ~{user_scenario.get_kv_cache_req()} GB")
 
 
-        data = pd.DataFrame(
-            {"Model Size": [0], "KV Cache": [0]}
+        model_size = 0
+        kv_cache = 0
+        free = 0
+
+        # Display GPU + KV pie chart
+        if user_scenario.model_name:
+            model_size = user_scenario.get_gpu_mem_in_gb()
+        if user_scenario.workload:
+            kv_cache = user_scenario.get_kv_cache_req()
+        if model_size > 0 and kv_cache > 0:
+            free = user_scenario.free_memory()
+
+        labels = ["Model Size", "KV Cache", "Free"]
+        sizes = [model_size, kv_cache, free]
+        colors = ["#ff9999", "#66b3ff", "#99ff99"]
+
+        # Create donut chart
+        fig, ax = plt.subplots(figsize=(4, 4))
+        wedges, texts, autotexts = ax.pie(
+            sizes,
+            colors=colors,
+            autopct="%1.1f%%",           # Show percentage labels
+            startangle=90,               # Start at top
+            wedgeprops=dict(width=0.4)   # <-- Makes it a donut
         )
 
-        # Display GPU + KV chart
-        if user_scenario.model_name:
-            data['Model Size'] = [user_scenario.get_gpu_mem_in_gb()]
-        if user_scenario.workload:
-            data['KV Cache']= [user_scenario.get_kv_cache_req()]
 
-        # Transpose to make it horizontal
-        df = data.T
-        df.columns = ["Memory (GB)"]
+        # Draw labels outside the chart with connection lines
+        # `labeldistance` and `arrowprops` allow pointing labels
+        bbox_props = dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=0.7)
+        kw = dict(arrowprops=dict(arrowstyle="-"),
+                bbox=bbox_props, zorder=0, va="center")
 
-        st.write("Model Memory vs KV Cache Size")
-        st.bar_chart(df)
+        for i, p in enumerate(wedges):
+            ang = (p.theta2 - p.theta1)/2. + p.theta1
+            y = np.sin(np.deg2rad(ang))
+            x = np.cos(np.deg2rad(ang))
+            horizontal_alignment = {-1: "right", 1: "left"}[int(np.sign(x))]
+            connectionstyle = f"angle,angleA=0,angleB={ang}"
+            kw["arrowprops"].update({"connectionstyle": connectionstyle})
+            ax.annotate(f"{labels[i]} ({sizes[i]})", xy=(x, y), xytext=(1.2*np.sign(x), 1.2*y),
+                        horizontalalignment=horizontal_alignment, **kw)
 
+        # Add internal label
+        ax.text(0, 0, f"Total available\n{user_scenario.gpu_count_avail * user_scenario.gpu_spec['memory']} GB", ha="center", va="center",
+            fontsize=14, fontweight="bold")
+
+
+        # Equal aspect ratio ensures it's circular
+        ax.axis("equal")
+        plt.rcParams['axes.titley'] = 1.1
+        ax.set_title('Memory Requirements', fontsize='16')
+
+        # Render in Streamlit
+        st.pyplot(fig, use_container_width=True)
 
 if __name__ == '__main__':
 
