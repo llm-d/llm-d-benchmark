@@ -179,6 +179,10 @@ def kv_cache_estimator():
                                 on_change=update_osl,
                                 )
 
+
+            #st.info(f"Estimated KV cache size requirement: ~{user_scenario.get_kv_cache_req()} GB")
+
+        total = user_scenario.gpu_count_avail * user_scenario.gpu_spec['memory']
         model_size = 0
         kv_cache = 0
         free = 0
@@ -188,8 +192,10 @@ def kv_cache_estimator():
             model_size = user_scenario.get_gpu_mem_in_gb()
         if user_scenario.workload:
             kv_cache = user_scenario.get_kv_cache_req()
-        if model_size > 0 and kv_cache > 0:
-            free = user_scenario.free_memory()
+        free = total - model_size - kv_cache
+        if free < 0:
+            st.warning(f'Memory usage exceeds available by {-free:.1f} GB')
+            free = 0
 
         # Display chart iff model and cache size are selected
         if model_size > 0 and kv_cache > 0 and user_scenario.gpu_count_avail >= user_scenario.get_min_gpu_count():
@@ -223,8 +229,8 @@ def kv_cache_estimator():
                 ax.annotate(f"{labels[ii]} {sizes[ii]:.1f} GB", xy=(xx,yy), xytext=(1.3*np.sign(xx), 1.3*yy),
                             horizontalalignment=horizontalalignment, **kw, fontsize='14')
 
-            # Add internal label
-            ax.text(0, 0, f"Total\n{user_scenario.gpu_count_avail * user_scenario.gpu_spec['memory']} GB", ha="center", va="center",
+        # Add internal label
+            ax.text(0, 0, f"Total\n{total} GB", ha="center", va="center",
                 fontsize=16, fontweight="bold")
 
 
