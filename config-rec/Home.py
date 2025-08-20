@@ -6,8 +6,6 @@ from matplotlib import pyplot as plt
 import streamlit as st
 import db
 import util
-import pandas as pd
-import plotly.express as px
 import numpy as np
 
 def init_session_state():
@@ -19,6 +17,18 @@ def init_session_state():
         st.session_state['scenario'] = util.Scenario()
     if 'gpu_spec' not in st.session_state:
         st.session_state["gpu_spec"] = db.gpu_specs
+
+def update_gpu_spec():
+    st.session_state['scenario'].gpu_spec = st.session_state['gpu_spec'][st.session_state['selected_gpu_spec']]
+
+def update_gpu_count_avail():
+    st.session_state['scenario'].gpu_count_avail = st.session_state['selected_gpu_count_avail']
+
+def update_isl():
+    st.session_state['scenario'].isl = st.session_state['selected_isl']
+
+def update_osl():
+    st.session_state['scenario'].osl = st.session_state['selected_osl']
 
 @st.dialog("Register a new accelerator")
 def register_new_accelerator():
@@ -64,13 +74,15 @@ def capacity_planner():
 
             user_scenario.model_name = selected_model
             user_scenario.parameters = info.safetensors.total
+            precision = info.safetensors.parameters
+            precision_keys = list(precision.keys())
 
-            # Precisions supported
-            selected_precision_index = util.PRECISIONS.index(user_scenario.precision) if user_scenario.precision else 0
-            user_scenario.precision = st.selectbox("Select a precision",
-                                                index=selected_precision_index,
-                                                options=util.PRECISIONS,
-                                                )
+            # Display precision
+            st.caption(f"Precision: {', '.join(precision_keys)}")
+
+            # Record the first precision
+            user_scenario.precision = precision_keys[0]
+
 
             st.caption(f"Total parameters: {user_scenario.parameters}")
             st.caption(f"GPU memory requirement: ~{user_scenario.get_gpu_mem_in_gb()} GB")
@@ -85,30 +97,36 @@ def capacity_planner():
         col1, col2 = st.columns([0.7, 0.3])
 
         gpu_spec_options = list(st.session_state['gpu_spec'].keys())
-        gpu_spec_accelerator_index = gpu_spec_options.index(user_scenario.gpu_spec['name']) if user_scenario.gpu_spec else 0
-        selected_gpu = col1.selectbox("Accelerator",
-                                      index=gpu_spec_accelerator_index,
-                                      options=gpu_spec_options,
-                                      )
-        if selected_gpu:
+        col1.selectbox("Accelerator",
+                        key="selected_gpu_spec",
+                        index=0,
+                        options=gpu_spec_options,
+                        on_change=update_gpu_spec,
+                        )
+
+        if st.session_state['selected_gpu_spec']:
+            selected_gpu = st.session_state['selected_gpu_spec']
             user_scenario.gpu_spec = st.session_state['gpu_spec'][selected_gpu]
             st.caption(f"GPU memory: {user_scenario.gpu_spec['memory']} GB")
 
             # Calculate the minimum number of GPUs required
             min_gpu_req = user_scenario.get_min_gpu_count()
+            st.warning(f"Loading this model on the selected GPU requires at least `{min_gpu_req}`")
+            st.number_input("Number accelerators available",
+                            key='selected_gpu_count_avail',
+                            value=min_gpu_req,
+                            step=1,
+                            on_change=update_gpu_count_avail,
+                            min_value=0,
+                            )
 
-        default_value = min_gpu_req if user_scenario.gpu_count_avail is None else user_scenario.gpu_count_avail
-        user_scenario.gpu_count_avail = st.number_input("Number accelerators available",
-                                        value=default_value,
-                                        step=1,
-                                        min_value=min_gpu_req)
+            if user_scenario.gpu_count_avail < min_gpu_req:
+                st.error("Not enough GPU memory to load the model.")
 
         # Dialog for registering new accelerator data
         col2.info("Don't see your accelerator? Register a new one below")
         if col2.button("Register new accelerator", use_container_width=True):
             register_new_accelerator()
-
-        st.success(f"Loading this model on the selected GPU in {user_scenario.precision} mode requires a minimum of {min_gpu_req}, which does not yet account for KV cache.")
 
 def kv_cache_estimator():
     """
@@ -145,21 +163,21 @@ def kv_cache_estimator():
             """)
 
             col1, col2 = st.columns(2)
-            user_scenario.isl = col1.number_input("Input sequence length (prompt + context)",
-                                                value=isl if user_scenario.isl is None else user_scenario.isl,
-                                                min_value=1,
-                                                step=1,
-                                                )
+            col1.number_input("Input sequence length (prompt + context)",
+                                value=isl if user_scenario.isl is None else user_scenario.isl,
+                                min_value=1,
+                                step=1,
+                                key="selected_isl",
+                                on_change=update_isl,
+                                )
 
-            user_scenario.osl = col2.number_input("Output sequence length",
-                                                value=osl if user_scenario.osl is None else user_scenario.osl,
-                                                min_value=1,
-                                                step=1,
-                                                )
-
-
-            #st.info(f"Estimated KV cache size requirement: ~{user_scenario.get_kv_cache_req()} GB")
-
+            col2.number_input("Output sequence length",
+                                value=osl if user_scenario.osl is None else user_scenario.osl,
+                                min_value=1,
+                                step=1,
+                                key="selected_osl",
+                                on_change=update_osl,
+                                )
 
         model_size = 0
         kv_cache = 0
@@ -173,50 +191,52 @@ def kv_cache_estimator():
         if model_size > 0 and kv_cache > 0:
             free = user_scenario.free_memory()
 
-        labels = ["Model", "KV Cache", "Free"]
-        sizes = [model_size, kv_cache, free]
-        colors = ["#ff9999", "#66b3ff", "#99ff99"]
+        # Display chart iff model and cache size are selected
+        if model_size > 0 and kv_cache > 0 and user_scenario.gpu_count_avail >= user_scenario.get_min_gpu_count():
+            labels = ["Model", "KV Cache", "Free"]
+            sizes = [model_size, kv_cache, free]
+            colors = ["#ff9999", "#66b3ff", "#99ff99"]
 
 
-        # Create donut chart
-        fig, ax = plt.subplots(figsize=(4, 4))
-        wedges, texts = ax.pie(
-            sizes,
-            colors=colors,
-            startangle=90,               # Start at top
-            wedgeprops=dict(width=0.4)   # <-- Makes it a donut
-        )
+            # Create donut chart
+            fig, ax = plt.subplots(figsize=(4, 4))
+            wedges, texts = ax.pie(
+                sizes,
+                colors=colors,
+                startangle=90,               # Start at top
+                wedgeprops=dict(width=0.4)   # <-- Makes it a donut
+            )
 
 
-        # Draw labels outside the chart with connection lines
-        # `labeldistance` and `arrowprops` allow pointing labels
-        kw = dict(arrowprops=dict(arrowstyle="-"),
-                zorder=0, va="center")
+            # Draw labels outside the chart with connection lines
+            # `labeldistance` and `arrowprops` allow pointing labels
+            kw = dict(arrowprops=dict(arrowstyle="-"),
+                    zorder=0, va="center")
 
-        for ii, pp in enumerate(wedges):
-            ang = (pp.theta2 - pp.theta1)/2. + pp.theta1
-            yy = np.sin(np.deg2rad(ang))
-            xx = np.cos(np.deg2rad(ang))
-            horizontalalignment = {-1: "right", 1: "left"}[int(np.sign(xx))]
-            connectionstyle = f"angle,angleA=0,angleB={ang}"
-            kw["arrowprops"].update({"connectionstyle": connectionstyle})
-            ax.annotate(f"{labels[ii]} {sizes[ii]:.1f} GB", xy=(xx,yy), xytext=(1.3*np.sign(xx), 1.3*yy),
-                        horizontalalignment=horizontalalignment, **kw, fontsize='14')
+            for ii, pp in enumerate(wedges):
+                ang = (pp.theta2 - pp.theta1)/2. + pp.theta1
+                yy = np.sin(np.deg2rad(ang))
+                xx = np.cos(np.deg2rad(ang))
+                horizontalalignment = {-1: "right", 1: "left"}[int(np.sign(xx))]
+                connectionstyle = f"angle,angleA=0,angleB={ang}"
+                kw["arrowprops"].update({"connectionstyle": connectionstyle})
+                ax.annotate(f"{labels[ii]} {sizes[ii]:.1f} GB", xy=(xx,yy), xytext=(1.3*np.sign(xx), 1.3*yy),
+                            horizontalalignment=horizontalalignment, **kw, fontsize='14')
 
-        # Add internal label
-        ax.text(0, 0, f"Total\n{user_scenario.gpu_count_avail * user_scenario.gpu_spec['memory']} GB", ha="center", va="center",
-            fontsize=16, fontweight="bold")
+            # Add internal label
+            ax.text(0, 0, f"Total\n{user_scenario.gpu_count_avail * user_scenario.gpu_spec['memory']} GB", ha="center", va="center",
+                fontsize=16, fontweight="bold")
 
 
-        # Equal aspect ratio ensures it's circular
-        ax.axis("equal")
-        plt.rcParams['axes.titley'] = 1.1
-        ax.set_title('Memory Utilization', fontsize='20')
+            # Equal aspect ratio ensures it's circular
+            ax.axis("equal")
+            plt.rcParams['axes.titley'] = 1.1
+            ax.set_title('Memory Utilization', fontsize='20')
 
-        # Render in Streamlit
-        _, col, _ = st.columns([.5, 1, .5])
-        with col:
-            st.pyplot(fig)
+            # Render in Streamlit
+            _, col, _ = st.columns([.5, 1, .5])
+            with col:
+                st.pyplot(fig)
 
 if __name__ == '__main__':
 

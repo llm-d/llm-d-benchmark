@@ -35,7 +35,106 @@ def table(benchmark_data):
     Display table of benchmark data
     """
     st.subheader("Optimal configurations")
-    st.dataframe(benchmark_data, use_container_width=True)
+
+    # Data cleaning
+    df = benchmark_data[[
+        'Name',
+        'Concurrency',
+        'Request_Throughput',
+        'Output_Token_Throughput',
+        'Total_Token_Throughput',
+        'Mean_TTFT_ms',
+        'Mean_TPOT_ms',
+        'Mean_ITL_ms',
+        'Mean_E2EL_ms',
+        'Thpt_per_GPU',
+        'Thpt_per_User',
+    ]].rename(columns={
+        'Name': 'Replicas/Parallelism',
+        'Concurrency': 'Batch Size',
+        'Request_Throughput': 'Request Thpt',
+        'Output_Token_Throughput': 'Output Token Thpt',
+        'Total_Token_Throughput': 'Total Token Thpt',
+        'Mean_TTFT_ms': 'TTFT (ms)',
+        'Mean_TPOT_ms': 'TPOT (ms)',
+        'Mean_ITL_ms': 'ITL (ms)',
+        'Mean_E2EL_ms': 'E2EL (ms)',
+        'Thpt_per_GPU': 'Thpt/GPU (tok/s)',
+        'Thpt_per_User': 'Thpt/User (tok/s)',
+    })
+
+    # Add a selection checkbox column
+    df.insert(0, "Select", False)
+
+    # Build column configuration dynamically
+    column_config = {}
+    for col in df.columns:
+        if col == "Select":
+            column_config[col] = st.column_config.CheckboxColumn(
+                "Select", help="Check to select this row"
+            )
+        else:
+            # Disable editing for all other columns automatically
+            column_config[col] = st.column_config.TextColumn(col, disabled=True)
+
+    # Render the data editor
+    edited_df = st.data_editor(
+        df,
+        column_config=column_config,
+        use_container_width=True,
+        num_rows="fixed",  # Prevent row adding/deleting
+        hide_index=True    # Optional, makes UI cleaner
+    )
+
+
+    # Get selected rows
+    selected_rows_df = edited_df[edited_df["Select"]]
+
+    if not selected_rows_df.empty:
+        # Get the indices of selected rows
+        selected_indices = selected_rows_df.index.tolist()
+
+        st.markdown("##### llm-d configuration:")
+
+        # Iterate over selected rows and fetch data from the original df
+        for idx in selected_indices:
+            row_data = benchmark_data.loc[idx]  # Drop checkbox col for clean data
+            model_name = row_data['Model']
+            dp = row_data['DP']
+            tp = row_data['TP']
+
+            col1, col2 = st.columns(2)
+            col1.write("vLLM arguments")
+            col1.code(f"""vllm serve {model_name} \\
+--data-parallel-size {str(dp)} \\
+--tensor-parallel-size {str(tp)} \\
+"""
+            )
+
+            col2.write("Router config")
+            col2.code("""apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+- type: prefix-cache-scorer
+    parameters:
+    hashBlockSize: 5
+    maxPrefixBlocksToMatch: 256
+    lruCapacityPerServer: 31250
+- type: decode-filter
+- type: max-score-picker
+- type: single-profile-handler
+schedulingProfiles:
+- name: default
+    plugins:
+    - pluginRef: decode-filter
+    - pluginRef: max-score-picker
+    - pluginRef: prefix-cache-scorer
+    weight: 50
+""", language='yaml')
+
+            st.write("---")
+    else:
+        st.info("Select one or more rows to see details below.")
 
 def select_slo(benchmark_data):
     """
@@ -56,6 +155,10 @@ def select_slo(benchmark_data):
                                                  )
 
     # TODO: what else?
+
+# def misc(benchmark_data):
+
+
 
 def get_pareto_front(df: pd.DataFrame) -> set[int]:
     """Get indices of rows on Pareto front.
@@ -165,31 +268,12 @@ if __name__ == "__main__":
             st.warning("The configuration selected returned no result.")
         else:
             select_slo(benchmark_data)
+
             # Plot configurations and get DataFrame with Pareto front configs.
             pareto_front = pareto_plots(benchmark_data)
-            # Show only specific columns in results table
-            table(pareto_front[[
-                'Name',
-                'Concurrency',
-                'Request_Throughput',
-                'Output_Token_Throughput',
-                'Total_Token_Throughput',
-                'Mean_TTFT_ms',
-                'Mean_TPOT_ms',
-                'Mean_ITL_ms',
-                'Mean_E2EL_ms',
-                'Thpt_per_GPU',
-                'Thpt_per_User',
-            ]].rename(columns={
-                'Name': 'Replicas/Parallelism',
-                'Concurrency': 'Batch Size',
-                'Request_Throughput': 'Request Thpt',
-                'Output_Token_Throughput': 'Output Token Thpt',
-                'Total_Token_Throughput': 'Total Token Thpt',
-                'Mean_TTFT_ms': 'TTFT (ms)',
-                'Mean_TPOT_ms': 'TPOT (ms)',
-                'Mean_ITL_ms': 'ITL (ms)',
-                'Mean_E2EL_ms': 'E2EL (ms)',
-                'Thpt_per_GPU': 'Thpt/GPU (tok/s)',
-                'Thpt_per_User': 'Thpt/User (tok/s)',
-            }))
+
+            # Show table of optimal configs
+            table(pareto_front)
+
+            # miscellaneous output
+            # misc(pareto_front)
