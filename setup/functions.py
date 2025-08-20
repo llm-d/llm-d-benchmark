@@ -413,6 +413,7 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
 def model_attribute(model: str, attribute: str) -> str:
 
     model, modelid = model.split(':', 1) if ':' in model else (model, model)
+    modelid = modelid.replace('/', '-').replace('.','-')
 
     #  split the model name into provider and rest
     provider, model_part = model.split('/', 1) if '/' in model else ("", model)
