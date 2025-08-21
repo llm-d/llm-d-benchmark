@@ -101,7 +101,7 @@ storage:
     path: /workspace
 ```
 
-Entries `REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL` and `REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL` will be automatically replaced with the current value of the environment variables `LLMDBENCH_DEPLOY_CURRENT_MODEL` and `LLMDBENCH_HARNESS_STACK_ENDPOINT_URL`.
+Entries `REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL` and `REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL` will be automatically replaced with the current value of the environment variables `LLMDBENCH_DEPLOY_CURRENT_MODEL` and `LLMDBENCH_HARNESS_STACK_ENDPOINT_URL` respectively.
 
 In addition to that, **any other parameter (on the workload profile) can be ovewritten** by setting a list of `<key>,<value>` as the contents of environment variable `LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES`.
 
