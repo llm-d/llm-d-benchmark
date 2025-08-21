@@ -375,6 +375,7 @@ if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
       ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
     fi
     export LLMDBENCH_CONTROL_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)
+    export LLMDBENCH_CONTROL_CLUSTER_NAMESPACE=$(echo $current_context | cut -d '/' -f 1)
     if [[ $LLMDBENCH_CONTROL_WARNING_DISPLAYED -eq 0 ]]; then
       echo ""
       echo "WARNING: environment variable LLMDBENCH_CLUSTER_URL=$LLMDBENCH_CLUSTER_URL. Will attempt to use current context \"${current_context}\"."
@@ -393,14 +394,13 @@ if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
     fi
 
     export LLMDBENCH_CONTROL_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)
-    current_namespace=$(echo $current_context | cut -d '/' -f 1)
     current_url=$(echo $current_context | cut -d '/' -f 2 | cut -d ':' -f 1 | $LLMDBENCH_CONTROL_SCMD "s^-^.^g")
     target_url=$(echo $LLMDBENCH_CLUSTER_URL | cut -d '/' -f 3 | $LLMDBENCH_CONTROL_SCMD "s^-^.^g")
     if [[ $current_url != $target_url ]]; then
       ${LLMDBENCH_CONTROL_KCMD} login --token="${LLMDBENCH_CLUSTER_TOKEN}" --server="${LLMDBENCH_CLUSTER_URL}:6443"
     fi
 
-    if [[ $current_namespace != $LLMDBENCH_VLLM_COMMON_NAMESPACE ]]; then
+    if [[ $LLMDBENCH_CONTROL_CLUSTER_NAMESPACE != $LLMDBENCH_VLLM_COMMON_NAMESPACE ]]; then
       namespace_exists=$(${LLMDBENCH_CONTROL_KCMD} get namespaces | grep $LLMDBENCH_VLLM_COMMON_NAMESPACE || true)
       if [[ ! -z $namespace_exists ]]; then
         ${LLMDBENCH_CONTROL_KCMD} project $LLMDBENCH_VLLM_COMMON_NAMESPACE
@@ -411,6 +411,8 @@ if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
   export LLMDBENCH_CONTROL_KCMD="oc --kubeconfig $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx"
   export LLMDBENCH_CONTROL_HCMD="helm --kubeconfig $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx"
 fi
+
+export LLMDBENCH_CONTROL_CLUSTER_NAMESPACE=$(${LLMDBENCH_CONTROL_KCMD} config view --minify --output 'jsonpath={..namespace}')
 
 export LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT=${LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT:-0}
 is_ocp=$($LLMDBENCH_CONTROL_KCMD api-resources 2>&1 | grep 'route.openshift.io' || true)

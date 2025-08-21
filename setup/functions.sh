@@ -112,7 +112,11 @@ function prepare_work_dir {
 export -f prepare_work_dir
 
 function llmdbench_execute_cmd {
-  set +euo pipefail
+  local shellsetopts=$(set -o | grep -E "pipefail.*on|errexit.*on|nounset.*on" || true)
+  if [[ ! -z ${shellsetopts} ]]; then
+    set +euo pipefail
+  fi
+
   local actual_cmd=$1
   local dry_run=${2:-1}
   local verbose=${3:-0}
@@ -171,7 +175,9 @@ function llmdbench_execute_cmd {
     fi
   fi
 
-  set -euo pipefail
+  if [[ ! -z ${shellsetopts} ]]; then
+    set -euo pipefail
+  fi
 
   if [[ ${fatal} -eq 1 ]];
   then
@@ -363,7 +369,7 @@ function add_config {
   local object_to_render=${1}
   local -i num_spaces=${2:-0}
   local label=${3:-}
-  
+
   local spacec=$(printf '%*s' $num_spaces '')
 
   if [[ -f ${object_to_render} ]]; then

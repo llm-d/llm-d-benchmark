@@ -5,7 +5,7 @@ check_storage_class
 if [[ $? -ne 0 ]]
 then
   announce "❌ Failed to check storage class"
-  exit 1
+  return 1
 fi
 
 if [[ $LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY -eq 0 ]]; then
@@ -41,8 +41,9 @@ else
   announce "✅ harness setup locally."
 fi
 
-announce "🔄 Creating namespace (${LLMDBENCH_HARNESS_NAMESPACE}), service account (${LLMDBENCH_HARNESS_SERVICE_ACCOUNT}) and rbac for harness..."
-cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_namespace_sa_rbac_secret.yaml
+if [[ $LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL != "NA" ]]; then
+  announce "🔄 Creating namespace (${LLMDBENCH_HARNESS_NAMESPACE}), service account (${LLMDBENCH_HARNESS_SERVICE_ACCOUNT}) and rbac for harness..."
+  cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_namespace_sa_rbac_secret.yaml
 ---
 apiVersion: v1
 kind: Namespace
@@ -117,8 +118,12 @@ data:
   HF_TOKEN: "$(echo ${LLMDBENCH_HF_TOKEN} | base64)"
 EOF
 
-llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_namespace_sa_rbac_secret.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-announce "✅ Namespace (${LLMDBENCH_HARNESS_NAMESPACE}), service account (${LLMDBENCH_HARNESS_SERVICE_ACCOUNT}) and rbac for harness created"
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_namespace_sa_rbac_secret.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  if [[ $? -ne 0 ]]; then
+    return 1
+  fi
+  announce "✅ Namespace (${LLMDBENCH_HARNESS_NAMESPACE}), service account (${LLMDBENCH_HARNESS_SERVICE_ACCOUNT}) and rbac for harness created"
+fi
 
 for vol in ${LLMDBENCH_HARNESS_PVC_NAME}; do
 
@@ -140,6 +145,9 @@ spec:
   storageClassName: ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS}
 EOF
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_pvc_${vol}.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    if [[ $? -ne 0 ]]; then
+      return 1
+    fi
   fi
   announce "✅ PVC \"${vol}\" for harness data storage created"
 
@@ -177,8 +185,10 @@ EOF
   if [[ $LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL == "pvc" || ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 ]]; then
     $LLMDBENCH_CONTROL_SCMD -i "s^\^#^^g" $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_a_pod_access_to_harness_data.yaml
   fi
-
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_a_pod_access_to_harness_data.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  if [[ $? -ne 0 ]]; then
+    return 1
+  fi
 
     cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_b_service_access_to_harness_data.yaml
 apiVersion: v1
@@ -198,6 +208,10 @@ spec:
 EOF
 
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_b_service_access_to_harness_data.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  if [[ $? -ne 0 ]]; then
+    return 1
+  fi
+
   announce "✅ Pod \"access-to-harness-data-${vol}\" started, providing access to PVC ${vol}"
 done
 
