@@ -688,21 +688,17 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
     # Import results from Inference Perf
     results = import_yaml(results_file)
 
-    # Import the "per_request_lifecycle_metrics.json" from Inference Perf, as
-    # it contains additional information we need (the model name)
-    per_req_file = os.path.join(
-        os.path.dirname(results_file),
-        'per_request_lifecycle_metrics.json'
-    )
-    per_req = import_yaml(per_req_file)
-
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
     br_dict = _get_llmd_benchmark_envars()
+    if br_dict:
+        model_name = br_dict['scenario']['model']['name']
+    else:
+        model_name = "unknown"
     # Append to that dict the data from Inference Perf
     update_dict(br_dict, {
         "scenario": {
-            "model": {"name": yaml.safe_load(per_req[0]['request'])['model']},
+            "model": {"name": model_name},
             "load": {
                 "name": WorkloadGenerator.INFERENCE_PERF,
             },
