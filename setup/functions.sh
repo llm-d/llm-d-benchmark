@@ -844,6 +844,10 @@ spec:
       value: "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
       value: "${LLMDBENCH_HARNESS_SANITIZED_STACK_NAME}"
+    - name: LLMDBENCH_DEPLOY_METHODS
+      value: "${LLMDBENCH_DEPLOY_METHODS}"
+    - name: LLMDBENCH_MAGIC_ENVAR
+      value: "harness_pod"
     $(add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD)
     - name: HF_TOKEN_SECRET
       value: "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}"
