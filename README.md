@@ -107,7 +107,7 @@ A file describing a series of parameters - both `standup` and `run` - to be exec
 ## Topics
 
 #### [Lifecycle](docs/lifecycle.md)
-#### [Reproducibility](docs/lifecycle.md)
+#### [Reproducibility](docs/reproducibility.md)
 #### [Observability](docs/observability.md)
 #### [Quickstart](docs/quickstart.md)
 #### [FAQ](docs/faq.md)
