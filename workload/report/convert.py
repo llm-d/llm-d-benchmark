@@ -127,7 +127,7 @@ def _get_llmd_benchmark_envars() -> dict:
         config = {
             "scenario": {
                 "model": {
-                    "name": os.environ['LLMDBENCH_DEPLOY_MODEL_LIST'] # TODO this will only work if not a list of models
+                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
                 },
                 "host": {
                     "type": ['replica'] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS']),
@@ -159,7 +159,7 @@ def _get_llmd_benchmark_envars() -> dict:
         config = {
             "scenario": {
                 "model": {
-                    "name": os.environ['LLMDBENCH_DEPLOY_MODEL_LIST'] # TODO this will only work if not a list of models
+                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
                 },
                 "host": {
                     "type": ['prefill'] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
