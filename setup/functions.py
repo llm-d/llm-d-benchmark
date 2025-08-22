@@ -82,7 +82,7 @@ def is_openshift(api: pykube.HTTPClient) -> bool:
         return True
     except PyKubeError as e:
         if isinstance(e, pykube.exceptions.ObjectDoesNotExist):
-            announce("`privileged` not found (not OpenShift)")
+            announce("'privileged' not found (not OpenShift)")
             return False
         # a 404 error means the scc resource type itself doesnt exist
         if e.code == 404:
