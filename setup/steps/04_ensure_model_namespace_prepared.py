@@ -134,7 +134,7 @@ def main():
                 dry_run=ev["control_dry_run"]
             ))
 
-    if is_openshift(api) and ev["deploy_methods"] == "modelservice" :
+    if is_openshift(api) and ev["user_is_admin"] == "1" :
         # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid
         # some setups might also require privileged access for GPU resources
         add_scc_to_service_account(api, "anyuid", ev["vllm_common_service_account"], ev["vllm_common_namespace"], ev["control_dry_run"]=='1')
