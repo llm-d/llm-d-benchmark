@@ -202,7 +202,12 @@ def environment_variable_to_dict(ev: dict = {}) :
         if "LLMDBENCH_" in key:
             ev.update({key.split("LLMDBENCH_")[1].lower():os.environ.get(key)})
 
-    for mandatory_key in [ "control_dry_run", "control_verbose", "run_experiment_analyze_locally"] :
+    for mandatory_key in [ "control_dry_run",
+                           "control_verbose",
+                           "run_experiment_analyze_locally",
+                           "user_is_admin",
+                           "control_environment_type_standalone_active",
+                           "control_environment_type_modelservice_active" ] :
         if mandatory_key not in ev :
             ev[mandatory_key] = 0
 
@@ -450,7 +455,6 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
                 elif job_status.failed:
                     announce(f"Evaluation job {job_name} failed")
                     return False
-
 
     except asyncio.TimeoutError:
         announce(f"Timeout waiting for evaluation job {job_name} after {timeout} seconds.")

@@ -94,7 +94,6 @@ function get_image {
     echo $image_registry/$image_repo/${image_name}:${is_latest_tag}
   fi
 }
-
 export -f get_image
 
 function prepare_work_dir {
