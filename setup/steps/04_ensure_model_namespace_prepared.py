@@ -100,7 +100,7 @@ def main():
 
     models = [model.strip() for model in ev["deploy_model_list"].split(',') if model.strip()]
     for model_name in models:
-        if ev["vllm_modelservice_uri_protocol"] == "pvc" or ev.get("CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE") == "1":
+        if ev["vllm_modelservice_uri_protocol"] == "pvc" or ev["control_environment_type_standalone_active"] :
             download_model = model_attribute(model=model_name, attribute="model")
             model_artifact_uri = f'pvc://{ev["vllm_common_pvc_name"]}/models/{download_model}'
             protocol, pvc_and_model_path = model_artifact_uri.split("://") # protocol var unused but exists in prev script
@@ -134,11 +134,11 @@ def main():
                 dry_run=ev["control_dry_run"]
             ))
 
-    if is_openshift(api) and ev["user_is_admin"] == "1" :
+    if is_openshift(api) and ev["user_is_admin"] :
         # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid
         # some setups might also require privileged access for GPU resources
-        add_scc_to_service_account(api, "anyuid", ev["vllm_common_service_account"], ev["vllm_common_namespace"], ev["control_dry_run"]=='1')
-        add_scc_to_service_account(api, "privileged", ev["vllm_common_service_account"], ev["vllm_common_namespace"], ev["control_dry_run"]=='1')
+        add_scc_to_service_account(api, "anyuid", ev["vllm_common_service_account"], ev["vllm_common_namespace"], ev["control_dry_run"])
+        add_scc_to_service_account(api, "privileged", ev["vllm_common_service_account"], ev["vllm_common_namespace"], ev["control_dry_run"])
 
 
     announce(f'🚚 Creating configmap with contents of all files under workload/preprocesses...')

@@ -328,10 +328,8 @@ def ensure_gateway_provider(
     Returns:
         int: 0 for success, non-zero for failure
     """
-    # Check if modelservice is active
-    modelservice_active = ev.get("control_environment_type_modelservice_active", "0") == "1"
 
-    if not modelservice_active:
+    if not ev["control_environment_type_modelservice_active"]:
         deploy_methods = ev.get("deploy_methods", "unknown")
         announce(f"⏭️ Environment types are \"{deploy_methods}\". Skipping this step.")
         return 0
@@ -350,7 +348,6 @@ def ensure_gateway_provider(
     work_dir = ev.get("control_work_dir", ".")
     infra_dir = ev.get("infra_dir", "")
     hf_token = ev.get("hf_token", "")
-    user_is_admin = ev.get("user_is_admin", "0") == "1"
 
     # Step 1: Ensure helm repository
     result = ensure_helm_repository(helm_cmd, chart_name, repo_url, dry_run, verbose)
@@ -379,7 +376,7 @@ def ensure_gateway_provider(
         except Exception:
             has_infra_chart = False
 
-        if user_is_admin:
+        if ev["user_is_admin"] :
             # Set up llm-d-infra options
             llmd_opts = f"--namespace {common_namespace} --gateway {gateway_class} --context {work_dir}/environment/context.ctx --release infra-{release_name}"
             announce(f"🚀 Calling llm-d-infra with options \"{llmd_opts}\"...")
