@@ -203,6 +203,9 @@ generate_standup_parameter_scenarios $sweeptmpdir $LLMDBENCH_SCENARIO_FULL_PATH 
 rm -rf $LLMDBENCH_CONTROL_WORK_DIR
 for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
   export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=$sweeptmpdir/setup/treatment_list/$scenario
+  sid=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${scenario%.sh}")  # remove non alphanumeric and .sh
+  sid=${sid#treatment_}
+  export LLMDBENCH_RUN_EXPERIMENT_ID=$(date +%s)-${sid}
 
   $LLMDBENCH_MAIN_DIR/setup/standup.sh
   ec=$?
