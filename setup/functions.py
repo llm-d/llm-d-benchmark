@@ -147,14 +147,14 @@ def llmdbench_execute_cmd(
             if not verbose and silent:
                 # correspon to eval with writing log
                 with open(stdout_log, 'w') as f_out, open(stderr_log, 'w') as f_err:
-                    result = subprocess.run(actual_cmd, shell=True, stdout=f_out, stderr=f_err, check=False)
+                    result = subprocess.run(actual_cmd, shell=True, executable="/bin/bash", stdout=f_out, stderr=f_err, check=False)
             elif not verbose and not silent:
                 # run with no log
-                result = subprocess.run(actual_cmd, shell=True, check=False)
+                result = subprocess.run(actual_cmd, shell=True, executable="/bin/bash", check=False)
             else:
                 # run with verbose
                 announce(msg)
-                result = subprocess.run(actual_cmd, shell=True, check=False)
+                result = subprocess.run(actual_cmd, shell=True, executable="/bin/bash", check=False)
 
             ecode = result.returncode
 

@@ -185,6 +185,7 @@ def setup_gateway_infrastructure(
         result = subprocess.run(
             cmd,
             shell=True,
+            executable="/bin/bash",
             env=env,
             capture_output=not verbose,
             text=True
