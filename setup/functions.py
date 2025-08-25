@@ -598,14 +598,18 @@ def check_storage_class():
     
     try:
         # Use pykube to connect to Kubernetes
-        api = kube_connect()
+        control_work_dir = os.environ.get("LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark")
+        api = kube_connect(f'{control_work_dir}/environment/context.ctx')
+        
+        # Create StorageClass object using object_factory since it's not built into pykube
+        StorageClass = pykube.object_factory(api, "storage.k8s.io/v1", "StorageClass")
         
         # Handle default storage class
         if storage_class == "default":
             if caller in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
                 try:
                     # Find default storage class using pykube
-                    storage_classes = pykube.StorageClass.objects(api)
+                    storage_classes = StorageClass.objects(api)
                     default_sc = None
                     
                     for sc in storage_classes:
@@ -627,7 +631,7 @@ def check_storage_class():
         
         # Verify storage class exists using pykube
         try:
-            sc = pykube.StorageClass.objects(api).get(name=storage_class)
+            sc = StorageClass.objects(api).get(name=storage_class)
             if sc.exists():
                 return True
             else:
@@ -659,7 +663,8 @@ def check_affinity():
     
     try:
         # Use pykube to connect to Kubernetes
-        api = kube_connect()
+        control_work_dir = os.environ.get("LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark")
+        api = kube_connect(f'{control_work_dir}/environment/context.ctx')
         
         # Handle auto affinity detection
         if affinity == "auto":
