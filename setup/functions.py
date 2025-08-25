@@ -661,3 +661,17 @@ def get_image(image_registry: str, image_repo: str, image_name: str, image_tag: 
         return is_latest_tag
     else:
         return f"{image_registry}/{image_repo}/{image_name}:{is_latest_tag}"
+
+def add_config(obj_or_filename, num_spaces=0, label=""):
+    spaces = " " * num_spaces
+    contents = ""
+    indented_contents = ""
+    try:
+        with open(obj_or_filename, 'r') as f:
+            contents = f.read()
+    except FileNotFoundError:
+        # not a file
+        contents = obj_or_filename
+
+    indented_contents = '\n'.join(f"{spaces}{line}" for line in contents.splitlines())
+    return indented_contents

@@ -55,6 +55,8 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
 EOF
     fi
 
+    add_config_prep
+
     cat << EOF >$LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-values.yaml
 fullnameOverride: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}
 multinode: ${LLMDBENCH_VLLM_MODELSERVICE_MULTINODE}
@@ -166,24 +168,8 @@ decode:
         failureThreshold: 3
         periodSeconds: 5
     $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG} 6)
-    volumeMounts:
-    - name: metrics-volume
-      mountPath: /.config
-    - name: shm
-      mountPath: /dev/shm
-    - name: torch-compile-cache
-      mountPath: /.cache
-    $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS} 4)
-  volumes:
-  - name: metrics-volume
-    emptyDir: {}
-  - name: shm
-    emptyDir:
-      medium: Memory
-      sizeLimit: "16Gi"
-  - name: torch-compile-cache
-    emptyDir: {}
-  $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES} 2)
+    volumeMounts: $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS} 4)
+  volumes: $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES} 2)
 
 prefill:
   create: $(echo $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS | $LLMDBENCH_CONTROL_SCMD -e 's/^0/false/' -e 's/[1-9].*/true/')
@@ -248,24 +234,8 @@ prefill:
         failureThreshold: 3
         periodSeconds: 5
     $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG} 6)
-    volumeMounts:
-    - name: metrics-volume
-      mountPath: /.config
-    - name: shm
-      mountPath: /dev/shm
-    - name: torch-compile-cache
-      mountPath: /.cache
-    $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS} 4)
-  volumes:
-  - name: metrics-volume
-    emptyDir: {}
-  - name: shm
-    emptyDir:
-      medium: Memory
-      sizeLimit: "16Gi"
-  - name: torch-compile-cache
-    emptyDir: {}
-  $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES} 2)
+    volumeMounts: $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS} 4)
+  volumes: $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES} 2)
 EOF
     # cleanup temp file
     rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-rules.yaml

@@ -3,8 +3,9 @@
 
 export LLMDBENCH_DEPLOY_MODEL_LIST=meta-llama/Llama-3.1-70B-Instruct
 
-# Common parameters across standalone and llm-d (prefill and decode) pods
 export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic.yaml
+
+# Common parameters across standalone and llm-d (prefill and decode) pods
 export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
 export LLMDBENCH_VLLM_COMMON_CPU_NR=16
 export LLMDBENCH_VLLM_COMMON_CPU_MEM=64Gi
