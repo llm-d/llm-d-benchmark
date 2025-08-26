@@ -11,7 +11,7 @@ def check_input():
     Check all required input is there
     """
     scenario = st.session_state['scenario']
-    if not scenario.model_name or not scenario.workload:
+    if not scenario.model_name or not scenario.gpu_spec or not scenario.isl or not scenario.osl:
         return False
     return True
 
@@ -247,7 +247,7 @@ if __name__ == "__main__":
 
 
     if not check_input():
-        st.warning("One or more inputs is missing in Home page: Model name, ISL, OSL")
+        st.warning("One or more inputs is missing in Home page: Model name, hardware specification, or workload")
 
     else:
         user_scenario =  st.session_state['scenario']

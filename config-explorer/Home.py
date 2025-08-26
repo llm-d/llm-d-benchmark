@@ -7,6 +7,7 @@ import streamlit as st
 import db
 import util
 import numpy as np
+from src.config_explorer.functions import *
 
 def init_session_state():
     """
@@ -55,6 +56,7 @@ def capacity_planner():
     st.caption("Determine if your model will fit on _n_ XXX GPU.")
 
     user_scenario = st.session_state['scenario']
+    model_info = None
 
     # Model
     with st.container(border=True):
@@ -67,15 +69,28 @@ def capacity_planner():
 
         if selected_model and selected_model != "":
 
-            info = util.get_model_info_from_hf(selected_model)
-            if info is None:
-                st.warning("Model not found on Hugging Face. Please verify model name is in repo/modelID format.")
+            # Fetch model info
+            try:
+                model_info = get_model_info_from_hf(selected_model)
+                user_scenario.model_info = model_info
+            except Exception as e:
+                st.warning("Cannot access model information, see error below.")
+                st.warning(e)
+                return None
+
+            # Fetch model config
+            try:
+                model_config = get_model_config_from_hf(selected_model)
+                user_scenario.model_config = model_config
+            except Exception as e:
+                st.warning("Cannot access model config, see error below.")
+                st.warning(e)
                 return None
 
             user_scenario.model_name = selected_model
-            user_scenario.parameters = info.safetensors.total
-            precision = info.safetensors.parameters
-            precision_keys = list(precision.keys())
+            total_params = model_total_params(model_info)
+            precision_keys = model_precision_keys(model_info)
+            gpu_memory_req = round(model_memory_req(model_info))
 
             # Display precision
             st.caption(f"Precision: {', '.join(precision_keys)}")
@@ -83,9 +98,8 @@ def capacity_planner():
             # Record the first precision
             user_scenario.precision = precision_keys[0]
 
-
-            st.caption(f"Total parameters: {user_scenario.parameters}")
-            st.caption(f"GPU memory requirement: ~{user_scenario.get_gpu_mem_in_gb()} GB")
+            st.caption(f"Total parameters: {total_params}")
+            st.caption(f"GPU memory requirement: ~{gpu_memory_req} GB")
 
         else:
             return None
@@ -107,20 +121,21 @@ def capacity_planner():
         if st.session_state['selected_gpu_spec']:
             selected_gpu = st.session_state['selected_gpu_spec']
             user_scenario.gpu_spec = st.session_state['gpu_spec'][selected_gpu]
-            st.caption(f"GPU memory: {user_scenario.gpu_spec['memory']} GB")
+            gpu_memory = user_scenario.gpu_spec['memory']
+            st.caption(f"GPU memory: {gpu_memory} GB")
 
             # Calculate the minimum number of GPUs required
-            min_gpu_req = user_scenario.get_min_gpu_count()
-            st.warning(f"Loading this model on the selected GPU requires at least `{min_gpu_req}`")
+            min_gpu_needed = min_gpu_req(model_info, gpu_memory)
+            st.warning(f"Loading this model on the selected GPU requires at least `{min_gpu_needed}`")
             st.number_input("Number accelerators available",
                             key='selected_gpu_count_avail',
-                            value=None,
+                            value=user_scenario.gpu_count_avail,
                             step=1,
                             on_change=update_gpu_count_avail,
                             min_value=0,
                             )
 
-            if user_scenario.gpu_count_avail is None or user_scenario.gpu_count_avail < min_gpu_req:
+            if user_scenario.gpu_count_avail is None or user_scenario.gpu_count_avail < min_gpu_needed:
                 st.error("Not enough GPU memory to load the model.")
 
         # Dialog for registering new accelerator data
@@ -134,6 +149,8 @@ def kv_cache_estimator():
     """
 
     user_scenario = st.session_state['scenario']
+    model_info = user_scenario.model_info
+    model_config = user_scenario.model_config
 
     st.subheader("KV Cache Estimator")
     st.caption("Estimate KV cache memory requirements for the selected model based on workload.")
@@ -142,42 +159,35 @@ def kv_cache_estimator():
     with st.container(border=True):
         st.write("**Workload Characteristics**")
 
-        workload_list = list(db.workload.keys())
-        scenario_workload_index = 0 if user_scenario.workload is None else workload_list.index(user_scenario.workload['name'])
+        if model_info is None:
+            st.warning("Model information not yet selected")
+            return None
+        if model_config is None:
+            st.warning("Model config not available")
+            return None
 
-        selected_workload = st.selectbox("Workload",
-                                        index=scenario_workload_index,
-                                         options=workload_list,
-        )
-        if selected_workload:
-            user_scenario.workload = db.workload[selected_workload]
+        col1, col2 = st.columns(2)
+        col1.number_input("Input sequence length (prompt + context)",
+                            value=1 if user_scenario.isl is None else user_scenario.isl,
+                            min_value=1,
+                            step=1,
+                            key="selected_isl",
+                            on_change=update_isl,
+                            )
 
-            isl_str = user_scenario.workload['itl']
-            osl_str = user_scenario.workload['otl']
-            isl = util.length_description_to_token(isl_str)
-            osl = util.length_description_to_token(osl_str)
+        col2.number_input("Output sequence length",
+                            value=1 if user_scenario.osl is None else user_scenario.osl,
+                            min_value=1,
+                            step=1,
+                            key="selected_osl",
+                            on_change=update_osl,
+                            )
 
-            st.caption(f"""This workload uses the XXX dataset. This workload is primarily for YYY purposes.
-* Input Sequence Length (ISL): {isl_str} / ~{isl}
-* Output Sequence Length (OSL): {osl_str} / ~{osl}
-            """)
-
-            col1, col2 = st.columns(2)
-            col1.number_input("Input sequence length (prompt + context)",
-                                value=isl if user_scenario.isl is None else user_scenario.isl,
-                                min_value=1,
-                                step=1,
-                                key="selected_isl",
-                                on_change=update_isl,
-                                )
-
-            col2.number_input("Output sequence length",
-                                value=osl if user_scenario.osl is None else user_scenario.osl,
-                                min_value=1,
-                                step=1,
-                                key="selected_osl",
-                                on_change=update_osl,
-                                )
+        user_context_len = user_scenario.isl + user_scenario.osl
+        max_model_ctx_len = max_context_len(model_config)
+        if user_context_len > max_model_ctx_len:
+            st.error(f"Input and output lengths exceed the max context length accepted by model ({max_model_ctx_len})")
+            return None
 
         model_size = 0
         kv_cache = 0
@@ -186,9 +196,15 @@ def kv_cache_estimator():
 
         # Display GPU + KV pie chart
         if user_scenario.model_name:
-            model_size = user_scenario.get_gpu_mem_in_gb()
-        if user_scenario.workload:
-            kv_cache = user_scenario.get_kv_cache_req()
+            model_size = round(model_memory_req(model_info), 2)
+
+        if user_scenario.isl and user_scenario.osl:
+            kv_mem_req = kv_cache_req(model_info,
+                                    model_config,
+                                    context_len=user_scenario.isl + user_scenario.osl
+                                      )
+            kv_cache = round(kv_mem_req, 2)
+            st.info(f"About ~{kv_cache} GB of KV cache is required.")
         if user_scenario.gpu_count_avail  is not None:
             total = user_scenario.gpu_count_avail * user_scenario.gpu_spec['memory']
             free = total - model_size - kv_cache
@@ -198,7 +214,11 @@ def kv_cache_estimator():
             free = 0
 
         # Display chart iff model and cache size are selected
-        if model_size > 0 and kv_cache > 0 and user_scenario.gpu_count_avail is not None and user_scenario.gpu_count_avail >= user_scenario.get_min_gpu_count():
+        if model_size > 0 and \
+            kv_cache > -1 and \
+            user_scenario.gpu_count_avail is not None and \
+            user_scenario.gpu_count_avail >= min_gpu_req(model_info, user_scenario.gpu_spec['memory']):
+
             labels = ["Model", "KV Cache", "Free"]
             sizes = [model_size, kv_cache, free]
             colors = ["#ff9999", "#66b3ff", "#99ff99"]
@@ -247,13 +267,13 @@ def kv_cache_estimator():
 if __name__ == '__main__':
 
     # Set up streamlit config
-    st.set_page_config(page_title="Configuration Recommendation Tool",
+    st.set_page_config(page_title="Configuration Explorer",
                        page_icon=None,
                        layout="wide",
                        initial_sidebar_state="expanded",
                        menu_items=None)
 
-    st.title("Configuration Recommendation")
+    st.title("Configuration Explorer")
     st.caption("Finding the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements.")
 
     init_session_state()

@@ -142,7 +142,7 @@ def get_color_by_col(input: str):
     return color_by
 
 def read_benchmark_data():
-    with open("./config-rec/df.pkl", 'rb') as file:
+    with open("./config-explorer/df.pkl", 'rb') as file:
         data = pickle.load(file)
         df = pd.DataFrame(data)
 

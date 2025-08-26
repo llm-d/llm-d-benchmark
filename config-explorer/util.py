@@ -2,7 +2,8 @@
 Utilities to fetch info from Hugging Face
 """
 import math
-from huggingface_hub import HfApi
+from huggingface_hub import HfApi, ModelInfo
+from transformers import AutoConfig
 from dataclasses import dataclass
 
 PRECISIONS = ["FP32", "FP/BF16", "FP/INT8", "FP/INT4"]
@@ -11,6 +12,8 @@ PRECISIONS = ["FP32", "FP/BF16", "FP/INT8", "FP/INT4"]
 class Scenario:
     """Scenario stores info about an user scenario"""
     model_name: str | None = None
+    model_config: AutoConfig | None = None
+    model_info: ModelInfo | None = None
     parameters: int | None = None
     precision: str | None = None    # ie: BF16
     tp: int = 1

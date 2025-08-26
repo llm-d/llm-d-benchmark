@@ -9,11 +9,11 @@ Finding the most cost-effective, optimal configuration for serving models on llm
 ```
 python -m venv .venv
 source .venv/bin/activate
-pip install -r config-rec/requirements.txt
+pip install -r config-explorer/requirements.txt
 ```
 
 ## Run
 
 ```
-streamlit run config-rec/Home.py
+streamlit run config-explorer/Home.py
 ```
