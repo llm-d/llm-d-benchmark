@@ -40,6 +40,11 @@ def main():
             announce("❌ Failed to check affinity")
             return 1
         
+        # Re-parse environment variables in case check functions updated them
+        for key in dict(os.environ).keys():
+            if "LLMDBENCH_" in key:
+                ev.update({key.split("LLMDBENCH_")[1].lower(): os.environ.get(key)})
+        
         # Extract environment for debugging
         extract_environment()
         

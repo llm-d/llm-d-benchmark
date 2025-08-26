@@ -601,8 +601,16 @@ def check_storage_class():
         control_work_dir = os.environ.get("LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark")
         api = kube_connect(f'{control_work_dir}/environment/context.ctx')
         
-        # Create StorageClass object using object_factory since it's not built into pykube
-        StorageClass = pykube.object_factory(api, "storage.k8s.io/v1", "StorageClass")
+        # Create StorageClass object - try pykube-ng first, fallback to custom class
+        try:
+            # Try pykube-ng's object_factory if available
+            StorageClass = pykube.object_factory(api, "storage.k8s.io/v1", "StorageClass")
+        except AttributeError:
+            # Fallback for older pykube versions - create custom StorageClass
+            class StorageClass(pykube.objects.APIObject):
+                version = "storage.k8s.io/v1"
+                endpoint = "storageclasses"
+                kind = "StorageClass"
         
         # Handle default storage class
         if storage_class == "default":
