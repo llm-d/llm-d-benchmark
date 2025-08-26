@@ -39,7 +39,7 @@ function llmdbench_execute_cmd() {
     local cmd="$1"
     local dry_run="${2:-1}"
     local verbose="${3:-0}"
-    
+
     echo "[BASH CMD] $cmd (dry_run=$dry_run, verbose=$verbose)"
     return 0
 }
@@ -108,7 +108,7 @@ def mock_execute_cmd(cmd, dry_run=False, verbose=False):
     return 0
 
 # Set up environment
-os.environ['CURRENT_STEP_NAME'] = '00_ensure_llm-d-infra'
+os.environ['LLMDBENCH_CURRENT_STEP'] = '00_ensure_llm-d-infra'
 
 # Import and patch the module
 sys.path.append('${SETUP_DIR}/steps')
@@ -161,7 +161,7 @@ def mock_execute_cmd(cmd, dry_run=False, verbose=False):
     return 0
 
 # Set up environment
-os.environ['CURRENT_STEP_NAME'] = '00_ensure_llm-d-infra'
+os.environ['LLMDBENCH_CURRENT_STEP'] = '00_ensure_llm-d-infra'
 
 # Import and patch the module
 sys.path.append('${SETUP_DIR}/steps')
@@ -209,7 +209,7 @@ echo "  Bash: $bash_commands_new"
 echo "  Python: $python_commands_new"
 
 echo "Existing repo scenario commands:"
-echo "  Bash: $bash_commands_existing" 
+echo "  Bash: $bash_commands_existing"
 echo "  Python: $python_commands_existing"
 
 # Extract and compare announcements

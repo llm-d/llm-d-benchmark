@@ -88,30 +88,6 @@ def import_csv_with_header(file_path: str) -> dict[str, list[Any]]:
     return data
 
 
-def import_variables(file_path: str) -> dict[str, str]:
-    """Import a list of environment variable definitions from file as a dict.
-
-    Args:
-        file_path (str): Path to variable definition file.
-
-    Returns:
-        dict: Imported data.
-    """
-    check_file(file_path)
-
-    envars = {}
-    with open(file_path, 'r', encoding='UTF-8') as file:
-        for line in file:
-            if '=' not in line:
-                continue
-            envar, value = line.strip().split('=', 1)
-            if re.search('^export ', envar):
-                envar = envar[7:].strip()
-            envars[envar] = value
-
-    return envars
-
-
 def update_dict(dest: dict[Any, Any], source: dict[Any, Any]) -> None:
     """Deep update a dict using values from another dict. If a value is a dict,
     then update that dict, otherwise overwrite with the new value.
@@ -132,57 +108,50 @@ def update_dict(dest: dict[Any, Any], source: dict[Any, Any]) -> None:
             dest[key] = val
 
 
-#TODO if a variables file exists, it is assumed it contains certain variable
-# definitions. If any are missing, this function will crash.
-def _import_llmd_benchmark_run_data(results_path: str) -> dict:
-    """Import scenario data from llm-d-benchmark run given the results path.
-
-    This step is required because llm-d-benchmark standup details are not
-    passed along to the harness pods. When a harness pod creates a benchmark
-    report, it will fill in only the details it knows.
-
-    Args:
-        results_path (str): Path to results directory.
+def _get_llmd_benchmark_envars() -> dict:
+    """Get information from environment variables for the benchmark report.
 
     Returns:
         dict: Imported data about scenario following schema of BenchmarkReport.
     """
-    variables_file = os.path.join(results_path, os.pardir, os.pardir, 'environment', 'variables')
-    if not os.path.isfile(variables_file):
-        # We do not have this information available to us.
+    # We make the assumption that if the environment variable
+    # LLMDBENCH_MAGIC_ENVAR is defined, then we are inside a harness pod.
+    if 'LLMDBENCH_MAGIC_ENVAR' not in os.environ:
+        # We are not in a harness pod
         return {}
 
-    envars = import_variables(variables_file)
+    #TODO at this point we assume a certain set of environment variables are
+    # defined, and we will crash if this is not the case.
 
-    if envars['LLMDBENCH_DEPLOY_METHODS'] == 'standalone':
+    if os.environ['LLMDBENCH_DEPLOY_METHODS'] == 'standalone':
         config = {
             "scenario": {
                 "model": {
-                    "name": envars['LLMDBENCH_DEPLOY_MODEL_LIST'] # TODO this will only work if not a list of models
+                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
                 },
                 "host": {
-                    "type": ['replica'] * int(envars['LLMDBENCH_VLLM_COMMON_REPLICAS']),
+                    "type": ['replica'] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS']),
                     "accelerator": [{
-                        "model": envars['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
-                        "count": int(envars['LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR']),
+                        "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
+                        "count": int(os.environ['LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR']),
                         "parallelism": {
-                            "tp": int(envars['LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR']),
+                            "tp": int(os.environ['LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR']),
                         },
-                    }] * int(envars['LLMDBENCH_VLLM_COMMON_REPLICAS']),
+                    }] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS']),
                 },
                 "platform": {
                     "engine": [{
-                        "name": envars['LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY'] + \
-                                envars['LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO'] + \
-                                envars['LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME'] + \
-                                envars['LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG'],
-                    }] * int(envars['LLMDBENCH_VLLM_COMMON_REPLICAS'])
+                        "name": os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY'] + \
+                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO'] + \
+                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME'] + \
+                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG'],
+                    }] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS'])
                 },
                 "metadata": {
-                    "load_format": envars['LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT'],
-                    "logging_level": envars['LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL'],
-                    "vllm_server_dev_mode": envars['LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE'],
-                    "preprocess": envars['LLMDBENCH_VLLM_STANDALONE_PREPROCESS'],
+                    "load_format": os.environ['LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT'],
+                    "logging_level": os.environ['LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL'],
+                    "vllm_server_dev_mode": os.environ['LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE'],
+                    "preprocess": os.environ['LLMDBENCH_VLLM_STANDALONE_PREPROCESS'],
                 }
             },
         }
@@ -190,34 +159,34 @@ def _import_llmd_benchmark_run_data(results_path: str) -> dict:
         config = {
             "scenario": {
                 "model": {
-                    "name": envars['LLMDBENCH_DEPLOY_MODEL_LIST'] # TODO this will only work if not a list of models
+                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
                 },
                 "host": {
-                    "type": ['prefill'] * int(envars['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
-                            ['decode'] * int(envars['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
+                    "type": ['prefill'] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
+                            ['decode'] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
                     "accelerator": [{
-                        "model": envars['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
-                        "count": int(envars['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR']),
+                        "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
+                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR']),
                         "parallelism": {
-                            "tp": int(envars['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR']),
+                            "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR']),
                         },
-                    }] * int(envars['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
+                    }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
                     [{
-                        "model": envars['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
-                        "count": int(envars['LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR']),
+                        "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
+                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR']),
                         "parallelism": {
-                            "tp": int(envars['LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR']),
+                            "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR']),
                         },
-                    }] * int(envars['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
+                    }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
                 },
                 "platform": {
                     "engine": [{
-                            "name": envars['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
-                                    envars['LLMDBENCH_LLMD_IMAGE_REPO'] + \
-                                    envars['LLMDBENCH_LLMD_IMAGE_NAME'] + \
-                                    envars['LLMDBENCH_LLMD_IMAGE_TAG'],
-                    }] * (int(envars['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
-                         int(envars['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
+                            "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
+                                    os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + \
+                                    os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + \
+                                    os.environ['LLMDBENCH_LLMD_IMAGE_TAG'],
+                    }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
+                         int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
                 },
             },
         }
@@ -238,13 +207,6 @@ def import_benchmark_report(br_file: str) -> BenchmarkReport:
 
     # Import benchmark report as a dict following the schema of BenchmarkReport
     br_dict = import_yaml(br_file)
-
-    # Append to that dict the data from llm-d-benchmark standup.
-    # We must append the data from the llm-d-benchmark to the data from the
-    # harness, rather than the reverse, as the fmperf harness does not record
-    # the model name (it will be filled in with "unknown" during benchmark
-    # report generation).
-    update_dict(br_dict, _import_llmd_benchmark_run_data(os.path.dirname(br_file)))
 
     return BenchmarkReport(**br_dict)
 
@@ -286,9 +248,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
     # Import results file from vLLM benchmark
     results = import_yaml(results_file)
 
-    # Import scenario details from llm-d-benchmark run as a dict following the
+    # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
-    br_dict = _import_llmd_benchmark_run_data(os.path.dirname(results_file))
+    br_dict = _get_llmd_benchmark_envars()
     # Append to that dict the data from vLLM benchmark
     update_dict(br_dict, {
         "scenario": {
@@ -382,9 +344,9 @@ def import_guidellm(results_file: str) -> BenchmarkReport:
     # Everything falls under ['benchmarks'][0], so just grab that part
     results = import_yaml(results_file)['benchmarks'][0]
 
-    # Import scenario details from llm-d-benchmark run as a dict following the
+    # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
-    br_dict = _import_llmd_benchmark_run_data(os.path.dirname(results_file))
+    br_dict = _get_llmd_benchmark_envars()
     # Append to that dict the data from GuideLLM
     update_dict(br_dict, {
         "scenario": {
@@ -551,9 +513,9 @@ def import_fmperf(results_file: str) -> BenchmarkReport:
 
     results = import_csv_with_header(results_file)
 
-    # Import scenario details from llm-d-benchmark run as a dict following the
+    # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
-    br_dict = _import_llmd_benchmark_run_data(os.path.dirname(results_file))
+    br_dict = _get_llmd_benchmark_envars()
     if br_dict:
         model_name = br_dict['scenario']['model']['name']
     else:
@@ -726,21 +688,17 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
     # Import results from Inference Perf
     results = import_yaml(results_file)
 
-    # Import the "per_request_lifecycle_metrics.json" from Inference Perf, as
-    # it contains additional information we need (the model name)
-    per_req_file = os.path.join(
-        os.path.dirname(results_file),
-        'per_request_lifecycle_metrics.json'
-    )
-    per_req = import_yaml(per_req_file)
-
-    # Import scenario details from llm-d-benchmark run as a dict following the
+    # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
-    br_dict = _import_llmd_benchmark_run_data(os.path.dirname(results_file))
+    br_dict = _get_llmd_benchmark_envars()
+    if br_dict:
+        model_name = br_dict['scenario']['model']['name']
+    else:
+        model_name = "unknown"
     # Append to that dict the data from Inference Perf
     update_dict(br_dict, {
         "scenario": {
-            "model": {"name": yaml.safe_load(per_req[0]['request'])['model']},
+            "model": {"name": model_name},
             "load": {
                 "name": WorkloadGenerator.INFERENCE_PERF,
             },
@@ -860,9 +818,9 @@ def import_nop(results_file: str) -> BenchmarkReport:
 
     categories = _import_categories(results["metrics"]["categories"])
 
-    # Import scenario details from llm-d-benchmark run as a dict following the
+    # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
-    br_dict = _import_llmd_benchmark_run_data(os.path.dirname(results_file))
+    br_dict = _get_llmd_benchmark_envars()
 
     results_dict = {
         "scenario": {

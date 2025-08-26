@@ -8,7 +8,7 @@ project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
 try:
-    from functions import announce
+    from functions import announce, environment_variable_to_dict
     import git
 except ImportError as e:
     # Fallback for when dependencies are not available
@@ -94,31 +94,21 @@ def main():
     """Main function following the pattern from other Python steps"""
 
     # Set current step name for logging/tracking
-    os.environ["CURRENT_STEP_NAME"] = os.path.splitext(os.path.basename(__file__))[0]
+    os.environ["LLMDBENCH_CURRENT_STEP"] = os.path.splitext(os.path.basename(__file__))[0]
 
-    # Parse environment variables into ev dictionary (following established pattern)
     ev = {}
-    for key, value in os.environ.items():
-        if "LLMDBENCH_" in key:
-            ev[key.split("LLMDBENCH_")[1].lower()] = value
+    environment_variable_to_dict(ev)
 
-    # Extract required environment variables with defaults
-    infra_dir = ev.get("infra_dir", "/tmp")
-    git_repo = ev.get("infra_git_repo", "https://github.com/llm-d-incubation/llm-d-infra.git")
-    git_branch = ev.get("infra_git_branch", "main")
-    dry_run = ev.get("control_dry_run") == '1'
-    verbose = ev.get("control_verbose") == '1'
-
-    if dry_run:
+    if ev["control_dry_run"]:
         announce("DRY RUN enabled. No actual changes will be made.")
 
     # Execute the main logic
     return ensure_llm_d_infra(
-        infra_dir=infra_dir,
-        git_repo=git_repo,
-        git_branch=git_branch,
-        dry_run=dry_run,
-        verbose=verbose
+        infra_dir=ev["infra_dir"],
+        git_repo=ev["infra_git_repo"],
+        git_branch=ev["infra_git_branch"],
+        dry_run=ev["control_dry_run"],
+        verbose=ev["control_verbose"]
     )
 
 

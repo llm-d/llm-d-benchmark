@@ -55,5 +55,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+environment/
 
 scenarios/none.sh

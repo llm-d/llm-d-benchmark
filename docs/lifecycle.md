@@ -31,10 +31,10 @@ Run the command line with the option `-h` in order to produce a list of steps
 ```
 
 > [!NOTE]
-> Each individual "step file" is named in a way that briefly describes each one the multiple steps required for a full deployment.
+> Each individual "step file" is named in a way that briefly describes each one the multiple steps required for a full standup.
 
 > [!TIP]
-> Steps 0-5 can be considered "preparation" and can be skipped in most deployments.
+> Steps 0-5 can be considered "preparation" and can be skipped in most standups.
 
 #### to dry-run
 
@@ -42,11 +42,11 @@ Run the command line with the option `-h` in order to produce a list of steps
 ./setup/standup.sh -n
 ```
 
-### Deployment
+### Standup
 
 vLLM instances can be deployed by one of the following methods:
 
-- "standalone" (a simple deployment with services associated to the deployment)
+- "standalone" (a simple (`Kubernetes`) `deployment` with a (`Kubernetes`) `service` associated to it)
 - "modelservice" (invoking a combination of [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git) and [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git)).
 
 This is controlled by the environment variable LLMDBENCH_DEPLOY_METHODS (default "modelservice"). The value of the environment variable can be overriden by the paraemeter `-t/--methods` (applicable for both `teardown.sh` and `standup.sh`)
@@ -55,19 +55,6 @@ This is controlled by the environment variable LLMDBENCH_DEPLOY_METHODS (default
 > At this time, only **one simultaneous** deployment method is supported
 
 All available models are listed and controlled by the variable `LLMDBENCH_DEPLOY_MODEL_LIST`. The value of the above mentioned environment variable can be overriden by the paraemeter `-m/--model` (applicable for both `teardown.sh` and `standup.sh`).
-
-> [!WARNING]
-> At this time, only **one simultaneous** model is supported
-
-### Scenarios
-
-All relevant variables to a particular experiment are stored in a "scenario" (folder aptly named).
-
-The expectation is that an experiment is run by initially executing:
-
-```
-source scenario/<scenario name>
-```
 
 ### Full cycle (Standup/Run/Teardown)
 
@@ -83,13 +70,13 @@ At this point, with all the environment variables set (tip, `env | grep ^LLMDBEN
 To re-execute only individual steps (full name or number):
 
 ```
-./setup/standup.sh --step 08_smoketest.sh
+./setup/standup.sh --step 10_smoketest.sh
 ./setup/standup.sh -s 7
 ./setup/standup.sh -s 3-5
 ./setup/standup.sh -s 5,7
 ```
 
-Once llm-d is fully deployed, an experiment can be run. This script takes in different options where you can specify the harness, workload, etc. if they are not specified as a part of your scenario.
+Once `llm-d` is fully deployed, an experiment can be run. This script takes in different options where you can specify the harness, workload, etc. if they are not specified as a part of your scenario.
 
 ```
 ./run.sh
