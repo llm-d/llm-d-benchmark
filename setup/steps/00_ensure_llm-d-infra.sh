@@ -8,7 +8,7 @@ if [[ ! -d llm-d-infra ]]; then
   llmdbench_execute_cmd "cd ${LLMDBENCH_INFRA_DIR}; git clone \"${LLMDBENCH_INFRA_GIT_REPO}\" -b \"${LLMDBENCH_INFRA_GIT_BRANCH}\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 else
   pushd llm-d-infra &>/dev/null
-  llmdbench_execute_cmd "git checkout ${LLMDBENCH_INFRA_GIT_BRANCH}; git pull" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  llmdbench_execute_cmd "git checkout ${LLMDBENCH_INFRA_GIT_BRANCH}; git pull origin ${LLMDBENCH_INFRA_GIT_BRANCH}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   popd &>/dev/null
 fi
 popd &>/dev/null
