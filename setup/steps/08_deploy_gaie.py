@@ -96,6 +96,21 @@ def main():
     tag: {image_tag}
     pullPolicy: Always
   extProcPort: 9002
+  extraContainerPorts:
+    - name: zmq
+      containerPort: 5557
+      protocol: TCP
+  extraServicePorts:
+    - name: zmq
+      port: 5557
+      targetPort: 5557
+      protocol: TCP
+  env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: {ev["vllm_common_hf_token_name"]}
+          key: {ev["vllm_common_hf_token_key"]}
   pluginsConfigFile: "{ev['vllm_modelservice_gaie_plugins_configfile']}"
 {add_config(plugin_config, 4, "pluginsCustomConfig:")}
 inferencePool:

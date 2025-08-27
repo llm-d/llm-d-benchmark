@@ -39,17 +39,17 @@ jobs:
         env:
           LLMDBENCH_HF_TOKEN: hf-token-placeholder
         run: |
-          ./setup/standup.sh -c kind_modelservice_inference-sim -t modelservice -s 0,1,2,4,7,8,9
+          ./setup/standup.sh -c kind_sim_fb -t modelservice -s 0,1,2,4,7,8,9
 
       - name: Run harness (mock)
         env:
           LLMDBENCH_HF_TOKEN: hf-token-placeholder
           LLMD_CONTROL_DRY_RUN: 1 # TODO: harness doesn't work now for kind bc no harness endpoint
         run: |
-          ./setup/run.sh -c kind_modelservice_inference-sim --dry-run
+          ./setup/run.sh -c kind_sim_fb --dry-run
 
       - name: Teardown
         env:
           LLMDBENCH_HF_TOKEN: hf-token-placeholder
         run: |
-          ./setup/teardown.sh -c kind_modelservice_inference-sim
+          ./setup/teardown.sh -c kind_sim_fb

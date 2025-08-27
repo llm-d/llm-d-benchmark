@@ -40,7 +40,7 @@ spec:
       labels:
         app: vllm-standalone-$(model_attribute $model label)
       annotations:
-        $(add_annotations)
+        $(add_annotations LLMDBENCH_VLLM_COMMON_ANNOTATIONS)
     spec:
       schedulerName: $(echo "$LLMDBENCH_VLLM_COMMON_POD_SCHEDULER")
       affinity:

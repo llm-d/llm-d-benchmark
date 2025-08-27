@@ -41,8 +41,7 @@ function model_attribute {
   local label=$(echo ${kind}-${majorversion}-${parameters} | $LLMDBENCH_CONTROL_SCMD -e 's^-$^^g' -e 's^--^^g')
   local as_label=$(echo $model | tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e "s^/^-^g" -e "s^\.^-^g")
   local folder=$(echo $model | tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^/^_^g' -e 's^-^_^g')
-  if [[ $attribute != "model" ]];
-  then
+  if [[ $attribute != "model" ]]; then
     echo ${!attribute} | tr '[:upper:]' '[:lower:]'
   else
     echo ${!attribute}
@@ -214,7 +213,9 @@ export -f reconfigure_gateway_after_deploy
 
 function add_annotations {
   local output="REPLACEFIRSTNEWLINE"
-  for entry in $(echo $LLMDBENCH_VLLM_COMMON_ANNOTATIONS | $LLMDBENCH_CONTROL_SCMD -e 's^\,^\n^g'); do
+  local varname=$1
+
+  for entry in $(echo ${!varname} | $LLMDBENCH_CONTROL_SCMD -e 's^\,^\n^g'); do
     output=$output"REPLACE_NEWLINEREPLACE_SPACESN$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e 's^:^: ^g')"
   done
 
@@ -804,8 +805,16 @@ function add_env_vars_to_pod {
     varlist=$(env | grep -E "$varpattern" | cut -d "=" -f 1)
     echo "#    "
     for envvar in $varlist; do
+      envvalue=${!envvar}
+      is_replace=$(echo $envvalue | grep REPLACE_ENV || true)
+      if [[ ! -z $is_replace ]]; then
+        envvalue=$(echo $envvalue | base64 $LLMDBENCH_BASE64_ARGS)
+      fi
+      if [[ -f $envvalue ]]; then
+        envvalue=$(cat $envvalue | base64 $LLMDBENCH_BASE64_ARGS)
+      fi
       echo "    - name: ${envvar}"
-      echo "      value: \"${!envvar}\"" | $LLMDBENCH_CONTROL_SCMD -e 's^____\"\$^____REPLACE_ENV_^g' -e 's^: ""$^: " "^g' -e 's^""^"^g'
+      echo "      value: \"${envvalue}\"" | $LLMDBENCH_CONTROL_SCMD -e 's^____\"\$^____REPLACE_ENV_^g' -e 's^: ""$^: " "^g' -e 's^""^"^g'
     done
 }
 export -f add_env_vars_to_pod
@@ -856,8 +865,6 @@ spec:
       value: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
     - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
       value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}"
-    - name: LLMDBENCH_BASE64_CONTEXT_CONTENTS
-      value: "$LLMDBENCH_BASE64_CONTEXT_CONTENTS"
     - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME
       value: "$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE"
     - name: LLMDBENCH_RUN_EXPERIMENT_ID
@@ -892,6 +899,7 @@ spec:
     - name: results
       mountPath: /requests
 EOF
+
   for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
     cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
     - name: ${profile_type}-profiles
@@ -1059,6 +1067,7 @@ function generate_profile_parameter_treatments {
     echo "1i#treatment_${name}.txt" >> $output_dir/treatment_${name}.txt
     local j=1
     for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
+      local value=$(echo "$value" | $LLMDBENCH_CONTROL_SCMD 's^"^^g')
       local param=$(cat $run_parameter_file | yq -r ".run.factors[$(($j - 1))]")
       echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_${name}.txt
       j=$((j+1))
@@ -1088,7 +1097,7 @@ export -f cleanup_pre_execution
 
 function validate_model_name {
   local _model_name=$1
-  for mparm in model type parameters majorversion kind label; do
+  for mparm in model parameters majorversion kind modelid_label; do
     if [[ -z $(model_attribute ${_model_name} ${mparm}) ]]; then
       announce "❌ Invalid model name \"${_model_name}\""
       exit 1
