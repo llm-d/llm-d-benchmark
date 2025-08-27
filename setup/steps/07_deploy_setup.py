@@ -35,19 +35,25 @@ def main():
             f"{ev['control_hcmd']} repo add {ev['vllm_modelservice_chart_name']} "
             f"{ev['vllm_modelservice_helm_repository_url']} --force-update"
         )
-        llmdbench_execute_cmd(
+        result = llmdbench_execute_cmd(
             actual_cmd=helm_repo_add_cmd,
             dry_run=int(ev.get("control_dry_run", 0)),
             verbose=int(ev.get("control_verbose", 0))
         )
+        if result != 0:
+            announce(f"❌ Failed setting up llm-d-modelservice helm repository with \"{helm_repo_add_cmd}\" (exit code: {result})")
+            exit(result)
 
         # Update helm repositories
         helm_repo_update_cmd = f"{ev['control_hcmd']} repo update"
-        llmdbench_execute_cmd(
+        result = llmdbench_execute_cmd(
             actual_cmd=helm_repo_update_cmd,
             dry_run=int(ev.get("control_dry_run", 0)),
             verbose=int(ev.get("control_verbose", 0))
         )
+        if result != 0:
+            announce(f"❌ Failed setting up llm-d-modelservice helm repository with \"{helm_repo_update_cmd}\" (exit code: {result})")
+            exit(result)
 
         # Auto-detect chart version if needed
         if ev.get("vllm_modelservice_chart_version") == "auto":

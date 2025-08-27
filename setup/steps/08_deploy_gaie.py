@@ -61,7 +61,7 @@ def main():
                     configfile = configfile + ".yaml"
                 ev["vllm_modelservice_gaie_presets_full_path"] = Path(ev["main_dir"]) / "setup" / "presets" / "gaie" / configfile
 
-            # If the (benchmark) plugin config file exists 
+            # If the (benchmark) plugin config file exists
             # and vllm_modelservice_gaie_custom_plugins is not defined
             # then use the file
             try:
@@ -122,11 +122,14 @@ inferencePool:
                 f"--skip-diff-on-install"
             )
 
-            llmdbench_execute_cmd(
+            result = llmdbench_execute_cmd(
                 actual_cmd=helmfile_cmd,
                 dry_run=int(ev.get("control_dry_run", 0)),
                 verbose=int(ev.get("control_verbose", 0))
             )
+            if result != 0:
+                announce(f"❌ Failed installing helm chart \"gaie-{ev['vllm_modelservice_release']}\" via helmfile with \"{helmfile_cmd}\" (exit code: {result})")
+                exit(result)
 
             announce(f"✅ {ev['vllm_common_namespace']}-{model_id_label}-gaie helm chart deployed successfully")
 
@@ -139,12 +142,15 @@ inferencePool:
 
             if int(ev.get("control_dry_run", 0)) == 0:
                 kubectl_cmd = f"{ev['control_kcmd']} get --namespace {ev['vllm_common_namespace']} {resource_list}"
-                llmdbench_execute_cmd(
+                result = llmdbench_execute_cmd(
                     actual_cmd=kubectl_cmd,
                     dry_run=int(ev.get("control_dry_run", 0)),
                     verbose=int(ev.get("control_verbose", 0)),
                     fatal=False
                 )
+                if result != 0:
+                    announce(f"❌ Failed to get a snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\" with \"{kubectl_cmd}\" (exit code: {result})")
+                    exit(result)
 
             # Clean up environment variable
             if "LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL" in os.environ:
