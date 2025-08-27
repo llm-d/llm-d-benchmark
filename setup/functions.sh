@@ -1002,32 +1002,35 @@ function generate_standup_parameter_scenarios {
   rm -rf $output_dir
   mkdir -p $output_dir
 
-  if [[ -z $standup_parameter_file || ! -s $standup_parameter_file || $(cat $standup_parameter_file | yq -r .setup) == "null" ]]; then
-    cp -f $scenario_file ${scenario_dir}/setup/treatment_list/treatment_1.sh
+  if [[ -z $standup_parameter_file || ! -s $standup_parameter_file || $(cat $standup_parameter_file | yq -r .setup.treatments) == "null" ]]; then
+    cp -f $scenario_file ${scenario_dir}/setup/treatment_list/treatment_none.sh
     return 0
   fi
 
   mkdir -p ${scenario_dir}/setup/experiments/
   cp -f $standup_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/setup/experiments/
 
-  i=1
-  for treatment in $(cat $standup_parameter_file | yq -r '.setup.treatments[]'); do
-    cat $scenario_file > $output_dir/treatment_$i.sh
-    $LLMDBENCH_CONTROL_SCMD -i "1i#treatment_$i"  $output_dir/treatment_$i.sh
+  cat $standup_parameter_file | yq -r .setup.treatments | while IFS=: read -r name treatment; do
+    if [ -z "$treatment" ]; then  # handle list without keys
+      treatment=$(yq .[] <<<"$name")
+      name=setup_${treatment//,/_}
+    fi
+    name=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${name}")   # remove non alphanumeric
+    cat $scenario_file > $output_dir/treatment_$name.sh
+    $LLMDBENCH_CONTROL_SCMD -i "1i#treatment_$name"  $output_dir/treatment_$name.sh
     local j=1
     for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
       local param=$(cat $standup_parameter_file | yq -r ".setup.factors[$(($j - 1))]")
-      has_param=$(cat $output_dir/treatment_$i.sh | grep "$param=" || true)
+      has_param=$(cat $output_dir/treatment_$name.sh | grep "$param=" || true)
       if [[ -z $has_param ]]; then
-        echo "$param=$value" >> $output_dir/treatment_$i.sh
+        echo "$param=$value" >> $output_dir/treatment_$name.sh
       else
-        $LLMDBENCH_CONTROL_SCMD -i "s^$param=.*^$param=$value^g"  $output_dir/treatment_$i.sh
+        $LLMDBENCH_CONTROL_SCMD -i "s^$param=.*^$param=$value^g"  $output_dir/treatment_$name.sh
       fi
-      $LLMDBENCH_CONTROL_SCMD -i "s^REPLACE_TREATMENT_NR^treatment_$i^g"  $output_dir/treatment_$i.sh
-      $LLMDBENCH_CONTROL_SCMD -i "s^_treatment_nr^treatment_$i^g"  $output_dir/treatment_$i.sh
+      $LLMDBENCH_CONTROL_SCMD -i "s^REPLACE_TREATMENT_NR^treatment_$name^g"  $output_dir/treatment_$name.sh
+      $LLMDBENCH_CONTROL_SCMD -i "s^_treatment_nr^treatment_$name^g"  $output_dir/treatment_$name.sh
       j=$((j+1))
     done
-    i=$((i+1))
   done
 }
 export -f generate_standup_parameter_scenarios
@@ -1047,23 +1050,26 @@ function generate_profile_parameter_treatments {
 
   cp -f $run_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/workload/experiments/
 
-  i=1
-  for treatment in $(cat $run_parameter_file | yq -r '.run.treatments[]'); do
-    echo "1i#treatment_$i.txt" >> $output_dir/treatment_$i.txt
+  cat $run_parameter_file | yq -r .run.treatments | while IFS=: read -r name treatment; do
+    if [ -z "$treatment" ]; then  # handle list without keys
+      treatment=$(yq .[] <<<"$name")
+      name=run_${treatment//,/_}
+    fi
+    name=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${name}")   # remove non alphanumeric
+    echo "1i#treatment_${name}.txt" >> $output_dir/treatment_${name}.txt
     local j=1
     for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
       local param=$(cat $run_parameter_file | yq -r ".run.factors[$(($j - 1))]")
-      echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_$i.txt
+      echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_${name}.txt
       j=$((j+1))
     done
     if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES ]]; then
       for entry in $(echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
         parm=$(echo $entry | cut -d '=' -f 1)
         val=$(echo $entry | cut -d '=' -f 2)
-        echo "s^$parm:.*^$parm: $val^g" >> $output_dir/treatment_$i.txt
+        echo "s^$parm:.*^$parm: $val^g" >> $output_dir/treatment_${name}.txt
       done
     fi
-    i=$((i+1))
   done
 }
 export -f generate_profile_parameter_treatments

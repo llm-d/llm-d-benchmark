@@ -316,7 +316,14 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
         tf=$(cat ${treatment} | grep "#treatment" | tail -1 | $LLMDBENCH_CONTROL_SCMD 's/^#//' || true)
         if [[ -f ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf ]]; then
-          export LLMDBENCH_RUN_EXPERIMENT_ID=$(echo $tf | $LLMDBENCH_CONTROL_SCMD 's^\.txt^^g')
+          tid=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${tf%.txt}")   # remove non alphanumeric and .txt
+          tid=${tid#treatment_}
+          if [ -z "${LLMDBENCH_RUN_EXPERIMENT_ID}" ]; then
+            export LLMDBENCH_RUN_EXPERIMENT_ID=$(date +%s)-${tid}
+          else
+            export LLMDBENCH_RUN_EXPERIMENT_ID=${LLMDBENCH_RUN_EXPERIMENT_ID}-${tid}
+          fi
+          # $(echo $tf | $LLMDBENCH_CONTROL_SCMD 's^\.txt^^g')
           echo
           cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf | grep -v ^1i# | cut -d '^' -f 3
           echo

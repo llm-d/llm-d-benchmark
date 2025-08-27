@@ -475,7 +475,7 @@ def model_attribute(model: str, attribute: str) -> str:
     hash_object = hashlib.sha256()
     hash_object.update(modelid.encode('utf-8'))
     digest = hash_object.hexdigest()
-    modelid_label = f"{provider[:8]}-{digest[:8]}-{model_part[-8:]}"
+    modelid_label = f"{modelid[:8]}-{digest[:8]}-{modelid[-8:]}"
 
     # create a list of components from the model part
     # equiv  to: tr '[:upper:]' '[:lower:]' | sed -e 's^qwen^qwen-^g' -e 's^-^\n^g'
