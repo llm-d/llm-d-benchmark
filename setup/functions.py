@@ -911,3 +911,18 @@ def add_additional_env_to_yaml(env_vars_string):
             env_lines.append(f"{value_indent}value: \"{env_value}\"")
     
     return "\n".join(env_lines)
+
+
+def add_config(obj_or_filename, num_spaces=0, label=""):
+    spaces = " " * num_spaces
+    contents = ""
+    indented_contents = ""
+    try:
+        with open(obj_or_filename, 'r') as f:
+            contents = f.read()
+    except FileNotFoundError:
+        # not a file
+        contents = obj_or_filename
+
+    indented_contents = '\n'.join(f"{spaces}{line}" for line in contents.splitlines())
+    return indented_contents
