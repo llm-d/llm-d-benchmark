@@ -378,8 +378,41 @@ function add_config {
       echo ""
     fi
     echo "$(cat $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^\\n^\\\\\n^g" | $LLMDBENCH_CONTROL_SCMD -e "s#^#$spacec#g"
+  else
+    echo ${object_to_render}
   fi
 }
+export -f add_config
+
+# make sure things are defined; should be easier with python
+function add_config_prep {
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG="#no config"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG="#no config"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS="[]"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES="[]"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG="#no config"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG="#no config"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS="[]"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES="[]"
+  fi
+}
+export -f add_config
+
 
 function add_command {
   local model_command=$1

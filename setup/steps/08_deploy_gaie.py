@@ -10,8 +10,7 @@ project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
 # Import from functions.py
-from functions import announce, llmdbench_execute_cmd, model_attribute, extract_environment, get_image
-
+from functions import announce, llmdbench_execute_cmd, model_attribute, extract_environment, get_image, add_config
 
 def main():
     """Deploy GAIE (Gateway API Inference Extension) components."""
@@ -44,16 +43,37 @@ def main():
             helm_dir = Path(ev["control_work_dir"]) / "setup" / "helm" / ev["vllm_modelservice_release"] / model_num
             helm_dir.mkdir(parents=True, exist_ok=True)
 
-            # Read GAIE presets file content
-            presets_path = Path(ev["vllm_modelservice_gaie_presets_full_path"])
+            # A plugin config file is identified by ev["vllm_modelservice_gaie_plugins_configfile"]
+            # The definition may be in the upstream GAIE configuration
+            # In a benchmark provided configuration (in setup/presets/gaie)
+            # In a user provided configuration in ev["vllm_modelservice_gaie_custom_plugins"]
+            # If the user provides a configuration, this is used
+
+            # default plugin_configuration is empty
+            plugin_config = "{}"
+            # look for benchmark provided ev["vllm_modelservice_gaie_plugins_configfile"]
+            # expose it as ev["vllm_modelservice_gaie_presets_full_path"]
+            if ev["vllm_modelservice_gaie_plugins_configfile"].startswith('/'):
+                ev["vllm_modelservice_gaie_presets_full_path"] = ev["vllm_modelservice_gaie_plugins_configfile"]
+            else:
+                configfile = ev["vllm_modelservice_gaie_plugins_configfile"]
+                if not configfile.endswith('.yaml'):
+                    configfile = configfile + ".yaml"
+                ev["vllm_modelservice_gaie_presets_full_path"] = Path(ev["main_dir"]) / "setup" / "presets" / "gaie" / configfile
+
+            # If the (benchmark) plugin config file exists
+            # and vllm_modelservice_gaie_custom_plugins is not defined
+            # then use the file
             try:
-                with open(presets_path, 'r') as f:
+                with open(ev["vllm_modelservice_gaie_presets_full_path"], 'r') as f:
                     presets_content = f.read()
-                # Indent each line with 6 spaces for YAML formatting
-                indented_presets = '\n'.join(f"      {line}" for line in presets_content.splitlines())
+                if "vllm_modelservice_gaie_custom_plugins" not in ev:
+                    plugin_config = f'{ev["vllm_modelservice_gaie_plugins_configfile"]}: |\n' + '\n'.join(f"  {line}" for line in presets_content.splitlines())
             except FileNotFoundError:
-                announce(f"⚠️ Warning: GAIE presets file not found at {presets_path}")
-                indented_presets = ""
+                # The (benchmark) plugin config file does not exist
+                # - use ev["vllm_modelservice_gaie_custom_plugins"] of it is defined
+                if "vllm_modelservice_gaie_custom_plugins" in ev:
+                    plugin_config = '\n'.join(f"{line}" for line in ev["vllm_modelservice_gaie_custom_plugins"].splitlines())
 
             # Get image tag
             image_tag = get_image(
@@ -73,12 +93,10 @@ def main():
     tag: {image_tag}
     pullPolicy: Always
   extProcPort: 9002
-  pluginsConfigFile: "{ev['vllm_modelservice_gaie_presets']}"
+  pluginsConfigFile: "{ev['vllm_modelservice_gaie_plugins_configfile']}"
 
   # using upstream GIE default-plugins, see: https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/config/charts/inferencepool/templates/epp-config.yaml#L7C3-L56C33
-  pluginsCustomConfig:
-    {ev['vllm_modelservice_gaie_presets']}: |
-{indented_presets}
+{add_config(plugin_config, 4, "pluginsCustomConfig:")}
 inferencePool:
   targetPortNumber: {ev['vllm_common_inference_port']}
   modelServerType: vllm
@@ -103,11 +121,14 @@ inferencePool:
                 f"--skip-diff-on-install"
             )
 
-            llmdbench_execute_cmd(
+            result = llmdbench_execute_cmd(
                 actual_cmd=helmfile_cmd,
                 dry_run=int(ev.get("control_dry_run", 0)),
                 verbose=int(ev.get("control_verbose", 0))
             )
+            if result != 0:
+                announce(f"❌ Failed installing helm chart \"gaie-{ev['vllm_modelservice_release']}\" via helmfile with \"{helmfile_cmd}\" (exit code: {result})")
+                exit(result)
 
             announce(f"✅ {ev['vllm_common_namespace']}-{model_id_label}-gaie helm chart deployed successfully")
 
@@ -120,12 +141,15 @@ inferencePool:
 
             if int(ev.get("control_dry_run", 0)) == 0:
                 kubectl_cmd = f"{ev['control_kcmd']} get --namespace {ev['vllm_common_namespace']} {resource_list}"
-                llmdbench_execute_cmd(
+                result = llmdbench_execute_cmd(
                     actual_cmd=kubectl_cmd,
                     dry_run=int(ev.get("control_dry_run", 0)),
                     verbose=int(ev.get("control_verbose", 0)),
                     fatal=False
                 )
+                if result != 0:
+                    announce(f"❌ Failed to get a snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\" with \"{kubectl_cmd}\" (exit code: {result})")
+                    exit(result)
 
             # Clean up environment variable
             if "LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL" in os.environ:

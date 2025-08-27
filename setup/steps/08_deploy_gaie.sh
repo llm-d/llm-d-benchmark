@@ -12,6 +12,30 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
     printf -v MODEL_NUM "%02d" "$model_number"
     mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}
 
+    ## see if there is a benchmark provided custom plugin config file
+    # convert to absolute path if needed
+    if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE" == /* ]]; then
+      export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH=$(echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+    else
+      export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH=$(echo ${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+    fi
+    echo "ℹ️ full path = ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH}"
+    # if the file exists and user hasn't provided one use the file
+    if [[ -f $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH ]]; then
+      if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS} ]]; then
+        export LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS=$(mktemp)
+        echo "${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE}: |" > $LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS
+        cat $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH | $LLMDBENCH_CONTROL_SCMD -e 's|^|  |' >> $LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS
+      fi
+    fi
+    echo "ℹ️ custom plugins = ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS}"
+    cat $LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS
+
+    if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS} ]]; then
+      export LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS="{}"
+    fi
+    echo "ℹ️ custom plugins = ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS}"
+
     cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/gaie-values.yaml
 inferenceExtension:
   replicas: 1
@@ -21,12 +45,11 @@ inferenceExtension:
     tag: $(get_image ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_REPO} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_NAME} ${LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG} 1)
     pullPolicy: Always
   extProcPort: 9002
-  pluginsConfigFile: "${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS}"
+  pluginsConfigFile: "$(echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')"
 
   # using upstream GIE default-plugins, see: https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/config/charts/inferencepool/templates/epp-config.yaml#L7C3-L56C33
   pluginsCustomConfig:
-    ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS}: |
-$(cat $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH | $LLMDBENCH_CONTROL_SCMD -e 's|^|      |')
+    $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS} 4)
 inferencePool:
   targetPortNumber: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
   modelServerType: vllm

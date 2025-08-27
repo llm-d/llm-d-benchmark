@@ -73,7 +73,11 @@ def main():
     ev = {}
     environment_variable_to_dict(ev)
 
-    llmdbench_execute_cmd(actual_cmd=f'source "{ev["control_dir"]}/env.sh"', dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
+    env_cmd=f'source "{ev["control_dir"]}/env.sh"'
+    result = llmdbench_execute_cmd(actual_cmd=env_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
+    if result != 0:
+        announce(f"❌ Failed while running \"{env_cmd}\" (exit code: {result})")
+        exit(result)
 
     api = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
     if ev["control_dry_run"] :

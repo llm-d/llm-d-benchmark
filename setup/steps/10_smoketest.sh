@@ -81,6 +81,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
       announce "✅ Service responds successfully ($received_model_name)"
     else
       announce "❌ Service responded with model name \"$received_model_name\" (instead of $LLMDBENCH_DEPLOY_CURRENT_MODEL)!"
+      exit 1
     fi
   fi
 
@@ -101,6 +102,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
       announce "✅ External route responds successfully ($received_model_name)"
     else
       announce "❌ External route responded with model name \"$received_model_name\" (instead of $LLMDBENCH_DEPLOY_CURRENT_MODEL)!"
+      exit 1
     fi
   fi
 
