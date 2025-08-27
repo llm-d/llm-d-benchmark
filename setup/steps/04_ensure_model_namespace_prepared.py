@@ -127,12 +127,15 @@ def main():
                 verbose=ev["control_verbose"]
             )
 
-            asyncio.run(wait_for_job(
+            job_successful = False
+            while not job_successful :
+                job_successful= asyncio.run(wait_for_job(
                 job_name="download-model",
                 namespace=ev["vllm_common_namespace"],
                 timeout=ev["vllm_common_pvc_download_timeout"],
                 dry_run=ev["control_dry_run"]
             ))
+                time.sleep(10)
 
     if is_openshift(api) and ev["user_is_admin"] :
         # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid

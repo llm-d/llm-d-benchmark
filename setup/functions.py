@@ -461,6 +461,7 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
         return False
     except Exception as e:
         announce(f"Error occured while waiting for job {job_name} : {e}")
+        return False
     finally:
         await api_client.close()
 
