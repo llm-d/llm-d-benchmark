@@ -11,7 +11,7 @@ project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
 # Import from functions.py
-from functions import announce, llmdbench_execute_cmd, model_attribute
+from functions import environment_variable_to_dict, announce, llmdbench_execute_cmd, model_attribute
 
 def gateway_values(provider : str, host: str) -> str:
     if provider == "istio":
@@ -27,8 +27,13 @@ def gateway_values(provider : str, host: str) -> str:
     elif provider == "kgateway":
         return f"""gateway:
   gatewayClassName: kgateway
+  service:
+    type: NodePort
   destinationRule:
-    host: {host}"""
+    host: {host}
+  gatewayParameters:
+    enabled: true
+  """
     elif provider == "gke":
         return f"""gateway:
   gatewayClassName: gke-l7-regional-external-managed
@@ -85,9 +90,7 @@ def main():
 
     # Parse environment variables
     ev = {}
-    for key in dict(os.environ).keys():
-        if "LLMDBENCH_" in key:
-            ev.update({key.split("LLMDBENCH_")[1].lower(): os.environ.get(key)})
+    environment_variable_to_dict(ev)
 
     # Check if modelservice environment is active
     if ev["control_environment_type_modelservice_active"] :
@@ -223,6 +226,18 @@ releases:
                 del os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL"]
 
             model_number += 1
+
+        announce(f"🚀 Installing helm chart \"infra-{ev['vllm_modelservice_release']}\" via helmfile...")
+        install_cmd=f"helmfile --namespace {ev['vllm_common_namespace']} --kubeconfig {ev['control_work_dir']}/environment/context.ctx --selector name=infra-{ev['vllm_modelservice_release']} apply -f {ev['control_work_dir']}/setup/helm/{ev['vllm_modelservice_release']}/helmfile-00.yaml --skip-diff-on-install"
+        result = llmdbench_execute_cmd(
+            actual_cmd=install_cmd,
+            dry_run=int(ev.get("control_dry_run", 0)),
+            verbose=int(ev.get("control_verbose", 0))
+        )
+        if result != 0:
+            announce(f"❌ Failed Failed installing chart \"infra-{ev['vllm_modelservice_release']}\" (exit code: {result})")
+            exit(result)
+        announce(f"✅ chart \"infra-{ev['vllm_modelservice_release']}\" deployed successfully")
 
         announce("✅ Completed gaie deployment")
     else:

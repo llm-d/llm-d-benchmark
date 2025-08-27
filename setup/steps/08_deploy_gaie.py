@@ -10,7 +10,7 @@ project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
 # Import from functions.py
-from functions import announce, llmdbench_execute_cmd, model_attribute, extract_environment, get_image, add_config
+from functions import environment_variable_to_dict, announce, llmdbench_execute_cmd, model_attribute, extract_environment, get_image, add_config
 
 def provider(provider:str) -> str:
     if provider == "gke":
@@ -23,9 +23,7 @@ def main():
 
     # Parse environment variables
     ev = {}
-    for key in dict(os.environ).keys():
-        if "LLMDBENCH_" in key:
-            ev.update({key.split("LLMDBENCH_")[1].lower(): os.environ.get(key)})
+    environment_variable_to_dict(ev)
 
     # Check if modelservice environment is active
     if int(ev.get("control_environment_type_modelservice_active", 0)) == 1:
@@ -121,7 +119,7 @@ provider:
             helmfile_cmd = (
                 f"helmfile --namespace {ev['vllm_common_namespace']} "
                 f"--kubeconfig {ev['control_work_dir']}/environment/context.ctx "
-                f"--selector name={ev['vllm_common_namespace']}-{model_id_label}-gaie "
+                f"--selector name={model_id_label}-gaie "
                 f"apply -f {ev['control_work_dir']}/setup/helm/{ev['vllm_modelservice_release']}/helmfile-{model_num}.yaml "
                 f"--skip-diff-on-install"
             )
