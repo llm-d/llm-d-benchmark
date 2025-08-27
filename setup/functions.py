@@ -675,4 +675,8 @@ def add_config(obj_or_filename, num_spaces=0, label=""):
         contents = obj_or_filename
 
     indented_contents = '\n'.join(f"{spaces}{line}" for line in contents.splitlines())
+    if indented_contents.strip() != "{}" :
+        indented_contents = f"  {label}\n{indented_contents}"
+    else :
+        indented_contents = ""
     return indented_contents

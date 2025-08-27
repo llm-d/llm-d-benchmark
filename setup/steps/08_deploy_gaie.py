@@ -96,8 +96,7 @@ def main():
   pluginsConfigFile: "{ev['vllm_modelservice_gaie_plugins_configfile']}"
 
   # using upstream GIE default-plugins, see: https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/config/charts/inferencepool/templates/epp-config.yaml#L7C3-L56C33
-  pluginsCustomConfig:
-{add_config(plugin_config, 4)}
+{add_config(plugin_config, 4, "pluginsCustomConfig:")}
 inferencePool:
   targetPortNumber: {ev['vllm_common_inference_port']}
   modelServerType: vllm
