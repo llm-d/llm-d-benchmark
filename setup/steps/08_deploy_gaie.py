@@ -12,6 +12,11 @@ sys.path.insert(0, str(project_root))
 # Import from functions.py
 from functions import announce, llmdbench_execute_cmd, model_attribute, extract_environment, get_image, add_config
 
+def provider(provider:str) -> str:
+    if provider == "gke":
+        return provider
+    return "none"
+
 def main():
     """Deploy GAIE (Gateway API Inference Extension) components."""
     os.environ["CURRENT_STEP_NAME"] = os.path.splitext(os.path.basename(__file__))[0]
@@ -94,8 +99,6 @@ def main():
     pullPolicy: Always
   extProcPort: 9002
   pluginsConfigFile: "{ev['vllm_modelservice_gaie_plugins_configfile']}"
-
-  # using upstream GIE default-plugins, see: https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/main/config/charts/inferencepool/templates/epp-config.yaml#L7C3-L56C33
 {add_config(plugin_config, 4, "pluginsCustomConfig:")}
 inferencePool:
   targetPortNumber: {ev['vllm_common_inference_port']}
@@ -104,6 +107,8 @@ inferencePool:
     matchLabels:
       llm-d.ai/inferenceServing: "true"
       llm-d.ai/model: {model_id_label}
+provider:
+  name: {provider(ev['vllm_modelservice_gateway_class_name'])}
 """
 
             # Write GAIE values file
