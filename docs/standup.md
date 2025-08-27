@@ -107,4 +107,4 @@ The scenario parameters can be roughly categorized in four groups:
 | LLMDBENCH_VLLM_MODELSERVICE_EPP                   |                                                 |                                                 |
 | LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL       |                                                 |                                                 |
 | LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL        |                                                 |                                                 |
-| LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS          |                                                 |                                                 |
+| LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE |                                                 |                                                 |

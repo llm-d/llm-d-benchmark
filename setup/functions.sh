@@ -446,7 +446,7 @@ function add_command_line_options {
     rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     touch $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
 
-    echo "$preamble$(render_string $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^;^;\n^g" -e "s^ --^\nREPLACE_SPACESC--^g" -e "s^\n^ \\\\\n^g" |  $LLMDBENCH_CONTROL_SCMD -e "s^\^ ^REPLACE_SPACESC^g" -e "s^REPLACE_SPACESC^$spacec^g"
+    echo "$preamble$(render_string $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^;^;\n^g" -e "s^ --^\nREPLACE_SPACESC--^g" -e "s^\n^ \\\\\n^g" |  $LLMDBENCH_CONTROL_SCMD -e "s^\^ ^REPLACE_SPACESC^g" -e "s^REPLACE_SPACESC^$spacec^g" | $LLMDBENCH_CONTROL_SCMD -e "s^\"'^'^g" -e "s^'\"^'^g"
   fi
 }
 export -f add_command_line_options
@@ -892,6 +892,7 @@ spec:
     - name: results
       mountPath: /requests
 EOF
+
   for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
     cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
     - name: ${profile_type}-profiles
