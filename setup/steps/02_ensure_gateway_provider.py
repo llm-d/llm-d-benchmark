@@ -105,6 +105,8 @@ def get_latest_chart_version(
         result = subprocess.run(
             search_cmd.split(),
             capture_output=True,
+            shell=True,
+            executable="/bin/bash",
             text=True,
             timeout=30
         )

@@ -403,6 +403,8 @@ if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
     fi
     export LLMDBENCH_CONTROL_REMOTE_KUBECONFIG_FILENAME=config
   fi
+fi
+if [[ -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
   export LLMDBENCH_CONTROL_KCMD="oc --kubeconfig $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx"
   export LLMDBENCH_CONTROL_HCMD="helm --kubeconfig $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx"
 fi

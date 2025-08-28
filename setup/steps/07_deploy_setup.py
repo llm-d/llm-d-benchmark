@@ -44,18 +44,19 @@ provider:
     else:
         return ""
 
-def auto_detect_version(ev, version_key, repo_key) -> int:
+def auto_detect_version(ev, chart, version_key, repo_key) -> int:
     if ev.get(version_key) == "auto":
-        announce("🔍 Auto-detecting chart version...")
+        announce(f"🔍 Auto-detecting {chart} chart version...")
+
         try:
             #FIXME (USE llmdbench_execute_cmd)
-            helm_search_cmd = [
-                ev['control_hcmd'], 'search', 'repo', ev[repo_key]
-            ]
+            helm_search_cmd = f"{ev['control_hcmd']} search repo {ev[repo_key]}"
             result = subprocess.run(
                 helm_search_cmd,
                 capture_output=True,
                 text=True,
+                shell=True,
+                executable="/bin/bash",
                 check=False
             )
 
@@ -80,7 +81,7 @@ def auto_detect_version(ev, version_key, repo_key) -> int:
                 return 1
 
         except Exception as e:
-            announce(f"❌ Error auto-detecting chart version: {e}")
+            announce(f"❌ Error auto-detecting {chart} chart version: {e}")
             return 1
     return 0
 
@@ -93,7 +94,7 @@ def main():
     environment_variable_to_dict(ev)
 
     # Check if modelservice environment is active
-    if ev["control_environment_type_modelservice_active"] :
+    if ev["control_environment_type_modelservice_active"]:
 
         # Add and update llm-d-modelservic helm repository
         announce("🔧 Setting up helm repositories ...")
@@ -139,9 +140,11 @@ def main():
             exit(result)
 
         # Auto-detect chart version if needed
-        if 0 != auto_detect_version(ev, "vllm_modelservice_chart_version", "vllm_modelservice_helm_repository"):
+        result = auto_detect_version(ev, ev['vllm_modelservice_chart_name'], "vllm_modelservice_chart_version", "vllm_modelservice_helm_repository")
+        if 0 != result:
             exit(result)
-        if 0 != auto_detect_version(ev, "vllm_infra_chart_version", "vllm_infra_helm_repository"):
+        result = auto_detect_version(ev, ev['vllm_infra_chart_name'], "vllm_infra_chart_version", "vllm_infra_helm_repository")
+        if 0 != result:
             exit(result)
 
         # Create base helm directory structure
