@@ -853,6 +853,61 @@ def add_annotations():
     return "\n".join(annotation_lines)
 
 
+def render_string(input_string):
+    """
+    Process REPLACE_ENV variables in a string, equivalent to bash render_string function.
+    
+    Args:
+        input_string: String that may contain REPLACE_ENV_VARIABLE_NAME placeholders
+        
+    Returns:
+        String with REPLACE_ENV placeholders substituted with actual environment variable values
+    """
+    if not input_string:
+        return ""
+    
+    # Find all REPLACE_ENV entries
+    # Pattern matches: REPLACE_ENV_VARIABLE_NAME or REPLACE_ENV_VARIABLE_NAME++++default=value
+    import re
+    
+    # Split string on various delimiters to find REPLACE_ENV tokens
+    # Equivalent to: echo ${string} | sed -e 's/____/ /g' -e 's^-^\n^g' -e 's^:^\n^g' -e 's^/^\n^g' -e 's^ ^\n^g' -e 's^]^\n^g' -e 's^ ^^g' | grep -E "REPLACE_ENV" | uniq
+    working_string = input_string.replace("____", " ")
+    
+    # Find REPLACE_ENV patterns
+    replace_env_pattern = r'REPLACE_ENV_[A-Z0-9_]+(?:\+\+\+\+default=[^"\s]*)?'
+    matches = re.findall(replace_env_pattern, working_string)
+    
+    # Process each REPLACE_ENV match
+    processed_string = input_string
+    for match in set(matches):  # Use set to get unique matches
+        # Extract parameter name and default value
+        if "++++default=" in match:
+            env_part, default_part = match.split("++++default=", 1)
+            parameter_name = env_part.replace("REPLACE_ENV_", "")
+            default_value = default_part
+        else:
+            parameter_name = match.replace("REPLACE_ENV_", "")
+            default_value = ""
+        
+        # Get environment variable value
+        env_value = os.environ.get(parameter_name, "")
+        
+        # Determine final value
+        if env_value:
+            final_value = env_value
+        elif default_value:
+            final_value = default_value
+        else:
+            announce(f"❌ ERROR: variable \"REPLACE_ENV_{parameter_name}\" not defined!")
+            sys.exit(1)
+        
+        # Replace in the string
+        processed_string = processed_string.replace(match, final_value)
+    
+    return processed_string
+
+
 def add_command_line_options(args_string):
     """
     Generate command line options for container args.
@@ -860,20 +915,49 @@ def add_command_line_options(args_string):
     """
     current_step = os.environ.get("LLMDBENCH_CURRENT_STEP", "")
     
-    if current_step == "06":
-        # For step 06 (standalone), format as YAML list item
-        if args_string:
-            return f"        - |\n          {args_string}"
+    # Process REPLACE_ENV variables first
+    if args_string:
+        processed_args = render_string(args_string)
+        
+        # Handle formatting based on step and content
+        if current_step == "06":
+            # For step 06 (standalone), format as YAML list item with proper spacing
+            if "[" in processed_args and "]" in processed_args:
+                # Handle array format: convert [arg1____arg2____arg3] to proper format
+                processed_args = processed_args.replace("[", "").replace("]", "")
+                processed_args = processed_args.replace("____", " ")
+                # Add proper line breaks and indentation for multi-line args
+                processed_args = processed_args.replace(" --", " \\\n            --")
+            else:
+                # Handle regular string format: convert ____;____arg1____arg2 
+                processed_args = processed_args.replace("____", " ")
+                # Only replace the first semicolon with newline, leave others as-is
+                processed_args = processed_args.replace(";", ";\n          ", 1)
+                processed_args = processed_args.replace(" --", " \\\n            --")
+            
+            return f"        - |\n          {processed_args}"
+        elif current_step == "09":
+            # For step 09 (modelservice), different formatting
+            if "[" in processed_args and "]" in processed_args:
+                processed_args = processed_args.replace("[", "").replace("]", "")
+                processed_args = processed_args.replace("____", " ")
+                processed_args = processed_args.replace(" --", " \\\n        --")
+            else:
+                processed_args = processed_args.replace("____", " ")
+                processed_args = processed_args.replace(";", ";\n      ")
+                processed_args = processed_args.replace(" --", " \\\n        --")
+            
+            return f"      {processed_args}"
         else:
+            # Default case
+            processed_args = processed_args.replace("____", " ")
+            return processed_args
+    else:
+        # Handle empty args_string
+        if current_step == "06":
             return "        - |"
-    elif current_step == "09":
-        # For step 09 (modelservice), different formatting
-        if args_string:
-            return f"      {args_string}"
         else:
             return ""
-    else:
-        return args_string or ""
 
 
 def add_additional_env_to_yaml(env_vars_string):
@@ -907,8 +991,11 @@ def add_additional_env_to_yaml(env_vars_string):
             clean_name = envvar.replace("LLMDBENCH_VLLM_STANDALONE_", "")
             env_value = os.environ.get(envvar, "")
             
+            # Process REPLACE_ENV variables in the value (equivalent to bash sed processing)
+            processed_value = render_string(env_value) if env_value else ""
+            
             env_lines.append(f"{name_indent}- name: {clean_name}")
-            env_lines.append(f"{value_indent}value: \"{env_value}\"")
+            env_lines.append(f"{value_indent}value: \"{processed_value}\"")
     
     return "\n".join(env_lines)
 
