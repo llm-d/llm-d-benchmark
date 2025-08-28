@@ -113,8 +113,6 @@ source ${LLMDBENCH_CONTROL_DIR}/env.sh
 extract_environment
 sleep 5
 
-source ${LLMDBENCH_STEPS_DIR}/00_ensure_llm-d-infra.sh
-
 for resource in ${LLMDBENCH_CONTROL_RESOURCE_LIST//,/ }; do
   has_resource=$($LLMDBENCH_CONTROL_KCMD get ${resource} --no-headers -o name 2>&1 | grep error || true)
   if [[ ! -z ${has_resource} ]]; then
@@ -223,7 +221,7 @@ if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 1 ]]; then
 # Optional: delete cloned repos if they exist
   announce "🧼 Cleaning up local Git clones..."
   sleep 10
-  llmdbench_execute_cmd "rm -rf ${LLMDBENCH_INFRA_DIR}/llm-d-infra ${LLMDBENCH_HARNESS_DIR}/fmperf" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  llmdbench_execute_cmd "rm -rf ${LLMDBENCH_HARNESS_DIR}/fmperf" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 fi
 
 announce "✅ Cleanup complete. Namespaces \"${LLMDBENCH_VLLM_COMMON_NAMESPACE},${LLMDBENCH_HARNESS_NAMESPACE}\" are now cleared (except shared cluster-scoped resources like Gateway Provider)."

@@ -214,7 +214,6 @@ def environment_variable_to_dict(ev: dict = {}) :
         ev[mandatory_key] = bool(int(ev[mandatory_key]))
 
     ev["infra_dir"] = ev.get("infra_dir", "/tmp")
-    ev["infra_git_repo"]  = ev.get("infra_git_repo", "https://github.com/llm-d-incubation/llm-d-infra.git")
     ev["infra_git_branch"] = ev.get("infra_git_branch", "main")
     ev["control_deploy_host_os"] = ev.get("control_deploy_host_os", "mac")
     ev["control_deploy_host_shell"] = ev.get("control_deploy_host_shell", "bash")

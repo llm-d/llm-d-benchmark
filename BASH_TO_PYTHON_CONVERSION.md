@@ -19,7 +19,7 @@ As part of ongoing efforts to modernize the codebase and improve maintainability
 **Bash Pattern:**
 ```bash
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
-# Direct access to variables like $LLMDBENCH_INFRA_DIR
+# Direct access to variables like $LLMDBENCH_HF_TOKEN
 ```
 
 **Python Pattern:**
