@@ -253,6 +253,7 @@ def validate_and_create_pvc(
     pvc_name: str,
     pvc_size: str,
     pvc_class: str,
+    pvc_access_mode: str = 'ReadWriteMany',
     dry_run: bool = False
 ):
     announce("Provisioning model storage…")
@@ -296,7 +297,7 @@ def validate_and_create_pvc(
             "namespace": namespace,
         },
         "spec": {
-            "accessModes": ["ReadWriteMany"],
+            "accessModes": [pvc_access_mode],
             "resources": {
                 "requests": {"storage": pvc_size}
             },
