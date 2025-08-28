@@ -34,7 +34,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
       export LLMDBENCH_VLLM_MODELSERVICE_URI="hf://$(model_attribute $model model)"
       mount_model_volume=true
     fi
-    
+
     if [[ -n $LLMDBENCH_VLLM_MODELSERVICE_MOUNT_MODEL_VOLUME_OVERRIDE ]]; then
       mount_model_volume=$LLMDBENCH_VLLM_MODELSERVICE_MOUNT_MODEL_VOLUME_OVERRIDE
     fi
