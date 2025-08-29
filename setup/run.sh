@@ -46,7 +46,7 @@ function show_usage {
              -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO)] \n \
              -m/--models [list the models to be run against (default=$LLMDBENCH_DEPLOY_MODEL_LIST)] \n \
              -p/--namespace [namespace where to deploy (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE)] \n \
-             -t/--methods [eployment method (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\", \"modelservice\" or any other string - pod name or service name - matching a resource on cluster)] \n \
+             -t/--methods [list of standup methods (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\", \"modelservice\" or any other string - pod name or service name - matching a resource on cluster)] \n \
              -l/--harness [harness used to generate load (default=$LLMDBENCH_HARNESS_NAME, possible values $(get_harness_list)] \n \
              -w/--workload [workload to be used by the harness (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE, possible values (check \"workload/profiles\" dir)] \n \
              -k/--pvc [name of the PVC used to store the results (default=$LLMDBENCH_HARNESS_PVC_NAME)] \n \
@@ -180,7 +180,9 @@ set +euo pipefail
 export LLMDBENCH_CURRENT_STEP=05
 if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
   export LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL="NA"
+  export LLMDBENCH_HARNESS_NAMESPACE=$LLMDBENCH_CONTROL_CLUSTER_NAMESPACE
 fi
+
 source ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.sh > /dev/null 2>&1
 if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
@@ -213,14 +215,14 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       export LLMDBENCH_VLLM_FQDN=".${LLMDBENCH_VLLM_COMMON_NAMESPACE}${LLMDBENCH_VLLM_COMMON_FQDN}"
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
-        export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="^LLMDBENCH_VLLM_COMMON|^LLMDBENCH_VLLM_STANDALONE"
+        export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="^LLMDBENCH_VLLM_COMMON|^LLMDBENCH_VLLM_STANDALONE|^LLMDBENCH_DEPLOY"
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | grep standalone | awk '{print $1}' || true)
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
       fi
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-        export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="^LLMDBENCH_VLLM_COMMON|^LLMDBENCH_VLLM_MODELSERVICE|^LLMDBENCH_VLLM_INFRA|^LLMDBENCH_VLLM_GAIE"
+        export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="^LLMDBENCH_VLLM_COMMON|^LLMDBENCH_VLLM_MODELSERVICE|^LLMDBENCH_DEPLOY|^LLMDBENCH_VLLM_INFRA|^LLMDBENCH_VLLM_GAIE|^LLMDBENCH_LLMD_IMAGE"
         export LLMDBENCH_HARNESS_STACK_TYPE=llm-d
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway | awk '{print $1}')
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
@@ -314,7 +316,14 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
         tf=$(cat ${treatment} | grep "#treatment" | tail -1 | $LLMDBENCH_CONTROL_SCMD 's/^#//' || true)
         if [[ -f ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf ]]; then
-          export LLMDBENCH_RUN_EXPERIMENT_ID=$(echo $tf | $LLMDBENCH_CONTROL_SCMD 's^\.txt^^g')
+          tid=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${tf%.txt}")   # remove non alphanumeric and .txt
+          tid=${tid#treatment_}
+          if [ -z "${LLMDBENCH_RUN_EXPERIMENT_ID}" ]; then
+            export LLMDBENCH_RUN_EXPERIMENT_ID=$(date +%s)-${tid}
+          else
+            export LLMDBENCH_RUN_EXPERIMENT_ID=${LLMDBENCH_RUN_EXPERIMENT_ID}-${tid}
+          fi
+          # $(echo $tf | $LLMDBENCH_CONTROL_SCMD 's^\.txt^^g')
           echo
           cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf | grep -v ^1i# | cut -d '^' -f 3
           echo

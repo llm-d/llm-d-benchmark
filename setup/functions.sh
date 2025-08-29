@@ -25,7 +25,7 @@ function model_attribute {
   local model=$1
   local attribute=$2
 
-  local modelid=$(echo $model | cut -d: -f2)
+  local modelid=$(echo $model | cut -d: -f2 | $LLMDBENCH_CONTROL_SCMD -e "s^/^-^g" -e "s^\.^-^g")
   local modelid_label="$(echo -n $modelid | cut -d '/' -f 1 | cut -c1-8)-$(echo -n $modelid | sha256sum | awk '{print $1}' | cut -c1-8)-$(echo -n $modelid | cut -d '/' -f 2 | rev | cut -c1-8 | rev)"
 
   local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
@@ -94,7 +94,6 @@ function get_image {
     echo $image_registry/$image_repo/${image_name}:${is_latest_tag}
   fi
 }
-
 export -f get_image
 
 function prepare_work_dir {
@@ -112,7 +111,11 @@ function prepare_work_dir {
 export -f prepare_work_dir
 
 function llmdbench_execute_cmd {
-  set +euo pipefail
+  local shellsetopts=$(set -o | grep -E "pipefail.*on|errexit.*on|nounset.*on" || true)
+  if [[ ! -z ${shellsetopts} ]]; then
+    set +euo pipefail
+  fi
+
   local actual_cmd=$1
   local dry_run=${2:-1}
   local verbose=${3:-0}
@@ -171,7 +174,9 @@ function llmdbench_execute_cmd {
     fi
   fi
 
-  set -euo pipefail
+  if [[ ! -z ${shellsetopts} ]]; then
+    set -euo pipefail
+  fi
 
   if [[ ${fatal} -eq 1 ]];
   then
@@ -358,6 +363,56 @@ function render_template {
   fi
 }
 export -f render_template
+
+function add_config {
+  local object_to_render=${1}
+  local -i num_spaces=${2:-0}
+  local label=${3:-}
+
+  local spacec=$(printf '%*s' $num_spaces '')
+
+  if [[ -f ${object_to_render} ]]; then
+    if [[ -n $label ]]; then
+      echo "$label:"
+    else
+      echo ""
+    fi
+    echo "$(cat $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^\\n^\\\\\n^g" | $LLMDBENCH_CONTROL_SCMD -e "s#^#$spacec#g"
+  else
+    echo ${object_to_render}
+  fi
+}
+export -f add_config
+
+# make sure things are defined; should be easier with python
+function add_config_prep {
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG="#no____config"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG="#no____config"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS="[]"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES="[]"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG="#no____config"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG="#no____config"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS="[]"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES="[]"
+  fi
+}
+export -f add_config
+
 
 function add_command {
   local model_command=$1
@@ -821,6 +876,10 @@ spec:
       value: "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
       value: "${LLMDBENCH_HARNESS_SANITIZED_STACK_NAME}"
+    - name: LLMDBENCH_DEPLOY_METHODS
+      value: "${LLMDBENCH_DEPLOY_METHODS}"
+    - name: LLMDBENCH_MAGIC_ENVAR
+      value: "harness_pod"
     $(add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD)
     - name: HF_TOKEN_SECRET
       value: "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}"
@@ -943,32 +1002,35 @@ function generate_standup_parameter_scenarios {
   rm -rf $output_dir
   mkdir -p $output_dir
 
-  if [[ -z $standup_parameter_file || ! -s $standup_parameter_file || $(cat $standup_parameter_file | yq -r .setup) == "null" ]]; then
-    cp -f $scenario_file ${scenario_dir}/setup/treatment_list/treatment_1.sh
+  if [[ -z $standup_parameter_file || ! -s $standup_parameter_file || $(cat $standup_parameter_file | yq -r .setup.treatments) == "null" ]]; then
+    cp -f $scenario_file ${scenario_dir}/setup/treatment_list/treatment_none.sh
     return 0
   fi
 
   mkdir -p ${scenario_dir}/setup/experiments/
   cp -f $standup_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/setup/experiments/
 
-  i=1
-  for treatment in $(cat $standup_parameter_file | yq -r '.setup.treatments[]'); do
-    cat $scenario_file > $output_dir/treatment_$i.sh
-    $LLMDBENCH_CONTROL_SCMD -i "1i#treatment_$i"  $output_dir/treatment_$i.sh
+  cat $standup_parameter_file | yq -r .setup.treatments | while IFS=: read -r name treatment; do
+    if [ -z "$treatment" ]; then  # handle list without keys
+      treatment=$(yq .[] <<<"$name")
+      name=setup_${treatment//,/_}
+    fi
+    name=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${name}")   # remove non alphanumeric
+    cat $scenario_file > $output_dir/treatment_$name.sh
+    $LLMDBENCH_CONTROL_SCMD -i "1i#treatment_$name"  $output_dir/treatment_$name.sh
     local j=1
     for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
       local param=$(cat $standup_parameter_file | yq -r ".setup.factors[$(($j - 1))]")
-      has_param=$(cat $output_dir/treatment_$i.sh | grep "$param=" || true)
+      has_param=$(cat $output_dir/treatment_$name.sh | grep "$param=" || true)
       if [[ -z $has_param ]]; then
-        echo "$param=$value" >> $output_dir/treatment_$i.sh
+        echo "$param=$value" >> $output_dir/treatment_$name.sh
       else
-        $LLMDBENCH_CONTROL_SCMD -i "s^$param=.*^$param=$value^g"  $output_dir/treatment_$i.sh
+        $LLMDBENCH_CONTROL_SCMD -i "s^$param=.*^$param=$value^g"  $output_dir/treatment_$name.sh
       fi
-      $LLMDBENCH_CONTROL_SCMD -i "s^REPLACE_TREATMENT_NR^treatment_$i^g"  $output_dir/treatment_$i.sh
-      $LLMDBENCH_CONTROL_SCMD -i "s^_treatment_nr^treatment_$i^g"  $output_dir/treatment_$i.sh
+      $LLMDBENCH_CONTROL_SCMD -i "s^REPLACE_TREATMENT_NR^treatment_$name^g"  $output_dir/treatment_$name.sh
+      $LLMDBENCH_CONTROL_SCMD -i "s^_treatment_nr^treatment_$name^g"  $output_dir/treatment_$name.sh
       j=$((j+1))
     done
-    i=$((i+1))
   done
 }
 export -f generate_standup_parameter_scenarios
@@ -988,23 +1050,26 @@ function generate_profile_parameter_treatments {
 
   cp -f $run_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/workload/experiments/
 
-  i=1
-  for treatment in $(cat $run_parameter_file | yq -r '.run.treatments[]'); do
-    echo "1i#treatment_$i.txt" >> $output_dir/treatment_$i.txt
+  cat $run_parameter_file | yq -r .run.treatments | while IFS=: read -r name treatment; do
+    if [ -z "$treatment" ]; then  # handle list without keys
+      treatment=$(yq .[] <<<"$name")
+      name=run_${treatment//,/_}
+    fi
+    name=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${name}")   # remove non alphanumeric
+    echo "1i#treatment_${name}.txt" >> $output_dir/treatment_${name}.txt
     local j=1
     for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
       local param=$(cat $run_parameter_file | yq -r ".run.factors[$(($j - 1))]")
-      echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_$i.txt
+      echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_${name}.txt
       j=$((j+1))
     done
     if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES ]]; then
       for entry in $(echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
         parm=$(echo $entry | cut -d '=' -f 1)
         val=$(echo $entry | cut -d '=' -f 2)
-        echo "s^$parm:.*^$parm: $val^g" >> $output_dir/treatment_$i.txt
+        echo "s^$parm:.*^$parm: $val^g" >> $output_dir/treatment_${name}.txt
       done
     fi
-    i=$((i+1))
   done
 }
 export -f generate_profile_parameter_treatments

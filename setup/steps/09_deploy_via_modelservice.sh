@@ -26,12 +26,17 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
     export LLMDBENCH_DEPLOY_CURRENT_MODEL_ID=$(model_attribute $model modelid)
     export LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL=$(model_attribute $model modelid_label)
 
+    mount_model_volume=false
     if [[ $LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL == "pvc" || ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 ]]; then
       export LLMDBENCH_VLLM_MODELSERVICE_URI="pvc://${LLMDBENCH_VLLM_COMMON_PVC_NAME}/models/$(model_attribute $model model)"
       mount_model_volume=true
     else
       export LLMDBENCH_VLLM_MODELSERVICE_URI="hf://$(model_attribute $model model)"
       mount_model_volume=true
+    fi
+
+    if [[ -n $LLMDBENCH_VLLM_MODELSERVICE_MOUNT_MODEL_VOLUME_OVERRIDE ]]; then
+      mount_model_volume=$LLMDBENCH_VLLM_MODELSERVICE_MOUNT_MODEL_VOLUME_OVERRIDE
     fi
 
     # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
@@ -44,15 +49,17 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
 - backendRefs:
       - group: inference.networking.x-k8s.io
         kind: InferencePool
-        name: ${LLMDBENCH_VLLM_COMMON_NAMESPACE}-${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
+        name: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
         port: 8000
         weight: 1
 EOF
     fi
 
+    add_config_prep
+
     cat << EOF >$LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-values.yaml
 fullnameOverride: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}
-multinode: false
+multinode: ${LLMDBENCH_VLLM_MODELSERVICE_MULTINODE}
 
 modelArtifacts:
   uri: $LLMDBENCH_VLLM_MODELSERVICE_URI
@@ -69,18 +76,20 @@ routing:
   proxy:
     image: "$(get_image ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REGISTRY} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_REPO} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_NAME} ${LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG} 0)"
     secure: false
+    connector: ${LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR}
+    debugLevel: ${LLMDBENCH_LLMD_ROUTINGSIDECAR_DEBUG_LEVEL}
   inferenceModel:
     create: ${LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL}
   inferencePool:
     create: ${LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL}
-    name: ${LLMDBENCH_VLLM_COMMON_NAMESPACE}-${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
+    name: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
   httpRoute:
     create: $(echo $LLMDBENCH_VLLM_MODELSERVICE_ROUTE | $LLMDBENCH_CONTROL_SCMD -e 's/^0/false/' -e 's/1/true/')
     rules:
     - backendRefs:
       - group: inference.networking.x-k8s.io
         kind: InferencePool
-        name: ${LLMDBENCH_VLLM_COMMON_NAMESPACE}-${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
+        name: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
         port: 8000
         weight: 1
       matches:
@@ -105,8 +114,12 @@ decode:
       labelKey: $(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
       labelValues:
         - $(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 2)
+  parallelism:
+    data: ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM}
+    tensor: ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM}
   annotations:
       $(add_annotations)
+  $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG} 2 extraConfig)
   containers:
   - name: "vllm"
     mountModelVolume: $mount_model_volume
@@ -120,55 +133,43 @@ decode:
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      - name: HF_HOME
-        value: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
       $(add_additional_env_to_yaml $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML)
     resources:
       limits:
         memory: $LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM
         cpu: "$LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR"
+        $(echo "$LLMDBENCH_VLLM_COMMON_EPHEMERAL_STORAGE_RESOURCE: \"${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EPHEMERAL_STORAGE_NR}\"" | $LLMDBENCH_CONTROL_SCMD -e 's/^: \"\"//')
         $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR}\"")
         $(echo "$LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE: \"${LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR}\"" | $LLMDBENCH_CONTROL_SCMD -e 's/^: \"\"//')
       requests:
         memory: $LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM
         cpu: "$LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR"
+        $(echo "$LLMDBENCH_VLLM_COMMON_EPHEMERAL_STORAGE_RESOURCE: \"${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EPHEMERAL_STORAGE_NR}\"" | $LLMDBENCH_CONTROL_SCMD -e 's/^: \"\"//')
         $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR}\"")
         $(echo "$LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE: \"${LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR}\"" | $LLMDBENCH_CONTROL_SCMD -e 's/^: \"\"//')
-    startupProbe:
-      httpGet:
-        path: /health
-        port: ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_INFERENCE_PORT}
-      failureThreshold: 60
-      initialDelaySeconds: ${LLMDBENCH_VLLM_COMMON_INITIAL_DELAY_PROBE}
-      periodSeconds: 30
-      timeoutSeconds: 5
-    livenessProbe:
-      tcpSocket:
-        port: ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_INFERENCE_PORT}
-      failureThreshold: 3
-      periodSeconds: 5
-    readinessProbe:
-      httpGet:
-        path: /health
-        port: 8200
-      failureThreshold: 3
-      periodSeconds: 5
-    volumeMounts:
-    - name: metrics-volume
-      mountPath: /.config
-    - name: shm
-      mountPath: /dev/shm
-    - name: torch-compile-cache
-      mountPath: /.cache
-  volumes:
-  - name: metrics-volume
-    emptyDir: {}
-  - name: shm
-    emptyDir:
-      medium: Memory
-      sizeLimit: "16Gi"
-  - name: torch-compile-cache
-    emptyDir: {}
+    extraConfig:
+      startupProbe:
+        httpGet:
+          path: /health
+          port: ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_INFERENCE_PORT}
+        failureThreshold: 60
+        initialDelaySeconds: ${LLMDBENCH_VLLM_COMMON_INITIAL_DELAY_PROBE}
+        periodSeconds: 30
+        timeoutSeconds: 5
+      livenessProbe:
+        tcpSocket:
+          port: ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_INFERENCE_PORT}
+        failureThreshold: 3
+        periodSeconds: 5
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8200
+        failureThreshold: 3
+        periodSeconds: 5
+    $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG} 6)
+    volumeMounts: $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS} 4)
+  volumes: $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES} 2)
 
 prefill:
   create: $(echo $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS | $LLMDBENCH_CONTROL_SCMD -e 's/^0/false/' -e 's/[1-9].*/true/')
@@ -177,8 +178,12 @@ prefill:
       labelKey: $(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
       labelValues:
         - $(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 2)
+  parallelism:
+    data: ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM}
+    tensor: ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM}
   annotations:
       $(add_annotations)
+  $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG} 2 extraConfig)
   containers:
   - name: "vllm"
     mountModelVolume: $mount_model_volume
@@ -194,61 +199,49 @@ prefill:
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      - name: HF_HOME
-        value: ${LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT}
       $(add_additional_env_to_yaml $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML)
     resources:
       limits:
         memory: $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM
         cpu: "$LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR"
+        $(echo "$LLMDBENCH_VLLM_COMMON_EPHEMERAL_STORAGE_RESOURCE: \"${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EPHEMERAL_STORAGE_NR}\"" | $LLMDBENCH_CONTROL_SCMD -e 's/^: \"\"//')
         $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR}\"")
         $(echo "$LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE: \"${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR}\"" | $LLMDBENCH_CONTROL_SCMD -e 's/^: \"\"//')
       requests:
         memory: $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM
         cpu: "$LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR"
+        $(echo "$LLMDBENCH_VLLM_COMMON_EPHEMERAL_STORAGE_RESOURCE: \"${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EPHEMERAL_STORAGE_NR}\"" | $LLMDBENCH_CONTROL_SCMD -e 's/^: \"\"//')
         $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR}\"")
         $(echo "$LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE: \"${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR}\"" | $LLMDBENCH_CONTROL_SCMD -e 's/^: \"\"//')
-    startupProbe:
-      httpGet:
-        path: /health
-        port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
-      failureThreshold: 60
-      initialDelaySeconds: ${LLMDBENCH_VLLM_COMMON_INITIAL_DELAY_PROBE}
-      periodSeconds: 30
-      timeoutSeconds: 5
-    livenessProbe:
-      tcpSocket:
-        port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
-      failureThreshold: 3
-      periodSeconds: 5
-    readinessProbe:
-      httpGet:
-        path: /health
-        port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
-      failureThreshold: 3
-      periodSeconds: 5
-    volumeMounts:
-    - name: metrics-volume
-      mountPath: /.config
-    - name: shm
-      mountPath: /dev/shm
-    - name: torch-compile-cache
-      mountPath: /.cache
-  volumes:
-  - name: metrics-volume
-    emptyDir: {}
-  - name: shm
-    emptyDir:
-      medium: Memory
-      sizeLimit: "16Gi"
-  - name: torch-compile-cache
-    emptyDir: {}
+    extraConfig:
+      startupProbe:
+        httpGet:
+          path: /health
+          port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
+        failureThreshold: 60
+        initialDelaySeconds: ${LLMDBENCH_VLLM_COMMON_INITIAL_DELAY_PROBE}
+        periodSeconds: 30
+        timeoutSeconds: 5
+      livenessProbe:
+        tcpSocket:
+          port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
+        failureThreshold: 3
+        periodSeconds: 5
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
+        failureThreshold: 3
+        periodSeconds: 5
+    $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG} 6)
+    volumeMounts: $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS} 4)
+  volumes: $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES} 2)
 EOF
     # cleanup temp file
     rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-rules.yaml
 
     announce "🚀 Installing helm chart \"ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}\" via helmfile..."
-    llmdbench_execute_cmd "helmfile --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --kubeconfig ${LLMDBENCH_CONTROL_WORK_DIR}/environment/context.ctx --selector name=${LLMDBENCH_VLLM_COMMON_NAMESPACE}-${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-ms apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/helmfile-${MODEL_NUM}.yaml --skip-diff-on-install" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    llmdbench_execute_cmd "helmfile --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --kubeconfig ${LLMDBENCH_CONTROL_WORK_DIR}/environment/context.ctx --selector name=${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-ms apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/helmfile-${MODEL_NUM}.yaml --skip-diff-on-install" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "✅ ${LLMDBENCH_VLLM_COMMON_NAMESPACE}-${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-ms helm chart deployed successfully"
 
     if [[ $LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS -gt 0 ]]; then

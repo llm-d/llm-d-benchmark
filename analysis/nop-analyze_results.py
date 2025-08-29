@@ -1,124 +1,24 @@
 #!/usr/bin/env python3
 
 """
-Startup logs benchmark
+Benchmark 'nop' analysis
 """
 
-from __future__ import annotations
-from dataclasses import dataclass, fields
-from enum import StrEnum
+from datetime import datetime
 import io
 import os
 import logging
 from typing import Any
 import pandas as pd
+import yaml
+
+from schema import BenchmarkReport
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
-REQUEST_TIMEOUT = 60.0  # time (seconds) to wait for request
-MAX_VLLM_WAIT = 15.0 * 60.0  # time (seconds) to wait for vllm to respond
-
-
-@dataclass
-class LogCategory:
-    """Log category"""
-
-    title: str = ""
-    elapsed: float = 0.0
-    next: LogCategory | None = None
-    parent: LogCategory | None = None
-    root_child: LogCategory | None = None
-
-    def to_dataframe(self) -> pd.DataFrame:
-        """dataframe for table print"""
-        elapsed_str = ""
-        if self.elapsed != 0:
-            elapsed_str = f"{self.elapsed:.3f}"
-        data = {
-            "Category": [self.title],
-            "Elapsed(secs)": [elapsed_str],
-        }
-        return pd.DataFrame(data)
-
-
-class LoadFormat(StrEnum):
-    """Type of model formats"""
-
-    UNKNOWN = "unknown"
-    AUTO = "auto"
-    PT = "pt"
-    SAFETENSORS = "safetensors"
-    NPCACHE = "npcache"
-    DUMMY = "dummy"
-    TENSORIZER = "tensorizer"
-    SHARDED_STATE = "sharded_state"
-    GGUF = "gguf"
-    BITSANDBYTES = "bitsandbytes"
-    MISTRAL = "mistral"
-    RUNAI_STREAMER = "runai_streamer"
-    RUNAI_STREAMER_SHARDED = "runai_streamer_sharded"
-    FASTSAFETENSORS = "fastsafetensors"
-
-
-@dataclass
-class LogResult:
-    """Results of one benchmark run"""
-
-    time: str = ""
-    vllm_version: str = ""
-    sleep_mode: bool = False
-    model: str = ""
-    load_format: LoadFormat = LoadFormat.UNKNOWN
-    load_time: float = 0.0
-    size: float = 0.0
-    sleep: float = 0.0
-    gpu_freed: float = 0.0
-    gpu_in_use: float = 0.0
-    wake: float = 0.0
-
-    def to_dataframe(self) -> pd.DataFrame:
-        """dataframe for table print"""
-        data = {
-            "Time": [self.time],
-            "vLLM Version": [self.vllm_version],
-            "Sleep/Wake": [str(self.sleep_mode)],
-            "Model": [self.model],
-            "Load Format": [str(self.load_format)],
-            "Elapsed(secs)": [f"{self.load_time:.2f}"],
-            "Rate(GB/s)": [f"{self.transfer_rate():.2f}"],
-            "Sleep(secs)": [f"{self.sleep:.2f}"],
-            "Freed GPU(GiB)": [f"{self.gpu_freed:.2f}"],
-            "In Use GPU(GiB)": [f"{self.gpu_in_use:.2f}"],
-            "Wake(secs)": [f"{self.wake:.2f}"],
-        }
-        return pd.DataFrame(data)
-
-    @staticmethod
-    def header_csv() -> list[str]:
-        """csv header"""
-        header = []
-        for f in fields(LogResult):
-            header.append(f.name)
-
-        return header
-
-    def row_csv(self) -> list[Any]:
-        """csv row"""
-        row = []
-        for name in LogResult.header_csv():
-            row.append(getattr(self, name))
-
-        return row
-
-    def transfer_rate(self) -> float:
-        """calculate GB/s"""
-        if self.load_time > 0:
-            return self.size / self.load_time
-        return 0.0
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
 
 def get_env_variables(keys: list[str]) -> list[str]:
@@ -158,40 +58,35 @@ def get_formatted_output(column: str, df: pd.DataFrame) -> str:
     return f"{'\n'.join(lines)}\n"
 
 
-def write_log_results(file: io.TextIOWrapper, log_results: list[LogResult]):
-    """writes benchmark results"""
-
-    df = pd.DataFrame()
-    for log_result in log_results:
-        df = pd.concat([df, log_result.to_dataframe()])
-
-    file.write(get_formatted_output("Time", df))
-
-
-def populate_category_results(
-    log_category: LogCategory,
+def create_categories_dataframe(
+    categories: list[dict[str, Any]],
     level: int,
     df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """populates category benchmark results"""
+    """create categories dataframe"""
 
     blank_string = "  " * level if level > 0 else ""
-    category = log_category
     total = 0.0
-    while category is not None:
-        total += category.elapsed
-        data = category.to_dataframe()
+    for category in categories:
+        elapsed = category["elapsed"]["value"]
+        total += elapsed
+        elapsed_str = f"{elapsed:.3f}" if elapsed != 0 else ""
+        data = {
+            "Category": [category["title"]],
+            "Elapsed(secs)": [elapsed_str],
+        }
+        data = pd.DataFrame(data)
         data.iloc[0, 0] = blank_string + data.iloc[0, 0]
         df = pd.concat([df, data])
 
-        if category.root_child is not None:
-            df = populate_category_results(category.root_child, level + 1, df)
-        category = category.next
+        children = category.get("categories")
+        if children is not None:
+            df = create_categories_dataframe(children, level + 1, df)
 
     df_total = pd.DataFrame(
         {
             "Category": [blank_string + "Total"],
-            "Elapsed(secs)": [total],
+            "Elapsed(secs)": [f"{total:.3f}"],
         }
     )
 
@@ -199,87 +94,63 @@ def populate_category_results(
     return pd.concat([df, df_total])
 
 
-def write_category_results(file: io.TextIOWrapper, root_log_category: LogCategory):
-    """writes category benchmark results"""
+def write_benchmark_scenario(file: io.TextIOWrapper, benchmark_report: BenchmarkReport):
+    """write benchmark scenario to file"""
 
-    df = populate_category_results(root_log_category, 0, pd.DataFrame())
-    file.write(get_formatted_output("Category", df))
-
-
-def read_log_results_from_csv(file_path: str) -> list[LogResult]:
-    """read csv log results"""
-
-    log_results = []
-    if not os.path.isfile(file_path):
-        logger.info("no csv file found on path: %s", file_path)
-        return log_results
-
-    df = pd.read_csv(file_path, encoding="utf-8")
-
-    log_result_header = LogResult.header_csv()
-
-    for _, row in df.iterrows():
-        log_result = LogResult()
-        for name in log_result_header:
-            value = row.get(name)
-            if value is not None:
-                setattr(log_result, name, value)
-        log_results.append(log_result)
-
-    logger.info("csv file found on path: %s", file_path)
-    return log_results
+    scenario = benchmark_report.scenario
+    file.write(f"Scenario harness: {scenario.load.name}\n")
+    file.write(f" Load Format    : {scenario.metadata['load_format']}\n")
+    file.write(f" Sleep Mode On  : {scenario.metadata['sleep_mode']}\n")
+    file.write(f" Model          : {scenario.model.name}\n")
+    for engine in scenario.platform.engine:
+        file.write(" Engine\n")
+        file.write(f"  Name          : {engine.name}\n")
+        file.write(f"  Version       : {engine.version}\n")
+        file.write(f"  Args          : {str(engine.args)}\n")
 
 
-def read_log_categories_from_csv(file_path: str) -> LogCategory:
-    """read csv log categories"""
+def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkReport):
+    """write benchmark reports to file"""
 
-    root_log_category = None
-    if not os.path.isfile(file_path):
-        logger.info("no csv categories file found on path: %s", file_path)
-        return root_log_category
+    write_benchmark_scenario(file, benchmark_report)
+    file.write("\n\n\n")
 
-    df = pd.read_csv(file_path, dtype=str, keep_default_na=False)
+    data = {
+        "Start Time": [
+            datetime.fromtimestamp(benchmark_report.metrics.time.start)
+            .astimezone()
+            .isoformat()
+        ],
+        "Stop Time": [
+            datetime.fromtimestamp(benchmark_report.metrics.time.stop)
+            .astimezone()
+            .isoformat()
+        ],
+        "Duration(secs)": [f"{benchmark_report.metrics.time.duration:.3f}"],
+    }
+    data_frame = pd.DataFrame(data)
+    file.write(get_formatted_output("Start Time", data_frame))
+    file.write("\n\n\n")
 
-    # Group children by their parent
-    tree = df.groupby("parent")["key"].apply(list).to_dict()
+    metrics_metadata = benchmark_report.metrics.metadata
+    data = {
+        "Elapsed(secs)": [f"{metrics_metadata['load_time']['value']:.3f}"],
+        "Rate(GiB/secs)": [f"{metrics_metadata['transfer_rate']['value']:.3f}"],
+        "Sleep(secs)": [f"{metrics_metadata['sleep']['value']:.3f}"],
+        "Freed GPU(GiB)": [f"{metrics_metadata['gpu_freed']['value']:.2f}"],
+        "In Use GPU(GiB)": [f"{metrics_metadata['gpu_in_use']['value']:.2f}"],
+        "Wake(secs)": [f"{metrics_metadata['wake']['value']:.3f}"],
+    }
+    data_frame = pd.DataFrame(data)
+    file.write(get_formatted_output("Elapsed(secs)", data_frame))
 
-    root_log_category = populate_log_categories("", tree, df, None)
+    categories = metrics_metadata.get("categories")
+    if categories is None:
+        return
 
-    logger.info("csv categories file found on path: %s", file_path)
-    return root_log_category
-
-
-def populate_log_categories(
-    key: str, tree: pd.Dataframe, df: pd.DataFrame, parent: LogCategory
-) -> LogCategory:
-    """populates categories from dataframes"""
-
-    root_log_category = None
-    prev_log_category = None
-    for child_key in tree.get(key, []):
-        category_row = df[df["key"] == child_key].iloc[0]
-        log_category = LogCategory()
-        if root_log_category is None:
-            root_log_category = log_category
-        if prev_log_category is not None:
-            prev_log_category.next = log_category
-        prev_log_category = log_category
-        log_category.title = category_row.get("title")
-        elapsed_str = category_row.get("elapsed")
-        if elapsed_str != "":
-            try:
-                log_category.elapsed = float(elapsed_str)
-            except ValueError:
-                logger.exception(
-                    "Error converting elapsed value %s to float", elapsed_str
-                )
-        log_category.parent = parent
-        if log_category.parent is not None and log_category.parent.root_child is None:
-            log_category.parent.root_child = log_category
-
-        _ = populate_log_categories(child_key, tree, df, log_category)
-
-    return root_log_category
+    file.write("\n\n\n")
+    data_frame = create_categories_dataframe(categories, 0, pd.DataFrame())
+    file.write(get_formatted_output("Category", data_frame))
 
 
 def main():
@@ -294,37 +165,40 @@ def main():
     control_work_dir = envs[0]
     requests_dir = control_work_dir
 
-    cvs_filepath = os.path.join(requests_dir, "nop.csv")
-
-    # read possible existent csv file
-    log_results = read_log_results_from_csv(cvs_filepath)
-    if len(log_results) == 0:
-        logger.info("no csv file available for analysis")
-        return
-
     analysis_dir = os.path.join(requests_dir, "analysis")
     os.makedirs(analysis_dir, exist_ok=True)
 
-    # write results analysis file
-    analysis_filepath = os.path.join(analysis_dir, "nop.txt")
-    with open(analysis_filepath, "w", encoding="utf-8") as file:
-        write_log_results(file, log_results)
-        logger.info("analysis file saved to path: %s", analysis_filepath)
+    file_handler = logging.FileHandler(f"{analysis_dir}/stdout.log")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
 
-    # read possible existent csv file
-    cvs_filepath = os.path.join(requests_dir, "nop_categories.csv")
-    root_log_category = read_log_categories_from_csv(cvs_filepath)
-    if root_log_category is None:
-        logger.info("no csv category file available for analysis")
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    # read possible existent universal yaml file
+    benchmark_report_filepath = os.path.join(
+        requests_dir, "benchmark_report", "result.yaml"
+    )
+    if not os.path.isfile(benchmark_report_filepath):
+        logger.info(
+            "no benchmark reports file found on path: %s", benchmark_report_filepath
+        )
         return
 
-    # write categgory analysis file
-    category_analysis_filepath = os.path.join(analysis_dir, "nop_categories.txt")
-    with open(category_analysis_filepath, "w", encoding="utf-8") as file:
-        write_category_results(file, root_log_category)
-        logger.info(
-            "category analysis file saved to path: %s", category_analysis_filepath
-        )
+    benchmark_report = None
+    with open(benchmark_report_filepath, "r", encoding="UTF-8") as file:
+        benchmark_dict = yaml.safe_load(file)
+        benchmark_report = BenchmarkReport(**benchmark_dict)
+
+    # write reports analysis file
+    reports_filepath = os.path.join(analysis_dir, "result.txt")
+    with open(reports_filepath, "w", encoding="utf-8") as file:
+        write_benchmark_reports(file, benchmark_report)
+        logger.info("analysis report file saved to path: %s", reports_filepath)
 
 
 if __name__ == "__main__":

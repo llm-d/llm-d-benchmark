@@ -44,7 +44,7 @@ A user can elect to  **`standup`** an `llm-d` stack once, and then **`run`** the
 
 ### Architecture
 
-`llm-d-benchmark` stands up a stack (currently, both `llm-d` and "standalone" are supported) with a specific set of [Standup Parameters](docs/standup.md), and the run a specific harness with a specific set of [Run Parameters](docs/run.md)
+`llm-d-benchmark` stands up a stack (currently, both `llm-d` and "standalone" are supported) with a specific set of [Standup Parameters](docs/standup.md), and the run a specific harness with a specific set of [Run Parameters](docs/run.md). Results are saved in the native format of the [harness](docs/run.md#harnesses) chosen, as well as a universal [Benchmark Report](docs/benchmark_report.md).
 
 <p align="center">
   <picture>
@@ -106,8 +106,7 @@ A file describing a series of parameters - both `standup` and `run` - to be exec
 
 ## Topics
 
-#### [Lifecycle](docs/lifecycle.md)
-#### [Reproducibility](docs/lifecycle.md)
+#### [Reproducibility](docs/reproducibility.md)
 #### [Observability](docs/observability.md)
 #### [Quickstart](docs/quickstart.md)
 #### [FAQ](docs/faq.md)
@@ -115,7 +114,7 @@ A file describing a series of parameters - both `standup` and `run` - to be exec
 ## Contribute
 
 - [Instructions on how to contribute](CONTRIBUTING.md) including details on our development process and governance.
-- We use Slack to discuss development across organizations. Please join: [Slack](https://inviter.co/llm-d-slack). There is a `sig-benchmarking` channel there.
+- We use Slack to discuss development across organizations. Please join: [Slack](https://llm-d.ai/slack). There is a `sig-benchmarking` channel there.
 - We host a weekly standup for contributors on Thursdays at 13:30 ET. Please join: [Meeting Details](https://calendar.google.com/calendar/u/0?cid=NzA4ZWNlZDY0NDBjYjBkYzA3NjdlZTNhZTk2NWQ2ZTc1Y2U5NTZlMzA5MzhmYTAyZmQ3ZmU1MDJjMDBhNTRiNEBncm91cC5jYWxlbmRhci5nb29nbGUuY29t). The meeting notes can be found [here](https://docs.google.com/document/d/1njjeyBJF6o69FlyadVbuXHxQRBGDLcIuT7JHJU3T_og/edit?usp=sharing). Joining the [llm-d google groups](https://groups.google.com/g/llm-d-contributors) will grant you access.
 
 ## License
