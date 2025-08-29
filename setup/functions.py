@@ -458,7 +458,7 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
         announce(f"Timeout waiting for evaluation job {job_name} after {timeout} seconds.")
         return False
     except Exception as e:
-        announce(f"Error occured while waiting for job {job_name} : {e}")
+        announce(f"(RECOVERABLE) Error occured while waiting for job {job_name} : {e}")
         return False
     finally:
         await api_client.close()
@@ -665,12 +665,16 @@ def add_config(obj_or_filename, num_spaces=0, label=""):
     spaces = " " * num_spaces
     contents = ""
     indented_contents = ""
-    try:
-        with open(obj_or_filename, 'r') as f:
-            contents = f.read()
-    except FileNotFoundError:
-        # not a file
-        contents = obj_or_filename
+
+    contents = obj_or_filename
+
+    if len(obj_or_filename.split('\n')) == 1 :
+        try:
+            with open(obj_or_filename, 'r') as f:
+                contents = f.read()
+        except FileNotFoundError:
+            # not a file
+            contents = obj_or_filename
 
     indented_contents = '\n'.join(f"{spaces}{line}" for line in contents.splitlines())
     if indented_contents.strip() != "{}" :
