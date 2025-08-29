@@ -220,14 +220,16 @@ def install_kgateway(
         int: 0 for success, non-zero for failure
     """
     try:
-        fd, path = tempfile.mkstemp()
-        with os.fdopen(fd, 'w+t', encoding='utf-8') as temp_file:
-            temp_file.write("""
+        helm_base_dir = Path(ev["control_work_dir"]) / "setup" / "helm"
+        helm_base_dir.mkdir(parents=True, exist_ok=True)
+        helmfile_path = helm_base_dir / f'helmfile-{ev["current_step"]}.yaml'
+        with open(helmfile_path, 'w') as f:
+            f.write("""
 releases:
   - name: kgateway-crds
     chart: oci://cr.kgateway.dev/kgateway-dev/charts/kgateway-crds
     namespace: kgateway-system
-    version: v2.0.4
+    version: v2.0.3
     installed: true
     labels:
       type: gateway-provider
@@ -235,7 +237,7 @@ releases:
 
   - name: kgateway
     chart: oci://cr.kgateway.dev/kgateway-dev/charts/kgateway
-    version: v2.0.4
+    version: v2.0.3
     namespace: kgateway-system
     installed: true
     needs:
@@ -255,8 +257,7 @@ releases:
       type: gateway-provider
       kind: gateway-control-plane
 """)
-        
-        install_cmd = f"helmfile apply -f {path}"
+        install_cmd = f"helmfile apply -f {helmfile_path}"
 
         announce(f"🚀 Installing kgateway")
         llmdbench_execute_cmd(install_cmd, dry_run, verbose)
@@ -266,10 +267,9 @@ releases:
     except Exception as e:
         announce(f"❌ Error installing Kubernetes Gateway API CRDs: {e}")
         return 1
-        
-    finally:
-        os.remove(path)  # delete temporary helm file
 
+    finally:
+        True
 
 def install_istio(
         ev : dict,
@@ -288,9 +288,11 @@ def install_istio(
         int: 0 for success, non-zero for failure
     """
     try:
-        fd, path = tempfile.mkstemp()
-        with os.fdopen(fd, 'w+t', encoding='utf-8') as temp_file:
-            temp_file.write("""
+        helm_base_dir = Path(ev["control_work_dir"]) / "setup" / "helm"
+        helm_base_dir.mkdir(parents=True, exist_ok=True)
+        helmfile_path = helm_base_dir / f'helmfile-{ev["current_step"]}.yaml'
+        with open(helmfile_path, 'w') as f:
+            f.write("""
 releases:
   - name: istio-base
     chart: oci://gcr.io/istio-testing/charts/base
@@ -322,8 +324,8 @@ releases:
       type: gateway-provider
       kind: gateway-control-plane
 """)
-        
-        install_cmd = f"helmfile apply -f {path}"
+
+        install_cmd = f"helmfile apply -f {helmfile_path}"
 
         announce(f"🚀 Installing istio")
         llmdbench_execute_cmd(install_cmd, dry_run, verbose)
@@ -333,10 +335,9 @@ releases:
     except Exception as e:
         announce(f"❌ Error installing Kubernetes Gateway API CRDs: {e}")
         return 1
-        
-    finally:
-        os.remove(path)  # delete temporary helm file
 
+    finally:
+        True
 
 def install_gateway_control_plane(
         ev : dict,
@@ -354,20 +355,17 @@ def install_gateway_control_plane(
     Returns:
         int: 0 for success, non-zero for failure
     """
-    gateway_control_plane = ev.get("vllm_modelservice_gateway_class_name")
-
-    if gateway_control_plane.lower() == 'kgateway':
+    if ev["vllm_modelservice_gateway_class_name"] == 'kgateway':
         success = install_kgateway(ev, dry_run, verbose)
-    elif gateway_control_plane.lower() == 'istio':
+    elif ev["vllm_modelservice_gateway_class_name"] == 'istio':
         success = install_istio(ev, dry_run, verbose)
-    elif gateway_control_plane.lower() == 'gke':
+    elif ev["vllm_modelservice_gateway_class_name"] == 'gke':
         success = 0
 
     if success == 0:
-        announce("✅ Gateway control plane installed.")
+        announce(f'✅ Gateway control plane (provider {ev["vllm_modelservice_gateway_class_name"]}) installed.')
     else:
-        announce(f"❌ Gateway control plane not installed.")
-
+        announce(f'❌ Gateway control plane (provider {ev["vllm_modelservice_gateway_class_name"]}) not installed.')
     return success
 
 
@@ -420,7 +418,7 @@ def ensure_gateway_provider(
             os.environ["LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION"] = detected_version
 
         # Check gateway infrastructure setup
-        announce(f"🔍 Ensuring gateway infrastructure ({gateway_class}) is setup...")
+        announce(f'🔍 Ensuring gateway infrastructure (provider {ev["vllm_modelservice_gateway_class_name"]}) is setup...')
 
         if ev["user_is_admin"] :
             # Install Kubernetes Gateway API crds
@@ -432,7 +430,7 @@ def ensure_gateway_provider(
             result = install_gateway_api_extension_crds(ev, dry_run, verbose)
             if result != 0:
                 return result
-            
+
             # Install Gateway control plane (kgateway, istio or gke)
             result = install_gateway_control_plane(ev, dry_run, verbose)
             if result != 0:

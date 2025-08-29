@@ -88,9 +88,9 @@ run:
 ```
 setup:
   factors:
-    - LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS
+    - LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE
   levels:
-    LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS: "default,prefix-cache-estimate-config,prefix-cache-tracking-config"
+    LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE: "default,prefix-cache-estimate-config,prefix-cache-tracking-config"
   treatments:
     - "default"
     - "prefix-cache-estimate-config"
