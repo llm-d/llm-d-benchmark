@@ -115,8 +115,11 @@ def ensure_user_workload_monitoring(
     """
     announce("🔍 Checking for OpenShift user workload monitoring enablement...")
 
-    if is_openshift(api) and ev["deploy_methods"] == "modelservice" :
-        announce("⏭️  Not an OpenShift Cluster, skipping user workload monitoring enablement")
+    if is_openshift(api) :
+        if ev["deploy_methods"] != "modelservice" :
+            announce("⏭️ Standup method is not \"modelservice\", skipping user workload monitoring enablement")
+    else :
+        announce("⏭️ Not an OpenShift Cluster, skipping user workload monitoring enablement")
         return 0
 
     try:
@@ -154,7 +157,7 @@ def main():
 
     ev = {}
     environment_variable_to_dict(ev)
-    
+
     env_cmd=f'source "{ev["control_dir"]}/env.sh"'
     result = llmdbench_execute_cmd(actual_cmd=env_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
     if result != 0:
