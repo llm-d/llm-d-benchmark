@@ -114,7 +114,7 @@ A file describing a series of parameters - both `standup` and `run` - to be exec
 ## Contribute
 
 - [Instructions on how to contribute](CONTRIBUTING.md) including details on our development process and governance.
-- We use Slack to discuss development across organizations. Please join: [Slack](https://inviter.co/llm-d-slack). There is a `sig-benchmarking` channel there.
+- We use Slack to discuss development across organizations. Please join: [Slack](https://llm-d.ai/slack). There is a `sig-benchmarking` channel there.
 - We host a weekly standup for contributors on Thursdays at 13:30 ET. Please join: [Meeting Details](https://calendar.google.com/calendar/u/0?cid=NzA4ZWNlZDY0NDBjYjBkYzA3NjdlZTNhZTk2NWQ2ZTc1Y2U5NTZlMzA5MzhmYTAyZmQ3ZmU1MDJjMDBhNTRiNEBncm91cC5jYWxlbmRhci5nb29nbGUuY29t). The meeting notes can be found [here](https://docs.google.com/document/d/1njjeyBJF6o69FlyadVbuXHxQRBGDLcIuT7JHJU3T_og/edit?usp=sharing). Joining the [llm-d google groups](https://groups.google.com/g/llm-d-contributors) will grant you access.
 
 ## License
