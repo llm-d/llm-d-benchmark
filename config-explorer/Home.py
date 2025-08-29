@@ -9,14 +9,6 @@ import util
 import numpy as np
 from src.config_explorer.functions import *
 
-def init_session_state():
-    """
-    Inits session state for data persistence
-    """
-
-    if util.USER_SCENARIO_KEY not in st.session_state:
-        st.session_state[util.USER_SCENARIO_KEY] = util.Scenario()
-
 def update_gpu_spec():
     st.session_state['scenario'].gpu_spec = st.session_state['gpu_spec'][st.session_state['selected_gpu_spec']]
 
@@ -309,7 +301,7 @@ if __name__ == '__main__':
     st.title("Configuration Explorer")
     st.caption("Finding the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements.")
 
-    init_session_state()
+    util.init_session_state()
 
     # Display Capacity Planner headings
     st.subheader("Capacity Planner")

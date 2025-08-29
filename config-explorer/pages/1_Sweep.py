@@ -1,31 +1,33 @@
 """
-Filter results page
+Benchmarking sweep visualization page
 """
 from matplotlib import pyplot as plt
 import streamlit as st
 import db
 import pandas as pd
+import util
+from src.config_explorer.functions import *
 
 def check_input():
     """
     Check all required input is there
     """
-    scenario = st.session_state['scenario']
-    if not scenario.model_name or not scenario.gpu_spec:
+    scenario = st.session_state[util.USER_SCENARIO_KEY]
+    if not scenario.model_name or not scenario.gpu_name or not scenario.gpu_count_avail or not scenario.max_model_len:
         return False
     return True
 
-def display_basic_data():
+def display_capacity_planner_data():
     """
     Display info about data
     """
-    user_scenario = st.session_state['scenario']
+    user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     st.info(f"""Benchmarking results will be filtered based on the following inputs:
 
 - Model: `{user_scenario.model_name}`
-- Precision: `{user_scenario.precision}`
-- GPU Type: `{user_scenario.gpu_spec['name']}`
-- GPU Available: {user_scenario.gpu_count_avail}
+- GPU Type: `{user_scenario.gpu_name}`
+- GPU Available: `{user_scenario.gpu_count_avail}`
+- Max model length: `{user_scenario.max_model_len}` (max context length = `{max_context_len(user_scenario.model_config)}`)
 """)
 
 def table(benchmark_data):
@@ -243,6 +245,7 @@ if __name__ == "__main__":
     st.title("Parameter Sweep and Search")
     st.caption("Visualize performance results.")
 
+    util.init_session_state()
 
     if not check_input():
         st.warning("One or more inputs is missing in Home page: Model name, hardware specification, or workload")
@@ -250,16 +253,16 @@ if __name__ == "__main__":
     else:
         user_scenario =  st.session_state['scenario']
 
+        display_capacity_planner_data()
+
         # Filter benchmarking data
         df = db.read_benchmark_data()
         benchmark_data = df.loc[
             (df["Model"] == user_scenario.model_name) &
-            (df["GPU"] == user_scenario.gpu_spec['name']) &
+            (df["GPU"] == user_scenario.gpu_name) &
             (df["Num_GPUs"] <= user_scenario.gpu_count_avail) &
             (df["ISL"] + df["OSL"] <= user_scenario.max_model_len)
         ]
-
-        display_basic_data()
 
         if benchmark_data.empty:
             st.warning("The configuration selected returned no result.")
@@ -271,6 +274,3 @@ if __name__ == "__main__":
 
             # Show table of optimal configs
             table(pareto_front)
-
-            # miscellaneous output
-            # misc(pareto_front)

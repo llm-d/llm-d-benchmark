@@ -1,15 +1,9 @@
 """
 Mocks DB storing info about GPU specs, model specs, etc.
 """
-from dataclasses import dataclass
 import pickle
-from typing import Any, Dict, List
+from typing import Any, Dict
 import pandas as pd
-
-@dataclass
-class GPUSpec:
-    name: str
-    memory: int
 
 gpu_specs = {
     # https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-us-nvidia-1758950-r4-web.pdf

@@ -50,6 +50,13 @@ class Scenario:
             return True
         return False
 
+def init_session_state():
+    """
+    Inits session state for data persistence
+    """
+
+    if USER_SCENARIO_KEY not in st.session_state:
+        st.session_state[USER_SCENARIO_KEY] = Scenario()
 
 def update_scenario(session_state_key: str, scenario_attr: str):
     """
