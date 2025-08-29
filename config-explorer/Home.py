@@ -14,22 +14,14 @@ def init_session_state():
     Inits session state for data persistence
     """
 
-    if 'scenario' not in st.session_state:
-        st.session_state['scenario'] = util.Scenario()
-    if 'gpu_spec' not in st.session_state:
-        st.session_state["gpu_spec"] = db.gpu_specs
+    if util.USER_SCENARIO_KEY not in st.session_state:
+        st.session_state[util.USER_SCENARIO_KEY] = util.Scenario()
 
 def update_gpu_spec():
     st.session_state['scenario'].gpu_spec = st.session_state['gpu_spec'][st.session_state['selected_gpu_spec']]
 
 def update_gpu_count_avail():
     st.session_state['scenario'].gpu_count_avail = st.session_state['selected_gpu_count_avail']
-
-def update_isl():
-    st.session_state['scenario'].isl = st.session_state['selected_isl']
-
-def update_osl():
-    st.session_state['scenario'].osl = st.session_state['selected_osl']
 
 @st.dialog("Register a new accelerator")
 def register_new_accelerator():
@@ -47,28 +39,25 @@ def register_new_accelerator():
             }
             st.rerun()
 
-def capacity_planner():
+def model_specification():
     """
     Get model inputs like model name, precision
     """
 
-    st.subheader("Capacity Planner")
-    st.caption("Determine if your model will fit on _n_ XXX GPU.")
-
-    user_scenario = st.session_state['scenario']
+    user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_info = None
 
     # Model
     with st.container(border=True):
         st.write("**Model Specification**")
+
         selected_model = st.text_input("Model (Hugging Face format)",
-                                       #value=user_scenario.model_name,
-                                       value='RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic',
-                                       placeholder="ibm-granite/granite-3.3-8b-instruct",
+                                        value=user_scenario.get_model_name(),
+                                        key=util.SELECTED_MODEL_KEY,
+                                        on_change=util.on_update_model_name,
                                        )
 
         if selected_model and selected_model != "":
-
             # Fetch model info
             try:
                 model_info = get_model_info_from_hf(selected_model)
@@ -87,22 +76,24 @@ def capacity_planner():
                 st.warning(e)
                 return None
 
-            user_scenario.model_name = selected_model
             total_params = model_total_params(model_info)
             precision_keys = model_precision_keys(model_info)
-            gpu_memory_req = round(model_memory_req(model_info))
+            model_gpu_memory_req = round(model_memory_req(model_info))
 
-            # Display precision
+            # Display first precision
             st.caption(f"Precision: {', '.join(precision_keys)}")
-
-            # Record the first precision
-            user_scenario.precision = precision_keys[0]
-
             st.caption(f"Total parameters: {total_params}")
-            st.caption(f"GPU memory requirement: ~{gpu_memory_req} GB")
+            st.caption(f"GPU memory requirement: ~{model_gpu_memory_req} GB")
 
         else:
             return None
+
+def hardware_specification():
+    """
+    Get hardware inputs like name and number of accelerators available
+    """
+
+    user_scenario = st.session_state[util.USER_SCENARIO_KEY]
 
     # Hardware
     with st.container(border=True):
@@ -110,159 +101,201 @@ def capacity_planner():
 
         col1, col2 = st.columns([0.7, 0.3])
 
-        gpu_spec_options = list(st.session_state['gpu_spec'].keys())
-        col1.selectbox("Accelerator",
-                        key="selected_gpu_spec",
-                        index=0,
-                        options=gpu_spec_options,
-                        on_change=update_gpu_spec,
-                        )
+        index = 0
+        if user_scenario.gpu_name in db.gpu_specs.keys():
+            index = list(db.gpu_specs.keys()).index(user_scenario.gpu_name)
 
-        if st.session_state['selected_gpu_spec']:
-            selected_gpu = st.session_state['selected_gpu_spec']
-            user_scenario.gpu_spec = st.session_state['gpu_spec'][selected_gpu]
-            gpu_memory = user_scenario.gpu_spec['memory']
-            st.caption(f"GPU memory: {gpu_memory} GB")
-
-            # Calculate the minimum number of GPUs required
-            min_gpu_needed = min_gpu_req(model_info, gpu_memory)
-            st.warning(f"Loading this model on the selected GPU requires at least `{min_gpu_needed}`")
-            st.number_input("Number accelerators available",
-                            key='selected_gpu_count_avail',
-                            value=user_scenario.gpu_count_avail,
-                            step=1,
-                            on_change=update_gpu_count_avail,
-                            min_value=0,
-                            )
-
-            if user_scenario.gpu_count_avail is None or user_scenario.gpu_count_avail < min_gpu_needed:
-                st.error("Not enough GPU memory to load the model.")
-
+        # Select GPU type
+        selected_gpu_name = col1.selectbox("Accelerator",
+                                key=util.SELECTED_GPU_NAME_KEY,
+                                index=index,
+                                options=db.gpu_specs,
+                                on_change=util.update_scenario,
+                                args=[util.SELECTED_GPU_NAME_KEY, "gpu_name"],
+                                )
         # Dialog for registering new accelerator data
         col2.info("Don't see your accelerator? Register a new one below")
         if col2.button("Register new accelerator", use_container_width=True):
             register_new_accelerator()
 
-def kv_cache_estimator():
+        if selected_gpu_name:
+            # util.update_scenario(util.SELECTED_GPU_NAME_KEY, "gpu_name")
+            gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
+            st.caption(f"GPU memory: {gpu_memory} GB")
+
+
+        # Number of GPUs available
+        num_acc_avail = st.number_input("Number accelerators available",
+                                        key=util.SELECTED_GPU_COUNT_AVAIL_KEY,
+                                        value=user_scenario.gpu_count_avail,
+                                        step=1,
+                                        min_value=0,
+                                        on_change=util.on_update_gpu_count,
+                                        )
+
+        # Calculate the minimum number of GPUs required
+        if selected_gpu_name and num_acc_avail:
+            min_gpu_needed = min_gpu_req(user_scenario.model_info, gpu_memory)
+            if num_acc_avail < min_gpu_needed:
+                st.error(f"Not enough GPU memory to load the model. At least {min_gpu_needed} is required.")
+                return None
+
+def workload_specification():
     """
     Estimate total memory needed for KV cache
     """
 
-    user_scenario = st.session_state['scenario']
+    user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_info = user_scenario.model_info
     model_config = user_scenario.model_config
 
-    st.subheader("KV Cache Estimator")
-    st.caption("Estimate KV cache memory requirements for the selected model based on workload.")
-
     # Workload
     with st.container(border=True):
-        st.write("**Workload Characteristics**")
+        st.write("**Workload Characteristics (KV Cache Estimator)**")
+        st.caption("Estimate KV cache memory requirements for the selected model based on workload.")
 
         if model_info is None:
             st.warning("Model information not yet selected")
             return None
         if model_config is None:
-            st.warning("Model config not available")
+            st.warning("Model config not available, cannot estimate KV cache size")
             return None
 
         col1, col2 = st.columns(2)
-        col1.number_input("Input sequence length (prompt + context)",
-                            value=1 if user_scenario.isl is None else user_scenario.isl,
-                            min_value=1,
-                            step=1,
-                            key="selected_isl",
-                            on_change=update_isl,
-                            )
 
-        col2.number_input("Output sequence length",
-                            value=1 if user_scenario.osl is None else user_scenario.osl,
-                            min_value=1,
-                            step=1,
-                            key="selected_osl",
-                            on_change=update_osl,
-                            )
+        min_gpu_required = min_gpu_req(model_info, user_scenario.get_gpu_memory(db.gpu_specs))
+        model_max_context_len = max_context_len(model_config)
+        selected_max_model_len = col1.number_input(
+            f"Max model len (max model context length is: {model_max_context_len})",
+            min_value=1,
+            max_value=model_max_context_len,
+            value=user_scenario.max_model_len,
+            key=util.SELECTED_MAX_MODEL_LEN_KEY,
+            on_change=util.update_scenario,
+            args=[util.SELECTED_MAX_MODEL_LEN_KEY, "max_model_len"]
+            )
+        col1.caption("Maximum model length for the model: how many tokens (input + output) the model can process. \
+Higher max model length means fewer concurrent requests can be served, \
+                because for the same GPU memory available for KV cache, \
+                each request requires more memory allocation. \
+")
 
-        user_context_len = user_scenario.isl + user_scenario.osl
-        max_model_ctx_len = max_context_len(model_config)
-        if user_context_len > max_model_ctx_len:
-            st.error(f"Input and output lengths exceed the max context length accepted by model ({max_model_ctx_len})")
-            return None
+        max_concurrency = None
+        if selected_max_model_len:
+            # Calculate max concurrent requests available given GPU count
+            if user_scenario.gpu_count_avail:
+                max_concurrency = max_concurrent_req(model_info,
+                                                    model_config,
+                                                    selected_max_model_len,
+                                                    user_scenario.gpu_count_avail,
+                                                    user_scenario.get_gpu_memory(db.gpu_specs),
+                                                    )
 
-        model_size = 0
+        selected_concurrency = col2.number_input("Concurrency",
+                    min_value=0,
+                    max_value=max_concurrency,
+                    step=1,
+                    key=util.SELECTED_CONCURRENCY_KEY,
+                    value=user_scenario.concurrency,
+                    on_change=util.update_scenario,
+                    args=[util.SELECTED_CONCURRENCY_KEY, "concurrency"]
+                    )
+
+        # Display missing information messages
+        if user_scenario.gpu_count_avail:
+            if user_scenario.gpu_count_avail < min_gpu_required:
+                col2.info("Not enough GPU memory available to load model.")
+        else:
+            col2.info("Input accelerator count above.")
+
+        if not selected_max_model_len:
+            col2.info("Input maximum model length to estimate max concurrency that can be achieved.")
+        elif max_concurrency is not None:
+            per_req_kv_req = kv_cache_req(model_info,
+                                        model_config,
+                                        context_len=selected_max_model_len,
+                                        )
+            col2.info(f"Each request will take ~{round(per_req_kv_req, 2)} GB of KV cache, and there is enough KV cache to process up to {max_concurrency} requests concurrently.")
+        else:
+            col2.info("Not enough information to calculate max concurrency. Need model info, accelerator type, count, and max model length.")
+
+def memory_util_chart():
+    """
+    Show memory utilization chart
+    """
+
+    user_scenario = st.session_state[util.USER_SCENARIO_KEY]
+    model_info = user_scenario.model_info
+    model_config = user_scenario.model_config
+    min_gpu_required = min_gpu_req(model_info, user_scenario.get_gpu_memory(db.gpu_specs))
+
+    # Display GPU + KV pie chart
+    if user_scenario.can_show_mem_util_chart(min_gpu_required):
+        model_size = round(model_memory_req(model_info), 2)
         kv_cache = 0
         total = 0
         free = 0
 
-        # Display GPU + KV pie chart
-        if user_scenario.model_name:
-            model_size = round(model_memory_req(model_info), 2)
-
-        if user_scenario.isl and user_scenario.osl:
-            kv_mem_req = kv_cache_req(model_info,
+        kv_cache = kv_cache_req(model_info,
                                     model_config,
-                                    context_len=user_scenario.isl + user_scenario.osl
-                                      )
-            kv_cache = round(kv_mem_req, 2)
-            st.info(f"About ~{kv_cache} GB of KV cache is required.")
-        if user_scenario.gpu_count_avail  is not None:
-            total = user_scenario.gpu_count_avail * user_scenario.gpu_spec['memory']
-            free = total - model_size - kv_cache
+                                    context_len=user_scenario.max_model_len,
+                                    batch_size=user_scenario.concurrency,
+                                    )
+        kv_cache = round(kv_cache, 2)
+        total = user_scenario.gpu_count_avail * user_scenario.get_gpu_memory(db.gpu_specs)
+        free = total - model_size - kv_cache
 
         if free < 0:
             st.warning(f'Memory usage exceeds available by {-free:.1f} GB')
             free = 0
+            return None
 
         # Display chart iff model and cache size are selected
-        if model_size > 0 and \
-            kv_cache > -1 and \
-            user_scenario.gpu_count_avail is not None and \
-            user_scenario.gpu_count_avail >= min_gpu_req(model_info, user_scenario.gpu_spec['memory']):
 
-            labels = ["Model", "KV Cache", "Free"]
-            sizes = [model_size, kv_cache, free]
-            colors = ["#ff9999", "#66b3ff", "#99ff99"]
+        labels = ["Model", "KV Cache", "Free"]
+        sizes = [model_size, kv_cache, free]
+        colors = ["#ff9999", "#66b3ff", "#99ff99"]
 
 
-            # Create donut chart
-            fig, ax = plt.subplots(figsize=(4, 4))
-            wedges, texts = ax.pie(
-                sizes,
-                colors=colors,
-                startangle=90,               # Start at top
-                wedgeprops=dict(width=0.4)   # <-- Makes it a donut
-            )
+        # Create donut chart
+        fig, ax = plt.subplots(figsize=(4, 4))
+        wedges, texts = ax.pie(
+            sizes,
+            colors=colors,
+            startangle=90,               # Start at top
+            wedgeprops=dict(width=0.4)   # <-- Makes it a donut
+        )
 
 
-            # Draw labels outside the chart with connection lines
-            # `labeldistance` and `arrowprops` allow pointing labels
-            kw = dict(arrowprops=dict(arrowstyle="-"),
-                    zorder=0, va="center")
+        # Draw labels outside the chart with connection lines
+        # `labeldistance` and `arrowprops` allow pointing labels
+        kw = dict(arrowprops=dict(arrowstyle="-"),
+                zorder=0, va="center")
 
-            for ii, pp in enumerate(wedges):
-                ang = (pp.theta2 - pp.theta1)/2. + pp.theta1
-                yy = np.sin(np.deg2rad(ang))
-                xx = np.cos(np.deg2rad(ang))
-                horizontalalignment = {-1: "right", 1: "left"}[int(np.sign(xx))]
-                connectionstyle = f"angle,angleA=0,angleB={ang}"
-                kw["arrowprops"].update({"connectionstyle": connectionstyle})
-                ax.annotate(f"{labels[ii]} {sizes[ii]:.1f} GB", xy=(xx,yy), xytext=(1.3*np.sign(xx), 1.3*yy),
-                            horizontalalignment=horizontalalignment, **kw, fontsize='14')
+        for ii, pp in enumerate(wedges):
+            ang = (pp.theta2 - pp.theta1)/2. + pp.theta1
+            yy = np.sin(np.deg2rad(ang))
+            xx = np.cos(np.deg2rad(ang))
+            horizontalalignment = {-1: "right", 1: "left"}[int(np.sign(xx))]
+            connectionstyle = f"angle,angleA=0,angleB={ang}"
+            kw["arrowprops"].update({"connectionstyle": connectionstyle})
+            ax.annotate(f"{labels[ii]} {sizes[ii]:.1f} GB", xy=(xx,yy), xytext=(1.3*np.sign(xx), 1.3*yy),
+                        horizontalalignment=horizontalalignment, **kw, fontsize='14')
 
-        # Add internal label
-            ax.text(0, 0, f"Total\n{total} GB", ha="center", va="center",
-                fontsize=16, fontweight="bold")
+    # Add internal label
+        ax.text(0, 0, f"Total\n{total} GB", ha="center", va="center",
+            fontsize=16, fontweight="bold")
 
 
-            # Equal aspect ratio ensures it's circular
-            ax.axis("equal")
-            plt.rcParams['axes.titley'] = 1.1
-            ax.set_title('Memory Utilization', fontsize='20')
+        # Equal aspect ratio ensures it's circular
+        ax.axis("equal")
+        plt.rcParams['axes.titley'] = 1.1
+        ax.set_title('Memory Utilization', fontsize='20')
 
-            # Render in Streamlit
-            _, col, _ = st.columns([.5, 1, .5])
-            with col:
-                st.pyplot(fig)
+        # Render in Streamlit
+        _, col, _ = st.columns([.5, 1, .5])
+        with col:
+            st.pyplot(fig)
 
 if __name__ == '__main__':
 
@@ -278,8 +311,12 @@ if __name__ == '__main__':
 
     init_session_state()
 
-    # Model spec input
-    capacity_planner()
+    # Display Capacity Planner headings
+    st.subheader("Capacity Planner")
+    st.caption("Determine how many GPUs you need to fit your model and how many requests can be served at once depending on request patterns.")
 
-    # KV cache estimation
-    kv_cache_estimator()
+    # Get user inputs and show outputs
+    model_specification()
+    hardware_specification()
+    workload_specification()
+    memory_util_chart()

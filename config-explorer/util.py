@@ -1,114 +1,75 @@
 """
-Utilities to fetch info from Hugging Face
+Streamlit frontend utilities
 """
-import math
-from huggingface_hub import HfApi, ModelInfo
+import streamlit as st
+from huggingface_hub import ModelInfo
 from transformers import AutoConfig
 from dataclasses import dataclass
+from src.config_explorer.functions import *
 
-PRECISIONS = ["FP32", "FP/BF16", "FP/INT8", "FP/INT4"]
+# Session state variables pertaining to loading from DB
+GPU_SPECS = "gpu_specs"
+
+# Session state variables pertaining to user selected values
+USER_SCENARIO_KEY = "scenario"
+SELECTED_MODEL_KEY = "selected_model"
+SELECTED_GPU_NAME_KEY = "selected_gpu_name"
+SELECTED_GPU_COUNT_AVAIL_KEY = "selected_gpu_count_avail"
+SELECTED_MAX_MODEL_LEN_KEY = "selected_max_model_len"
+SELECTED_CONCURRENCY_KEY = "selected_concurrency"
 
 @dataclass
 class Scenario:
-    """Scenario stores info about an user scenario"""
-    model_name: str | None = None
-    model_config: AutoConfig | None = None
+    """Scenario stores info about an user scenario in Streamlit"""
+    model_name: str = 'RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic'
     model_info: ModelInfo | None = None
-    parameters: int | None = None
-    precision: str | None = None    # ie: BF16
-    tp: int = 1
-    dp: int | None = None
-    pp: int | None = None
-    enable_prefix_caching: bool = False
-    enable_chunked_prefill: bool = False
-    block_size: int = 1
-    gpu_mem_utilization: float = 0.9
-    max_batched_tokens: int = 1
-    gpu_count_avail: int | None = None
-    workload: dict | None = None
-    isl: int = 300
-    osl: int = 300
-    ttft: float | None = None
-    tpot: float | None = None
-    throughput: float | None = None
+    model_config: AutoConfig | None = None
+    max_model_len: int | None = None
+    concurrency: int | None = None
 
     # GPU
-    gpu_spec: dict | None = None
+    gpu_name: str ='NVIDIA-H100-80GB-HBM3'
+    gpu_count_avail: int | None = None
 
-    def get_memory_req(self) -> int:
-        """
-        Returns memory requirement for the model based on precision and model size
-        """
+    def get_model_name(self) -> str:
+        if not self.model_name:
+            self.model_name = 'RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic'
+        return self.model_name
 
-        # memory = num_params * param_size  (BF/FP16 = 2 bytes per param) * 20% overhead
-        if "32" in self.precision:
-            return (self.parameters * 4) * 1.2
+    def get_gpu_spec(self, gpu_specs_db: dict) -> dict:
+        return gpu_specs_db[self.gpu_name]
 
-        if "16" in self.precision:
-            return (self.parameters * 2) * 1.2
+    def get_gpu_memory(self, gpu_specs_db: dict) -> int:
+        return self.get_gpu_spec(gpu_specs_db)['memory']
 
-        if "8" in self.precision:
-            return (self.parameters * 1) * 1.2
+    def can_show_mem_util_chart(self, min_gpu_req: int):
+        if self.model_name and self.model_info and self.model_config and \
+            self.max_model_len and self.concurrency and \
+                self.gpu_name and self.gpu_count_avail and \
+                    self.gpu_count_avail >= min_gpu_req:
+            return True
+        return False
 
-        if "4" in self.precision:
-            return (self.parameters * 0.5) * 1.2
-        else:
-            return -1
 
-    def get_gpu_mem_in_gb(self) -> int:
-        """Round gpu memory req"""
-        return round(self.get_memory_req() / 1e+9)
-
-    def free_memory(self) -> int:
-        """
-        free = gpu_count_avail * GB - model size - KV cache
-        """
-
-        return self.gpu_count_avail * self.gpu_spec['memory'] - self.get_gpu_mem_in_gb()
-
-    def get_min_gpu_count(self) -> int:
-
-        # https://blog.eleuther.ai/transformer-math/
-        # https://ksingh7.medium.com/calculate-how-much-gpu-memory-you-need-to-serve-any-llm-67301a844f21
-        model_memory = self.get_memory_req()
-        if model_memory == -1:
-            return model_memory
-
-        gpu_memory_bytes =  self.gpu_spec['memory'] * 1e+9
-        return math.ceil(model_memory / gpu_memory_bytes)
-
-    def get_kv_cache_req(self) -> int:
-        """ Calculate and return KV cache memory requirement"""
-
-        # TODO
-        # Check out https://lmcache.ai/kv_cache_calculator.html
-        # 1 token = ~ 1MB
-        return (self.isl + self.osl) / 1000
-
-def get_model_info_from_hf(model_name: str, hf_token: str | None = None):
+def update_scenario(session_state_key: str, scenario_attr: str):
     """
-    Fetches model info from hf
+    Update session state value and scenario
     """
-    api = HfApi(token=hf_token)
-    try:
-        return api.model_info(model_name)
-    except Exception as e:
-        return None
+    st.session_state[USER_SCENARIO_KEY].__setattr__(scenario_attr, st.session_state[session_state_key])
 
-def get_model_parameters(model_name: str, hf_token: str | None = None):
+def on_update_gpu_count():
     """
-    Get model param count from HF
+    Reset concurrency to none
     """
-    model_info = get_model_info_from_hf(model_name, hf_token)
-    return model_info
+    scenario = st.session_state[USER_SCENARIO_KEY]
+    scenario.gpu_count_avail = st.session_state[SELECTED_GPU_COUNT_AVAIL_KEY]
+    scenario.concurrency = None
 
-def length_description_to_token(description: str) -> int:
+def on_update_model_name():
     """
-    Maps token length descriptor (Short, Medium, Long) to token integer
+    Reset max model length
     """
-
-    if description == "Short":
-        return 100
-    if description == "Medium":
-        return 300
-    return 600
+    scenario = st.session_state[USER_SCENARIO_KEY]
+    scenario.model_name = st.session_state[SELECTED_MODEL_KEY]
+    scenario.max_model_len = None
+    scenario.concurrency = None

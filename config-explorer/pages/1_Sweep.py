@@ -11,7 +11,7 @@ def check_input():
     Check all required input is there
     """
     scenario = st.session_state['scenario']
-    if not scenario.model_name or not scenario.gpu_spec or not scenario.isl or not scenario.osl:
+    if not scenario.model_name or not scenario.gpu_spec:
         return False
     return True
 
@@ -26,8 +26,6 @@ def display_basic_data():
 - Precision: `{user_scenario.precision}`
 - GPU Type: `{user_scenario.gpu_spec['name']}`
 - GPU Available: {user_scenario.gpu_count_avail}
-- ISL: {user_scenario.isl}
-- OSL: {user_scenario.osl}
 """)
 
 def table(benchmark_data):
@@ -243,7 +241,7 @@ def pareto_plots(runs_selected):
 
 if __name__ == "__main__":
     st.title("Parameter Sweep and Search")
-    st.caption("Visualize benchmarking results.")
+    st.caption("Visualize performance results.")
 
 
     if not check_input():
@@ -258,8 +256,7 @@ if __name__ == "__main__":
             (df["Model"] == user_scenario.model_name) &
             (df["GPU"] == user_scenario.gpu_spec['name']) &
             (df["Num_GPUs"] <= user_scenario.gpu_count_avail) &
-            (df["ISL"] == user_scenario.isl) &
-            (df["OSL"] == user_scenario.osl)
+            (df["ISL"] + df["OSL"] <= user_scenario.max_model_len)
         ]
 
         display_basic_data()
