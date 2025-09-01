@@ -673,8 +673,7 @@ def add_config(obj_or_filename, num_spaces=0, label=""):
             with open(obj_or_filename, 'r') as f:
                 contents = f.read()
         except FileNotFoundError:
-            # not a file
-            contents = obj_or_filename
+            pass
 
     indented_contents = '\n'.join(f"{spaces}{line}" for line in contents.splitlines())
     if indented_contents.strip() != "{}" :
