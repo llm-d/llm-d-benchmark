@@ -172,6 +172,13 @@ class LoadFormat(StrEnum):
         """
         return self.value
 
+    @staticmethod
+    def loadformat_from_value(format_value: str) -> LoadFormat:
+        for f in LoadFormat:
+            if f.value == format_value:
+                return f
+
+        return  LoadFormat.UNKNOWN
 
 @dataclass
 class ModelScenario:
@@ -724,7 +731,7 @@ def parse_logs(logs: str) -> BenchmarkResult:
 
     server_non_default_args = "non-default args:"
     model_sleep_mode = "'enable_sleep_mode':"
-    model_load_format = "load_format=LoadFormat."
+    model_load_format = "load_format="
     # Model loading took 15.2209 GB and 12.221976 seconds
     model_load_string = "Model loading took"
     # It took 0.001315 seconds to fall asleep.
@@ -787,11 +794,8 @@ def parse_logs(logs: str) -> BenchmarkResult:
                 start_index += len(model_load_format)
                 end_index = line.find(",", start_index)
                 if end_index >= 0:
-                    format_name = line[start_index:end_index].strip()
-                    for f in LoadFormat:
-                        if f.name == format_name:
-                            benchmark_result.scenario.load_format = f
-                            break
+                    format_value = line[start_index:end_index].strip()
+                    benchmark_result.scenario.load_format = LoadFormat.loadformat_from_value(format_value)
 
         if benchmark_result.metrics.load_time == 0:
             floats = find_floats_in_line(model_load_string, line)
@@ -917,12 +921,14 @@ def main():
             "LLMDBENCH_HARNESS_NAMESPACE",
             "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL",
             "LLMDBENCH_CONTROL_WORK_DIR",
+            "LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT",
         ]
     )
 
     namespace = envs[0]
     endpoint_url = envs[1]
     control_work_dir = envs[2]
+    load_format = LoadFormat.loadformat_from_value( envs[3])
     requests_dir = control_work_dir
 
     Path(requests_dir).mkdir(parents=True, exist_ok=True)
@@ -978,6 +984,10 @@ def main():
     benchmark_result.scenario.model.name = vllm_model
     benchmark_result.scenario.platform.engine.name = pod_info["image"]
     benchmark_result.scenario.platform.engine.version = vllm_version
+    # if failed to extract from logs
+    if benchmark_result.scenario.load_format == LoadFormat.UNKNOWN:
+        logger.info("Using load format from env. variable")
+        benchmark_result.scenario.load_format = load_format
 
     # categorize logs
     benchmark_result.metrics.root_category = categorize_logs(
