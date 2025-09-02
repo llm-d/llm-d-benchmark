@@ -33,6 +33,9 @@ formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 REQUEST_TIMEOUT = 60.0  # time (seconds) to wait for request
 MAX_VLLM_WAIT = 15.0 * 60.0  # time (seconds) to wait for vllm to respond
 
+# MM-DD HH:MM:SS or MM-DD HH:MM:SS.MMM
+DATE_PATTERN = re.compile(r"\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}(?:\.\d{3})?")
+
 DEFINED_CATEGORIES = [
     {
         "title": "Detect Platform",
@@ -88,8 +91,8 @@ DEFINED_CATEGORIES = [
     },
     {
         "title": "CUDA Graph Capture",
-        "start": "Capturing CUDA graph shapes:   0%",
-        "end": "Capturing CUDA graph shapes: 100%",
+        "start": "Capturing CUDA graph.*?0%",
+        "end": "Capturing CUDA graph.*?100%",
     },
     {
         "title": "API Server Starts",
@@ -107,7 +110,9 @@ class BenchmarkCategory:
     start_time: datetime | None = None
     end_time: datetime | None = None
     start: str = ""
+    start_pattern: re.Pattern[str] | None = None
     end: str = ""
+    end_pattern: re.Pattern[str] | None = None
     start_line: str = ""
     start_line_number: int = 0
     end_line: str = ""
@@ -115,6 +120,20 @@ class BenchmarkCategory:
     next: BenchmarkCategory | None = None
     parent: BenchmarkCategory | None = None
     root_child: BenchmarkCategory | None = None
+
+    def is_start_line(self, line: str) -> bool:
+        """check if line is a start line"""
+        if self.start_pattern is None:
+            self.start_pattern = re.compile(rf"{self.start}")
+        match = self.start_pattern.search(line)
+        return match is not None
+
+    def is_end_line(self, line: str) -> bool:
+        """check if line is an end line"""
+        if self.end_pattern is None:
+            self.end_pattern = re.compile(rf"{self.end}")
+        match = self.end_pattern.search(line)
+        return match is not None
 
     def dump(self) -> list[dict[str, Any]]:
         """Convert LogCategory to list.
@@ -174,11 +193,13 @@ class LoadFormat(StrEnum):
 
     @staticmethod
     def loadformat_from_value(format_value: str) -> LoadFormat:
+        """returns LoadFormat given value"""
         for f in LoadFormat:
             if f.value == format_value:
                 return f
 
-        return  LoadFormat.UNKNOWN
+        return LoadFormat.UNKNOWN
+
 
 @dataclass
 class ModelScenario:
@@ -549,14 +570,7 @@ def get_pod_logs(v1: client.CoreV1Api, namespace: str, pod_name: str) -> bytes:
 def extract_datetime(log_line: str) -> datetime | None:
     """extracts datetime"""
 
-    # MM-DD HH:MM:SS.MMM
-    datetime_pattern = r"\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{3}"
-    match = re.search(datetime_pattern, log_line)
-    if match is None:
-        # MM-DD HH:MM:SS
-        datetime_pattern = r"\d{2}-\d{2} \d{2}:\d{2}:\d{2}"
-        match = re.search(datetime_pattern, log_line)
-
+    match = DATE_PATTERN.search(log_line)
     if match is None:
         logger.info("Timestamp not found in log line '%s'", log_line)
         return None
@@ -688,7 +702,7 @@ def populate_benchmark_category(
 
     category = benchmark_category
     while category is not None and index < len(log_list):
-        if category.start_line == "" and category.start in log_list[index]:
+        if category.start_line == "" and category.is_start_line(log_list[index]):
             category.start_time = extract_datetime(log_list[index])
             # if date extract failed, try next log line
             while category.start_time is None:
@@ -702,7 +716,7 @@ def populate_benchmark_category(
                 category.start_line = log_list[index]
                 category.start_line_number = index + 1
 
-        if category.end_line == "" and category.end in log_list[index]:
+        if category.end_line == "" and category.is_end_line(log_list[index]):
             category.end_time = extract_datetime(log_list[index])
             # if date extract failed, try next log line
             while category.end_time is None:
@@ -795,7 +809,9 @@ def parse_logs(logs: str) -> BenchmarkResult:
                 end_index = line.find(",", start_index)
                 if end_index >= 0:
                     format_value = line[start_index:end_index].strip()
-                    benchmark_result.scenario.load_format = LoadFormat.loadformat_from_value(format_value)
+                    benchmark_result.scenario.load_format = (
+                        LoadFormat.loadformat_from_value(format_value)
+                    )
 
         if benchmark_result.metrics.load_time == 0:
             floats = find_floats_in_line(model_load_string, line)
@@ -901,10 +917,12 @@ def write_benchmark_categories_to_log(
         file.write(f"{blank_string}  start pattern: '{category.start}'\n")
         file.write(f"{blank_string}  end pattern  : '{category.end}'\n")
         file.write(
-            f"{blank_string}  start line   : {category.start_line_number} '{category.start_line}'\n"
+            f"{blank_string}  start line   : "
+            f"{category.start_line_number} '{category.start_line}'\n"
         )
         file.write(
-            f"{blank_string}  end line     : {category.end_line_number} '{category.end_line}'\n"
+            f"{blank_string}  end line     : "
+            f"{category.end_line_number} '{category.end_line}'\n"
         )
         if category.root_child is not None:
             write_benchmark_categories_to_log(level + 1, category.root_child, file)
@@ -928,7 +946,7 @@ def main():
     namespace = envs[0]
     endpoint_url = envs[1]
     control_work_dir = envs[2]
-    load_format = LoadFormat.loadformat_from_value( envs[3])
+    load_format = LoadFormat.loadformat_from_value(envs[3])
     requests_dir = control_work_dir
 
     Path(requests_dir).mkdir(parents=True, exist_ok=True)
