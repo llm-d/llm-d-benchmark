@@ -34,7 +34,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
       export LLMDBENCH_VLLM_MODELSERVICE_URI="hf://$(model_attribute $model model)"
       mount_model_volume=true
     fi
-    
+
     if [[ -n $LLMDBENCH_VLLM_MODELSERVICE_MOUNT_MODEL_VOLUME_OVERRIDE ]]; then
       mount_model_volume=$LLMDBENCH_VLLM_MODELSERVICE_MOUNT_MODEL_VOLUME_OVERRIDE
     fi
@@ -84,7 +84,7 @@ routing:
     create: ${LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL}
     name: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
   httpRoute:
-    create: $(echo $LLMDBENCH_VLLM_MODELSERVICE_ROUTE | $LLMDBENCH_CONTROL_SCMD -e 's/^0/false/' -e 's/1/true/')
+    create: $(echo $LLMDBENCH_VLLM_MODELSERVICE_ROUTE)
     rules:
     - backendRefs:
       - group: inference.networking.x-k8s.io
@@ -286,7 +286,7 @@ EOF
 
     fi
 
-    if [[ $LLMDBENCH_VLLM_MODELSERVICE_ROUTE -ne 0 && $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
+    if [[ $LLMDBENCH_VLLM_MODELSERVICE_ROUTE == "true" && $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
       is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get route -o name --ignore-not-found | grep -E "/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway-route$" || true)
       if [[ -z $is_route ]]
       then

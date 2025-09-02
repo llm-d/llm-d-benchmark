@@ -126,9 +126,8 @@ for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; 
   hclist=
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-      hclist=$($LLMDBENCH_CONTROL_HCMD --namespace $tgtns list --no-headers | grep -E "$tgtns-.*-gaie|$tgtns-.*-ms" || true)
+      hclist=$($LLMDBENCH_CONTROL_HCMD --namespace $tgtns list --no-headers | grep -E "${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}|$(model_attribute $model modelid_label)" || true)
     fi
-
     hclist=$(echo "${hclist}" | awk '{ print $1 }')
 
     for hc in ${hclist}; do
@@ -150,6 +149,10 @@ for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; 
         llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true $crot $cro" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       done
     done
+
+    if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true httproute $(model_attribute $model modelid_label)" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    fi
 
     for cr in ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-endpoint-picker ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-epp-metrics-scrape ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-manager ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-metrics-auth ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-admin ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-editor ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-viewer; do
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true ClusterRole $cr" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}

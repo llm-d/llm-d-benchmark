@@ -387,10 +387,10 @@ export -f add_config
 # make sure things are defined; should be easier with python
 function add_config_prep {
   if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG="#no config"
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG="#no____config"
   fi
   if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG="#no config"
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG="#no____config"
   fi
   if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS} ]]; then
     export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS="[]"
@@ -399,10 +399,10 @@ function add_config_prep {
     export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES="[]"
   fi
   if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG="#no config"
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG="#no____config"
   fi
   if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG="#no config"
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG="#no____config"
   fi
   if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS} ]]; then
     export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS="[]"
@@ -446,7 +446,7 @@ function add_command_line_options {
     rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     touch $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
 
-    echo "$preamble$(render_string $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^;^;\n^g" -e "s^ --^\nREPLACE_SPACESC--^g" -e "s^\n^ \\\\\n^g" |  $LLMDBENCH_CONTROL_SCMD -e "s^\^ ^REPLACE_SPACESC^g" -e "s^REPLACE_SPACESC^$spacec^g"
+    echo "$preamble$(render_string $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^;^;\n^g" -e "s^ --^\nREPLACE_SPACESC--^g" -e "s^\n^ \\\\\n^g" |  $LLMDBENCH_CONTROL_SCMD -e "s^\^ ^REPLACE_SPACESC^g" -e "s^REPLACE_SPACESC^$spacec^g" | $LLMDBENCH_CONTROL_SCMD -e "s^\"'^'^g" -e "s^'\"^'^g"
   fi
 }
 export -f add_command_line_options
