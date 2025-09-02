@@ -229,7 +229,7 @@ releases:
   - name: kgateway-crds
     chart: oci://cr.kgateway.dev/kgateway-dev/charts/kgateway-crds
     namespace: kgateway-system
-    version: v2.0.4
+    version: v2.0.3
     installed: true
     labels:
       type: gateway-provider
@@ -237,7 +237,7 @@ releases:
 
   - name: kgateway
     chart: oci://cr.kgateway.dev/kgateway-dev/charts/kgateway
-    version: v2.0.4
+    version: v2.0.3
     namespace: kgateway-system
     installed: true
     needs:
@@ -292,7 +292,7 @@ def install_istio(
         helm_base_dir.mkdir(parents=True, exist_ok=True)
         helmfile_path = helm_base_dir / f'helmfile-{ev["current_step"]}.yaml'
         with open(helmfile_path, 'w') as f:
-            temp_file.write("""
+            f.write("""
 releases:
   - name: istio-base
     chart: oci://gcr.io/istio-testing/charts/base
