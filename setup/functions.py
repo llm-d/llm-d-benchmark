@@ -471,8 +471,9 @@ def model_attribute(model: str, attribute: str) -> str:
     #  split the model name into provider and rest
     provider, model_part = model.split('/', 1) if '/' in model else ("", model)
 
+    ns = os.getenv("LLMDBENCH_VLLM_COMMON_NAMESPACE")
     hash_object = hashlib.sha256()
-    hash_object.update(modelid.encode('utf-8'))
+    hash_object.update(f'{ns}/{modelid}'.encode('utf-8'))
     digest = hash_object.hexdigest()
     modelid_label = f"{modelid[:8]}-{digest[:8]}-{modelid[-8:]}"
 
