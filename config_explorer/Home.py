@@ -11,9 +11,15 @@ from src.config_explorer.capacity_planner import *
 from huggingface_hub.errors import *
 
 def update_gpu_spec():
+    """
+    Update user selected GPU spec in session state
+    """
     st.session_state['scenario'].gpu_spec = st.session_state['gpu_spec'][st.session_state['selected_gpu_spec']]
 
 def update_gpu_count_avail():
+    """
+    Update user selected GPU count in session state
+    """
     st.session_state['scenario'].gpu_count_avail = st.session_state['selected_gpu_count_avail']
 
 @st.dialog("Register a new accelerator")
@@ -253,11 +259,9 @@ def memory_util_chart():
             return None
 
         # Display chart iff model and cache size are selected
-
         labels = ["Model", "KV Cache", "Free"]
         sizes = [model_size, kv_cache, free]
         colors = ["#ff9999", "#66b3ff", "#99ff99"]
-
 
         # Create donut chart
         fig, ax = plt.subplots(figsize=(4, 4))
@@ -267,7 +271,6 @@ def memory_util_chart():
             startangle=90,               # Start at top
             wedgeprops=dict(width=0.4)   # <-- Makes it a donut
         )
-
 
         # Draw labels outside the chart with connection lines
         # `labeldistance` and `arrowprops` allow pointing labels

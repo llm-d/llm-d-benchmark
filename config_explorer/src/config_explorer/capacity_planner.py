@@ -1,12 +1,11 @@
 """
-Config Rec tool library
+Capacity planner provides functionality to estimate the minimum number of GPUs required for loading model and KV cache
 """
 
 import math
 from typing import List
 from huggingface_hub import HfApi, ModelInfo
 from transformers import AutoConfig
-
 
 # Model
 def get_model_info_from_hf(model_name: str, hf_token: str | None = None):
