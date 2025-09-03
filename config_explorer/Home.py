@@ -7,7 +7,8 @@ import streamlit as st
 import db
 import util
 import numpy as np
-from src.config_explorer.functions import *
+from src.config_explorer.capacity_planner import *
+from huggingface_hub.errors import *
 
 def update_gpu_spec():
     st.session_state['scenario'].gpu_spec = st.session_state['gpu_spec'][st.session_state['selected_gpu_spec']]
@@ -48,6 +49,7 @@ def model_specification():
                                         key=util.SELECTED_MODEL_KEY,
                                         on_change=util.on_update_model_name,
                                        )
+        hf_token = None
 
         if selected_model and selected_model != "":
             # Fetch model info
@@ -61,12 +63,20 @@ def model_specification():
 
             # Fetch model config
             try:
-                model_config = get_model_config_from_hf(selected_model)
+                model_config = get_model_config_from_hf(selected_model, hf_token=hf_token)
                 user_scenario.model_config = model_config
             except Exception as e:
-                st.warning("Cannot access model config, see error below.")
-                st.warning(e)
-                return None
+                e_str = str(e)
+                if "gated" in e_str:
+                    st.warning("This is a gated model, please submit a HF token to view information")
+                    hf_token = st.text_input("HF token")
+                    if hf_token:
+                        model_config = get_model_config_from_hf(selected_model, hf_token=hf_token)
+                        user_scenario.model_config = model_config
+                else:
+                    st.warning("Cannot access model config, see error below.")
+                    st.warning(e)
+                    return None
 
             total_params = model_total_params(model_info)
             precision_keys = model_precision_keys(model_info)

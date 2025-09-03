@@ -5,10 +5,7 @@ import streamlit as st
 from huggingface_hub import ModelInfo
 from transformers import AutoConfig
 from dataclasses import dataclass
-from src.config_explorer.functions import *
-
-# Session state variables pertaining to loading from DB
-GPU_SPECS = "gpu_specs"
+from src.config_explorer.capacity_planner import *
 
 # Session state variables pertaining to user selected values
 USER_SCENARIO_KEY = "scenario"
