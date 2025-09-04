@@ -3,7 +3,7 @@ name: Config Explorer Test
 on: [push, pull_request]
 
 jobs:
-  build:
+  config-explorer-pytest:
     runs-on: ubuntu-latest
     strategy:
       matrix:
