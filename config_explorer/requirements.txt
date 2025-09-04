@@ -1,6 +1,2 @@
 huggingface_hub==0.34.4
-matplotlib>=3.0.0
-plotly==6.3.0
-streamlit==1.48.0
 transformers==4.55.4
-pytest==8.4.2

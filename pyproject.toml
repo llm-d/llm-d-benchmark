@@ -8,6 +8,10 @@ version = "0.2.0"
 description = "Finding the most optimal configuration of llm-d."
 readme = "config_explorer/README.md"
 requires-python = ">=3.11"
+dependencies = [
+    "huggingface_hub==0.34.4",
+    "transformers==4.55.4"
+]
 
 [tool.setuptools]
 include-package-data = true
