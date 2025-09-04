@@ -77,8 +77,11 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=16
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=64Gi
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_INFERENCE_PORT=8200
-# Uncomment to enable multi-nic
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$(id -un),modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
+# Uncomment the following line to enable multi-nic
+#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$(id -un),modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
+# Uncomment the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
+#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
+#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=4
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=vllmServe
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS="[\
 --enforce-eager____\
