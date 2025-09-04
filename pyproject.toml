@@ -13,7 +13,7 @@ requires-python = ">=3.11"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["config_explorer/src"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["config_explorer/requirements.txt"]}
