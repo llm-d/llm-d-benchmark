@@ -15,7 +15,6 @@ def get_model_info_from_hf(model_name: str, hf_token: str | None = None):
     api = HfApi(token=hf_token)
     return api.model_info(model_name)
 
-
 def model_total_params(model_info: ModelInfo) -> int:
     """
     Returns the total parameters of the model
@@ -104,7 +103,7 @@ def kv_cache_req(model_info: ModelInfo,
     per_token_memory = 0
 
     # DeepSeek MLA attention, all other models use MHA, GQA, or MQA
-    mla = any(model_info.id in deepseek for deepseek in deepseek_mla_models)
+    mla = any(deepseek in model_info.id for deepseek in deepseek_mla_models)
 
     try:
         num_layers = model_config.num_hidden_layers
@@ -135,7 +134,7 @@ def max_concurrent_req(model_info: ModelInfo,
                         max_model_len: int,
                         available_gpu_count: int,
                         gpu_memory: int,
-                        ) -> int:
+                    ) -> int:
     """
     Calculates the max number of concurrent requests the model can serve with the specified GPUs available
     """
