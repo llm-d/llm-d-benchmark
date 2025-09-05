@@ -37,7 +37,7 @@ jobs:
 
       - name: Standup a modelservice using llm-d-inference-sim
         env:
-          LLMDBENCH_HF_TOKEN: hf-token-placeholder
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
           ./setup/standup.sh -c kind_modelservice_inference-sim -t modelservice -s 0,1,2,4,7,8,9
 

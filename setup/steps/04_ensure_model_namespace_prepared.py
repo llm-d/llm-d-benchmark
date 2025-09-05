@@ -73,12 +73,6 @@ def main():
     ev = {}
     environment_variable_to_dict(ev)
 
-    env_cmd=f'source "{ev["control_dir"]}/env.sh"'
-    result = llmdbench_execute_cmd(actual_cmd=env_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
-    if result != 0:
-        announce(f"❌ Failed while running \"{env_cmd}\" (exit code: {result})")
-        exit(result)
-
     api = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
     if ev["control_dry_run"] :
         announce("DRY RUN enabled. No actual changes will be made.")
@@ -110,6 +104,10 @@ def main():
             protocol, pvc_and_model_path = model_artifact_uri.split("://") # protocol var unused but exists in prev script
             pvc_name, model_path = pvc_and_model_path.split('/', 1) # split from first occurence
 
+            announce(f'pvc_name = {ev["vllm_common_pvc_name"]}')
+            announce(f'pvc_size = {ev["vllm_common_pvc_model_cache_size"]}')
+            announce(f'pvc_class = {ev["vllm_common_pvc_storage_class"]}')
+            announce(f'pvc_access_mode = {ev["vllm_common_pvc_accessmode"]}')
             validate_and_create_pvc(
                 api=api,
                 namespace=ev["vllm_common_namespace"],
@@ -117,6 +115,7 @@ def main():
                 pvc_name=ev["vllm_common_pvc_name"],
                 pvc_size=ev["vllm_common_pvc_model_cache_size"],
                 pvc_class=ev["vllm_common_pvc_storage_class"],
+                pvc_access_mode=ev["vllm_common_pvc_accessmode"],
                 dry_run=ev["control_dry_run"]
             )
 
