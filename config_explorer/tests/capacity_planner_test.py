@@ -75,6 +75,8 @@ def test_gpu_min_req():
             expected_min_gpu_req = math.ceil(model_memory / gpu_memory)
             assert actual_min_gpu_req == expected_min_gpu_req
 
+        parameter *= 10
+
 def test_kv_cache_req():
     """
     Tests KV cache is estimated correctly
