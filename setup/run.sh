@@ -354,7 +354,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
           announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} logs -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -f\"..."
 
-          LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pod -l app=llm-d-benchmark-harness --no-headers -o name | $LLMDBENCH_CONTROL_SCMD 's|^pod/||g')
+          LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pod -l role=llm-d-benchmark-data-access --no-headers -o name | $LLMDBENCH_CONTROL_SCMD 's|^pod/||g')
           llmdbench_execute_cmd "mkdir -p ${local_results_dir}/ && mkdir -p ${local_analysis_dir}/" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
           copy_results_cmd="${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} cp --retries=5 $LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME:${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR} ${local_results_dir}"

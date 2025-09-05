@@ -159,6 +159,7 @@ metadata:
   name: access-to-harness-data-${vol}
   labels:
     app: llm-d-benchmark-harness
+    role: llm-d-benchmark-data-access
   namespace: ${LLMDBENCH_HARNESS_NAMESPACE}
 spec:
   containers:
