@@ -84,9 +84,13 @@ def model_specification():
                     st.warning(e)
                     return None
 
-            total_params = model_total_params(model_info)
-            precision_keys = model_precision_keys(model_info)
-            model_gpu_memory_req = round(model_memory_req(model_info))
+            try:
+                total_params = model_total_params(model_info)
+                precision_keys = model_precision_keys(model_info)
+                model_gpu_memory_req = round(model_memory_req(model_info))
+            except Exception as e:
+                st.warning(f"Cannot retrieve relevant information about the model, {e}")
+                return None
 
             # Display first precision
             st.caption(f"Precision: {', '.join(precision_keys)}")
@@ -251,7 +255,7 @@ def memory_util_chart():
                                     )
         kv_cache = round(kv_cache, 2)
         total = user_scenario.gpu_count_avail * user_scenario.get_gpu_memory(db.gpu_specs)
-        free = total - model_size - kv_cache
+        free = round(total - model_size - kv_cache, 2)
 
         if free < 0:
             st.warning(f'Memory usage exceeds available by {-free:.1f} GB')
@@ -269,38 +273,30 @@ def memory_util_chart():
             sizes,
             colors=colors,
             startangle=90,               # Start at top
-            wedgeprops=dict(width=0.4)   # <-- Makes it a donut
+            wedgeprops=dict(width=0.4),   # <-- Makes it a donut,
+            labeldistance=1.1,   # Push labels outward
+            pctdistance=0.7,      # Adjust percentage position
         )
 
-        # Draw labels outside the chart with connection lines
-        # `labeldistance` and `arrowprops` allow pointing labels
-        kw = dict(arrowprops=dict(arrowstyle="-"),
-                zorder=0, va="center")
+        # Add total as text in the center of the donut
+        ax.text(0, 0, f"Total\n{total} GB", ha="center", va="center", fontsize=12, fontweight="bold")
 
-        for ii, pp in enumerate(wedges):
-            ang = (pp.theta2 - pp.theta1)/2. + pp.theta1
-            yy = np.sin(np.deg2rad(ang))
-            xx = np.cos(np.deg2rad(ang))
-            horizontalalignment = {-1: "right", 1: "left"}[int(np.sign(xx))]
-            connectionstyle = f"angle,angleA=0,angleB={ang}"
-            kw["arrowprops"].update({"connectionstyle": connectionstyle})
-            ax.annotate(f"{labels[ii]} {sizes[ii]:.1f} GB", xy=(xx,yy), xytext=(1.3*np.sign(xx), 1.3*yy),
-                        horizontalalignment=horizontalalignment, **kw, fontsize='14')
+        # Create a custom legend, including the total
+        legend_labels = [f"{labels[i]}: {sizes[i]} GB" for i in range(len(labels))]
 
-    # Add internal label
-        ax.text(0, 0, f"Total\n{total} GB", ha="center", va="center",
-            fontsize=16, fontweight="bold")
-
-
-        # Equal aspect ratio ensures it's circular
-        ax.axis("equal")
-        plt.rcParams['axes.titley'] = 1.1
-        ax.set_title('Memory Utilization', fontsize='20')
+        # Position legend on the right
+        ax.legend(
+            wedges + [plt.Line2D([0], [0], color="#CCCCCC", lw=10)],  # Add fake handle for total
+            legend_labels,
+            title="Storage Breakdown",
+            loc="center left",
+            bbox_to_anchor=(1, 0, 0.5, 1)
+        )
 
         # Render in Streamlit
         _, col, _ = st.columns([.5, 1, .5])
         with col:
-            st.pyplot(fig)
+            st.pyplot(fig, bbox_inches="tight")
 
 if __name__ == '__main__':
 
@@ -312,7 +308,7 @@ if __name__ == '__main__':
                        menu_items=None)
 
     st.title("Configuration Explorer")
-    st.caption("Finding the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements.")
+    st.caption("This tool helps you find the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements.")
 
     util.init_session_state()
 

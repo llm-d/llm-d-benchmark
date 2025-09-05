@@ -1,6 +1,6 @@
 # Configuration Explorer
 
-Finding the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements.
+The configuration explorer is a library that helps find the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements.
 
 This library provides the tooling for LLM serving such as
 - Capacity planning:
@@ -15,7 +15,7 @@ This library provides the tooling for LLM serving such as
 * Requires python 3.11+
 * Requires pip3
 
-Currently, the core functionality is in the form of a Python module within `llm-d-benchmark`. In the future, we might consider shipping as package depending on community interest.
+Currently, the core functionality is in the form of a Python module within `llm-d-benchmark`. In the future, we might consider shipping as a separate package depending on community interest.
 
 1. (optional) Set up a Python virtual environment
     ```
@@ -26,7 +26,7 @@ Currently, the core functionality is in the form of a Python module within `llm-
 2. The `config_explorer` package can be installed via `pip`
 
     ```
-    pip install pip install git+https://github.com/llm-d/llm-d-benchmark.git
+    pip install git+https://github.com/llm-d/llm-d-benchmark.git
     ```
 
 3. Invoke functions in the package via
@@ -38,7 +38,7 @@ Currently, the core functionality is in the form of a Python module within `llm-
 
 ## Use
 
-There are two ways to interact with the Configuration Explorer: frontend and in the form of a library.
+There are two ways to interact with the Configuration Explorer: via an experimental frontend or via a library.
 
 ### Frontend
 A Streamlit frontend is provided to showcase the capabilities of the Configuration Explorer rapidly. Since the core functions are in a module, users may feel free to build their own frontend, such as a CLI, by making use of those functions.

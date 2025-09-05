@@ -25,7 +25,10 @@ def model_precision_keys(model_info: ModelInfo) -> List[str]:
     """
     Returns a list of the precisions for the model weights
     """
-    return list(model_info.safetensors.parameters.keys())
+    try:
+        return list(model_info.safetensors.parameters.keys())
+    except Exception:
+        return []
 
 def precision_bytes(model_info: ModelInfo) -> int:
     """
@@ -50,7 +53,11 @@ def model_memory_req(model_info: ModelInfo) -> int:
     """
     Calculates the GPU memory required for loading the model
     """
-    model_params = model_total_params(model_info)
+    try:
+        model_params = model_total_params(model_info)
+    except Exception:
+        return -1
+
     model_precision_bytes = precision_bytes(model_info)
 
     # num_params * bytes * 20% overhead
@@ -140,6 +147,8 @@ def max_concurrent_req(model_info: ModelInfo,
     """
 
     model_memory = model_memory_req(model_info)
+    if model_memory == -1:
+        return -1
     per_request_kv_cache = kv_cache_req(model_info,
                                         model_config,
                                         max_model_len,
