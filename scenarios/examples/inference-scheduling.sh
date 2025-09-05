@@ -22,6 +22,7 @@ export LLMDBENCH_HARNESS_NAME=inference-perf
 
 # Routing configuration (via gaie)
 #export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="plugins-v2.yaml" (default is default-plugins.yaml)
+export LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG=v0.2.1
 
 # Routing configuration (via modelservice)
 # export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=false # already the default
