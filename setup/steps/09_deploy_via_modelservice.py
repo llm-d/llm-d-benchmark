@@ -14,7 +14,8 @@ sys.path.insert(0, str(project_root))
 # Import from functions.py
 from functions import (
     announce, llmdbench_execute_cmd, model_attribute, extract_environment,
-    check_storage_class, check_affinity, environment_variable_to_dict, render_string
+    check_storage_class, check_affinity, environment_variable_to_dict, render_string,
+    get_image
 )
 
 
@@ -24,46 +25,107 @@ def add_config_prep():
     Equivalent to the bash add_config_prep function.
     """
     # Set default values for configuration
-    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG", "")
-    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG", "")
-    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG", "")
-    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG", "")
+    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG", "#no____config")
+    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG", "#no____config")
+    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS", "[]")
+    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES", "[]")
+    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG", "#no____config")
+    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG", "#no____config")
+    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS", "[]")
+    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES", "[]")
+
+
+def add_annotations() -> str:
+    """
+    Generate annotations YAML section from LLMDBENCH_VLLM_COMMON_ANNOTATIONS.
+    """
+    annotations = os.environ.get("LLMDBENCH_VLLM_COMMON_ANNOTATIONS", "")
+    if not annotations:
+        return ""
+    
+    lines = []
+    for entry in annotations.split(","):
+        if ":" in entry:
+            key, value = entry.split(":", 1)
+            lines.append(f"      {key.strip()}: {value.strip()}")
+    
+    return "\n".join(lines) if lines else ""
+
+
+def add_command(model_command: str) -> str:
+    """
+    Generate command section for container based on model_command type.
+    """
+    if model_command == "custom":
+        return """command:
+      - /bin/sh
+      - '-c'"""
     return ""
 
 
-def add_command(component_type: str) -> str:
+def add_command_line_options(extra_args: str) -> str:
     """
-    Generate container command configuration for modelservice components.
-    
-    Args:
-        component_type: Either "decode" or "prefill"
-    
-    Returns:
-        YAML string for container command configuration
+    Generate command line options from extra args.
     """
-    # Get the command line options for the component
-    if component_type == "decode":
-        command_options = render_string(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_ARGS", ""))
-    elif component_type == "prefill":
-        command_options = render_string(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ARGS", ""))
-    else:
+    if not extra_args:
         return ""
     
-    if not command_options:
-        return ""
-    
-    # Split command options into individual arguments
     args = []
-    for arg in command_options.split():
+    for arg in extra_args.split():
         if arg.strip():
-            args.append(f'            - "{arg}"')
+            args.append(f"      - \"{arg}\"")
     
-    if args:
-        command_yaml = "          command:\n"
-        command_yaml += "\n".join(args)
-        return command_yaml
+    return "\n".join(args) if args else ""
+
+
+def add_additional_env_to_yaml(envvars_to_yaml: str) -> str:
+    """
+    Generate environment variables YAML section.
+    """
+    if not envvars_to_yaml:
+        return ""
     
-    return ""
+    lines = []
+    for envvar in envvars_to_yaml.split(","):
+        envvar = envvar.strip()
+        if envvar and envvar.startswith("LLMDBENCH_"):
+            # Remove LLMDBENCH_VLLM_STANDALONE_ prefix for name
+            name = envvar.replace("LLMDBENCH_VLLM_STANDALONE_", "")
+            value = os.environ.get(envvar, "")
+            lines.append(f"      - name: {name}")
+            lines.append(f"        value: \"{value}\"")
+    
+    return "\n".join(lines) if lines else ""
+
+
+def add_config(config_data: str, indent_spaces: int, label: str = "") -> str:
+    """
+    Add configuration with proper indentation and optional label.
+    """
+    if not config_data or config_data == "#no____config":
+        return ""
+    
+    spaces = " " * indent_spaces
+    
+    result = ""
+    if label:
+        result = f"{label}:\n"
+    
+    if config_data == "[]":
+        return f"{result}{config_data}"
+    
+    # If it's a file path, read the file content
+    if config_data.startswith("/") and Path(config_data).exists():
+        with open(config_data, 'r') as f:
+            content = f.read()
+        lines = content.split('\n')
+        indented_lines = [f"{spaces}{line}" for line in lines]
+        return result + "\n".join(indented_lines)
+    
+    # Otherwise treat as direct content
+    lines = config_data.split('\n')
+    indented_lines = [f"{spaces}{line}" for line in lines]
+    return result + "\n".join(indented_lines)
 
 
 def generate_ms_rules_yaml(ev: dict, model_number: int) -> str:
@@ -80,177 +142,410 @@ def generate_ms_rules_yaml(ev: dict, model_number: int) -> str:
     model_list = ev.get("deploy_model_list", "").replace(",", " ").split()
     
     # If only one model, create basic routing rule
-    if len(model_list) <= 1:
-        rules_template = """- backendRefs:
+    if len([m for m in model_list if m.strip()]) == 1:
+        model_id_label = ev.get("deploy_current_model_id_label", "")
+        return f"""- backendRefs:
       - group: inference.networking.x-k8s.io
         kind: InferencePool
-        name: {{ namespace }}-{{ model_id_label }}-decode
+        name: {model_id_label}-gaie
+        port: 8000
         weight: 1
-    matches:
-      - path:
-          type: PathPrefix
-          value: /
 """
-        template = Template(rules_template)
-        return template.render(
-            namespace=ev.get("vllm_common_namespace", ""),
-            model_id_label=ev.get("deploy_current_model_id_label", "")
-        )
     
     # For multiple models, return empty (handled differently in bash)
     return ""
 
 
-def generate_ms_values_yaml(ev: dict, mount_model_volume: bool) -> str:
+def filter_empty_resource(resource_name: str, resource_value: str) -> str:
+    """
+    Filter out empty resource values, mimicking bash behavior with sed.
+    The bash script filters lines that start with ': ""' (empty resource values).
+    """
+    if not resource_name or not resource_value:
+        return ""
+    return f"        {resource_name}: \"{resource_value}\""
+
+
+def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path) -> str:
     """
     Generate the ms-values.yaml content for Helm chart.
+    Exactly matches the bash script structure from lines 60-239.
     
     Args:
         ev: Environment variables dictionary
         mount_model_volume: Whether to mount model volume
+        rules_file: Path to ms-rules.yaml file to be included
     
     Returns:
         YAML content as string
     """
-    values_template = """model_id: "{{ model_id }}"
+    # Get all required environment variables
+    fullname_override = ev.get("deploy_current_model_id_label", "")
+    multinode = ev.get("vllm_modelservice_multinode", "false")
+    
+    # Model artifacts section
+    model_uri = ev.get("vllm_modelservice_uri", "")
+    model_size = ev.get("vllm_common_pvc_model_cache_size", "")
+    model_name = ev.get("deploy_current_model", "")
+    
+    # Routing section
+    service_port = ev.get("vllm_common_inference_port", "8000")
+    release = ev.get("vllm_modelservice_release", "")
+    route_enabled = ev.get("vllm_modelservice_route", "false")
+    model_id = ev.get("deploy_current_model_id", "")
+    model_id_label = ev.get("deploy_current_model_id_label", "")
+    
+    # Image details
+    image_registry = ev.get("llmd_image_registry", "")
+    image_repo = ev.get("llmd_image_repo", "")
+    image_name = ev.get("llmd_image_name", "")
+    image_tag = ev.get("llmd_image_tag", "")
+    main_image = get_image(image_registry, image_repo, image_name, image_tag, 0)
+    
+    # Proxy details
+    proxy_image_registry = ev.get("llmd_routingsidecar_image_registry", "")
+    proxy_image_repo = ev.get("llmd_routingsidecar_image_repo", "")
+    proxy_image_name = ev.get("llmd_routingsidecar_image_name", "")
+    proxy_image_tag = ev.get("llmd_routingsidecar_image_tag", "")
+    proxy_image = get_image(proxy_image_registry, proxy_image_repo, proxy_image_name, proxy_image_tag, 0)
+    proxy_connector = ev.get("llmd_routingsidecar_connector", "")
+    proxy_debug_level = ev.get("llmd_routingsidecar_debug_level", "")
+    
+    # EPP and routing configuration
+    inference_model_create = ev.get("vllm_modelservice_inference_model", "true")
+    inference_pool_create = ev.get("vllm_modelservice_inference_pool", "true")
+    epp_create = ev.get("vllm_modelservice_epp", "true")
+    
+    # Decode configuration
+    decode_replicas = int(ev.get("vllm_modelservice_decode_replicas", "0"))
+    decode_create = "true" if decode_replicas > 0 else "false"
+    decode_data_parallelism = ev.get("vllm_modelservice_decode_data_parallelism", "1")
+    decode_tensor_parallelism = ev.get("vllm_modelservice_decode_tensor_parallelism", "1")
+    decode_model_command = ev.get("vllm_modelservice_decode_model_command", "")
+    decode_extra_args = ev.get("vllm_modelservice_decode_extra_args", "")
+    decode_cpu_mem = ev.get("vllm_modelservice_decode_cpu_mem", "")
+    decode_cpu_nr = ev.get("vllm_modelservice_decode_cpu_nr", "")
+    decode_inference_port = ev.get("vllm_modelservice_decode_inference_port", "8000")
+    
+    # Prefill configuration
+    prefill_replicas = int(ev.get("vllm_modelservice_prefill_replicas", "0"))
+    prefill_create = "true" if prefill_replicas > 0 else "false"
+    prefill_data_parallelism = ev.get("vllm_modelservice_prefill_data_parallelism", "1")
+    prefill_tensor_parallelism = ev.get("vllm_modelservice_prefill_tensor_parallelism", "1")
+    prefill_model_command = ev.get("vllm_modelservice_prefill_model_command", "")
+    prefill_extra_args = ev.get("vllm_modelservice_prefill_extra_args", "")
+    prefill_cpu_mem = ev.get("vllm_modelservice_prefill_cpu_mem", "")
+    prefill_cpu_nr = ev.get("vllm_modelservice_prefill_cpu_nr", "")
+    
+    # Resource configuration
+    accelerator_resource = ev.get("vllm_common_accelerator_resource", "")
+    decode_accelerator_nr = ev.get("vllm_modelservice_decode_accelerator_nr", "")
+    prefill_accelerator_nr = ev.get("vllm_modelservice_prefill_accelerator_nr", "")
+    
+    ephemeral_storage_resource = ev.get("vllm_common_ephemeral_storage_resource", "")
+    decode_ephemeral_storage_nr = ev.get("vllm_modelservice_decode_ephemeral_storage_nr", "")
+    prefill_ephemeral_storage_nr = ev.get("vllm_modelservice_prefill_ephemeral_storage_nr", "")
+    
+    decode_network_resource = ev.get("vllm_modelservice_decode_network_resource", "")
+    decode_network_nr = ev.get("vllm_modelservice_decode_network_nr", "")
+    prefill_network_resource = ev.get("vllm_modelservice_prefill_network_resource", "")
+    prefill_network_nr = ev.get("vllm_modelservice_prefill_network_nr", "")
+    
+    # Affinity configuration
+    affinity = ev.get("vllm_common_affinity", "")
+    if ":" in affinity:
+        affinity_key, affinity_value = affinity.split(":", 1)
+    else:
+        affinity_key, affinity_value = "", ""
+    
+    # Probe configuration
+    initial_delay_probe = ev.get("vllm_common_initial_delay_probe", "30")
+    common_inference_port = ev.get("vllm_common_inference_port", "8000")
+    
+    # Extra configurations
+    decode_extra_pod_config = ev.get("vllm_modelservice_decode_extra_pod_config", "")
+    decode_extra_container_config = ev.get("vllm_modelservice_decode_extra_container_config", "")
+    decode_extra_volume_mounts = ev.get("vllm_modelservice_decode_extra_volume_mounts", "")
+    decode_extra_volumes = ev.get("vllm_modelservice_decode_extra_volumes", "")
+    
+    prefill_extra_pod_config = ev.get("vllm_modelservice_prefill_extra_pod_config", "")
+    prefill_extra_container_config = ev.get("vllm_modelservice_prefill_extra_container_config", "")
+    prefill_extra_volume_mounts = ev.get("vllm_modelservice_prefill_extra_volume_mounts", "")
+    prefill_extra_volumes = ev.get("vllm_modelservice_prefill_extra_volumes", "")
+    
+    # Environment variables to YAML
+    envvars_to_yaml = ev.get("vllm_common_envvars_to_yaml", "")
+    
+    # Read the rules file content
+    rules_content = ""
+    if rules_file.exists():
+        rules_content = rules_file.read_text().rstrip()
+    
+    # Build the complete YAML structure exactly matching the bash script
+    yaml_content = f"""fullnameOverride: {fullname_override}
+multinode: {multinode}
+
+modelArtifacts:
+  uri: {model_uri}
+  size: {model_size}
+  authSecretName: "llm-d-hf-token"
+  name: {model_name}
+
+routing:
+  servicePort: {service_port}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: infra-{release}-inference-gateway
+  proxy:
+    image: "{proxy_image}"
+    secure: false
+    connector: {proxy_connector}
+    debugLevel: {proxy_debug_level}
+  inferenceModel:
+    create: {inference_model_create}
+  inferencePool:
+    create: {inference_pool_create}
+    name: {model_id_label}-gaie
+  httpRoute:
+    create: {route_enabled}
+    rules:
+    - backendRefs:
+      - group: inference.networking.x-k8s.io
+        kind: InferencePool
+        name: {model_id_label}-gaie
+        port: 8000
+        weight: 1
+      matches:
+      - path:
+          type: PathPrefix
+          value: /{model_id}/
+      filters:
+      - type: URLRewrite
+        urlRewrite:
+          path:
+            type: ReplacePrefixMatch
+            replacePrefixMatch: /
+    {rules_content}
+
+  epp:
+    create: {epp_create}
 
 decode:
-  replicaCount: {{ decode_replicas }}
-  kserve:
-    storageUri: "{{ storage_uri }}"
-  {{ decode_extra_pod_config }}
-  {{ decode_command }}
-  {{ decode_extra_container_config }}
+  create: {decode_create}
+  replicas: {decode_replicas}
+  acceleratorTypes:
+      labelKey: {affinity_key}
+      labelValues:
+        - {affinity_value}
+  parallelism:
+    data: {decode_data_parallelism}
+    tensor: {decode_tensor_parallelism}
+  annotations:
+      {add_annotations()}
+  {add_config(decode_extra_pod_config, 2, "extraConfig")}
+  containers:
+  - name: "vllm"
+    mountModelVolume: {str(mount_model_volume).lower()}
+    image: "{main_image}"
+    modelCommand: {decode_model_command}
+    {add_command(decode_model_command)}
+    args:
+      {add_command_line_options(decode_extra_args)}
+    env:
+      - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+        valueFrom:
+          fieldRef:
+            fieldPath: status.podIP
+      {add_additional_env_to_yaml(envvars_to_yaml)}
+    resources:
+      limits:
+        memory: {decode_cpu_mem}
+        cpu: "{decode_cpu_nr}"
+        {filter_empty_resource(ephemeral_storage_resource, decode_ephemeral_storage_nr)}
+        {filter_empty_resource(accelerator_resource, decode_accelerator_nr)}
+        {filter_empty_resource(decode_network_resource, decode_network_nr)}
+      requests:
+        memory: {decode_cpu_mem}
+        cpu: "{decode_cpu_nr}"
+        {filter_empty_resource(ephemeral_storage_resource, decode_ephemeral_storage_nr)}
+        {filter_empty_resource(accelerator_resource, decode_accelerator_nr)}
+        {filter_empty_resource(decode_network_resource, decode_network_nr)}
+    extraConfig:
+      startupProbe:
+        httpGet:
+          path: /health
+          port: {decode_inference_port}
+        failureThreshold: 60
+        initialDelaySeconds: {initial_delay_probe}
+        periodSeconds: 30
+        timeoutSeconds: 5
+      livenessProbe:
+        tcpSocket:
+          port: {decode_inference_port}
+        failureThreshold: 3
+        periodSeconds: 5
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8200
+        failureThreshold: 3
+        periodSeconds: 5
+    {add_config(decode_extra_container_config, 6)}
+    volumeMounts: {add_config(decode_extra_volume_mounts, 4)}
+  volumes: {add_config(decode_extra_volumes, 2)}
 
 prefill:
-  replicaCount: {{ prefill_replicas }}
-  kserve:
-    storageUri: "{{ storage_uri }}"
-  {{ prefill_extra_pod_config }}
-  {{ prefill_command }}
-  {{ prefill_extra_container_config }}
-
-{% if mount_model_volume %}
-cache:
-  storageClass: {{ storage_class }}
-  size: {{ cache_size }}
-{% endif %}
-
-{% if gateway_enabled %}
-gateway:
-  domain: {{ gateway_domain }}
-{% endif %}
-
-{% if route_enabled %}
-route:
-  enabled: true
-  domain: {{ route_domain }}
-{% endif %}
+  create: {prefill_create}
+  replicas: {prefill_replicas}
+  acceleratorTypes:
+      labelKey: {affinity_key}
+      labelValues:
+        - {affinity_value}
+  parallelism:
+    data: {prefill_data_parallelism}
+    tensor: {prefill_tensor_parallelism}
+  annotations:
+      {add_annotations()}
+  {add_config(prefill_extra_pod_config, 2, "extraConfig")}
+  containers:
+  - name: "vllm"
+    mountModelVolume: {str(mount_model_volume).lower()}
+    image: "{main_image}"
+    modelCommand: {prefill_model_command}
+    {add_command(prefill_model_command)}
+    args:
+      {add_command_line_options(prefill_extra_args)}
+    env:
+      - name: VLLM_IS_PREFILL
+        value: "1"
+      - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+        valueFrom:
+          fieldRef:
+            fieldPath: status.podIP
+      {add_additional_env_to_yaml(envvars_to_yaml)}
+    resources:
+      limits:
+        memory: {prefill_cpu_mem}
+        cpu: "{prefill_cpu_nr}"
+        {filter_empty_resource(ephemeral_storage_resource, prefill_ephemeral_storage_nr)}
+        {filter_empty_resource(accelerator_resource, prefill_accelerator_nr)}
+        {filter_empty_resource(prefill_network_resource, prefill_network_nr)}
+      requests:
+        memory: {prefill_cpu_mem}
+        cpu: "{prefill_cpu_nr}"
+        {filter_empty_resource(ephemeral_storage_resource, prefill_ephemeral_storage_nr)}
+        {filter_empty_resource(accelerator_resource, prefill_accelerator_nr)}
+        {filter_empty_resource(prefill_network_resource, prefill_network_nr)}
+    extraConfig:
+      startupProbe:
+        httpGet:
+          path: /health
+          port: {common_inference_port}
+        failureThreshold: 60
+        initialDelaySeconds: {initial_delay_probe}
+        periodSeconds: 30
+        timeoutSeconds: 5
+      livenessProbe:
+        tcpSocket:
+          port: {common_inference_port}
+        failureThreshold: 3
+        periodSeconds: 5
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: {common_inference_port}
+        failureThreshold: 3
+        periodSeconds: 5
+    {add_config(prefill_extra_container_config, 6)}
+    volumeMounts: {add_config(prefill_extra_volume_mounts, 4)}
+  volumes: {add_config(prefill_extra_volumes, 2)}
 """
     
-    template = Template(values_template)
-    
-    # Prepare template variables
-    template_vars = {
-        'model_id': ev.get("deploy_current_model_id", ""),
-        'decode_replicas': ev.get("vllm_modelservice_decode_replicas", "1"),
-        'prefill_replicas': ev.get("vllm_modelservice_prefill_replicas", "1"),
-        'storage_uri': ev.get("vllm_modelservice_uri", ""),
-        'decode_extra_pod_config': add_config_prep(),
-        'decode_command': add_command("decode"),
-        'decode_extra_container_config': "",
-        'prefill_extra_pod_config': "",
-        'prefill_command': add_command("prefill"),
-        'prefill_extra_container_config': "",
-        'mount_model_volume': mount_model_volume,
-        'storage_class': ev.get("vllm_common_pvc_storage_class", ""),
-        'cache_size': ev.get("vllm_common_pvc_size", ""),
-        'gateway_enabled': ev.get("vllm_modelservice_gateway_enabled", "false") == "true",
-        'gateway_domain': ev.get("vllm_modelservice_gateway_domain", ""),
-        'route_enabled': ev.get("control_deploy_is_openshift", "0") == "1",
-        'route_domain': ev.get("vllm_modelservice_route_domain", "")
-    }
-    
-    return template.render(**template_vars)
+    return yaml_content
 
 
 
 
-def wait_for_pods(ev: dict, component: str, dry_run: bool, verbose: bool) -> int:
+def wait_for_pods_creation(ev: dict, component: str, dry_run: bool, verbose: bool) -> int:
     """
-    Wait for pods to be created and running.
-    
-    Args:
-        ev: Environment variables dictionary
-        component: Component name (decode/prefill)
-        dry_run: Whether this is a dry run
-        verbose: Whether to show verbose output
-    
-    Returns:
-        0 for success, non-zero for failure
+    Wait for pods to be created.
     """
     namespace = ev.get("vllm_common_namespace", "")
     model_id_label = ev.get("deploy_current_model_id_label", "")
+    wait_timeout = int(ev.get("control_wait_timeout", "600")) // 2
     
-    # Wait for pod creation
-    wait_cmd = f"kubectl wait --for=condition=PodScheduled --timeout=300s pod -l serving.kserve.io/inferenceservice={namespace}-{model_id_label}-{component} -n {namespace}"
+    announce(f"⏳ waiting for ({component}) pods serving model to be created...")
+    wait_cmd = f"kubectl --namespace {namespace} wait --timeout={wait_timeout}s --for=create pod -l llm-d.ai/model={model_id_label},llm-d.ai/role={component}"
+    result = llmdbench_execute_cmd(wait_cmd, dry_run, verbose, 1, 2)
+    if result == 0:
+        announce(f"✅ ({component}) pods serving model created")
+    return result
+
+
+def wait_for_pods_running(ev: dict, component: str, dry_run: bool, verbose: bool) -> int:
+    """
+    Wait for pods to be in Running state.
+    """
+    namespace = ev.get("vllm_common_namespace", "")
+    model_id_label = ev.get("deploy_current_model_id_label", "")
+    wait_timeout = ev.get("control_wait_timeout", "600")
+    
+    announce(f"⏳ Waiting for ({component}) pods serving model to be in \"Running\" state (timeout={wait_timeout}s)...")
+    wait_cmd = f"kubectl --namespace {namespace} wait --timeout={wait_timeout}s --for=jsonpath='{{.status.phase}}'=Running pod -l llm-d.ai/model={model_id_label},llm-d.ai/role={component}"
     result = llmdbench_execute_cmd(wait_cmd, dry_run, verbose)
-    if result != 0:
-        return result
+    if result == 0:
+        announce(f"🚀 ({component}) pods serving model running")
+    return result
+
+
+def wait_for_pods_ready(ev: dict, component: str, dry_run: bool, verbose: bool) -> int:
+    """
+    Wait for pods to be Ready.
+    """
+    namespace = ev.get("vllm_common_namespace", "")
+    model_id_label = ev.get("deploy_current_model_id_label", "")
+    wait_timeout = ev.get("control_wait_timeout", "600")
     
-    # Wait for pods to be running
-    wait_cmd = f"kubectl wait --for=condition=Ready --timeout=600s pod -l serving.kserve.io/inferenceservice={namespace}-{model_id_label}-{component} -n {namespace}"
-    return llmdbench_execute_cmd(wait_cmd, dry_run, verbose)
+    announce(f"⏳ Waiting for ({component}) pods serving model to be Ready (timeout={wait_timeout}s)...")
+    wait_cmd = f"kubectl --namespace {namespace} wait --timeout={wait_timeout}s --for=condition=Ready=True pod -l llm-d.ai/model={model_id_label},llm-d.ai/role={component}"
+    result = llmdbench_execute_cmd(wait_cmd, dry_run, verbose)
+    if result == 0:
+        announce(f"🚀 ({component}) pods serving model ready")
+    return result
 
 
 def collect_logs(ev: dict, component: str, dry_run: bool, verbose: bool) -> int:
     """
     Collect logs from component pods.
-    
-    Args:
-        ev: Environment variables dictionary
-        component: Component name (decode/prefill)
-        dry_run: Whether this is a dry run
-        verbose: Whether to show verbose output
-    
-    Returns:
-        0 for success, non-zero for failure
     """
     namespace = ev.get("vllm_common_namespace", "")
     model_id_label = ev.get("deploy_current_model_id_label", "")
     work_dir = ev.get("control_work_dir", "")
     
     # Create logs directory
-    logs_dir = Path(work_dir) / "logs"
+    logs_dir = Path(work_dir) / "setup" / "logs"
     if not dry_run:
         logs_dir.mkdir(parents=True, exist_ok=True)
     
     # Collect logs
-    log_cmd = f"kubectl logs -l serving.kserve.io/inferenceservice={namespace}-{model_id_label}-{component} -n {namespace} > {logs_dir}/{component}-{model_id_label}.log"
+    log_file = logs_dir / f"llm-d-{component}.log"
+    log_cmd = f"kubectl --namespace {namespace} logs --tail=-1 --prefix=true -l llm-d.ai/model={model_id_label},llm-d.ai/role={component} > {log_file}"
     return llmdbench_execute_cmd(log_cmd, dry_run, verbose)
 
 
 def main():
     """Main function for step 09 - Deploy via modelservice"""
     
-    # Set current step name for logging/tracking
-    os.environ["CURRENT_STEP_NAME"] = os.path.splitext(os.path.basename(__file__))[0]
-    
     # Parse environment variables into ev dictionary
     ev = {}
     environment_variable_to_dict(ev)
     
     # Check if modelservice environment is active
-    if not ev.get("control_environment_type_modelservice_active", False):
-        announce("⏭️ Environment type modelservice not active. Skipping this step.")
+    if ev.get("control_environment_type_modelservice_active", "0") != "1":
+        deploy_methods = ev.get("deploy_methods", "")
+        announce(f"⏭️ Environment types are \"{deploy_methods}\". Skipping this step.")
         return 0
-    
-    # Extract flags
-    dry_run = ev.get("control_dry_run", False)
-    verbose = ev.get("control_verbose", False)
-    
-    if dry_run:
-        announce("DRY RUN enabled. No actual changes will be made.")
     
     # Check storage class
     if not check_storage_class():
@@ -262,11 +557,12 @@ def main():
         announce("❌ Failed to check affinity")
         return 1
     
-    # Re-parse environment variables in case check functions updated them
-    environment_variable_to_dict(ev)
-    
     # Extract environment for debugging
     extract_environment()
+    
+    # Extract flags
+    dry_run = ev.get("control_dry_run", "false") == "true"
+    verbose = ev.get("control_verbose", "false") == "true"
     
     # Deploy models
     model_list = ev.get("deploy_model_list", "").replace(",", " ").split()
@@ -302,43 +598,41 @@ def main():
             mount_model_volume = True
         
         # Check for mount override
-        if ev.get("vllm_modelservice_mount_model_volume_override"):
-            mount_model_volume = ev.get("vllm_modelservice_mount_model_volume_override", "false") == "true"
+        mount_override = ev.get("vllm_modelservice_mount_model_volume_override")
+        if mount_override:
+            mount_model_volume = mount_override == "true"
         
         # Update ev with URI
         ev["vllm_modelservice_uri"] = os.environ["LLMDBENCH_VLLM_MODELSERVICE_URI"]
         
-        # Create directory structure
+        # Create directory structure (Do not use "llmdbench_execute_cmd" for these commands)
         model_num = f"{model_number:02d}"
         release = ev.get("vllm_modelservice_release", "")
         work_dir = Path(ev.get("control_work_dir", ""))
         helm_dir = work_dir / "setup" / "helm" / release / model_num
         
-        if not dry_run:
-            helm_dir.mkdir(parents=True, exist_ok=True)
-        else:
-            announce(f"---> would create directory {helm_dir}")
+        # Always create directory structure (even in dry-run)
+        helm_dir.mkdir(parents=True, exist_ok=True)
         
-        # Generate ms-rules.yaml
+        # Generate ms-rules.yaml content first
         rules_content = generate_ms_rules_yaml(ev, model_number)
         rules_file = helm_dir / "ms-rules.yaml"
         
-        if not dry_run:
+        # Write empty file first, then write content
+        rules_file.write_text("")
+        if len([m for m in model_list if m.strip()]) == 1:
             rules_file.write_text(rules_content)
-        else:
-            announce(f"---> would write rules to {rules_file}")
+        
+        # Set up configuration preparation
+        add_config_prep()
         
         # Generate ms-values.yaml
-        values_content = generate_ms_values_yaml(ev, mount_model_volume)
+        values_content = generate_ms_values_yaml(ev, mount_model_volume, rules_file)
         values_file = helm_dir / "ms-values.yaml"
+        values_file.write_text(values_content)
         
-        if not dry_run:
-            values_file.write_text(values_content)
-        else:
-            announce(f"---> would write values to {values_file}")
-        
-        # Use existing helmfile created by step 07
-        helmfile_path = work_dir / "setup" / "helm" / release / f"helmfile-{model_num}.yaml"
+        # Clean up temp file
+        rules_file.unlink()
         
         # Deploy via helmfile
         announce(f"🚀 Installing helm chart \"ms-{release}\" via helmfile...")
@@ -347,56 +641,94 @@ def main():
         
         helmfile_cmd = (f"helmfile --namespace {namespace} "
                        f"--kubeconfig {context_path} "
-                       f"--selector name={namespace}-{current_model_id_label}-ms "
-                       f"apply -f {helmfile_path} --skip-diff-on-install")
+                       f"--selector name={current_model_id_label}-ms "
+                       f"apply -f {work_dir}/setup/helm/{release}/helmfile-{model_num}.yaml --skip-diff-on-install")
         
         result = llmdbench_execute_cmd(helmfile_cmd, dry_run, verbose)
         if result != 0:
             announce(f"❌ Failed to deploy helm chart for model {current_model}")
             return result
         
-        # Wait for pods and collect logs
+        announce(f"✅ {namespace}-{current_model_id_label}-ms helm chart deployed successfully")
+        
+        # Wait for pods and collect logs exactly like bash script
         decode_replicas = int(ev.get("vllm_modelservice_decode_replicas", "0"))
         prefill_replicas = int(ev.get("vllm_modelservice_prefill_replicas", "0"))
         
+        # Wait for decode pods creation
         if decode_replicas > 0:
-            announce(f"⏳ Waiting for decode pods to be scheduled...")
-            result = wait_for_pods(ev, "decode", dry_run, verbose)
+            result = wait_for_pods_creation(ev, "decode", dry_run, verbose)
             if result != 0:
                 return result
         
+        # Wait for prefill pods creation
         if prefill_replicas > 0:
-            announce(f"⏳ Waiting for prefill pods to be scheduled...")
-            result = wait_for_pods(ev, "prefill", dry_run, verbose)
+            result = wait_for_pods_creation(ev, "prefill", dry_run, verbose)
             if result != 0:
                 return result
         
+        # Wait for decode pods to be running
         if decode_replicas > 0:
-            announce(f"⏳ Waiting for decode pods to be ready...")
-            result = wait_for_pods(ev, "decode", dry_run, verbose)
+            result = wait_for_pods_running(ev, "decode", dry_run, verbose)
             if result != 0:
                 return result
         
+        # Wait for prefill pods to be running
         if prefill_replicas > 0:
-            announce(f"⏳ Waiting for prefill pods to be ready...")
-            result = wait_for_pods(ev, "prefill", dry_run, verbose)
+            result = wait_for_pods_running(ev, "prefill", dry_run, verbose)
             if result != 0:
                 return result
         
-        # Collect logs
+        # Wait for decode pods to be ready
         if decode_replicas > 0:
-            result = collect_logs(ev, "decode", dry_run, verbose)
+            result = wait_for_pods_ready(ev, "decode", dry_run, verbose)
             if result != 0:
-                announce(f"⚠️ Warning: Failed to collect decode logs for {current_model}")
+                return result
+            
+            # Collect decode logs
+            collect_logs(ev, "decode", dry_run, verbose)
         
+        # Wait for prefill pods to be ready
         if prefill_replicas > 0:
-            result = collect_logs(ev, "prefill", dry_run, verbose)
+            result = wait_for_pods_ready(ev, "prefill", dry_run, verbose)
             if result != 0:
-                announce(f"⚠️ Warning: Failed to collect prefill logs for {current_model}")
+                return result
+            
+            # Collect prefill logs
+            collect_logs(ev, "prefill", dry_run, verbose)
+        
+        # Handle OpenShift route creation
+        if (ev.get("vllm_modelservice_route") == "true" and 
+            ev.get("control_deploy_is_openshift", "0") == "1"):
+            
+            # Check if route exists
+            route_name = f"{release}-inference-gateway-route"
+            check_route_cmd = f"kubectl --namespace {namespace} get route -o name --ignore-not-found | grep -E \"/{route_name}$\""
+            
+            result = llmdbench_execute_cmd(check_route_cmd, dry_run, verbose)
+            if result != 0:  # Route doesn't exist
+                announce(f"📜 Exposing pods serving model {model} as service...")
+                inference_port = ev.get("vllm_common_inference_port", "8000")
+                expose_cmd = (f"kubectl --namespace {namespace} expose service/infra-{release}-inference-gateway "
+                             f"--target-port={inference_port} --name={route_name}")
+                
+                result = llmdbench_execute_cmd(expose_cmd, dry_run, verbose)
+                if result == 0:
+                    announce(f"✅ Service for pods service model {model} created")
+            
+            announce(f"✅ Model \"{model}\" and associated service deployed.")
+        
+        # Clean up model environment variables
+        if "LLMDBENCH_DEPLOY_CURRENT_MODEL" in os.environ:
+            del os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL"]
+        if "LLMDBENCH_DEPLOY_CURRENT_MODEL_ID" in os.environ:
+            del os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID"]
+        if "LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL" in os.environ:
+            del os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL"]
         
         model_number += 1
     
-    announce("✅ Modelservice deployment completed successfully.")
+    announce("✅ modelservice completed model deployment")
     return 0
 
 
