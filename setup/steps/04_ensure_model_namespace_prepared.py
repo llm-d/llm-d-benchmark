@@ -151,7 +151,7 @@ def main():
     announce(f'🚚 Creating configmap with contents of all files under workload/preprocesses...')
     config_map_name = "llm-d-benchmark-preprocesses"
     config_map_data = {}
-    preprocess_dir = Path(ev["main_dir"]) / "workload" / "preprocesses"
+    preprocess_dir = Path(ev["main_dir"]) / "setup" / "preprocess"
 
     try:
         file_paths = sorted([p for p in preprocess_dir.rglob('*') if p.is_file()])

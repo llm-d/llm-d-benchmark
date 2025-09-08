@@ -302,7 +302,7 @@ spec:
         - name: LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT
           value: "{ev.get('vllm_standalone_vllm_load_format', '')}"
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG
-          value: "{{}}"
+          value: "{os.environ.get('LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG', '{}')}"
         - name: VLLM_LOGGING_LEVEL
           value: "{ev.get('vllm_standalone_vllm_logging_level', '')}"
         - name: HF_HOME
