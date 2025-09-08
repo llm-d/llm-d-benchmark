@@ -32,7 +32,8 @@ def register_new_accelerator():
 
     if st.button("Register", use_container_width=True):
         if acc_name:
-            st.session_state["gpu_spec"][acc_name] = {
+
+            db.gpu_specs[acc_name] = {
                 "name": acc_name,
                 "memory": acc_mem
             }
@@ -183,8 +184,7 @@ def workload_specification():
             max_value=model_max_context_len,
             value=user_scenario.max_model_len,
             key=util.SELECTED_MAX_MODEL_LEN_KEY,
-            on_change=util.update_scenario,
-            args=[util.SELECTED_MAX_MODEL_LEN_KEY, "max_model_len"]
+            on_change=util.on_update_max_model_len,
             )
         col1.caption("Maximum model length for the model: how many tokens (input + output) the model can process. \
 Higher max model length means fewer concurrent requests can be served, \

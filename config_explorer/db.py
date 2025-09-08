@@ -2,6 +2,10 @@
 Mocks DB storing info about common accelerators used for LLM serving and inference
 """
 
+import pickle
+from typing import Dict, Any
+import pandas as pd
+
 gpu_specs = {
     # https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-us-nvidia-1758950-r4-web.pdf
     # https://medium.com/@bijit211987/top-nvidia-gpus-for-llm-inference-8a5316184a10
@@ -40,3 +44,18 @@ gpu_specs = {
          "memory": 16
      }
 }
+
+def read_benchmark_data():
+    with open("./config_explorer/df.pkl", 'rb') as file:
+        data = pickle.load(file)
+        df = pd.DataFrame(data)
+
+        # Clean data
+        df.drop('Directory', axis=1, inplace=True)
+
+        return df
+
+def filter_benchmark_data(cols_to_keep: Dict[str, Any]):
+    db = read_benchmark_data()
+    filter_condition = (db[col_name] == cols_to_keep[col_name] for col_name in cols_to_keep)
+    return db.loc[filter_condition, list(cols_to_keep.keys())]

@@ -71,9 +71,17 @@ def on_update_gpu_count():
 
 def on_update_model_name():
     """
-    Reset max model length
+    Reset model name
     """
     scenario = st.session_state[USER_SCENARIO_KEY]
     scenario.model_name = st.session_state[SELECTED_MODEL_KEY]
     scenario.max_model_len = None
+    scenario.concurrency = None
+
+def on_update_max_model_len():
+    """
+    Reset max model length
+    """
+    scenario = st.session_state[USER_SCENARIO_KEY]
+    scenario.max_model_len = st.session_state[SELECTED_MAX_MODEL_LEN_KEY]
     scenario.concurrency = None
