@@ -250,7 +250,7 @@ def generate_deployment_yaml(ev, model, model_label):
     affinity_key, affinity_value = ev["vllm_common_affinity"].split(":", 1)
 
     # Generate command line options
-    args = add_command_line_options(ev.get("vllm_standalone_args", ""))
+    args = add_command_line_options(ev["vllm_standalone_args"])
 
     # Generate additional environment variables
     additional_env = add_additional_env_to_yaml(ev.get("vllm_common_envvars_to_yaml", ""))

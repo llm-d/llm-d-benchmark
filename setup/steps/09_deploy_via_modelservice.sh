@@ -246,7 +246,7 @@ EOF
     rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-rules.yaml
 
     announce "🚀 Installing helm chart \"ms-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}\" via helmfile..."
-    llmdbench_execute_cmd "helmfile --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --kubeconfig ${LLMDBENCH_CONTROL_WORK_DIR}/environment/context.ctx --selector name=${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-ms apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/helmfile-${MODEL_NUM}.yaml --skip-diff-on-install" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    llmdbench_execute_cmd "helmfile --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} --kubeconfig ${LLMDBENCH_CONTROL_WORK_DIR}/environment/context.ctx --selector name=${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-ms apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/helmfile-${MODEL_NUM}.yaml --skip-diff-on-install --skip-schema-validation" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "✅ ${LLMDBENCH_VLLM_COMMON_NAMESPACE}-${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-ms helm chart deployed successfully"
 
     if [[ $LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS -gt 0 ]]; then
