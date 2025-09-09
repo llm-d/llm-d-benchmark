@@ -13,7 +13,7 @@ sys.path.insert(0, str(project_root))
 from functions import (
     announce, llmdbench_execute_cmd, model_attribute, extract_environment,
     get_image, check_storage_class, check_affinity, add_annotations,
-    add_command_line_options, add_additional_env_to_yaml
+    add_command_line_options, add_additional_env_to_yaml, get_accelerator_nr
 )
 
 
@@ -338,12 +338,24 @@ spec:
           limits:
             cpu: "{ev.get('vllm_common_cpu_nr', '')}"
             memory: {ev.get('vllm_common_cpu_mem', '')}
-            {ev.get('vllm_common_accelerator_resource', '')}: "{int(ev.get('vllm_common_tensor_parallelism', 1)) * int(ev.get('vllm_common_data_parallelism', 1))}"
+            {ev.get('vllm_common_accelerator_resource', '')}: "{
+              get_accelerator_nr(
+                ev.get('vllm_common_accelerator_nr', 'auto'),
+                ev.get('vllm_common_tensor_parallelism', 1),
+                ev.get('vllm_common_data_parallelism', 1),
+              )
+            }"
             ephemeral-storage: {ev.get('vllm_standalone_ephemeral_storage', '')}
           requests:
             cpu: "{ev.get('vllm_common_cpu_nr', '')}"
             memory: {ev.get('vllm_common_cpu_mem', '')}
-            {ev.get('vllm_common_accelerator_resource', '')}: "{int(ev.get('vllm_common_tensor_parallelism', 1)) * int(ev.get('vllm_common_data_parallelism', 1))}"
+            {ev.get('vllm_common_accelerator_resource', '')}: "{
+              get_accelerator_nr(
+                ev.get('vllm_common_accelerator_nr', 'auto'),
+                ev.get('vllm_common_tensor_parallelism', 1),
+                ev.get('vllm_common_data_parallelism', 1),
+              )
+            }"
             ephemeral-storage: {ev.get('vllm_standalone_ephemeral_storage', '')}
         volumeMounts:
         - name: preprocesses

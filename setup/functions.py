@@ -824,6 +824,17 @@ def check_affinity():
         announce(f"❌ Error connecting to Kubernetes: {e}")
         return False
 
+def get_accelerator_nr(accelerator_nr, tp, dp) -> int:
+    """
+    Get the number of accelerator resources needed.
+    Equivalent to the Bash get_accelerator_nr function.
+    """
+
+    if accelerator_nr != 'auto':
+        return int(accelerator_nr)
+
+    # Calculate number of accelerators needed
+    return int(tp) * int(dp)
 
 def add_annotations(varname):
     """
