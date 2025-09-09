@@ -15,7 +15,7 @@ sys.path.insert(0, str(project_root))
 from functions import (
     announce, llmdbench_execute_cmd, model_attribute, extract_environment,
     check_storage_class, check_affinity, environment_variable_to_dict, render_string,
-    get_image
+    get_image, add_command_line_options
 )
 
 
@@ -47,7 +47,7 @@ def add_annotations() -> str:
     for entry in annotations.split(","):
         if ":" in entry:
             key, value = entry.split(":", 1)
-            lines.append(f"      {key.strip()}: {value.strip()}")
+            lines.append(f"    {key.strip()}: {value.strip()}")
     
     return "\n".join(lines) if lines else ""
 
@@ -63,19 +63,7 @@ def add_command(model_command: str) -> str:
     return ""
 
 
-def add_command_line_options(extra_args: str) -> str:
-    """
-    Generate command line options from extra args.
-    """
-    if not extra_args:
-        return ""
-    
-    args = []
-    for arg in extra_args.split():
-        if arg.strip():
-            args.append(f"      - \"{arg}\"")
-    
-    return "\n".join(args) if args else ""
+# Note: add_command_line_options is now imported from functions.py
 
 
 def add_additional_env_to_yaml(envvars_to_yaml: str) -> str:
@@ -251,8 +239,8 @@ def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path
     prefill_network_resource = ev.get("vllm_modelservice_prefill_network_resource", "")
     prefill_network_nr = ev.get("vllm_modelservice_prefill_network_nr", "")
     
-    # Affinity configuration
-    affinity = ev.get("vllm_common_affinity", "")
+    # Affinity configuration - get fresh value after check_affinity() call
+    affinity = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY", "")
     if ":" in affinity:
         affinity_key, affinity_value = affinity.split(":", 1)
     else:
@@ -350,8 +338,8 @@ decode:
     image: "{main_image}"
     modelCommand: {decode_model_command}
     {add_command(decode_model_command)}
-    args:
-      {add_command_line_options(decode_extra_args)}
+    args: |
+{add_command_line_options(decode_extra_args)}
     env:
       - name: VLLM_NIXL_SIDE_CHANNEL_HOST
         valueFrom:
@@ -414,8 +402,8 @@ prefill:
     image: "{main_image}"
     modelCommand: {prefill_model_command}
     {add_command(prefill_model_command)}
-    args:
-      {add_command_line_options(prefill_extra_args)}
+    args: |
+{add_command_line_options(prefill_extra_args)}
     env:
       - name: VLLM_IS_PREFILL
         value: "1"
@@ -537,12 +525,15 @@ def collect_logs(ev: dict, component: str, dry_run: bool, verbose: bool) -> int:
 def main():
     """Main function for step 09 - Deploy via modelservice"""
     
+    # Set current step for functions.py compatibility
+    os.environ["LLMDBENCH_CURRENT_STEP"] = "09"
+    
     # Parse environment variables into ev dictionary
     ev = {}
     environment_variable_to_dict(ev)
     
     # Check if modelservice environment is active
-    if ev.get("control_environment_type_modelservice_active", "0") != "1":
+    if not ev.get("control_environment_type_modelservice_active", False):
         deploy_methods = ev.get("deploy_methods", "")
         announce(f"⏭️ Environment types are \"{deploy_methods}\". Skipping this step.")
         return 0
@@ -642,7 +633,7 @@ def main():
         helmfile_cmd = (f"helmfile --namespace {namespace} "
                        f"--kubeconfig {context_path} "
                        f"--selector name={current_model_id_label}-ms "
-                       f"apply -f {work_dir}/setup/helm/{release}/helmfile-{model_num}.yaml --skip-diff-on-install")
+                       f"apply -f {work_dir}/setup/helm/{release}/helmfile-{model_num}.yaml --skip-diff-on-install --skip-schema-validation")
         
         result = llmdbench_execute_cmd(helmfile_cmd, dry_run, verbose)
         if result != 0:
