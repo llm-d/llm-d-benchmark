@@ -133,9 +133,11 @@ def _get_llmd_benchmark_envars() -> dict:
                     "type": ['replica'] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS']),
                     "accelerator": [{
                         "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
-                        "count": int(os.environ['LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR']),
+                        "count": int(os.environ['LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM']) \
+                                 * int(os.environ['LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM']),
                         "parallelism": {
-                            "tp": int(os.environ['LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR']),
+                            "tp": int(os.environ['LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM']),
+                            "dp": int(os.environ['LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM']),
                         },
                     }] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS']),
                 },
@@ -166,16 +168,20 @@ def _get_llmd_benchmark_envars() -> dict:
                             ['decode'] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
                     "accelerator": [{
                         "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
-                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR']),
+                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM']) \
+                                 * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM']),
                         "parallelism": {
-                            "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR']),
+                            "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM']),
+                            "dp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM']),
                         },
                     }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
                     [{
                         "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
-                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR']),
+                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM']) \
+                                 * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM']),
                         "parallelism": {
-                            "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR']),
+                            "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM']),
+                            "dp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM']),
                         },
                     }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
                 },
