@@ -338,12 +338,12 @@ spec:
           limits:
             cpu: "{ev.get('vllm_common_cpu_nr', '')}"
             memory: {ev.get('vllm_common_cpu_mem', '')}
-            {ev.get('vllm_common_accelerator_resource', '')}: "{ev.get('vllm_common_accelerator_nr', '')}"
+            {ev.get('vllm_common_accelerator_resource', '')}: "{int(ev.get('vllm_common_tensor_parallelism', 1)) * int(ev.get('vllm_common_data_parallelism', 1))}"
             ephemeral-storage: {ev.get('vllm_standalone_ephemeral_storage', '')}
           requests:
             cpu: "{ev.get('vllm_common_cpu_nr', '')}"
             memory: {ev.get('vllm_common_cpu_mem', '')}
-            {ev.get('vllm_common_accelerator_resource', '')}: "{ev.get('vllm_common_accelerator_nr', '')}"
+            {ev.get('vllm_common_accelerator_resource', '')}: "{int(ev.get('vllm_common_tensor_parallelism', 1)) * int(ev.get('vllm_common_data_parallelism', 1))}"
             ephemeral-storage: {ev.get('vllm_standalone_ephemeral_storage', '')}
         volumeMounts:
         - name: preprocesses
