@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "config_explorer"
+version = "0.2.0"
+description = "Finding the most optimal configuration of llm-d."
+readme = "config_explorer/README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "huggingface_hub==0.34.4",
+    "transformers==4.55.4"
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["config_explorer/src"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["config_explorer/requirements.txt"]}

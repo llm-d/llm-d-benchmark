@@ -48,6 +48,8 @@ The scenario parameters can be roughly categorized in four groups:
 | LLMDBENCH_VLLM_COMMON_NETWORK_NR             |                                            |                                                           |
 | LLMDBENCH_VLLM_COMMON_AFFINITY               |                                            |                                                           |
 | LLMDBENCH_VLLM_COMMON_REPLICAS               |                                            |                                                           |
+| LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM     |                                            |                                                           |
+| LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM       |                                            |                                                           |
 | LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR         |                                            |                                                           |
 | LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL   |                                            |                                                           |
 | LLMDBENCH_VLLM_COMMON_CPU_NR                 |                                            |                                                           |

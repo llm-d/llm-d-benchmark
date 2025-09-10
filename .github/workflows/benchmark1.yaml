@@ -68,63 +68,63 @@ jobs:
       - name: Cleanup target cloud (modelservice)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c cicd -t modelservice -d
+        run: ./setup/teardown.sh -c ocp_L40_fb -t modelservice -d
 
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c cicd -t standalone -d
+        run: ./setup/teardown.sh -c ocp_L40_fb -t standalone -d
 
       - name: Standup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/standup.sh -c cicd -t standalone
+        run: ./setup/standup.sh -c ocp_L40_fb -t standalone
 
       - name: Run benchmark (standalone, inference-perf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c cicd -t standalone
+        run: ./setup/run.sh -c ocp_L40_fb -t standalone
 
       - name: Run benchmark (standalone, fmperf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c cicd -t standalone -l fmperf -w sanity_short-input
+        run: ./setup/run.sh -c ocp_L40_fb -t standalone -l fmperf -w sanity_short-input
 
       - name: Run benchmark (standalone, guidellm)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c cicd -t standalone -l guidellm -w sanity_concurrent
+        run: ./setup/run.sh -c ocp_L40_fb -t standalone -l guidellm -w sanity_concurrent
 
       - name: Run benchmark (standalone, vllm-benchmark)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c cicd -t standalone -l vllm-benchmark
+        run: ./setup/run.sh -c ocp_L40_fb -t standalone -l vllm-benchmark
 
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c cicd -t standalone -d
+        run: ./setup/teardown.sh -c ocp_L40_fb -t standalone -d
 
       - name: E2E target cloud (modelservice, inference-perf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c cicd -t modelservice --deep
+        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep
 
       - name: E2E target cloud (modelservice, fmperf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c cicd -t modelservice --deep -l fmperf -w sanity_short-input.yaml
+        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l fmperf -w sanity_short-input.yaml
 
       - name: E2E target cloud (modelservice, guidellm)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c cicd -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
+        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
 
 
       - name: E2E target cloud (modelservice, vllm-benchmark)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c cicd -t modelservice --deep -l vllm-benchmark
+        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l vllm-benchmark
 
 
       - name: Install AWS CLI

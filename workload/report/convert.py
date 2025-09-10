@@ -120,11 +120,14 @@ def _get_llmd_benchmark_envars() -> dict:
         # We are not in a harness pod
         return {}
 
-    #TODO at this point we assume a certain set of environment variables are
-    # defined, and we will crash if this is not the case.
+    if 'LLMDBENCH_DEPLOY_METHODS' not in os.environ:
+        sys.stderr.write('Warning: LLMDBENCH_DEPLOY_METHODS undefined, cannot determine deployment method.')
+        return {}
 
     if os.environ['LLMDBENCH_DEPLOY_METHODS'] == 'standalone':
-        config = {
+        # Given a 'standalone' deployment, we expect the following environment
+        # variables to be available
+        return {
             "scenario": {
                 "model": {
                     "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
@@ -133,9 +136,11 @@ def _get_llmd_benchmark_envars() -> dict:
                     "type": ['replica'] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS']),
                     "accelerator": [{
                         "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
-                        "count": int(os.environ['LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR']),
+                        "count": int(os.environ['LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM']) \
+                                 * int(os.environ['LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM']),
                         "parallelism": {
-                            "tp": int(os.environ['LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR']),
+                            "tp": int(os.environ['LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM']),
+                            "dp": int(os.environ['LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM']),
                         },
                     }] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS']),
                 },
@@ -155,8 +160,11 @@ def _get_llmd_benchmark_envars() -> dict:
                 }
             },
         }
-    else:
-        config = {
+
+    if os.environ['LLMDBENCH_DEPLOY_METHODS'] == 'modelservice':
+        # Given a 'modelservice' deployment, we expect the following environment
+        # variables to be available
+        return {
             "scenario": {
                 "model": {
                     "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
@@ -166,16 +174,20 @@ def _get_llmd_benchmark_envars() -> dict:
                             ['decode'] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
                     "accelerator": [{
                         "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
-                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR']),
+                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM']) \
+                                 * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM']),
                         "parallelism": {
-                            "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR']),
+                            "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM']),
+                            "dp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM']),
                         },
                     }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
                     [{
                         "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
-                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR']),
+                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM']) \
+                                 * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM']),
                         "parallelism": {
-                            "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR']),
+                            "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM']),
+                            "dp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM']),
                         },
                     }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
                 },
@@ -191,7 +203,10 @@ def _get_llmd_benchmark_envars() -> dict:
             },
         }
 
-    return config
+    # Pre-existing deployment, cannot extract details about unknown inference
+    # service environment
+    sys.stderr.write('Warning: LLMDBENCH_DEPLOY_METHODS is not "modelservice" or "standalone", cannot extract environmental details.')
+    return {}
 
 
 def import_benchmark_report(br_file: str) -> BenchmarkReport:
