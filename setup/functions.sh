@@ -524,7 +524,7 @@ function get_accelerator_nr {
   local accelerator_nr=$1
   local tp=$2
   local dp=$3
- 
+
   if [[ $accelerator_nr != "auto" ]]; then
     echo $accelerator_nr
     return 0

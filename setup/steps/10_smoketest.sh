@@ -46,6 +46,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
       announce "       ✅ Pod ip \"${pod_ip}\" responded successfully ($LLMDBENCH_DEPLOY_CURRENT_MODEL)"
     else
+
       received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${pod_ip} ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT})
 
       if [[ $received_model_name == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
