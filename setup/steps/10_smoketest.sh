@@ -62,9 +62,18 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     exit 1
   fi
 
-  if [[ -z $(not_valid_ip ${service_ip}) ]]; then
-    announce "❌ Invalid IP (\"${service_ip}\") for service/gateway \"${service_name}\"!"
-    exit 1
+  if [[ $LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME == "istio" ]]; then
+    $(validate_dns_name ${service_ip})
+    stat=$?
+    if [[ $stat -ne 0 ]]; then
+      announce "❌ Invalid DNS name (\"${service_ip}\") for service/gateway \"${service_name}\"!"
+      exit 1
+    fi
+  else
+    if [[ -z $(not_valid_ip ${service_ip}) ]]; then
+      announce "❌ Invalid IP (\"${service_ip}\") for service/gateway \"${service_name}\"!"
+      exit 1
+    fi
   fi
 
   announce "🚀 Testing service/gateway \"${service_name}\" (\"${service_ip}\") (port 80)..."

@@ -296,7 +296,11 @@ EOF
       if [[ -z $is_route ]]
       then
         announce "📜 Exposing pods serving model ${model} as service..."
-        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} expose service/infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway --target-port=${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT} --name=${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+        if [[ $LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME == "istio" ]]; then
+          llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} expose service/infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway-istio --target-port=${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT} --name=${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+        else
+          llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} expose service/infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway --target-port=${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT} --name=${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway-route" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+        fi
         announce "✅ Service for pods service model ${model} created"
       fi
       announce "✅ Model \"${model}\" and associated service deployed."

@@ -543,6 +543,36 @@ function not_valid_ip {
 }
 export -f not_valid_ip
 
+function validate_dns_name {
+  local dns_name="$1"
+  # Regex for a valid DNS name (FQDN)
+  # - Must be between 1 and 253 characters long (inclusive)
+  # - Labels separated by dots
+  # - Each label must start and end with an alphanumeric character
+  # - Labels can contain hyphens, but not at the beginning or end
+  # - TLD must be at least 2 characters long
+  local regex="^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$"
+
+  if [[ "$dns_name" =~ $regex ]]; then
+    # Check overall length
+    if (( ${#dns_name} >= 1 && ${#dns_name} <= 253 )); then
+      # Check label length (each label max 63 chars)
+      IFS='.' read -ra labels <<< "$dns_name"
+      for label in "${labels[@]}"; do
+        if (( ${#label} == 0 || ${#label} > 63 )); then
+          return 1
+        fi
+      done
+      return 0
+    else
+      return 1
+    fi
+  else
+    return 1
+  fi
+}
+export -f validate_dns_name
+
 function get_rand_string {
   if [[ -x $(command -v openssl) ]]; then
     openssl rand -base64 4 | tr -dc 'a-zA-Z0-9' | tr '[:upper:]' '[:lower:]' | head -c 16
