@@ -15,7 +15,7 @@ sys.path.insert(0, str(project_root))
 from functions import (
     announce, llmdbench_execute_cmd, model_attribute, extract_environment,
     check_storage_class, check_affinity, environment_variable_to_dict, render_string,
-    get_image, add_command_line_options
+    get_image, add_command_line_options, get_accelerator_nr, add_annotations as functions_add_annotations
 )
 
 
@@ -35,21 +35,11 @@ def add_config_prep():
     os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES", "[]")
 
 
-def add_annotations() -> str:
+def add_pod_annotations(annotation_var: str) -> str:
     """
-    Generate annotations YAML section from LLMDBENCH_VLLM_COMMON_ANNOTATIONS.
+    Generate podAnnotations YAML section.
     """
-    annotations = os.environ.get("LLMDBENCH_VLLM_COMMON_ANNOTATIONS", "")
-    if not annotations:
-        return ""
-    
-    lines = []
-    for entry in annotations.split(","):
-        if ":" in entry:
-            key, value = entry.split(":", 1)
-            lines.append(f"    {key.strip()}: {value.strip()}")
-    
-    return "\n".join(lines) if lines else ""
+    return functions_add_annotations(annotation_var)
 
 
 def add_command(model_command: str) -> str:
@@ -227,8 +217,20 @@ def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path
     
     # Resource configuration
     accelerator_resource = ev.get("vllm_common_accelerator_resource", "")
-    decode_accelerator_nr = ev.get("vllm_modelservice_decode_accelerator_nr", "")
-    prefill_accelerator_nr = ev.get("vllm_modelservice_prefill_accelerator_nr", "")
+    decode_accelerator_nr = ev.get("vllm_modelservice_decode_accelerator_nr", "auto")
+    prefill_accelerator_nr = ev.get("vllm_modelservice_prefill_accelerator_nr", "auto")
+    
+    # Calculate actual accelerator numbers
+    decode_accelerator_count = get_accelerator_nr(
+        decode_accelerator_nr, 
+        decode_tensor_parallelism, 
+        decode_data_parallelism
+    )
+    prefill_accelerator_count = get_accelerator_nr(
+        prefill_accelerator_nr, 
+        prefill_tensor_parallelism, 
+        prefill_data_parallelism
+    )
     
     ephemeral_storage_resource = ev.get("vllm_common_ephemeral_storage_resource", "")
     decode_ephemeral_storage_nr = ev.get("vllm_modelservice_decode_ephemeral_storage_nr", "")
@@ -330,7 +332,9 @@ decode:
     data: {decode_data_parallelism}
     tensor: {decode_tensor_parallelism}
   annotations:
-      {add_annotations()}
+      {functions_add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")}
+  podAnnotations:
+      {add_pod_annotations("LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS")}
   {add_config(decode_extra_pod_config, 2, "extraConfig")}
   containers:
   - name: "vllm"
@@ -339,25 +343,28 @@ decode:
     modelCommand: {decode_model_command}
     {add_command(decode_model_command)}
     args: |
-{add_command_line_options(decode_extra_args)}
+      {add_command_line_options(decode_extra_args).replace('        - |', '').strip()}
     env:
       - name: VLLM_NIXL_SIDE_CHANNEL_HOST
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
       {add_additional_env_to_yaml(envvars_to_yaml)}
+    ports:
+      - containerPort: {decode_inference_port}
+      - containerPort: 5557
     resources:
       limits:
         memory: {decode_cpu_mem}
         cpu: "{decode_cpu_nr}"
         {filter_empty_resource(ephemeral_storage_resource, decode_ephemeral_storage_nr)}
-        {filter_empty_resource(accelerator_resource, decode_accelerator_nr)}
+        {filter_empty_resource(accelerator_resource, str(decode_accelerator_count))}
         {filter_empty_resource(decode_network_resource, decode_network_nr)}
       requests:
         memory: {decode_cpu_mem}
         cpu: "{decode_cpu_nr}"
         {filter_empty_resource(ephemeral_storage_resource, decode_ephemeral_storage_nr)}
-        {filter_empty_resource(accelerator_resource, decode_accelerator_nr)}
+        {filter_empty_resource(accelerator_resource, str(decode_accelerator_count))}
         {filter_empty_resource(decode_network_resource, decode_network_nr)}
     extraConfig:
       startupProbe:
@@ -394,7 +401,9 @@ prefill:
     data: {prefill_data_parallelism}
     tensor: {prefill_tensor_parallelism}
   annotations:
-      {add_annotations()}
+      {functions_add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")}
+  podAnnotations:
+      {add_pod_annotations("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS")}
   {add_config(prefill_extra_pod_config, 2, "extraConfig")}
   containers:
   - name: "vllm"
@@ -403,7 +412,7 @@ prefill:
     modelCommand: {prefill_model_command}
     {add_command(prefill_model_command)}
     args: |
-{add_command_line_options(prefill_extra_args)}
+      {add_command_line_options(prefill_extra_args).replace('        - |', '').strip()}
     env:
       - name: VLLM_IS_PREFILL
         value: "1"
@@ -412,18 +421,21 @@ prefill:
           fieldRef:
             fieldPath: status.podIP
       {add_additional_env_to_yaml(envvars_to_yaml)}
+    ports:
+      - containerPort: {common_inference_port}
+      - containerPort: 5557
     resources:
       limits:
         memory: {prefill_cpu_mem}
         cpu: "{prefill_cpu_nr}"
         {filter_empty_resource(ephemeral_storage_resource, prefill_ephemeral_storage_nr)}
-        {filter_empty_resource(accelerator_resource, prefill_accelerator_nr)}
+        {filter_empty_resource(accelerator_resource, str(prefill_accelerator_count))}
         {filter_empty_resource(prefill_network_resource, prefill_network_nr)}
       requests:
         memory: {prefill_cpu_mem}
         cpu: "{prefill_cpu_nr}"
         {filter_empty_resource(ephemeral_storage_resource, prefill_ephemeral_storage_nr)}
-        {filter_empty_resource(accelerator_resource, prefill_accelerator_nr)}
+        {filter_empty_resource(accelerator_resource, str(prefill_accelerator_count))}
         {filter_empty_resource(prefill_network_resource, prefill_network_nr)}
     extraConfig:
       startupProbe:
