@@ -15,7 +15,8 @@ sys.path.insert(0, str(project_root))
 from functions import (
     announce, llmdbench_execute_cmd, model_attribute, extract_environment,
     check_storage_class, check_affinity, environment_variable_to_dict, render_string,
-    get_image, add_command_line_options, get_accelerator_nr, add_annotations as functions_add_annotations
+    get_image, add_command_line_options, get_accelerator_nr, add_annotations as functions_add_annotations,
+    add_additional_env_to_yaml as functions_add_additional_env_to_yaml, add_config as functions_add_config
 )
 
 
@@ -56,54 +57,7 @@ def add_command(model_command: str) -> str:
 # Note: add_command_line_options is now imported from functions.py
 
 
-def add_additional_env_to_yaml(envvars_to_yaml: str) -> str:
-    """
-    Generate environment variables YAML section.
-    """
-    if not envvars_to_yaml:
-        return ""
-    
-    lines = []
-    for envvar in envvars_to_yaml.split(","):
-        envvar = envvar.strip()
-        if envvar and envvar.startswith("LLMDBENCH_"):
-            # Remove LLMDBENCH_VLLM_STANDALONE_ prefix for name
-            name = envvar.replace("LLMDBENCH_VLLM_STANDALONE_", "")
-            value = os.environ.get(envvar, "")
-            lines.append(f"      - name: {name}")
-            lines.append(f"        value: \"{value}\"")
-    
-    return "\n".join(lines) if lines else ""
 
-
-def add_config(config_data: str, indent_spaces: int, label: str = "") -> str:
-    """
-    Add configuration with proper indentation and optional label.
-    """
-    if not config_data or config_data == "#no____config":
-        return ""
-    
-    spaces = " " * indent_spaces
-    
-    result = ""
-    if label:
-        result = f"{label}:\n"
-    
-    if config_data == "[]":
-        return f"{result}{config_data}"
-    
-    # If it's a file path, read the file content
-    if config_data.startswith("/") and Path(config_data).exists():
-        with open(config_data, 'r') as f:
-            content = f.read()
-        lines = content.split('\n')
-        indented_lines = [f"{spaces}{line}" for line in lines]
-        return result + "\n".join(indented_lines)
-    
-    # Otherwise treat as direct content
-    lines = config_data.split('\n')
-    indented_lines = [f"{spaces}{line}" for line in lines]
-    return result + "\n".join(indented_lines)
 
 
 def generate_ms_rules_yaml(ev: dict, model_number: int) -> str:
@@ -335,21 +289,21 @@ decode:
       {functions_add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")}
   podAnnotations:
       {add_pod_annotations("LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS")}
-  {add_config(decode_extra_pod_config, 2, "extraConfig")}
+  {functions_add_config(decode_extra_pod_config, 2, "extraConfig")}
   containers:
   - name: "vllm"
     mountModelVolume: {str(mount_model_volume).lower()}
     image: "{main_image}"
     modelCommand: {decode_model_command}
     {add_command(decode_model_command)}
-    args: |
-      {add_command_line_options(decode_extra_args).replace('        - |', '').strip()}
+    args:
+      {add_command_line_options(decode_extra_args)}
     env:
       - name: VLLM_NIXL_SIDE_CHANNEL_HOST
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      {add_additional_env_to_yaml(envvars_to_yaml)}
+      {functions_add_additional_env_to_yaml(envvars_to_yaml)}
     ports:
       - containerPort: {decode_inference_port}
       - containerPort: 5557
@@ -386,9 +340,9 @@ decode:
           port: 8200
         failureThreshold: 3
         periodSeconds: 5
-    {add_config(decode_extra_container_config, 6)}
-    volumeMounts: {add_config(decode_extra_volume_mounts, 4)}
-  volumes: {add_config(decode_extra_volumes, 2)}
+    {functions_add_config(decode_extra_container_config, 6)}
+    volumeMounts: {functions_add_config(decode_extra_volume_mounts, 4)}
+  volumes: {functions_add_config(decode_extra_volumes, 2)}
 
 prefill:
   create: {prefill_create}
@@ -404,15 +358,15 @@ prefill:
       {functions_add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")}
   podAnnotations:
       {add_pod_annotations("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS")}
-  {add_config(prefill_extra_pod_config, 2, "extraConfig")}
+  {functions_add_config(prefill_extra_pod_config, 2, "extraConfig")}
   containers:
   - name: "vllm"
     mountModelVolume: {str(mount_model_volume).lower()}
     image: "{main_image}"
     modelCommand: {prefill_model_command}
     {add_command(prefill_model_command)}
-    args: |
-      {add_command_line_options(prefill_extra_args).replace('        - |', '').strip()}
+    args:
+      {add_command_line_options(prefill_extra_args)}
     env:
       - name: VLLM_IS_PREFILL
         value: "1"
@@ -420,7 +374,7 @@ prefill:
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      {add_additional_env_to_yaml(envvars_to_yaml)}
+      {functions_add_additional_env_to_yaml(envvars_to_yaml)}
     ports:
       - containerPort: {common_inference_port}
       - containerPort: 5557
@@ -457,9 +411,9 @@ prefill:
           port: {common_inference_port}
         failureThreshold: 3
         periodSeconds: 5
-    {add_config(prefill_extra_container_config, 6)}
-    volumeMounts: {add_config(prefill_extra_volume_mounts, 4)}
-  volumes: {add_config(prefill_extra_volumes, 2)}
+    {functions_add_config(prefill_extra_container_config, 6)}
+    volumeMounts: {functions_add_config(prefill_extra_volume_mounts, 4)}
+  volumes: {functions_add_config(prefill_extra_volumes, 2)}
 """
     
     return yaml_content
