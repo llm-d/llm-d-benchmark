@@ -121,7 +121,7 @@ def _get_llmd_benchmark_envars() -> dict:
         return {}
 
     if 'LLMDBENCH_DEPLOY_METHODS' not in os.environ:
-        # Cannot determine deployment method
+        sys.stderr.write('Warning: LLMDBENCH_DEPLOY_METHODS undefined, cannot determine deployment method.')
         return {}
 
     if os.environ['LLMDBENCH_DEPLOY_METHODS'] == 'standalone':
@@ -205,6 +205,7 @@ def _get_llmd_benchmark_envars() -> dict:
 
     # Pre-existing deployment, cannot extract details about unknown inference
     # service environment
+    sys.stderr.write('Warning: LLMDBENCH_DEPLOY_METHODS is not "modelservice" or "standalone", cannot extract environmental details.')
     return {}
 
 
