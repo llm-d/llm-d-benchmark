@@ -120,11 +120,14 @@ def _get_llmd_benchmark_envars() -> dict:
         # We are not in a harness pod
         return {}
 
-    #TODO at this point we assume a certain set of environment variables are
-    # defined, and we will crash if this is not the case.
+    if 'LLMDBENCH_DEPLOY_METHODS' not in os.environ:
+        # Cannot determine deployment method
+        return {}
 
     if os.environ['LLMDBENCH_DEPLOY_METHODS'] == 'standalone':
-        config = {
+        # Given a 'standalone' deployment, we expect the following environment
+        # variables to be available
+        return {
             "scenario": {
                 "model": {
                     "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
@@ -157,8 +160,11 @@ def _get_llmd_benchmark_envars() -> dict:
                 }
             },
         }
-    else:
-        config = {
+
+    if os.environ['LLMDBENCH_DEPLOY_METHODS'] == 'modelservice':
+        # Given a 'modelservice' deployment, we expect the following environment
+        # variables to be available
+        return {
             "scenario": {
                 "model": {
                     "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
@@ -197,7 +203,9 @@ def _get_llmd_benchmark_envars() -> dict:
             },
         }
 
-    return config
+    # Pre-existing deployment, cannot extract details about unknown inference
+    # service environment
+    return {}
 
 
 def import_benchmark_report(br_file: str) -> BenchmarkReport:
