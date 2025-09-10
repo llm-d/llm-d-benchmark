@@ -107,6 +107,7 @@ def hardware_specification():
     """
 
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
+    model_config = user_scenario.model_config
 
     # Hardware
     with st.container(border=True):
@@ -137,21 +138,43 @@ def hardware_specification():
             st.caption(f"GPU memory: {gpu_memory} GB")
 
 
-        # Number of GPUs available
-        num_acc_avail = st.number_input("Number accelerators available",
-                                        key=util.SELECTED_GPU_COUNT_AVAIL_KEY,
-                                        value=user_scenario.gpu_count_avail,
-                                        step=1,
-                                        min_value=0,
-                                        on_change=util.on_update_gpu_count,
+        # Parallelism strategies
+        col1, col2 = st.columns(2)
+        possible_tp_values = find_possible_tp(model_config)
+        num_gpu_per_node = col1.select_slider(f"Number accelerators per node to use (tensor parallelism)",
+                                        key=util.SELECTED_GPU_PER_NODE_KEY,
+                                        value=user_scenario.gpu_per_node,
+                                        options=possible_tp_values,
+                                        on_change=util.on_update_gpu_per_node,
                                         )
+        num_nodes = col2.number_input("Number of nodes to use (pipeline parallelism)",
+                                        key=util.SELECTED_NODE_COUNT_KEY,
+                                        value=user_scenario.node_count,
+                                        step=1,
+                                        min_value=1,
+                                        max_value=model_config.num_hidden_layers,
+                                        on_change=util.on_update_node_count,
+                                        )
+        col2.caption(f"Max pipeline parallel size = {model_config.num_hidden_layers} (number of hidden layers)")
+        total_accelerators = user_scenario.get_total_accelerators()
+        st.caption(f"Total number of accelerators available: {total_accelerators}")
 
         # Calculate the minimum number of GPUs required
-        if selected_gpu_name and num_acc_avail:
+        if selected_gpu_name and total_accelerators > 0:
             min_gpu_needed = min_gpu_req(user_scenario.model_info, gpu_memory)
-            if num_acc_avail < min_gpu_needed:
-                st.error(f"Not enough GPU memory to load the model. At least {min_gpu_needed} is required.")
+            if total_accelerators < min_gpu_needed:
+                st.error(f"Not enough GPU memory to load the model. At least {min_gpu_needed} GPUs are required.")
                 return None
+
+        # Enable EP
+        is_moe_model = is_moe(model_config)
+        if is_moe_model:
+            if st.toggle("Enable expert parallelism",
+                    disabled=not is_moe_model,
+                    help="Tensor parallel size is used as the EP size"
+                    ):
+
+                st.caption(f"There will be {round(get_ep_per_gpu(model_config, num_gpu_per_node))} experts per GPU.")
 
 def workload_specification():
     """
@@ -161,6 +184,7 @@ def workload_specification():
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_info = user_scenario.model_info
     model_config = user_scenario.model_config
+    total_gpu_avail = user_scenario.get_total_accelerators()
 
     # Workload
     with st.container(border=True):
@@ -195,11 +219,11 @@ Higher max model length means fewer concurrent requests can be served, \
         max_concurrency = None
         if selected_max_model_len:
             # Calculate max concurrent requests available given GPU count
-            if user_scenario.gpu_count_avail:
+            if total_gpu_avail > 0:
                 max_concurrency = max_concurrent_req(model_info,
                                                     model_config,
                                                     selected_max_model_len,
-                                                    user_scenario.gpu_count_avail,
+                                                    total_gpu_avail,
                                                     user_scenario.get_gpu_memory(db.gpu_specs),
                                                     )
 
@@ -214,8 +238,8 @@ Higher max model length means fewer concurrent requests can be served, \
                     )
 
         # Display missing information messages
-        if user_scenario.gpu_count_avail:
-            if user_scenario.gpu_count_avail < min_gpu_required:
+        if total_gpu_avail > 0:
+            if total_gpu_avail < min_gpu_required:
                 col2.info("Not enough GPU memory available to load model.")
         else:
             col2.info("Input accelerator count above.")

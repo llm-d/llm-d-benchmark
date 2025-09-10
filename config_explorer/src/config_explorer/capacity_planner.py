@@ -3,6 +3,7 @@ Capacity planner provides functionality to estimate the minimum number of GPUs r
 """
 
 import math
+from functools import reduce
 from typing import List
 from huggingface_hub import HfApi, ModelInfo
 from transformers import AutoConfig
@@ -159,3 +160,47 @@ def max_concurrent_req(model_info: ModelInfo,
 
     # If < 0, return 0
     return max(0, math.floor(allocatable_kv_cache_size / per_request_kv_cache))
+
+def acceptable_tensor_parallel_size(model_config: ModelInfo, tp: int) -> bool:
+    """
+    Returns True if the tp size is accepted by the model
+    """
+
+    num_attention_heads = model_config.num_attention_heads
+    return num_attention_heads % tp == 0
+
+def find_possible_tp(model_config: AutoConfig) -> List[int]:
+    """
+    Finds possible values for tp for the given model
+    """
+    num_attention_heads = model_config.num_attention_heads
+
+    factors = set(reduce(
+        list.__add__,
+        ([i, num_attention_heads // i] for i in range(1, int(num_attention_heads**0.5) + 1) if num_attention_heads % i == 0)))
+
+    factors = list(factors)
+    factors.sort()
+    return factors
+
+def is_moe(model_config: AutoConfig) -> bool:
+    """
+    Returns true if model is MoE
+    """
+    indicators = [
+        "n_routed_experts",
+        "n_shared_experts",
+        "num_experts_per_tok",
+    ]
+    for indicator in indicators:
+        if hasattr(model_config, indicator):
+            return True
+    return False
+
+def get_ep_per_gpu(model_config: AutoConfig, tp: int) -> int:
+    """
+    Calculates the number of experts to handle on each GPU
+    """
+
+    experts = model_config.n_routed_experts
+    return experts / tp

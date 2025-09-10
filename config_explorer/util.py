@@ -12,6 +12,8 @@ USER_SCENARIO_KEY = "scenario"
 SELECTED_MODEL_KEY = "selected_model"
 SELECTED_GPU_NAME_KEY = "selected_gpu_name"
 SELECTED_GPU_COUNT_AVAIL_KEY = "selected_gpu_count_avail"
+SELECTED_GPU_PER_NODE_KEY = "selected_gpu_per_node"
+SELECTED_NODE_COUNT_KEY = "selected_node_count"
 SELECTED_MAX_MODEL_LEN_KEY = "selected_max_model_len"
 SELECTED_CONCURRENCY_KEY = "selected_concurrency"
 
@@ -27,6 +29,8 @@ class Scenario:
     # GPU
     gpu_name: str ='NVIDIA-H100-80GB-HBM3'
     gpu_count_avail: int | None = None
+    gpu_per_node: int | None = None
+    node_count: int = 1
 
     def get_model_name(self) -> str:
         if not self.model_name:
@@ -46,6 +50,11 @@ class Scenario:
                     self.gpu_count_avail >= min_gpu_req:
             return True
         return False
+
+    def get_total_accelerators(self) -> int:
+        if not self.gpu_per_node:
+            return 0
+        return self.gpu_per_node * self.node_count
 
 def init_session_state():
     """
@@ -67,6 +76,22 @@ def on_update_gpu_count():
     """
     scenario = st.session_state[USER_SCENARIO_KEY]
     scenario.gpu_count_avail = st.session_state[SELECTED_GPU_COUNT_AVAIL_KEY]
+    scenario.concurrency = None
+
+def on_update_gpu_per_node():
+    """
+    Reset concurrency to none
+    """
+    scenario = st.session_state[USER_SCENARIO_KEY]
+    scenario.gpu_per_node = st.session_state[SELECTED_GPU_PER_NODE_KEY]
+    scenario.concurrency = None
+
+def on_update_node_count():
+    """
+    Reset concurrency to none
+    """
+    scenario = st.session_state[USER_SCENARIO_KEY]
+    scenario.node_count = st.session_state[SELECTED_NODE_COUNT_KEY]
     scenario.concurrency = None
 
 def on_update_model_name():
