@@ -974,27 +974,41 @@ def add_command_line_options(args_string):
             return ""
 
 
-def add_additional_env_to_yaml(env_vars_string):
+def add_additional_env_to_yaml(env_vars_string: str) -> str:
     """
     Generate additional environment variables YAML.
     Equivalent to the bash add_additional_env_to_yaml function.
+
+    Args:
+        env_vars_string (str): Comma separated list of environment variable
+            names to be converted to name/value pairs OR a path to a file
+            containing a YAML snippet to be indented but otherwise not
+            interpreted.
+
+    Returns:
+        str: YAML snippet to be inserted to YAML template.
     """
-    if not env_vars_string:
-        return ""
 
     # Determine indentation based on environment type
     standalone_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE", 0))
     modelservice_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE", 0))
 
     if standalone_active == 1:
-        name_indent = "        "  # 8 spaces
-        value_indent = "          "  # 10 spaces
+        name_indent = " " * 8
+        value_indent = " " * 10
     elif modelservice_active == 1:
-        name_indent = "      "    # 6 spaces
-        value_indent = "        "  # 8 spaces
+        name_indent = " " * 6
+        value_indent = " " * 8
     else:
-        name_indent = "        "  # default 8 spaces
-        value_indent = "          "  # default 10 spaces
+        name_indent = " " * 8
+        value_indent = " " * 10
+
+    if os.access(env_vars_string, os.R_OK):
+        lines = []
+        with open(env_vars_string, 'r') as file:
+            for line in file:
+                lines.append(name_indent + line.rstrip())
+        return '\n'.join(lines)
 
     # Parse environment variables (comma-separated list)
     env_lines = []

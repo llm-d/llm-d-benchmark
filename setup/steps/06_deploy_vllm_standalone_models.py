@@ -78,7 +78,8 @@ def main():
             llmdbench_execute_cmd(
                 actual_cmd=kubectl_deploy_cmd,
                 dry_run=int(ev.get("control_dry_run", 0)),
-                verbose=int(ev.get("control_verbose", 0))
+                verbose=int(ev.get("control_verbose", 0)),
+                fatal=True
             )
 
             # Generate Service YAML
