@@ -42,6 +42,17 @@ def conditional_volume_config(volume_config: str, field_name: str, indent: int =
     return ""
 
 
+def conditional_extra_config(extra_config: str, indent: int = 2, label: str = "extraConfig") -> str:
+    """
+    Generate extraConfig section only if the config is not empty.
+    Skip the field entirely if the config is empty or contains only "{}" or "[]".
+    """
+    config_result = functions_add_config(extra_config, indent, label)
+    if config_result.strip():
+        return config_result.lstrip()  # Remove extra leading whitespace
+    return ""
+
+
 def add_config_prep():
     """
     Set proper defaults for empty configurations.
@@ -49,10 +60,10 @@ def add_config_prep():
     """
     # Set defaults for decode extra configs
     if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG"):
-        os.environ["LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG"] = "#no____config"
+        os.environ["LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG"] = "{}"
     
     if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG"):
-        os.environ["LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG"] = "#no____config"
+        os.environ["LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG"] = "{}"
     
     if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS"):
         os.environ["LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS"] = "[]"
@@ -62,10 +73,10 @@ def add_config_prep():
     
     # Set defaults for prefill extra configs
     if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG"):
-        os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG"] = "#no____config"
+        os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG"] = "{}"
     
     if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG"):
-        os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG"] = "#no____config"
+        os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG"] = "{}"
     
     if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS"):
         os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS"] = "[]"
@@ -279,10 +290,10 @@ decode:
     data: {decode_data_parallelism}
     tensor: {decode_tensor_parallelism}
   annotations:
-      {functions_add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")}
+      {functions_add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS").lstrip()}
   podAnnotations:
-      {functions_add_annotations("LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS")}
-  {functions_add_config(decode_extra_pod_config, 2, "extraConfig")}
+      {functions_add_annotations("LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS").lstrip()}
+  {conditional_extra_config(decode_extra_pod_config, 2, "extraConfig")}
   containers:
   - name: "vllm"
     mountModelVolume: {str(mount_model_volume).lower()}
@@ -290,13 +301,13 @@ decode:
     modelCommand: {decode_model_command}
     {add_command(decode_model_command)}
     args:
-      {add_command_line_options(decode_extra_args)}
+      {add_command_line_options(decode_extra_args).lstrip()}
     env:
       - name: VLLM_NIXL_SIDE_CHANNEL_HOST
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      {functions_add_additional_env_to_yaml(envvars_to_yaml)}
+      {functions_add_additional_env_to_yaml(envvars_to_yaml).lstrip()}
     resources:
       limits:
         memory: {decode_cpu_mem}
@@ -330,7 +341,7 @@ decode:
           port: 8200
         failureThreshold: 3
         periodSeconds: 5
-    {functions_add_config(decode_extra_container_config, 6)}
+    {functions_add_config(decode_extra_container_config, 6).lstrip()}
     {conditional_volume_config(decode_extra_volume_mounts, "volumeMounts", 4)}
   {conditional_volume_config(decode_extra_volumes, "volumes", 2)}
 
@@ -345,10 +356,10 @@ prefill:
     data: {prefill_data_parallelism}
     tensor: {prefill_tensor_parallelism}
   annotations:
-      {functions_add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")}
+      {functions_add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS").lstrip()}
   podAnnotations:
-      {functions_add_annotations("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS")}
-  {functions_add_config(prefill_extra_pod_config, 2, "extraConfig")}
+      {functions_add_annotations("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS").lstrip()}
+  {conditional_extra_config(prefill_extra_pod_config, 2, "extraConfig")}
   containers:
   - name: "vllm"
     mountModelVolume: {str(mount_model_volume).lower()}
@@ -356,7 +367,7 @@ prefill:
     modelCommand: {prefill_model_command}
     {add_command(prefill_model_command)}
     args:
-      {add_command_line_options(prefill_extra_args)}
+      {add_command_line_options(prefill_extra_args).lstrip()}
     env:
       - name: VLLM_IS_PREFILL
         value: "1"
@@ -364,7 +375,7 @@ prefill:
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      {functions_add_additional_env_to_yaml(envvars_to_yaml)}
+      {functions_add_additional_env_to_yaml(envvars_to_yaml).lstrip()}
     resources:
       limits:
         memory: {prefill_cpu_mem}
@@ -398,7 +409,7 @@ prefill:
           port: {common_inference_port}
         failureThreshold: 3
         periodSeconds: 5
-    {functions_add_config(prefill_extra_container_config, 6)}
+    {functions_add_config(prefill_extra_container_config, 6).lstrip()}
     {conditional_volume_config(prefill_extra_volume_mounts, "volumeMounts", 4)}
   {conditional_volume_config(prefill_extra_volumes, "volumes", 2)}
 """
