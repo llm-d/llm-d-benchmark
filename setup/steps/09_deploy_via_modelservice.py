@@ -2,9 +2,7 @@
 
 import os
 import sys
-import yaml
 from pathlib import Path
-from jinja2 import Template
 
 # Add project root to Python path
 current_file = Path(__file__).resolve()
@@ -14,7 +12,7 @@ sys.path.insert(0, str(project_root))
 # Import from functions.py
 from functions import (
     announce, llmdbench_execute_cmd, model_attribute, extract_environment,
-    check_storage_class, check_affinity, environment_variable_to_dict, render_string,
+    check_storage_class, check_affinity, environment_variable_to_dict,
     get_image, add_command_line_options, get_accelerator_nr, add_annotations as functions_add_annotations,
     add_additional_env_to_yaml as functions_add_additional_env_to_yaml, add_config as functions_add_config
 )
@@ -33,38 +31,54 @@ def add_command(model_command: str) -> str:
     return ""
 
 
+def conditional_volume_config(volume_config: str, field_name: str, indent: int = 4) -> str:
+    """
+    Generate volume configuration only if the config is not empty.
+    Skip the field entirely if the volume config is empty or contains only "[]" or "{}".
+    """
+    config_result = functions_add_config(volume_config, indent)
+    if config_result.strip():
+        return f"{field_name}: {config_result}"
+    return ""
+
+
+def add_config_prep():
+    """
+    Set proper defaults for empty configurations.
+    Equivalent to the bash add_config_prep function.
+    """
+    # Set defaults for decode extra configs
+    if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG"):
+        os.environ["LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG"] = "#no____config"
+    
+    if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG"):
+        os.environ["LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG"] = "#no____config"
+    
+    if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS"):
+        os.environ["LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS"] = "[]"
+    
+    if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES"):
+        os.environ["LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES"] = "[]"
+    
+    # Set defaults for prefill extra configs
+    if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG"):
+        os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG"] = "#no____config"
+    
+    if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG"):
+        os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG"] = "#no____config"
+    
+    if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS"):
+        os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS"] = "[]"
+    
+    if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES"):
+        os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES"] = "[]"
+
+
 # Note: add_command_line_options is now imported from functions.py
 
 
 
 
-
-def generate_ms_rules_yaml(ev: dict, model_number: int) -> str:
-    """
-    Generate the ms-rules.yaml content for modelservice routing.
-    
-    Args:
-        ev: Environment variables dictionary
-        model_number: Current model number in processing
-    
-    Returns:
-        YAML content as string
-    """
-    model_list = ev.get("deploy_model_list", "").replace(",", " ").split()
-    
-    # If only one model, create basic routing rule
-    if len([m for m in model_list if m.strip()]) == 1:
-        model_id_label = ev.get("deploy_current_model_id_label", "")
-        return f"""- backendRefs:
-      - group: inference.networking.x-k8s.io
-        kind: InferencePool
-        name: {model_id_label}-gaie
-        port: 8000
-        weight: 1
-"""
-    
-    # For multiple models, return empty (handled differently in bash)
-    return ""
 
 
 def filter_empty_resource(resource_name: str, resource_value: str) -> str:
@@ -74,7 +88,7 @@ def filter_empty_resource(resource_name: str, resource_value: str) -> str:
     """
     if not resource_name or not resource_value:
         return ""
-    return f"        {resource_name}: \"{resource_value}\""
+    return f"{resource_name}: \"{resource_value}\""
 
 
 def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path) -> str:
@@ -283,9 +297,6 @@ decode:
           fieldRef:
             fieldPath: status.podIP
       {functions_add_additional_env_to_yaml(envvars_to_yaml)}
-    ports:
-      - containerPort: {decode_inference_port}
-      - containerPort: 5557
     resources:
       limits:
         memory: {decode_cpu_mem}
@@ -320,8 +331,8 @@ decode:
         failureThreshold: 3
         periodSeconds: 5
     {functions_add_config(decode_extra_container_config, 6)}
-    volumeMounts: {functions_add_config(decode_extra_volume_mounts, 4)}
-  volumes: {functions_add_config(decode_extra_volumes, 2)}
+    {conditional_volume_config(decode_extra_volume_mounts, "volumeMounts", 4)}
+  {conditional_volume_config(decode_extra_volumes, "volumes", 2)}
 
 prefill:
   create: {prefill_create}
@@ -354,9 +365,6 @@ prefill:
           fieldRef:
             fieldPath: status.podIP
       {functions_add_additional_env_to_yaml(envvars_to_yaml)}
-    ports:
-      - containerPort: {common_inference_port}
-      - containerPort: 5557
     resources:
       limits:
         memory: {prefill_cpu_mem}
@@ -391,8 +399,8 @@ prefill:
         failureThreshold: 3
         periodSeconds: 5
     {functions_add_config(prefill_extra_container_config, 6)}
-    volumeMounts: {functions_add_config(prefill_extra_volume_mounts, 4)}
-  volumes: {functions_add_config(prefill_extra_volumes, 2)}
+    {conditional_volume_config(prefill_extra_volume_mounts, "volumeMounts", 4)}
+  {conditional_volume_config(prefill_extra_volumes, "volumes", 2)}
 """
     
     return yaml_content
@@ -550,14 +558,24 @@ def main():
         # Always create directory structure (even in dry-run)
         helm_dir.mkdir(parents=True, exist_ok=True)
         
-        # Generate ms-rules.yaml content first
-        rules_content = generate_ms_rules_yaml(ev, model_number)
+        # Set proper defaults for empty configurations
+        add_config_prep()
+        
+        # Generate ms-rules.yaml content
         rules_file = helm_dir / "ms-rules.yaml"
         
-        # Write empty file first, then write content
-        rules_file.write_text("")
+        # For single model, write routing rule; otherwise empty
         if len([m for m in model_list if m.strip()]) == 1:
+            rules_content = f"""- backendRefs:
+      - group: inference.networking.x-k8s.io
+        kind: InferencePool
+        name: {current_model_id_label}-gaie
+        port: 8000
+        weight: 1
+"""
             rules_file.write_text(rules_content)
+        else:
+            rules_file.write_text("")
         
         
         # Generate ms-values.yaml
