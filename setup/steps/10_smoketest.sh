@@ -6,8 +6,6 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
   pod_string=standalone
   route_string=standalone
   service=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | grep ${pod_string})
-  service_name=$(echo "${service}" | awk '{print $1}')
-  service_ip=$(echo "${service}" | awk '{print $3}')
 else
   pod_string=decode
   route_string=${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway
@@ -15,10 +13,19 @@ else
   if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
     service=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway)
   fi
-
-  service_name=$(echo "${service}" | awk '{print $1}')
-  service_ip=$(echo "${service}" | awk '{print $3}')
 fi
+
+if [[ $(echo $service | wc) -eq 0 ]]; then
+  announce "❌ No service found with string \"${pod_string}\"!"
+  exit 1
+fi
+if [[ $(echo $service | wc) -ne 6 ]]; then
+  announce "❌ Cannot uniquely identify service with string \"${pod_string}\"!"
+  exit 1
+fi
+
+service_name=$(echo "${service}" | awk '{print $1}')
+service_ip=$(echo "${service}" | awk '{print $3}')
 
 for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
