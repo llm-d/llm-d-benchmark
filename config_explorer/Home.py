@@ -16,12 +16,6 @@ def update_gpu_spec():
     """
     st.session_state['scenario'].gpu_spec = st.session_state['gpu_spec'][st.session_state['selected_gpu_spec']]
 
-def update_gpu_count_avail():
-    """
-    Update user selected GPU count in session state
-    """
-    st.session_state['scenario'].gpu_count_avail = st.session_state['selected_gpu_count_avail']
-
 @st.dialog("Register a new accelerator")
 def register_new_accelerator():
     """
@@ -141,13 +135,14 @@ def hardware_specification():
         # Parallelism strategies
         col1, col2 = st.columns(2)
         possible_tp_values = find_possible_tp(model_config)
-        num_gpu_per_node = col1.select_slider(f"Number accelerators per node to use (tensor parallelism)",
+        index = possible_tp_values.index(user_scenario.gpu_per_node) if user_scenario.gpu_per_node else None
+        num_gpu_per_node = col1.selectbox(f"Number accelerators per node to use (tensor parallelism)",
                                         key=util.SELECTED_GPU_PER_NODE_KEY,
-                                        value=user_scenario.gpu_per_node,
+                                        index=index,
                                         options=possible_tp_values,
                                         on_change=util.on_update_gpu_per_node,
                                         )
-        num_nodes = col2.number_input("Number of nodes to use (pipeline parallelism)",
+        num_nodes = col2.number_input("Number of nodes to use",
                                         key=util.SELECTED_NODE_COUNT_KEY,
                                         value=user_scenario.node_count,
                                         step=1,
@@ -159,22 +154,79 @@ def hardware_specification():
         total_accelerators = user_scenario.get_total_accelerators()
         st.caption(f"Total number of accelerators available: {total_accelerators}")
 
+def parallelism_specification():
+    """
+    Parallelism strategies
+    """
+    user_scenario = st.session_state[util.USER_SCENARIO_KEY]
+    model_info = user_scenario.model_info
+    model_config = user_scenario.model_config
+    total_accelerators = user_scenario.get_total_accelerators()
+    gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
+
+    with st.container(border=True):
+        st.write("**Parallelism Strategies**")
+
         # Calculate the minimum number of GPUs required
-        if selected_gpu_name and total_accelerators > 0:
-            min_gpu_needed = min_gpu_req(user_scenario.model_info, gpu_memory)
+        if total_accelerators > 0:
+
+            # Display some useful info
+            col1, col2 = st.columns(2)
+            pp_size = col1.number_input("Pipeline parallel size (usually the number of nodes)",
+                                      min_value=1,
+                                      max_value=model_config.num_hidden_layers,
+                                      key=util.SELECTED_PP_SIZE_KEY,
+                                      value=user_scenario.pp_size,
+                                      help="vLLM handles uneven splits, see the [documentation](https://docs.vllm.ai/en/latest/api/vllm/distributed/index.html#vllm.distributed.get_pp_indices)",
+                                      on_change=util.update_scenario,
+                                      args=[util.SELECTED_PP_SIZE_KEY, "pp_size"]
+                                      )
+
+            dp_size = col1.number_input("Data parallel size (replicas of model)",
+                            min_value=1,
+                            key=util.SELECTED_DP_SIZE_KEY,
+                                      value=user_scenario.dp_size,
+                            on_change=util.update_scenario,
+                            args=[util.SELECTED_DP_SIZE_KEY, "dp_size"]
+                            )
+
+            # Enable EP
+            is_moe_model = is_moe(model_config)
+            help = "EP is not available as an option for non-MoE models."
+            if is_moe_model:
+                help = "Tensor parallel size is used as the EP size."
+
+            enable_ep = col1.toggle("Enable expert parallelism",
+                    disabled=not is_moe_model,
+                    help=help,
+                    )
+            if enable_ep:
+                ep_per_gpu = round(experts_per_gpu(model_config,
+                                                    tp=user_scenario.gpu_per_node,
+                                                    dp=user_scenario.dp_size))
+                st.caption(f"There are a total of {get_num_experts(model_config)} experts for this model. \
+                             There will be ~{ep_per_gpu} experts per GPU. \
+                             Note that vLLM handles uneven splits of experts (see this [PR](https://github.com/vllm-project/vllm/pull/21497)).")
+
+
+            msg = f"""
+- TP size: `{user_scenario.gpu_per_node}`
+- PP size: `{pp_size}`
+- DP size: `{dp_size}`
+"""
+            if enable_ep:
+                msg += f"- EP size: `{dp_size * user_scenario.gpu_per_node}`"
+            col2.success(msg)
+
+            # Calculate min GPU requirements
+            min_gpu_needed = min_gpu_req(user_scenario.model_info, gpu_memory, dp_size=dp_size)
             if total_accelerators < min_gpu_needed:
-                st.error(f"Not enough GPU memory to load the model. At least {min_gpu_needed} GPUs are required.")
+                st.error(f"Not enough GPU memory to load the model. At least {min_gpu_needed} GPUs in total are required.")
                 return None
 
-        # Enable EP
-        is_moe_model = is_moe(model_config)
-        if is_moe_model:
-            if st.toggle("Enable expert parallelism",
-                    disabled=not is_moe_model,
-                    help="Tensor parallel size is used as the EP size"
-                    ):
+        else:
+            st.info("Input hardware availability above.")
 
-                st.caption(f"There will be {round(get_ep_per_gpu(model_config, num_gpu_per_node))} experts per GPU.")
 
 def workload_specification():
     """
@@ -200,7 +252,7 @@ def workload_specification():
 
         col1, col2 = st.columns(2)
 
-        min_gpu_required = min_gpu_req(model_info, user_scenario.get_gpu_memory(db.gpu_specs))
+        min_gpu_required = min_gpu_req(model_info, user_scenario.get_gpu_memory(db.gpu_specs), user_scenario.dp_size)
         model_max_context_len = max_context_len(model_config)
         selected_max_model_len = col1.number_input(
             f"Max model len (max model context length is: {model_max_context_len})",
@@ -225,6 +277,7 @@ Higher max model length means fewer concurrent requests can be served, \
                                                     selected_max_model_len,
                                                     total_gpu_avail,
                                                     user_scenario.get_gpu_memory(db.gpu_specs),
+                                                    dp_size=user_scenario.dp_size
                                                     )
 
         selected_concurrency = col2.number_input("Concurrency",
@@ -263,9 +316,9 @@ def memory_util_chart():
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_info = user_scenario.model_info
     model_config = user_scenario.model_config
-    min_gpu_required = min_gpu_req(model_info, user_scenario.get_gpu_memory(db.gpu_specs))
+    min_gpu_required = min_gpu_req(model_info, user_scenario.get_gpu_memory(db.gpu_specs), dp_size = user_scenario.dp_size)
 
-    # Display GPU + KV pie chart
+    # Display GPU + KV pie chart for cluster
     if user_scenario.can_show_mem_util_chart(min_gpu_required):
         model_size = round(model_memory_req(model_info), 2)
         kv_cache = 0
@@ -278,7 +331,7 @@ def memory_util_chart():
                                     batch_size=user_scenario.concurrency,
                                     )
         kv_cache = round(kv_cache, 2)
-        total = user_scenario.gpu_count_avail * user_scenario.get_gpu_memory(db.gpu_specs)
+        total = user_scenario.get_total_accelerators() * user_scenario.get_gpu_memory(db.gpu_specs)
         free = round(total - model_size - kv_cache, 2)
 
         if free < 0:
@@ -312,15 +365,16 @@ def memory_util_chart():
         ax.legend(
             wedges + [plt.Line2D([0], [0], color="#CCCCCC", lw=10)],  # Add fake handle for total
             legend_labels,
-            title="Storage Breakdown",
+            title="Total GPU Memory Breakdown",
             loc="center left",
             bbox_to_anchor=(1, 0, 0.5, 1)
         )
 
         # Render in Streamlit
-        _, col, _ = st.columns([.5, 1, .5])
-        with col:
+        cols = st.columns([0.5, 1, 0.5])
+        with cols[1]:
             st.pyplot(fig, bbox_inches="tight")
+
 
 if __name__ == '__main__':
 
@@ -343,5 +397,6 @@ if __name__ == '__main__':
     # Get user inputs and show outputs
     model_specification()
     hardware_specification()
+    parallelism_specification()
     workload_specification()
     memory_util_chart()

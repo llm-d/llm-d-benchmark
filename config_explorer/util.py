@@ -17,6 +17,10 @@ SELECTED_NODE_COUNT_KEY = "selected_node_count"
 SELECTED_MAX_MODEL_LEN_KEY = "selected_max_model_len"
 SELECTED_CONCURRENCY_KEY = "selected_concurrency"
 
+## Parallelism strategy keys
+SELECTED_PP_SIZE_KEY = "selected_pp_size"
+SELECTED_DP_SIZE_KEY = "selected_dp_size"
+
 @dataclass
 class Scenario:
     """Scenario stores info about an user scenario in Streamlit"""
@@ -32,6 +36,10 @@ class Scenario:
     gpu_per_node: int | None = None
     node_count: int = 1
 
+    # Parallelism
+    pp_size: int = 1
+    dp_size: int = 1
+
     def get_model_name(self) -> str:
         if not self.model_name:
             self.model_name = 'RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic'
@@ -46,8 +54,8 @@ class Scenario:
     def can_show_mem_util_chart(self, min_gpu_req: int):
         if self.model_name and self.model_info and self.model_config and \
             self.max_model_len and self.concurrency and \
-                self.gpu_name and self.gpu_count_avail and \
-                    self.gpu_count_avail >= min_gpu_req:
+                self.gpu_name and self.get_total_accelerators() and \
+                    self.get_total_accelerators() >= min_gpu_req:
             return True
         return False
 

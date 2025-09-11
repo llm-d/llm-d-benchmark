@@ -66,12 +66,12 @@ def model_memory_req(model_info: ModelInfo) -> int:
     return ((model_params * model_precision_bytes) * 1.2) / (1024 ** 3)
 
 # GPU and KV cache
-def min_gpu_req(model_info: ModelInfo, gpu_memory: int) -> int:
+def min_gpu_req(model_info: ModelInfo, gpu_memory: int, dp_size: int = 1) -> int:
     """
     Calculates the minimum GPU count needed for the model
     """
 
-    model_memory_gb = model_memory_req(model_info)
+    model_memory_gb = model_memory_req(model_info) * dp_size
     return math.ceil(model_memory_gb / gpu_memory)
 
 def get_model_config_from_hf(model_name: str, hf_token: str=None) -> AutoConfig:
@@ -142,12 +142,13 @@ def max_concurrent_req(model_info: ModelInfo,
                         max_model_len: int,
                         available_gpu_count: int,
                         gpu_memory: int,
+                        dp_size: int = 1,
                     ) -> int:
     """
     Calculates the max number of concurrent requests the model can serve with the specified GPUs available
     """
 
-    model_memory = model_memory_req(model_info)
+    model_memory = model_memory_req(model_info) * dp_size
     if model_memory == -1:
         return -1
     per_request_kv_cache = kv_cache_req(model_info,
@@ -190,6 +191,7 @@ def is_moe(model_config: AutoConfig) -> bool:
     indicators = [
         "n_routed_experts",
         "n_shared_experts",
+        "num_experts",
         "num_experts_per_tok",
     ]
     for indicator in indicators:
@@ -197,10 +199,33 @@ def is_moe(model_config: AutoConfig) -> bool:
             return True
     return False
 
-def get_ep_per_gpu(model_config: AutoConfig, tp: int) -> int:
+def get_num_experts(model_config: AutoConfig) -> int | None:
+    """
+    Returns the number of experts or None for non-MoE models
+    """
+
+    if hasattr(model_config, "n_routed_experts"):
+        return model_config.n_routed_experts
+    if hasattr(model_config, "num_experts"):
+        return model_config.num_experts
+    return None
+
+def get_ep_size(tp_size: int, dp_size: int) -> int:
+    """
+    Returns EP size
+    """
+    return tp_size * dp_size
+
+def experts_per_gpu(model_config: AutoConfig,
+                   tp: int,
+                   dp: int=1
+                   ) -> int:
     """
     Calculates the number of experts to handle on each GPU
     """
 
-    experts = model_config.n_routed_experts
-    return experts / tp
+    num_experts = get_num_experts(model_config)
+    ep_size = get_ep_size(tp, dp)
+    if num_experts is None:
+        return 0
+    return (num_experts * dp) / ep_size
