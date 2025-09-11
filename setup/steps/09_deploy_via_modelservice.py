@@ -20,27 +20,6 @@ from functions import (
 )
 
 
-def add_config_prep():
-    """
-    Set up default values for extra pod/container configurations.
-    Equivalent to the bash add_config_prep function.
-    """
-    # Set default values for configuration
-    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG", "#no____config")
-    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG", "#no____config")
-    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS", "[]")
-    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES", "[]")
-    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG", "#no____config")
-    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG", "#no____config")
-    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS", "[]")
-    os.environ.setdefault("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES", "[]")
-
-
-def add_pod_annotations(annotation_var: str) -> str:
-    """
-    Generate podAnnotations YAML section.
-    """
-    return functions_add_annotations(annotation_var)
 
 
 def add_command(model_command: str) -> str:
@@ -170,7 +149,7 @@ def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path
     prefill_cpu_nr = ev.get("vllm_modelservice_prefill_cpu_nr", "")
     
     # Resource configuration
-    accelerator_resource = ev.get("vllm_common_accelerator_resource", "")
+    accelerator_resource = os.environ.get("LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE", "")
     decode_accelerator_nr = ev.get("vllm_modelservice_decode_accelerator_nr", "auto")
     prefill_accelerator_nr = ev.get("vllm_modelservice_prefill_accelerator_nr", "auto")
     
@@ -288,7 +267,7 @@ decode:
   annotations:
       {functions_add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")}
   podAnnotations:
-      {add_pod_annotations("LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS")}
+      {functions_add_annotations("LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS")}
   {functions_add_config(decode_extra_pod_config, 2, "extraConfig")}
   containers:
   - name: "vllm"
@@ -357,7 +336,7 @@ prefill:
   annotations:
       {functions_add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")}
   podAnnotations:
-      {add_pod_annotations("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS")}
+      {functions_add_annotations("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS")}
   {functions_add_config(prefill_extra_pod_config, 2, "extraConfig")}
   containers:
   - name: "vllm"
@@ -580,8 +559,6 @@ def main():
         if len([m for m in model_list if m.strip()]) == 1:
             rules_file.write_text(rules_content)
         
-        # Set up configuration preparation
-        add_config_prep()
         
         # Generate ms-values.yaml
         values_content = generate_ms_values_yaml(ev, mount_model_volume, rules_file)
