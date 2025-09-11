@@ -202,7 +202,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
     validate_model_name ${LLMDBENCH_DEPLOY_CURRENT_MODEL}
 
-    export LLMDBENCH_HARNESS_STACK_NAME=$(echo ${method} | $LLMDBENCH_CONTROL_SCMD 's^modelservice^llm-d^g')-$(model_attribute $model parameters)-$(model_attribute $model type)
+    export LLMDBENCH_HARNESS_STACK_NAME=$(echo ${method} | $LLMDBENCH_CONTROL_SCMD 's^modelservice^llm-d^g')-$(model_attribute $model parameters)-$(model_attribute $model modeltype)
 
     export LLMDBENCH_DEPLOY_CURRENT_TOKENIZER=$(model_attribute $model model)
 

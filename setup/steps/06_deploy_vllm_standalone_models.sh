@@ -175,7 +175,7 @@ spec:
         type: PathPrefix
         value: /
     backendRefs:
-    - name: vllm-standalone-$(model_attribute $model parameters)-vllm-$$(model_attribute $model label)-$(model_attribute $model type)
+    - name: vllm-standalone-$(model_attribute $model parameters)-vllm-$$(model_attribute $model label)-$(model_attribute $model modeltype)
       port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
 EOF
 

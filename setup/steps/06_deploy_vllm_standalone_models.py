@@ -409,7 +409,7 @@ def generate_httproute_yaml(ev, model, model_label):
 
     # Get model attributes for backend reference
     model_parameters = model_attribute(model, "parameters")
-    model_type = model_attribute(model, "type")
+    model_type = model_attribute(model, "modeltype")
 
     httproute_yaml = f"""apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
