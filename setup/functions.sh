@@ -519,6 +519,22 @@ function check_affinity {
 }
 export -f check_affinity
 
+function get_accelerator_nr {
+
+  local accelerator_nr=$1
+  local tp=$2
+  local dp=$3
+
+  if [[ $accelerator_nr != "auto" ]]; then
+    echo $accelerator_nr
+    return 0
+  fi
+
+  # Calculate number of accelerators needed
+  echo $(($tp * $dp))
+}
+export -f get_accelerator_nr
+
 function not_valid_ip {
 
     local  ip=$1

@@ -95,6 +95,9 @@ A (workload) profile is the actual benchmark load specification which includes t
 #### [Experiments](docs/doe.md)
 A file describing a series of parameters - both `standup` and `run` - to be executed automatically. This file follows the "Design of Experiments" (DOE) approach, where each parameter (`factor`) is listed alongside with the target values (`levels`) resulting into a list of combinations (`treatments`).
 
+#### [Configuration Exploration](config_explorer/README.md)
+The configuration explorer is a library that helps find the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements. A "Capacity Planner" is provided as an initial component to help determine if vLLM configuration is feasible for deployment.
+
 ### Dependencies
 
 - [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git)

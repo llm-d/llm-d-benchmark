@@ -286,9 +286,9 @@ class Requests(BaseModel):
     @model_validator(mode='after')
     def check_units(self):
         if self.input_length.units not in units_quantity:
-            raise ValueError(f'Invalid units "{self.input_length.units}", must be one of: {' '.join(units_quantity)}')
+            raise ValueError(f'Invalid units "{self.input_length.units}", must be one of: {" ".join(units_quantity)}')
         if self.output_length.units not in units_quantity:
-            raise ValueError(f'Invalid units "{self.output_length.units}", must be one of: {' '.join(units_quantity)}')
+            raise ValueError(f'Invalid units "{self.output_length.units}", must be one of: {" ".join(units_quantity)}')
         return self
 
 
@@ -324,15 +324,15 @@ class Latency(BaseModel):
     @model_validator(mode='after')
     def check_units(self):
         if self.time_to_first_token.units not in units_time:
-            raise ValueError(f'Invalid units "{self.time_to_first_token.units}", must be one of: {' '.join(units_time)}')
+            raise ValueError(f'Invalid units "{self.time_to_first_token.units}", must be one of: {" ".join(units_time)}')
         if self.normalized_time_per_output_token and self.normalized_time_per_output_token.units not in units_gen_latency:
-            raise ValueError(f'Invalid units "{self.normalized_time_per_output_token.units}", must be one of: {' '.join(units_gen_latency)}')
+            raise ValueError(f'Invalid units "{self.normalized_time_per_output_token.units}", must be one of: {" ".join(units_gen_latency)}')
         if self.time_per_output_token and self.time_per_output_token.units not in units_gen_latency:
-            raise ValueError(f'Invalid units "{self.time_per_output_token.units}", must be one of: {' '.join(units_gen_latency)}')
+            raise ValueError(f'Invalid units "{self.time_per_output_token.units}", must be one of: {" ".join(units_gen_latency)}')
         if self.inter_token_latency and self.inter_token_latency.units not in units_gen_latency:
-            raise ValueError(f'Invalid units "{self.inter_token_latency.units}", must be one of: {' '.join(units_gen_latency)}')
+            raise ValueError(f'Invalid units "{self.inter_token_latency.units}", must be one of: {" ".join(units_gen_latency)}')
         if self.request_latency and self.request_latency.units not in units_time:
-            raise ValueError(f'Invalid units "{self.request_latency.units}", must be one of: {' '.join(units_time)}')
+            raise ValueError(f'Invalid units "{self.request_latency.units}", must be one of: {" ".join(units_time)}')
         return self
 
 
@@ -355,11 +355,11 @@ class Service(BaseModel):
     @model_validator(mode='after')
     def check_units(self):
         if self.batch_size and self.batch_size.units not in units_quantity:
-            raise ValueError(f'Invalid units "{self.batch_size.units}", must be one of: {' '.join(units_quantity)}')
+            raise ValueError(f'Invalid units "{self.batch_size.units}", must be one of: {" ".join(units_quantity)}')
         if self.queue_size and self.queue_size.units not in units_quantity:
-            raise ValueError(f'Invalid units "{self.queue_size.units}", must be one of: {' '.join(units_quantity)}')
+            raise ValueError(f'Invalid units "{self.queue_size.units}", must be one of: {" ".join(units_quantity)}')
         if self.kv_cache_size and self.kv_cache_size.units not in units_quantity:
-            raise ValueError(f'Invalid units "{self.kv_cache_size.units}", must be one of: {' '.join(units_quantity)}')
+            raise ValueError(f'Invalid units "{self.kv_cache_size.units}", must be one of: {" ".join(units_quantity)}')
         return self
 
 
@@ -373,11 +373,11 @@ class MemoryMetrics(BaseModel):
     @model_validator(mode='after')
     def check_units(self):
         if self.consumption and self.consumption.units not in units_memory:
-            raise ValueError(f'Invalid units "{self.consumption.units}", must be one of: {' '.join(units_memory)}')
+            raise ValueError(f'Invalid units "{self.consumption.units}", must be one of: {" ".join(units_memory)}')
         if self.utilization and self.utilization.units not in units_portion:
-            raise ValueError(f'Invalid units "{self.utilization.units}", must be one of: {' '.join(units_portion)}')
+            raise ValueError(f'Invalid units "{self.utilization.units}", must be one of: {" ".join(units_portion)}')
         if self.bandwidth and self.bandwidth.units not in units_bandwidth:
-            raise ValueError(f'Invalid units "{self.bandwidth.units}", must be one of: {' '.join(units_bandwidth)}')
+            raise ValueError(f'Invalid units "{self.bandwidth.units}", must be one of: {" ".join(units_bandwidth)}')
         return self
 
 
@@ -389,7 +389,7 @@ class ComputeMetrics(BaseModel):
     @model_validator(mode='after')
     def check_units(self):
         if self.utilization.units not in units_portion:
-            raise ValueError(f'Invalid units "{self.utilization.units}", must be one of: {' '.join(units_portion)}')
+            raise ValueError(f'Invalid units "{self.utilization.units}", must be one of: {" ".join(units_portion)}')
         return self
 
 
@@ -403,7 +403,7 @@ class AcceleratorMetrics(BaseModel):
     @model_validator(mode='after')
     def check_units(self):
         if self.power and self.power.units not in units_power:
-            raise ValueError(f'Invalid units "{self.power.units}", must be one of: {' '.join(units_power)}')
+            raise ValueError(f'Invalid units "{self.power.units}", must be one of: {" ".join(units_power)}')
         return self
 
 

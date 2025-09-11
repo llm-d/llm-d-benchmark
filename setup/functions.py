@@ -824,8 +824,19 @@ def check_affinity():
         announce(f"❌ Error connecting to Kubernetes: {e}")
         return False
 
+def get_accelerator_nr(accelerator_nr, tp, dp) -> int:
+    """
+    Get the number of accelerator resources needed.
+    Equivalent to the Bash get_accelerator_nr function.
+    """
 
-def add_annotations(varname):
+    if accelerator_nr != 'auto':
+        return int(accelerator_nr)
+
+    # Calculate number of accelerators needed
+    return int(tp) * int(dp)
+
+def add_annotations(varname: str) -> str:
     """
     Generate pod annotations YAML.
     Equivalent to the bash add_annotations function.
@@ -834,6 +845,7 @@ def add_annotations(varname):
     if not annotations:
         return ""
 
+    #FIXME (This should be extracted "ev" dictionary)
     # Determine indentation based on environment type
     standalone_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE", 0))
     modelservice_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE", 0))
@@ -1172,93 +1184,3 @@ def check_affinity():
     except Exception as e:
         announce(f"❌ Error connecting to Kubernetes: {e}")
         return False
-
-
-def add_annotations():
-    """
-    Generate pod annotations YAML.
-    Equivalent to the bash add_annotations function.
-    """
-    annotations = os.environ.get("LLMDBENCH_VLLM_COMMON_ANNOTATIONS", "")
-    if not annotations:
-        return ""
-
-    # Determine indentation based on environment type
-    standalone_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE", 0))
-    modelservice_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE", 0))
-
-    if standalone_active == 1:
-        indent = "        "  # 8 spaces
-    elif modelservice_active == 1:
-        indent = "      "    # 6 spaces
-    else:
-        indent = "        "  # default 8 spaces
-
-    # Parse annotations (comma-separated key:value pairs)
-    annotation_lines = []
-    for entry in annotations.split(","):
-        if ":" in entry:
-            key, value = entry.split(":", 1)
-            annotation_lines.append(f"{indent}{key.strip()}: {value.strip()}")
-
-    return "\n".join(annotation_lines)
-
-
-def add_command_line_options(args_string):
-    """
-    Generate command line options for container args.
-    Equivalent to the bash add_command_line_options function.
-    """
-    current_step = os.environ.get("LLMDBENCH_CURRENT_STEP", "")
-
-    if current_step == "06":
-        # For step 06 (standalone), format as YAML list item
-        if args_string:
-            return f"        - |\n          {args_string}"
-        else:
-            return "        - |"
-    elif current_step == "09":
-        # For step 09 (modelservice), different formatting
-        if args_string:
-            return f"      {args_string}"
-        else:
-            return ""
-    else:
-        return args_string or ""
-
-
-def add_additional_env_to_yaml(env_vars_string):
-    """
-    Generate additional environment variables YAML.
-    Equivalent to the bash add_additional_env_to_yaml function.
-    """
-    if not env_vars_string:
-        return ""
-
-    # Determine indentation based on environment type
-    standalone_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE", 0))
-    modelservice_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE", 0))
-
-    if standalone_active == 1:
-        name_indent = "        "  # 8 spaces
-        value_indent = "          "  # 10 spaces
-    elif modelservice_active == 1:
-        name_indent = "      "    # 6 spaces
-        value_indent = "        "  # 8 spaces
-    else:
-        name_indent = "        "  # default 8 spaces
-        value_indent = "          "  # default 10 spaces
-
-    # Parse environment variables (comma-separated list)
-    env_lines = []
-    for envvar in env_vars_string.split(","):
-        envvar = envvar.strip()
-        if envvar:
-            # Remove LLMDBENCH_VLLM_STANDALONE_ prefix if present
-            clean_name = envvar.replace("LLMDBENCH_VLLM_STANDALONE_", "")
-            env_value = os.environ.get(envvar, "")
-
-            env_lines.append(f"{name_indent}- name: {clean_name}")
-            env_lines.append(f"{value_indent}value: \"{env_value}\"")
-
-    return "\n".join(env_lines)
