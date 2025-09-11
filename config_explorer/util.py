@@ -12,12 +12,14 @@ USER_SCENARIO_KEY = "scenario"
 SELECTED_MODEL_KEY = "selected_model"
 SELECTED_GPU_NAME_KEY = "selected_gpu_name"
 SELECTED_GPU_COUNT_AVAIL_KEY = "selected_gpu_count_avail"
+SELECTED_GPU_MEMORY_UTIL_KEY = "selected_gpu_memory_util"
 SELECTED_GPU_PER_NODE_KEY = "selected_gpu_per_node"
 SELECTED_NODE_COUNT_KEY = "selected_node_count"
 SELECTED_MAX_MODEL_LEN_KEY = "selected_max_model_len"
 SELECTED_CONCURRENCY_KEY = "selected_concurrency"
 
 ## Parallelism strategy keys
+SELECTED_TP_SIZE_KEY = "selected_tp_size"
 SELECTED_PP_SIZE_KEY = "selected_pp_size"
 SELECTED_DP_SIZE_KEY = "selected_dp_size"
 
@@ -32,11 +34,13 @@ class Scenario:
 
     # GPU
     gpu_name: str ='NVIDIA-H100-80GB-HBM3'
-    gpu_count_avail: int | None = None
+    gpu_count_avail: int = 1
     gpu_per_node: int | None = None
     node_count: int = 1
+    gpu_mem_util: float = 0.9
 
     # Parallelism
+    tp_size: int = 1
     pp_size: int = 1
     dp_size: int = 1
 
@@ -54,15 +58,10 @@ class Scenario:
     def can_show_mem_util_chart(self, min_gpu_req: int):
         if self.model_name and self.model_info and self.model_config and \
             self.max_model_len and self.concurrency and \
-                self.gpu_name and self.get_total_accelerators() and \
-                    self.get_total_accelerators() >= min_gpu_req:
+                self.gpu_name and self.gpu_count_avail and \
+                    self.gpu_count_avail >= min_gpu_req:
             return True
         return False
-
-    def get_total_accelerators(self) -> int:
-        if not self.gpu_per_node:
-            return 0
-        return self.gpu_per_node * self.node_count
 
 def init_session_state():
     """

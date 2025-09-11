@@ -66,13 +66,16 @@ def model_memory_req(model_info: ModelInfo) -> int:
     return ((model_params * model_precision_bytes) * 1.2) / (1024 ** 3)
 
 # GPU and KV cache
-def min_gpu_req(model_info: ModelInfo, gpu_memory: int, dp_size: int = 1) -> int:
+def min_gpu_req(model_info: ModelInfo,
+                gpu_memory: int,
+                gpu_mem_util: float=0.9,
+                dp_size: int=1) -> int:
     """
     Calculates the minimum GPU count needed for the model
     """
 
     model_memory_gb = model_memory_req(model_info) * dp_size
-    return math.ceil(model_memory_gb / gpu_memory)
+    return math.ceil(model_memory_gb / (gpu_memory * gpu_mem_util))
 
 def get_model_config_from_hf(model_name: str, hf_token: str=None) -> AutoConfig:
     """
@@ -142,6 +145,7 @@ def max_concurrent_req(model_info: ModelInfo,
                         max_model_len: int,
                         available_gpu_count: int,
                         gpu_memory: int,
+                        gpu_mem_util: float=0.9,
                         dp_size: int = 1,
                     ) -> int:
     """
@@ -156,7 +160,7 @@ def max_concurrent_req(model_info: ModelInfo,
                                         max_model_len,
                                         )
 
-    total_gpu_memory = available_gpu_count * gpu_memory
+    total_gpu_memory = available_gpu_count * (gpu_memory * gpu_mem_util)
     allocatable_kv_cache_size = total_gpu_memory - model_memory
 
     # If < 0, return 0
@@ -183,6 +187,18 @@ def find_possible_tp(model_config: AutoConfig) -> List[int]:
     factors = list(factors)
     factors.sort()
     return factors
+
+def find_possible_tp_cap(model_config: AutoConfig, total_gpus: int) -> List[int]:
+    """
+    Finds possible values for tp given the total number of GPUs available
+    """
+
+    tp_sizes = find_possible_tp(model_config)
+    for i, value in enumerate(tp_sizes):
+        if value > total_gpus:
+            return tp_sizes[:i]
+
+    return tp_sizes
 
 def is_moe(model_config: AutoConfig) -> bool:
     """

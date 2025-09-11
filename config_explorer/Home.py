@@ -127,41 +127,34 @@ def hardware_specification():
             register_new_accelerator()
 
         if selected_gpu_name:
-            # util.update_scenario(util.SELECTED_GPU_NAME_KEY, "gpu_name")
             gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
-            st.caption(f"GPU memory: {gpu_memory} GB")
+            st.caption(f"GPU memory: {gpu_memory} GB, available: {round(gpu_memory * user_scenario.gpu_mem_util, 2)} GB")
 
 
         # Parallelism strategies
-        col1, col2 = st.columns(2)
-        possible_tp_values = find_possible_tp(model_config)
-        index = possible_tp_values.index(user_scenario.gpu_per_node) if user_scenario.gpu_per_node else None
-        num_gpu_per_node = col1.selectbox(f"Number accelerators per node to use (tensor parallelism)",
-                                        key=util.SELECTED_GPU_PER_NODE_KEY,
-                                        index=index,
-                                        options=possible_tp_values,
-                                        on_change=util.on_update_gpu_per_node,
-                                        )
-        num_nodes = col2.number_input("Number of nodes to use",
-                                        key=util.SELECTED_NODE_COUNT_KEY,
-                                        value=user_scenario.node_count,
-                                        step=1,
-                                        min_value=1,
-                                        max_value=model_config.num_hidden_layers,
-                                        on_change=util.on_update_node_count,
-                                        )
-        col2.caption(f"Max pipeline parallel size = {model_config.num_hidden_layers} (number of hidden layers)")
-        total_accelerators = user_scenario.get_total_accelerators()
-        st.caption(f"Total number of accelerators available: {total_accelerators}")
+        col1.number_input(f"Total number of accelerators",
+                            key=util.SELECTED_GPU_COUNT_AVAIL_KEY,
+                            value=user_scenario.gpu_count_avail,
+                            min_value=1,
+                            step=1,
+                            on_change=util.on_update_gpu_count,
+                            )
+        col1.number_input("GPU utilization ratio",
+                            key=util.SELECTED_GPU_MEMORY_UTIL_KEY,
+                            value=user_scenario.gpu_mem_util,
+                            min_value=0.0,
+                            step=0.01,
+                            on_change=util.update_scenario,
+                            args=[util.SELECTED_GPU_MEMORY_UTIL_KEY, "gpu_mem_util"]
+                          )
 
 def parallelism_specification():
     """
     Parallelism strategies
     """
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
-    model_info = user_scenario.model_info
     model_config = user_scenario.model_config
-    total_accelerators = user_scenario.get_total_accelerators()
+    total_accelerators = user_scenario.gpu_count_avail
     gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
 
     with st.container(border=True):
@@ -172,6 +165,16 @@ def parallelism_specification():
 
             # Display some useful info
             col1, col2 = st.columns(2)
+            possible_tp_sizes = find_possible_tp_cap(model_config, total_accelerators)
+            index = possible_tp_sizes.index(user_scenario.tp_size)
+            tp_size = col1.selectbox("Tensor parallel size (capped by number of accelerators available)",
+                                      options=possible_tp_sizes,
+                                      index=index,
+                                      key=util.SELECTED_TP_SIZE_KEY,
+                                      help=f"Must be divisible by the number of attention heads (`{model_config.num_attention_heads}` for this model)",
+                                      on_change=util.update_scenario,
+                                      args=[util.SELECTED_TP_SIZE_KEY, "tp_size"]
+                                      )
             pp_size = col1.number_input("Pipeline parallel size (usually the number of nodes)",
                                       min_value=1,
                                       max_value=model_config.num_hidden_layers,
@@ -202,7 +205,7 @@ def parallelism_specification():
                     )
             if enable_ep:
                 ep_per_gpu = round(experts_per_gpu(model_config,
-                                                    tp=user_scenario.gpu_per_node,
+                                                    tp=user_scenario.tp_size,
                                                     dp=user_scenario.dp_size))
                 st.caption(f"There are a total of {get_num_experts(model_config)} experts for this model. \
                              There will be ~{ep_per_gpu} experts per GPU. \
@@ -210,16 +213,19 @@ def parallelism_specification():
 
 
             msg = f"""
-- TP size: `{user_scenario.gpu_per_node}`
+- TP size: `{tp_size}`
 - PP size: `{pp_size}`
 - DP size: `{dp_size}`
 """
             if enable_ep:
-                msg += f"- EP size: `{dp_size * user_scenario.gpu_per_node}`"
+                msg += f"- EP size: `{dp_size * user_scenario.tp_size}`"
             col2.success(msg)
 
             # Calculate min GPU requirements
-            min_gpu_needed = min_gpu_req(user_scenario.model_info, gpu_memory, dp_size=dp_size)
+            min_gpu_needed = min_gpu_req(user_scenario.model_info,
+                                         gpu_memory,
+                                         user_scenario.gpu_mem_util,
+                                         dp_size=dp_size)
             if total_accelerators < min_gpu_needed:
                 st.error(f"Not enough GPU memory to load the model. At least {min_gpu_needed} GPUs in total are required.")
                 return None
@@ -236,7 +242,7 @@ def workload_specification():
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_info = user_scenario.model_info
     model_config = user_scenario.model_config
-    total_gpu_avail = user_scenario.get_total_accelerators()
+    total_gpu_avail = user_scenario.gpu_count_avail
 
     # Workload
     with st.container(border=True):
@@ -252,7 +258,10 @@ def workload_specification():
 
         col1, col2 = st.columns(2)
 
-        min_gpu_required = min_gpu_req(model_info, user_scenario.get_gpu_memory(db.gpu_specs), user_scenario.dp_size)
+        min_gpu_required = min_gpu_req(model_info,
+                                       user_scenario.get_gpu_memory(db.gpu_specs),
+                                       user_scenario.gpu_mem_util,
+                                       user_scenario.dp_size)
         model_max_context_len = max_context_len(model_config)
         selected_max_model_len = col1.number_input(
             f"Max model len (max model context length is: {model_max_context_len})",
@@ -277,6 +286,7 @@ Higher max model length means fewer concurrent requests can be served, \
                                                     selected_max_model_len,
                                                     total_gpu_avail,
                                                     user_scenario.get_gpu_memory(db.gpu_specs),
+                                                    gpu_mem_util=user_scenario.gpu_mem_util,
                                                     dp_size=user_scenario.dp_size
                                                     )
 
@@ -316,7 +326,10 @@ def memory_util_chart():
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_info = user_scenario.model_info
     model_config = user_scenario.model_config
-    min_gpu_required = min_gpu_req(model_info, user_scenario.get_gpu_memory(db.gpu_specs), dp_size = user_scenario.dp_size)
+    min_gpu_required = min_gpu_req(model_info,
+                                   user_scenario.get_gpu_memory(db.gpu_specs),
+                                   gpu_mem_util=user_scenario.gpu_mem_util,
+                                   dp_size=user_scenario.dp_size)
 
     # Display GPU + KV pie chart for cluster
     if user_scenario.can_show_mem_util_chart(min_gpu_required):
@@ -326,12 +339,12 @@ def memory_util_chart():
         free = 0
 
         kv_cache = kv_cache_req(model_info,
-                                    model_config,
-                                    context_len=user_scenario.max_model_len,
-                                    batch_size=user_scenario.concurrency,
-                                    )
+                                model_config,
+                                context_len=user_scenario.max_model_len,
+                                batch_size=user_scenario.concurrency,
+                                )
         kv_cache = round(kv_cache, 2)
-        total = user_scenario.get_total_accelerators() * user_scenario.get_gpu_memory(db.gpu_specs)
+        total = user_scenario.gpu_count_avail * user_scenario.get_gpu_memory(db.gpu_specs)
         free = round(total - model_size - kv_cache, 2)
 
         if free < 0:
