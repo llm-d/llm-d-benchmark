@@ -47,9 +47,14 @@ def conditional_extra_config(extra_config: str, indent: int = 2, label: str = "e
     Generate extraConfig section only if the config is not empty.
     Skip the field entirely if the config is empty or contains only "{}" or "[]".
     """
-    config_result = functions_add_config(extra_config, indent, label)
+    # Check if config is empty before processing
+    if not extra_config or extra_config.strip() in ["{}", "[]", "#no____config"]:
+        return ""
+    
+    config_result = functions_add_config(extra_config, indent + 2)  # Add extra indent for content
     if config_result.strip():
-        return config_result.lstrip()  # Remove extra leading whitespace
+        spaces = " " * indent
+        return f"{spaces}{label}:\n{config_result}"
     return ""
 
 
