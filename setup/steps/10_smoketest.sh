@@ -1,24 +1,32 @@
 #!/usr/bin/env bash
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
-announce "🔍 Checking if current deployment was successfull..."
+announce "🔍 Checking if current deployment was successful..."
 if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
   pod_string=standalone
   route_string=standalone
   service=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | grep ${pod_string})
-  service_name=$(echo "${service}" | awk '{print $1}')
-  service_ip=$(echo "${service}" | awk '{print $3}')
+  service_type=service
 else
   pod_string=decode
   route_string=${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway
-
-  if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-    service=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway)
-  fi
-
-  service_name=$(echo "${service}" | awk '{print $1}')
-  service_ip=$(echo "${service}" | awk '{print $3}')
+  service=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway)
+  service_type=gateway
 fi
+
+if [[ $(echo $service | wc) -eq 0 ]]; then
+  announce "❌ No $service_type found with string \"${pod_string}\"!"
+  exit 1
+fi
+if [[ $(echo $service | wc) -gt 6 ]]; then
+  # Each gateway line will have 5 words, while each service line will have 6.
+  # If we have more than 6 words, then we know we have more than 1 gateway/service.
+  announce "❌ Cannot uniquely identify $service_type with string \"${pod_string}\"!"
+  exit 1
+fi
+
+service_name=$(echo "${service}" | awk '{print $1}')
+service_ip=$(echo "${service}" | awk '{print $3}')
 
 for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
@@ -46,6 +54,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
       announce "       ✅ Pod ip \"${pod_ip}\" responded successfully ($LLMDBENCH_DEPLOY_CURRENT_MODEL)"
     else
+
       received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${pod_ip} ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT})
 
       if [[ $received_model_name == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then

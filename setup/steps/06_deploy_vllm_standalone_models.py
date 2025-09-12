@@ -13,7 +13,7 @@ sys.path.insert(0, str(project_root))
 from functions import (
     announce, llmdbench_execute_cmd, model_attribute, extract_environment,
     get_image, check_storage_class, check_affinity, add_annotations,
-    add_command_line_options, add_additional_env_to_yaml
+    add_command_line_options, add_additional_env_to_yaml, get_accelerator_nr
 )
 
 
@@ -78,7 +78,8 @@ def main():
             llmdbench_execute_cmd(
                 actual_cmd=kubectl_deploy_cmd,
                 dry_run=int(ev.get("control_dry_run", 0)),
-                verbose=int(ev.get("control_verbose", 0))
+                verbose=int(ev.get("control_verbose", 0)),
+                fatal=True
             )
 
             # Generate Service YAML
@@ -302,7 +303,7 @@ spec:
         - name: LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT
           value: "{ev.get('vllm_standalone_vllm_load_format', '')}"
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG
-          value: "{{}}"
+          value: "{os.environ.get('LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG', '{}')}"
         - name: VLLM_LOGGING_LEVEL
           value: "{ev.get('vllm_standalone_vllm_logging_level', '')}"
         - name: HF_HOME
@@ -338,12 +339,24 @@ spec:
           limits:
             cpu: "{ev.get('vllm_common_cpu_nr', '')}"
             memory: {ev.get('vllm_common_cpu_mem', '')}
-            {ev.get('vllm_common_accelerator_resource', '')}: "{ev.get('vllm_common_accelerator_nr', '')}"
+            {ev.get('vllm_common_accelerator_resource', '')}: "{
+              get_accelerator_nr(
+                ev.get('vllm_common_accelerator_nr', 'auto'),
+                ev.get('vllm_common_tensor_parallelism', 1),
+                ev.get('vllm_common_data_parallelism', 1),
+              )
+            }"
             ephemeral-storage: {ev.get('vllm_standalone_ephemeral_storage', '')}
           requests:
             cpu: "{ev.get('vllm_common_cpu_nr', '')}"
             memory: {ev.get('vllm_common_cpu_mem', '')}
-            {ev.get('vllm_common_accelerator_resource', '')}: "{ev.get('vllm_common_accelerator_nr', '')}"
+            {ev.get('vllm_common_accelerator_resource', '')}: "{
+              get_accelerator_nr(
+                ev.get('vllm_common_accelerator_nr', 'auto'),
+                ev.get('vllm_common_tensor_parallelism', 1),
+                ev.get('vllm_common_data_parallelism', 1),
+              )
+            }"
             ephemeral-storage: {ev.get('vllm_standalone_ephemeral_storage', '')}
         volumeMounts:
         - name: preprocesses
@@ -397,7 +410,7 @@ def generate_httproute_yaml(ev, model, model_label):
 
     # Get model attributes for backend reference
     model_parameters = model_attribute(model, "parameters")
-    model_type = model_attribute(model, "type")
+    model_type = model_attribute(model, "modeltype")
 
     httproute_yaml = f"""apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
