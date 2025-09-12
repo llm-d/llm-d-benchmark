@@ -1007,7 +1007,7 @@ function render_workload_templates {
       treatment_list_dir=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/treatment_list
       if [[ -d $treatment_list_dir ]]; then
         for treatment in $(ls $treatment_list_dir); do
-            workload_output_file_suffix=$(echo ${treatment} | cut -d '_' -f 2 | cut -d '.' -f 1)
+            workload_output_file_suffix=$(echo ${treatment} | cut -d '.' -f 1)
             render_template $workload_template_full_path ${workload_output_file}_${workload_output_file_suffix}.yaml ${treatment_list_dir}/$treatment 0 0
         done
       else

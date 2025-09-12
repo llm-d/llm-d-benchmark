@@ -344,6 +344,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} create configmap $workload_type-profiles --from-file=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       done
 
+      export LLMDBENCH_RUN_EXPERIMENT_ID_PREFIX=""
       for treatment in $(ls ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/*.yaml); do
 
         export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=$(echo $treatment | rev | cut -d '/' -f 1 | rev)
@@ -356,9 +357,12 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           if [ -z "${LLMDBENCH_RUN_EXPERIMENT_ID}" ]; then
             export LLMDBENCH_RUN_EXPERIMENT_ID=$(date +%s)-${tid}
           else
-            export LLMDBENCH_RUN_EXPERIMENT_ID=${LLMDBENCH_RUN_EXPERIMENT_ID}-${tid}
+            if [[ -z $LLMDBENCH_RUN_EXPERIMENT_ID_PREFIX ]]; then
+              export LLMDBENCH_RUN_EXPERIMENT_ID_PREFIX=$LLMDBENCH_RUN_EXPERIMENT_ID
+            fi
+            export LLMDBENCH_RUN_EXPERIMENT_ID=${LLMDBENCH_RUN_EXPERIMENT_ID_PREFIX}-${tid}
           fi
-          # $(echo $tf | $LLMDBENCH_CONTROL_SCMD 's^\.txt^^g')
+
           echo
           cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf | grep -v ^1i# | cut -d '^' -f 3
           echo
@@ -376,6 +380,8 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
         if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
           announce "ℹ️ Skipping \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" creation"
+          mkdir -p ${local_results_dir}
+          mkdir -p ${local_analysis_dir}
         else
           create_harness_pod
 
