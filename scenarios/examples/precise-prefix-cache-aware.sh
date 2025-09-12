@@ -42,7 +42,7 @@ export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
 #export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib
 #export LLMDBENCH_VLLM_COMMON_NETWORK_NR=4
 
-#             Uncomment to use hostNetwork (onlye ONE PODE PER NODE)
+#             Uncomment to use hostNetwork (only ONE PODE PER NODE)
 #export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG=$(mktemp)
 #cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG}
 #   hostNetwork: true
