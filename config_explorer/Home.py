@@ -225,6 +225,7 @@ def parallelism_specification():
             min_gpu_needed = min_gpu_req(user_scenario.model_info,
                                          gpu_memory,
                                          user_scenario.gpu_mem_util,
+                                         tp_size=tp_size,
                                          dp_size=dp_size)
             if total_accelerators < min_gpu_needed:
                 st.error(f"Not enough GPU memory to load the model. At least {min_gpu_needed} GPUs in total are required.")
@@ -261,6 +262,7 @@ def workload_specification():
         min_gpu_required = min_gpu_req(model_info,
                                        user_scenario.get_gpu_memory(db.gpu_specs),
                                        user_scenario.gpu_mem_util,
+                                       user_scenario.tp_size,
                                        user_scenario.dp_size)
         model_max_context_len = max_context_len(model_config)
         selected_max_model_len = col1.number_input(
@@ -329,6 +331,7 @@ def memory_util_chart():
     min_gpu_required = min_gpu_req(model_info,
                                    user_scenario.get_gpu_memory(db.gpu_specs),
                                    gpu_mem_util=user_scenario.gpu_mem_util,
+                                   tp_size=user_scenario.tp_size,
                                    dp_size=user_scenario.dp_size)
 
     # Display GPU + KV pie chart for cluster

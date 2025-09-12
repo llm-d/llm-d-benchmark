@@ -69,10 +69,14 @@ def model_memory_req(model_info: ModelInfo) -> int:
 def min_gpu_req(model_info: ModelInfo,
                 gpu_memory: int,
                 gpu_mem_util: float=0.9,
+                tp_size: int=1,
                 dp_size: int=1) -> int:
     """
     Calculates the minimum GPU count needed for the model
     """
+
+    if dp_size > 1:
+        return tp_size * dp_size
 
     model_memory_gb = model_memory_req(model_info) * dp_size
     return math.ceil(model_memory_gb / (gpu_memory * gpu_mem_util))

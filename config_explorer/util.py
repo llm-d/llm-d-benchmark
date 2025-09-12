@@ -84,6 +84,8 @@ def on_update_gpu_count():
     scenario = st.session_state[USER_SCENARIO_KEY]
     scenario.gpu_count_avail = st.session_state[SELECTED_GPU_COUNT_AVAIL_KEY]
     scenario.concurrency = None
+    scenario.tp_size = 1
+    scenario.dp_size = 1
 
 def on_update_gpu_per_node():
     """
