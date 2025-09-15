@@ -203,22 +203,18 @@ generate_standup_parameter_scenarios $sweeptmpdir $LLMDBENCH_SCENARIO_FULL_PATH 
 announce "ℹ️ A list of tretaments for standup paramaters was generated at \"${sweeptmpdir}\""
 sleep 5
 
-if [[ -d $LLMDBENCH_CONTROL_WORK_DIR ]]; then
-  backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
-  backup_target=$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix
-  announce "Backing up existing working directory \"$LLMDBENCH_CONTROL_WORK_DIR\" --> \"$backup_target\""
-  mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target
-fi
-
 for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
   export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=$sweeptmpdir/setup/treatment_list/$scenario
   sid=$($LLMDBENCH_CONTROL_SCMD -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${scenario%.sh}")  # remove non alphanumeric and .sh
   sid=${sid#treatment_}
   export LLMDBENCH_RUN_EXPERIMENT_ID=$(date +%s)-${sid}
 
+  backup_work_dir $sid 1
+
   $LLMDBENCH_MAIN_DIR/setup/standup.sh
   ec=$?
   if [[ $ec -ne 0 ]]; then
+    backup_work_dir $sid 1
     exit $ec
   fi
   rsync -az --inplace $sweeptmpdir/setup/treatment_list/ $LLMDBENCH_CONTROL_WORK_DIR/setup/treatment_list/
@@ -229,6 +225,7 @@ for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
   $LLMDBENCH_MAIN_DIR/setup/run.sh
   ec=$?
   if [[ $ec -ne 0 ]]; then
+    backup_work_dir $sid 1
     exit $ec
   fi
   echo
@@ -242,6 +239,7 @@ for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
   $LLMDBENCH_MAIN_DIR/setup/teardown.sh
   ec=$?
   if [[ $ec -ne 0 ]]; then
+    backup_work_dir $sid 1
     exit $ec
   fi
   mv $LLMDBENCH_CONTROL_WORK_DIR/ $LLMDBENCH_CONTROL_WORK_DIR.$sid/

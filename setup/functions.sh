@@ -1124,17 +1124,32 @@ function validate_model_name {
 export -f validate_model_name
 
 function backup_work_dir {
-if [[ $LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP -eq 1 ]]; then
-  return 0
-fi
+  local backup_suffix=${1:-$(date +"%Y-%m-%d_%H.%M.%S")}
+  local unconditional=${2:-0}
 
-if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
-  if [[ $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" || $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "e2s.sh" ]]; then
-    backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
-    backup_target=$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix
+  local backup=0
 
-    if [[ $(ls $LLMDBENCH_CONTROL_WORK_DIR/setup/commands | wc -l) -ne 0 ]]; then
-      announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
+  local backup_target=$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix
+
+  if [[ $unconditional -eq 1 ]];
+  then
+    announce "ℹ️  Unconditionally moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
+    local backup=1
+  else
+    if [[ $LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP -eq 1 ]]; then
+      return 0
+    fi
+
+    if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
+      if [[ $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" || $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "e2s.sh" ]]; then
+        if [[ $(ls $LLMDBENCH_CONTROL_WORK_DIR/setup/commands | wc -l) -ne 0 ]]; then
+          announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
+        fi
+        local backup=1
+      fi
+    fi
+
+    if [[ $backup -eq 1 ]]; then
       # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
       mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target
       export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
@@ -1146,6 +1161,5 @@ if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_ST
       echo
     fi
   fi
-fi
 }
 export -f backup_work_dir
