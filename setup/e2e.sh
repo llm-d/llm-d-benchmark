@@ -209,7 +209,7 @@ for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
   sid=${sid#treatment_}
   export LLMDBENCH_RUN_EXPERIMENT_ID=$(date +%s)-${sid}
 
-  backup_work_dir $sid 1
+  backup_work_dir auto 1
 
   $LLMDBENCH_MAIN_DIR/setup/standup.sh
   ec=$?

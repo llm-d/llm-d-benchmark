@@ -1124,8 +1124,12 @@ function validate_model_name {
 export -f validate_model_name
 
 function backup_work_dir {
-  local backup_suffix=${1:-$(date +"%Y-%m-%d_%H.%M.%S")}
+  local backup_suffix=${1:-"auto"}
   local unconditional=${2:-0}
+
+  if [[ $backup_suffix == "auto" ]]; then
+    backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
+  fi
 
   local backup=0
 
@@ -1148,18 +1152,18 @@ function backup_work_dir {
         local backup=1
       fi
     fi
+  fi
 
-    if [[ $backup -eq 1 ]]; then
+  if [[ $backup -eq 1 ]]; then
+    # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
+    mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target
+    export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
+    prepare_work_dir
+    if [[ -f $backup_target/environment/context.ctx ]]; then
       # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
-      mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target
-      export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
-      prepare_work_dir
-      if [[ -f $backup_target/environment/context.ctx ]]; then
-        # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
-        cp -f $backup_target/environment/context.ctx $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
-      fi
-      echo
+      cp -f $backup_target/environment/context.ctx $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
     fi
+    echo
   fi
 }
 export -f backup_work_dir
