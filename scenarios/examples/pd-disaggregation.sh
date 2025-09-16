@@ -1,5 +1,5 @@
 # P/D DISAGGREGATION WELL LIT PATH
-# Based on https://github.com/llm-d-incubation/llm-d-infra/tree/main/quickstart/examples/pd-disaggregation
+# Based on https://github.com/llm-d/llm-d/blob/dev/guides/pd-disaggregation/README.md
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
 # Removed extra volumes metrics-volume and torch-compile-volume; they are not needed for this model and tested hardware.
 # Use LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES to add them if needed.
@@ -41,6 +41,13 @@ export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=128
 #export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/roce_gdr
 #export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib
 #export LLMDBENCH_VLLM_COMMON_NETWORK_NR=4
+
+#             Uncomment to use hostNetwork (only ONE PODE PER NODE)
+#export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG=$(mktemp)
+#cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG}
+#   hostNetwork: true
+#   dnsPolicy: ClusterFirstWithHostNet
+#EOF
 
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML

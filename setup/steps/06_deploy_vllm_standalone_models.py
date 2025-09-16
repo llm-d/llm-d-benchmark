@@ -78,7 +78,8 @@ def main():
             llmdbench_execute_cmd(
                 actual_cmd=kubectl_deploy_cmd,
                 dry_run=int(ev.get("control_dry_run", 0)),
-                verbose=int(ev.get("control_verbose", 0))
+                verbose=int(ev.get("control_verbose", 0)),
+                fatal=True
             )
 
             # Generate Service YAML
@@ -409,7 +410,7 @@ def generate_httproute_yaml(ev, model, model_label):
 
     # Get model attributes for backend reference
     model_parameters = model_attribute(model, "parameters")
-    model_type = model_attribute(model, "type")
+    model_type = model_attribute(model, "modeltype")
 
     httproute_yaml = f"""apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute

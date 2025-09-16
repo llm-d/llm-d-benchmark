@@ -26,11 +26,12 @@ function model_attribute {
   local attribute=$2
 
   local modelid=$(echo $model | cut -d: -f2 | $LLMDBENCH_CONTROL_SCMD -e "s^/^-^g" -e "s^\.^-^g")
-  local modelid_label="$(echo -n $modelid | cut -d '/' -f 1 | cut -c1-8)-$(echo -n "$LLMDBENCH_VLLM_COMMON_NAMESPACE/$modelid" | sha256sum | awk '{print $1}' | cut -c1-8)-$(echo -n $modelid | cut -d '/' -f 2 | rev | cut -c1-8 | rev)"
+  local SHA256CMD=$(type -p gsha256sum || type -p sha256sum)
+  local modelid_label="$(echo -n $modelid | cut -d '/' -f 1 | cut -c1-8)-$(echo -n "$LLMDBENCH_VLLM_COMMON_NAMESPACE/$modelid" | $SHA256CMD | awk '{print $1}' | cut -c1-8)-$(echo -n $modelid | cut -d '/' -f 2 | rev | cut -c1-8 | rev)"
 
   local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
   local provider=$(echo $model | cut -d '/' -f 1)
-  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision|opt")
+  local modeltype=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision|opt" || echo base)
   local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b|[0-9].*m" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^')
   local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" |  $LLMDBENCH_CONTROL_SCMD -e "s/$parameters//g" | cut -d '.' -f 1)
   if [[ -z $majorversion ]]; then
@@ -1006,7 +1007,7 @@ function render_workload_templates {
       treatment_list_dir=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/treatment_list
       if [[ -d $treatment_list_dir ]]; then
         for treatment in $(ls $treatment_list_dir); do
-            workload_output_file_suffix=$(echo ${treatment} | cut -d '_' -f 2 | cut -d '.' -f 1)
+            workload_output_file_suffix=$(echo ${treatment} | cut -d '.' -f 1)
             render_template $workload_template_full_path ${workload_output_file}_${workload_output_file_suffix}.yaml ${treatment_list_dir}/$treatment 0 0
         done
       else
@@ -1123,28 +1124,46 @@ function validate_model_name {
 export -f validate_model_name
 
 function backup_work_dir {
-if [[ $LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP -eq 1 ]]; then
-  return 0
-fi
+  local backup_suffix=${1:-"auto"}
+  local unconditional=${2:-0}
 
-if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
-  if [[ $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" || $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "e2s.sh" ]]; then
+  if [[ $backup_suffix == "auto" ]]; then
     backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
-    backup_target=$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix
+  fi
 
-    if [[ $(ls $LLMDBENCH_CONTROL_WORK_DIR/setup/commands | wc -l) -ne 0 ]]; then
-      announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
-      # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
-      mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target
-      export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
-      prepare_work_dir
-      if [[ -f $backup_target/environment/context.ctx ]]; then
-        # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
-        cp -f $backup_target/environment/context.ctx $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
+  local backup=0
+
+  local backup_target=$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix
+
+  if [[ $unconditional -eq 1 ]];
+  then
+    announce "ℹ️  Unconditionally moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
+    local backup=1
+  else
+    if [[ $LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP -eq 1 ]]; then
+      return 0
+    fi
+
+    if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
+      if [[ $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" || $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "e2s.sh" ]]; then
+        if [[ $(ls $LLMDBENCH_CONTROL_WORK_DIR/setup/commands | wc -l) -ne 0 ]]; then
+          announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
+        fi
+        local backup=1
       fi
-      echo
     fi
   fi
-fi
+
+  if [[ $backup -eq 1 ]]; then
+    # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
+    mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target
+    export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
+    prepare_work_dir
+    if [[ -f $backup_target/environment/context.ctx ]]; then
+      # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
+      cp -f $backup_target/environment/context.ctx $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
+    fi
+    echo
+  fi
 }
 export -f backup_work_dir

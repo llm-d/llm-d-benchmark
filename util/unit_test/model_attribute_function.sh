@@ -30,7 +30,7 @@ model_list="meta-llama/Llama-3.2-3B-Instruct RedHatAI/Llama-3.3-70B-Instruct-FP8
 for i in $model_list
 do
   echo "--------------------------------------------------------------------------------------------------------"
-  for j in model modelid modelid_label modelcomponents provider type parameters majorversion kind label folder as_label
+  for j in model modelid modelid_label modelcomponents provider modeltype parameters majorversion kind label folder as_label
   do
     k=$(python3 -c "import sys; sys.path.append(\"$LLMDBENCH_MAIN_DIR/setup\"); import functions; print(functions.model_attribute(\"$i\", \"$j\"))")
     printf "%-15s %-45s %-50s\n" "$j" "| $(model_attribute $i $j)" "| $k"
@@ -41,6 +41,6 @@ for method in modelservice standalone
 do
   for model in $model_list
   do
-    echo "$(echo ${method} | $LLMDBENCH_CONTROL_SCMD 's^modelservice^llm-d^g')-$(model_attribute $model parameters)-$(model_attribute $model type)"
+    echo "$(echo ${method} | $LLMDBENCH_CONTROL_SCMD 's^modelservice^llm-d^g')-$(model_attribute $model parameters)-$(model_attribute $model modeltype)"
   done
 done

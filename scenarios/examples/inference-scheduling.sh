@@ -43,6 +43,13 @@ export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
 #export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib
 #export LLMDBENCH_VLLM_COMMON_NETWORK_NR=4
 
+#             Uncomment to use hostNetwork (only ONE PODE PER NODE)
+#export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG=$(mktemp)
+#cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG}
+#   hostNetwork: true
+#   dnsPolicy: ClusterFirstWithHostNet
+#EOF
+
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 - name: UCX_TLS
@@ -55,6 +62,8 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
       fieldPath: status.podIP
 - name: VLLM_LOGGING_LEVEL
   value: DEBUG
+- name: NCCL_DEBUG
+  value: INFO
 - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
   value: "1"
 EOF
@@ -88,7 +97,6 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS="[\
 --enforce-eager____\
 --block-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE____\
 --kv-transfer-config____'{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}'____\
---tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM____\
 --disable-log-requests____\
 --disable-uvicorn-access-log____\
 --max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN\
