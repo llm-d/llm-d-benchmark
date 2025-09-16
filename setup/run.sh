@@ -288,7 +288,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         fi
       fi
 
-      announce "🔍 Trying to detect the model name served by the stack..."
+      announce "🔍 Trying to detect the model name served by the stack ($LLMDBENCH_HARNESS_STACK_ENDPOINT_URL)..."
       if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
         announce "ℹ️ Stack model detected is \"mock\""
       else
