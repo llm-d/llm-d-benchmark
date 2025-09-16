@@ -65,21 +65,6 @@ def model_memory_req(model_info: ModelInfo) -> int:
     # Then convert to GB
     return ((model_params * model_precision_bytes) * 1.2) / (1024 ** 3)
 
-# GPU and KV cache
-def min_gpu_req(model_info: ModelInfo,
-                gpu_memory: int,
-                gpu_mem_util: float=0.9,
-                tp_size: int=1,
-                dp_size: int=1) -> int:
-    """
-    Calculates the minimum GPU count needed for the model
-    """
-
-    if dp_size > 1:
-        return tp_size * dp_size
-
-    model_memory_gb = model_memory_req(model_info) * dp_size
-    return math.ceil(model_memory_gb / (gpu_memory * gpu_mem_util))
 
 def get_model_config_from_hf(model_name: str, hf_token: str=None) -> AutoConfig:
     """
@@ -170,14 +155,6 @@ def max_concurrent_req(model_info: ModelInfo,
     # If < 0, return 0
     return max(0, math.floor(allocatable_kv_cache_size / per_request_kv_cache))
 
-def acceptable_tensor_parallel_size(model_config: ModelInfo, tp: int) -> bool:
-    """
-    Returns True if the tp size is accepted by the model
-    """
-
-    num_attention_heads = model_config.num_attention_heads
-    return num_attention_heads % tp == 0
-
 def find_possible_tp(model_config: AutoConfig) -> List[int]:
     """
     Finds possible values for tp for the given model
@@ -192,17 +169,46 @@ def find_possible_tp(model_config: AutoConfig) -> List[int]:
     factors.sort()
     return factors
 
-def find_possible_tp_cap(model_config: AutoConfig, total_gpus: int) -> List[int]:
+def available_gpu_memory(memory: int, gpu_utilization: float=0.9) -> float:
     """
-    Finds possible values for tp given the total number of GPUs available
+    Returns the available GPU memory
     """
 
-    tp_sizes = find_possible_tp(model_config)
-    for i, value in enumerate(tp_sizes):
-        if value > total_gpus:
-            return tp_sizes[:i]
+    return memory * gpu_utilization
 
-    return tp_sizes
+def gpus_required(tp: int, pp: int, dp: int) -> int:
+    """
+    Determines the number of GPUs required based on parallelism strategies
+    """
+
+    return tp * pp * dp
+
+def per_gpu_model_memory_required(model_info: ModelInfo, tp: int = 1, pp: int = 1) -> int:
+    """
+    Calculates model memory requirement for each GPU
+    """
+
+    model_memory = model_memory_req(model_info)
+    return model_memory / (tp * pp)
+
+def per_gpu_memory_required(model_info: ModelInfo,
+                        model_config: AutoConfig,
+                        max_model_len: int,
+                        max_concurrency: int,
+                        tp: int = 1,
+                        pp: int = 1,
+                        ) -> int:
+    """
+    Determines the minimum per-GPU memory requirement for loading the model and serving the max concurrent request
+    """
+
+    per_gpu_model_mem = per_gpu_model_memory_required(model_info, tp, pp)
+    per_request_kv_cache_memory = kv_cache_req(model_info,
+                                        model_config,
+                                        max_model_len,
+                                        max_concurrency)
+
+    return per_gpu_model_mem + per_request_kv_cache_memory
 
 def is_moe(model_config: AutoConfig) -> bool:
     """
@@ -230,14 +236,15 @@ def get_num_experts(model_config: AutoConfig) -> int | None:
         return model_config.num_experts
     return None
 
-def get_ep_size(tp_size: int, dp_size: int) -> int:
+def get_ep_size(tp_size: int, pp_size: int, dp_size: int) -> int:
     """
     Returns EP size
     """
-    return tp_size * dp_size
+    return tp_size * pp_size * dp_size
 
 def experts_per_gpu(model_config: AutoConfig,
-                   tp: int,
+                   tp: int=1,
+                   pp: int=1,
                    dp: int=1
                    ) -> int:
     """
@@ -245,7 +252,7 @@ def experts_per_gpu(model_config: AutoConfig,
     """
 
     num_experts = get_num_experts(model_config)
-    ep_size = get_ep_size(tp, dp)
+    ep_size = get_ep_size(tp, pp, dp)
     if num_experts is None:
         return 0
     return (num_experts * dp) / ep_size
