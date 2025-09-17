@@ -53,6 +53,9 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
         name: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
         port: 8000
         weight: 1
+      timeouts:
+        backendRequest: 0s
+        request: 0s
 EOF
     fi
 
@@ -93,6 +96,9 @@ routing:
         name: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
         port: 8000
         weight: 1
+      timeouts:
+        backendRequest: 0s
+        request: 0s
       matches:
       - path:
           type: PathPrefix
