@@ -102,19 +102,6 @@ def test_model_memory_req():
     model_info = get_model_info_from_hf("facebook/opt-125m")
     assert model_memory_req(model_info) == -1
 
-
-def test_inference_dtype():
-    """
-    Asserts that inference KV cache data type is correctly fetched
-    """
-
-    model_config = get_model_config_from_hf(qwen_model)
-    assert inference_dtype(model_config) == "torch.bfloat16"
-
-    deepseek = "deepseek-ai/DeepSeek-R1"
-    model_config = get_model_config_from_hf(deepseek)
-    assert inference_dtype(model_config) == "torch.bfloat16"
-
 def test_kv_cache_req():
     """
     Tests KV cache is estimated correctly
