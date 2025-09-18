@@ -148,3 +148,9 @@ def on_update_max_model_len():
     scenario = st.session_state[USER_SCENARIO_KEY]
     scenario.max_model_len = st.session_state[SELECTED_MAX_MODEL_LEN_KEY]
     scenario.concurrency = 1
+
+def pretty_round(num):
+    """
+    Pretty round to two digits
+    """
+    return round(num, 2)

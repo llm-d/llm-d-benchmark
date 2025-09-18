@@ -198,31 +198,25 @@ def kv_cache_req(model_info: ModelInfo,
     kv_cache_size_gb =  kv_cache_size / (1024 ** 3)
     return kv_cache_size_gb
 
-def max_concurrent_req(model_info: ModelInfo,
+def max_concurrent_requests(model_info: ModelInfo,
                         model_config: AutoConfig,
                         max_model_len: int,
-                        available_gpu_count: int,
                         gpu_memory: int,
                         gpu_mem_util: float=0.9,
-                        dp_size: int=1,
+                        tp: int=1,
+                        pp: int=1,
+                        dp: int=1,
                     ) -> int:
-    """
-    Calculates the max number of concurrent requests the model can serve with the specified GPUs available
-    """
 
-    model_memory = model_memory_req(model_info) * dp_size
-    if model_memory == -1:
-        return -1
-    per_request_kv_cache = kv_cache_req(model_info,
-                                        model_config,
-                                        max_model_len,
-                                        )
+    # Find allocatable memory for KV cache
+    gpu_counts = gpus_required(tp, pp, dp)
+    avail_gpu_mem = available_gpu_memory(gpu_memory, gpu_mem_util) * gpu_counts
+    model_memory = model_memory_req(model_info) * dp
+    kv_cache_allocatable_memory = avail_gpu_mem - model_memory
 
-    total_gpu_memory = available_gpu_count * (gpu_memory * gpu_mem_util)
-    allocatable_kv_cache_size = total_gpu_memory - model_memory
-
-    # If < 0, return 0
-    return max(0, math.floor(allocatable_kv_cache_size / per_request_kv_cache))
+    # Find kv cache requirement for one request of max-model-len
+    per_request_kv_cache_req = kv_cache_req(model_info, model_config, max_model_len)
+    return max(0, math.floor(kv_cache_allocatable_memory / per_request_kv_cache_req))
 
 def find_possible_tp(model_config: AutoConfig) -> List[int]:
     """
@@ -276,8 +270,10 @@ def per_gpu_memory_required(model_info: ModelInfo,
                                         model_config,
                                         max_model_len,
                                         max_concurrency)
+    per_request_kv_cache_memory_per_gpu = per_request_kv_cache_memory / (tp * pp)
 
-    return per_gpu_model_mem + per_request_kv_cache_memory
+
+    return per_gpu_model_mem + per_request_kv_cache_memory_per_gpu
 
 def is_moe(model_config: AutoConfig) -> bool:
     """

@@ -105,7 +105,7 @@ def model_specification():
 
                 data = {
                     "Data type": data_types,
-                    "Precision in bytes": bytes_list,
+                    "Size in bytes": bytes_list,
                     "Number of parameters": params,
                     "Memory in GB (params x bytes)": memory_req,
                 }
@@ -116,117 +116,9 @@ def model_specification():
         else:
             return None
 
-def hardware_specification():
-    """
-    Get hardware inputs like name and number of accelerators available
-    """
-
-    user_scenario = st.session_state[util.USER_SCENARIO_KEY]
-    model_info = user_scenario.model_info
-    model_config = user_scenario.model_config
-    tp = user_scenario.tp_size
-    pp = user_scenario.pp_size
-
-    # Hardware
-    with st.container(border=True):
-        st.write("**Hardware Specification**")
-        st.caption("Identify suitable accelerators for serving the model based on parallelism optimization and workload.")
-
-        if model_config is None:
-            st.warning("Model config not found.")
-            return None
-
-        col1, col2 = st.columns([0.7, 0.3])
-
-        index = 0
-        if user_scenario.gpu_name in db.gpu_specs.keys():
-            index = list(db.gpu_specs.keys()).index(user_scenario.gpu_name)
-
-        col1.number_input("GPU utilization ratio",
-                key=util.SELECTED_GPU_MEMORY_UTIL_KEY,
-                value=user_scenario.gpu_mem_util,
-                min_value=0.0,
-                step=0.01,
-                on_change=util.update_scenario,
-                args=[util.SELECTED_GPU_MEMORY_UTIL_KEY, "gpu_mem_util"]
-                )
-
-        # Select GPU type
-        selected_gpu_name = col1.selectbox("Accelerator",
-                                key=util.SELECTED_GPU_NAME_KEY,
-                                index=index,
-                                options=db.gpu_specs,
-                                on_change=util.update_scenario,
-                                args=[util.SELECTED_GPU_NAME_KEY, "gpu_name"],
-                                )
-
-        # Dialog for registering new accelerator data
-        col2.info("Don't see your accelerator? Register a new one below")
-        if col2.button("Register new accelerator", use_container_width=True):
-            register_new_accelerator()
-
-        # For the selected GPU, show memory requirements
-        if selected_gpu_name:
-            gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
-            available_gpu_mem = available_gpu_memory(gpu_memory, user_scenario.gpu_mem_util)
-            available_gpu_mem_rounded = round(available_gpu_mem, 2)
-            st.caption(f"GPU memory: {gpu_memory} GB, available: {available_gpu_mem_rounded} GB")
-
-            # Determine if GPU has enough memory
-            per_gpu_model_memory_req = per_gpu_model_memory_required(model_info, tp, pp)
-            per_request_kv_cache_memory = kv_cache_req(model_info,
-                                    model_config,
-                                    user_scenario.max_model_len,
-                                    )
-            max_request_kv_cache_memory = kv_cache_req(model_info,
-                                    model_config,
-                                    user_scenario.max_model_len,
-                                    user_scenario.concurrency,
-                                    )
-            per_gpu_mem_required = per_gpu_memory_required(model_info,
-                                      model_config,
-                                      user_scenario.max_model_len,
-                                      user_scenario.concurrency,
-                                      tp,
-                                      pp,
-                                      )
-
-            col1, col2 = st.columns(2)
-            col1.info(f"""Memory breakdown per GPU:
-- Model weights: ~{round(per_gpu_model_memory_req, 2)} GB
-- KV cache per request: ~{round(per_request_kv_cache_memory, 2)} GB
-- KV cache for max concurrent requests: ~{round(max_request_kv_cache_memory, 2)} GB
-- Total: ~{round(per_gpu_mem_required, 2)} GB
-""")
-
-            # Hints for gpu memory requirement exceeding available
-            if per_gpu_mem_required > available_gpu_mem:
-                col2.error("""The accelerator selected does not have enough GPU memory. Here is what you can do:
-- Select a GPU with higher memory
-- Increase GPU utilization ratio
-- Increase tensor parallelism or pipeline parallelism
-- Decrease max model length
-- Decrease max concurrency""")
-
-            # Display vllm serve command for viable selection
-            else:
-                col2.success(f"""Great, the GPU you selected has enough memory to load the model and process the desired workload. You will need `{gpus_required(tp, pp, user_scenario.dp_size)}x{selected_gpu_name}`s for the selected scenario. Below is the general vLLM serve command.
-""")
-                vllm_serve_cmd = f"""vllm serve {user_scenario.model_name} \\
-    --max-model-len {user_scenario.max_model_len} \\
-    --gpu-memory-utilization {user_scenario.gpu_mem_util} \\
-    --tensor-parallel-size {tp} \\
-    --pipeline-parallel-size {pp} \\
-    --data-parallel-size {user_scenario.dp_size}"""
-                if user_scenario.enable_ep:
-                    vllm_serve_cmd += f""" \\
-        --enable-expert-parallel
-        """
-                col2.code(vllm_serve_cmd)
-
 def parallelism_specification():
     """
-    Parallelism strategies
+    Parallelism configuration
     """
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_config = user_scenario.model_config
@@ -234,8 +126,8 @@ def parallelism_specification():
     gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
 
     with st.container(border=True):
-        st.write("**Parallelism Strategies**")
-        st.caption("Parallelism optimization determines the number of GPUs required.")
+        st.write("**Parallelism Configuration**")
+        st.caption("Parallelism determines the number of GPUs required.")
 
         if model_config is None:
             st.warning("Model config not found.")
@@ -305,7 +197,6 @@ def workload_specification():
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_info = user_scenario.model_info
     model_config = user_scenario.model_config
-    total_gpu_avail = user_scenario.gpu_count_avail
 
     # Workload
     with st.container(border=True):
@@ -350,6 +241,206 @@ Higher max model length means fewer concurrent requests can be served, \
             on_change=util.update_scenario,
             args=[util.SELECTED_CONCURRENCY_KEY, "concurrency"]
             )
+
+        avail_gpu_count = gpus_required(user_scenario.tp_size, user_scenario.pp_size, user_scenario.dp_size)
+        max_concurrent_requests_num = max_concurrent_requests(
+            model_info,
+            model_config,
+            user_scenario.max_model_len,
+            gpu_memory=user_scenario.get_gpu_memory(db.gpu_specs),
+            gpu_mem_util=user_scenario.gpu_mem_util,
+            tp=user_scenario.tp_size,
+            pp=user_scenario.pp_size,
+            dp=user_scenario.dp_size,
+        )
+
+        col2.info(f"Assuming the worst case scenario, such that every request contains `--max-model-len` tokens, the maximum concurrent requests that can be processed is {max_concurrent_requests_num}.")
+
+def hardware_specification():
+    """
+    Get hardware inputs like name and number of accelerators available
+    """
+
+    user_scenario = st.session_state[util.USER_SCENARIO_KEY]
+    model_info = user_scenario.model_info
+    model_config = user_scenario.model_config
+    concurrency = user_scenario.concurrency
+    tp = user_scenario.tp_size
+    pp = user_scenario.pp_size
+    dp = user_scenario.dp_size
+
+    # Hardware
+    with st.container(border=True):
+        st.write("**Hardware Specification**")
+        st.caption("Identify suitable accelerators for serving the model based on parallelism optimization and workload.")
+
+        if model_config is None:
+            st.warning("Model config not found.")
+            return None
+
+        col1, col2 = st.columns([0.6, 0.4])
+
+        index = 0
+        if user_scenario.gpu_name in db.gpu_specs.keys():
+            index = list(db.gpu_specs.keys()).index(user_scenario.gpu_name)
+
+        col1.number_input("GPU utilization ratio",
+                key=util.SELECTED_GPU_MEMORY_UTIL_KEY,
+                value=user_scenario.gpu_mem_util,
+                min_value=0.0,
+                step=0.01,
+                on_change=util.update_scenario,
+                args=[util.SELECTED_GPU_MEMORY_UTIL_KEY, "gpu_mem_util"]
+                )
+
+        # Select GPU type
+        selected_gpu_name = col1.selectbox("Accelerator",
+                                key=util.SELECTED_GPU_NAME_KEY,
+                                index=index,
+                                options=db.gpu_specs,
+                                on_change=util.update_scenario,
+                                args=[util.SELECTED_GPU_NAME_KEY, "gpu_name"],
+                                )
+
+        # Dialog for registering new accelerator data
+        col2.write("\n\nDon't see your accelerator? Register a new one below")
+        if col2.button("Register new accelerator", use_container_width=True):
+            register_new_accelerator()
+
+        # For the selected GPU, show memory requirements
+        if selected_gpu_name:
+
+            gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
+            available_gpu_count = gpus_required(tp, pp, dp)
+            available_gpu_mem = available_gpu_memory(gpu_memory, user_scenario.gpu_mem_util)
+            reserved = (gpu_memory - available_gpu_mem) * available_gpu_count
+            model_size = model_memory_req(model_info)
+            model_size_per_gpu = per_gpu_model_memory_required(model_info, tp, pp)
+            per_request_kv_cache_memory = kv_cache_req(model_info,
+                                    model_config,
+                                    user_scenario.max_model_len,
+                                    )
+            all_request_kv_cache_memory = kv_cache_req(model_info,
+                                    model_config,
+                                    user_scenario.max_model_len,
+                                    concurrency,
+                                    )
+            kv_cache_available_per_gpu = available_gpu_mem - model_size_per_gpu
+
+            per_gpu_mem_required = per_gpu_memory_required(model_info, model_config, user_scenario.max_model_len, concurrency, user_scenario.tp_size, user_scenario.pp_size)
+
+            st.caption(f"GPU memory: {gpu_memory} GB, available: {util.pretty_round(available_gpu_mem)} GB")
+
+            # Determine if GPU has enough memory
+            col1, col2 = st.columns([0.6, 0.4])
+
+            col1.info(f"""Memory breakdown per GPU:
+- Model weights: {util.pretty_round(model_size_per_gpu)} GB
+- Free memory available for KV cache: {util.pretty_round(kv_cache_available_per_gpu)} GB
+""")
+
+            memory_util_chart(col1)
+
+            with col1.expander("Total memory breakdown"):
+                st.markdown(f"""
+- Total memory: {gpu_memory * available_gpu_count} GB
+- Reserved: {util.pretty_round(reserved)} GB
+- Total memory available: {available_gpu_mem * available_gpu_count} GB
+- Model weights: {util.pretty_round(model_size)} GB
+- KV cache per request: {util.pretty_round(per_request_kv_cache_memory)} GB
+- KV cache for max concurrent requests: {util.pretty_round(all_request_kv_cache_memory)} GB
+- Model + Max request KV cache: {util.pretty_round(model_size + all_request_kv_cache_memory)} GB
+- Free: {util.pretty_round(available_gpu_mem * available_gpu_count - model_size - all_request_kv_cache_memory)} GB
+    """)
+
+            # Hints if gpu memory requirement exceeds available
+
+            if per_gpu_mem_required > available_gpu_mem:
+                col2.error("""The accelerator selected does not have enough GPU memory. Here is what you can do:
+- Select a GPU with higher memory
+- Increase GPU utilization ratio
+- Increase tensor parallelism or pipeline parallelism
+- Decrease max model length
+- Decrease max concurrency""")
+
+            # Display vllm serve command for viable selection
+            else:
+                col2.success(f"""The overall configuration has enough memory to load the model and process the desired workload. You will need `{gpus_required(tp, pp, user_scenario.dp_size)}x{selected_gpu_name}`s for the selected scenario. Below is the general vLLM serve command.
+""")
+                vllm_serve_cmd = f"""vllm serve {user_scenario.model_name} \\
+    --max-model-len {user_scenario.max_model_len} \\
+    --gpu-memory-utilization {user_scenario.gpu_mem_util} \\
+    --tensor-parallel-size {tp} \\
+    --pipeline-parallel-size {pp} \\
+    --data-parallel-size {user_scenario.dp_size}"""
+                if user_scenario.enable_ep:
+                    vllm_serve_cmd += f""" \\
+        --enable-expert-parallel
+        """
+                col2.code(vllm_serve_cmd)
+
+def memory_util_chart(st_context):
+    """
+    Show memory utilization chart
+    """
+
+    user_scenario = st.session_state[util.USER_SCENARIO_KEY]
+    model_info = user_scenario.model_info
+    model_config = user_scenario.model_config
+    gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
+    gpu_memory_util = user_scenario.gpu_mem_util
+    concurrency = user_scenario.concurrency
+    tp = user_scenario.tp_size
+    pp = user_scenario.pp_size
+    dp = user_scenario.dp_size
+
+    # Display GPU + KV pie chart
+    total_memory = gpus_required(tp, pp, dp) * gpu_memory
+    available = gpus_required(tp, pp, dp) * available_gpu_memory(gpu_memory, gpu_memory_util)
+    reserved = total_memory - available
+    model_size = model_memory_req(model_info)
+    max_concurrency_kv_cache = kv_cache_req(model_info, model_config, user_scenario.max_model_len, concurrency)
+    free = available - model_size - max_concurrency_kv_cache
+
+    if free < 0:
+        st.warning(f"Memory exceeds available by {util.pretty_round(free)} GB.")
+        return None
+
+    # Display chart iff model and cache size are selected
+    labels = ["Model", "KV Cache", "Free", "Reserved"]
+    sizes = [util.pretty_round(model_size), util.pretty_round(max_concurrency_kv_cache), util.pretty_round(free), util.pretty_round(reserved)]
+    colors = ["#ff9999", "#66b3ff", "#99ff99", "#808080"]
+
+    # Create donut chart
+    fig, ax = plt.subplots(figsize=(4, 4))
+    wedges, texts = ax.pie(
+        sizes,
+        colors=colors,
+        startangle=90,               # Start at top
+        wedgeprops=dict(width=0.4),   # <-- Makes it a donut,
+        labeldistance=1.1,   # Push labels outward
+        pctdistance=0.7,      # Adjust percentage position
+    )
+
+    # Add total as text in the center of the donut
+    ax.text(0, 0, f"Total\n{util.pretty_round(total_memory)} GB", ha="center", va="center", fontsize=12, fontweight="bold")
+
+    # Create a custom legend, including the total
+    legend_labels = [f"{labels[i]}: {sizes[i]} GB" for i in range(len(labels))]
+
+    # Position legend on the right
+    ax.legend(
+        wedges + [plt.Line2D([0], [0], color="#CCCCCC", lw=10)],  # Add fake handle for total
+        legend_labels,
+        title="Total Storage Breakdown",
+        loc="center left",
+        bbox_to_anchor=(1, 0, 0.5, 1)
+    )
+
+    # Render in Streamlit
+    _, col, _ = st_context.columns([.5, 1, .5])
+    with col:
+        st.pyplot(fig, bbox_inches="tight")
 
 if __name__ == '__main__':
 

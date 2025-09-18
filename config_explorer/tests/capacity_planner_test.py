@@ -238,19 +238,24 @@ def test_max_concurrent_req():
     model_memory = model_memory_req(model_info)
     per_req_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
 
-    for avail_gpu_count in range(0, 10):
-        gpu_mem = 40
-        actual_max_concurrent_req = max_concurrent_req(model_info,
-                                                       model_config,
-                                                       max_model_len=10000,
-                                                       available_gpu_count=avail_gpu_count,
-                                                       gpu_memory=gpu_mem,
-                                                       gpu_mem_util=1
-                                                       )
+    for tp in range(1, 16):
+        for pp in range(1, 16):
+            for dp in range(1, 16):
+                avail_gpu_count = tp * pp * dp
+                gpu_mem = 40
+                actual_max_concurrent_req = max_concurrent_requests(model_info,
+                                                            model_config,
+                                                            max_model_len=10000,
+                                                            gpu_memory=gpu_mem,
+                                                            gpu_mem_util=1,
+                                                            tp=tp,
+                                                            pp=pp,
+                                                            dp=dp,
+                                                            )
 
-        expected = math.floor((avail_gpu_count * gpu_mem - model_memory) / per_req_kv_cache_req)
-        if expected < 0:
-            expected = 0
+                expected = math.floor((avail_gpu_count * gpu_mem - model_memory * dp) / per_req_kv_cache_req)
+                if expected < 0:
+                    expected = 0
 
         assert actual_max_concurrent_req == expected
 
@@ -301,11 +306,11 @@ def test_per_gpu_memory_required():
                                                      tp,
                                                      pp)
 
-                    model_memory = model_memory_req(model_info) / (tp * pp)
+                    model_memory = model_memory_req(model_info)
                     kv_cache = kv_cache_req(model_info, model_config, max_model_len, max_concurrency)
 
-                    expected = model_memory + kv_cache
-                    assert actual == expected
+                    expected = (model_memory + kv_cache) / (tp * pp)
+                    assert round(actual, 5) == round(expected, 5)
 
 def test_is_moe():
     """
