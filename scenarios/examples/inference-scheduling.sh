@@ -50,6 +50,20 @@ export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
 #   dnsPolicy: ClusterFirstWithHostNet
 #EOF
 
+export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS}
+- name: dshm
+  mountPath: /dev/shm
+EOF
+
+export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES}
+- name: dshm
+  emptyDir:
+    medium: Memory
+    sizeLimit: 16Gi
+EOF
+
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 - name: UCX_TLS
@@ -100,6 +114,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS="[\
 --disable-log-requests____\
 --disable-uvicorn-access-log____\
 --max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN\
+--tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM \
 ]"
 
 # Local directory to copy benchmark runtime files and results

@@ -1133,7 +1133,7 @@ function backup_work_dir {
 
   local backup=0
 
-  local backup_target=$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix
+  local backup_target=$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD -e 's^//^/^g' -e 's^/$^^').$backup_suffix
 
   if [[ $unconditional -eq 1 ]];
   then

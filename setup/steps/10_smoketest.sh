@@ -33,6 +33,8 @@ else
   service_ip=$(echo "${service}" | awk '{print $3}')
 fi
 
+service_name="${service_name}.${LLMDBENCH_VLLM_COMMON_NAMESPACE}${LLMDBENCH_VLLM_COMMON_FQDN}"
+
 for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
   export LLMDBENCH_DEPLOY_CURRENT_MODELID=$(model_attribute $model modelid)
@@ -80,16 +82,32 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     exit 1
   fi
 
-  announce "🚀 Testing service/gateway \"${service_name}\" (\"${service_ip}\") (port 80)..."
+  announce "🚀 Testing service/gateway \"${service_ip}\" (port 80)..."
 
   if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
     announce "✅ Service responds successfully ($LLMDBENCH_DEPLOY_CURRENT_MODEL)"
   else
+
     if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
       received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${service_ip} 80)
     else
       received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${service_ip}:80/${LLMDBENCH_DEPLOY_CURRENT_MODELID} 80)
     fi
+    if [[ ${received_model_name} == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
+      announce "✅ Service responds successfully ($received_model_name)"
+    else
+      announce "❌ Service responded with model name \"$received_model_name\" (instead of $LLMDBENCH_DEPLOY_CURRENT_MODEL)!"
+      exit 1
+    fi
+  fi
+
+  announce "🚀 Testing service/gateway \"${service_name}\" (port 80)..."
+
+  if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
+    announce "✅ Service responds successfully ($LLMDBENCH_DEPLOY_CURRENT_MODEL)"
+  else
+
+    received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${service_ip} 80)
     if [[ ${received_model_name} == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
       announce "✅ Service responds successfully ($received_model_name)"
     else

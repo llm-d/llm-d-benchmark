@@ -242,5 +242,5 @@ for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
     backup_work_dir $sid 1
     exit $ec
   fi
-  mv $LLMDBENCH_CONTROL_WORK_DIR/ $LLMDBENCH_CONTROL_WORK_DIR.$sid/
+  backup_work_dir $sid 1
 done
