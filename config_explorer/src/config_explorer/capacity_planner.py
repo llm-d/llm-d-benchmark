@@ -204,7 +204,7 @@ def max_concurrent_req(model_info: ModelInfo,
                         available_gpu_count: int,
                         gpu_memory: int,
                         gpu_mem_util: float=0.9,
-                        dp_size: int = 1,
+                        dp_size: int=1,
                     ) -> int:
     """
     Calculates the max number of concurrent requests the model can serve with the specified GPUs available
