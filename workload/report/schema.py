@@ -251,21 +251,20 @@ class Statistics(BaseModel):
 
     units: Units
     mean: float
-    median: Optional[float | int] = None
     mode: Optional[float | int] = None
     stddev: Optional[float] = None
     min: Optional[float | int] = None
-    p001: Optional[float | int] = None
-    p01: Optional[float | int] = None
-    p05: Optional[float | int] = None
+    p0p1: Optional[float | int] = None
+    p1: Optional[float | int] = None
+    p5: Optional[float | int] = None
     p10: Optional[float | int] = None
     p25: Optional[float | int] = None
-    p50: Optional[float | int] = None
+    p50: Optional[float | int] = None # This is the same as median
     p75: Optional[float | int] = None
     p90: Optional[float | int] = None
     p95: Optional[float | int] = None
     p99: Optional[float | int] = None
-    p999: Optional[float | int] = None
+    p99p9: Optional[float | int] = None
     max: Optional[float | int] = None
 
 

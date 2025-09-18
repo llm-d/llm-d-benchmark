@@ -7,5 +7,5 @@ random-output-len: 1000
 max-concurrency: 1
 num-prompts: 32
 percentile-metrics: "ttft,tpot,itl,e2el"
-metric-percentiles: "90,95,99"
+metric-percentiles: "0.1,1,5,10,25,75,90,95,99,99.9"
 ignore-eos: none
