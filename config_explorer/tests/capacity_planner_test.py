@@ -2,80 +2,188 @@
 Tests Capacity Planner functions
 """
 
+import pytest
 from huggingface_hub import ModelInfo
 from transformers import AutoConfig
 from src.config_explorer.capacity_planner import *
 
 # ---- Constants ----
-
 precision_types = ["fp32", "fp16", "fp8", "int4"]
 small_model_id = "repo/small-model"
+qwen_model = "Qwen/Qwen3-0.6B"
+
+def test_get_model_info_and_config_from_hf():
+    """
+    Tests that model info can be retrieved without error for open-sourced models
+    """
+
+    model_info = get_model_info_from_hf(qwen_model)
+    model_config = get_model_config_from_hf(qwen_model)
+
+    assert hasattr(model_info, "id")
+    assert hasattr(model_info, "safetensors")
+    assert hasattr(model_config, "max_position_embeddings")
+
+    # Try facebook model which is smaller
+    facebook = "facebook/opt-125m"
+    model_info = get_model_info_from_hf(facebook)
+    model_config = get_model_config_from_hf(facebook)
+
+    assert hasattr(model_info, "id")
+    assert hasattr(model_info, "safetensors")
+    assert hasattr(model_config, "max_position_embeddings")
+
+def test_model_total_params():
+    """
+    Tests that model total params is fetched successfully
+    """
+    model_info = get_model_info_from_hf(qwen_model)
+
+    # Num params from https://huggingface.co/Qwen/Qwen3-0.6B
+    assert model_total_params(model_info) == 751632384
+
+def test_precision_to_byte():
+    """
+    Tests that precision data type is converted to byte accurately
+    """
+
+    bytes_8 = ["F64", "I64", "INT64"]
+    bytes_4 = ["F32", "I32", "INT32"]
+    bytes_2 = ["F16", "BF16", "I16", "INT16"]
+    bytes_1 = ["F8_E5M2", "F8_E4M3", "I8", "INT8", "U8"]
+    bytes_half = ["FP4", "U4", "I4", "INT4"]
+    boolean = ["BOOL"]
+
+    for dtype in bytes_8:
+        assert precision_to_byte(dtype) == 8
+
+    for dtype in bytes_4:
+        assert precision_to_byte(dtype) == 4
+
+    for dtype in bytes_2:
+        assert precision_to_byte(dtype) == 2
+
+    for dtype in bytes_1:
+        assert precision_to_byte(dtype) == 1
+
+    for dtype in bytes_half:
+        assert precision_to_byte(dtype) == 0.5
+
+    for dtype in boolean:
+        assert precision_to_byte(dtype) == 1
+
+    # Special cases
+    assert precision_to_byte("f64") == 8
+    assert precision_to_byte("ff8_e5m2") == 1
+
+def test_parameter_memory_req():
+    """
+    Tests parameter memory size is accurately calculated given precision
+    """
+
+    factor = 1024 ** 3
+    params = [10, 1000, 10000, 100000]
+    precisions = ["FP32", "FP16", "FP8", "INT4"]
+    prec_to_byte = [4, 2, 1, 0.5]
+
+    for param in params:
+        for j, precision in enumerate(precisions):
+
+            expected = param * prec_to_byte[j] / factor
+            assert parameter_memory_req(param, precision) == expected
 
 def test_model_memory_req():
     """
-    Tests that model memory is correct calculated for the precision type
+    Tests model memory can be correctly estimated
     """
-    for precision_type in precision_types:
 
-        # Start with 5 million parameters
-        parameter = 5000000
 
-        # Go up to 500 billion parameters
-        # 500 billion = 500,000,000,000
-        for _ in range(5):
-            model_info = ModelInfo(
-                id=small_model_id,
-                safetensors={
-                    "parameters": {
-                        precision_type: parameter,
-                    },
-                    "total": parameter
-                }
-            )
+    model_info = get_model_info_from_hf(qwen_model)
+    assert model_memory_req(model_info) == 1.4000244140625
 
-            actual_model_memory = model_memory_req(model_info)
-            expected_model_memory = 0
-            match precision_type:
-                case "fp32":
-                    expected_model_memory = (parameter * 4 * 1.2) / (1024 ** 3)
-                case "fp16":
-                    expected_model_memory = (parameter * 2 * 1.2) / (1024 ** 3)
-                case "fp8":
-                    expected_model_memory = (parameter * 1 * 1.2) / (1024 ** 3)
-                case "int4":
-                    expected_model_memory = (parameter * 0.5 * 1.2) / (1024 ** 3)
+    # No param info for facebook/opt-125m
+    model_info = get_model_info_from_hf("facebook/opt-125m")
+    assert model_memory_req(model_info) == -1
 
-            assert actual_model_memory == expected_model_memory
-            parameter *= 10
 
-def test_gpu_min_req():
+def test_inference_dtype():
     """
-    Tests that the minimum GPU required is correctly calculated
+    Asserts that inference KV cache data type is correctly fetched
     """
-    # Start with 5 million parameters
-    parameter = 5000000
 
-    # Go up to 500 billion parameters
-    # 500 billion = 500,000,000,000
-    for _ in range(5):
-        model_info = ModelInfo(
-            id=small_model_id,
-            safetensors={
-                "parameters": {
-                    precision_types[0]: parameter,
-                },
-                "total": parameter
-            }
-        )
+    model_config = get_model_config_from_hf(qwen_model)
+    assert inference_dtype(model_config) == "torch.bfloat16"
 
-        # Start with gpu_memory=10, increment by 10 each time, up to 200
-        for gpu_memory in range(10, 200, 10):
-            model_memory = (parameter * 4 * 1.2) / (1024 ** 3)
-            actual_min_gpu_req = min_gpu_req(model_info, gpu_memory)
-            expected_min_gpu_req = math.ceil(model_memory / gpu_memory)
-            assert actual_min_gpu_req == expected_min_gpu_req
+    deepseek = "deepseek-ai/DeepSeek-R1"
+    model_config = get_model_config_from_hf(deepseek)
+    assert inference_dtype(model_config) == "torch.bfloat16"
 
-        parameter *= 10
+
+# def test_model_memory_req():
+#     """
+#     Tests that model memory is correct calculated for the precision type
+#     """
+#     for precision_type in precision_types:
+
+#         # Start with 5 million parameters
+#         parameter = 5000000
+
+#         # Go up to 500 billion parameters
+#         # 500 billion = 500,000,000,000
+#         for _ in range(5):
+#             model_info = ModelInfo(
+#                 id=small_model_id,
+#                 safetensors={
+#                     "parameters": {
+#                         precision_type: parameter,
+#                     },
+#                     "total": parameter
+#                 }
+#             )
+
+#             actual_model_memory = model_memory_req(model_info)
+#             expected_model_memory = 0
+#             match precision_type:
+#                 case "fp32":
+#                     expected_model_memory = (parameter * 4 * 1.2) / (1024 ** 3)
+#                 case "fp16":
+#                     expected_model_memory = (parameter * 2 * 1.2) / (1024 ** 3)
+#                 case "fp8":
+#                     expected_model_memory = (parameter * 1 * 1.2) / (1024 ** 3)
+#                 case "int4":
+#                     expected_model_memory = (parameter * 0.5 * 1.2) / (1024 ** 3)
+
+#             assert actual_model_memory == expected_model_memory
+#             parameter *= 10
+
+# def test_gpu_min_req():
+#     """
+#     Tests that the minimum GPU required is correctly calculated
+#     """
+#     # Start with 5 million parameters
+#     parameter = 5000000
+
+#     # Go up to 500 billion parameters
+#     # 500 billion = 500,000,000,000
+#     for _ in range(5):
+#         model_info = ModelInfo(
+#             id=small_model_id,
+#             safetensors={
+#                 "parameters": {
+#                     precision_types[0]: parameter,
+#                 },
+#                 "total": parameter
+#             }
+#         )
+
+#         # Start with gpu_memory=10, increment by 10 each time, up to 200
+#         for gpu_memory in range(10, 200, 10):
+#             model_memory = (parameter * 4 * 1.2) / (1024 ** 3)
+#             actual_min_gpu_req = min_gpu_req(model_info, gpu_memory)
+#             expected_min_gpu_req = math.ceil(model_memory / gpu_memory)
+#             assert actual_min_gpu_req == expected_min_gpu_req
+
+#         parameter *= 10
 
 def test_kv_cache_req():
     """
@@ -106,9 +214,8 @@ def test_kv_cache_req():
 
 
     # Assert other models
-    qwen3 = "Qwen/Qwen3-0.6B"
-    model_info = get_model_info_from_hf(qwen3)
-    model_config = get_model_config_from_hf(qwen3)
+    model_info = get_model_info_from_hf(qwen_model)
+    model_config = get_model_config_from_hf(qwen_model)
 
     # For context length = 0, kv cache req is 0
     actual_kv_cache_req = kv_cache_req(model_info, model_config, context_len=0)
@@ -126,9 +233,8 @@ def test_max_concurrent_req():
     """
 
     # This model does not take up 40GB GPU, so model size is negligible
-    qwen3 = "Qwen/Qwen3-0.6B"
-    model_info = get_model_info_from_hf(qwen3)
-    model_config = get_model_config_from_hf(qwen3)
+    model_info = get_model_info_from_hf(qwen_model)
+    model_config = get_model_config_from_hf(qwen_model)
     model_memory = model_memory_req(model_info)
     per_req_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
 
@@ -138,7 +244,8 @@ def test_max_concurrent_req():
                                                        model_config,
                                                        max_model_len=10000,
                                                        available_gpu_count=avail_gpu_count,
-                                                       gpu_memory=gpu_mem
+                                                       gpu_memory=gpu_mem,
+                                                       gpu_mem_util=1
                                                        )
 
         expected = math.floor((avail_gpu_count * gpu_mem - model_memory) / per_req_kv_cache_req)
@@ -146,3 +253,121 @@ def test_max_concurrent_req():
             expected = 0
 
         assert actual_max_concurrent_req == expected
+
+def test_find_possible_tp():
+    """
+    Tests the possible TP sizes are accurately calculated
+    """
+
+    model_config = get_model_config_from_hf(qwen_model)
+    assert find_possible_tp(model_config) == [1, 2, 4, 8, 16]
+
+    deepseek = "deepseek-ai/DeepSeek-R1"
+    model_config = get_model_config_from_hf(deepseek)
+    assert find_possible_tp(model_config) == [1, 2, 4, 8, 16, 32, 64, 128]
+
+def test_gpus_required():
+    """
+    Tests GPU number required for parallelism is correctly calculated
+    """
+
+    for tp in range(1, 16):
+        for pp in range(1, 16):
+            for dp in range(1, 16):
+
+                expected = tp * pp * dp
+                assert expected == gpus_required(tp, pp, dp)
+
+
+def test_per_gpu_memory_required():
+    """
+    Tests that model memory requirement is correctly calculated for each GPU
+    """
+
+    model_info = get_model_info_from_hf(qwen_model)
+    model_config = get_model_config_from_hf(qwen_model)
+
+    max_model_lengths = [1024, 2048, 4096]
+
+    for max_model_len in max_model_lengths:
+        for max_concurrency in range(1, 16):
+            for tp in range(1, 16):
+                for pp in range(1, 16):
+
+                    actual = per_gpu_memory_required(model_info,
+                                                     model_config,
+                                                     max_model_len,
+                                                     max_concurrency,
+                                                     tp,
+                                                     pp)
+
+                    model_memory = model_memory_req(model_info) / (tp * pp)
+                    kv_cache = kv_cache_req(model_info, model_config, max_model_len, max_concurrency)
+
+                    expected = model_memory + kv_cache
+                    assert actual == expected
+
+def test_is_moe():
+    """
+    Asserts that MOE models can be determined
+    """
+
+    moes = [
+        "deepseek-ai/DeepSeek-R1",
+        "deepseek-ai/DeepSeek-V3.1"
+    ]
+
+    non_moes = [
+        qwen_model,
+        "RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic"
+    ]
+
+    for model in moes:
+        model_config = get_model_config_from_hf(model)
+        assert is_moe(model_config) == True
+
+    for model in non_moes:
+        model_config = get_model_config_from_hf(model)
+        assert is_moe(model_config) == False
+
+def test_get_num_experts():
+    """
+    Tests that number of experts is fetched correctly
+    """
+    model_to_experts = {
+        "deepseek-ai/DeepSeek-R1": 256,
+        "deepseek-ai/DeepSeek-V3.1-Base": 256,
+        "deepseek-ai/DeepSeek-V3.1": 256,
+        "Qwen/Qwen3-235B-A22B-Thinking-2507": 128,
+        "Qwen/Qwen3-235B-A22B-FP8": 128
+    }
+
+    for model, expected_experts in model_to_experts.items():
+        model_config = get_model_config_from_hf(model)
+
+        assert get_num_experts(model_config) == expected_experts
+
+def test_experts_per_gpu():
+    """
+    Tests that experts per GPU is calculated correctly for MOE models
+    """
+
+    moe_models = {
+        "deepseek-ai/DeepSeek-R1",
+        "deepseek-ai/DeepSeek-V3.1-Base",
+        "deepseek-ai/DeepSeek-V3.1",
+        "Qwen/Qwen3-235B-A22B-Thinking-2507",
+        "Qwen/Qwen3-235B-A22B-FP8"
+    }
+
+    for model in moe_models:
+        model_config = get_model_config_from_hf(model)
+        experts = get_num_experts(model_config)
+
+        for tp in range(1, 16):
+            for dp in range(1, 16):
+                ep_size = tp * dp
+                assert experts * dp / ep_size == experts_per_ep_group(model_config, tp, dp)
+
+
+
