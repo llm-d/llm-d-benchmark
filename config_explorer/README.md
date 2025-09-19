@@ -8,6 +8,7 @@ This library provides the tooling for LLM serving such as
   - from workload characteristics in terms of max model length and concurrency, determine the KV cache memory requirement
 - 🚧 Configuration sweep and recommendation (WIP)
   - given SLO requirements in terms of TTFT, TPOT, and throughput, visualize the optimal `llm-d` configuration, including Inference Scheduler and vLLM, for achieving the SLO
+  - For unseen configurations, predict latency and throughput from a inference performance estimator
 
 
 ## Installation
