@@ -937,6 +937,9 @@ def import_nop(results_file: str) -> BenchmarkReport:
         for cat in cat_list:
             cat_dict = {}
             cat_dict["title"] = cat["title"]
+            process = cat.get("process")
+            if process is not None:
+                cat_dict["process"] = process["name"]
             cat_dict["elapsed"] = {
                         "units": Units.S,
                         "value": cat["elapsed"],
@@ -1084,6 +1087,14 @@ def import_nop(results_file: str) -> BenchmarkReport:
             },
         },
     }
+
+    for name in ["load_cached_compiled_graph", "compile_graph"]:
+        value = results["metrics"].get(name)
+        if value is not None:
+            results_dict["metrics"]["metadata"][name] = {
+                                "units": Units.S,
+                                "value": value,
+                            }
 
     update_dict(br_dict, results_dict)
 
