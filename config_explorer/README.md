@@ -49,7 +49,7 @@ Running the Streamlit frontend requires cloning the `llm-d-benchmark` repo. Make
 ```
 git clone https://github.com/llm-d/llm-d-benchmark.git
 pip install -r config_explorer/requirements-streamlit.txt
-streamlit run config_explorer/Home.py
+.venv/bin/streamlit run config_explorer/Home.py
 ```
 
 ### Library
