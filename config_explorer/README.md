@@ -44,7 +44,7 @@ There are two ways to interact with the Configuration Explorer: via an experimen
 ### Frontend
 A Streamlit frontend is provided to showcase the capabilities of the Configuration Explorer rapidly. Since the core functions are in a module, users may feel free to build their own frontend, such as a CLI, by making use of those functions.
 
-Running the Streamlit frontend requires cloning the `llm-d-benchmark` repo.
+Running the Streamlit frontend requires cloning the `llm-d-benchmark` repo. Make sure you have already installed the required dependencies for the `config_explorer` package following the Installation guide [here](#installation).
 
 ```
 git clone https://github.com/llm-d/llm-d-benchmark.git

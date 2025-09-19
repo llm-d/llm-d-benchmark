@@ -7,7 +7,6 @@ import streamlit as st
 import db
 import util
 from src.config_explorer.capacity_planner import *
-from huggingface_hub.errors import *
 from decimal import Decimal
 
 def update_gpu_spec():
@@ -128,8 +127,6 @@ def parallelism_specification():
     """
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_config = user_scenario.model_config
-    total_accelerators = user_scenario.gpu_count_avail
-    gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
 
     with st.container(border=True):
         st.write("**Parallelism Configuration**")
