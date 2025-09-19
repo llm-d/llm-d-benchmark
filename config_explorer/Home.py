@@ -6,7 +6,6 @@ from matplotlib import pyplot as plt
 import streamlit as st
 import db
 import util
-import numpy as np
 from src.config_explorer.capacity_planner import *
 from huggingface_hub.errors import *
 from decimal import Decimal

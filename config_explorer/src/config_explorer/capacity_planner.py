@@ -30,7 +30,6 @@ def get_model_config_from_hf(model_name: str, hf_token: str=None) -> AutoConfig:
 
     return model_config
 
-
 def model_total_params(model_info: ModelInfo) -> int:
     """
     Returns the total parameters of the model
