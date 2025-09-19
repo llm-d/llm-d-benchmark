@@ -141,8 +141,6 @@ def model_memory_req(model_info: ModelInfo) -> int:
         for precision, num_params in model_params.items():
             memory += parameter_memory_req(num_params, precision)
 
-        # TODO: estimate non-torch and peak activation memory
-
         return memory
 
     except Exception as e:
@@ -209,14 +207,15 @@ def max_concurrent_requests(model_info: ModelInfo,
                     ) -> int:
 
     # Find allocatable memory for KV cache
-    gpu_counts = gpus_required(tp, pp, dp)
-    avail_gpu_mem = available_gpu_memory(gpu_memory, gpu_mem_util) * gpu_counts
-    model_memory = model_memory_req(model_info) * dp
-    kv_cache_allocatable_memory = avail_gpu_mem - model_memory
+    kv_cache_allocatable = allocatable_kv_cache_memory(
+        model_info, model_config,
+        gpu_memory, gpu_mem_util,
+        tp, pp, dp
+    )
 
     # Find kv cache requirement for one request of max-model-len
     per_request_kv_cache_req = kv_cache_req(model_info, model_config, max_model_len)
-    return max(0, math.floor(kv_cache_allocatable_memory / per_request_kv_cache_req))
+    return max(0, math.floor(kv_cache_allocatable / per_request_kv_cache_req))
 
 def find_possible_tp(model_config: AutoConfig) -> List[int]:
     """
@@ -254,26 +253,22 @@ def per_gpu_model_memory_required(model_info: ModelInfo, tp: int = 1, pp: int = 
     model_memory = model_memory_req(model_info)
     return model_memory / (tp * pp)
 
-def per_gpu_memory_required(model_info: ModelInfo,
-                        model_config: AutoConfig,
-                        max_model_len: int,
-                        max_concurrency: int,
-                        tp: int = 1,
-                        pp: int = 1,
-                        ) -> int:
-    """
-    Determines the minimum per-GPU memory requirement for loading the model and serving the max concurrent request
-    """
+def allocatable_kv_cache_memory(model_info: ModelInfo,
+                            model_config: AutoConfig,
+                            gpu_memory: int,
+                            gpu_util: float = 0.9,
+                            tp: int = 1,
+                            pp: int = 1,
+                            dp: int = 1,
+                              ):
+    gpu_count = tp * pp * dp
+    available_memory = available_gpu_memory(gpu_memory, gpu_util) * gpu_count
+    model_size = model_memory_req(model_info) * dp
 
-    per_gpu_model_mem = per_gpu_model_memory_required(model_info, tp, pp)
-    per_request_kv_cache_memory = kv_cache_req(model_info,
-                                        model_config,
-                                        max_model_len,
-                                        max_concurrency)
-    per_request_kv_cache_memory_per_gpu = per_request_kv_cache_memory / (tp * pp)
+    # TODO: non torch memory
+    # TOOD: peak activation memory
 
-
-    return per_gpu_model_mem + per_request_kv_cache_memory_per_gpu
+    return available_memory - model_size
 
 def is_moe(model_config: AutoConfig) -> bool:
     """
@@ -315,7 +310,7 @@ def experts_per_ep_group(model_config: AutoConfig,
     Calculates the number of experts to handle on each GPU
     """
 
-    num_experts = get_num_experts(model_config) * dp
+    num_experts = get_num_experts(model_config)
     ep_size = get_ep_size(tp, dp)
     if num_experts is None:
         return 0

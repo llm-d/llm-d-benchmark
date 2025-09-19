@@ -76,6 +76,7 @@ Here is a list of all the functions for the Capacity Planner:
 | `available_gpu_memory()`          | calculates the available GPU memory given `--gpu-memory-utilization`                           |
 | `gpus_required()`                 | determine number of GPUs required given parallelism strategies                                 |
 | `per_gpu_model_memory_required()` | calculates the per-GPU memory requirement for loading model given parallelism                  |
+| `allocatable_kv_cache_memory()`   | calculates the allocatable memory for KV cache in the system                 |
 | `per_gpu_memory_required()`       | calculates the per-GPU memory requirement for model and KV cache given parallelism             |
 | `is_moe()`                        | determines if model is a Mixture-of-Experts (MoE) model                                        |
 | `get_num_experts()`               | finds the number of experts for MoE models                                                     |

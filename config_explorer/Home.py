@@ -9,6 +9,7 @@ import util
 import numpy as np
 from src.config_explorer.capacity_planner import *
 from huggingface_hub.errors import *
+from decimal import Decimal
 
 def update_gpu_spec():
     """
@@ -166,10 +167,12 @@ def parallelism_specification():
         is_moe_model = is_moe(model_config)
         help = "EP is not available as an option for non-MoE models."
         if is_moe_model:
-            help = f"EP size = `(TP x DP) = {get_ep_size(tp_size, dp_size)}`"
+            help = """Instead of the traditional single feed forward layer in transformers, mixture of expert (MoE) models exercise a parallel feed-forward neural-network layers where a number of selected \"experts\" are activated for each token ([citation](https://nvidia.github.io/TensorRT-LLM/advanced/expert-parallelism.html)).
 
-        col2.write("")
-        col2.write("")
+
+Tensor parallelism splits expert weights across GPUs. Expert parallelism splits incoming token's hidden state across GPUs. In vLLM, enabling data parallelism on MoE models essentially achieves the latter purpose.
+"""
+
         enable_ep = col2.toggle("Enable expert parallelism",
                 value=user_scenario.enable_ep,
                 disabled=not is_moe_model,
@@ -179,12 +182,21 @@ def parallelism_specification():
                 args=[util.SELECTED_ENABLE_EP_KEY, "enable_ep"]
                 )
         if enable_ep:
-            ep_per_gpu = round(experts_per_ep_group(model_config,
-                                                tp=user_scenario.tp_size,
-                                                dp=user_scenario.dp_size))
-            col2.caption(f"There are a total of {get_num_experts(model_config)} experts for this model. \
-                            There will be ~{ep_per_gpu} experts per EP group. \
-                            Note that vLLM handles uneven splits of experts (see this [PR](https://github.com/vllm-project/vllm/pull/21497)).")
+            total_experts = get_num_experts(model_config)
+            ep_size = get_ep_size(tp_size, dp_size)
+            experts_per_ep = experts_per_ep_group(model_config, tp_size, dp_size)
+            experts_per_ep_str = round(experts_per_ep)
+
+            col2.info(f"""Total number of experts: {total_experts}
+
+`EP size = (TP x DP) = {ep_size}`, meaning each group will get `{total_experts} / {ep_size} = {experts_per_ep_str}` experts per group.
+""")
+            if experts_per_ep < 1:
+                col2.warning("Since some EP groups will get 0 expert, this is an under-utilization of GPU resources. We recommend decreasing TP or DP for better use of your accelerators.")
+
+            if not Decimal(experts_per_ep) % 1 == 0:
+                col2.caption("The total number of experts is not divisible by EP size you selected. However, vLLM handles uneven split of experts (see this [PR](https://github.com/vllm-project/vllm/pull/21497)), so some EP groups will have fewer experts than others.")
+
 
         st.info(f"GPUs required (`TP x PP x DP`): `{gpus_required(tp_size, pp_size, dp_size)}`")
 
@@ -232,7 +244,6 @@ Higher max model length means fewer concurrent requests can be served, \
                 each request requires more memory allocation. \
 ")
 
-
         col2.number_input("Input the max number of concurrent requests to process",
             min_value=0,
             step=1,
@@ -242,7 +253,6 @@ Higher max model length means fewer concurrent requests can be served, \
             args=[util.SELECTED_CONCURRENCY_KEY, "concurrency"]
             )
 
-        avail_gpu_count = gpus_required(user_scenario.tp_size, user_scenario.pp_size, user_scenario.dp_size)
         max_concurrent_requests_num = max_concurrent_requests(
             model_info,
             model_config,
@@ -310,12 +320,20 @@ def hardware_specification():
         # For the selected GPU, show memory requirements
         if selected_gpu_name:
 
+            # Get info
             gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
             available_gpu_count = gpus_required(tp, pp, dp)
             available_gpu_mem = available_gpu_memory(gpu_memory, user_scenario.gpu_mem_util)
-            reserved = (gpu_memory - available_gpu_mem) * available_gpu_count
             model_size = model_memory_req(model_info)
             model_size_per_gpu = per_gpu_model_memory_required(model_info, tp, pp)
+            allocatable_kv_cache = allocatable_kv_cache_memory(model_info,
+                                                    model_config,
+                                                    gpu_memory,
+                                                    user_scenario.gpu_mem_util,
+                                                    tp,
+                                                    pp,
+                                                    dp,
+                                                    )
             per_request_kv_cache_memory = kv_cache_req(model_info,
                                     model_config,
                                     user_scenario.max_model_len,
@@ -325,9 +343,14 @@ def hardware_specification():
                                     user_scenario.max_model_len,
                                     concurrency,
                                     )
-            kv_cache_available_per_gpu = available_gpu_mem - model_size_per_gpu
 
-            per_gpu_mem_required = per_gpu_memory_required(model_info, model_config, user_scenario.max_model_len, concurrency, user_scenario.tp_size, user_scenario.pp_size)
+            # Compute more info for pretty print
+            total_memory = gpu_memory * available_gpu_count
+            total_available_gpu_mem = available_gpu_mem * available_gpu_count
+            reserved = total_memory - total_available_gpu_mem
+            total_model_size = model_size * dp
+            kv_cache_available_per_gpu = available_gpu_mem - model_size_per_gpu
+            free = total_available_gpu_mem - total_model_size - all_request_kv_cache_memory
 
             st.caption(f"GPU memory: {gpu_memory} GB, available: {util.pretty_round(available_gpu_mem)} GB")
 
@@ -346,16 +369,19 @@ def hardware_specification():
 - Total memory: {gpu_memory * available_gpu_count} GB
 - Reserved: {util.pretty_round(reserved)} GB
 - Total memory available: {available_gpu_mem * available_gpu_count} GB
-- Model weights: {util.pretty_round(model_size)} GB
+- Single model weights: {util.pretty_round(model_size)} GB
+- Total model weights (for data parallelism): {util.pretty_round(total_model_size)} GB
+- Allocatable KV cache memory: {util.pretty_round(allocatable_kv_cache)} GB
 - KV cache per request: {util.pretty_round(per_request_kv_cache_memory)} GB
 - KV cache for max concurrent requests: {util.pretty_round(all_request_kv_cache_memory)} GB
-- Model + Max request KV cache: {util.pretty_round(model_size + all_request_kv_cache_memory)} GB
-- Free: {util.pretty_round(available_gpu_mem * available_gpu_count - model_size - all_request_kv_cache_memory)} GB
+- Model + Max request KV cache: {util.pretty_round(total_model_size + all_request_kv_cache_memory)} GB
+- Free: {util.pretty_round(free)} GB
     """)
 
             # Hints if gpu memory requirement exceeds available
 
-            if per_gpu_mem_required > available_gpu_mem:
+            # if per_gpu_mem_required > available_gpu_mem:
+            if free < 0:
                 col2.error("""The accelerator selected does not have enough GPU memory. Here is what you can do:
 - Select a GPU with higher memory
 - Increase GPU utilization ratio
@@ -375,7 +401,7 @@ def hardware_specification():
     --data-parallel-size {user_scenario.dp_size}"""
                 if user_scenario.enable_ep:
                     vllm_serve_cmd += f""" \\
-        --enable-expert-parallel
+    --enable-expert-parallel
         """
                 col2.code(vllm_serve_cmd)
 
@@ -398,12 +424,12 @@ def memory_util_chart(st_context):
     total_memory = gpus_required(tp, pp, dp) * gpu_memory
     available = gpus_required(tp, pp, dp) * available_gpu_memory(gpu_memory, gpu_memory_util)
     reserved = total_memory - available
-    model_size = model_memory_req(model_info)
+    model_size = model_memory_req(model_info) * dp
     max_concurrency_kv_cache = kv_cache_req(model_info, model_config, user_scenario.max_model_len, concurrency)
     free = available - model_size - max_concurrency_kv_cache
 
     if free < 0:
-        st.warning(f"Memory exceeds available by {util.pretty_round(free)} GB.")
+        st.warning(f"Memory exceeds available by {abs(util.pretty_round(free))} GB.")
         return None
 
     # Display chart iff model and cache size are selected

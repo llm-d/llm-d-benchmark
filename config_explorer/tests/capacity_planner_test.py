@@ -94,7 +94,6 @@ def test_model_memory_req():
     Tests model memory can be correctly estimated
     """
 
-
     model_info = get_model_info_from_hf(qwen_model)
     assert model_memory_req(model_info) == 1.4000244140625
 
@@ -170,6 +169,7 @@ def test_max_concurrent_req():
                                                             dp=dp,
                                                             )
 
+
                 expected = math.floor((avail_gpu_count * gpu_mem - model_memory * dp) / per_req_kv_cache_req)
                 if expected < 0:
                     expected = 0
@@ -200,34 +200,37 @@ def test_gpus_required():
                 expected = tp * pp * dp
                 assert expected == gpus_required(tp, pp, dp)
 
-
-def test_per_gpu_memory_required():
+def test_allocatable_kv_cache_memory():
     """
-    Tests that model memory requirement is correctly calculated for each GPU
+    Tests allocatable kv cache memory is correctly calculated
     """
 
     model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
+    model_memory = model_memory_req(model_info)
 
-    max_model_lengths = [1024, 2048, 4096]
+    gpu_memory = 40
+    gpu_util = 1
 
-    for max_model_len in max_model_lengths:
-        for max_concurrency in range(1, 16):
-            for tp in range(1, 16):
-                for pp in range(1, 16):
+    for tp in range(1, 16):
+        for pp in range(1, 16):
+            for dp in range(1, 16):
 
-                    actual = per_gpu_memory_required(model_info,
-                                                     model_config,
-                                                     max_model_len,
-                                                     max_concurrency,
-                                                     tp,
-                                                     pp)
+                # Expected
+                gpu_count = tp * pp * dp
+                expected = gpu_count * gpu_memory - model_memory * dp
 
-                    model_memory = model_memory_req(model_info)
-                    kv_cache = kv_cache_req(model_info, model_config, max_model_len, max_concurrency)
+                actual = allocatable_kv_cache_memory(
+                    model_info,
+                    model_config,
+                    gpu_memory,
+                    gpu_util,
+                    tp,
+                    pp,
+                    dp
+                )
 
-                    expected = (model_memory + kv_cache) / (tp * pp)
-                    assert round(actual, 5) == round(expected, 5)
+                assert expected == actual
 
 def test_is_moe():
     """
@@ -288,8 +291,5 @@ def test_experts_per_gpu():
 
         for tp in range(1, 16):
             for dp in range(1, 16):
-                ep_size = tp * dp
-                assert experts * dp / ep_size == experts_per_ep_group(model_config, tp, dp)
-
-
+                assert experts / (tp * dp) == experts_per_ep_group(model_config, tp, dp)
 
