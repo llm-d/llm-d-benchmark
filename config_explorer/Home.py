@@ -101,7 +101,13 @@ def model_specification():
                 for d_type, param in model_info.safetensors.parameters.items():
                     data_types.append(d_type)
                     params.append(param)
-                    bytes_list.append(precision_to_byte(d_type))
+
+                    try:
+                        bytes_list.append(precision_to_byte(d_type))
+                    except ValueError as e:
+                        st.warning(e)
+                        pass
+
                     memory_req.append(parameter_memory_req(param, d_type))
 
                 data = {

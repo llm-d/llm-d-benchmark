@@ -116,20 +116,19 @@ def precision_to_byte(precision: str) -> int:
             if bits % 8 == 0:
                 return bits // 8
 
-    # Return BF16's precision as last resort
-    return 2
+    raise ValueError("Unsupported precision type.")
 
-def parameter_memory_req(parameter: int, precision: str) -> int:
+def parameter_memory_req(parameter: int, precision: str) -> float:
     """
-    Calculates the memory requirement for the number of parameters for the specified precision
+    Calculates the memory requirement (in GiB) for the number of parameters for the specified precision
     """
 
     precision_byte = precision_to_byte(precision)
     return parameter * precision_byte / (1024 ** 3)
 
-def model_memory_req(model_info: ModelInfo) -> int:
+def model_memory_req(model_info: ModelInfo) -> float:
     """
-    Calculates the GPU memory required for loading the model
+    Calculates the GPU memory (in GiB) required for loading the model
     """
     try:
         model_params = model_info.safetensors.parameters
@@ -139,6 +138,7 @@ def model_memory_req(model_info: ModelInfo) -> int:
 
         return memory
 
+    # Some models do not have safetensors field
     except Exception as e:
         print(e)
         return -1
@@ -258,7 +258,7 @@ def allocatable_kv_cache_memory(model_info: ModelInfo,
                             tp: int = 1,
                             pp: int = 1,
                             dp: int = 1,
-                              ):
+                            ) -> float:
     gpu_count = tp * pp * dp
     available_memory = available_gpu_memory(gpu_memory, gpu_util) * gpu_count
     model_size = model_memory_req(model_info) * dp
@@ -303,7 +303,7 @@ def get_ep_size(tp_size: int, dp_size: int) -> int:
 def experts_per_ep_group(model_config: AutoConfig,
                    tp: int=1,
                    dp: int=1,
-                   ) -> int:
+                   ) -> float:
     """
     Calculates the number of experts to handle on each GPU
     """
