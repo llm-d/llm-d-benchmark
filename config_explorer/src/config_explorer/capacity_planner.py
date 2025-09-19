@@ -129,18 +129,12 @@ def model_memory_req(model_info: ModelInfo) -> float:
     """
     Calculates the GPU memory (in GiB) required for loading the model
     """
-    try:
-        model_params = model_info.safetensors.parameters
-        memory = 0
-        for precision, num_params in model_params.items():
-            memory += parameter_memory_req(num_params, precision)
+    model_params = model_info.safetensors.parameters
+    memory = 0
+    for precision, num_params in model_params.items():
+        memory += parameter_memory_req(num_params, precision)
 
-        return memory
-
-    # Some models do not have safetensors field
-    except Exception as e:
-        print(e)
-        return -1
+    return memory
 
 def inference_dtype(model_config: AutoConfig) -> str:
     """

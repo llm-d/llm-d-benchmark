@@ -103,7 +103,7 @@ def model_specification():
 
                     try:
                         bytes_list.append(precision_to_byte(d_type))
-                    except ValueError as e:
+                    except Exception as e:
                         st.warning(e)
                         pass
 
