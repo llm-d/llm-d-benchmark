@@ -164,10 +164,10 @@ def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path
     decode_tensor_parallelism = ev.get("vllm_modelservice_decode_tensor_parallelism", "1")
     decode_model_command = ev.get("vllm_modelservice_decode_model_command", "")
     decode_extra_args = ev.get("vllm_modelservice_decode_extra_args", "")
-    decode_cpu_mem = ev.get("vllm_modelservice_decode_cpu_mem", "")
-    decode_cpu_nr = ev.get("vllm_modelservice_decode_cpu_nr", "")
+    decode_cpu_mem = ev.get("vllm_modelservice_decode_cpu_mem", "") or ev.get("vllm_common_cpu_mem", "")
+    decode_cpu_nr = ev.get("vllm_modelservice_decode_cpu_nr", "") or ev.get("vllm_common_cpu_nr", "")
     decode_inference_port = ev.get("vllm_modelservice_decode_inference_port", "8000")
-    
+
     # Prefill configuration
     prefill_replicas = int(ev.get("vllm_modelservice_prefill_replicas", "0"))
     prefill_create = "true" if prefill_replicas > 0 else "false"
@@ -175,11 +175,14 @@ def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path
     prefill_tensor_parallelism = ev.get("vllm_modelservice_prefill_tensor_parallelism", "1")
     prefill_model_command = ev.get("vllm_modelservice_prefill_model_command", "")
     prefill_extra_args = ev.get("vllm_modelservice_prefill_extra_args", "")
-    prefill_cpu_mem = ev.get("vllm_modelservice_prefill_cpu_mem", "")
-    prefill_cpu_nr = ev.get("vllm_modelservice_prefill_cpu_nr", "")
+    prefill_cpu_mem = ev.get("vllm_modelservice_prefill_cpu_mem", "") or ev.get("vllm_common_cpu_mem", "")
+    prefill_cpu_nr = ev.get("vllm_modelservice_prefill_cpu_nr", "") or ev.get("vllm_common_cpu_nr", "")
     
-    # Resource configuration
+    # Resource configuration - handle auto accelerator resource
     accelerator_resource = os.environ.get("LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE", "")
+    if accelerator_resource == "auto":
+        accelerator_resource = "nvidia.com/gpu"
+
     decode_accelerator_nr = ev.get("vllm_modelservice_decode_accelerator_nr", "auto")
     prefill_accelerator_nr = ev.get("vllm_modelservice_prefill_accelerator_nr", "auto")
     
@@ -234,7 +237,59 @@ def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path
     if rules_file.exists():
         rules_content = rules_file.read_text().rstrip()
     
-    # Build the complete YAML structure exactly matching the bash script
+    # Build decode resources section cleanly
+    decode_limits_resources = []
+    decode_requests_resources = []
+
+    if decode_cpu_mem:
+        decode_limits_resources.append(f"        memory: {decode_cpu_mem}")
+        decode_requests_resources.append(f"        memory: {decode_cpu_mem}")
+    if decode_cpu_nr:
+        decode_limits_resources.append(f"        cpu: \"{decode_cpu_nr}\"")
+        decode_requests_resources.append(f"        cpu: \"{decode_cpu_nr}\"")
+    if ephemeral_storage_resource and decode_ephemeral_storage_nr:
+        decode_limits_resources.append(f"        {ephemeral_storage_resource}: \"{decode_ephemeral_storage_nr}\"")
+        decode_requests_resources.append(f"        {ephemeral_storage_resource}: \"{decode_ephemeral_storage_nr}\"")
+    if accelerator_resource and decode_accelerator_count and str(decode_accelerator_count) != "0":
+        decode_limits_resources.append(f"        {accelerator_resource}: \"{decode_accelerator_count}\"")
+        decode_requests_resources.append(f"        {accelerator_resource}: \"{decode_accelerator_count}\"")
+    if decode_network_resource and decode_network_nr:
+        decode_limits_resources.append(f"        {decode_network_resource}: \"{decode_network_nr}\"")
+        decode_requests_resources.append(f"        {decode_network_resource}: \"{decode_network_nr}\"")
+
+    # Build prefill resources section cleanly
+    prefill_limits_resources = []
+    prefill_requests_resources = []
+
+    if prefill_cpu_mem:
+        prefill_limits_resources.append(f"        memory: {prefill_cpu_mem}")
+        prefill_requests_resources.append(f"        memory: {prefill_cpu_mem}")
+    if prefill_cpu_nr:
+        prefill_limits_resources.append(f"        cpu: \"{prefill_cpu_nr}\"")
+        prefill_requests_resources.append(f"        cpu: \"{prefill_cpu_nr}\"")
+    if ephemeral_storage_resource and prefill_ephemeral_storage_nr:
+        prefill_limits_resources.append(f"        {ephemeral_storage_resource}: \"{prefill_ephemeral_storage_nr}\"")
+        prefill_requests_resources.append(f"        {ephemeral_storage_resource}: \"{prefill_ephemeral_storage_nr}\"")
+    if accelerator_resource and prefill_accelerator_count and str(prefill_accelerator_count) != "0":
+        prefill_limits_resources.append(f"        {accelerator_resource}: \"{prefill_accelerator_count}\"")
+        prefill_requests_resources.append(f"        {accelerator_resource}: \"{prefill_accelerator_count}\"")
+    if prefill_network_resource and prefill_network_nr:
+        prefill_limits_resources.append(f"        {prefill_network_resource}: \"{prefill_network_nr}\"")
+        prefill_requests_resources.append(f"        {prefill_network_resource}: \"{prefill_network_nr}\"")
+
+    # Join resources with newlines
+    decode_limits_str = "\n".join(decode_limits_resources) if decode_limits_resources else "        {}"
+    decode_requests_str = "\n".join(decode_requests_resources) if decode_requests_resources else "        {}"
+    prefill_limits_str = "\n".join(prefill_limits_resources) if prefill_limits_resources else "        {}"
+    prefill_requests_str = "\n".join(prefill_requests_resources) if prefill_requests_resources else "        {}"
+
+    # Handle command sections
+    decode_command_section = add_command(decode_model_command) if decode_model_command else ""
+    decode_args_section = add_command_line_options(decode_extra_args).lstrip() if decode_extra_args else ""
+    prefill_command_section = add_command(prefill_model_command) if prefill_model_command else ""
+    prefill_args_section = add_command_line_options(prefill_extra_args).lstrip() if prefill_extra_args else ""
+
+    # Build the complete YAML structure with proper handling of empty values
     yaml_content = f"""fullnameOverride: {fullname_override}
 multinode: {multinode}
 
@@ -303,10 +358,10 @@ decode:
   - name: "vllm"
     mountModelVolume: {str(mount_model_volume).lower()}
     image: "{main_image}"
-    modelCommand: {decode_model_command}
-    {add_command(decode_model_command)}
+    modelCommand: {decode_model_command or '""'}
+    {decode_command_section}
     args:
-      {add_command_line_options(decode_extra_args).lstrip()}
+      {decode_args_section}
     env:
       - name: VLLM_NIXL_SIDE_CHANNEL_HOST
         valueFrom:
@@ -315,17 +370,9 @@ decode:
       {functions_add_additional_env_to_yaml(envvars_to_yaml).lstrip()}
     resources:
       limits:
-        memory: {decode_cpu_mem}
-        cpu: "{decode_cpu_nr}"
-        {filter_empty_resource(ephemeral_storage_resource, decode_ephemeral_storage_nr)}
-        {filter_empty_resource(accelerator_resource, str(decode_accelerator_count))}
-        {filter_empty_resource(decode_network_resource, decode_network_nr)}
+{decode_limits_str}
       requests:
-        memory: {decode_cpu_mem}
-        cpu: "{decode_cpu_nr}"
-        {filter_empty_resource(ephemeral_storage_resource, decode_ephemeral_storage_nr)}
-        {filter_empty_resource(accelerator_resource, str(decode_accelerator_count))}
-        {filter_empty_resource(decode_network_resource, decode_network_nr)}
+{decode_requests_str}
     extraConfig:
       startupProbe:
         httpGet:
@@ -369,10 +416,10 @@ prefill:
   - name: "vllm"
     mountModelVolume: {str(mount_model_volume).lower()}
     image: "{main_image}"
-    modelCommand: {prefill_model_command}
-    {add_command(prefill_model_command)}
+    modelCommand: {prefill_model_command or '""'}
+    {prefill_command_section}
     args:
-      {add_command_line_options(prefill_extra_args).lstrip()}
+      {prefill_args_section}
     env:
       - name: VLLM_IS_PREFILL
         value: "1"
@@ -383,17 +430,9 @@ prefill:
       {functions_add_additional_env_to_yaml(envvars_to_yaml).lstrip()}
     resources:
       limits:
-        memory: {prefill_cpu_mem}
-        cpu: "{prefill_cpu_nr}"
-        {filter_empty_resource(ephemeral_storage_resource, prefill_ephemeral_storage_nr)}
-        {filter_empty_resource(accelerator_resource, str(prefill_accelerator_count))}
-        {filter_empty_resource(prefill_network_resource, prefill_network_nr)}
+{prefill_limits_str}
       requests:
-        memory: {prefill_cpu_mem}
-        cpu: "{prefill_cpu_nr}"
-        {filter_empty_resource(ephemeral_storage_resource, prefill_ephemeral_storage_nr)}
-        {filter_empty_resource(accelerator_resource, str(prefill_accelerator_count))}
-        {filter_empty_resource(prefill_network_resource, prefill_network_nr)}
+{prefill_requests_str}
     extraConfig:
       startupProbe:
         httpGet:

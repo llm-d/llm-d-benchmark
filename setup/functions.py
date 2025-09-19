@@ -951,17 +951,25 @@ def add_command_line_options(args_string):
 
             return f"        - |\n          {processed_args}"
         elif current_step == "09":
-            # For step 09 (modelservice), different formatting
+            # For step 09 (modelservice), format as proper YAML list
             if "[" in processed_args and "]" in processed_args:
                 processed_args = processed_args.replace("[", "").replace("]", "")
-                processed_args = processed_args.replace("____", " ")
-                processed_args = processed_args.replace(" --", " \\\n        --")
+                args_list = processed_args.replace("____", " ").split()
+                # Create proper YAML list items with quoted strings
+                yaml_list = []
+                for arg in args_list:
+                    if arg.strip():
+                        yaml_list.append(f"      - \"{arg}\"")
+                return "\n".join(yaml_list)
             else:
                 processed_args = processed_args.replace("____", " ")
-                processed_args = processed_args.replace(";", ";\n      ")
-                processed_args = processed_args.replace(" --", " \\\n        --")
-
-            return f"      {processed_args}"
+                args_list = processed_args.split()
+                # Create proper YAML list items with quoted strings
+                yaml_list = []
+                for arg in args_list:
+                    if arg.strip():
+                        yaml_list.append(f"      - \"{arg}\"")
+                return "\n".join(yaml_list)
         else:
             # Default case
             processed_args = processed_args.replace("____", " ")
@@ -1035,68 +1043,6 @@ def add_config(obj_or_filename, num_spaces=0, label=""):
         indented_contents = ""
     return indented_contents
 
-def check_storage_class():
-    """
-    Check and validate storage class configuration.
-    Equivalent to the bash check_storage_class function.
-    """
-    caller = os.environ.get("LLMDBENCH_CONTROL_CALLER", "")
-    if caller not in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
-        return True
-
-    storage_class = os.environ.get("LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS", "")
-
-    try:
-        # Use pykube to connect to Kubernetes
-        control_work_dir = os.environ.get("LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark")
-        api = kube_connect(f'{control_work_dir}/environment/context.ctx')
-
-        # Create StorageClass object using object_factory since it's not built into pykube
-        StorageClass = pykube.object_factory(api, "storage.k8s.io/v1", "StorageClass")
-
-        # Handle default storage class
-        if storage_class == "default":
-            if caller in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
-                try:
-                    # Find default storage class using pykube
-                    storage_classes = StorageClass.objects(api)
-                    default_sc = None
-
-                    for sc in storage_classes:
-                        annotations = sc.metadata.get("annotations", {})
-                        if annotations.get("storageclass.kubernetes.io/is-default-class") == "true":
-                            default_sc = sc.name
-                            break
-
-                    if default_sc:
-                        announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to \"{default_sc}\"")
-                        os.environ["LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS"] = default_sc
-                        storage_class = default_sc
-                    else:
-                        announce("❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class")
-                        return False
-                except Exception as e:
-                    announce(f"❌ Error checking default storage class: {e}")
-                    return False
-
-        # Verify storage class exists using pykube
-        try:
-            sc = StorageClass.objects(api).get(name=storage_class)
-            if sc.exists():
-                return True
-            else:
-                announce(f"❌ ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS={storage_class} but could not find such storage class")
-                return False
-        except pykube.exceptions.ObjectDoesNotExist:
-            announce(f"❌ ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS={storage_class} but could not find such storage class")
-            return False
-        except Exception as e:
-            announce(f"❌ Error checking storage class: {e}")
-            return False
-
-    except Exception as e:
-        announce(f"❌ Error connecting to Kubernetes: {e}")
-        return False
 
 
 def check_affinity():
