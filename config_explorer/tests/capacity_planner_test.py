@@ -2,6 +2,7 @@
 Tests Capacity Planner functions
 """
 
+import pytest
 from src.config_explorer.capacity_planner import *
 
 # ---- Constants ----
@@ -98,8 +99,9 @@ def test_model_memory_req():
     assert model_memory_req(model_info) == 1.4000244140625
 
     # No param info for facebook/opt-125m
-    model_info = get_model_info_from_hf("facebook/opt-125m")
-    assert model_memory_req(model_info) == -1
+    with pytest.raises(Exception):
+        model_info = get_model_info_from_hf("facebook/opt-125m")
+        model_memory_req(model_info)
 
 def test_kv_cache_req():
     """
