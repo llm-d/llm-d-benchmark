@@ -2,10 +2,6 @@
 Mocks DB storing info about common accelerators used for LLM serving and inference
 """
 
-import pickle
-from typing import Dict, Any
-import pandas as pd
-
 gpu_specs = {
     # https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-us-nvidia-1758950-r4-web.pdf
     # https://medium.com/@bijit211987/top-nvidia-gpus-for-llm-inference-8a5316184a10
