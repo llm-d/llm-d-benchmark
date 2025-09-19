@@ -28,10 +28,6 @@ def get_model_config_from_hf(model_name: str, hf_token: str=None) -> AutoConfig:
         token=hf_token or None,
     )
 
-    # For LLMs
-    if hasattr(model_config, "text_config"):
-        model_config = model_config.text_config
-
     return model_config
 
 
@@ -215,6 +211,8 @@ def max_concurrent_requests(model_info: ModelInfo,
 
     # Find kv cache requirement for one request of max-model-len
     per_request_kv_cache_req = kv_cache_req(model_info, model_config, max_model_len)
+    if per_request_kv_cache_req == 0:
+        return 0
     return max(0, math.floor(kv_cache_allocatable / per_request_kv_cache_req))
 
 def find_possible_tp(model_config: AutoConfig) -> List[int]:
