@@ -12,8 +12,17 @@ USER_SCENARIO_KEY = "scenario"
 SELECTED_MODEL_KEY = "selected_model"
 SELECTED_GPU_NAME_KEY = "selected_gpu_name"
 SELECTED_GPU_COUNT_AVAIL_KEY = "selected_gpu_count_avail"
+SELECTED_GPU_MEMORY_UTIL_KEY = "selected_gpu_memory_util"
+SELECTED_GPU_PER_NODE_KEY = "selected_gpu_per_node"
+SELECTED_NODE_COUNT_KEY = "selected_node_count"
 SELECTED_MAX_MODEL_LEN_KEY = "selected_max_model_len"
 SELECTED_CONCURRENCY_KEY = "selected_concurrency"
+
+## Parallelism strategy keys
+SELECTED_TP_SIZE_KEY = "selected_tp_size"
+SELECTED_PP_SIZE_KEY = "selected_pp_size"
+SELECTED_DP_SIZE_KEY = "selected_dp_size"
+SELECTED_ENABLE_EP_KEY = "selected_enable_ep"
 
 @dataclass
 class Scenario:
@@ -21,12 +30,19 @@ class Scenario:
     model_name: str = 'RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic'
     model_info: ModelInfo | None = None
     model_config: AutoConfig | None = None
-    max_model_len: int | None = None
-    concurrency: int | None = None
+    max_model_len: int = 1
+    concurrency: int = 1
 
     # GPU
-    gpu_name: str ='NVIDIA-H100-80GB-HBM3'
-    gpu_count_avail: int | None = None
+    gpu_name: str = 'NVIDIA-H100-80GB-HBM3'
+    gpu_count_avail: int = 1
+    gpu_mem_util: float = 0.9
+
+    # Parallelism
+    tp_size: int = 1
+    pp_size: int = 1
+    dp_size: int = 1
+    enable_ep: bool = False
 
     def get_model_name(self) -> str:
         if not self.model_name:
@@ -47,6 +63,25 @@ class Scenario:
             return True
         return False
 
+    def reset(self) -> None:
+        """
+        Resets inputs
+        """
+        self.model_name = 'RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic'
+        self.model_info = None
+        self.model_config = None
+        self.max_model_len = 1
+        self.concurrency = 1
+
+        self.gpu_name = 'NVIDIA-H100-80GB-HBM3'
+        self.gpu_count_avail = 1
+        self.gpu_mem_util = 0.9
+
+        self.tp_size = 1
+        self.pp_size = 1
+        self.dp_size = 1
+        self.enable_ep = False
+
 def init_session_state():
     """
     Inits session state for data persistence
@@ -61,19 +96,61 @@ def update_scenario(session_state_key: str, scenario_attr: str):
     """
     st.session_state[USER_SCENARIO_KEY].__setattr__(scenario_attr, st.session_state[session_state_key])
 
+def on_update_parallelism(session_state_key: str, scenario_attr: str):
+    """
+    Update session state values for parallelism and resets other parallelism calculation
+    """
+    scenario = st.session_state[USER_SCENARIO_KEY]
+    scenario.__setattr__(scenario_attr, st.session_state[session_state_key])
+    scenario.concurrency = 1
+
 def on_update_gpu_count():
     """
     Reset concurrency to none
     """
     scenario = st.session_state[USER_SCENARIO_KEY]
     scenario.gpu_count_avail = st.session_state[SELECTED_GPU_COUNT_AVAIL_KEY]
-    scenario.concurrency = None
+    scenario.concurrency = 1
+    scenario.tp_size = 1
+    scenario.dp_size = 1
+
+def on_update_gpu_per_node():
+    """
+    Reset concurrency to none
+    """
+    scenario = st.session_state[USER_SCENARIO_KEY]
+    scenario.gpu_per_node = st.session_state[SELECTED_GPU_PER_NODE_KEY]
+    scenario.concurrency = 1
+
+def on_update_node_count():
+    """
+    Reset concurrency to none
+    """
+    scenario = st.session_state[USER_SCENARIO_KEY]
+    scenario.node_count = st.session_state[SELECTED_NODE_COUNT_KEY]
+    scenario.concurrency = 1
 
 def on_update_model_name():
+    """
+    Reset model name
+    """
+    scenario = st.session_state[USER_SCENARIO_KEY]
+
+    # Reset everything
+    scenario.reset()
+
+    scenario.model_name = st.session_state[SELECTED_MODEL_KEY]
+
+def on_update_max_model_len():
     """
     Reset max model length
     """
     scenario = st.session_state[USER_SCENARIO_KEY]
-    scenario.model_name = st.session_state[SELECTED_MODEL_KEY]
-    scenario.max_model_len = None
-    scenario.concurrency = None
+    scenario.max_model_len = st.session_state[SELECTED_MAX_MODEL_LEN_KEY]
+    scenario.concurrency = 1
+
+def pretty_round(num):
+    """
+    Pretty round to two digits
+    """
+    return round(num, 2)

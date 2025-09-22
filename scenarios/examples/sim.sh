@@ -1,5 +1,5 @@
 # LLM-D SIMULATION WELL LIT PATH
-# Based on https://github.com/llm-d-incubation/llm-d-infra/tree/main/quickstart/examples/sim
+# Based on https://github.com/llm-d/llm-d/blob/dev/guides/simulated-accelerators/README.md
 
 export LLMDBENCH_VLLM_COMMON_REPLICAS=1
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR=0

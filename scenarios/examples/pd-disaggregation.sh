@@ -1,5 +1,5 @@
 # P/D DISAGGREGATION WELL LIT PATH
-# Based on https://github.com/llm-d-incubation/llm-d-infra/tree/main/quickstart/examples/pd-disaggregation
+# Based on https://github.com/llm-d/llm-d/blob/dev/guides/pd-disaggregation/README.md
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
 # Removed extra volumes metrics-volume and torch-compile-volume; they are not needed for this model and tested hardware.
 # Use LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES to add them if needed.
@@ -28,7 +28,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true
 # export LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR=nixlv2 # already the default
 
 # Common parameters across standalone and llm-d (prefill and decode) pods
-export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=32000
+export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
 export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=128
 
 #             Affinity to select node with appropriate accelerator (leave uncommented to automatically detect GPU)
@@ -41,6 +41,27 @@ export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=128
 #export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/roce_gdr
 #export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib
 #export LLMDBENCH_VLLM_COMMON_NETWORK_NR=4
+
+#             Uncomment to use hostNetwork (only ONE PODE PER NODE)
+#export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG=$(mktemp)
+#cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG}
+#   hostNetwork: true
+#   dnsPolicy: ClusterFirstWithHostNet
+#EOF
+
+export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS}
+- name: dshm
+  mountPath: /dev/shm
+EOF
+
+export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES}
+- name: dshm
+  emptyDir:
+    medium: Memory
+    sizeLimit: 16Gi
+EOF
 
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
@@ -59,6 +80,8 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 EOF
 
 # Prefill parameters
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=4
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=32
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=128Gi
 # Uncomment the following line to enable multi-nic
@@ -72,10 +95,12 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS="[\
 --kv-transfer-config____'{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}'____\
 --disable-log-requests____\
 --disable-uvicorn-access-log____\
---max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN\
+--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN____\
+--tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM\
 ]"
 
 # Decode parameters
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=4
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=32
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=128Gi
@@ -90,7 +115,8 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS="[\
 --kv-transfer-config____'{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}'____\
 --disable-log-requests____\
 --disable-uvicorn-access-log____\
---max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN\
+--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN____\
+--tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM\
 ]"
 
 # Timeout for benchmark operations

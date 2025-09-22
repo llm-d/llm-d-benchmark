@@ -2,7 +2,7 @@
 
 ## Jupyter Analysis Notebook
 
-Data analysis can be performed using the [Jupyter](https://docs.jupyter.org/en/latest/) notebook [analysis.ipynb](analysis.ipynb) using Jupyter Lab, an interactive development environment. This notebook is written in Python, and will import all benchmark report files found within a provided list of directories and populate a [Pandas](https://pandas.pydata.org/) DataFrame. You may then execute pre-built plotting functions, modify these functions, or add your own custom analysis.
+Data analysis can be performed using the [Jupyter](https://docs.jupyter.org/en/latest/) notebook [analysis_pd.ipynb](analysis_pd.ipynb) using Jupyter Lab, an interactive development environment. This notebook is written in Python, and will import all benchmark report files found within a provided list of directories and populate a [Pandas](https://pandas.pydata.org/) DataFrame. You may then execute pre-built plotting functions, modify these functions, or add your own custom analysis.
 
 ### Creating a Python virtual environment
 

@@ -246,7 +246,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | awk '{print $1}' | grep ${LLMDBENCH_DEPLOY_METHODS} || true)
         if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
-          export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r '.spec.ports[0].port')
+          export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r '.spec.ports[] | select(.name == "default") | .port')
         else
           export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod --no-headers | awk '{print $1}' | grep ${LLMDBENCH_DEPLOY_METHODS} | head -n 1 || true)
           export LLMDBENCH_VLLM_FQDN=
@@ -288,7 +288,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         fi
       fi
 
-      announce "🔍 Trying to detect the model name served by the stack..."
+      announce "🔍 Trying to detect the model name served by the stack ($LLMDBENCH_HARNESS_STACK_ENDPOINT_URL)..."
       if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
         announce "ℹ️ Stack model detected is \"mock\""
       else
@@ -344,6 +344,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} create configmap $workload_type-profiles --from-file=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       done
 
+      export LLMDBENCH_RUN_EXPERIMENT_ID_PREFIX=""
       for treatment in $(ls ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/*.yaml); do
 
         export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=$(echo $treatment | rev | cut -d '/' -f 1 | rev)
@@ -356,9 +357,12 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           if [ -z "${LLMDBENCH_RUN_EXPERIMENT_ID}" ]; then
             export LLMDBENCH_RUN_EXPERIMENT_ID=$(date +%s)-${tid}
           else
-            export LLMDBENCH_RUN_EXPERIMENT_ID=${LLMDBENCH_RUN_EXPERIMENT_ID}-${tid}
+            if [[ -z $LLMDBENCH_RUN_EXPERIMENT_ID_PREFIX ]]; then
+              export LLMDBENCH_RUN_EXPERIMENT_ID_PREFIX=$LLMDBENCH_RUN_EXPERIMENT_ID
+            fi
+            export LLMDBENCH_RUN_EXPERIMENT_ID=${LLMDBENCH_RUN_EXPERIMENT_ID_PREFIX}-${tid}
           fi
-          # $(echo $tf | $LLMDBENCH_CONTROL_SCMD 's^\.txt^^g')
+
           echo
           cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf | grep -v ^1i# | cut -d '^' -f 3
           echo
@@ -376,6 +380,8 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
         if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
           announce "ℹ️ Skipping \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" creation"
+          mkdir -p ${local_results_dir}
+          mkdir -p ${local_analysis_dir}
         else
           create_harness_pod
 

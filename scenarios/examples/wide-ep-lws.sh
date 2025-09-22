@@ -1,5 +1,5 @@
-# P/D DISAGGREGATION WELL LIT PATH
-# Based on https://github.com/llm-d-incubation/llm-d-infra/tree/main/quickstart/examples/pd-disaggregation
+# WIDE EP/DP WITH LWS WELL LIT PATH
+# Based on https://github.com/llm-d/llm-d/blob/dev/guides/wide-ep-lws/README.md
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
 # Removed extra volumes metrics-volume and torch-compile-volume; they are not needed for this model and tested hardware.
 # Use LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES to add them if needed.
@@ -27,6 +27,28 @@ export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL=true
 export LLMDBENCH_VLLM_MODELSERVICE_EPP=true
 # export LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR=nixlv2 # already the default
 export LLMDBENCH_LLMD_ROUTINGSIDECAR_DEBUG_LEVEL=3
+
+# Common parameters across standalone and llm-d (prefill and decode) pods
+#export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
+#export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
+
+#             Affinity to select node with appropriate accelerator (leave uncommented to automatically detect GPU)
+#export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3
+#export LLMDBENCH_VLLM_COMMON_AFFINITY=gpu.nvidia.com/model:H200
+#export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-L40S
+#export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-A100-SXM4-80GB
+
+#             Uncomment to request specific network devices
+#export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/roce_gdr
+#export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib
+#export LLMDBENCH_VLLM_COMMON_NETWORK_NR=4
+
+#             Uncomment to use hostNetwork (onlye ONE PODE PER NODE)
+#export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG=$(mktemp)
+#cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG}
+#   hostNetwork: true
+#   dnsPolicy: ClusterFirstWithHostNet
+#EOF
 
 # Prefill and Decode configiration (via modelservice)
 

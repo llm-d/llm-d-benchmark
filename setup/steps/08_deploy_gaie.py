@@ -116,6 +116,7 @@ def main():
 inferencePool:
   targetPortNumber: {ev['vllm_common_inference_port']}
   modelServerType: vllm
+  apiVersion: "inference.networking.x-k8s.io/v1alpha2"
   modelServers:
     matchLabels:
       llm-d.ai/inferenceServing: "true"
