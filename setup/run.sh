@@ -219,10 +219,6 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | grep standalone | awk '{print $1}' || true)
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
-
-        echo "----------------------------------- DEBUGGING ------------------------------------------"
-        echo $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD
-        echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT
       fi
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
@@ -387,6 +383,27 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           mkdir -p ${local_results_dir}
           mkdir -p ${local_analysis_dir}
         else
+          # Export GAIE config
+          echo "----  inside run.sh ------"
+
+          # from step 8.sh
+          # convert to absolute path if needed
+          if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE" == /* ]]; then
+            export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH=$(echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+          else
+            export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH=$(echo ${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+          fi
+          echo "ℹ️ full path = ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH}"
+          # if the file exists and user hasn't provided one use the file
+          [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH" != *.yaml ]] && LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH="${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH}.yaml"
+
+          echo "ℹ️ full path = ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH}"
+
+          # Export as environment variable
+          export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT="$(yq eval . "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH")"
+          echo "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT"
+          echo "----  inside run.sh ------"
+
           create_harness_pod
 
           announce "🚀 Starting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL)..."

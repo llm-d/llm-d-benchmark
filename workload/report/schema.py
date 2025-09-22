@@ -454,6 +454,7 @@ class BenchmarkReport(BaseModel):
             "scenario.host.accelerator": None,
             "scenario.host.type": None,
             "scenario.platform.engine": None,
+            "scenario.platform.metadata": None,
             "metrics.resources.accelerator": None,
         }
 
