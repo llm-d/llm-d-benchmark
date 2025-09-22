@@ -322,7 +322,7 @@ function render_template {
     cat $additional_replace_commands >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
 
-  for entry in $(cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' -e 's^\.^\n^g' -e 's^\/^\n^g' | grep -E "REPLACE_ENV" | uniq); do
+  for entry in $(cat ${template_file_path} | grep -v ^# | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' -e 's^\.^\n^g' -e 's^\/^\n^g' | grep -E "REPLACE_ENV" | uniq); do
     render_string $entry &>/dev/null
   done
 
@@ -963,7 +963,7 @@ function get_model_name_from_pod {
 
     local url=$url/v1/models
 
-    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2)
+    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2 0)
     is_jq=$(echo $response | jq -r . || true)
 
     if [[ -z $is_jq ]]; then

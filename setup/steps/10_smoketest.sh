@@ -35,6 +35,7 @@ fi
 
 service_name="${service_name}.${LLMDBENCH_VLLM_COMMON_NAMESPACE}${LLMDBENCH_VLLM_COMMON_FQDN}"
 
+set +euo pipefail
 for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
   export LLMDBENCH_DEPLOY_CURRENT_MODELID=$(model_attribute $model modelid)
@@ -67,6 +68,7 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
         announce "       ✅ Pod ip \"${pod_ip}\" responded successfully ($received_model_name)"
       else
         announce "       ❌ Pod ip \"${pod_ip}\" responded with model name \"$received_model_name\" (instead of $LLMDBENCH_DEPLOY_CURRENT_MODEL)!"
+        exit 1
       fi
     fi
   done
@@ -87,12 +89,12 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
     announce "✅ Service responds successfully ($LLMDBENCH_DEPLOY_CURRENT_MODEL)"
   else
-
     if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
       received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${service_ip} 80)
     else
       received_model_name=$(get_model_name_from_pod $LLMDBENCH_VLLM_COMMON_NAMESPACE $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG}) ${service_ip}:80/${LLMDBENCH_DEPLOY_CURRENT_MODELID} 80)
     fi
+
     if [[ ${received_model_name} == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
       announce "✅ Service responds successfully ($received_model_name)"
     else
@@ -138,3 +140,4 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   fi
 
 done
+set -euo pipefail
