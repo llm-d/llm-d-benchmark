@@ -164,6 +164,24 @@ def _get_llmd_benchmark_envars() -> dict:
     if os.environ['LLMDBENCH_DEPLOY_METHODS'] == 'modelservice':
         # Given a 'modelservice' deployment, we expect the following environment
         # variables to be available
+
+        # Push epp config content to report. If not present, it is using the default plugins according to GAIE chart:
+        # https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/32970c0b719feaf9d3f34e8b6cf22db20c168324/config/charts/inferencepool/values.yaml#L10
+        epp_config_content = os.getenv('LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT', """apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+- type: queue-scorer
+- type: kv-cache-utilization-scorer
+- type: prefix-cache-scorer
+schedulingProfiles:
+- name: default
+  plugins:
+  - pluginRef: queue-scorer
+  - pluginRef: kv-cache-utilization-scorer
+  - pluginRef: prefix-cache-scorer
+""")
+        epp_config = yaml.safe_load(epp_config_content)
+
         return {
             "scenario": {
                 "model": {
@@ -198,7 +216,10 @@ def _get_llmd_benchmark_envars() -> dict:
                                     os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + \
                                     os.environ['LLMDBENCH_LLMD_IMAGE_TAG'],
                     }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
-                         int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
+                         int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS'])),
+                    "metadata": {
+                        "inferenceScheduler": epp_config,
+                    }
                 },
             },
         }

@@ -69,14 +69,17 @@ def main():
             # then use the file
             try:
                 with open(ev["vllm_modelservice_gaie_presets_full_path"], 'r') as f:
+                    # Expose presents content in env var
                     presets_content = f.read()
                 if "vllm_modelservice_gaie_custom_plugins" not in ev:
                     plugin_config = f'{ev["vllm_modelservice_gaie_plugins_configfile"]}: |\n' + '\n'.join(f"  {line}" for line in presets_content.splitlines())
             except FileNotFoundError:
                 # The (benchmark) plugin config file does not exist
-                # - use ev["vllm_modelservice_gaie_custom_plugins"] of it is defined
+                # - use ev["vllm_modelservice_gaie_custom_plugins"] if it is defined
                 if "vllm_modelservice_gaie_custom_plugins" in ev:
                     plugin_config = '\n'.join(f"{line}" for line in ev["vllm_modelservice_gaie_custom_plugins"].splitlines())
+
+            os.environ['LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT'] = plugin_config
 
             # Get image tag
             image_tag = get_image(
