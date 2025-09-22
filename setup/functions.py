@@ -953,13 +953,17 @@ def add_command_line_options(args_string):
         elif current_step == "09":
             # For step 09 (modelservice), format as proper YAML list
             if "[" in processed_args and "]" in processed_args:
+                # Handle array format with potential complex arguments
                 processed_args = processed_args.replace("[", "").replace("]", "")
-                args_list = processed_args.replace("____", " ").split()
-                # Create proper YAML list items with quoted strings
+                # Split on ____  to preserve arguments with spaces/quotes
+                args_list = [arg.strip() for arg in processed_args.split("____") if arg.strip()]
+                # Create proper YAML list items with escaped quotes
                 yaml_list = []
                 for arg in args_list:
                     if arg.strip():
-                        yaml_list.append(f"      - \"{arg}\"")
+                        # Escape any existing quotes in the argument
+                        escaped_arg = arg.replace('"', '\\"')
+                        yaml_list.append(f"      - \"{escaped_arg}\"")
                 return "\n".join(yaml_list)
             else:
                 processed_args = processed_args.replace("____", " ")
