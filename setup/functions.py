@@ -961,9 +961,12 @@ def add_command_line_options(args_string):
                 yaml_list = []
                 for arg in args_list:
                     if arg.strip():
-                        # Escape any existing quotes in the argument
-                        escaped_arg = arg.replace('"', '\\"')
-                        yaml_list.append(f"      - \"{escaped_arg}\"")
+                        # Clean up any trailing artifacts from line continuation
+                        cleaned_arg = arg.rstrip('\\').rstrip('"').strip()
+                        if cleaned_arg:
+                            # Escape any existing quotes in the argument
+                            escaped_arg = cleaned_arg.replace('"', '\\"')
+                            yaml_list.append(f"      - \"{escaped_arg}\"")
                 return "\n".join(yaml_list)
             else:
                 processed_args = processed_args.replace("____", " ")
