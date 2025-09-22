@@ -81,6 +81,10 @@ def main():
 
             os.environ['LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT'] = plugin_config
 
+            announce(f"-------------------------------- EPP config: {os.environ['LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT'] }")
+
+            announce(type(plugin_config))
+
             # Get image tag
             image_tag = get_image(
                 ev["llmd_inferencescheduler_image_registry"],
