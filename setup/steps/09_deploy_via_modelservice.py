@@ -324,6 +324,9 @@ routing:
         name: {model_id_label}-gaie
         port: 8000
         weight: 1
+      timeouts:
+        backendRequest: 0s
+        request: 0s
       matches:
       - path:
           type: PathPrefix
@@ -627,6 +630,9 @@ def main():
         name: {current_model_id_label}-gaie
         port: 8000
         weight: 1
+      timeouts:
+        backendRequest: 0s
+        request: 0s
 """
             rules_file.write_text(rules_content)
         else:
