@@ -216,13 +216,13 @@ schedulingProfiles:
                         "inferenceScheduler": epp_config,
                         "test": "here",
                     },
-                    "engine": [{
-                            "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
-                                    os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + \
-                                    os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + \
-                                    os.environ['LLMDBENCH_LLMD_IMAGE_TAG'],
-                    }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
-                         int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
+                    # "engine": [{
+                    #         "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
+                    #                 os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + \
+                    #                 os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + \
+                    #                 os.environ['LLMDBENCH_LLMD_IMAGE_TAG'],
+                    # }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
+                    #      int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
                 },
             },
         }
