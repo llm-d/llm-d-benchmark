@@ -5,7 +5,7 @@ export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
 export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=300Gi
 
 # Workload parameters
-export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic.yaml
+export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic_short.yaml
 export LLMDBENCH_HARNESS_NAME=inference-perf
 
 # Routing configuration (via gaie)
@@ -80,10 +80,3 @@ export LLMDBENCH_IMAGE_REGISTRY="quay.io"
 export LLMDBENCH_IMAGE_REPO="jgchen"
 export LLMDBENCH_IMAGE_NAME="llm-d-benchmark"
 export LLMDBENCH_IMAGE_TAG="0.0.12"
-
-# --- test run 2
-# export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-1.7B"
-# export LLMDBENCH_CONTROL_WORK_DIR=~/data/qwen1-7/inf-sche-9-14
-# export LLMDBENCH_CONTROL_WORK_DIR=~/data/qwen1-7/inf-sche-9-14-2
-# export LLMDBENCH_VLLM_COMMON_NAMESPACE=jchen2
-# export LLMDBENCH_HARNESS_NAMESPACE=jchen2

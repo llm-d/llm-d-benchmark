@@ -1,20 +1,8 @@
 load:
   type: constant
   stages:
-  - rate: 2
-    duration: 50
-  - rate: 5
-    duration: 50
-  - rate: 8
-    duration: 50
-  - rate: 10
-    duration: 50
-  - rate: 12
-    duration: 50
-  - rate: 15
-    duration: 50
-  - rate: 20
-    duration: 50
+    - rate: 1
+      duration: 60
 api:
   type: completion
   streaming: true
