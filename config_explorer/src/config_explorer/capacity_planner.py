@@ -7,7 +7,7 @@ from functools import reduce
 import re
 from typing import List
 from huggingface_hub import HfApi, ModelInfo
-from transformers import AutoConfig
+from transformers import AutoConfig, AutoModel
 
 # Model
 def get_model_info_from_hf(model_name: str, hf_token: str | None = None):
@@ -15,7 +15,8 @@ def get_model_info_from_hf(model_name: str, hf_token: str | None = None):
     Fetches model info from HF, does not handle error
     """
     api = HfApi(token=hf_token)
-    return api.model_info(model_name)
+    model_info = api.model_info(model_name)
+    return model_info
 
 def get_model_config_from_hf(model_name: str, hf_token: str=None) -> AutoConfig:
     """
@@ -27,6 +28,16 @@ def get_model_config_from_hf(model_name: str, hf_token: str=None) -> AutoConfig:
         trust_remote_code=True,
         token=hf_token or None,
     )
+
+    return model_config
+
+def get_text_config(model_config: AutoConfig) -> dict:
+    """
+    Returns text config (for LLMs)
+    """
+
+    if hasattr(model_config, "text_config"):
+        model_config = model_config.text_config
 
     return model_config
 
@@ -129,6 +140,7 @@ def model_memory_req(model_info: ModelInfo) -> float:
     """
     Calculates the GPU memory (in GiB) required for loading the model
     """
+
     model_params = model_info.safetensors.parameters
     memory = 0
     for precision, num_params in model_params.items():
@@ -212,6 +224,9 @@ def find_possible_tp(model_config: AutoConfig) -> List[int]:
     """
     Finds possible values for tp for the given model
     """
+
+    model_config = get_text_config(model_config)
+
     num_attention_heads = model_config.num_attention_heads
 
     factors = set(reduce(

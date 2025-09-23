@@ -22,6 +22,17 @@ def test_get_model_info_and_config_from_hf():
     assert hasattr(model_info, "safetensors")
     assert hasattr(model_config, "max_position_embeddings")
 
+    # Try text config
+    # For qwen, it's the same
+    assert model_config.to_dict() == get_text_config(model_config).to_dict()
+
+    # For mistral, it's different
+    msitral = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
+    model_config = get_model_config_from_hf(msitral)
+    text_config = get_text_config(model_config)
+
+    assert model_config.to_dict() != text_config.to_dict()
+
     # Try facebook model which is smaller
     facebook = "facebook/opt-125m"
     model_info = get_model_info_from_hf(facebook)
@@ -30,6 +41,7 @@ def test_get_model_info_and_config_from_hf():
     assert hasattr(model_info, "id")
     assert hasattr(model_info, "safetensors")
     assert hasattr(model_config, "max_position_embeddings")
+
 
 def test_model_total_params():
     """
@@ -294,4 +306,3 @@ def test_experts_per_gpu():
         for tp in range(1, 16):
             for dp in range(1, 16):
                 assert experts / (tp * dp) == experts_per_ep_group(model_config, tp, dp)
-
