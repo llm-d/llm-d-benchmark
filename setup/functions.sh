@@ -846,10 +846,6 @@ function create_harness_pod {
   # Sanitize the stack name to make it a valid k8s/OpenShift resource name
   local LLMDBENCH_HARNESS_SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | $LLMDBENCH_CONTROL_SCMD 's|[/:]|-|g')
 
-  echo "----------------------------------- DEBUGGING ------------------------------------------"
-  echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT
-  echo "----------------------------------- DEBUGGING ------------------------------------------"
-
   cat <<EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
 apiVersion: v1
 kind: Pod

@@ -8,6 +8,7 @@ plugins:
 - type: max-score-picker
 - type: single-profile-handler
 - type: kv-cache-scorer
+- type: queue-cache-scorer
 schedulingProfiles:
 - name: default
   plugins:

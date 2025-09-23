@@ -6,6 +6,7 @@
 # that is not specialized to a particular harness.
 
 import argparse
+import base64
 import datetime
 import os
 import re
@@ -167,7 +168,9 @@ def _get_llmd_benchmark_envars() -> dict:
 
         # Push epp config content to report. If not present, it is using the default plugins according to GAIE chart:
         # https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/32970c0b719feaf9d3f34e8b6cf22db20c168324/config/charts/inferencepool/values.yaml#L10
-        epp_config_content = os.getenv('LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT', """apiVersion: inference.networking.x-k8s.io/v1alpha1
+        epp_config_content = os.getenv('LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT')
+        if epp_config_content == "":
+            epp_config_content = """apiVersion: inference.networking.x-k8s.io/v1alpha1
 kind: EndpointPickerConfig
 plugins:
 - type: queue-scorer
@@ -179,7 +182,27 @@ schedulingProfiles:
   - pluginRef: queue-scorer
   - pluginRef: kv-cache-utilization-scorer
   - pluginRef: prefix-cache-scorer
-""")
+"""
+        epp_config_content = base64.b64decode(epp_config_content).decode("utf-8")
+        epp_config = yaml.safe_load(epp_config_content)
+
+        # Insert default values for prefix scorer
+        for i, plugin in enumerate(epp_config['plugins']):
+            if plugin['type'] == 'prefix-cache-scorer':
+
+                if 'parameters' not in plugin:
+                    plugin['parameters'] = {}
+
+                parameters = plugin['parameters']
+                if 'blockSize' not in parameters:
+                    parameters['blockSize'] = 16
+                if 'maxPrefixBlocksToMatch' not in parameters:
+                    parameters['maxPrefixBlocksToMatch'] = 256
+                if 'lruCapacityPerServer' not in parameters:
+                    parameters['lruCapacityPerServer'] = 31250
+
+                epp_config['plugins'][i]['parameters'] = parameters
+
         return {
             "scenario": {
                 "model": {
@@ -208,9 +231,10 @@ schedulingProfiles:
                     }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
                 },
                 "platform": {
-                    "metadata": {
-                        "inferenceScheduler": epp_config_content,
-                    },
+                    "metadata": [{
+                        "inferenceScheduler": epp_config,
+                    }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
+                         int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS'])),
                     "engine": [{
                             "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
                                     os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + \
