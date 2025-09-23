@@ -180,7 +180,20 @@ set +euo pipefail
 export LLMDBENCH_CURRENT_STEP=05
 if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
   export LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL="NA"
-  export LLMDBENCH_HARNESS_NAMESPACE=$LLMDBENCH_CONTROL_CLUSTER_NAMESPACE
+
+  if [[ -z $LLMDBENCH_CONTROL_CLUSTER_NAMESPACE ]]; then
+    announce "❌ Unable automatically detect namespace. Environment variable \"LLMDBENCH_CONTROL_CLUSTER_NAMESPACE\". Specifiy namespace via CLI option \"-p\--namespace\" or environment variable \"LLMDBENCH_HARNESS_NAMESPACE\""
+    exit 1
+  else
+    export LLMDBENCH_HARNESS_NAMESPACE=$LLMDBENCH_CONTROL_CLUSTER_NAMESPACE
+    export LLMDBENCH_VLLM_COMMON_NAMESPACE=$LLMDBENCH_CONTROL_CLUSTER_NAMESPACE
+    announce "ℹ️ Namespace automatically detected: \"$LLMDBENCH_CONTROL_CLUSTER_NAMESPACE\"."
+  fi
+
+  if [[ $LLMDBENCH_HARNESS_SERVICE_ACCOUNT == ${LLMDBENCH_HARNESS_NAME}-runner ]]; then
+    LLMDBENCH_HARNESS_SERVICE_ACCOUNT=default
+  fi
+  announce "⚠️ Setting service account to \"$LLMDBENCH_HARNESS_SERVICE_ACCOUNT\"..."
 fi
 
 source ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.sh > /dev/null 2>&1
@@ -231,16 +244,6 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
         export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="LLMDBENCH_BASE64_CONTEXT_CONTENTS|^LLMDBENCH_VLLM_COMMON_NAMESPACE|^LLMDBENCH_DEPLOY_CURRENT"
         announce "⚠️ Deployment method - $LLMDBENCH_DEPLOY_METHODS - is neither \"standalone\" nor \"modelservice\". "
-
-        if [[ $LLMDBENCH_VLLM_COMMON_NAMESPACE == llmdbench ]]; then
-          export LLMDBENCH_VLLM_COMMON_NAMESPACE=$(${LLMDBENCH_CONTROL_KCMD} project -q)
-        fi
-        announce "ℹ️ Setting namespace to \"$LLMDBENCH_VLLM_COMMON_NAMESPACE\"..."
-
-        if [[ $LLMDBENCH_HARNESS_SERVICE_ACCOUNT == ${LLMDBENCH_HARNESS_NAME}-runner ]]; then
-          LLMDBENCH_HARNESS_SERVICE_ACCOUNT=default
-        fi
-        announce "ℹ️ Setting service account to \"$LLMDBENCH_HARNESS_SERVICE_ACCOUNT\"..."
 
         announce "🔍 Trying to find a matching endpoint name..."
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod

@@ -4,18 +4,23 @@ on:
   pull_request:
 
 jobs:
-  run-benchmark:
-    name: Inference Sim Benchmark Test
+
+  run-benchmark-sh:
+    name: Inference Simulation Benchmark Test
     runs-on: ubuntu-latest
     timeout-minutes: 240
 
+    env:
+      LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+      LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE: llmdbenchcicd-${{ github.event.number }}
+
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Display OS used
+      - name: Display OS
         run: |
           cat /etc/*os-*
         shell: bash
@@ -23,7 +28,7 @@ jobs:
       - name: Create k8s Kind Cluster
         uses: helm/kind-action@v1
 
-      - name: Label node with affinity from inference-sim scenario
+      - name: Label Node Affinity from inference-sim Scenario
         run: |
           NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
           echo "Labeling node: $NODE"
@@ -36,20 +41,15 @@ jobs:
         shell: bash
 
       - name: Standup a modelservice using llm-d-inference-sim
-        env:
-          LLMDBENCH_HF_TOKEN: hf-token-placeholder
         run: |
           ./setup/standup.sh -c kind_sim_fb -t modelservice -s 0,1,2,4,7,8,9
 
       - name: Run harness (mock)
         env:
-          LLMDBENCH_HF_TOKEN: hf-token-placeholder
           LLMD_CONTROL_DRY_RUN: 1 # TODO: harness doesn't work now for kind bc no harness endpoint
         run: |
           ./setup/run.sh -c kind_sim_fb --dry-run
 
       - name: Teardown
-        env:
-          LLMDBENCH_HF_TOKEN: hf-token-placeholder
         run: |
           ./setup/teardown.sh -c kind_sim_fb

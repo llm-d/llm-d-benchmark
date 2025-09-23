@@ -66,7 +66,13 @@ EOF
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 - name: UCX_TLS
-  value: "cuda_ipc,cuda_copy,tcp"
+  value: "rc,sm,cuda_ipc,cuda_copy,tcp"
+- name: UCX_SOCKADDR_TLS_PRIORITY
+  value: "tcp"
+###- name: UCX_NET_DEVICES
+###  value: mlx5_1:1
+###- name: NCCL_IB_HCA
+###  value: mlx5_1
 - name: VLLM_NIXL_SIDE_CHANNEL_PORT
   value: "5557"
 - name: VLLM_NIXL_SIDE_CHANNEL_HOST
@@ -85,10 +91,10 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=32
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=128Gi
 # Uncomment the following line to enable multi-nic
-#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS=deployed-by:$(id -un),modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
+###export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS=deployed-by:$(id -un),modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
 # Uncomment the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
-#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/roce_gdr
-#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR=4
+###export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/roce_gdr
+###export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR=1
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND=vllmServe
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS="[\
 --block-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE____\
@@ -105,10 +111,10 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=32
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=128Gi
 # Uncomment the following line to enable multi-nic
-#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$(id -un),modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
+###export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$(id -un),modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
 # Uncomment the following two lines to enable roce/gdr
-#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
-#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=4
+###export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
+###export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=1
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=vllmServe
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS="[\
 --block-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE____\
