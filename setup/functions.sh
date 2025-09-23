@@ -956,7 +956,6 @@ function get_model_name_from_pod {
     if [[ -z $has_protocol ]]; then
         local url="http://$url"
     fi
-
     # Check if the URL already contains a port number.
     # If not, append the default port provided.
     if ! echo "$url" | grep -q ':[0-9]'; then

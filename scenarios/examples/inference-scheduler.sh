@@ -76,6 +76,10 @@ export LLMDBENCH_CONTROL_WORK_DIR=~/data/qwen0-6/inf-sche-9-22
 export LLMDBENCH_VLLM_COMMON_NAMESPACE=jchen
 export LLMDBENCH_HARNESS_NAMESPACE=jchen
 
+export LLMDBENCH_IMAGE_REGISTRY="quay.io"
+export LLMDBENCH_IMAGE_REPO="jgchen"
+export LLMDBENCH_IMAGE_NAME="llm-d-benchmark"
+export LLMDBENCH_IMAGE_TAG="0.0.6"
 
 # --- test run 2
 # export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-1.7B"

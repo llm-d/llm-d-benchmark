@@ -180,10 +180,6 @@ schedulingProfiles:
   - pluginRef: kv-cache-utilization-scorer
   - pluginRef: prefix-cache-scorer
 """)
-        epp_config = yaml.safe_load(epp_config_content)
-        print(epp_config)
-        print(type(epp_config))
-
         return {
             "scenario": {
                 "model": {
@@ -213,16 +209,15 @@ schedulingProfiles:
                 },
                 "platform": {
                     "metadata": {
-                        "inferenceScheduler": epp_config,
-                        "test": "here",
+                        "inferenceScheduler": epp_config_content,
                     },
-                    # "engine": [{
-                    #         "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
-                    #                 os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + \
-                    #                 os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + \
-                    #                 os.environ['LLMDBENCH_LLMD_IMAGE_TAG'],
-                    # }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
-                    #      int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
+                    "engine": [{
+                            "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
+                                    os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + \
+                                    os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + \
+                                    os.environ['LLMDBENCH_LLMD_IMAGE_TAG'],
+                    }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
+                         int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
                 },
             },
         }

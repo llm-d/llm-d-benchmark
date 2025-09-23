@@ -384,8 +384,6 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           mkdir -p ${local_analysis_dir}
         else
           # Export GAIE config
-          echo "----  inside run.sh ------"
-
           # from step 8.sh
           # convert to absolute path if needed
           if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE" == /* ]]; then
@@ -400,9 +398,9 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           echo "ℹ️ full path = ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH}"
 
           # Export as environment variable
-          export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT="$(yq eval . "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH")"
+          export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT="$(< {LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH} | sed ':a;N;$!ba;s/\n/\\n/g')"
+          # export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT="$(yq eval . "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH")"
           echo "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT"
-          echo "----  inside run.sh ------"
 
           create_harness_pod
 
