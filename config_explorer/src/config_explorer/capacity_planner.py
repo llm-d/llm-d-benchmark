@@ -34,6 +34,9 @@ def get_model_config_from_hf(model_name: str, hf_token: str=None) -> AutoConfig:
 def get_text_config(model_config: AutoConfig) -> dict:
     """
     Returns text config (for LLMs)
+
+    Some models nest LLM architecture inside 'text_config', some don't
+    Compare https://huggingface.co/Qwen/Qwen3-0.6B/blob/main/config.json with https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506/blob/main/config.json
     """
 
     if hasattr(model_config, "text_config"):
