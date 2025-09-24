@@ -183,7 +183,9 @@ schedulingProfiles:
   - pluginRef: kv-cache-utilization-scorer
   - pluginRef: prefix-cache-scorer
 """
-        epp_config_content = base64.b64decode(epp_config_content).decode("utf-8")
+        else:
+            epp_config_content = base64.b64decode(epp_config_content).decode("utf-8")
+
         epp_config = yaml.safe_load(epp_config_content)
 
         # Insert default values for prefix scorer
