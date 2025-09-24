@@ -231,10 +231,9 @@ schedulingProfiles:
                     }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
                 },
                 "platform": {
-                    "metadata": [{
+                    "metadata": {
                         "inferenceScheduler": epp_config,
-                    }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
-                         int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS'])),
+                    },
                     "engine": [{
                             "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
                                     os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + \
