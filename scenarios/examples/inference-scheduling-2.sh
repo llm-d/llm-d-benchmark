@@ -5,7 +5,7 @@ export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
 export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=300Gi
 
 # Workload parameters
-export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic_short.yaml
+export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic.yaml
 export LLMDBENCH_HARNESS_NAME=inference-perf
 
 # Routing configuration (via gaie)
@@ -70,7 +70,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS="[\
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=1
 
 # Local directory to copy benchmark runtime files and results
-export LLMDBENCH_CONTROL_WORK_DIR=~/data/qwen0-6/inf-sche-9-23
+export LLMDBENCH_CONTROL_WORK_DIR=~/data/qwen0-6/inf-sche-9-24
 
 # Cluster control My stuff
 export LLMDBENCH_VLLM_COMMON_NAMESPACE=jchen

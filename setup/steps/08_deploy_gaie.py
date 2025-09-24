@@ -69,7 +69,6 @@ def main():
             # then use the file
             try:
                 with open(ev["vllm_modelservice_gaie_presets_full_path"], 'r') as f:
-                    # Expose presents content in env var
                     presets_content = f.read()
                 if "vllm_modelservice_gaie_custom_plugins" not in ev:
                     plugin_config = f'{ev["vllm_modelservice_gaie_plugins_configfile"]}: |\n' + '\n'.join(f"  {line}" for line in presets_content.splitlines())
