@@ -127,7 +127,7 @@ The following table displays a comprehensive list of environment variables (and 
 | ---------------------------------------------  | ---------------------------------------------- | --------------------------------------------------- |
 | LLMDBENCH_DEPLOY_SCENARIO                      | File containing multiple environment variables which will override defaults | If not specified, defaults to (empty) `none.sh`. Can be overriden with CLI parameter `-c/--scenario` |
 | LLMDBENCH_DEPLOY_MODEL_LIST                     | List (comma-separated values) of models to be run against | Default=`meta-llama/Llama-3.2-1B-Instruct`. Can be overriden with CLI parameter `-m/--models` |
-| LLMDBENCH_VLLM_COMMON_NAMESPACE                | Namespace where the `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` | Default=`llmdbench`. Can be overriden with CLI parameter `-p/--namespace` |
+| LLMDBENCH_VLLM_COMMON_NAMESPACE                | Namespace where the `llm-d` stack was stood up | Default=`llmdbench`. Can be overriden with CLI parameter `-p/--namespace` |
 | LLMDBENCH_HARNESS_NAMESPACE                    | The `namespace` where the `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` will be created | Default=`${LLMDBENCH_VLLM_COMMON_NAMESPACE}`. Can be overriden with CLI parameter `-p/--namespace`. NOTE: the harness `fmperf` requires this `namespace` to be equal the standup `namespace` for now |
 | LLMDBENCH_DEPLOY_METHODS                       | List (comma-separated values) of standup methods | Default=`modelservice`. Can be overriden with CLI parameter `-t/--methods` |
 | LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST         | Lists all harnesses available to use           | Automatically populated by listing the directories under `workload/profiles` |
