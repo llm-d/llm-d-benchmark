@@ -684,6 +684,10 @@ function launch_download_job {
 
   announce "🚀 Launching model download job..."
 
+  # Conditionally determine if we are running simulation - if we are,
+  # then don't login to huggingface since we will not be using models 
+  # from restrictive HF repositories in the current and distant future
+  # during simulation.
 cat << EOF > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_download_pod_job.yaml
 apiVersion: batch/v1
 kind: Job
@@ -700,7 +704,11 @@ spec:
             - mkdir -p "\${MOUNT_PATH}/\${MODEL_PATH}" && \
               pip install huggingface_hub && \
               export PATH="\${PATH}:\${HOME}/.local/bin" && \
-              hf auth login --token "\${HF_TOKEN}" && \
+              $( if echo "${LLMDBENCH_LLMD_IMAGE_NAME}" | grep -q "sim"; then
+                   echo ""
+                 else
+                   echo "hf auth login --token \"\${HF_TOKEN}\" &&"
+                 fi ) \
               hf download "\${HF_MODEL_ID}" --local-dir "/cache/\${MODEL_PATH}"
           env:
             - name: MODEL_PATH
@@ -722,7 +730,6 @@ spec:
             - name: model-cache
               mountPath: /cache
       restartPolicy: OnFailure
-#      imagePullPolicy: IfNotPresent
       volumes:
         - name: model-cache
           persistentVolumeClaim:

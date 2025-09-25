@@ -64,7 +64,9 @@ def model_specification():
             # Fetch model config
             try:
                 model_config = get_model_config_from_hf(selected_model, hf_token=hf_token)
+                text_config = get_text_config(model_config)
                 user_scenario.model_config = model_config
+                user_scenario.text_config = text_config
             except Exception as e:
                 e_str = str(e)
                 if "gated" in e_str:
@@ -81,7 +83,7 @@ def model_specification():
             try:
                 model_gpu_memory_req = round(model_memory_req(model_info), 2)
             except Exception as e:
-                st.warning(f"Cannot retrieve relevant information about the model, {e}")
+                st.warning(f"Cannot retrieve relevant information about the model, {e}. The Capacity Planner only has partial information and functionality.")
                 return None
 
             # Display first precision
@@ -126,7 +128,7 @@ def parallelism_specification():
     Parallelism configuration
     """
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
-    model_config = user_scenario.model_config
+    model_config = user_scenario.text_config
 
     with st.container(border=True):
         st.write("**Parallelism Configuration**")
@@ -211,16 +213,16 @@ def workload_specification():
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_info = user_scenario.model_info
     model_config = user_scenario.model_config
+    text_config = user_scenario.text_config
 
     # Workload
     with st.container(border=True):
         st.write("**Workload Characteristics**")
+        st.caption(f"Estimate KV cache memory requirements for the selected model based on workload. Note that the model uses data type of `{inference_dtype(model_config)}` for KV cache during inference.")
 
         if model_config is None:
             st.warning("Model config not found.")
             return None
-
-        st.caption(f"Estimate KV cache memory requirements for the selected model based on workload. Note that the model uses data type of `{inference_dtype(model_config)}` for KV cache during inference.")
 
         if model_info is None:
             st.warning("Model information not yet selected")
@@ -231,7 +233,7 @@ def workload_specification():
 
         col1, col2 = st.columns(2)
 
-        model_max_context_len = max_context_len(model_config)
+        model_max_context_len = max_context_len(text_config)
         col1.number_input(
             f"Max model len (max model context length is: {model_max_context_len})",
             min_value=1,
@@ -255,16 +257,21 @@ Higher max model length means fewer concurrent requests can be served, \
             args=[util.SELECTED_CONCURRENCY_KEY, "concurrency"]
             )
 
-        max_concurrent_requests_num = max_concurrent_requests(
-            model_info,
-            model_config,
-            user_scenario.max_model_len,
-            gpu_memory=user_scenario.get_gpu_memory(db.gpu_specs),
-            gpu_mem_util=user_scenario.gpu_mem_util,
-            tp=user_scenario.tp_size,
-            pp=user_scenario.pp_size,
-            dp=user_scenario.dp_size,
-        )
+        try:
+            max_concurrent_requests_num = max_concurrent_requests(
+                model_info,
+                model_config,
+                user_scenario.max_model_len,
+                gpu_memory=user_scenario.get_gpu_memory(db.gpu_specs),
+                gpu_mem_util=user_scenario.gpu_mem_util,
+                tp=user_scenario.tp_size,
+                pp=user_scenario.pp_size,
+                dp=user_scenario.dp_size,
+            )
+
+        except Exception:
+            col2.warning("Model does not have safetensors data available, cannot estimate KV cache memory requirement.")
+            return None
 
         col2.info(f"Assuming the worst case scenario, such that every request contains `--max-model-len` tokens, the maximum concurrent requests that can be processed is {max_concurrent_requests_num}.")
 
@@ -276,6 +283,8 @@ def hardware_specification():
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_info = user_scenario.model_info
     model_config = user_scenario.model_config
+    text_config = user_scenario.text_config
+
     concurrency = user_scenario.concurrency
     tp = user_scenario.tp_size
     pp = user_scenario.pp_size
@@ -326,7 +335,13 @@ def hardware_specification():
             gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
             available_gpu_count = gpus_required(tp, pp, dp)
             available_gpu_mem = available_gpu_memory(gpu_memory, user_scenario.gpu_mem_util)
-            model_size = model_memory_req(model_info)
+
+            try:
+                model_size = model_memory_req(model_info)
+            except Exception:
+                st.warning("Model does not have safetensor data available, cannot estimate model memory.")
+                return None
+
             model_size_per_gpu = per_gpu_model_memory_required(model_info, tp, pp)
             allocatable_kv_cache = allocatable_kv_cache_memory(model_info,
                                                     model_config,
@@ -415,6 +430,7 @@ def memory_util_chart(st_context):
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_info = user_scenario.model_info
     model_config = user_scenario.model_config
+    text_config = user_scenario.text_config
     gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
     gpu_memory_util = user_scenario.gpu_mem_util
     concurrency = user_scenario.concurrency
