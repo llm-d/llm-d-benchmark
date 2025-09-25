@@ -70,6 +70,3 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=1
 
 # Local directory to copy benchmark runtime files and results
 export LLMDBENCH_CONTROL_WORK_DIR=~/data/inference-scheduling
-
-# Use the following image tag (ghcr.io/llm-d/llm-d-benchmark) to obtain the latest benchmark report format as of 9/25/25
-export LLMDBENCH_IMAGE_TAG="v0.3.0rc2"
