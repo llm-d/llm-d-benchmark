@@ -964,9 +964,13 @@ def add_command_line_options(args_string):
                         # Clean up any trailing artifacts from line continuation
                         cleaned_arg = arg.rstrip('\\').rstrip('"').strip()
                         if cleaned_arg:
-                            # Escape any existing quotes in the argument
-                            escaped_arg = cleaned_arg.replace('"', '\\"')
-                            yaml_list.append(f"      - \"{escaped_arg}\"")
+                            # Handle JSON strings and complex arguments with proper quoting
+                            if cleaned_arg.startswith("'") and cleaned_arg.endswith("'"):
+                                # Already has single quotes - use as-is for JSON strings
+                                yaml_list.append(f"      - {cleaned_arg}")
+                            else:
+                                # Regular argument - wrap in double quotes
+                                yaml_list.append(f"      - \"{cleaned_arg}\"")
                 return "\n".join(yaml_list)
             else:
                 processed_args = processed_args.replace("____", " ")
