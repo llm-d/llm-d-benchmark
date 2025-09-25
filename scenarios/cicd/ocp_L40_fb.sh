@@ -1,6 +1,7 @@
 export LLMDBENCH_CONTROL_WORK_DIR=/tmp/cicd/
 export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 export LLMDBENCH_VLLM_COMMON_NAMESPACE=llmdbenchcicd
+export LLMDBENCH_HARNESS_NAMESPACE=llmdbenchcicd
 export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-L40S
 export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=ocs-storagecluster-cephfs
 export LLMDBENCH_VLLM_MODELSERVICE_RELEASE=llmdbenchcicd

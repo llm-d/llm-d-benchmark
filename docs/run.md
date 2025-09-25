@@ -128,6 +128,7 @@ The following table displays a comprehensive list of environment variables (and 
 | LLMDBENCH_DEPLOY_SCENARIO                      | File containing multiple environment variables which will override defaults | If not specified, defaults to (empty) `none.sh`. Can be overriden with CLI parameter `-c/--scenario` |
 | LLMDBENCH_DEPLOY_MODEL_LIST                     | List (comma-separated values) of models to be run against | Default=`meta-llama/Llama-3.2-1B-Instruct`. Can be overriden with CLI parameter `-m/--models` |
 | LLMDBENCH_VLLM_COMMON_NAMESPACE                | Namespace where the `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` | Default=`llmdbench`. Can be overriden with CLI parameter `-p/--namespace` |
+| LLMDBENCH_HARNESS_NAMESPACE                    | The `namespace` where the `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` will be created | Default=`${LLMDBENCH_VLLM_COMMON_NAMESPACE}`. Can be overriden with CLI parameter `-p/--namespace`. NOTE: the harness `fmperf` requires this `namespace` to be equal the standup `namespace` for now |
 | LLMDBENCH_DEPLOY_METHODS                       | List (comma-separated values) of standup methods | Default=`modelservice`. Can be overriden with CLI parameter `-t/--methods` |
 | LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST         | Lists all harnesses available to use           | Automatically populated by listing the directories under `workload/profiles` |
 | LLMDBENCH_HARNESS_NAME                         | Specifies harness (load generator) to be used  | Default=`inference-perf`. Can be overriden with CLI parameter `-l/--harness`  |
@@ -138,7 +139,6 @@ The following table displays a comprehensive list of environment variables (and 
 | LLMDBENCH_HARNESS_WAIT_TIMEOUT                 | How long to wait for `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` to complete its execution | Default=`3600`. Can be overriden with CLI parameter `-s/--wait |
 | LLMDBENCH_HARNESS_CPU_NR                       | How many CPUs should be requested for `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` | Default=`16` |
 | LLMDBENCH_HARNESS_CPU_MEM                      | How many CPUs should be requested for `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` | Default=`32Gi` |
-| LLMDBENCH_HARNESS_NAMESPACE                    | The `namespace` where the `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` will be created | Default=`${LLMDBENCH_VLLM_COMMON_NAMESPACE}`. The harness `fmperf` requires this `namespace` to be equal the standup `namespace` for now |
 | LLMDBENCH_HARNESS_SERVICE_ACCOUNT              | The `serviceaccount` where the `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` will be created | Default=`${LLMDBENCH_HARNESS_NAME}-runner` |
 | LLMDBENCH_HARNESS_PVC_NAME                     | The `pvc` where experimental results will be stored | Default=`workload-pvc`. Can be overriden with CLI parameter `-k/--pvc`      |
 | LLMDBENCH_HARNESS_PVC_SIZE                     | The size of the `pvc` where experimental results will be stored | Default=`20Gi` |

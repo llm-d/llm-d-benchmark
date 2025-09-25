@@ -202,16 +202,6 @@ function extract_environment {
 }
 export -f extract_environment
 
-function reconfigure_gateway_after_deploy {
-  if [[ $LLMDBENCH_VLLM_MODELSERVICE_RECONFIGURE_GATEWAY_AFTER_DEPLOY -eq 1 ]]; then
-    if [[ $LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME == "kgateway" ]]; then
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace kgateway-system delete pod -l kgateway=kgateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace kgateway-system  wait --for=condition=Ready=True pod -l kgateway=kgateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    fi
-  fi
-}
-export -f reconfigure_gateway_after_deploy
-
 function add_annotations {
   local output="REPLACEFIRSTNEWLINE"
   local varname=$1
@@ -454,12 +444,12 @@ function add_command_line_options {
 export -f add_command_line_options
 
 function check_storage_class {
-  if [[ ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" && ${LLMDBENCH_CONTROL_CALLER} != "e2e.sh" ]]; then
+  if [[ ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" && ${LLMDBENCH_CONTROL_CALLER} != "e2e.sh" && ${LLMDBENCH_CONTROL_CALLER} != "run.sh" ]]; then
     return 0
   fi
 
   if [[ $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS == "default" ]]; then
-    if [[ ${LLMDBENCH_CONTROL_CALLER} == "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} == "e2e.sh" ]]; then
+    if [[ ${LLMDBENCH_CONTROL_CALLER} == "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} == "e2e.sh" || ${LLMDBENCH_CONTROL_CALLER} == "run.sh" ]]; then
       has_default_sc=$($LLMDBENCH_CONTROL_KCMD get storageclass -o=jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{@.metadata.name}{"\n"}{end}' || true)
       if [[ -z $has_default_sc ]]; then
           announce "❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class\""
@@ -685,7 +675,7 @@ function launch_download_job {
   announce "🚀 Launching model download job..."
 
   # Conditionally determine if we are running simulation - if we are,
-  # then don't login to huggingface since we will not be using models 
+  # then don't login to huggingface since we will not be using models
   # from restrictive HF repositories in the current and distant future
   # during simulation.
 cat << EOF > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_download_pod_job.yaml

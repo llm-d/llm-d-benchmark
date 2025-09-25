@@ -45,7 +45,7 @@ function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
              -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO)] \n \
              -m/--models [list the models to be run against (default=$LLMDBENCH_DEPLOY_MODEL_LIST)] \n \
-             -p/--namespace [namespace where to deploy (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE)] \n \
+             -p/--namespace [comma separated pair of values indicating where a stack was deployed and where to run (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE)] \n \
              -t/--methods [list of standup methods (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\", \"modelservice\" or any other string - pod name or service name - matching a resource on cluster)] \n \
              -l/--harness [harness used to generate load (default=$LLMDBENCH_HARNESS_NAME, possible values $(get_harness_list)] \n \
              -w/--workload [workload to be used by the harness (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE, possible values (check \"workload/profiles\" dir)] \n \
@@ -84,12 +84,18 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
         -p=*|--namespace=*)
-        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE=$(echo $key | cut -d '=' -f 2)
-        export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 1)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 2)
+        if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
+          export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
+        fi
         ;;
         -p|--namespace)
-        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE="$2"
-        export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE="$2"
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE="$(echo $2 | cut -d ',' -f 1)"
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE="$(echo $2 | cut -d ',' -f 2)"
+        if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
+          export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
+        fi
         shift
         ;;
         -s=*|--wait=*)
@@ -184,10 +190,6 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_
   if [[ -z $LLMDBENCH_CONTROL_CLUSTER_NAMESPACE ]]; then
     announce "❌ Unable automatically detect namespace. Environment variable \"LLMDBENCH_CONTROL_CLUSTER_NAMESPACE\". Specifiy namespace via CLI option \"-p\--namespace\" or environment variable \"LLMDBENCH_HARNESS_NAMESPACE\""
     exit 1
-  else
-    export LLMDBENCH_HARNESS_NAMESPACE=$LLMDBENCH_CONTROL_CLUSTER_NAMESPACE
-    export LLMDBENCH_VLLM_COMMON_NAMESPACE=$LLMDBENCH_CONTROL_CLUSTER_NAMESPACE
-    announce "ℹ️ Namespace automatically detected: \"$LLMDBENCH_CONTROL_CLUSTER_NAMESPACE\"."
   fi
 
   if [[ $LLMDBENCH_HARNESS_SERVICE_ACCOUNT == ${LLMDBENCH_HARNESS_NAME}-runner ]]; then

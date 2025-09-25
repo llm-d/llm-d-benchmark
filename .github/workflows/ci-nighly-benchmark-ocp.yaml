@@ -1,4 +1,4 @@
-name: Run Benchmark
+name: CI - Nightly Run Benchmark
 
 on:
   workflow_dispatch:
@@ -12,9 +12,9 @@ on:
         required: false
         default: ''
 
-  push:
-    branches:
-      - main
+#  push:
+#    branches:
+#      - main
 
   schedule:
     - cron: '0 0 * * *'  # Daily at midnight UTC
