@@ -394,11 +394,9 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           else
             export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH=$(echo ${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
           fi
-          echo "ℹ️ full path = ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH}"
+
           # if the file exists and user hasn't provided one use the file
           [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH" != *.yaml ]] && LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH="${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH}.yaml"
-
-          echo "ℹ️ full path = ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH}"
 
           # Export as environment variable
           export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT=$(base64 < "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH" | tr -d '\n')
