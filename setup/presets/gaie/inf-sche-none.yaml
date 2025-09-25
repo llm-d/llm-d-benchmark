@@ -3,7 +3,7 @@
 apiVersion: inference.networking.x-k8s.io/v1alpha1
 kind: EndpointPickerConfig
 plugins:
-- type: prefix-cache-scorer
+- type: random-picker
 - type: decode-filter
 - type: max-score-picker
 - type: single-profile-handler
@@ -12,5 +12,5 @@ schedulingProfiles:
   plugins:
   - pluginRef: decode-filter
   - pluginRef: max-score-picker
-  - pluginRef: prefix-cache-scorer
-    weight: 0
+  - pluginRef: random-picker
+    weight: 1
