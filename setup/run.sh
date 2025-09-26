@@ -198,9 +198,12 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_
   announce "⚠️ Setting service account to \"$LLMDBENCH_HARNESS_SERVICE_ACCOUNT\"..."
 fi
 
-source ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.sh > /dev/null 2>&1
+source ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.sh 2> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log 1> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
 if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
+  cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log
+  echo "---------------------------"
+  cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
   exit 1
 fi
 set -euo pipefail
