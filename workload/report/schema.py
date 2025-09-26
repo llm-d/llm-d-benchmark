@@ -203,6 +203,8 @@ class Units(StrEnum):
             GiB per second
         MS_PER_TOKEN: str
             Milliseconds per token
+        S_PER_TOKEN: str
+            Seconds per token
         WATTS: str
             Watts
     """
@@ -233,6 +235,7 @@ class Units(StrEnum):
     TB_PER_S = 'TB/s'
     # Generation latency
     MS_PER_TOKEN = 'ms/token'
+    S_PER_TOKEN = 's/token'
     # Power
     WATTS = "Watts"
 

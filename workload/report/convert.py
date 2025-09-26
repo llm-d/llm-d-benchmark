@@ -777,7 +777,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
             },
             "latency": {
                 "time_to_first_token": {
-                    "units": Units.MS,
+                    "units": Units.S,
                     "mean": results['successes']['latency']['time_to_first_token']['mean'],
                     "min": results['successes']['latency']['time_to_first_token']['min'],
                     "p0p1": results['successes']['latency']['time_to_first_token']['p0.1'],
@@ -794,7 +794,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
                     "max": results['successes']['latency']['time_to_first_token']['max'],
                 },
                 "normalized_time_per_output_token": {
-                    "units": Units.MS_PER_TOKEN,
+                    "units": Units.S_PER_TOKEN,
                     "mean": results['successes']['latency']['normalized_time_per_output_token']['mean'],
                     "min": results['successes']['latency']['normalized_time_per_output_token']['min'],
                     "p0p1": results['successes']['latency']['normalized_time_per_output_token']['p0.1'],
@@ -811,7 +811,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
                     "max": results['successes']['latency']['normalized_time_per_output_token']['max'],
                 },
                 "time_per_output_token": {
-                    "units": Units.MS_PER_TOKEN,
+                    "units": Units.S_PER_TOKEN,
                     "mean": results['successes']['latency']['time_per_output_token']['mean'],
                     "min": results['successes']['latency']['time_per_output_token']['min'],
                     "p0p1": results['successes']['latency']['time_per_output_token']['p0.1'],
@@ -828,7 +828,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
                     "max": results['successes']['latency']['time_per_output_token']['max'],
                 },
                 "inter_token_latency": {
-                    "units": Units.MS_PER_TOKEN,
+                    "units": Units.S_PER_TOKEN,
                     "mean": results['successes']['latency']['inter_token_latency']['mean'],
                     "min": results['successes']['latency']['inter_token_latency']['min'],
                     "p0p1": results['successes']['latency']['inter_token_latency']['p0.1'],
@@ -845,7 +845,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
                     "max": results['successes']['latency']['inter_token_latency']['max'],
                 },
                 "request_latency": {
-                    "units": Units.MS,
+                    "units": Units.S,
                     "mean": results['successes']['latency']['request_latency']['mean'],
                     "min": results['successes']['latency']['request_latency']['min'],
                     "p0p1": results['successes']['latency']['request_latency']['p0.1'],
