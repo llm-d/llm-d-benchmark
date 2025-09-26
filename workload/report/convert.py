@@ -762,6 +762,16 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
     # Import results from Inference Perf
     results = import_yaml(results_file)
 
+    # Import Inference Perf config file
+    config_file = os.path.join(
+        os.path.dirname(results_file),
+        'config.yaml'
+    )
+    if os.path.isfile(config_file):
+        config = import_yaml(config_file)
+    else:
+        config = {}
+
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
     br_dict = _get_llmd_benchmark_envars()
@@ -775,6 +785,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
             "model": {"name": model_name},
             "load": {
                 "name": WorkloadGenerator.INFERENCE_PERF,
+                "args": config,
             },
         },
         "metrics": {
