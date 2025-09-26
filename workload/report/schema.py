@@ -245,7 +245,7 @@ units_portion = [Units.PERCENT, Units.FRACTION]
 units_time = [Units.MS, Units.S]
 units_memory = [Units.MB, Units.GB, Units.TB, Units.MIB, Units.GIB, Units.TIB]
 units_bandwidth = [Units.MBIT_PER_S, Units.GBIT_PER_S, Units.TBIT_PER_S, Units.MB_PER_S, Units.GB_PER_S, Units.TB_PER_S]
-units_gen_latency = [Units.MS_PER_TOKEN]
+units_gen_latency = [Units.MS_PER_TOKEN, Units.S_PER_TOKEN]
 units_power = [Units.WATTS]
 
 
