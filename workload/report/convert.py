@@ -762,6 +762,9 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
     # Import results from Inference Perf
     results = import_yaml(results_file)
 
+    # Get stage number from metrics filename
+    stage = int(results_file.rsplit('stage_')[-1].split('_', 1)[0])
+
     # Import Inference Perf config file
     config_file = os.path.join(
         os.path.dirname(results_file),
@@ -786,6 +789,9 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
             "load": {
                 "name": WorkloadGenerator.INFERENCE_PERF,
                 "args": config,
+                "metadata": {
+                    "stage": stage,
+                },
             },
         },
         "metrics": {
