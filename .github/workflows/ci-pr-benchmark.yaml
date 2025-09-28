@@ -41,7 +41,7 @@ jobs:
         shell: bash
 
       - name: Install config explorer package
-        run: pip instal -e .
+        run: pip install -e .
         shell: bash
 
       - name: Standup a modelservice using llm-d-inference-sim
