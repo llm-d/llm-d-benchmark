@@ -21,4 +21,4 @@ export LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL="hf"
 export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 export LLMDBENCH_HARNESS_PVC_SIZE=3Gi
 export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true
-export LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY=48
+export LLMDBENCH_SKIP_VALIDATION=true   # Skipping validation for kind environment because model does not have enough info
