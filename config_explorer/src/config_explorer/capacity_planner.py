@@ -247,7 +247,7 @@ def available_gpu_memory(memory: int, gpu_utilization: float=0.9) -> float:
 
     return memory * gpu_utilization
 
-def gpus_required(tp: int, pp: int, dp: int) -> int:
+def gpus_required(tp: int=1, pp: int=1, dp: int=1) -> int:
     """
     Determines the number of GPUs required based on parallelism strategies
     """

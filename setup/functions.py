@@ -202,12 +202,21 @@ def environment_variable_to_dict(ev: dict = {}) :
         if "LLMDBENCH_" in key:
             ev.update({key.split("LLMDBENCH_")[1].lower():os.environ.get(key)})
 
-    for mandatory_key in [ "control_dry_run",
-                           "control_verbose",
-                           "run_experiment_analyze_locally",
-                           "user_is_admin",
-                           "control_environment_type_standalone_active",
-                           "control_environment_type_modelservice_active" ] :
+    # Convert true/false to boolean values
+    for key, value in ev.items():
+        value = value.lower()
+        if value == "true":
+            ev[key] = True
+        if value == "false":
+            ev[key] = False
+
+    for mandatory_key in [  "control_dry_run",
+                            "control_verbose",
+                            "run_experiment_analyze_locally",
+                            "user_is_admin",
+                            "control_environment_type_standalone_active",
+                            "control_environment_type_modelservice_active",
+                            ] :
         if mandatory_key not in ev :
             ev[mandatory_key] = 0
 

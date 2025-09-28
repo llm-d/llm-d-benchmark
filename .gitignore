@@ -58,3 +58,6 @@ venv.bak/
 environment/
 
 scenarios/none.sh
+
+# Python specifics
+**/*.egg-info
