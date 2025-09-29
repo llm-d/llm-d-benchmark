@@ -8,7 +8,7 @@ project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
 try:
-    from functions import announce, environment_variable_to_dict
+    from functions import announce, environment_variable_to_dict, get_accelerator_nr
 except ImportError as e:
     # Fallback for when dependencies are not available
     print(f"Warning: Could not import required modules: {e}")
@@ -17,7 +17,7 @@ except ImportError as e:
     sys.exit(1)
 
 try:
-    from config_explorer.capacity_planner import *
+    from config_explorer.capacity_planner import gpus_required, get_model_info_from_hf, get_model_config_from_hf, get_text_config, find_possible_tp, max_context_len, available_gpu_memory, model_total_params, model_memory_req, allocatable_kv_cache_memory, kv_cache_req, max_concurrent_requests
 except ImportError as e:
     print(f"Could not import capacity planner package: {e}")
     sys.exit(1)
@@ -47,12 +47,6 @@ def convert_accelerator_memory(gpu_name: str, accelerator_memory_param: str) -> 
         # Could not guess
         return result
 
-def announce_failed_validation(msg: str):
-    """
-    Announce messages for failed validation
-    """
-    announce(f"❌ {msg}")
-
 def validate_vllm_params(ev: dict):
     """
     Validates vllm standalone configuration
@@ -64,21 +58,22 @@ def validate_vllm_params(ev: dict):
     replicas = int(ev['vllm_common_replicas'])
     gpu_type = ev['vllm_common_accelerator_resource']
     gpu_memory = convert_accelerator_memory(gpu_type, ev['vllm_common_accelerator_memory'])
-    user_requested_gpu_count = int(ev['vllm_common_accelerator_nr'])
     tp = int(ev['vllm_common_tensor_parallelism'])
     dp = int(ev['vllm_common_data_parallelism'])
+    accelerator_nr = int(ev['vllm_common_accelerator_nr'])
+    user_requested_gpu_count = get_accelerator_nr(accelerator_nr, tp, dp)
     gpu_memory_util = float(ev['vllm_common_accelerator_mem_util'])
     max_model_len = int(ev['vllm_common_max_model_len'])
 
     # Sanity check on user inputs
     if gpu_memory is None:
-        announce_failed_validation("Cannot determine accelerator memory. Please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY to enable Capacity Planner.")
+        announce("❌ Cannot determine accelerator memory. Please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY to enable Capacity Planner.")
         sys.exit(1)
 
     per_replica_requirement = gpus_required(tp=tp, dp=dp)
     total_gpu_requirement = per_replica_requirement * replicas
     if total_gpu_requirement > user_requested_gpu_count:
-        announce_failed_validation(f"Accelerator requested is {user_requested_gpu_count} but it is not enough to stand up the model. Set LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR to TP x DP x replicas = {tp} x {dp} x {replicas} = {total_gpu_requirement}")
+        announce(f"❌ Accelerator requested is {user_requested_gpu_count} but it is not enough to stand up the model. Set LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR to TP x DP x replicas = {tp} x {dp} x {replicas} = {total_gpu_requirement}")
         sys.exit(1)
     if total_gpu_requirement < user_requested_gpu_count:
         announce(f"⚠️ For each replica, model requires {total_gpu_requirement}, but you requested {user_requested_gpu_count} for the deployment. Note that some GPUs will be idle.")
@@ -92,19 +87,19 @@ def validate_vllm_params(ev: dict):
             model_config = get_model_config_from_hf(model, hf_token)
             text_config = get_text_config(model_config)
         except Exception:
-            announce_failed_validation("Model is gated, please set LLMDBENCH_HF_TOKEN.")
+            announce("Model is gated, please set LLMDBENCH_HF_TOKEN.")
             sys.exit(1)
 
         # Check if parallelism selections are valid
         valid_tp_values = find_possible_tp(text_config)
         if tp not in valid_tp_values:
-            announce_failed_validation(f"TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.")
+            announce(f"❌ TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.")
             sys.exit(1)
 
         # Check if model context length is valid
         valid_max_context_len = max_context_len(model_config)
         if max_model_len > valid_max_context_len:
-            announce_failed_validation(f"Max model length = {max_model_len} exceeds the acceptable for {model}. Set LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN to a value below or equal to {valid_max_context_len}")
+            announce(f"❌ Max model length = {max_model_len} exceeds the acceptable for {model}. Set LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN to a value below or equal to {valid_max_context_len}")
             sys.exit(1)
 
         # Display memory info
@@ -133,7 +128,7 @@ def validate_vllm_params(ev: dict):
         )
 
         if available_kv_cache < 0:
-            announce_failed_validation(f"There is not enough GPU memory to stand up model. Exceeds by {abs(available_kv_cache)} GB.")
+            announce(f"❌ There is not enough GPU memory to stand up model. Exceeds by {abs(available_kv_cache)} GB.")
             sys.exit(1)
         announce(f"ℹ️ Allocatable memory for KV cache {available_kv_cache} GB")
 
