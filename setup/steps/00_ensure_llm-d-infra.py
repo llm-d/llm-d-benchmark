@@ -125,6 +125,8 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
             e_str = str(e)
             if "gated" in e_str:
                 announce_failed("Model is gated, please set LLMDBENCH_HF_TOKEN.")
+            else:
+                announce_failed(f"Could not obtain model info or config because: {e_str}")
 
         # Check if parallelism selections are valid
         valid_tp_values = find_possible_tp(text_config)
@@ -150,35 +152,39 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
         # # Calculate model memory requirement
         announce("\n")
         announce("Collecting model information.......")
-        model_params = model_total_params(model_info)
-        announce(f"ℹ️ {model} has a total of {model_params} parameters")
+        try:
+            model_params = model_total_params(model_info)
+            announce(f"ℹ️ {model} has a total of {model_params} parameters")
 
-        model_mem_req = model_memory_req(model_info)
-        announce(f"ℹ️ {model} requires {model_mem_req} GB of memory")
+            model_mem_req = model_memory_req(model_info)
+            announce(f"ℹ️ {model} requires {model_mem_req} GB of memory")
 
-        # Estimate KV cache memory and max number of requests that can be served in worst case scenario
-        announce("\n")
-        announce("Estimating available KV cache.......")
-        available_kv_cache = allocatable_kv_cache_memory(
-            model_info, model_config,
-            gpu_memory, gpu_memory_util,
-            tp=tp, dp=dp,
-        )
+            # Estimate KV cache memory and max number of requests that can be served in worst case scenario
+            announce("\n")
+            announce("Estimating available KV cache.......")
+            available_kv_cache = allocatable_kv_cache_memory(
+                model_info, model_config,
+                gpu_memory, gpu_memory_util,
+                tp=tp, dp=dp,
+            )
 
-        if available_kv_cache < 0:
-            announce_failed(f"There is not enough GPU memory to stand up model. Exceeds by {abs(available_kv_cache)} GB.", ignore_if_failed)
+            if available_kv_cache < 0:
+                announce_failed(f"There is not enough GPU memory to stand up model. Exceeds by {abs(available_kv_cache)} GB.", ignore_if_failed)
 
-        announce(f"ℹ️ Allocatable memory for KV cache {available_kv_cache} GB")
+            announce(f"ℹ️ Allocatable memory for KV cache {available_kv_cache} GB")
 
-        per_request_kv_cache_req = kv_cache_req(model_info, model_config, max_model_len)
-        announce(f"ℹ️ KV cache memory for a request taking --max-model-len={max_model_len} requires {per_request_kv_cache_req} GB of memory")
+            per_request_kv_cache_req = kv_cache_req(model_info, model_config, max_model_len)
+            announce(f"ℹ️ KV cache memory for a request taking --max-model-len={max_model_len} requires {per_request_kv_cache_req} GB of memory")
 
-        total_concurrent_reqs = max_concurrent_requests(
-            model_info, model_config, max_model_len,
-            gpu_memory, gpu_memory_util,
-            tp=tp, dp=dp,
-        )
-        announce(f"ℹ️ The vLLM server can process up to {total_concurrent_reqs} number of requests at the same time, assuming the worst case scenario that each request takes --max-model-len")
+            total_concurrent_reqs = max_concurrent_requests(
+                model_info, model_config, max_model_len,
+                gpu_memory, gpu_memory_util,
+                tp=tp, dp=dp,
+            )
+            announce(f"ℹ️ The vLLM server can process up to {total_concurrent_reqs} number of requests at the same time, assuming the worst case scenario that each request takes --max-model-len")
+
+        except Exception as e:
+            announce_failed(f"Does not have enough information about model to estimate model memory or KV cache: {e}", ignore_if_failed)
 
 def get_validation_param(ev: dict, type: str="common") -> ValidationParam:
     """
@@ -194,7 +200,7 @@ def get_validation_param(ev: dict, type: str="common") -> ValidationParam:
     gpu_type = ev['vllm_common_accelerator_resource']
     tp_size = int(ev[f'{prefix}_tensor_parallelism'])
     dp_size = int(ev[f'{prefix}_data_parallelism'])
-    user_accelerator_nr = int(ev[f'{prefix}_accelerator_nr'])
+    user_accelerator_nr = ev[f'{prefix}_accelerator_nr']
 
     validation_param = ValidationParam(
         models = models_list,
