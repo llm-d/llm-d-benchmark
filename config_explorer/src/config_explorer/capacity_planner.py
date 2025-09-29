@@ -10,7 +10,7 @@ from huggingface_hub import HfApi, ModelInfo
 from transformers import AutoConfig, AutoModel
 
 # Model
-def get_model_info_from_hf(model_name: str, hf_token: str | None = None):
+def get_model_info_from_hf(model_name: str, hf_token: str | None = None) -> ModelInfo:
     """
     Fetches model info from HF, does not handle error
     """

@@ -1,14 +1,22 @@
 import os
+import pprint
+import re
 import sys
 from pathlib import Path
+from dataclasses import dataclass
+from typing import List
+
+from huggingface_hub import ModelInfo
+from transformers import AutoConfig
 
 # Add project root to path for imports
 current_file = Path(__file__).resolve()
 project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
+# ---------------- Import local packages ----------------
 try:
-    from functions import announce, environment_variable_to_dict, get_accelerator_nr
+    from functions import announce, environment_variable_to_dict, get_accelerator_nr, is_standalone_deployment
 except ImportError as e:
     # Fallback for when dependencies are not available
     print(f"Warning: Could not import required modules: {e}")
@@ -18,9 +26,37 @@ except ImportError as e:
 
 try:
     from config_explorer.capacity_planner import gpus_required, get_model_info_from_hf, get_model_config_from_hf, get_text_config, find_possible_tp, max_context_len, available_gpu_memory, model_total_params, model_memory_req, allocatable_kv_cache_memory, kv_cache_req, max_concurrent_requests
+    from huggingface_hub.errors import HfHubHTTPError
 except ImportError as e:
     print(f"Could not import capacity planner package: {e}")
     sys.exit(1)
+
+
+# ---------------- Data structure for validating vllm args ----------------
+@dataclass
+class ValidationParam:
+    models: List[str]
+    hf_token: str
+    replicas: int
+    gpu_type: str
+    gpu_memory: int
+    tp: int
+    dp: int
+    accelerator_nr: int
+    requested_accelerator_nr: int
+    gpu_memory_util: float
+    max_model_len: int
+
+# ---------------- Helpers ----------------
+
+def announce_failed(msg: str, ignore_if_failed: bool):
+    """
+    Prints out failure message and exits execution if ignore_if_failed==False, otherwise continue
+    """
+
+    announce(f"❌ {msg}")
+    if not ignore_if_failed:
+        sys.exit(1)
 
 def convert_accelerator_memory(gpu_name: str, accelerator_memory_param: str) -> int | None:
     """
@@ -29,8 +65,7 @@ def convert_accelerator_memory(gpu_name: str, accelerator_memory_param: str) -> 
 
     try:
         return int(accelerator_memory_param)
-    except Exception:
-        print("here")
+    except Exception as e:
         match = re.search(r"(\d+)\s*GB", gpu_name, re.IGNORECASE)
         result = None
         if match:
@@ -47,60 +82,63 @@ def convert_accelerator_memory(gpu_name: str, accelerator_memory_param: str) -> 
         # Could not guess
         return result
 
-def validate_vllm_params(ev: dict):
+def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: str="common"):
     """
-    Validates vllm standalone configuration
+    Given a list of vLLM parameters, validate using capacity planner
     """
 
-    models = ev['deploy_model_list']
-    models = [m.strip() for m in models.split(",")]
-    hf_token = ev['hf_token']
-    replicas = int(ev['vllm_common_replicas'])
-    gpu_type = ev['vllm_common_accelerator_resource']
-    gpu_memory = convert_accelerator_memory(gpu_type, ev['vllm_common_accelerator_memory'])
-    tp = int(ev['vllm_common_tensor_parallelism'])
-    dp = int(ev['vllm_common_data_parallelism'])
-    accelerator_nr = int(ev['vllm_common_accelerator_nr'])
-    user_requested_gpu_count = get_accelerator_nr(accelerator_nr, tp, dp)
-    gpu_memory_util = float(ev['vllm_common_accelerator_mem_util'])
-    max_model_len = int(ev['vllm_common_max_model_len'])
+    env_var_prefix = "COMMON"
+    if type != "common":
+        env_var_prefix = f"MODELSERVICE_{type.upper()}"
+
+    models_list = param.models
+    hf_token = param.hf_token
+    replicas = param.replicas
+    gpu_memory = param.gpu_memory
+    tp = param.tp
+    dp = param.dp
+    user_requested_gpu_count = param.requested_accelerator_nr
+    max_model_len = param.max_model_len
+    gpu_memory_util = param.gpu_memory_util
 
     # Sanity check on user inputs
     if gpu_memory is None:
-        announce("❌ Cannot determine accelerator memory. Please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY to enable Capacity Planner.")
-        sys.exit(1)
+        announce_failed("Cannot determine accelerator memory. Please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY to enable Capacity Planner.", ignore_if_failed)
 
     per_replica_requirement = gpus_required(tp=tp, dp=dp)
     total_gpu_requirement = per_replica_requirement * replicas
     if total_gpu_requirement > user_requested_gpu_count:
-        announce(f"❌ Accelerator requested is {user_requested_gpu_count} but it is not enough to stand up the model. Set LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR to TP x DP x replicas = {tp} x {dp} x {replicas} = {total_gpu_requirement}")
-        sys.exit(1)
+        announce_failed(f"Accelerator requested is {user_requested_gpu_count} but it is not enough to stand up the model. Set LLMDBENCH_VLLM_{env_var_prefix}_ACCELERATOR_NR to TP x DP x replicas = {tp} x {dp} x {replicas} = {total_gpu_requirement}", ignore_if_failed)
+
     if total_gpu_requirement < user_requested_gpu_count:
         announce(f"⚠️ For each replica, model requires {total_gpu_requirement}, but you requested {user_requested_gpu_count} for the deployment. Note that some GPUs will be idle.")
 
     # Use capacity planner for further validation
-    for model in models:
+    for model in models_list:
         announce(f"Validating vLLM parameters for each replica of {model}...")
 
         try:
             model_info = get_model_info_from_hf(model, hf_token)
             model_config = get_model_config_from_hf(model, hf_token)
             text_config = get_text_config(model_config)
-        except Exception:
-            announce("Model is gated, please set LLMDBENCH_HF_TOKEN.")
-            sys.exit(1)
+        except Exception as e:
+            e_str = str(e)
+            if "gated" in e_str:
+                announce_failed("Model is gated, please set LLMDBENCH_HF_TOKEN.")
 
         # Check if parallelism selections are valid
         valid_tp_values = find_possible_tp(text_config)
         if tp not in valid_tp_values:
-            announce(f"❌ TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.")
-            sys.exit(1)
+            announce_failed(f"TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.", ignore_if_failed)
 
-        # Check if model context length is valid
-        valid_max_context_len = max_context_len(model_config)
+        # Check if model context length is valid, ignore_if_failed
+        valid_max_context_len = 0
+        try:
+            valid_max_context_len = max_context_len(model_config)
+        except Exception as e:
+            announce_failed(f"Cannot determine the acceptable max model length from model config: {e}", ignore_if_failed)
         if max_model_len > valid_max_context_len:
-            announce(f"❌ Max model length = {max_model_len} exceeds the acceptable for {model}. Set LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN to a value below or equal to {valid_max_context_len}")
-            sys.exit(1)
+            announce_failed(f"Max model length = {max_model_len} exceeds the acceptable for {model}. Set LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN to a value below or equal to {valid_max_context_len}", ignore_if_failed)
 
         # Display memory info
         announce("\n")
@@ -128,8 +166,8 @@ def validate_vllm_params(ev: dict):
         )
 
         if available_kv_cache < 0:
-            announce(f"❌ There is not enough GPU memory to stand up model. Exceeds by {abs(available_kv_cache)} GB.")
-            sys.exit(1)
+            announce_failed(f"There is not enough GPU memory to stand up model. Exceeds by {abs(available_kv_cache)} GB.", ignore_if_failed)
+
         announce(f"ℹ️ Allocatable memory for KV cache {available_kv_cache} GB")
 
         per_request_kv_cache_req = kv_cache_req(model_info, model_config, max_model_len)
@@ -142,6 +180,58 @@ def validate_vllm_params(ev: dict):
         )
         announce(f"ℹ️ The vLLM server can process up to {total_concurrent_reqs} number of requests at the same time, assuming the worst case scenario that each request takes --max-model-len")
 
+def get_validation_param(ev: dict, type: str="common") -> ValidationParam:
+    """
+    Returns validation param from type: one of prefill, decode, or None (default=common)
+    """
+
+    prefix = "vllm_common"
+    if type == "prefill" or type == "decode":
+        prefix = f"vllm_modelservice_{type}"
+
+    models_list = ev['deploy_model_list']
+    models_list = [m.strip() for m in models_list.split(",")]
+    gpu_type = ev['vllm_common_accelerator_resource']
+    tp_size = int(ev[f'{prefix}_tensor_parallelism'])
+    dp_size = int(ev[f'{prefix}_data_parallelism'])
+    user_accelerator_nr = int(ev[f'{prefix}_accelerator_nr'])
+
+    validation_param = ValidationParam(
+        models = models_list,
+        hf_token = ev['hf_token'],
+        replicas = int(ev[f'{prefix}_replicas']),
+        gpu_type = gpu_type,
+        gpu_memory = convert_accelerator_memory(gpu_type, ev['vllm_common_accelerator_memory']),
+        tp = tp_size,
+        dp = dp_size,
+        accelerator_nr = user_accelerator_nr,
+        requested_accelerator_nr = get_accelerator_nr(user_accelerator_nr, tp_size, dp_size),
+        gpu_memory_util = float(ev[f'{prefix}_accelerator_mem_util']),
+        max_model_len = int(ev['vllm_common_max_model_len']),
+    )
+
+    return validation_param
+
+def validate_standalone_vllm_params(ev: dict, ignore_if_failed: bool):
+    """
+    Validates vllm standalone configuration
+    """
+    standalone_params = get_validation_param(ev)
+    validate_vllm_params(standalone_params, ignore_if_failed)
+
+
+def validate_modelservice_vllm_params(ev: dict, ignore_if_failed: bool):
+    """
+    Validates vllm modelservice configuration
+    """
+    prefill_params = get_validation_param(ev, type='prefill')
+    decode_params = get_validation_param(ev, type='decode')
+
+    announce("Validating prefill vLLM arguments...")
+    validate_vllm_params(prefill_params, ignore_if_failed, type="prefill")
+
+    announce("Validating decode vLLM arguments...")
+    validate_vllm_params(decode_params, ignore_if_failed, type="decode")
 
 def main():
     """Main function following the pattern from other Python steps"""
@@ -156,12 +246,20 @@ def main():
         announce("DRY RUN enabled. No actual changes will be made.")
 
     # Capacity planning
-    skip_validation = ev['skip_validation']
-    if not skip_validation:
-        announce("Validating vLLM configuration against Capacity Planner...")
-        validate_vllm_params(ev)
+    ignore_failed_validation = ev['ignore_failed_validation']
+    msg = "Validating vLLM configuration against Capacity Planner... "
+    if ignore_failed_validation:
+        msg += "deployment will continue even if validation failed."
     else:
-        announce("Skipping vLLM configuration against Capacity Planner...")
+        msg += "deployment will halt if validation failed."
+    announce(msg)
+
+    if is_standalone_deployment(ev):
+        announce("Deployment method is standalone")
+        validate_standalone_vllm_params(ev, ignore_failed_validation)
+    else:
+        announce("Deployment method is modelservice, checking for prefill and decode deployments")
+        validate_modelservice_vllm_params(ev, ignore_failed_validation)
 
 if __name__ == "__main__":
     sys.exit(main())
