@@ -124,9 +124,9 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
         except Exception as e:
             e_str = str(e)
             if "gated" in e_str:
-                announce_failed("Model is gated, please set LLMDBENCH_HF_TOKEN.")
+                announce_failed("Model is gated, please set LLMDBENCH_HF_TOKEN.", ignore_if_failed)
             else:
-                announce_failed(f"Could not obtain model info or config because: {e_str}")
+                announce_failed(f"Could not obtain model info or config because: {e_str}", ignore_if_failed)
 
         # Check if parallelism selections are valid
         valid_tp_values = find_possible_tp(text_config)
