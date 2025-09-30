@@ -39,37 +39,39 @@ The scenario parameters can be roughly categorized in four groups:
 
 - "Common" VLLM parameters, applicable to any standup method
 
-| Variable                                     | Meaning                                    | Note                                                      |
-| -------------------------------------------- | ------------------------------------------ | --------------------------------------------------------- |
-| LLMDBENCH_VLLM_COMMON_NAMESPACE              | Namespace where stack gets stood up        | Default=`llmdbench`. Can be overriden with CLI parameter `-p/--namespace`       |
-| LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT        | Service Account for stack                  |                                                           |
-| LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE   | Accelerator type (e.g., `nvidia.com/gpu`)  | "auto" means, will query the cluster to discover          |
-| LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE       | Network type (e.g., `rdma/roce_gdr`)       |                                                           |
-| LLMDBENCH_VLLM_COMMON_NETWORK_NR             |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_AFFINITY               |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_REPLICAS               |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM     |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM       |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR         |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL   |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_CPU_NR                 |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_CPU_MEM                |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN          |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_BLOCK_SIZE             |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_MAX_NUM_BATCHED_TOKENS |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_PVC_NAME               |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS      |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE   |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT   |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_HF_TOKEN_KEY           |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME          |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_INFERENCE_PORT         |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_FQDN                   |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_TIMEOUT                |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_ANNOTATIONS            |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML        |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_INITIAL_DELAY_PROBE    |                                            |                                                           |
-| LLMDBENCH_VLLM_COMMON_POD_SCHEDULER          |                                            |                                                           |
+| Variable                                     | Meaning                                                                 | Note                                                                                                                                     |
+|----------------------------------------------|-------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| LLMDBENCH_VLLM_COMMON_NAMESPACE              | Namespace where stack gets stood up                                     | Default=`llmdbench`. Can be overriden with CLI parameter `-p/--namespace`                                                                |
+| LLMDBENCH_IGNORE_FAILED_VALIDATION           | Ignore failed sanity checks and continue to deployment                  | Default=`True`. Capacity Planner will perform a sanity check on vLLM parameters such as valid TP, max-model-len, KV cache availability.  |
+| LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY     | GPU memory for `LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE` (e.g. `80`) | Default=`auto`, will try to guess GPU memory from `LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE`                                           |
+| LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT        | Service Account for stack                                               |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE   | Accelerator type (e.g., `nvidia.com/gpu`)                               | "auto" means, will query the cluster to discover                                                                                         |
+| LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE       | Network type (e.g., `rdma/roce_gdr`)                                    |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_NETWORK_NR             |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_AFFINITY               |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_REPLICAS               |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM     |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM       |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR         |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL   |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_CPU_NR                 |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_CPU_MEM                |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN          |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_BLOCK_SIZE             |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_MAX_NUM_BATCHED_TOKENS |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_PVC_NAME               |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS      |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE   |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_PVC_DOWNLOAD_TIMEOUT   |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_HF_TOKEN_KEY           |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME          |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_INFERENCE_PORT         |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_FQDN                   |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_TIMEOUT                |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_ANNOTATIONS            |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML        |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_INITIAL_DELAY_PROBE    |                                                                         |                                                                                                                                          |
+| LLMDBENCH_VLLM_COMMON_POD_SCHEDULER          |                                                                         |                                                                                                                                          |
 
 - "Standalone"-specific VLLM parameters
 
