@@ -1,5 +1,4 @@
 import os
-import pprint
 import re
 import sys
 from pathlib import Path
@@ -60,21 +59,24 @@ def convert_accelerator_memory(gpu_name: str, accelerator_memory_param: str) -> 
 
     try:
         return int(accelerator_memory_param)
-    except Exception as e:
-        match = re.search(r"(\d+)\s*GB", gpu_name, re.IGNORECASE)
-        result = None
-        if match:
-            result = int(match.group(1))
-        else:
-            # Some names might use just a number without GB (e.g., H100-80)
-            match2 = re.search(r"-(\d+)\b", gpu_name)
-            if match2:
-                result = int(match2.group(1))
+    except ValueError:
+        # String is not an integer
+        pass
 
-        if result is not None:
-            announce(f"Determined GPU memory={result} from the accelerator's name: {gpu_name}. It may be incorrect, please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY for accuracy.")
+    result = None
+    match = re.search(r"(\d+)\s*GB", gpu_name, re.IGNORECASE)
+    if match:
+        result = int(match.group(1))
+    else:
+        # Some names might use just a number without GB (e.g., H100-80)
+        match2 = re.search(r"-(\d+)\b", gpu_name)
+        if match2:
+            result = int(match2.group(1))
 
-        return result
+    if result is not None:
+        announce(f"Determined GPU memory={result} from the accelerator's name: {gpu_name}. It may be incorrect, please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY for accuracy.")
+
+    return result
 
 def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: str=COMMON):
     """
@@ -108,12 +110,18 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
         announce(f"⚠️ For each replica, model requires {total_gpu_requirement}, but you requested {user_requested_gpu_count} for the deployment. Note that some GPUs will be idle.")
 
     # Use capacity planner for further validation
+    has_model_info = False
+    has_model_config = False
+
     for model in models_list:
         announce(f"Validating vLLM parameters for each replica of {model}...")
         try:
             model_info = get_model_info_from_hf(model, hf_token)
             model_config = get_model_config_from_hf(model, hf_token)
             text_config = get_text_config(model_config)
+
+            has_model_info = True
+            has_model_config = True
 
         # Should use HfHubHTTPError or GatedRepoError but it doesn't work
         except Exception as e:
@@ -123,23 +131,26 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
             else:
                 announce_failed(f"Could not obtain model info or config because: {e_str}", ignore_if_failed)
 
-        # Check if parallelism selections are valid
-        try:
-            valid_tp_values = find_possible_tp(text_config)
-            if tp not in valid_tp_values:
-                announce_failed(f"TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.", ignore_if_failed)
-        except Exception as e:
-            announce_failed(f"Cannot find possible tp values: {e}", ignore_if_failed)
+        if has_model_config:
+            # Check if parallelism selections are valid
+            try:
+                valid_tp_values = find_possible_tp(text_config)
+                if tp not in valid_tp_values:
+                    announce_failed(f"TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.", ignore_if_failed)
+            except AttributeError:
+                announce_failed(f"Cannot obtain data on the number of attention heads, cannot find valid tp values: {e}", ignore_if_failed)
 
-        # Check if model context length is valid
-        valid_max_context_len = 0
-        try:
-            valid_max_context_len = max_context_len(model_config)
-        except Exception as e:
-            announce_failed(f"Cannot determine the acceptable max model length from model config: {e}", ignore_if_failed)
+            # Check if model context length is valid
+            valid_max_context_len = 0
+            try:
+                valid_max_context_len = max_context_len(model_config)
+            except AttributeError as e:
+                announce_failed(f"Cannot obtain data on the number of attention heads, cannot find valid tp values: {e}", ignore_if_failed)
 
-        if max_model_len > valid_max_context_len:
-            announce_failed(f"Max model length = {max_model_len} exceeds the acceptable for {model}. Set LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN to a value below or equal to {valid_max_context_len}", ignore_if_failed)
+            if max_model_len > valid_max_context_len:
+                announce_failed(f"Max model length = {max_model_len} exceeds the acceptable for {model}. Set LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN to a value below or equal to {valid_max_context_len}", ignore_if_failed)
+        else:
+            announce_failed(f"Model config on parameter shape not available.", ignore_if_failed)
 
         # Display memory info
         announce("\n")
@@ -151,39 +162,42 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
         # # Calculate model memory requirement
         announce("\n")
         announce("Collecting model information.......")
-        try:
-            model_params = model_total_params(model_info)
-            announce(f"ℹ️ {model} has a total of {model_params} parameters")
+        if has_model_info:
+            try:
+                model_params = model_total_params(model_info)
+                announce(f"ℹ️ {model} has a total of {model_params} parameters")
 
-            model_mem_req = model_memory_req(model_info)
-            announce(f"ℹ️ {model} requires {model_mem_req} GB of memory")
+                model_mem_req = model_memory_req(model_info)
+                announce(f"ℹ️ {model} requires {model_mem_req} GB of memory")
 
-            # Estimate KV cache memory and max number of requests that can be served in worst case scenario
-            announce("\n")
-            announce("Estimating available KV cache.......")
-            available_kv_cache = allocatable_kv_cache_memory(
-                model_info, model_config,
-                gpu_memory, gpu_memory_util,
-                tp=tp, dp=dp,
-            )
+                # Estimate KV cache memory and max number of requests that can be served in worst case scenario
+                announce("\n")
+                announce("Estimating available KV cache.......")
+                available_kv_cache = allocatable_kv_cache_memory(
+                    model_info, model_config,
+                    gpu_memory, gpu_memory_util,
+                    tp=tp, dp=dp,
+                )
 
-            if available_kv_cache < 0:
-                announce_failed(f"There is not enough GPU memory to stand up model. Exceeds by {abs(available_kv_cache)} GB.", ignore_if_failed)
+                if available_kv_cache < 0:
+                    announce_failed(f"There is not enough GPU memory to stand up model. Exceeds by {abs(available_kv_cache)} GB.", ignore_if_failed)
 
-            announce(f"ℹ️ Allocatable memory for KV cache {available_kv_cache} GB")
+                announce(f"ℹ️ Allocatable memory for KV cache {available_kv_cache} GB")
 
-            per_request_kv_cache_req = kv_cache_req(model_info, model_config, max_model_len)
-            announce(f"ℹ️ KV cache memory for a request taking --max-model-len={max_model_len} requires {per_request_kv_cache_req} GB of memory")
+                per_request_kv_cache_req = kv_cache_req(model_info, model_config, max_model_len)
+                announce(f"ℹ️ KV cache memory for a request taking --max-model-len={max_model_len} requires {per_request_kv_cache_req} GB of memory")
 
-            total_concurrent_reqs = max_concurrent_requests(
-                model_info, model_config, max_model_len,
-                gpu_memory, gpu_memory_util,
-                tp=tp, dp=dp,
-            )
-            announce(f"ℹ️ The vLLM server can process up to {total_concurrent_reqs} number of requests at the same time, assuming the worst case scenario that each request takes --max-model-len")
+                total_concurrent_reqs = max_concurrent_requests(
+                    model_info, model_config, max_model_len,
+                    gpu_memory, gpu_memory_util,
+                    tp=tp, dp=dp,
+                )
+                announce(f"ℹ️ The vLLM server can process up to {total_concurrent_reqs} number of requests at the same time, assuming the worst case scenario that each request takes --max-model-len")
 
-        except Exception as e:
-            announce_failed(f"Does not have enough information about model to estimate model memory or KV cache: {e}", ignore_if_failed)
+            except AttributeError as e:
+                announce_failed(f"Does not have enough information about model to estimate model memory or KV cache: {e}", ignore_if_failed)
+        else:
+            announce_failed(f"Model info on model's architecture not available.", ignore_if_failed)
 
 def get_validation_param(ev: dict, type: str=COMMON) -> ValidationParam:
     """
