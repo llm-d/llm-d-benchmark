@@ -168,9 +168,9 @@ def _get_llmd_benchmark_envars() -> dict:
 
         # Get EPP configuration
         epp_config = {}
-        epp_config_content = os.getenv('LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT')
+        epp_config_content = os.getenv('LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG')
         if epp_config_content == "":
-            sys.stderr.write('Warning: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT empty.')
+            sys.stderr.write('Warning: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG empty.')
         else:
             epp_config_content = base64.b64decode(epp_config_content).decode("utf-8")
             epp_config = yaml.safe_load(epp_config_content)
