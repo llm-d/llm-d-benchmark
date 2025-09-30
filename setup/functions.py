@@ -1212,6 +1212,4 @@ def is_standalone_deployment(ev: dict) -> bool:
     """
     Returns true if it is a standalone deployment
     """
-    if int(ev.get("control_environment_type_standalone_active", 0)) == 1:
-        return True
-    return False
+    return int(ev.get("control_environment_type_standalone_active", 0)) == 1
