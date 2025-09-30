@@ -1121,95 +1121,22 @@ def check_storage_class():
         announce(f"❌ Error connecting to Kubernetes: {e}")
         return False
 
-
-def check_affinity():
-    """
-    Check and validate affinity configuration.
-    Equivalent to the bash check_affinity function.
-    """
-    caller = os.environ.get("LLMDBENCH_CONTROL_CALLER", "")
-    if caller not in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
-        return True
-
-    affinity = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY", "")
-    is_minikube = int(os.environ.get("LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE", 0))
-
-    try:
-        # Use pykube to connect to Kubernetes
-        control_work_dir = os.environ.get("LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark")
-        api = kube_connect(f'{control_work_dir}/environment/context.ctx')
-
-        # Handle auto affinity detection
-        if affinity == "auto":
-            if caller in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"] and is_minikube == 0:
-                try:
-                    # Get node labels to find accelerators using pykube
-                    nodes = pykube.Node.objects(api)
-
-                    accelerator_patterns = [
-                        "nvidia.com/gpu.product",
-                        "gpu.nvidia.com/class",
-                        "cloud.google.com/gke-accelerator"
-                    ]
-
-                    found_accelerator = None
-                    for node in nodes:
-                        labels = node.metadata.get("labels", {})
-                        for pattern in accelerator_patterns:
-                            for label_key, label_value in labels.items():
-                                if pattern in label_key:
-                                    found_accelerator = f"{label_key}:{label_value}"
-                                    break
-                            if found_accelerator:
-                                break
-                        if found_accelerator:
-                            break
-
-                    if found_accelerator:
-                        os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"] = "nvidia.com/gpu"
-                        os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"] = found_accelerator
-                        announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"{found_accelerator}\"")
-                    else:
-                        announce("❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_AFFINITY=auto, but unable to find an accelerator on any node")
-                        return False
-                except Exception as e:
-                    announce(f"❌ Error checking affinity: {e}")
-                    return False
-        else:
-            # Validate manually specified affinity using pykube
-            if affinity and ":" in affinity:
-                annotation_key, annotation_value = affinity.split(":", 1)
-                try:
-                    nodes = pykube.Node.objects(api)
-                    found_matching_node = False
-
-                    for node in nodes:
-                        labels = node.metadata.get("labels", {})
-                        if labels.get(annotation_key) == annotation_value:
-                            found_matching_node = True
-                            break
-
-                    if not found_matching_node:
-                        announce(f"❌ ERROR. There are no nodes on this cluster with the label \"{annotation_key}:{annotation_value}\" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)")
-                        return False
-                except Exception as e:
-                    announce(f"❌ Error validating affinity: {e}")
-                    return False
-
-        # Handle auto accelerator resource detection
-        accelerator_resource = os.environ.get("LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE", "")
-        if accelerator_resource == "auto":
-            os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"] = "nvidia.com/gpu"
-            announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE automatically set to \"nvidia.com/gpu\"")
-
-        return True
-
-    except Exception as e:
-        announce(f"❌ Error connecting to Kubernetes: {e}")
-        return False
-
 def is_standalone_deployment(ev: dict) -> bool:
     """
     Returns true if it is a standalone deployment
     """
     return int(ev.get("control_environment_type_standalone_active", 0)) == 1
+
+def get_accelerator_type(ev: dict) -> str | None:
+    """
+    Attempts to get the GPU type
+    """
+
+    common_affinity = ev['vllm_common_affinity']
+    if common_affinity == "auto":
+        return common_affinity
+    else:
+        # Parse the string
+        # LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3
+        parsed = common_affinity.split(":")
+        return parsed[:-1]

@@ -17,7 +17,7 @@ sys.path.insert(0, str(project_root))
 
 # ---------------- Import local packages ----------------
 try:
-    from functions import announce, environment_variable_to_dict, get_accelerator_nr, is_standalone_deployment
+    from functions import announce, environment_variable_to_dict, get_accelerator_nr, is_standalone_deployment, get_accelerator_type
 except ImportError as e:
     # Fallback for when dependencies are not available
     print(f"Warning: Could not import required modules: {e}")
@@ -55,7 +55,7 @@ def announce_failed(msg: str, ignore_if_failed: bool):
     if not ignore_if_failed:
         sys.exit(1)
 
-def convert_accelerator_memory(gpu_name: str, accelerator_memory_param: str) -> int | None:
+def convert_accelerator_memory(gpu_name: str, accelerator_memory_param: str) -> int:
     """
     Try to guess the accelerator memory from its name
     """
@@ -66,7 +66,11 @@ def convert_accelerator_memory(gpu_name: str, accelerator_memory_param: str) -> 
         # String is not an integer
         pass
 
-    result = None
+    result = 0
+
+    if gpu_name == "auto":
+        announce(f"⚠️ Accelerator (LLMDBENCH_VLLM_COMMON_AFFINITY) type is set to be automatically detected, but requires connecting to kube client. The affinity check is invoked at a later step. To exercise the capacity planner, set LLMDBENCH_COMMON_ACCELERATOR_MEMORY. Otherwise, capacity planner will use 0 as the GPU memory.")
+
     match = re.search(r"(\d+)\s*GB", gpu_name, re.IGNORECASE)
     if match:
         result = int(match.group(1))
@@ -76,7 +80,7 @@ def convert_accelerator_memory(gpu_name: str, accelerator_memory_param: str) -> 
         if match2:
             result = int(match2.group(1))
 
-    if result is not None:
+    if result > 0:
         announce(f"Determined GPU memory={result} from the accelerator's name: {gpu_name}. It may be incorrect, please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY for accuracy.")
 
     return result
@@ -237,7 +241,7 @@ def get_validation_param(ev: dict, type: str=COMMON) -> ValidationParam:
     models_list = [m.strip() for m in models_list.split(",")]
     replicas = ev[f'{prefix}_replicas'] or 0
     replicas = int(replicas)
-    gpu_type = ev['vllm_common_accelerator_resource']
+    gpu_type = get_accelerator_type(ev)
     tp_size = int(ev[f'{prefix}_tensor_parallelism'])
     dp_size = int(ev[f'{prefix}_data_parallelism'])
     user_accelerator_nr = ev[f'{prefix}_accelerator_nr']
