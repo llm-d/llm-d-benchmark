@@ -6,8 +6,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List
 
-from huggingface_hub import ModelInfo
-from transformers import AutoConfig
+from config_explorer.capacity_planner import gpus_required, get_model_info_from_hf, get_model_config_from_hf, get_text_config, find_possible_tp, max_context_len, available_gpu_memory, model_total_params, model_memory_req, allocatable_kv_cache_memory, kv_cache_req, max_concurrent_requests
 
 # Add project root to path for imports
 current_file = Path(__file__).resolve()
@@ -24,15 +23,11 @@ except ImportError as e:
     print("Please run: ./setup/install_deps.sh")
     sys.exit(1)
 
-try:
-    from config_explorer.capacity_planner import gpus_required, get_model_info_from_hf, get_model_config_from_hf, get_text_config, find_possible_tp, max_context_len, available_gpu_memory, model_total_params, model_memory_req, allocatable_kv_cache_memory, kv_cache_req, max_concurrent_requests
-    from huggingface_hub.errors import HfHubHTTPError
-except ImportError as e:
-    print(f"Could not import capacity planner package: {e}")
-    sys.exit(1)
-
-
 # ---------------- Data structure for validating vllm args ----------------
+COMMON = "COMMON"
+PREFILL = "PREFILL"
+DECODE= "DECODE"
+
 @dataclass
 class ValidationParam:
     models: List[str]
@@ -79,17 +74,16 @@ def convert_accelerator_memory(gpu_name: str, accelerator_memory_param: str) -> 
         if result is not None:
             announce(f"Determined GPU memory={result} from the accelerator's name: {gpu_name}. It may be incorrect, please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY for accuracy.")
 
-        # Could not guess
         return result
 
-def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: str="common"):
+def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: str=COMMON):
     """
     Given a list of vLLM parameters, validate using capacity planner
     """
 
-    env_var_prefix = "COMMON"
-    if type != "common":
-        env_var_prefix = f"MODELSERVICE_{type.upper()}"
+    env_var_prefix = COMMON
+    if type != COMMON:
+        env_var_prefix = f"MODELSERVICE_{type}"
 
     models_list = param.models
     hf_token = param.hf_token
@@ -116,11 +110,12 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
     # Use capacity planner for further validation
     for model in models_list:
         announce(f"Validating vLLM parameters for each replica of {model}...")
-
         try:
             model_info = get_model_info_from_hf(model, hf_token)
             model_config = get_model_config_from_hf(model, hf_token)
             text_config = get_text_config(model_config)
+
+        # Should use HfHubHTTPError or GatedRepoError but it doesn't work
         except Exception as e:
             e_str = str(e)
             if "gated" in e_str:
@@ -129,16 +124,20 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
                 announce_failed(f"Could not obtain model info or config because: {e_str}", ignore_if_failed)
 
         # Check if parallelism selections are valid
-        valid_tp_values = find_possible_tp(text_config)
-        if tp not in valid_tp_values:
-            announce_failed(f"TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.", ignore_if_failed)
+        try:
+            valid_tp_values = find_possible_tp(text_config)
+            if tp not in valid_tp_values:
+                announce_failed(f"TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.", ignore_if_failed)
+        except Exception as e:
+            announce_failed(f"Cannot find possible tp values: {e}", ignore_if_failed)
 
-        # Check if model context length is valid, ignore_if_failed
+        # Check if model context length is valid
         valid_max_context_len = 0
         try:
             valid_max_context_len = max_context_len(model_config)
         except Exception as e:
             announce_failed(f"Cannot determine the acceptable max model length from model config: {e}", ignore_if_failed)
+
         if max_model_len > valid_max_context_len:
             announce_failed(f"Max model length = {max_model_len} exceeds the acceptable for {model}. Set LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN to a value below or equal to {valid_max_context_len}", ignore_if_failed)
 
@@ -186,14 +185,15 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
         except Exception as e:
             announce_failed(f"Does not have enough information about model to estimate model memory or KV cache: {e}", ignore_if_failed)
 
-def get_validation_param(ev: dict, type: str="common") -> ValidationParam:
+def get_validation_param(ev: dict, type: str=COMMON) -> ValidationParam:
     """
     Returns validation param from type: one of prefill, decode, or None (default=common)
     """
 
-    prefix = "vllm_common"
-    if type == "prefill" or type == "decode":
+    prefix = f"vllm_{COMMON}"
+    if type == PREFILL or type == DECODE:
         prefix = f"vllm_modelservice_{type}"
+    prefix = prefix.lower()
 
     models_list = ev['deploy_model_list']
     models_list = [m.strip() for m in models_list.split(",")]
@@ -230,14 +230,14 @@ def validate_modelservice_vllm_params(ev: dict, ignore_if_failed: bool):
     """
     Validates vllm modelservice configuration
     """
-    prefill_params = get_validation_param(ev, type='prefill')
-    decode_params = get_validation_param(ev, type='decode')
+    prefill_params = get_validation_param(ev, type=PREFILL)
+    decode_params = get_validation_param(ev, type=DECODE)
 
     announce("Validating prefill vLLM arguments...")
-    validate_vllm_params(prefill_params, ignore_if_failed, type="prefill")
+    validate_vllm_params(prefill_params, ignore_if_failed, type=PREFILL)
 
     announce("Validating decode vLLM arguments...")
-    validate_vllm_params(decode_params, ignore_if_failed, type="decode")
+    validate_vllm_params(decode_params, ignore_if_failed, type=DECODE)
 
 def main():
     """Main function following the pattern from other Python steps"""
