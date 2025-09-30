@@ -112,6 +112,7 @@ The configuration explorer is a library that helps find the most cost-effective,
 #### [Reproducibility](docs/reproducibility.md)
 #### [Observability](docs/observability.md)
 #### [Quickstart](docs/quickstart.md)
+#### [Resource Requirements](docs/resource_requirements.md)
 #### [FAQ](docs/faq.md)
 
 ## Contribute
