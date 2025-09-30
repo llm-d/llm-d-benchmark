@@ -197,20 +197,17 @@ def get_validation_param(ev: dict, type: str=COMMON) -> ValidationParam:
 
     models_list = ev['deploy_model_list']
     models_list = [m.strip() for m in models_list.split(",")]
+    replicas = ev[f'{prefix}_replicas'] or 0
+    replicas = int(replicas)
     gpu_type = ev['vllm_common_accelerator_resource']
     tp_size = int(ev[f'{prefix}_tensor_parallelism'])
     dp_size = int(ev[f'{prefix}_data_parallelism'])
     user_accelerator_nr = ev[f'{prefix}_accelerator_nr']
 
-    # TODO: this needs to be fixed, but right now it is for passing the CI
-    hf_token = ev['hf_token']
-    if hf_token == "ci-placeholder":
-        hf_token = None
-
     validation_param = ValidationParam(
         models = models_list,
         hf_token = ev['hf_token'],
-        replicas = int(ev[f'{prefix}_replicas']),
+        replicas = replicas,
         gpu_type = gpu_type,
         gpu_memory = convert_accelerator_memory(gpu_type, ev['vllm_common_accelerator_memory']),
         tp = tp_size,
