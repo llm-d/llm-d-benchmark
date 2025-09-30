@@ -222,7 +222,7 @@ else
 
   for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; do
     for kind in "${RESOURCE_KINDS[@]}"; do
-      announce "🗑️ Deleting all $kind in namespace $tgtns..."
+      announce "🗑️  Deleting all $kind in namespace $tgtns..."
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete "$kind" --all -n "$tgtns" --ignore-not-found=true || true" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     done
   done

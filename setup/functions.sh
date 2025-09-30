@@ -448,12 +448,18 @@ function check_storage_class {
     return 0
   fi
 
+  if [[ $($LLMDBENCH_CONTROL_KCMD get storageclasses --no-headers -o name | wc -l) -eq 0 ]];
+  then
+      announce "❌ ERROR: at least one storage class is required for execution of the benchmark (a PVC is needed to hold performance data)\""
+      return 1
+  fi
+
   if [[ $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS == "default" ]]; then
     if [[ ${LLMDBENCH_CONTROL_CALLER} == "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} == "e2e.sh" || ${LLMDBENCH_CONTROL_CALLER} == "run.sh" ]]; then
       has_default_sc=$($LLMDBENCH_CONTROL_KCMD get storageclass -o=jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{@.metadata.name}{"\n"}{end}' || true)
       if [[ -z $has_default_sc ]]; then
           announce "❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class\""
-          exit 1
+          return 1
       fi
       announce "ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to \"${has_default_sc}\""
       export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=${has_default_sc}
@@ -487,9 +493,9 @@ function check_affinity {
   #      export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=$(echo ${has_default_accelerator} | cut -d ':' -f 1)
         export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=nvidia.com/gpu
         export LLMDBENCH_VLLM_COMMON_AFFINITY=$has_default_accelerator
-        announce "ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"${has_default_accelerator}\""
+        announce "ℹ️  Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"${has_default_accelerator}\""
       else
-        announce "ℹ️ Minikube detected. Variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"kubernetes.io/os:linux\""
+        announce "ℹ️  Minikube detected. Variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"kubernetes.io/os:linux\""
       fi
     fi
   else

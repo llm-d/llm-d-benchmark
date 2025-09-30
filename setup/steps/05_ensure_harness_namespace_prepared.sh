@@ -45,7 +45,12 @@ check_storage_class
 if [[ $? -ne 0 ]]
 then
   announce "❌ Failed to check storage class"
-  exit 1
+  if [[ "${BASH_SOURCE[0]}" == "${0}" ]]
+  then
+      exit 1
+  else
+      return 1
+  fi
 fi
 
 announce "🔄 Creating namespace (${LLMDBENCH_HARNESS_NAMESPACE}), service account (${LLMDBENCH_HARNESS_SERVICE_ACCOUNT}) and rbac for harness..."

@@ -170,7 +170,8 @@ def llmdbench_execute_cmd(
             time.sleep(delay)
 
     if ecode != 0:
-        announce(f"\nERROR while executing command \"{actual_cmd}\"")
+        if not silent :
+            announce(f"\nERROR while executing command \"{actual_cmd}\"")
 
         if last_stdout_log and last_stdout_log.exists():
             try:
@@ -929,6 +930,12 @@ def add_command_line_options(args_string):
     """
     current_step = os.environ.get("LLMDBENCH_CURRENT_STEP", "")
 
+    if os.access(args_string, os.R_OK):
+        lines = []
+        with open(args_string, 'r') as fp:
+            fc = fp.read()
+        args_string = fc
+
     # Process REPLACE_ENV variables first
     if args_string:
         processed_args = render_string(args_string)
@@ -1024,8 +1031,8 @@ def add_additional_env_to_yaml(env_vars_string: str) -> str:
 
     if os.access(env_vars_string, os.R_OK):
         lines = []
-        with open(env_vars_string, 'r') as file:
-            for line in file:
+        with open(env_vars_string, 'r') as fp:
+            for line in fp:
                 lines.append(name_indent + line.rstrip())
         return '\n'.join(lines)
 
