@@ -3,7 +3,10 @@ import re
 import sys
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List
+from typing import List, Tuple
+from transformers import AutoConfig
+from huggingface_hub import ModelInfo
+from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
 
 from config_explorer.capacity_planner import gpus_required, get_model_info_from_hf, get_model_config_from_hf, get_text_config, find_possible_tp, max_context_len, available_gpu_memory, model_total_params, model_memory_req, allocatable_kv_cache_memory, kv_cache_req, max_concurrent_requests
 
@@ -78,6 +81,41 @@ def convert_accelerator_memory(gpu_name: str, accelerator_memory_param: str) -> 
 
     return result
 
+def get_model_info(model_name: str, hf_token: str, ignore_if_failed: bool) -> ModelInfo | None:
+    """
+    Obtains model info from HF
+    """
+
+    try:
+        return get_model_info_from_hf(model_name, hf_token)
+
+    except GatedRepoError:
+        announce_failed("Model is gated and the token provided via LLMDBENCH_HF_TOKEN does not, work. Please double check.", ignore_if_failed)
+    except HfHubHTTPError as hf_exp:
+        announce_failed(f"Error reaching Hugging Face API: Is LLMDBENCH_HF_TOKEN correctly set? {hf_exp}", ignore_if_failed)
+    except Exception as e:
+        announce_failed(f"Cannot retrieve ModelInfo: {e}", ignore_if_failed)
+
+    return None
+
+def get_model_config_and_text_config(model_name: str, hf_token: str, ignore_if_failed: bool) -> Tuple[AutoConfig | None, AutoConfig | None]:
+    """
+    Obtains model config and text config from HF
+    """
+
+    try:
+        config = get_model_config_from_hf(model_name, hf_token)
+        return config, get_text_config(config)
+
+    except GatedRepoError:
+        announce_failed("Model is gated and the token provided via LLMDBENCH_HF_TOKEN does not work. Please double check.", ignore_if_failed)
+    except HfHubHTTPError as hf_exp:
+        announce_failed(f"Error reaching Hugging Face API. Is LLMDBENCH_HF_TOKEN correctly set? {hf_exp}", ignore_if_failed)
+    except Exception as e:
+        announce_failed(f"Cannot retrieve model config: {e}", ignore_if_failed)
+
+    return None, None
+
 def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: str=COMMON):
     """
     Given a list of vLLM parameters, validate using capacity planner
@@ -110,28 +148,11 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
         announce(f"⚠️ For each replica, model requires {total_gpu_requirement}, but you requested {user_requested_gpu_count} for the deployment. Note that some GPUs will be idle.")
 
     # Use capacity planner for further validation
-    has_model_info = False
-    has_model_config = False
-
     for model in models_list:
-        announce(f"Validating vLLM parameters for each replica of {model}...")
-        try:
-            model_info = get_model_info_from_hf(model, hf_token)
-            model_config = get_model_config_from_hf(model, hf_token)
-            text_config = get_text_config(model_config)
+        model_info = get_model_info(model, hf_token, ignore_if_failed)
+        model_config, text_config = get_model_config_and_text_config(model, hf_token, ignore_if_failed)
 
-            has_model_info = True
-            has_model_config = True
-
-        # Should use HfHubHTTPError or GatedRepoError but it doesn't work
-        except Exception as e:
-            e_str = str(e)
-            if "gated" in e_str:
-                announce_failed("Model is gated, please set LLMDBENCH_HF_TOKEN.", ignore_if_failed)
-            else:
-                announce_failed(f"Could not obtain model info or config because: {e_str}", ignore_if_failed)
-
-        if has_model_config:
+        if model_config is not None:
             # Check if parallelism selections are valid
             try:
                 valid_tp_values = find_possible_tp(text_config)
@@ -147,7 +168,7 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
                 # Error: config['max_positional_embeddings'] not in config
                 valid_max_context_len = max_context_len(model_config)
             except AttributeError as e:
-                announce_failed(f"Cannot obtain data on the number of attention heads, cannot find valid tp values: {e}", ignore_if_failed)
+                announce_failed(f"Cannot obtain data on the max context length for model: {e}", ignore_if_failed)
 
             if max_model_len > valid_max_context_len:
                 announce_failed(f"Max model length = {max_model_len} exceeds the acceptable for {model}. Set LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN to a value below or equal to {valid_max_context_len}", ignore_if_failed)
@@ -164,7 +185,7 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
         # # Calculate model memory requirement
         announce("\n")
         announce("Collecting model information.......")
-        if has_model_info:
+        if model_info is not None:
             try:
                 model_params = model_total_params(model_info)
                 announce(f"ℹ️ {model} has a total of {model_params} parameters")
