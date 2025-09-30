@@ -166,44 +166,30 @@ def _get_llmd_benchmark_envars() -> dict:
         # Given a 'modelservice' deployment, we expect the following environment
         # variables to be available
 
-        # Push epp config content to report. If not present, it is using the default plugins according to GAIE chart:
-        # https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/32970c0b719feaf9d3f34e8b6cf22db20c168324/config/charts/inferencepool/values.yaml#L10
+        # Get EPP configuration
+        epp_config = {}
         epp_config_content = os.getenv('LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT')
         if epp_config_content == "":
-            epp_config_content = """apiVersion: inference.networking.x-k8s.io/v1alpha1
-kind: EndpointPickerConfig
-plugins:
-- type: queue-scorer
-- type: kv-cache-utilization-scorer
-- type: prefix-cache-scorer
-schedulingProfiles:
-- name: default
-  plugins:
-  - pluginRef: queue-scorer
-  - pluginRef: kv-cache-utilization-scorer
-  - pluginRef: prefix-cache-scorer
-"""
+            sys.stderr.write('Warning: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT empty.')
         else:
             epp_config_content = base64.b64decode(epp_config_content).decode("utf-8")
+            epp_config = yaml.safe_load(epp_config_content)
 
-        epp_config = yaml.safe_load(epp_config_content)
+            # Insert default parameter values for scorers if left undefined
+            for ii, plugin in enumerate(epp_config['plugins']):
+                if plugin['type'] == 'prefix-cache-scorer':
+                    if 'parameters' not in plugin:
+                        plugin['parameters'] = {}
 
-        # Insert default values for prefix scorer
-        for i, plugin in enumerate(epp_config['plugins']):
-            if plugin['type'] == 'prefix-cache-scorer':
+                    parameters = plugin['parameters']
+                    if 'blockSize' not in parameters:
+                        parameters['blockSize'] = 16
+                    if 'maxPrefixBlocksToMatch' not in parameters:
+                        parameters['maxPrefixBlocksToMatch'] = 256
+                    if 'lruCapacityPerServer' not in parameters:
+                        parameters['lruCapacityPerServer'] = 31250
 
-                if 'parameters' not in plugin:
-                    plugin['parameters'] = {}
-
-                parameters = plugin['parameters']
-                if 'blockSize' not in parameters:
-                    parameters['blockSize'] = 16
-                if 'maxPrefixBlocksToMatch' not in parameters:
-                    parameters['maxPrefixBlocksToMatch'] = 256
-                if 'lruCapacityPerServer' not in parameters:
-                    parameters['lruCapacityPerServer'] = 31250
-
-                epp_config['plugins'][i]['parameters'] = parameters
+                    epp_config['plugins'][ii]['parameters'] = parameters
 
         return {
             "scenario": {
