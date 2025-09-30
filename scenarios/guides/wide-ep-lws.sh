@@ -40,7 +40,6 @@ export LLMDBENCH_LLMD_ROUTINGSIDECAR_DEBUG_LEVEL=3
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-A100-SXM4-80GB        # OpenShift
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu                                      # ANY GPU (useful for Minikube)
 
-
 #             Uncomment to request specific network devices
 #####export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/roce_gdr
 #######export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib

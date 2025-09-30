@@ -926,12 +926,12 @@ def render_string(input_string):
 def add_command_line_options(args_string):
     """
     Generate command line options for container args.
+    In case args_string is a file path, open the file and read the contents first
     Equivalent to the bash add_command_line_options function.
     """
     current_step = os.environ.get("LLMDBENCH_CURRENT_STEP", "")
 
     if os.access(args_string, os.R_OK):
-        lines = []
         with open(args_string, 'r') as fp:
             fc = fp.read()
         args_string = fc
@@ -1003,6 +1003,7 @@ def add_command_line_options(args_string):
 def add_additional_env_to_yaml(env_vars_string: str) -> str:
     """
     Generate additional environment variables YAML.
+    In case env_vars_string is a file path, open the file and read the contents first
     Equivalent to the bash add_additional_env_to_yaml function.
 
     Args:

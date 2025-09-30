@@ -391,21 +391,15 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           mkdir -p ${local_results_dir}
           mkdir -p ${local_analysis_dir}
         else
-          # Export GAIE config
-          # from step 8.sh
-          # convert to absolute path if needed
           if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE" == /* ]]; then
-            export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH=$(echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+            potential_gaie_path=$(echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
           else
-            export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH=$(echo ${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+            potential_gaie_path=$(echo ${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
           fi
 
-          # if the file exists and user hasn't provided one use the file
-          [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH" != *.yaml ]] && LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH="${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH}.yaml"
-
-          # Export as environment variable
-          export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT=$(base64 < "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH" | tr -d '\n')
-          echo "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONTENT"
+          if [[ -f $potential_gaie_path ]]; then
+            export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG=$potential_gaie_path
+          fi
 
           create_harness_pod
 
