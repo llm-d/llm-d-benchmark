@@ -138,11 +138,13 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
                 if tp not in valid_tp_values:
                     announce_failed(f"TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.", ignore_if_failed)
             except AttributeError:
+                # Error: config['num_attention_heads'] not in config
                 announce_failed(f"Cannot obtain data on the number of attention heads, cannot find valid tp values: {e}", ignore_if_failed)
 
             # Check if model context length is valid
             valid_max_context_len = 0
             try:
+                # Error: config['max_positional_embeddings'] not in config
                 valid_max_context_len = max_context_len(model_config)
             except AttributeError as e:
                 announce_failed(f"Cannot obtain data on the number of attention heads, cannot find valid tp values: {e}", ignore_if_failed)
@@ -195,6 +197,7 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
                 announce(f"ℹ️ The vLLM server can process up to {total_concurrent_reqs} number of requests at the same time, assuming the worst case scenario that each request takes --max-model-len")
 
             except AttributeError as e:
+                # Model might not have safetensors data on parameters
                 announce_failed(f"Does not have enough information about model to estimate model memory or KV cache: {e}", ignore_if_failed)
         else:
             announce_failed(f"Model info on model's architecture not available.", ignore_if_failed)
