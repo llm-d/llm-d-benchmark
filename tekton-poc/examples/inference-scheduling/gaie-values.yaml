@@ -145,6 +145,6 @@ inferencePool:
   modelServers:
     matchLabels:
       llm-d.ai/inferenceServing: "true"
-      llm-d.ai/model: qwen-qwe-1ea37573-en3-0-6b
+      llm-d.ai/model: qwen-qwen3-0-6b
 provider:
   name: none

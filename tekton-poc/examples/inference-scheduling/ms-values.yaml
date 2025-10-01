@@ -1,4 +1,4 @@
-fullnameOverride: qwen-qwe-1ea37573-en3-0-6b
+fullnameOverride: qwen-qwen3-0-6b
 multinode: false
 
 modelArtifacts:
@@ -22,14 +22,14 @@ routing:
     create: true
   inferencePool:
     create: false
-    name: mk-qwen-qwe-1ea37573-en3-0-6b-gaie
+    name: experiment-gaie
   httpRoute:
     create: true
     rules:
     - backendRefs:
       - group: inference.networking.x-k8s.io
         kind: InferencePool
-        name: mk-qwen-qwe-1ea37573-en3-0-6b-gaie
+        name: experiment-gaie
         port: 8000
         weight: 1
       timeouts:
@@ -48,7 +48,7 @@ routing:
     - backendRefs:
       - group: inference.networking.x-k8s.io
         kind: InferencePool
-        name: mk-qwen-qwe-1ea37573-en3-0-6b-gaie
+        name: experiment-gaie
         port: 8000
         weight: 1
       timeouts:
