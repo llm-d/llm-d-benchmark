@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-mkdir $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/analysis
+mkdir -p $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/analysis
 sleep 60
 tm=$(date)
 inference-perf --analyze "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
