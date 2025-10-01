@@ -131,7 +131,7 @@ def _get_llmd_benchmark_envars() -> dict:
         return {
             "scenario": {
                 "model": {
-                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
+                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODEL']
                 },
                 "host": {
                     "type": ['replica'] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS']),
@@ -147,9 +147,9 @@ def _get_llmd_benchmark_envars() -> dict:
                 },
                 "platform": {
                     "engine": [{
-                        "name": os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY'] + \
-                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO'] + \
-                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME'] + \
+                        "name": os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY'] + '/' + \
+                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO'] + '/' + \
+                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME'] + ':' + \
                                 os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG'],
                     }] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS'])
                 },
@@ -223,9 +223,9 @@ def _get_llmd_benchmark_envars() -> dict:
                         "inferenceScheduler": epp_config,
                     },
                     "engine": [{
-                            "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
-                                    os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + \
-                                    os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + \
+                            "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + '/' + \
+                                    os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + '/' + \
+                                    os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + ':' + \
                                     os.environ['LLMDBENCH_LLMD_IMAGE_TAG'],
                     }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
                          int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
