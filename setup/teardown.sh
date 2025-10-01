@@ -30,11 +30,11 @@ function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -t/--type [list of environment types targeted for cleaning (default=$LLMDBENCH_DEPLOY_METHODS)) \n \
               -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
               -d/--deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING) ] \n \
-              -p/--namespace [namespace where to deploy (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE)] \n \
+              -p/--namespace [comma separated pair of values indicating where a stack will be stood up and where the benchmark was run (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE)] \n \
               -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
               -r/--release [modelservice helm chart release name (default=$LLMDBENCH_VLLM_MODELSERVICE_RELEASE)] \n \
               -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
-              -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\") ] \n \
+              -t/--methods [list of standup methods (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\") ] \n \
               -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
               -h/--help (show this help)"
 }
@@ -51,10 +51,18 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
         -p=*|--namespace=*)
-        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 1)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 2)
+        if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
+          export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
+        fi
         ;;
         -p|--namespace)
-        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE="$2"
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE="$(echo $2 | cut -d ',' -f 1)"
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE="$(echo $2 | cut -d ',' -f 2)"
+        if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
+          export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
+        fi
         shift
         ;;
         -c=*|--scenario=*)
@@ -113,8 +121,6 @@ source ${LLMDBENCH_CONTROL_DIR}/env.sh
 extract_environment
 sleep 5
 
-source ${LLMDBENCH_STEPS_DIR}/00_ensure_llm-d-infra.sh
-
 for resource in ${LLMDBENCH_CONTROL_RESOURCE_LIST//,/ }; do
   has_resource=$($LLMDBENCH_CONTROL_KCMD get ${resource} --no-headers -o name 2>&1 | grep error || true)
   if [[ ! -z ${has_resource} ]]; then
@@ -128,9 +134,8 @@ for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; 
   hclist=
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
     if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-      hclist=$($LLMDBENCH_CONTROL_HCMD --namespace $tgtns list --no-headers | grep -E "$tgtns-.*-gaie|$tgtns-.*-ms" || true)
+      hclist=$($LLMDBENCH_CONTROL_HCMD --namespace $tgtns list --no-headers | grep -E "${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}|$(model_attribute $model modelid_label)" || true)
     fi
-
     hclist=$(echo "${hclist}" | awk '{ print $1 }')
 
     for hc in ${hclist}; do
@@ -152,6 +157,10 @@ for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; 
         llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true $crot $cro" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       done
     done
+
+    if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --namespace $tgtns --ignore-not-found=true httproute $(model_attribute $model modelid_label)" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    fi
 
     for cr in ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-endpoint-picker ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-epp-metrics-scrape ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-manager ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-metrics-auth ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-admin ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-editor ${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-modelservice-viewer; do
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete --ignore-not-found=true ClusterRole $cr" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
@@ -178,7 +187,7 @@ if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
     fi
 
     if [[ ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 0 && ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE} -eq 1 ]]; then
-      tgtres=$(echo "$tgtres" | grep -E "p2p|inference-gateway|inferencepool|llm-route|base-model|endpoint-picker|inference-route|inference-gateway-secret|inference-gateway-params|inference-gateway|fmperf|lmbenchmark" || true)
+      tgtres=$(echo "$tgtres" | grep -E "p2p|inference-gateway|inferencepool|inferencepools.inference.networking.x-k8s.io|llm-route|base-model|endpoint-picker|inference-route|inference-gateway-secret|inference-gateway-params|inference-gateway|fmperf|lmbenchmark" || true)
     fi
 
     for delres in $tgtres; do
@@ -213,7 +222,7 @@ else
 
   for tgtns in ${LLMDBENCH_VLLM_COMMON_NAMESPACE} ${LLMDBENCH_HARNESS_NAMESPACE}; do
     for kind in "${RESOURCE_KINDS[@]}"; do
-      announce "🗑️ Deleting all $kind in namespace $tgtns..."
+      announce "🗑️  Deleting all $kind in namespace $tgtns..."
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} delete "$kind" --all -n "$tgtns" --ignore-not-found=true || true" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     done
   done
@@ -223,7 +232,7 @@ if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 1 ]]; then
 # Optional: delete cloned repos if they exist
   announce "🧼 Cleaning up local Git clones..."
   sleep 10
-  llmdbench_execute_cmd "rm -rf ${LLMDBENCH_INFRA_DIR}/llm-d-infra ${LLMDBENCH_HARNESS_DIR}/fmperf" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  llmdbench_execute_cmd "rm -rf ${LLMDBENCH_HARNESS_DIR}/fmperf" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 fi
 
 announce "✅ Cleanup complete. Namespaces \"${LLMDBENCH_VLLM_COMMON_NAMESPACE},${LLMDBENCH_HARNESS_NAMESPACE}\" are now cleared (except shared cluster-scoped resources like Gateway Provider)."

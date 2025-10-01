@@ -25,12 +25,13 @@ function model_attribute {
   local model=$1
   local attribute=$2
 
-  local modelid=$(echo $model | cut -d: -f2)
-  local modelid_label="$(echo -n $modelid | cut -d '/' -f 1 | cut -c1-8)-$(echo -n $modelid | sha256sum | awk '{print $1}' | cut -c1-8)-$(echo -n $modelid | cut -d '/' -f 2 | rev | cut -c1-8 | rev)"
+  local modelid=$(echo $model | cut -d: -f2 | $LLMDBENCH_CONTROL_SCMD -e "s^/^-^g" -e "s^\.^-^g")
+  local SHA256CMD=$(type -p gsha256sum || type -p sha256sum)
+  local modelid_label="$(echo -n $modelid | cut -d '/' -f 1 | cut -c1-8)-$(echo -n "$LLMDBENCH_VLLM_COMMON_NAMESPACE/$modelid" | $SHA256CMD | awk '{print $1}' | cut -c1-8)-$(echo -n $modelid | cut -d '/' -f 2 | rev | cut -c1-8 | rev)"
 
   local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
   local provider=$(echo $model | cut -d '/' -f 1)
-  local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision|opt")
+  local modeltype=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision|opt" || echo base)
   local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b|[0-9].*m" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^')
   local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" |  $LLMDBENCH_CONTROL_SCMD -e "s/$parameters//g" | cut -d '.' -f 1)
   if [[ -z $majorversion ]]; then
@@ -41,8 +42,7 @@ function model_attribute {
   local label=$(echo ${kind}-${majorversion}-${parameters} | $LLMDBENCH_CONTROL_SCMD -e 's^-$^^g' -e 's^--^^g')
   local as_label=$(echo $model | tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e "s^/^-^g" -e "s^\.^-^g")
   local folder=$(echo $model | tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^/^_^g' -e 's^-^_^g')
-  if [[ $attribute != "model" ]];
-  then
+  if [[ $attribute != "model" ]]; then
     echo ${!attribute} | tr '[:upper:]' '[:lower:]'
   else
     echo ${!attribute}
@@ -84,7 +84,7 @@ function get_image {
       is_latest_tag=$(skopeo list-tags docker://${image_registry}/${image_repo}/${image_name} | jq -r .Tags[] | tail -1)
     fi
     if [[ -z ${is_latest_tag} ]]; then
-      announce "❌ Unable to find latest tag for image \"${image_registry}/${image_repo}/${image_name}\""
+      announce "❌ Unable to find latest tag for image \"${image_registry}/${image_repo}/${image_name}\"" >&2
       exit 1
     fi
   fi
@@ -94,7 +94,6 @@ function get_image {
     echo $image_registry/$image_repo/${image_name}:${is_latest_tag}
   fi
 }
-
 export -f get_image
 
 function prepare_work_dir {
@@ -112,7 +111,11 @@ function prepare_work_dir {
 export -f prepare_work_dir
 
 function llmdbench_execute_cmd {
-  set +euo pipefail
+  local shellsetopts=$(set -o | grep -E "pipefail.*on|errexit.*on|nounset.*on" || true)
+  if [[ ! -z ${shellsetopts} ]]; then
+    set +euo pipefail
+  fi
+
   local actual_cmd=$1
   local dry_run=${2:-1}
   local verbose=${3:-0}
@@ -171,7 +174,9 @@ function llmdbench_execute_cmd {
     fi
   fi
 
-  set -euo pipefail
+  if [[ ! -z ${shellsetopts} ]]; then
+    set -euo pipefail
+  fi
 
   if [[ ${fatal} -eq 1 ]];
   then
@@ -197,19 +202,11 @@ function extract_environment {
 }
 export -f extract_environment
 
-function reconfigure_gateway_after_deploy {
-  if [[ $LLMDBENCH_VLLM_MODELSERVICE_RECONFIGURE_GATEWAY_AFTER_DEPLOY -eq 1 ]]; then
-    if [[ $LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME == "kgateway" ]]; then
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace kgateway-system delete pod -l kgateway=kgateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace kgateway-system  wait --for=condition=Ready=True pod -l kgateway=kgateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    fi
-  fi
-}
-export -f reconfigure_gateway_after_deploy
-
 function add_annotations {
   local output="REPLACEFIRSTNEWLINE"
-  for entry in $(echo $LLMDBENCH_VLLM_COMMON_ANNOTATIONS | $LLMDBENCH_CONTROL_SCMD -e 's^\,^\n^g'); do
+  local varname=$1
+
+  for entry in $(echo ${!varname} | $LLMDBENCH_CONTROL_SCMD -e 's^\,^\n^g'); do
     output=$output"REPLACE_NEWLINEREPLACE_SPACESN$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e 's^:^: ^g')"
   done
 
@@ -315,7 +312,7 @@ function render_template {
     cat $additional_replace_commands >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
 
-  for entry in $(cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' -e 's^\.^\n^g' -e 's^\/^\n^g' | grep -E "REPLACE_ENV" | uniq); do
+  for entry in $(cat ${template_file_path} | grep -v ^# | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' -e 's^\.^\n^g' -e 's^\/^\n^g' | grep -E "REPLACE_ENV" | uniq); do
     render_string $entry &>/dev/null
   done
 
@@ -359,6 +356,56 @@ function render_template {
 }
 export -f render_template
 
+function add_config {
+  local object_to_render=${1}
+  local -i num_spaces=${2:-0}
+  local label=${3:-}
+
+  local spacec=$(printf '%*s' $num_spaces '')
+
+  if [[ -f ${object_to_render} ]]; then
+    if [[ -n $label ]]; then
+      echo "$label:"
+    else
+      echo ""
+    fi
+    echo "$(cat $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^\\n^\\\\\n^g" | $LLMDBENCH_CONTROL_SCMD -e "s#^#$spacec#g"
+  else
+    echo ${object_to_render}
+  fi
+}
+export -f add_config
+
+# make sure things are defined; should be easier with python
+function add_config_prep {
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG="#no____config"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG="#no____config"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS="[]"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES="[]"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG="#no____config"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG="#no____config"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS="[]"
+  fi
+  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES} ]]; then
+    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES="[]"
+  fi
+}
+export -f add_config
+
+
 function add_command {
   local model_command=$1
   if [[ $model_command == "custom" ]]; then
@@ -391,22 +438,28 @@ function add_command_line_options {
     rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     touch $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
 
-    echo "$preamble$(render_string $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^;^;\n^g" -e "s^ --^\nREPLACE_SPACESC--^g" -e "s^\n^ \\\\\n^g" |  $LLMDBENCH_CONTROL_SCMD -e "s^\^ ^REPLACE_SPACESC^g" -e "s^REPLACE_SPACESC^$spacec^g"
+    echo "$preamble$(render_string $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^;^;\n^g" -e "s^ --^\nREPLACE_SPACESC--^g" -e "s^\n^ \\\\\n^g" |  $LLMDBENCH_CONTROL_SCMD -e "s^\^ ^REPLACE_SPACESC^g" -e "s^REPLACE_SPACESC^$spacec^g" | $LLMDBENCH_CONTROL_SCMD -e "s^\"'^'^g" -e "s^'\"^'^g"
   fi
 }
 export -f add_command_line_options
 
 function check_storage_class {
-  if [[ ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" && ${LLMDBENCH_CONTROL_CALLER} != "e2e.sh" ]]; then
+  if [[ ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" && ${LLMDBENCH_CONTROL_CALLER} != "e2e.sh" && ${LLMDBENCH_CONTROL_CALLER} != "run.sh" ]]; then
     return 0
   fi
 
+  if [[ $($LLMDBENCH_CONTROL_KCMD get storageclasses --no-headers -o name | wc -l) -eq 0 ]];
+  then
+      announce "❌ ERROR: at least one storage class is required for execution of the benchmark (a PVC is needed to hold performance data)\""
+      return 1
+  fi
+
   if [[ $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS == "default" ]]; then
-    if [[ ${LLMDBENCH_CONTROL_CALLER} == "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} == "e2e.sh" ]]; then
+    if [[ ${LLMDBENCH_CONTROL_CALLER} == "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} == "e2e.sh" || ${LLMDBENCH_CONTROL_CALLER} == "run.sh" ]]; then
       has_default_sc=$($LLMDBENCH_CONTROL_KCMD get storageclass -o=jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{@.metadata.name}{"\n"}{end}' || true)
       if [[ -z $has_default_sc ]]; then
           announce "❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class\""
-          exit 1
+          return 1
       fi
       announce "ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to \"${has_default_sc}\""
       export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=${has_default_sc}
@@ -440,9 +493,9 @@ function check_affinity {
   #      export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=$(echo ${has_default_accelerator} | cut -d ':' -f 1)
         export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=nvidia.com/gpu
         export LLMDBENCH_VLLM_COMMON_AFFINITY=$has_default_accelerator
-        announce "ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"${has_default_accelerator}\""
+        announce "ℹ️  Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"${has_default_accelerator}\""
       else
-        announce "ℹ️ Minikube detected. Variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"kubernetes.io/os:linux\""
+        announce "ℹ️  Minikube detected. Variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"kubernetes.io/os:linux\""
       fi
     fi
   else
@@ -462,6 +515,22 @@ function check_affinity {
   fi
 }
 export -f check_affinity
+
+function get_accelerator_nr {
+
+  local accelerator_nr=$1
+  local tp=$2
+  local dp=$3
+
+  if [[ $accelerator_nr != "auto" ]]; then
+    echo $accelerator_nr
+    return 0
+  fi
+
+  # Calculate number of accelerators needed
+  echo $(($tp * $dp))
+}
+export -f get_accelerator_nr
 
 function not_valid_ip {
 
@@ -611,6 +680,10 @@ function launch_download_job {
 
   announce "🚀 Launching model download job..."
 
+  # Conditionally determine if we are running simulation - if we are,
+  # then don't login to huggingface since we will not be using models
+  # from restrictive HF repositories in the current and distant future
+  # during simulation.
 cat << EOF > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_download_pod_job.yaml
 apiVersion: batch/v1
 kind: Job
@@ -627,7 +700,11 @@ spec:
             - mkdir -p "\${MOUNT_PATH}/\${MODEL_PATH}" && \
               pip install huggingface_hub && \
               export PATH="\${PATH}:\${HOME}/.local/bin" && \
-              hf auth login --token "\${HF_TOKEN}" && \
+              $( if echo "${LLMDBENCH_LLMD_IMAGE_NAME}" | grep -q "sim"; then
+                   echo ""
+                 else
+                   echo "hf auth login --token \"\${HF_TOKEN}\" &&"
+                 fi ) \
               hf download "\${HF_MODEL_ID}" --local-dir "/cache/\${MODEL_PATH}"
           env:
             - name: MODEL_PATH
@@ -649,7 +726,6 @@ spec:
             - name: model-cache
               mountPath: /cache
       restartPolicy: OnFailure
-#      imagePullPolicy: IfNotPresent
       volumes:
         - name: model-cache
           persistentVolumeClaim:
@@ -749,8 +825,16 @@ function add_env_vars_to_pod {
     varlist=$(env | grep -E "$varpattern" | cut -d "=" -f 1)
     echo "#    "
     for envvar in $varlist; do
+      envvalue=${!envvar}
+      is_replace=$(echo $envvalue | grep REPLACE_ENV || true)
+      if [[ ! -z $is_replace ]]; then
+        envvalue=$(echo $envvalue | base64 $LLMDBENCH_BASE64_ARGS)
+      fi
+      if [[ -f $envvalue ]]; then
+        envvalue=$(cat $envvalue | base64 $LLMDBENCH_BASE64_ARGS)
+      fi
       echo "    - name: ${envvar}"
-      echo "      value: \"${!envvar}\""
+      echo "      value: \"${envvalue}\"" | $LLMDBENCH_CONTROL_SCMD -e 's^____\"\$^____REPLACE_ENV_^g' -e 's^: ""$^: " "^g' -e 's^""^"^g'
     done
 }
 export -f add_env_vars_to_pod
@@ -761,6 +845,9 @@ function create_harness_pod {
       announce "❌ PVC \"${LLMDBENCH_HARNESS_PVC_NAME}\" not created on namespace \"${LLMDBENCH_HARNESS_NAMESPACE}\" unable to continue"
       exit 1
   fi
+
+  # Sanitize the stack name to make it a valid k8s/OpenShift resource name
+  local LLMDBENCH_HARNESS_SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | $LLMDBENCH_CONTROL_SCMD 's|[/:]|-|g')
 
   cat <<EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
 apiVersion: v1
@@ -797,8 +884,6 @@ spec:
       value: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
     - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
       value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}"
-    - name: LLMDBENCH_BASE64_CONTEXT_CONTENTS
-      value: "$LLMDBENCH_BASE64_CONTEXT_CONTENTS"
     - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME
       value: "$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE"
     - name: LLMDBENCH_RUN_EXPERIMENT_ID
@@ -816,7 +901,11 @@ spec:
     - name: LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
       value: "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
-      value: "$LLMDBENCH_HARNESS_STACK_NAME"
+      value: "${LLMDBENCH_HARNESS_SANITIZED_STACK_NAME}"
+    - name: LLMDBENCH_DEPLOY_METHODS
+      value: "${LLMDBENCH_DEPLOY_METHODS}"
+    - name: LLMDBENCH_MAGIC_ENVAR
+      value: "harness_pod"
     $(add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD)
     - name: HF_TOKEN_SECRET
       value: "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}"
@@ -829,6 +918,7 @@ spec:
     - name: results
       mountPath: /requests
 EOF
+
   for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
     cat <<EOF >> $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
     - name: ${profile_type}-profiles
@@ -852,6 +942,7 @@ EOF
   restartPolicy: Never
 EOF
 }
+
 export -f create_harness_pod
 
 function get_model_name_from_pod {
@@ -862,28 +953,30 @@ function get_model_name_from_pod {
 
     has_protocol=$(echo $url | grep "http://" || true)
     if [[ -z $has_protocol ]]; then
-      local url="http://$url"
+        local url="http://$url"
     fi
-
-    has_port=$(echo $url | grep  ":$port" || true)
-    if [[ -z $has_port ]]; then
-      local url="$url:$port"
+    # Check if the URL already contains a port number.
+    # If not, append the default port provided.
+    if ! echo "$url" | grep -q ':[0-9]'; then
+        url="$url:$port"
     fi
+    # --- END: Corrected Port Logic ---
 
     local url=$url/v1/models
 
-    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2)
+    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2 0)
     is_jq=$(echo $response | jq -r . || true)
 
     if [[ -z $is_jq ]]; then
-      return 1
+        return 1
     fi
     has_model=$(echo "$is_jq" | jq -r ".data[].id" || true)
     if [[ -z $has_model ]]; then
-      return 1
+        return 1
     fi
     echo $has_model
 }
+
 export -f get_model_name_from_pod
 
 function render_workload_templates {
@@ -915,7 +1008,7 @@ function render_workload_templates {
       treatment_list_dir=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/treatment_list
       if [[ -d $treatment_list_dir ]]; then
         for treatment in $(ls $treatment_list_dir); do
-            workload_output_file_suffix=$(echo ${treatment} | cut -d '_' -f 2 | cut -d '.' -f 1)
+            workload_output_file_suffix=$(echo ${treatment} | cut -d '.' -f 1)
             render_template $workload_template_full_path ${workload_output_file}_${workload_output_file_suffix}.yaml ${treatment_list_dir}/$treatment 0 0
         done
       else
@@ -935,32 +1028,35 @@ function generate_standup_parameter_scenarios {
   rm -rf $output_dir
   mkdir -p $output_dir
 
-  if [[ -z $standup_parameter_file || ! -s $standup_parameter_file || $(cat $standup_parameter_file | yq -r .setup) == "null" ]]; then
-    cp -f $scenario_file ${scenario_dir}/setup/treatment_list/treatment_1.sh
+  if [[ -z $standup_parameter_file || ! -s $standup_parameter_file || $(cat $standup_parameter_file | yq -r .setup.treatments) == "null" ]]; then
+    cp -f $scenario_file ${scenario_dir}/setup/treatment_list/treatment_none.sh
     return 0
   fi
 
   mkdir -p ${scenario_dir}/setup/experiments/
   cp -f $standup_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/setup/experiments/
 
-  i=1
-  for treatment in $(cat $standup_parameter_file | yq -r '.setup.treatments[]'); do
-    cat $scenario_file > $output_dir/treatment_$i.sh
-    $LLMDBENCH_CONTROL_SCMD -i "1i#treatment_$i"  $output_dir/treatment_$i.sh
+  cat $standup_parameter_file | yq -r .setup.treatments | while IFS=: read -r name treatment; do
+    if [ -z "$treatment" ]; then  # handle list without keys
+      treatment=$(yq .[] <<<"$name")
+      name=setup_${treatment//,/_}
+    fi
+    name=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${name}")   # remove non alphanumeric
+    cat $scenario_file > $output_dir/treatment_$name.sh
+    $LLMDBENCH_CONTROL_SCMD -i "1i#treatment_$name"  $output_dir/treatment_$name.sh
     local j=1
     for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
       local param=$(cat $standup_parameter_file | yq -r ".setup.factors[$(($j - 1))]")
-      has_param=$(cat $output_dir/treatment_$i.sh | grep "$param=" || true)
+      has_param=$(cat $output_dir/treatment_$name.sh | grep "$param=" || true)
       if [[ -z $has_param ]]; then
-        echo "$param=$value" >> $output_dir/treatment_$i.sh
+        echo "$param=$value" >> $output_dir/treatment_$name.sh
       else
-        $LLMDBENCH_CONTROL_SCMD -i "s^$param=.*^$param=$value^g"  $output_dir/treatment_$i.sh
+        $LLMDBENCH_CONTROL_SCMD -i "s^$param=.*^$param=$value^g"  $output_dir/treatment_$name.sh
       fi
-      $LLMDBENCH_CONTROL_SCMD -i "s^REPLACE_TREATMENT_NR^treatment_$i^g"  $output_dir/treatment_$i.sh
-      $LLMDBENCH_CONTROL_SCMD -i "s^_treatment_nr^treatment_$i^g"  $output_dir/treatment_$i.sh
+      $LLMDBENCH_CONTROL_SCMD -i "s^REPLACE_TREATMENT_NR^treatment_$name^g"  $output_dir/treatment_$name.sh
+      $LLMDBENCH_CONTROL_SCMD -i "s^_treatment_nr^treatment_$name^g"  $output_dir/treatment_$name.sh
       j=$((j+1))
     done
-    i=$((i+1))
   done
 }
 export -f generate_standup_parameter_scenarios
@@ -980,23 +1076,27 @@ function generate_profile_parameter_treatments {
 
   cp -f $run_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/workload/experiments/
 
-  i=1
-  for treatment in $(cat $run_parameter_file | yq -r '.run.treatments[]'); do
-    echo "1i#treatment_$i.txt" >> $output_dir/treatment_$i.txt
+  cat $run_parameter_file | yq -r .run.treatments | while IFS=: read -r name treatment; do
+    if [ -z "$treatment" ]; then  # handle list without keys
+      treatment=$(yq .[] <<<"$name")
+      name=run_${treatment//,/_}
+    fi
+    name=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${name}")   # remove non alphanumeric
+    echo "1i#treatment_${name}.txt" >> $output_dir/treatment_${name}.txt
     local j=1
     for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
+      local value=$(echo "$value" | $LLMDBENCH_CONTROL_SCMD 's^"^^g')
       local param=$(cat $run_parameter_file | yq -r ".run.factors[$(($j - 1))]")
-      echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_$i.txt
+      echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_${name}.txt
       j=$((j+1))
     done
     if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES ]]; then
       for entry in $(echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
         parm=$(echo $entry | cut -d '=' -f 1)
         val=$(echo $entry | cut -d '=' -f 2)
-        echo "s^$parm:.*^$parm: $val^g" >> $output_dir/treatment_$i.txt
+        echo "s^$parm:.*^$parm: $val^g" >> $output_dir/treatment_${name}.txt
       done
     fi
-    i=$((i+1))
   done
 }
 export -f generate_profile_parameter_treatments
@@ -1004,14 +1104,18 @@ export -f generate_profile_parameter_treatments
 function cleanup_pre_execution {
   announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\"..."
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_HARNESS_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
+  # Sanitize the stack name to make it a valid K8s/OpenShift resource name
+  local LLMDBENCH_HARNESS_SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | $LLMDBENCH_CONTROL_SCMD 's|[/:]|-|g')
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_HARNESS_SANITIZED_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   announce "ℹ️ Done deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" (it will be now recreated)"
 }
+
 export -f cleanup_pre_execution
 
 function validate_model_name {
   local _model_name=$1
-  for mparm in model type parameters majorversion kind label; do
+  for mparm in model parameters majorversion kind modelid_label; do
     if [[ -z $(model_attribute ${_model_name} ${mparm}) ]]; then
       announce "❌ Invalid model name \"${_model_name}\""
       exit 1
@@ -1021,28 +1125,46 @@ function validate_model_name {
 export -f validate_model_name
 
 function backup_work_dir {
-if [[ $LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP -eq 1 ]]; then
-  return 0
-fi
+  local backup_suffix=${1:-"auto"}
+  local unconditional=${2:-0}
 
-if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
-  if [[ $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" || $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "e2s.sh" ]]; then
+  if [[ $backup_suffix == "auto" ]]; then
     backup_suffix=$(date +"%Y-%m-%d_%H.%M.%S")
-    backup_target=$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD 's^/$^^').$backup_suffix
+  fi
 
-    if [[ $(ls $LLMDBENCH_CONTROL_WORK_DIR/setup/commands | wc -l) -ne 0 ]]; then
-      announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
-      # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
-      mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target
-      export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
-      prepare_work_dir
-      if [[ -f $backup_target/environment/context.ctx ]]; then
-        # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
-        cp -f $backup_target/environment/context.ctx $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
+  local backup=0
+
+  local backup_target=$(echo $LLMDBENCH_CONTROL_WORK_DIR | $LLMDBENCH_CONTROL_SCMD -e 's^//^/^g' -e 's^/$^^').$backup_suffix
+
+  if [[ $unconditional -eq 1 ]];
+  then
+    announce "ℹ️  Unconditionally moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
+    local backup=1
+  else
+    if [[ $LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP -eq 1 ]]; then
+      return 0
+    fi
+
+    if [[ $LLMDBENCH_CONTROL_WORK_DIR_SET -eq 1 && $LLMDBENCH_CONTROL_STANDUP_ALL_STEPS -eq 1 ]]; then
+      if [[ $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" || $LLMDBENCH_CURRENT_STEP == "00" && ${LLMDBENCH_CONTROL_CALLER} != "e2s.sh" ]]; then
+        if [[ $(ls $LLMDBENCH_CONTROL_WORK_DIR/setup/commands | wc -l) -ne 0 ]]; then
+          announce "🗑️  Environment Variable \"LLMDBENCH_CONTROL_WORK_DIR\" was set outside \"setup/env.sh\", all steps were selected on \"setup/standup.sh\" and this is the first step on standup. Moving \"$LLMDBENCH_CONTROL_WORK_DIR\" to \"$backup_target\"..."
+        fi
+        local backup=1
       fi
-      echo
     fi
   fi
-fi
+
+  if [[ $backup -eq 1 ]]; then
+    # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
+    mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target
+    export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
+    prepare_work_dir
+    if [[ -f $backup_target/environment/context.ctx ]]; then
+      # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
+      cp -f $backup_target/environment/context.ctx $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
+    fi
+    echo
+  fi
 }
 export -f backup_work_dir

@@ -1,0 +1,27 @@
+setup:
+  factors:
+    - LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE
+  levels:
+    LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE: "inf-sche-none.yaml, inf-sche-prefix.yaml, inf-sche-kv.yaml, inf-sche-queue.yaml"
+  treatments:
+    - "inf-sche-none.yaml"
+    - "inf-sche-prefix.yaml"
+    - "inf-sche-kv.yaml"
+    - "inf-sche-queue.yaml"
+run:
+  factors:
+    - question_len
+    - output_len
+  levels:
+    question_len: "100,300,1000"
+    output_len: "100,300,1000"
+  treatments:
+    - "100,100"
+    - "100,300"
+    - "100,1000"
+    - "300,100"
+    - "300,300"
+    - "300,1000"
+    - "1000,100"
+    - "1000,300"
+    - "1000,1000"

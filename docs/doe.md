@@ -2,7 +2,7 @@
 A `yaml` file which contains a list of `standup` and `run` parameters of interest, termed `factors` and a list of values of interest, termed `levels` for each one of the `factors`. The each set of values for each factor produces a list of combinations termed `treatments`. These concepts and nomenclature follow the "Design of Experiments" (DOE) approach, and it allows a systematic and reproducible investigation on how different parameters affect the overall performance of a stack.
 
 ## Motivation
-While the triplet `<scenario>`,`<harness>`,`<(workload) profile>`, contains all information required for the `llm-d-benchmark` to be able to carry out a `standup`->`run`->`teardown` cycle, in order to compare and validate performance of deployment patterns, a large number of parameters on `llm-d` must be swept. Hence, the need for an automated mechanism to loop through this (potentially) large parameter space.
+While the triplet `<scenario>`,`<harness>`,`<(workload) profile>`, contains all information required for the `llm-d-benchmark` to be able to carry out a `standup`->`run`->`teardown` [lifecycle](lifecycle.md), in order to compare and validate the performance of different stacks, a large number of parameters on `llm-d` must be swept. Hence, the need for an automated mechanism to loop through this (potentially) large parameter space.
 
 ## Use
 An experiment file has to be manually crafted as a `yaml`. Once crafted, it can used by the `e2e.sh` executable. It access is controlled by the following parameters:
@@ -30,18 +30,18 @@ setup:
   factors:
     - LLMDBENCH_DEPLOY_METHODS
     - LLMDBENCH_VLLM_COMMON_REPLICAS
-    - LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR
+    - LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM
     - LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS
-    - LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR
+    - LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM
     - LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS
-    - LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR
+    - LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM
   levels:
     LLMDBENCH_VLLM_COMMON_REPLICAS: "2,4"
-    LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR: "8"
+    LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM: "8"
     LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS: "2,4,6,8"
-    LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR: "1,2"
+    LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM: "1,2"
     LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS: "1,2,4"
-    LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR: "2,4,8"
+    LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM: "2,4,8"
   treatments:
     - "modelservice,NA,NA,6,2,1,4"
     - "modelservice,NA,NA,4,2,1,8"
@@ -88,9 +88,9 @@ run:
 ```
 setup:
   factors:
-    - LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS
+    - LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE
   levels:
-    LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS: "default,prefix-cache-estimate-config,prefix-cache-tracking-config"
+    LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE: "default,prefix-cache-estimate-config,prefix-cache-tracking-config"
   treatments:
     - "default"
     - "prefix-cache-estimate-config"

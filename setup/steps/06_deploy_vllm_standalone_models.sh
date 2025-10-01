@@ -40,7 +40,7 @@ spec:
       labels:
         app: vllm-standalone-$(model_attribute $model label)
       annotations:
-        $(add_annotations)
+        $(add_annotations LLMDBENCH_VLLM_COMMON_ANNOTATIONS)
     spec:
       schedulerName: $(echo "$LLMDBENCH_VLLM_COMMON_POD_SCHEDULER")
       affinity:
@@ -67,7 +67,7 @@ spec:
         - name: LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT
           value: "${LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT}"
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG
-          value: "{}"
+          value: "${LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG}"
         - name: VLLM_LOGGING_LEVEL
           value: "${LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL}"
         - name: HF_HOME
@@ -103,12 +103,12 @@ spec:
           limits:
             cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
             memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
-            $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
+            $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"$(get_accelerator_nr $LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR $LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM $LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM)\"")
             ephemeral-storage: ${LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE}
           requests:
             cpu: "${LLMDBENCH_VLLM_COMMON_CPU_NR}"
             memory: ${LLMDBENCH_VLLM_COMMON_CPU_MEM}
-            $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"${LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR}\"")
+            $(echo "$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE: \"$(get_accelerator_nr $LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR $LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM $LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM)\"")
             ephemeral-storage: ${LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE}
         volumeMounts:
         - name: preprocesses
@@ -175,7 +175,7 @@ spec:
         type: PathPrefix
         value: /
     backendRefs:
-    - name: vllm-standalone-$(model_attribute $model parameters)-vllm-$$(model_attribute $model label)-$(model_attribute $model type)
+    - name: vllm-standalone-$(model_attribute $model parameters)-vllm-$$(model_attribute $model label)-$(model_attribute $model modeltype)
       port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
 EOF
 

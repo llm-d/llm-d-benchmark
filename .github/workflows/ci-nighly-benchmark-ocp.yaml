@@ -1,0 +1,156 @@
+name: CI - Nightly Run Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      input_dir:
+        description: 'Input directory for benchmark results'
+        required: false
+        default: '/tmp/cicd/analysis'
+      output_dir:
+        description: 'Output directory name (S3 prefix and artifact name)'
+        required: false
+        default: ''
+
+#  push:
+#    branches:
+#      - main
+
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+
+jobs:
+  run-benchmark:
+    name: Benchmark Test
+    runs-on: [k8s-util]
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Display OS used
+        run: |
+          cat /etc/*os-*
+        shell: bash
+
+      - name: Set input and output directory environment variables
+        run: |
+          DEFAULT_INPUT_DIR=/tmp/cicd/analysis
+          INPUT_DIR="${{ github.event.inputs.input_dir }}"
+          if [ -z "$INPUT_DIR" ]; then
+            INPUT_DIR="$DEFAULT_INPUT_DIR"
+          fi
+          echo "INPUT_DIR=$INPUT_DIR" >> $GITHUB_ENV
+
+          if [ -z "${{ github.event.inputs.output_dir }}" ]; then
+            timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+            echo "OUTPUT_DIR=benchmark-results-${timestamp}" >> $GITHUB_ENV
+            echo "Using generated output dir: benchmark-results-${timestamp}"
+          else
+            echo "OUTPUT_DIR=${{ github.event.inputs.output_dir }}" >> $GITHUB_ENV
+            echo "Using provided output dir: ${{ github.event.inputs.output_dir }}"
+          fi
+
+      - name: Set up kubeconfig from secret
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+        shell: bash
+
+      - name: Run install_deps.sh
+        run: |
+          sudo apt-get update
+          ./setup/install_deps.sh
+        shell: bash
+
+      - name: Install config explorer package
+        run: pip install -e .
+        shell: bash
+
+      - name: Cleanup target cloud (modelservice)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/teardown.sh -c ocp_L40_fb -t modelservice -d
+
+      - name: Cleanup target cloud (standalone)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/teardown.sh -c ocp_L40_fb -t standalone -d
+
+      - name: Standup target cloud (standalone)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/standup.sh -c ocp_L40_fb -t standalone
+
+      - name: Run benchmark (standalone, inference-perf)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/run.sh -c ocp_L40_fb -t standalone
+
+      - name: Run benchmark (standalone, fmperf)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/run.sh -c ocp_L40_fb -t standalone -l fmperf -w sanity_short-input
+
+      - name: Run benchmark (standalone, guidellm)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/run.sh -c ocp_L40_fb -t standalone -l guidellm -w sanity_concurrent
+
+      - name: Run benchmark (standalone, vllm-benchmark)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/run.sh -c ocp_L40_fb -t standalone -l vllm-benchmark
+
+      - name: Cleanup target cloud (standalone)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/teardown.sh -c ocp_L40_fb -t standalone -d
+
+      - name: E2E target cloud (modelservice, inference-perf)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep
+
+      - name: E2E target cloud (modelservice, fmperf)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l fmperf -w sanity_short-input.yaml
+
+      - name: E2E target cloud (modelservice, guidellm)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
+
+
+      - name: E2E target cloud (modelservice, vllm-benchmark)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l vllm-benchmark
+
+
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install
+          aws --version
+
+      - name: Upload results to IBM COS
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws configure set default.s3.signature_version s3v4
+          aws s3 cp "$INPUT_DIR" "s3://${{ secrets.COS_BUCKET_NAME }}/$OUTPUT_DIR/" \
+            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }} || true
+
+      - name: Archive benchmark results as GitHub artifact
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.OUTPUT_DIR }}
+          path: ${{ env.INPUT_DIR }}
+          retention-days: 14

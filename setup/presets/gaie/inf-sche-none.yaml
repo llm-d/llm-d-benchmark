@@ -1,0 +1,13 @@
+# Sample EPP configuration for running without P/D with no scorers
+
+apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+- type: random-picker
+- type: decode-filter
+- type: single-profile-handler
+schedulingProfiles:
+- name: default
+  plugins:
+  - pluginRef: decode-filter
+  - pluginRef: random-picker
