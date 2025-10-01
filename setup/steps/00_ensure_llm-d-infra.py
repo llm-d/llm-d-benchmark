@@ -5,8 +5,6 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Tuple
 from transformers import AutoConfig
-from huggingface_hub import ModelInfo
-from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
 
 try :
     from config_explorer.capacity_planner import gpus_required, get_model_info_from_hf, get_model_config_from_hf, get_text_config, find_possible_tp, max_context_len, available_gpu_memory, model_total_params, model_memory_req, allocatable_kv_cache_memory, kv_cache_req, max_concurrent_requests
@@ -17,6 +15,9 @@ except ModuleNotFoundError:
 except Exception as e:
     print(f"An unexpected error occurred: {e}")
     sys.exit(1)
+
+from huggingface_hub import ModelInfo
+from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
 
 # Add project root to path for imports
 current_file = Path(__file__).resolve()
