@@ -1,0 +1,38 @@
+harness:
+  type: inference-perf
+  resultsPVC: workspace-pvc
+  image:
+    repository: ghcr.io/llm-d/llm-d-benchmark
+    tag: v0.3.0rc2
+    pullPolicy: Always
+  extraEnv: []
+  args: ["llm-d-benchmark.sh"]
+  resources:
+    limits:
+      cpu: 16
+      memory: 32Gi
+    requests:
+      cpu: 16
+      memory: 32Gi
+
+stack:
+  type: "llm-d"
+  # model: 
+  deployMethod: modelservice
+  # name
+  # endpointUrl
+
+experiment:
+  # identifier: 
+  profile:
+    name: sanity_random.yaml
+    shared_prefix:
+      num_groups: 32
+      num_prompts_per_group: 32
+      system_prompt_len: 2048
+      question_len: 256
+      output_len: 256
+
+nameOverride: ""
+fullnameOverride: ""
+
