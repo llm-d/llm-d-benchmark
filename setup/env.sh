@@ -312,7 +312,7 @@ if [[ ! -z $LLMDBENCH_SCENARIO_FULL_PATH ]]; then
 elif [[ $LLMDBENCH_SCENARIO_FULL_PATH == "${LLMDBENCH_MAIN_DIR}/scenarios/none.sh" ]]; then
   touch ${LLMDBENCH_MAIN_DIR}/scenarios/none.sh
 else
-  echo "❌ Scenario file \"$LLMDBENCH_SCENARIO_FULL_PATH\" could not be found."
+  echo "❌ Scenario file \"$LLMDBENCH_SCENARIO_FULL_PATH\" ($LLMDBENCH_DEPLOY_SCENARIO) could not be found."
   exit 1
 fi
 
