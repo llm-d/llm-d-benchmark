@@ -28,7 +28,7 @@ def main():
             ev.update({key.split("LLMDBENCH_")[1].lower(): os.environ.get(key)})
 
     # Check if standalone environment is active
-    if is_standalone_deployment():
+    if is_standalone_deployment(ev):
 
         # Check storage class
         if not check_storage_class():
