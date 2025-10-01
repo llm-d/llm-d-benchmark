@@ -246,9 +246,13 @@ def get_validation_param(ev: dict, type: str=COMMON) -> ValidationParam:
     dp_size = int(ev[f'{prefix}_data_parallelism'])
     user_accelerator_nr = ev[f'{prefix}_accelerator_nr']
 
+    hf_token = ev['hf_token']
+    if hf_token == "":
+        hf_token = None
+
     validation_param = ValidationParam(
         models = models_list,
-        hf_token = os.environ.get('hf_token', None),
+        hf_token = hf_token,
         replicas = replicas,
         gpu_type = gpu_type,
         gpu_memory = convert_accelerator_memory(gpu_type, ev['vllm_common_accelerator_memory']),
