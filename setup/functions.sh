@@ -1162,3 +1162,40 @@ function backup_work_dir {
   fi
 }
 export -f backup_work_dir
+
+# Check if a Hugging Face model is gated (requires manual approval)
+# Usage: is_hf_model_gated <model_id>
+# Example: is_hf_model_gated ibm-granite granite-3.1-8b-instruct
+function is_hf_model_gated {
+    local model_id="$1"
+    local url="https://huggingface.co/api/models/${model_id}"
+
+    local response=$(curl -s -H "Accept: application/json" "${url}")
+    if [[ $? -ne 0 || -z "${response}" ]]; then
+        return 2
+    fi
+    
+    local gated=$(echo "${response}" | jq -r '.gated // false')
+    if [[ ${gated} == "false" ]]; then
+      return 1
+    else
+      return 0
+    fi
+}
+export -f is_hf_model_gated
+
+# Check if a Hugging Face user (via token) has access to a model
+# Usage: user_has_hf_model_access <model_id> <hf_token>
+# Example: user_has_hf_model_access ibm-granite granite-3.1-8b-instruct $HF_TOKEN
+function user_has_hf_model_access {
+    local model_id="$1"
+    local hf_token="$2"
+    local url="https://huggingface.co/${model_id}/resolve/main/config.json"
+
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        -H "Authorization: Bearer ${hf_token}" \
+        -L "${url}")
+
+    case "$http_code" in 200) return 0 ;; 401|403) return 1 ;; *) return 2 ;; esac
+}
+export -f user_has_hf_model_access

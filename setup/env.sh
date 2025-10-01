@@ -475,14 +475,29 @@ if [[ $LLMDBENCH_CONTROL_CALLER == "run.sh" ]]; then
   fi
 fi
 
-required_vars=("LLMDBENCH_HF_TOKEN")
-for var in "${required_vars[@]}"; do
-  if [ -z "${!var:-}" ]; then
-    echo "❌ Environment variable '$var' is not set."
-    exit 1
-  fi
-done
-
 export HF_TOKEN=${HF_TOKEN:-$LLMDBENCH_HF_TOKEN}
+
+if ! echo ${LLMDBENCH_CONTROL_CALLER} | grep -iq "teardown"; then
+  if is_hf_model_gated "${LLMDBENCH_DEPLOY_MODEL_LIST}"; then
+    if [[ -z ${HF_TOKEN} ]]; then
+      announce "❌ Hugging Face Token is empty but attempted to use gated model \"${LLMDBENCH_DEPLOY_MODEL_LIST}\""
+      exit 1
+    fi
+
+    if user_has_hf_model_access "${LLMDBENCH_DEPLOY_MODEL_LIST}" "${HF_TOKEN}"; then
+        announce "✅ Verified access to gated model \"${LLMDBENCH_DEPLOY_MODEL_LIST}\" is authorized."
+    else
+        rc=$?
+        if [[ ${rc} -eq 1 ]]; then
+            announce "❌ Unauthorized access to gated model \"${LLMDBENCH_DEPLOY_MODEL_LIST}\"."
+        else
+            announce "❌ Error: Request to check authorized access to \"${LLMDBENCH_DEPLOY_MODEL_LIST}\" failed."
+        fi
+    fi
+  else
+    announce "✅ Verified the model \"${LLMDBENCH_DEPLOY_MODEL_LIST}\" is not gated, access is authorized by default"
+  fi
+fi
+
 
 export LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL=${SHELL:5}
