@@ -12,7 +12,7 @@ routing:
   parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
-      name: infra-llmdbench-inference-gateway
+      name: experiment-gateway-inference-gateway
   proxy:
     image: "ghcr.io/llm-d/llm-d-routing-sidecar:v0.3.0"
     secure: false
