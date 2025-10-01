@@ -490,8 +490,10 @@ if ! echo ${LLMDBENCH_CONTROL_CALLER} | grep -iq "teardown"; then
         rc=$?
         if [[ ${rc} -eq 1 ]]; then
             announce "❌ Unauthorized access to gated model \"${LLMDBENCH_DEPLOY_MODEL_LIST}\"."
+            exit 1
         else
             announce "❌ Error: Request to check authorized access to \"${LLMDBENCH_DEPLOY_MODEL_LIST}\" failed."
+            exit 1
         fi
     fi
   else
