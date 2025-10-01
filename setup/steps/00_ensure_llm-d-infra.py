@@ -144,9 +144,12 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
         announce_failed("Cannot determine accelerator memory. Please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY to enable Capacity Planner.", ignore_if_failed)
 
     per_replica_requirement = gpus_required(tp=tp, dp=dp)
-    total_gpu_requirement = per_replica_requirement * replicas
+    if replicas == 0:
+        per_replica_requirement = 0
+    total_gpu_requirement = per_replica_requirement
+
     if total_gpu_requirement > user_requested_gpu_count:
-        announce_failed(f"Accelerator requested is {user_requested_gpu_count} but it is not enough to stand up the model. Set LLMDBENCH_VLLM_{env_var_prefix}_ACCELERATOR_NR to TP x DP x replicas = {tp} x {dp} x {replicas} = {total_gpu_requirement}", ignore_if_failed)
+        announce_failed(f"Accelerator requested is {user_requested_gpu_count} but it is not enough to stand up the model. Set LLMDBENCH_VLLM_{env_var_prefix}_ACCELERATOR_NR to TP x DP = {tp} x {dp} = {total_gpu_requirement}", ignore_if_failed)
 
     if total_gpu_requirement < user_requested_gpu_count:
         announce(f"⚠️ For each replica, model requires {total_gpu_requirement}, but you requested {user_requested_gpu_count} for the deployment. Note that some GPUs will be idle.")
@@ -180,15 +183,13 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
             announce_failed(f"Model config on parameter shape not available.", ignore_if_failed)
 
         # Display memory info
-        announce("\n")
-        announce("Collecting GPU information.......")
+        announce("👉 Collecting GPU information....")
         avail_gpu_memory = available_gpu_memory(gpu_memory, gpu_memory_util)
-        announce(f"ℹ️ GPU used for each replica: {per_replica_requirement} with {gpu_memory} GB of memory each, with {avail_gpu_memory} available.")
-        announce(f"ℹ️ Total available GPU memory = {avail_gpu_memory * per_replica_requirement} GB")
+        announce(f"ℹ️ {gpu_memory} GB of memory per GPU, with {gpu_memory} GB x {gpu_memory_util} (gpu_memory_utilization) = {avail_gpu_memory} GB available to use.")
+        announce(f"ℹ️ Each model replica requires {per_replica_requirement} GPUs, total available GPU memory = {avail_gpu_memory * per_replica_requirement} GB.")
 
         # # Calculate model memory requirement
-        announce("\n")
-        announce("Collecting model information.......")
+        announce("👉 Collecting model information....")
         if model_info is not None:
             try:
                 model_params = model_total_params(model_info)
@@ -198,8 +199,7 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
                 announce(f"ℹ️ {model} requires {model_mem_req} GB of memory")
 
                 # Estimate KV cache memory and max number of requests that can be served in worst case scenario
-                announce("\n")
-                announce("Estimating available KV cache.......")
+                announce("👉 Estimating available KV cache....")
                 available_kv_cache = allocatable_kv_cache_memory(
                     model_info, model_config,
                     gpu_memory, gpu_memory_util,

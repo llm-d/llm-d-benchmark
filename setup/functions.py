@@ -1139,4 +1139,4 @@ def get_accelerator_type(ev: dict) -> str | None:
         # Parse the string
         # LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3
         parsed = common_affinity.split(":")
-        return parsed[:-1]
+        return parsed[-1]
