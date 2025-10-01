@@ -8,7 +8,15 @@ from transformers import AutoConfig
 from huggingface_hub import ModelInfo
 from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
 
-from config_explorer.capacity_planner import gpus_required, get_model_info_from_hf, get_model_config_from_hf, get_text_config, find_possible_tp, max_context_len, available_gpu_memory, model_total_params, model_memory_req, allocatable_kv_cache_memory, kv_cache_req, max_concurrent_requests
+try :
+    from config_explorer.capacity_planner import gpus_required, get_model_info_from_hf, get_model_config_from_hf, get_text_config, find_possible_tp, max_context_len, available_gpu_memory, model_total_params, model_memory_req, allocatable_kv_cache_memory, kv_cache_req, max_concurrent_requests
+except ModuleNotFoundError:
+    print("❌ ERROR: The module 'config_explorer' was not found.")
+    print(f"Please run \"pip install -e .\" from {Path().resolve()}")
+    sys.exit(1)
+except Exception as e:
+    print(f"An unexpected error occurred: {e}")
+    sys.exit(1)
 
 # Add project root to path for imports
 current_file = Path(__file__).resolve()
@@ -20,7 +28,7 @@ try:
     from functions import announce, environment_variable_to_dict, get_accelerator_nr, is_standalone_deployment, get_accelerator_type
 except ImportError as e:
     # Fallback for when dependencies are not available
-    print(f"Warning: Could not import required modules: {e}")
+    print(f"❌ ERROR: Could not import required modules: {e}")
     print("This script requires the llm-d environment to be properly set up.")
     print("Please run: ./setup/install_deps.sh")
     sys.exit(1)

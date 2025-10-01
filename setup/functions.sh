@@ -1176,7 +1176,12 @@ function backup_work_dir {
 
   if [[ $backup -eq 1 ]]; then
     # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
-    mv -f $LLMDBENCH_CONTROL_WORK_DIR/ $backup_target/
+    if [[ -d $backup_target ]]; then
+      rsync -a --inplace --delete $LLMDBENCH_CONTROL_WORK_DIR/ $backup_target/
+    else
+      mv -f $LLMDBENCH_CONTROL_WORK_DIR/ $backup_target/
+    fi
+
     export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
     prepare_work_dir
     if [[ -f $backup_target/environment/context.ctx ]]; then
