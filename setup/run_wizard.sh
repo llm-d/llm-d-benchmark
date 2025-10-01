@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-exec 3>&2   # fd for prompts
+exec 4>&1   # fd for output
+exec 1>&2   # only final output should go to stdout
+exec 3>&2   # all prompts to stderr
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
   echo "This script should be executed not sourced" >&3
@@ -221,9 +223,7 @@ prompt="Please select PVC for benchmark workload results (choose 'other' to crea
 ${header}"
 prompt2="A new PVC will be created. Please enter a name for the new PVC"
 
-if reply=$(choose_var -o "${prompt}" "${workload_pvcs[@]}"); then
-  echo $reply
-else
+if ! reply=$(choose_var -o "${prompt}" "${workload_pvcs[@]}"); then
   reply=$(read_var "${prompt2}" "workload-pvc") ||
     error_exit 1 "LLMDBENCH_HARNESS_PVC_NAME cannot be empty."
   NAME="NAME:{.metadata.name}"
@@ -310,12 +310,12 @@ if ! [[ -z "${servicename:-}" ]]; then
     localport=8100
     remoteport=$($k -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get service ${servicename} -o=jsonpath='{.spec.ports[].port}' |
       sed 's/default/80/')
-    $k -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE} port-forward "service/${servicename}" "${localport}":"${remoteport}" & pid=$!
+    $k -n ${LLMDBENCH_VLLM_COMMON_NAMESPACE} port-forward "service/${servicename}" "${localport}":"${remoteport}" >&3 & pid=$!
     sleep 2
     endpoint="http://localhost:${localport}"
   fi
   modelname=$(curl -s ${endpoint}/v1/models | jq -r '.data[].id')
-  ! [[ -z "${pid}" ]] && kill -9 ${pid}
+  ! [[ -z "${pid}" ]] && kill -9 ${pid} >/dev/null
 else
   echo "Could not detect model name." >&3
   modelname=""
@@ -327,7 +327,7 @@ if ! [[ -z "${modelname}" ]] &&
   ! [[ -z "${LLMDBENCH_DEPLOY_MODEL_LIST}" ]] &&
   [[ "${modelname}" != "${LLMDBENCH_DEPLOY_MODEL_LIST}" ]]; then
   echo "WARNING:
-  Current LLMDBENCH_DEPLOY_MODEL_LIST (${LLMDBENCH_DEPLOY_MODEL_LIST}) does not match llm-d stack model (${modelname})."
+  Current LLMDBENCH_DEPLOY_MODEL_LIST (${LLMDBENCH_DEPLOY_MODEL_LIST}) does not match llm-d stack model (${modelname})." >&3
 fi
 
 # TIMEOUT
@@ -343,7 +343,7 @@ export_var LLMDBENCH_HARNESS_WAIT_TIMEOUT $(read_var "${prompt}" "${LLMDBENCH_HA
 
 # OUTPUT
 # ======
-cat <<BASH | envsubst
+cat <<BASH | envsubst >&4
 # ==================================================
 # ENV variables for llm-d-benchmark runs.sh
 #
