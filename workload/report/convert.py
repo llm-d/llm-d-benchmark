@@ -194,7 +194,7 @@ def _get_llmd_benchmark_envars() -> dict:
         return {
             "scenario": {
                 "model": {
-                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
+                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODEL']
                 },
                 "host": {
                     "type": ['prefill'] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
