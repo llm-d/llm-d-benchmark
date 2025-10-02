@@ -60,6 +60,11 @@ spec:
       value: "{{ .value }}"
     {{- end }}
 
+    #  TBD add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD
+    - name: LLMDBENCH_DEPLOY_CURRENT_MODEL
+      value: "{{ .Values.stack.model }}"
+    - name: LLMDBENCH_DEPLOY_CURRENT_MODELID
+      value: {{ include "harness.sanitizeString" .Values.stack.model | quote }}
     - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS
       value: "0"
     - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS
@@ -74,10 +79,6 @@ spec:
       value: "1"
     - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM
       value: "1"
-
-    #  TBD add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD
-    - name: LLMDBENCH_DEPLOY_CURRENT_MODELID
-      value: "{{ .Values.stack.model }}"
 
     - name: HF_TOKEN_SECRET
       value: "hf-secret"
