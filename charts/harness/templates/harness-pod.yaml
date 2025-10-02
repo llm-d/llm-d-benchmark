@@ -8,7 +8,7 @@ spec:
   serviceAccountName: {{ include "harness.name" . }}-runner
   containers:
   - name: harness
-    image: "{{ .Values.harness.image.repository }}:{{ .Values.harness.image.tag }}"
+    image: "{{ .Values.harness.image.registry }}/{{ .Values.harness.image.repository }}/{{ .Values.harness.image.name }}:{{ .Values.harness.image.tag }}"
     imagePullPolicy: {{ .Values.harness.image.pullPolicy }}
     securityContext:
       runAsUser: 0
@@ -48,11 +48,11 @@ spec:
       value: "harness_pod"
 
     - name: LLMDBENCH_LLMD_IMAGE_REGISTRY
-      value: ghcr.io
+      value: {{ .Values.harness.image.registry }}
     - name: LLMDBENCH_LLMD_IMAGE_REPO
-      value: llm-d
+      value: {{ .Values.harness.image.repository }}
     - name: LLMDBENCH_LLMD_IMAGE_NAME
-      value: llm-d-benchmark
+      value: {{ .Values.harness.image.name }}
     - name: LLMDBENCH_LLMD_IMAGE_TAG
       value: {{ .Values.harness.image.tag }}
     {{- with .Values.harness.extraEnv }}
