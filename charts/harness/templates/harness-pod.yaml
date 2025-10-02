@@ -54,7 +54,7 @@ spec:
     - name: LLMDBENCH_LLMD_IMAGE_NAME
       value: {{ .Values.harness.image.name }}
     - name: LLMDBENCH_LLMD_IMAGE_TAG
-      value: {{ .Values.harness.image.tag }}
+      value: {{ .Values.harness.image.tag | quote }}
     {{- with .Values.harness.extraEnv }}
     - name: {{ .name }}
       value: "{{ .value }}"

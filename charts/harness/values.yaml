@@ -2,7 +2,9 @@ harness:
   type: inference-perf
   resultsPVC: workspace-pvc
   image:
-    repository: ghcr.io/llm-d/llm-d-benchmark
+    registry: ghcr.io
+    repository: llm-d
+    name: llm-d-benchmark
     tag: v0.3.0rc2
     pullPolicy: Always
   extraEnv: []
