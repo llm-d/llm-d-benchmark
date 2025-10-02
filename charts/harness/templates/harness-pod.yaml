@@ -46,10 +46,30 @@ spec:
       value: "{{ .Values.stack.deployMethod }}"
     - name: LLMDBENCH_MAGIC_ENVAR
       value: "harness_pod"
+
+    - name: LLMDBENCH_LLMD_IMAGE_REGISTRY
+      value: ghcr.io
+    - name: LLMDBENCH_LLMD_IMAGE_REPO
+      value: llm-d
+    - name: LLMDBENCH_LLMD_IMAGE_NAME
+      value: llm-d-benchmark
+    - name: LLMDBENCH_LLMD_IMAGE_TAG
+      value: {{ .Values.harness.image.tag }}
     {{- with .Values.harness.extraEnv }}
     - name: {{ .name }}
       value: "{{ .value }}"
     {{- end }}
+
+    - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS
+      value: 0
+    - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS
+      value: 2
+    - name: LLMDBENCH_VLLM_COMMON_AFFINITY
+      value: "nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3"
+    - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM
+      value: 4
+    - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM
+      value: 1
 
     #  TBD add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD
     - name: LLMDBENCH_DEPLOY_CURRENT_MODELID
