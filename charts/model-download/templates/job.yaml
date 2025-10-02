@@ -10,11 +10,11 @@ spec:
         image: python:3.10
         command: ["/bin/sh", "-c"]
         args:
-        - mkdir -p "\${MOUNT_PATH}/\${MODEL_PATH}" && \
+        - mkdir -p "${MOUNT_PATH}/${MODEL_PATH}" && \
           pip install huggingface_hub && \
-          export PATH="\${PATH}:\${HOME}/.local/bin" && \
+          export PATH="${PATH}:${HOME}/.local/bin" && \
           hf auth login --token "${HF_TOKEN}" && \
-          hf download "\${HF_MODEL_ID}" --local-dir "/cache/\${MODEL_PATH}"
+          hf download "${HF_MODEL_ID}" --local-dir "/cache/${MODEL_PATH}"
         env:
           - name: MODEL_PATH
             value: models/{{ required "ERROR .Values.hf_model must be set" .Values.hf_model }}
