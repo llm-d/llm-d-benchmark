@@ -61,15 +61,15 @@ spec:
     {{- end }}
 
     - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS
-      value: 0
+      value: "0"
     - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS
-      value: 2
+      value: "2"
     - name: LLMDBENCH_VLLM_COMMON_AFFINITY
       value: "nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3"
     - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM
-      value: 4
+      value: "4"
     - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM
-      value: 1
+      value: "1"
 
     #  TBD add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD
     - name: LLMDBENCH_DEPLOY_CURRENT_MODELID
