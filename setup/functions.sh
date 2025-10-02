@@ -448,12 +448,18 @@ function check_storage_class {
     return 0
   fi
 
+  if [[ $($LLMDBENCH_CONTROL_KCMD get storageclasses --no-headers -o name | wc -l) -eq 0 ]];
+  then
+      announce "❌ ERROR: at least one storage class is required for execution of the benchmark (a PVC is needed to hold performance data)\""
+      return 1
+  fi
+
   if [[ $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS == "default" ]]; then
     if [[ ${LLMDBENCH_CONTROL_CALLER} == "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} == "e2e.sh" || ${LLMDBENCH_CONTROL_CALLER} == "run.sh" ]]; then
       has_default_sc=$($LLMDBENCH_CONTROL_KCMD get storageclass -o=jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{@.metadata.name}{"\n"}{end}' || true)
       if [[ -z $has_default_sc ]]; then
           announce "❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class\""
-          exit 1
+          return 1
       fi
       announce "ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to \"${has_default_sc}\""
       export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=${has_default_sc}
@@ -487,9 +493,9 @@ function check_affinity {
   #      export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=$(echo ${has_default_accelerator} | cut -d ':' -f 1)
         export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=nvidia.com/gpu
         export LLMDBENCH_VLLM_COMMON_AFFINITY=$has_default_accelerator
-        announce "ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"${has_default_accelerator}\""
+        announce "ℹ️  Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"${has_default_accelerator}\""
       else
-        announce "ℹ️ Minikube detected. Variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"kubernetes.io/os:linux\""
+        announce "ℹ️  Minikube detected. Variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"kubernetes.io/os:linux\""
       fi
     fi
   else
@@ -1033,23 +1039,34 @@ function generate_standup_parameter_scenarios {
   cat $standup_parameter_file | yq -r .setup.treatments | while IFS=: read -r name treatment; do
     if [ -z "$treatment" ]; then  # handle list without keys
       treatment=$(yq .[] <<<"$name")
-      name=setup_${treatment//,/_}
+      local name=setup_${treatment//,/_}
     fi
-    name=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${name}")   # remove non alphanumeric
+    local name=$($LLMDBENCH_CONTROL_SCMD -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${name}")   # remove non alphanumeric
     cat $scenario_file > $output_dir/treatment_$name.sh
     $LLMDBENCH_CONTROL_SCMD -i "1i#treatment_$name"  $output_dir/treatment_$name.sh
     local j=1
     for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
       local param=$(cat $standup_parameter_file | yq -r ".setup.factors[$(($j - 1))]")
-      has_param=$(cat $output_dir/treatment_$name.sh | grep "$param=" || true)
+      local has_param=$(cat $output_dir/treatment_$name.sh | grep "$param=" || true)
       if [[ -z $has_param ]]; then
-        echo "$param=$value" >> $output_dir/treatment_$name.sh
+        echo "export $param=$value" >> $output_dir/treatment_$name.sh
       else
-        $LLMDBENCH_CONTROL_SCMD -i "s^$param=.*^$param=$value^g"  $output_dir/treatment_$name.sh
+        $LLMDBENCH_CONTROL_SCMD -i "s^.*$param=.*^export $param=$value^g"  $output_dir/treatment_$name.sh
       fi
       $LLMDBENCH_CONTROL_SCMD -i "s^REPLACE_TREATMENT_NR^treatment_$name^g"  $output_dir/treatment_$name.sh
       $LLMDBENCH_CONTROL_SCMD -i "s^_treatment_nr^treatment_$name^g"  $output_dir/treatment_$name.sh
       j=$((j+1))
+    done
+    for parvar in $(cat $standup_parameter_file | yq -r '.setup.constants[]' | $LLMDBENCH_CONTROL_SCMD 's^: ^_____^g')
+    do
+      local param=$(echo $parvar | $LLMDBENCH_CONTROL_SCMD 's^_____^ ^g' | cut -d ' ' -f 1)
+      local value=$(echo $parvar | $LLMDBENCH_CONTROL_SCMD 's^_____^ ^g' | cut -d ' ' -f 2)
+      local has_param=$(cat $output_dir/treatment_$name.sh | grep "$param=" || true)
+      if [[ -z $has_param ]]; then
+        echo "export $param=$value" >> $output_dir/treatment_$name.sh
+      else
+        $LLMDBENCH_CONTROL_SCMD -i "s^.*$param=.*^export $param=$value^g"  $output_dir/treatment_$name.sh
+      fi
     done
   done
 }
@@ -1084,10 +1101,18 @@ function generate_profile_parameter_treatments {
       echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_${name}.txt
       j=$((j+1))
     done
+
+    for parvar in $(cat $run_parameter_file | yq -r '.run.constants[]' | $LLMDBENCH_CONTROL_SCMD 's^: ^_____^g')
+    do
+      local cparam=$(echo $parvar | $LLMDBENCH_CONTROL_SCMD 's^_____^ ^g' | cut -d ' ' -f 1)
+      local cvalue=$(echo $parvar | $LLMDBENCH_CONTROL_SCMD 's^_____^ ^g' | cut -d ' ' -f 2)
+      echo "s^$cparam:.*^$cparam: $cvalue^g" >> $output_dir/treatment_${name}.txt
+    done
+
     if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES ]]; then
       for entry in $(echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
-        parm=$(echo $entry | cut -d '=' -f 1)
-        val=$(echo $entry | cut -d '=' -f 2)
+        local parm=$(echo $entry | cut -d '=' -f 1)
+        local val=$(echo $entry | cut -d '=' -f 2)
         echo "s^$parm:.*^$parm: $val^g" >> $output_dir/treatment_${name}.txt
       done
     fi
@@ -1151,7 +1176,12 @@ function backup_work_dir {
 
   if [[ $backup -eq 1 ]]; then
     # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
-    mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target
+    if [[ -d $backup_target ]]; then
+      rsync -a --inplace --delete $LLMDBENCH_CONTROL_WORK_DIR/ $backup_target/
+    else
+      mv -f $LLMDBENCH_CONTROL_WORK_DIR/ $backup_target/
+    fi
+
     export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
     prepare_work_dir
     if [[ -f $backup_target/environment/context.ctx ]]; then

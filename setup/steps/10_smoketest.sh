@@ -121,7 +121,9 @@ for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
   if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
     route_url=
   else
-    route_url=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get route --no-headers --ignore-not-found | grep ${route_string} | awk '{print $2}'  || true)
+    if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
+      route_url=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get route --no-headers --ignore-not-found | grep ${route_string} | awk '{print $2}'  || true)
+    fi
   fi
 
   if [[ ! -z $route_url ]]; then

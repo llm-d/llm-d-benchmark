@@ -13,7 +13,7 @@ sys.path.insert(0, str(project_root))
 from functions import (
     announce, llmdbench_execute_cmd, model_attribute, extract_environment,
     get_image, check_storage_class, check_affinity, add_annotations,
-    add_command_line_options, add_additional_env_to_yaml, get_accelerator_nr
+    add_command_line_options, add_additional_env_to_yaml, get_accelerator_nr, is_standalone_deployment
 )
 
 
@@ -28,7 +28,7 @@ def main():
             ev.update({key.split("LLMDBENCH_")[1].lower(): os.environ.get(key)})
 
     # Check if standalone environment is active
-    if int(ev.get("control_environment_type_standalone_active", 0)) == 1:
+    if is_standalone_deployment(ev):
 
         # Check storage class
         if not check_storage_class():

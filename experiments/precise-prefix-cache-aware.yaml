@@ -1,13 +1,18 @@
 setup:
+  constants:
+    - LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN: 12000
+    - LLMDBENCH_VLLM_COMMON_BLOCK_SIZE: 64
   factors:
     - LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE
   levels:
-    LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE: "default,prefix-cache-estimate-config,prefix-cache-tracking-config"
+    LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE: default,prefix-cache-estimate-config,prefix-cache-tracking-config
   treatments:
-    default: "default"
-    cache_estimate: "prefix-cache-estimate-config"
-    cache_tracking: "prefix-cache-tracking-config"
+    default: default
+    cache_estimate: prefix-cache-estimate-config
+    cache_tracking: prefix-cache-tracking-config
 run:
+  constants:
+    - streaming: true
   factors:
     - num_groups
     - system_prompt_len

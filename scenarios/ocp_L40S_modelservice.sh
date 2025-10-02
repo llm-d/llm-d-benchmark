@@ -1,5 +1,0 @@
-export LLMDBENCH_DEPLOY_MODEL_LIST=meta-llama/Llama-3.2-1B-Instruct
-export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-L40S
-export LLMDBENCH_VLLM_COMMON_REPLICAS=1
-export LLMDBENCH_DEPLOY_METHODS=modelservice
-export LLMDBENCH_VLLM_COMMON_NAMESPACE=llm-d-benchmark
