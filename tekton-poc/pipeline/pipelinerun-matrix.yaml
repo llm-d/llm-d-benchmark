@@ -12,7 +12,7 @@ spec:
           name: experiment
         params:
           - name: namespace
-            value: kalantar
+            value: CHANGE_ME
           - name: model-id
             value: "Qwen/Qwen3-0.6B"
           - name: experimentBaseUrl
