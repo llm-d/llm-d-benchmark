@@ -4,25 +4,45 @@ import sys
 from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Tuple
-from transformers import AutoConfig
 
-try :
+current_file = Path(__file__).resolve()
+workspace_root = current_file.parents[2]
+setup_dir = current_file.parents[1]
+config_explorer_src = workspace_root / "config_explorer" / "src"
+sys.path.insert(0, str(config_explorer_src))
+sys.path.insert(1, str(setup_dir))
+sys.path.insert(2, str(workspace_root))
+if "PYTHONPATH" in os.environ:
+    os.environ["PYTHONPATH"] = f"{config_explorer_src}:{setup_dir}:{workspace_root}:{os.environ['PYTHONPATH']}"
+else:
+    os.environ["PYTHONPATH"] = f"{config_explorer_src}:{setup_dir}:{workspace_root}"
+
+print(f"Workspace root directory added to PYTHONPATH: {os.environ['PYTHONPATH']}")
+
+try:
+    from transformers import AutoConfig
+    from huggingface_hub import ModelInfo
+    from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
+except ModuleNotFoundError as e:
+    print(f"❌ ERROR: Required dependency not installed: {e}")
+    print("Please install the required dependencies:")
+    print(f"  pip install -r {workspace_root / 'config_explorer' / 'requirements.txt'}")
+    sys.exit(1)
+
+# Import config_explorer module
+try:
     from config_explorer.capacity_planner import KVCacheDetail, gpus_required, get_model_info_from_hf, get_model_config_from_hf, get_text_config, find_possible_tp, max_context_len, available_gpu_memory, model_total_params, model_memory_req, allocatable_kv_cache_memory, kv_cache_req, max_concurrent_requests
-except ModuleNotFoundError:
-    print("❌ ERROR: The module 'config_explorer' was not found.")
-    print(f"Please run \"pip install -e .\" from {Path().resolve()}")
+except ModuleNotFoundError as e:
+    print(f"❌ ERROR: Failed to import config_explorer module: {e}")
+    print(f"\nTry: pip install -r {workspace_root / 'config_explorer' / 'requirements.txt'}")
     sys.exit(1)
 except Exception as e:
-    print(f"An unexpected error occurred: {e}")
+    print(f"❌ ERROR: An unexpected error occurred while importing config_explorer: {e}")
+    import traceback
+    traceback.print_exc()
     sys.exit(1)
 
-from huggingface_hub import ModelInfo
-from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
 
-# Add project root to path for imports
-current_file = Path(__file__).resolve()
-project_root = current_file.parents[1]
-sys.path.insert(0, str(project_root))
 
 # ---------------- Import local packages ----------------
 try:

@@ -40,8 +40,8 @@ jobs:
           ./setup/install_deps.sh
         shell: bash
 
-      - name: Install config explorer package
-        run: pip install -e .
+      - name: Install config explorer dependencies
+        run: pip install -r config_explorer/requirements.txt
         shell: bash
 
       - name: Standup a modelservice using llm-d-inference-sim
