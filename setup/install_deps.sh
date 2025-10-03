@@ -115,6 +115,30 @@ for tool in $tools; do
     echo "---------------------------"
 done
 
+# 
+# Check minimum Python version (3.11+) based on new requirements
+# 
+python_present=""
+for pybin in python3 python3.{13..11}; do
+    if command -v ${pybin} &>/dev/null; then
+        ver=$(${pybin} -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+        major=$(echo ${ver} | cut -d. -f1)
+        minor=$(echo ${ver} | cut -d. -f2)
+        if (( major > 3 || (major == 3 && minor >= 11) )); then
+            python_present=$(command -v ${pybin})
+            break
+        fi
+    fi
+done
+
+if [[ -z "${python_present}" ]]; then
+    echo "ERROR: Python 3.11 and up is required but not found."
+    exit 1
+else
+    echo "${python_present} is available on system." >> ~/.llmdbench_dependencies_checked
+fi
+
+
 if ! command -v pip3 &> /dev/null; then
     echo "pip3 not found. Attempting to install it..."
     if [ "$target_os" = "mac" ]; then
@@ -135,21 +159,32 @@ if ! command -v pip3 &> /dev/null; then
     echo "pip3 installed successfully."
 fi
 
-python_deps="kubernetes pykube-ng kubernetes-asyncio GitPython requests PyYAML Jinja2"
+python_deps="kubernetes pykube-ng kubernetes-asyncio GitPython requests PyYAML Jinja2 huggingface_hub==0.34.4 transformers==4.55.4"
 
 for dep in $python_deps; do
-    # use pip3 show to check if the package is already installed
-    if pip3 show "$dep" &>/dev/null; then
-        echo "$dep is already installed." >> ~/.llmdbench_dependencies_checked
-        continue
-    else
-        echo "Installing $dep..."
-        if ! pip3 install "$dep"; then
-            echo "ERROR: Failed to install Python package '$dep'!"
-            exit 1
+    pkg_name=$(echo "${dep}" | cut -d= -f1)
+    if pip3 show "${pkg_name}" &>/dev/null; then
+        # check if a version was specified
+        if [[ "${dep}" == *"=="* ]]; then
+            required_version=$(echo "${dep}" | cut -d= -f3)
+            installed_version=$(pip3 show "${pkg_name}" | awk '/Version:/{print $2}')
+            if [[ "${installed_version}" == "${required_version}" ]]; then
+                echo "${pkg_name}==${installed_version} is already installed." >> ~/.llmdbench_dependencies_checked
+                continue
+            else
+                echo "${pkg_name} installed but version mismatch (${installed_version} != ${required_version}). Upgrading..."
+            fi
+        else
+            echo "${pkg_name} is already installed." >> ~/.llmdbench_dependencies_checked
+            continue
         fi
     fi
+
+    echo "Installing ${dep}..."
+    if ! pip3 install "${dep}"; then
+        echo "ERROR: Failed to install Python package ${dep}!"
+        exit 1
+    fi
 done
-echo "---------------------------"
 
 popd &>/dev/null
