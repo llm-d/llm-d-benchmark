@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: basic_unit_test
         name: Basic Unit Test
-        entry: bash -c './setup/standup.sh -c ocp_H100MIG_deployer_llama-8b -n'
+        entry: bash -c './setup/standup.sh -c kind_sim_fb -n'
         require_serial: true
         pass_filenames: false
         language: system
