@@ -1,0 +1,429 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: experiment
+spec:
+  description: >
+    Runs an llm-d-benchmark experiment.
+
+  params:
+
+    - name: question_len
+      type: string
+    - name: output_len
+      type: string
+
+    - name: namespace
+      type: string
+      default: kalantar-llmd
+      description: Target namespace
+
+    - name: model-id
+      type: string
+      default: "meta-llama/Llama-3.2-1B-Instruct"
+    - name: inferencePort
+      default: 8000
+
+    - name: experimentBaseUrl
+      type: string
+    - name: experimentName
+      type: string
+      default: "experiment"
+
+    - name: workspace-pvc-name
+      type: string
+      default: workspace-pvc
+    - name: workspace-pvc-size
+      type: string
+      default: 20Gi
+    - name: workspace-storage-class
+      type: string
+      default: ocs-storagecluster-cephfs
+
+    - name: model-pvc-name
+      type: string
+      default: model-pvc
+    - name: model-pvc-size
+      type: string
+      default: 300Gi
+    - name: model-storage-class
+      type: string
+      default: ocs-storagecluster-cephfs
+
+    - name: download-job-name
+      type: string
+      default: download-job
+
+    - default: llm-d-infra
+      description: Name of the Helm repository for the Gateway
+      name: gatewayRepoName
+      type: string
+    - default: https://llm-d-incubation.github.io/llm-d-infra/
+      description: URL of the Helm repository for the Gateway
+      name: gatewayRepoUrl
+      type: string
+    - name: gatewayChartVersion
+      type: string
+      default: ""
+      description: Optional gateway chart version (used with --version)
+
+    - name: gatewayExtraArgs
+      type: string
+      default: ""
+      description: Optional extra args for the gateway (to append to 'helm upgrade --install')
+
+    - name: gaieChartVersion
+      type: string
+      default: "v0.5.1"
+      description: Optional GAIE chart version (used with --version)
+
+    - name: gaieExtraArgs
+      type: string
+      default: ""
+      description: Optional extra args for GAIE (to append to 'helm upgrade --install')
+
+    - default: llm-d-modelservice
+      description: Name of the Helm repository for the model engine
+      name: msRepoName
+      type: string
+    - default: https://llm-d-incubation.github.io/llm-d-modelservice/
+      description: URL of the Helm repository for the model engine
+      name: msRepoUrl
+      type: string
+    - name: msChartVersion
+      type: string
+      default: ""
+      description: Optional modelservice chart version (used with --version)
+
+    - name: msExtraArgs
+      type: string
+      default: ""
+      description: Optional extra args for the model engine (to append to 'helm upgrade --install')
+
+    - name: modelWaitTimeout
+      type: string
+      default: 900
+
+    - name: harnessName
+      type: string
+      default: inference-perf
+    - name: harnessProfile
+      type: string
+      default: sanity_random.yaml
+    - name: stackType
+      type: string
+      default: lld-d
+    - name: experimentIDBase
+      type: string
+      default: experiment
+
+    - name: dry-run
+      type: string 
+      default: "false"
+
+  steps:
+    - name: log-start
+      image: alpine:3.20
+      script: |
+        #!/bin/sh
+        echo "🔄 Starting sweep step ..."
+
+    - name: prepare-namespace
+      image: quay.io/openshift/origin-cli:latest
+      script: |
+        #!/bin/sh
+
+        NAMESPACE="$(params.namespace)-$(context.taskRun.name)"
+        DRY_RUN="$(params.dry-run)"
+
+        if [ "${DRY_RUN}" = "true" ]; then
+          echo ">> skipping"
+          exit 0
+        fi
+
+        kubectl create namespace ${NAMESPACE} \
+          --dry-run=client -o yaml | kubectl apply -f -
+        
+        # HF_TOKEN=$(
+        HF_TOKEN=$(
+          kubectl get secret hf-secret \
+          --namespace "$(context.taskRun.namespace)" \
+            -o jsonpath='{.data.HF_TOKEN}' \
+          | tr -d '\n' \
+          | base64 -d
+        )
+        # kubectl --namespace $(context.taskRun.namespace) get secret hf-secret -o jsonpath='{.data.HF_TOKEN}' | tr -d '\n' | base64 -d)
+        kubectl create secret generic hf-secret \
+          --namespace ${NAMESPACE} \
+          --from-literal="HF_TOKEN=${HF_TOKEN}" \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+        # TBD only if OpenShift
+        oc adm policy add-scc-to-user anyuid -z helm-installer -n ${NAMESPACE}
+        # oc adm policy add-scc-to-user privileged -z helm-installer -n ${NAMESPACE}
+
+    - name: model-download
+      ref: 
+        name: helm-upgrade-install
+      params:
+        # Location of helm chart
+        - name: git_url
+          value: "https://github.com/kalantar/llm-d-benchmark"
+        - name: git_revision
+          value: "tekton-poc"
+        - name: checkout_dir
+          value: "/tmp/llm-d-benchmark"
+
+        # Helm arguments
+        - name: releaseName
+          value: $(params.experimentName)-download
+        - name: chart
+          value: /tmp/llm-d-benchmark/charts/model-download        
+        - name: namespace
+          value: $(params.namespace)-$(context.taskRun.name)
+        - name: timeout
+          value: 15m
+        # - name: valuesYamlUrl
+        #   value: "/tmp/llm-d-benchmark/charts/model-download/values.yaml"
+        - name: extraArgs
+          value: >
+            --set hf_model=$(params.model-id) 
+            --set pvc.create=true 
+            --set pvc.name=$(params.model-pvc-name) 
+            --set pvc.size=$(params.model-pvc-size) 
+            --set pvc.storageClass=$(params.model-storage-class)
+
+        - name: dry-run
+          value: $(params.dry-run)
+
+    - name: wait-for-download
+      image: alpine:3.20
+      script : |
+        #!/bin/sh
+        echo "⏳ TBD: Wait for download job to complete"
+
+    # TBD use tekton notion of workspace ??
+    - name: create-workspace-pvc
+      ref: 
+        name: create-rwx-pvc
+      params:
+        - name: name
+          value: $(params.workspace-pvc-name)
+        - name: namespace
+          value: $(params.namespace)-$(context.taskRun.name)
+        - name: size
+          value: $(params.workspace-pvc-size)
+        - name: storage-class
+          value: $(params.workspace-storage-class)
+        - name: dry-run
+          value: $(params.dry-run)
+
+    - name: gateway
+      ref: 
+        name: helm-upgrade-install
+      params:
+        - name: releaseName
+          value: $(params.experimentName)-gateway
+        - name: chart
+          value: llm-d-infra/llm-d-infra
+        - name: repoName
+          value: llm-d-infra
+        - name: repoUrl
+          value: https://llm-d-incubation.github.io/llm-d-infra/
+        
+        - name: namespace
+          value: $(params.namespace)-$(context.taskRun.name)
+        - name: timeout
+          value: 15m
+        - name: valuesYamlUrl
+          value: "$(params.experimentBaseUrl)/gateway-values.yaml"
+
+        - name: dry-run
+          value: $(params.dry-run)
+      
+    - name: gaie
+      ref: 
+        name: helm-upgrade-install
+      params:
+        - name: releaseName
+          value: $(params.experimentName)-gaie
+        - name: chart
+          value: oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
+        - name: version
+          value: $(params.gaieChartVersion)
+        
+        - name: namespace
+          value: $(params.namespace)-$(context.taskRun.name)
+        - name: timeout
+          value: 15m
+        - name: valuesYamlUrl
+          value: "$(params.experimentBaseUrl)/gaie-values.yaml"
+        - name: extraArgs
+          value: "--set inferenceExtension.pluginsConfigFile=$(params.gaiePluginConfig)"
+
+        - name: dry-run
+          value: $(params.dry-run)
+
+    - name: model-engine
+      ref: 
+        name: helm-upgrade-install
+      params:
+        - name: releaseName
+          value: $(params.experimentName)-ms
+        - name: chart
+          value: llm-d-modelservice/llm-d-modelservice
+        - name: repoName
+          value: llm-d-modelservice
+        - name: repoUrl
+          value: https://llm-d-incubation.github.io/llm-d-modelservice/
+        
+        - name: namespace
+          value: $(params.namespace)-$(context.taskRun.name)
+        - name: timeout
+          value: 15m
+        - name: valuesYamlUrl
+          value: "$(params.experimentBaseUrl)/ms-values.yaml"
+
+        - name: dry-run
+          value: $(params.dry-run)
+
+    - name: wait-for-model
+      image: alpine/kubectl:1.34.1
+      script: |
+        #!/bin/sh
+        
+        if [ "$(params.dry-run)" = "true" ]; then
+          echo ">> skipping"
+          exit 0
+        fi
+        NAMESPACE="$(params.namespace)-$(context.taskRun.name)"
+        MODEL_ID="$(params.model-id)"
+        MODEL_LABEL=$(echo "$MODEL_ID" | tr '[:upper:]' '[:lower:]' | sed 's/[./]/-/g')
+        MODEL_START_TIMEOUT="$(params.modelWaitTimeout)"
+
+        echo "⏳ Waiting for pods serving model ${MODEL_ID} to be 'Running'"
+        echo "Model label = ${MODEL_LABEL}"
+
+        kubectl --namespace ${NAMESPACE} \
+          wait pod \
+          -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=decode \
+          --for=create \
+          --timeout=${MODEL_START_TIMEOUT}s
+        echo "✅ (decode) pods serving model ${MODEL_ID} created"
+ 
+        # kubectl --namespace ${NAMESPACE} \
+        #   wait pod \
+        #   -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=prefill \
+        #   --for=create \
+        #   --timeout=${MODEL_START_TIMEOUT}s
+        # echo "✅ prefill pods serving model ${MODEL_ID} created"
+
+        kubectl --namespace ${NAMESPACE} \
+          wait pod \
+          -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=decode \
+          --for=condition=Ready=True \
+          --timeout=${MODEL_START_TIMEOUT}s
+        echo "✅ (decode) pods serving model ${MODEL_ID} ready"
+
+        # kubectl --namespace ${NAMESPACE} \
+        #   wait pod \
+        #   -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=prefill \
+        #   --for=condition=Ready=True \
+        #   --timeout=${MODEL_START_TIMEOUT}s
+        # echo "✅ prefill pods serving model ${MODEL_ID} ready"
+
+    - name: workload
+      ref: 
+        name: helm-upgrade-install
+      params:
+        # Location of helm chart
+        - name: git_url
+          value: "https://github.com/kalantar/llm-d-benchmark"
+        - name: git_revision
+          value: "tekton-poc"
+        - name: checkout_dir
+          value: "/tmp/llm-d-benchmark"
+
+        # Helm arguments
+        - name: releaseName
+          value: $(params.experimentName)-harness
+        - name: chart
+          value: /tmp/llm-d-benchmark/charts/harness        
+        - name: namespace
+          value: $(params.namespace)-$(context.taskRun.name)
+        - name: timeout
+          value: 15m
+        # - name: valuesYamlUrl
+        #   value: "/tmp/llm-d-benchmark/charts/harness/values.yaml"
+        - name: extraArgs
+          value: >
+            --set harness.image.registry=quay.io
+            --set harness.image.repository=namasluk
+            --set harness.image.name=llm-d-benchmark
+            --set harness.image.tag=251002.1
+            --set experiment.profile.name=$(params.harnessProfile)
+            --set experiment.profile.shared_prefix.question_len=$(params.question_len)
+            --set experiment.profile.shared_prefix.output_len=$(params.output_len)
+            --set experiment.identifier=experiment-DATE
+            --set stack.model=$(params.model-id)
+            --set stack.name=$(context.taskRun.name)
+            --set stack.endpointUrl='http://experiment-gateway-inference-gateway:80'
+
+        - name: dry-run
+          value: $(params.dry-run)
+
+    - name: wait-for-workload
+      image: alpine/kubectl:1.34.1
+      script : |
+        #!/bin/sh
+
+        if [ "$(params.dry-run)" = "true" ]; then
+          echo ">> skipping"
+          exit 0
+        fi
+
+        NAMESPACE="$(params.namespace)-$(context.taskRun.name)"
+        HARNESS_NAME="$(params.harnessName)"
+
+        echo "⏳ Waiting for pod ${HARNESS_NAME}-launcher to complete..."
+
+        while true; do
+          STATUS=$(kubectl --namespace ${NAMESPACE} get pod ${HARNESS_NAME}-launcher -o jsonpath='{.status.phase}')
+          if [ "$STATUS" = "Succeeded" ] || [ "$STATUS" = "Failed" ]; then
+            echo "Pod completed with status: $STATUS"
+            break
+          fi
+          echo "⏳ Still waiting for pod to complete..."
+          sleep 5
+        done
+
+        echo "✅ workload completed"
+
+    - name: upload-results
+      image: alpine:3.20
+      script : |
+        #!/bin/sh
+        echo "🚚 TBD: Upload results"
+
+    - name: delete-namespace
+      image: alpine/helm:3.14.0
+      script : |
+        #!/bin/sh
+
+        if [ "$(params.dry-run)" = "true" ]; then
+          echo ">> skipping"
+          exit 0
+        fi
+
+        NAMESPACE="$(params.namespace)-$(context.taskRun.name)"
+
+        # helm delete --namespace ${NAMESPACE} $(params.experimentName)-harness
+        # kubectl delete namespace ${NAMESPACE}
+
+        echo "✅ workload pod deleted"
+
+    - name: log-completion
+      image: alpine:3.20
+      script: |
+        #!/bin/sh
+        echo "✅ Sweep step complete."
