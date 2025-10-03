@@ -132,6 +132,10 @@ if ! command -v pip3 &> /dev/null; then
         echo "ERROR: Failed to install pip3. Please install it manually and re-run the script."
         exit 1
     fi
+
+    # use latest version of pip
+    python3 -m pip install --upgrade pip
+
     echo "pip3 installed successfully."
 fi
 
