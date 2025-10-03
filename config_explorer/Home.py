@@ -324,7 +324,7 @@ Per-token memory = layers x 2 (two for K and V matrices) x head_dimension x (kv_
 KV cache per request = per_token_memory x context_len x batch_size
                      = {kv_details.per_token_memory_bytes} x {user_scenario.max_model_len} x {user_scenario.concurrency}
                      = {kv_details.per_request_kv_cache_bytes} bytes
-                     = {kv_details.per_request_kv_cache_bytes} / (1024 ** 3)
+                     = {kv_details.per_request_kv_cache_bytes} / (1024 ^ 3)
                      = {kv_details.per_request_kv_cache_gb} GB
 """)
 
