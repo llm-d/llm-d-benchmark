@@ -35,6 +35,7 @@ class KVCacheDetail:
     head_dimension: int
 
     # Derived outputs from input
+    num_attention_group: int
     per_token_memory_bytes: int
     per_request_kv_cache_bytes: int
     per_request_kv_cache_gb: float          # Single request kv cache
@@ -48,7 +49,7 @@ class KVCacheDetail:
     kv_lora_rank: int | None = None
     qk_rope_head_dim: int | None = None
 
-    def __init__(self, model_info: ModelInfo, model_config: AutoConfig, context_len: int, batch_size: int):
+    def __init__(self, model_info: ModelInfo, model_config: AutoConfig, context_len: int=1, batch_size: int=1):
         """
         KVCacheDetail stores information that are relevant to calculating KV cache memory requirement
         """
@@ -80,12 +81,6 @@ class KVCacheDetail:
                 # For example, 8 KV heads with 32 attention heads, so 4 attention heads share the same KV matrices
                 self.attention_type = AttentionType.GQA
 
-        # Calculate per token memory bytes depending on attention type
-        if self.attention_type == AttentionType.MLA:
-            self.per_token_memory_bytes = self.num_hidden_layers * (self.kv_lora_rank + self.qk_rope_head_dim) * self.precision_in_bytes
-        else:
-            self.per_token_memory_bytes = self.num_hidden_layers * 2 * self.head_dimension * self.num_key_value_heads * self.precision_in_bytes
-
         # Calculate kv cache size in bytes and in gb
         self.set_context_len(context_len)
         self.set_batch_size(batch_size)
@@ -112,7 +107,8 @@ class KVCacheDetail:
         if self.attention_type == AttentionType.MLA:
             self.per_token_memory_bytes = self.num_hidden_layers * (self.kv_lora_rank + self.qk_rope_head_dim) * self.precision_in_bytes
         else:
-            self.per_token_memory_bytes = self.num_hidden_layers * 2 * self.head_dimension * self.num_key_value_heads * self.precision_in_bytes
+            self.num_attention_group = int(self.num_attention_heads / self.num_key_value_heads)
+            self.per_token_memory_bytes = self.num_hidden_layers * 2 * self.head_dimension * (self.num_key_value_heads / self.num_attention_group) * self.precision_in_bytes
 
         # Calculate kv cache size in bytes and in gb
         self.per_request_kv_cache_bytes = self.per_token_memory_bytes * self.context_len

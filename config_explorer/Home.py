@@ -306,11 +306,13 @@ Per-token memory = layers x (kv_lora_rank + qk_rope_head_dim) x precision_in_byt
             else:
                 st.write(f"""- Head dimension: {kv_details.head_dimension}
 - Attention heads: {kv_details.num_attention_heads}
-- KV heads: {kv_details.num_key_value_heads}""")
+- KV heads: {kv_details.num_key_value_heads}
+- Number of attention groups: {kv_details.num_attention_group}
+""")
 
                 st.code(f"""
-Per-token memory = layers x 2 (two for K and V matrices) x head_dimension x kv_heads x precision_in_bytes
-                 = {kv_details.num_hidden_layers} x 2 x {kv_details.head_dimension} x {kv_details.num_key_value_heads} x {kv_details.precision_in_bytes}
+Per-token memory = layers x 2 (two for K and V matrices) x head_dimension x (kv_heads / num_attention_groups) x precision_in_bytes
+                 = {kv_details.num_hidden_layers} x 2 x {kv_details.head_dimension} x ({kv_details.num_attention_heads} / {kv_details.num_key_value_heads}) x {kv_details.precision_in_bytes}
                  = {kv_details.per_token_memory_bytes} bytes
 """)
 
@@ -329,7 +331,7 @@ KV cache per request = per_token_memory x context_len x batch_size
             st.code(f"""
 KV cache for max concurrency = kv_cache_per_request x concurrency
                              = {kv_details.per_request_kv_cache_gb} GB x {user_scenario.concurrency}
-                             = {kv_details.kv_cache_size_gb}
+                             = {kv_details.kv_cache_size_gb} GB
 """)
 
 
