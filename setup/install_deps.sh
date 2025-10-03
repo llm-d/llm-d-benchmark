@@ -159,7 +159,7 @@ if ! command -v pip3 &> /dev/null; then
     echo "pip3 installed successfully."
 fi
 
-python_deps="kubernetes pykube-ng kubernetes-asyncio GitPython requests PyYAML Jinja2 huggingface_hub==0.34.4 transformers==4.55.4"
+python_deps="kubernetes pykube-ng kubernetes-asyncio GitPython requests PyYAML Jinja2 requests huggingface_hub==0.34.4 transformers==4.55.4"
 
 for dep in $python_deps; do
     pkg_name=$(echo "${dep}" | cut -d= -f1)
