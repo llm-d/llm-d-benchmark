@@ -134,8 +134,7 @@ for pybin in python3 python3.{13..11}; do
 done
 
 if [[ -z "${python_present}" ]]; then
-    echo "ERROR: Python 3.11 and up is required, but only versions \"$(echo ${verlist} | sed 's^,$^^g')\" but found."
-    exit 1
+    echo "WARNING: Python 3.11 and up is required, but only versions \"$(echo ${verlist} | sed 's^,$^^g')\" but found."
 else
     echo "${python_present} is available on system." >> ~/.llmdbench_dependencies_checked
 fi
