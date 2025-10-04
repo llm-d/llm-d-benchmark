@@ -363,48 +363,20 @@ function add_config {
 
   local spacec=$(printf '%*s' $num_spaces '')
 
-  if [[ -f ${object_to_render} ]]; then
-    if [[ -n $label ]]; then
-      echo "$label:"
-    else
-      echo ""
-    fi
-    echo "$(cat $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^\\n^\\\\\n^g" | $LLMDBENCH_CONTROL_SCMD -e "s#^#$spacec#g"
+  if [[ -n $label ]]; then
+    echo "$label:"
   else
-    echo ${object_to_render}
+    echo ""
+  fi
+
+  if [[ -f ${object_to_render} ]]; then
+    render_template $object_to_render $object_to_render.rendered none 0 0
+    echo "$(cat $object_to_render.rendered)" | $LLMDBENCH_CONTROL_SCMD -e "s^\\n^\\\\\n^g" | $LLMDBENCH_CONTROL_SCMD -e "s#^#$spacec#g"
+  else
+    render_string $object_to_render
   fi
 }
 export -f add_config
-
-# make sure things are defined; should be easier with python
-function add_config_prep {
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG="#no____config"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG="#no____config"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS="[]"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES="[]"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG="#no____config"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG="#no____config"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS="[]"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES="[]"
-  fi
-}
-export -f add_config
-
 
 function add_command {
   local model_command=$1
@@ -1204,7 +1176,7 @@ function is_hf_model_gated {
     if [[ $? -ne 0 || -z "${response}" ]]; then
         return 2
     fi
-    
+
     local gated=$(echo "${response}" | jq -r '.gated // false')
     if [[ ${gated} == "false" ]]; then
       return 1

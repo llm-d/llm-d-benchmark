@@ -11,9 +11,20 @@ sys.path.insert(0, str(project_root))
 
 # Import from functions.py
 from functions import (
-    announce, llmdbench_execute_cmd, model_attribute, extract_environment,
-    get_image, check_storage_class, check_affinity, add_annotations,
-    add_command_line_options, add_additional_env_to_yaml, get_accelerator_nr, is_standalone_deployment
+    announce, \
+    llmdbench_execute_cmd, \
+    model_attribute, \
+    extract_environment, \
+    get_image, \
+    check_storage_class, \
+    check_affinity, \
+    add_annotations, \
+    add_command_line_options, \
+    add_additional_env_to_yaml, \
+    get_accelerator_nr, \
+    is_standalone_deployment, \
+    add_config, \
+    environment_variable_to_dict
 )
 
 
@@ -21,11 +32,8 @@ def main():
     """Deploy vLLM standalone models with Kubernetes Deployment, Service, and HTTPRoute."""
     os.environ["CURRENT_STEP_NAME"] = os.path.splitext(os.path.basename(__file__))[0]
 
-    # Parse environment variables
-    ev = {}
-    for key in dict(os.environ).keys():
-        if "LLMDBENCH_" in key:
-            ev.update({key.split("LLMDBENCH_")[1].lower(): os.environ.get(key)})
+    ev={}
+    environment_variable_to_dict(ev)
 
     # Check if standalone environment is active
     if is_standalone_deployment(ev):
@@ -259,6 +267,9 @@ def generate_deployment_yaml(ev, model, model_label):
     # Generate annotations
     annotations = add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")
 
+    extra_volume_mounts = add_config(ev['vllm_common_extra_volume_mounts'],8)
+    extra_volumes = add_config(ev['vllm_common_extra_volumes'],6)
+
     deployment_yaml = f"""apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -275,6 +286,9 @@ spec:
     metadata:
       labels:
         app: vllm-standalone-{model_label}
+        llm-d.ai/inferenceServing: "true"
+        llm-d.ai/model: {model_label}
+        llm-d.ai/role: both
       annotations:
 {annotations}
     spec:
@@ -365,6 +379,7 @@ spec:
           mountPath: {ev.get('vllm_standalone_pvc_mountpoint', '')}
         - name: shm
           mountPath: /dev/shm
+        {extra_volume_mounts}
       volumes:
       - name: preprocesses
         configMap:
@@ -374,10 +389,11 @@ spec:
         persistentVolumeClaim:
           claimName: {ev.get('vllm_common_pvc_name', '')}
 #          readOnly: true
+      {extra_volumes}
       - name: shm
         emptyDir:
           medium: Memory
-          sizeLimit: 8Gi
+          sizeLimit: {ev.get('vllm_common_shm_mem')}
 """
     return deployment_yaml
 

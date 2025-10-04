@@ -267,8 +267,12 @@ def validate_and_create_pvc(
     announce("Provisioning model storage…")
 
     if '/' not in download_model:
-        announce(f"'{download_model}' is not in Hugging Face format <org>/<repo>")
+        announce(f"❌ '{download_model}' is not in Hugging Face format <org>/<repo>")
         sys.exit(1)
+
+    if not pvc_name :
+        announce(f"ℹ️ Skipping pvc creation")
+        return True
 
     announce(f"🔍 Checking storage class '{pvc_class}'...")
     try:
@@ -1077,7 +1081,10 @@ def add_additional_env_to_yaml(env_vars_string: str) -> str:
             env_value = os.environ.get(envvar, "")
 
             # Process REPLACE_ENV variables in the value (equivalent to bash sed processing)
-            processed_value = render_string(env_value) if env_value else ""
+            if env_value :
+                processed_value = render_string(env_value)
+            else:
+                env_value = ""
 
             env_lines.append(f"{name_indent}- name: {clean_name}")
             env_lines.append(f"{value_indent}value: \"{processed_value}\"")
@@ -1098,6 +1105,8 @@ def add_config(obj_or_filename, num_spaces=0, label=""):
                 contents = f.read()
         except FileNotFoundError:
             pass
+
+    contents = render_string(contents)
 
     indented_contents = '\n'.join(f"{spaces}{line}" for line in contents.splitlines())
     if indented_contents.strip() not in ["{}", "[]"] :

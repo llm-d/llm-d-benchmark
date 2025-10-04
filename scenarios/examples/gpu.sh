@@ -4,7 +4,10 @@
 
 # Model parameters
 #export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
-#export LLMDBENCH_DEPLOY_MODEL_LIST=Qwen/Qwen2.5-0.5B-Instruct
+#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-vision-3.3-2b
+#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-speech-3.3-8b
+#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-8b-instruct
+#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-2b-instruct
 export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
@@ -15,6 +18,7 @@ export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 #export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=shared-vast
 #export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=ocs-storagecluster-cephfs
 #export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
+#export LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME=llm-d-extra-vol
 
 # Deploy methods
 ######export LLMDBENCH_DEPLOY_METHODS=standalone
@@ -37,7 +41,18 @@ export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 ######export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=LLMDBENCH_VLLM_STANDALONE_VLLM_WORKER_MULTIPROC_METHOD,LLMDBENCH_VLLM_STANDALONE_VLLM_CACHE_ROOT,LLMDBENCH_VLLM_STANDALONE_VLLM_ALLOW_LONG_MAX_MODEL_LEN,LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE
 
 # Standalone Parameters
-export LLMDBENCH_VLLM_COMMON_REPLICAS=1 # (default is "1")
+#export LLMDBENCH_VLLM_COMMON_REPLICAS=1 # (default is "1")
+#export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS=$(mktemp)
+#cat << EOF > $LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS
+#- name: extra-vol
+#  mountPath: /mnt/extravol
+#EOF
+#export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES=$(mktemp)
+#cat << EOF > $LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES
+#- name: extra-vol
+#  persistentVolumeClaim:
+#    claimName: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME
+#EOF
 
 #export LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT=auto # (default is "auto")
 #export LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT=safetensors
@@ -56,6 +71,34 @@ export LLMDBENCH_VLLM_COMMON_REPLICAS=1 # (default is "1")
 # run preprocessor python that will change the debug log date format and pre-serialize a model when using
 # tensorizer load format
 ######export LLMDBENCH_VLLM_STANDALONE_PREPROCESS="source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
+
+# llm-d Parameters
+#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=1 # (default is "1")
+#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1 # (default is "1")
+#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS=$(mktemp)
+#cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS
+#- name: extra-vol
+#  mountPath: /mnt/extravol
+#EOF
+#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES=$(mktemp)
+#cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES
+#- name: extra-vol
+#  persistentVolumeClaim:
+#    claimName: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME
+#EOF
+#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1 # (default is "1")
+#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1 # (default is "1")
+#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS=$(mktemp)
+#cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
+#- name: extra-vol
+#  mountPath: /mnt/extravol
+#EOF
+#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES=$(mktemp)
+#cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
+#- name: extra-vol
+#  persistentVolumeClaim:
+#    claimName: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME
+#EOF
 
 # Workload parameters
 

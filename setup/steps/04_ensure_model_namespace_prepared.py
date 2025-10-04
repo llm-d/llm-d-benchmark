@@ -162,6 +162,16 @@ def main():
                 dry_run=ev["control_dry_run"],
             )
 
+            validate_and_create_pvc(
+                api=api,
+                namespace=ev["vllm_common_namespace"],
+                download_model=download_model,
+                pvc_name=ev["vllm_common_extra_pvc_name"],
+                pvc_size=ev["vllm_common_extra_pvc_size"],
+                pvc_class=ev["vllm_common_pvc_storage_class"],
+                dry_run=ev["control_dry_run"],
+            )
+
             announce(f'🔽 Launching download job for model: "{model_name}"')
             launch_download_job(
                 namespace=ev["vllm_common_namespace"],
