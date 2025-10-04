@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from functions import (
+from llm_d_benchmark.setup.utils.functions import (
     add_additional_env_to_yaml,
     add_annotations,
     add_command_line_options,

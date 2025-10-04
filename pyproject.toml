@@ -33,6 +33,7 @@ dependencies = [
     "plotly==6.3.0",
     "streamlit==1.48.0",
     "pydantic>=2.11.7",
+    "boxsdk>=10.0.0",
 ]
 
 [project.optional-dependencies]

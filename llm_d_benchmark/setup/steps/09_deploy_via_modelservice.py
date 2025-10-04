@@ -4,13 +4,13 @@ import os
 import sys
 from pathlib import Path
 
-from functions import (
+from llm_d_benchmark.setup.utils.functions import (
     add_additional_env_to_yaml as functions_add_additional_env_to_yaml,
 )
-from functions import (
+from llm_d_benchmark.setup.utils.functions import (
     add_annotations as functions_add_annotations,
 )
-from functions import (
+from llm_d_benchmark.setup.utils.functions import (
     add_command_line_options,
     announce,
     check_affinity,
@@ -22,7 +22,7 @@ from functions import (
     llmdbench_execute_cmd,
     model_attribute,
 )
-from functions import (
+from llm_d_benchmark.setup.utils.functions import (
     add_config as functions_add_config,
 )
 

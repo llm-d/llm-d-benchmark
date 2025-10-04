@@ -159,32 +159,4 @@ if ! command -v pip3 &> /dev/null; then
     echo "pip3 installed successfully."
 fi
 
-python_deps="kubernetes pykube-ng kubernetes-asyncio GitPython requests PyYAML Jinja2 requests huggingface_hub==0.34.4 transformers==4.55.4"
-
-for dep in $python_deps; do
-    pkg_name=$(echo "${dep}" | cut -d= -f1)
-    if pip3 show "${pkg_name}" &>/dev/null; then
-        # check if a version was specified
-        if [[ "${dep}" == *"=="* ]]; then
-            required_version=$(echo "${dep}" | cut -d= -f3)
-            installed_version=$(pip3 show "${pkg_name}" | awk '/Version:/{print $2}')
-            if [[ "${installed_version}" == "${required_version}" ]]; then
-                echo "${pkg_name}==${installed_version} is already installed." >> ~/.llmdbench_dependencies_checked
-                continue
-            else
-                echo "${pkg_name} installed but version mismatch (${installed_version} != ${required_version}). Upgrading..."
-            fi
-        else
-            echo "${pkg_name} is already installed." >> ~/.llmdbench_dependencies_checked
-            continue
-        fi
-    fi
-
-    echo "Installing ${dep}..."
-    if ! pip3 install "${dep}"; then
-        echo "ERROR: Failed to install Python package ${dep}!"
-        exit 1
-    fi
-done
-
 popd &>/dev/null

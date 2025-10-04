@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 
 import requests
-from functions import announce, environment_variable_to_dict
+
+from llm_d_benchmark.setup.utils.functions import announce, environment_variable_to_dict
 
 
 def get_platform_info():

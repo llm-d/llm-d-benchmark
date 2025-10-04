@@ -21,7 +21,7 @@ from llm_d_benchmark.config_explorer.capacity_planner import (
     model_memory_req,
     model_total_params,
 )
-from llm_d_benchmark.setup.functions import (
+from llm_d_benchmark.setup.utils.functions import (
     announce,
     environment_variable_to_dict,
     get_accelerator_nr,

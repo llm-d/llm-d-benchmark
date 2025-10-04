@@ -6,7 +6,9 @@ import time
 from pathlib import Path
 
 import pykube
-from functions import (
+from pykube.exceptions import PyKubeError
+
+from llm_d_benchmark.setup.utils.functions import (
     SecurityContextConstraints,
     announce,
     create_namespace,
@@ -19,7 +21,6 @@ from functions import (
     validate_and_create_pvc,
     wait_for_job,
 )
-from pykube.exceptions import PyKubeError
 
 
 def add_scc_to_service_account(

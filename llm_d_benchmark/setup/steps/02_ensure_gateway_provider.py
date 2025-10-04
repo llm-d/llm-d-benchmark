@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 try:
-    from functions import announce, environment_variable_to_dict, llmdbench_execute_cmd
+    from llm_d_benchmark.setup.utils.functions import announce, environment_variable_to_dict, llmdbench_execute_cmd
 except ImportError as e:
     # Fallback for when dependencies are not available
     print(f"Warning: Could not import required modules: {e}")

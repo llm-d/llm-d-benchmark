@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:ff6cd526a2d91113e17b3a653853bcc5c86d432db7d51684bd0b4925547e944e"
+content_hash = "sha256:d04b455ac095087a66434d0c14da31e92e63118d31b01b735c54fcd3056b97bf"
 
 [[metadata.targets]]
 requires_python = ">=3.12"
@@ -142,6 +142,20 @@ groups = ["default"]
 files = [
     {file = "blinker-1.9.0-py3-none-any.whl", hash = "sha256:ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc"},
     {file = "blinker-1.9.0.tar.gz", hash = "sha256:b4ce2265a7abece45e7cc896e98dbebe6cead56bcf805a3d23136d145f5445bf"},
+]
+
+[[package]]
+name = "boxsdk"
+version = "10.0.0"
+summary = "Official Box Python SDK"
+groups = ["default"]
+dependencies = [
+    "requests",
+    "requests-toolbelt",
+]
+files = [
+    {file = "boxsdk-10.0.0-py3-none-any.whl", hash = "sha256:533c38eae1015cac7e42822c5206777f301e6b02ab2f9a9e73604b09e2742581"},
+    {file = "boxsdk-10.0.0.tar.gz", hash = "sha256:5236dd7559226f846eb3acadfe324dc27fbc48a0ad796749d920271d5df8ef8c"},
 ]
 
 [[package]]
@@ -1858,6 +1872,20 @@ dependencies = [
 files = [
     {file = "requests-oauthlib-2.0.0.tar.gz", hash = "sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9"},
     {file = "requests_oauthlib-2.0.0-py2.py3-none-any.whl", hash = "sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36"},
+]
+
+[[package]]
+name = "requests-toolbelt"
+version = "1.0.0"
+requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+summary = "A utility belt for advanced users of python-requests"
+groups = ["default"]
+dependencies = [
+    "requests<3.0.0,>=2.0.1",
+]
+files = [
+    {file = "requests-toolbelt-1.0.0.tar.gz", hash = "sha256:7681a0a3d047012b5bdc0ee37d7f8f07ebe76ab08caeccfc3921ce23c88d5bc6"},
+    {file = "requests_toolbelt-1.0.0-py2.py3-none-any.whl", hash = "sha256:cccfdd665f0a24fcf4726e690f65639d272bb0637b9b92dfd91a5568ccf6bd06"},
 ]
 
 [[package]]

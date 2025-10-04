@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pykube
 import yaml
-from functions import (
+
+from llm_d_benchmark.setup.utils.functions import (
     announce,
     apply_configmap,
     environment_variable_to_dict,

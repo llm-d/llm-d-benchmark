@@ -5,7 +5,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from functions import announce, environment_variable_to_dict, llmdbench_execute_cmd, model_attribute
+from llm_d_benchmark.setup.utils.functions import (
+    announce,
+    environment_variable_to_dict,
+    llmdbench_execute_cmd,
+    model_attribute,
+)
 
 
 def gateway_values(provider: str, host: str) -> str:

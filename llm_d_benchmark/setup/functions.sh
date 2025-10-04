@@ -472,7 +472,7 @@ function check_storage_class {
     announce "ℹ️ Dry-run mode enabled. Skipping storage class validation for \"$LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS\"."
     return 0
   fi
-  
+
   local has_sc=$($LLMDBENCH_CONTROL_KCMD get storageclasses | grep $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS || true)
   if [[ -z $has_sc ]]; then
     announce "❌ ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=$LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS but could not find such storage class"
@@ -785,15 +785,18 @@ export -f wait_for_download_job
 
 function run_step {
   local script_name=$1
+  if [[ $script_name == "__init__" ]]; then
+    return 0
+  fi
 
   local step_nr=$(echo $script_name | cut -d '_' -f 1)
 
-  local script_implementaton=LLMDBENCH_CONTROL_STEP_${step_nr}_IMPLEMENTATION
-
-  if [[ -f $script_name.${!script_implementaton} ]]; then
-    local script_path=$script_name.${!script_implementaton}
+  local script_implementation=LLMDBENCH_CONTROL_STEP_${step_nr}_IMPLEMENTATION
+  local impl_type=${!script_implementation:-sh}
+  if [[ -f $script_name.${impl_type} ]]; then
+    local script_path=$script_name.${impl_type}
   else
-    local script_path=$(ls ${LLMDBENCH_STEPS_DIR}/${script_name}*.${!script_implementaton})
+    local script_path=$(ls ${LLMDBENCH_STEPS_DIR}/${script_name}*.${impl_type})
   fi
   if [ -f $script_path ]; then
     local step_id=$(basename "$script_path")
@@ -803,9 +806,9 @@ function run_step {
       echo -e "[DRY RUN] $script_path\n"
     fi
 
-    if [[ ${!script_implementaton} == sh ]]; then
+    if [[ ${impl_type} == sh ]]; then
       source $script_path
-    elif [[ ${!script_implementaton} == py ]]; then
+    elif [[ ${impl_type} == py ]]; then
       python3 $script_path
       local ec=$?
       if [[ $ec -ne 0 ]]; then
