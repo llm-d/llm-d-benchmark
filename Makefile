@@ -12,34 +12,15 @@ CONTAINER_TOOL := $(shell if command -v docker >/dev/null 2>&1; then echo docker
 BUILDER := $(shell command -v buildah >/dev/null 2>&1 && echo buildah || echo $(CONTAINER_TOOL))
 PLATFORMS ?= linux/amd64,linux/arm64 # linux/s390x,linux/ppc64le
 
-# go source files
-SRC = $(shell find . -type f -name '*.go')
-
 .PHONY: help
 help: ## Print help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-##@ Development
-
-.PHONY: format
-format: ## Format Go source files
-	@printf "\033[33;1m==== Running gofmt ====\033[0m\n"
-	@gofmt -l -w $(SRC)
-
-.PHONY: test
-test: check-ginkgo ## Run tests
-	@printf "\033[33;1m==== Running tests ====\033[0m\n"
-	ginkgo -r -v
 
 .PHONY: post-deploy-test
 post-deploy-test: ## Run post deployment tests
 	echo Success!
 	@echo "Post-deployment tests passed."
-
-.PHONY: lint
-lint: check-golangci-lint ## Run lint
-	@printf "\033[33;1m==== Running linting ====\033[0m\n"
-	golangci-lint run
 
 ##@ Container Build/Push
 
@@ -243,9 +224,6 @@ env: load-version-json ## Print environment variables
 
 .PHONY: check-tools
 check-tools: \
-  check-go \
-  check-ginkgo \
-  check-golangci-lint \
   check-jq \
   check-kustomize \
   check-envsubst \
@@ -254,21 +232,6 @@ check-tools: \
   check-buildah \
   check-podman
 	@echo "✅ All required tools are installed."
-
-.PHONY: check-go
-check-go:
-	@command -v go >/dev/null 2>&1 || { \
-	  echo "❌ Go is not installed. Install it from https://golang.org/dl/"; exit 1; }
-
-.PHONY: check-ginkgo
-check-ginkgo:
-	@command -v ginkgo >/dev/null 2>&1 || { \
-	  echo "❌ ginkgo is not installed. Install with: go install github.com/onsi/ginkgo/v2/ginkgo@latest"; exit 1; }
-
-.PHONY: check-golangci-lint
-check-golangci-lint:
-	@command -v golangci-lint >/dev/null 2>&1 || { \
-	  echo "❌ golangci-lint is not installed. Install from https://golangci-lint.run/usage/install/"; exit 1; }
 
 .PHONY: check-jq
 check-jq:
