@@ -74,7 +74,9 @@ dev = [
 
 [tool.pdm.scripts]
 format = {composite = ["ruff format ."]}
+format-check = {composite = ["ruff format --check ."]}
 lint = {composite = ["ruff check --fix ."]}
+lint-check = {composite = ["ruff check ."]}
 format-lint = {composite = ["ruff format .", "ruff check --fix ."]}
 test = "pytest"
 test-cov = "pytest --cov=llm_d_benchmark --cov-report=html --cov-report=term"
