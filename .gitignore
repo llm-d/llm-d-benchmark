@@ -72,3 +72,6 @@ llm_d_benchmark/scenarios/none.sh
 
 # Python specifics
 **/*.egg-info
+
+# coverage
+**/.coverage
