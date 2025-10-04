@@ -1,0 +1,156 @@
+[project]
+name = "llm-d-benchmark"
+version = "0.3.0"
+description = "Automated workflow for benchmarking LLM inference using the llm-d stack"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "llm-d-benchmark team"},
+]
+keywords = ["llm", "benchmark", "inference", "performance"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers and Researchers",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "kubernetes",
+    "pykube-ng",
+    "kubernetes-asyncio",
+    "GitPython",
+    "requests",
+    "PyYAML",
+    "Jinja2",
+    "huggingface_hub==0.34.4",
+    "transformers==4.55.4",
+    "matplotlib>=3.0.0",
+    "numpy>=2.3.1",
+    "seaborn>=0.12.0",
+    "pandas>=2.2.3",
+    "scipy>=1.16.0",
+    "plotly==6.3.0",
+    "streamlit==1.48.0",
+    "pydantic>=2.11.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pre-commit>=3.5.0",
+    "boxsdk>=10.0.0",
+]
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm]
+distribution = true
+
+[tool.pdm.build]
+package-dir = "."
+includes = ["llm_d_benchmark/"]
+excludes = [
+    "**/.git",
+    "**/__pycache__",
+    "**/*.pyc",
+    "**/logs/",
+    "**/.ipynb_checkpoints",
+    "**/htmlcov/",
+]
+
+[tool.pdm.dev-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pre-commit>=3.5.0",
+    "boxsdk>=10.0.0",
+]
+
+[tool.pdm.scripts]
+format = {composite = ["ruff format ."]}
+format-check = {composite = ["ruff format --check ."]}
+lint = {composite = ["ruff check --fix ."]}
+lint-check = {composite = ["ruff check ."]}
+format-lint = {composite = ["ruff format .", "ruff check --fix ."]}
+test = "pytest"
+test-cov = "pytest --cov=llm_d_benchmark --cov-report=html --cov-report=term"
+
+[tool.coverage.run]
+source = ["llm_d_benchmark"]
+omit = [
+    "*/convert_*",
+    "*/__main__.py",
+    "*/tests/*",
+    "*/test_*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise",
+    "except",
+    "register_parameter",
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 119
+src = ["llm_d_benchmark"]
+extend-exclude = [
+    "llm_d_benchmark/config_explorer/htmlcov",
+    "llm_d_benchmark/setup/logs",
+    "__pycache__",
+    ".ipynb_checkpoints",
+]
+
+[tool.ruff.lint]
+# Never enforce `E501` (line length violations).
+# SIM300: Yoda condition detected
+# SIM212: Checks for if expressions that check against a negated condition.
+# SIM905: Consider using a list literal instead of `str.split`
+ignore = ["C901", "E501", "E741", "F402", "F823", "SIM1", "SIM300", "SIM212", "SIM905"]
+# RUF013: Checks for the use of implicit Optional
+#  in type annotations when the default parameter value is None.
+select = ["C", "E", "F", "I", "W", "RUF013", "UP006", "PERF102", "PLC1802", "PLC0208", "SIM"]
+extend-safe-fixes = ["UP006"]
+
+# Ignore import violations in all `__init__.py` files.
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402", "F401", "F403", "F811"]
+"llm_d_benchmark/setup/functions.py" = ["F401"]
+"llm_d_benchmark/config_explorer/util.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+lines-after-imports = 2
+known-first-party = ["llm_d_benchmark", "config_explorer"]
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+[tool.pytest.ini_options]
+addopts = "--doctest-glob='**/*.md'"
+doctest_optionflags = "NUMBER NORMALIZE_WHITESPACE ELLIPSIS"
+markers = [
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+log_cli = 1
+log_cli_level = "WARNING"
+testpaths = ["llm_d_benchmark/util/unit_test", "llm_d_benchmark/config_explorer/tests"]

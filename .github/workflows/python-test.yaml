@@ -1,0 +1,39 @@
+name: Python Test
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  config-explorer-pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Display Python version
+        run: python -c "import sys; print(sys.version)"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install pdm
+          pdm install
+
+      - name: Format check
+        run: |
+          pdm run format-check
+
+      - name: Lint check
+        run: |
+          pdm run lint-check
+
+      - name: Test coverage
+        run: |
+          pdm run test-cov

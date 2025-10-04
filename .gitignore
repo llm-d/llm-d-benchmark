@@ -43,6 +43,16 @@ data/**/logs/
 
 # Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# PDM
+__pypackages__/
+.pdm-python
+.pdm.toml
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -57,7 +67,14 @@ env.bak/
 venv.bak/
 environment/
 
-scenarios/none.sh
+llm_d_benchmark/scenarios/none.sh
 
 # Python specifics
 **/*.egg-info
+
+# coverage
+**/.coverage
+
+# cache
+.pytest_cache/
+.ruff_cache/
