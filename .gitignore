@@ -75,3 +75,7 @@ llm_d_benchmark/scenarios/none.sh
 
 # coverage
 **/.coverage
+
+# cache
+.pytest_cache/
+.ruff_cache/

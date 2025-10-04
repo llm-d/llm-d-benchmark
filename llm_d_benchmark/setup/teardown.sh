@@ -119,7 +119,9 @@ export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=1
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 extract_environment
-sleep 5
+if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 0 ]]; then
+  sleep 5
+fi
 
 for resource in ${LLMDBENCH_CONTROL_RESOURCE_LIST//,/ }; do
   has_resource=$($LLMDBENCH_CONTROL_KCMD get ${resource} --no-headers -o name 2>&1 | grep error || true)
@@ -231,7 +233,9 @@ fi
 if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 1 ]]; then
 # Optional: delete cloned repos if they exist
   announce "🧼 Cleaning up local Git clones..."
-  sleep 10
+  if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 0 ]]; then
+    sleep 10
+  fi
   llmdbench_execute_cmd "rm -rf ${LLMDBENCH_HARNESS_DIR}/fmperf" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 fi
 

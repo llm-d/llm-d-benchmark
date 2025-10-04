@@ -378,7 +378,9 @@ if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
       echo "WARNING: environment variable LLMDBENCH_CLUSTER_URL=$LLMDBENCH_CLUSTER_URL. Will attempt to use current context \"${current_context}\"."
       echo ""
       export LLMDBENCH_CONTROL_WARNING_DISPLAYED=1
-      sleep 5
+      if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 0 ]]; then
+        sleep 5
+      fi
     fi
     export LLMDBENCH_CONTROL_REMOTE_KUBECONFIG_FILENAME=config
   else

@@ -151,7 +151,9 @@ function llmdbench_execute_cmd {
       if [[ $ecode -ne 0 && ${attempts} -gt 1 ]]
       then
         counter="$(( ${counter} + 1 ))"
-        sleep ${delay}
+        if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 0 ]]; then
+          sleep ${delay}
+        fi
       else
           break
       fi

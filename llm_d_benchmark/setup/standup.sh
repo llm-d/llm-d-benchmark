@@ -153,7 +153,10 @@ if [[ $LLMDBENCH_STEP_LIST == $(find $LLMDBENCH_STEPS_DIR -name "*.sh" -o -name 
 fi
 
 extract_environment
-sleep 5
+# if LLMDBENCH_CONTROL_DRY_RUN, not sleep
+if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 0 ]]; then
+  sleep 5
+fi
 
 for step in ${LLMDBENCH_STEP_LIST//,/ }; do
   if [[ ${#step} -lt 2 ]]

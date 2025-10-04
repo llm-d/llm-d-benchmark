@@ -209,7 +209,9 @@ sweeptmpdir=$(mktemp -d -t sweepXXX)
 
 generate_standup_parameter_scenarios $sweeptmpdir $LLMDBENCH_SCENARIO_FULL_PATH $LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS
 announce "ℹ️ A list of tretaments for standup paramaters was generated at \"${sweeptmpdir}\""
-sleep 5
+if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 0 ]]; then
+  sleep 5
+fi
 
 for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
   export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=$sweeptmpdir/setup/treatment_list/$scenario
