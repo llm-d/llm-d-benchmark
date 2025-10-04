@@ -4,10 +4,11 @@ Main Page
 
 from decimal import Decimal
 
-import db
 import streamlit as st
 from matplotlib import pyplot as plt
-from src.config_explorer.capacity_planner import (
+
+from llm_d_benchmark.config_explorer import db, util
+from llm_d_benchmark.config_explorer.capacity_planner import (
     AttentionType,
     KVCacheDetail,
     allocatable_kv_cache_memory,
@@ -30,8 +31,6 @@ from src.config_explorer.capacity_planner import (
     per_gpu_model_memory_required,
     precision_to_byte,
 )
-
-import util
 
 
 def update_gpu_spec():

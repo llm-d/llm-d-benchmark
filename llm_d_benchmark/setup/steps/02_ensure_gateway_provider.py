@@ -6,11 +6,6 @@ import sys
 from pathlib import Path
 
 
-# Add project root to path for imports
-current_file = Path(__file__).resolve()
-project_root = current_file.parents[1]
-sys.path.insert(0, str(project_root))
-
 try:
     from functions import announce, environment_variable_to_dict, llmdbench_execute_cmd
 except ImportError as e:

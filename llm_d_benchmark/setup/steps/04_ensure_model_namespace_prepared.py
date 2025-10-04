@@ -6,18 +6,6 @@ import time
 from pathlib import Path
 
 import pykube
-from pykube.exceptions import PyKubeError
-
-
-current_file = Path(__file__).resolve()
-
-# get the projects root directory by going up 1 parent directories
-project_root = current_file.parents[1]
-
-# add the project root to the system path
-sys.path.insert(0, str(project_root))
-
-
 from functions import (
     SecurityContextConstraints,
     announce,
@@ -31,6 +19,7 @@ from functions import (
     validate_and_create_pvc,
     wait_for_job,
 )
+from pykube.exceptions import PyKubeError
 
 
 def add_scc_to_service_account(

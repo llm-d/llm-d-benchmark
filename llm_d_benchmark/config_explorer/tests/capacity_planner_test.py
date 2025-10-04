@@ -3,17 +3,10 @@ Tests Capacity Planner functions
 """
 
 import math
-import sys
-from pathlib import Path
 
 import pytest
 
-
-# Add the src directory to the Python path
-config_explorer_dir = Path(__file__).parent.parent
-sys.path.insert(0, str(config_explorer_dir / "src"))
-
-from config_explorer.capacity_planner import (
+from llm_d_benchmark.config_explorer.capacity_planner import (
     allocatable_kv_cache_memory,
     experts_per_ep_group,
     find_possible_tp,

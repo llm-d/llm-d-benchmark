@@ -4,13 +4,6 @@ import os
 import sys
 from pathlib import Path
 
-
-# Add project root to Python path
-current_file = Path(__file__).resolve()
-project_root = current_file.parents[1]
-sys.path.insert(0, str(project_root))
-
-# Import from functions.py
 from functions import (
     add_additional_env_to_yaml,
     add_annotations,

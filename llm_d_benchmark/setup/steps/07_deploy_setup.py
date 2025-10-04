@@ -5,13 +5,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
-# Add project root to Python path
-current_file = Path(__file__).resolve()
-project_root = current_file.parents[1]
-sys.path.insert(0, str(project_root))
-
-# Import from functions.py
 from functions import announce, environment_variable_to_dict, llmdbench_execute_cmd, model_attribute
 
 
@@ -49,7 +42,9 @@ provider:
 
 def auto_detect_version(ev, chart, version_key, repo_key, dry_run=False) -> int:
     if dry_run:
-        announce(f"ℹ️ Dry-run mode enabled. Skipping auto-detection of chart: {chart}, version key: {version_key}, repo key: {repo_key}.")
+        announce(
+            f"ℹ️ Dry-run mode enabled. Skipping auto-detection of chart: {chart}, version key: {version_key}, repo key: {repo_key}."
+        )
         return 0
     if ev.get(version_key) == "auto":
         announce(f"🔍 Auto-detecting {chart} chart version...")
@@ -155,7 +150,10 @@ def main():
         if 0 != result:
             exit(result)
         result = auto_detect_version(
-            ev, ev["vllm_infra_chart_name"], "vllm_infra_chart_version", "vllm_infra_helm_repository",
+            ev,
+            ev["vllm_infra_chart_name"],
+            "vllm_infra_chart_version",
+            "vllm_infra_helm_repository",
             dry_run=ev["control_dry_run"],
         )
         if 0 != result:

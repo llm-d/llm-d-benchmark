@@ -6,22 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-
-# Add project root to path for imports
-current_file = Path(__file__).resolve()
-project_root = current_file.parents[1]
-sys.path.insert(0, str(project_root))
-
-try:
-    import requests
-    from functions import announce, environment_variable_to_dict
-except ImportError as e:
-    # Fallback for when dependencies are not available
-    print(f"Warning: Could not import required modules: {e}")
-    print("This script requires the llm-d environment to be properly set up.")
-    print("Please run: ./setup/install_deps.sh")
-    print("And ensure requests is installed: pip install requests")
-    sys.exit(1)
+import requests
+from functions import announce, environment_variable_to_dict
 
 
 def get_platform_info():

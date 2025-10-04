@@ -48,7 +48,7 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [tool.pdm]
-distribution = false
+distribution = true
 
 [tool.pdm.build]
 package-dir = "."
@@ -71,9 +71,9 @@ dev = [
 ]
 
 [tool.pdm.scripts]
-format = "ruff format ."
-lint = "ruff check ."
-lint-fix = "ruff check --fix ."
+format = {composite = ["ruff format ."]}
+lint = {composite = ["ruff check --fix ."]}
+format-lint = {composite = ["ruff format .", "ruff check --fix ."]}
 test = "pytest"
 test-cov = "pytest --cov=llm_d_benchmark --cov-report=html --cov-report=term"
 
@@ -108,11 +108,10 @@ extend-exclude = [
 
 [tool.ruff.lint]
 # Never enforce `E501` (line length violations).
-# E402: Module level import not at top of file (temporarily disabled for setup scripts)
 # SIM300: Yoda condition detected
 # SIM212: Checks for if expressions that check against a negated condition.
 # SIM905: Consider using a list literal instead of `str.split`
-ignore = ["C901", "E402", "E501", "E741", "F402", "F823", "SIM1", "SIM300", "SIM212", "SIM905"]
+ignore = ["C901", "E501", "E741", "F402", "F823", "SIM1", "SIM300", "SIM212", "SIM905"]
 # RUF013: Checks for the use of implicit Optional
 #  in type annotations when the default parameter value is None.
 select = ["C", "E", "F", "I", "W", "RUF013", "UP006", "PERF102", "PLC1802", "PLC0208", "SIM"]

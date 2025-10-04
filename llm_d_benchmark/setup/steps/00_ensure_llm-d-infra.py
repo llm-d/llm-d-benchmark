@@ -2,70 +2,33 @@ import os
 import re
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 
+from huggingface_hub import ModelInfo
+from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
+from transformers import AutoConfig
 
-current_file = Path(__file__).resolve()
-workspace_root = current_file.parents[2]
-setup_dir = current_file.parents[1]
-config_explorer_src = workspace_root / "config_explorer" / "src"
-sys.path.insert(0, str(config_explorer_src))
-sys.path.insert(1, str(setup_dir))
-sys.path.insert(2, str(workspace_root))
+from llm_d_benchmark.config_explorer.capacity_planner import (
+    KVCacheDetail,
+    allocatable_kv_cache_memory,
+    available_gpu_memory,
+    find_possible_tp,
+    get_model_config_from_hf,
+    get_model_info_from_hf,
+    get_text_config,
+    gpus_required,
+    max_concurrent_requests,
+    max_context_len,
+    model_memory_req,
+    model_total_params,
+)
+from llm_d_benchmark.setup.functions import (
+    announce,
+    environment_variable_to_dict,
+    get_accelerator_nr,
+    get_accelerator_type,
+    is_standalone_deployment,
+)
 
-try:
-    from huggingface_hub import ModelInfo
-    from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
-    from transformers import AutoConfig
-except ModuleNotFoundError as e:
-    print(f"❌ ERROR: Required dependency not installed: {e}")
-    print("Please install the required dependencies:")
-    print(f"  pip install -r {workspace_root / 'config_explorer' / 'requirements.txt'}")
-    sys.exit(1)
-
-# Import config_explorer module
-try:
-    from config_explorer.capacity_planner import (
-        KVCacheDetail,
-        allocatable_kv_cache_memory,
-        available_gpu_memory,
-        find_possible_tp,
-        get_model_config_from_hf,
-        get_model_info_from_hf,
-        get_text_config,
-        gpus_required,
-        max_concurrent_requests,
-        max_context_len,
-        model_memory_req,
-        model_total_params,
-    )
-except ModuleNotFoundError as e:
-    print(f"❌ ERROR: Failed to import config_explorer module: {e}")
-    print(f"\nTry: pip install -r {workspace_root / 'config_explorer' / 'requirements.txt'}")
-    sys.exit(1)
-except Exception as e:
-    print(f"❌ ERROR: An unexpected error occurred while importing config_explorer: {e}")
-    import traceback
-
-    traceback.print_exc()
-    sys.exit(1)
-
-
-# ---------------- Import local packages ----------------
-try:
-    from functions import (
-        announce,
-        environment_variable_to_dict,
-        get_accelerator_nr,
-        get_accelerator_type,
-        is_standalone_deployment,
-    )
-except ImportError as e:
-    # Fallback for when dependencies are not available
-    print(f"❌ ERROR: Could not import required modules: {e}")
-    print("This script requires the llm-d environment to be properly set up.")
-    print("Please run: ./setup/install_deps.sh")
-    sys.exit(1)
 
 # ---------------- Data structure for validating vllm args ----------------
 COMMON = "COMMON"

@@ -5,17 +5,13 @@ Unit tests for 01_ensure_local_conda.py
 Tests the Python conversion using native Python implementation.
 """
 
+import importlib.util
 import os
 import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-
-# Add setup directory to path
-current_file = Path(__file__).resolve()
-project_root = current_file.parents[2]  # Go up 2 levels: util -> llm-d-benchmark
-setup_dir = project_root / "setup"
 
 # Save original functions module if it exists
 _original_functions = sys.modules.get("functions")
@@ -24,13 +20,9 @@ _original_functions = sys.modules.get("functions")
 # Note: requests is a real package and should not be mocked
 sys.modules["functions"] = MagicMock()
 
-# Import the module under test
-sys.path.insert(0, str(setup_dir))
-sys.path.append(str(setup_dir / "steps"))
-import importlib.util
-
 
 # Load the Python module dynamically
+setup_dir = Path(__file__).resolve().parents[2] / "setup"
 spec = importlib.util.spec_from_file_location(
     "ensure_local_conda_py", setup_dir / "steps" / "01_ensure_local_conda.py"
 )
@@ -226,14 +218,16 @@ class TestEnsureLocalConda(unittest.TestCase):
 
         # Mock environment_variable_to_dict to properly populate the ev dict
         def mock_env_to_dict(ev):
-            ev.update({
-                "run_experiment_analyze_locally": True,
-                "control_deploy_host_os": "mac",
-                "control_deploy_host_shell": "zsh",
-                "harness_conda_env_name": "test-env",
-                "control_dry_run": True,
-                "control_verbose": True,
-            })
+            ev.update(
+                {
+                    "run_experiment_analyze_locally": True,
+                    "control_deploy_host_os": "mac",
+                    "control_deploy_host_shell": "zsh",
+                    "harness_conda_env_name": "test-env",
+                    "control_dry_run": True,
+                    "control_verbose": True,
+                }
+            )
 
         with patch.dict(os.environ, test_env):
             with patch.object(module_under_test, "environment_variable_to_dict", side_effect=mock_env_to_dict):
@@ -244,7 +238,12 @@ class TestEnsureLocalConda(unittest.TestCase):
 
                     # Verify the function was called with correct parameters
                     mock_ensure.assert_called_once_with(
-                        run_locally=True, host_os="mac", host_shell="zsh", env_name="test-env", dry_run=True, verbose=True
+                        run_locally=True,
+                        host_os="mac",
+                        host_shell="zsh",
+                        env_name="test-env",
+                        dry_run=True,
+                        verbose=True,
                     )
 
                     self.assertEqual(result, 0)
