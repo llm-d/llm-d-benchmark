@@ -12,7 +12,8 @@ Install pdm following the official instructions: https://pdm-project.org/en/late
 Then, clone this repository and install the dependencies:
 ```
 git clone https://github.com/llm-d/llm-d-benchmark.git && cd llm-d-benchmark/
-pdm install && pdm run $SHELL && pre-commit install
+pdm install && pdm run $SHELL
+pre-commit install
 ```
 
 Finally, install additional dependencies:
@@ -25,7 +26,7 @@ cd llm_d_benchmark/ && ./setup/install_deps.sh
 **Out of the box:** **`standup`** a `llm-d` stack (default method is `llm-d-modelservice`, serving `meta-llama/Llama-3.2-1B-Instruct` model), **`run`** a harness (default `inference-perf`) with a load profile (default `sanity_random`) and then **`teardown`** the deployed stack.
 
 ```
-./e2e.sh
+cd llm_d_benchmark/ && ./e2e.sh
 ```
 
 > [!TIP]
@@ -34,6 +35,7 @@ cd llm_d_benchmark/ && ./setup/install_deps.sh
 The same above example could be explicitly split in three separate parts.
 
 ```
+cd llm_d_benchmark/
 ./setup/standup.sh
 ./run.sh
 ./setup/teardown.sh
@@ -42,6 +44,7 @@ The same above example could be explicitly split in three separate parts.
 A user can elect to  **`standup`** an `llm-d` stack once, and then **`run`** the `inference-perf` harness with a different load profile (i.e., `chatbot_synthetic`)
 
 ```
+cd llm_d_benchmark/
 ./run.sh --harness inference-perf --workload chatbot_synthetic --methods <a string that matches a inference service or pod>`
 ```
 
