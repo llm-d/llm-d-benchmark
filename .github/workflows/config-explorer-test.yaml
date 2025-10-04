@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v5
@@ -26,8 +26,6 @@ jobs:
           python -m pip install pdm
           pdm install
 
-      - name: Test with pytest
+      - name: Test coverage
         run: |
-          pdm run pytest pytest-cov
-          cd config_explorer
-          pdm run pytest -s tests/ --doctest-modules --junitxml=junit/test-results.xml --cov=config_explorer --cov-report=xml --cov-report=html
+          pdm run test-cov
