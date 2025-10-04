@@ -732,7 +732,7 @@ def populate_benchmark_categories(
 ):
     """populate categories from log lines"""
 
-    for _, log_list_process in log_list_per_process.items():
+    for log_list_process in log_list_per_process.values():
         index = 0
         while index < len(log_list_process):
             index = populate_benchmark_category(index, log_list_process, root_benchmark_category)

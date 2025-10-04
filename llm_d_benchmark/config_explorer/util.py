@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 import streamlit as st
 from huggingface_hub import ModelInfo
-from src.config_explorer.capacity_planner import *
 from transformers import AutoConfig
 
 

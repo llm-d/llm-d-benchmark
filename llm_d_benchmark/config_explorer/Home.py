@@ -7,7 +7,29 @@ from decimal import Decimal
 import db
 import streamlit as st
 from matplotlib import pyplot as plt
-from src.config_explorer.capacity_planner import *
+from src.config_explorer.capacity_planner import (
+    AttentionType,
+    KVCacheDetail,
+    allocatable_kv_cache_memory,
+    available_gpu_memory,
+    experts_per_ep_group,
+    find_possible_tp,
+    get_ep_size,
+    get_model_config_from_hf,
+    get_model_info_from_hf,
+    get_num_experts,
+    get_text_config,
+    gpus_required,
+    inference_dtype,
+    is_moe,
+    kv_cache_req,
+    max_concurrent_requests,
+    max_context_len,
+    model_memory_req,
+    parameter_memory_req,
+    per_gpu_model_memory_required,
+    precision_to_byte,
+)
 
 import util
 
@@ -213,7 +235,7 @@ Tensor parallelism splits expert weights across GPUs. Expert parallelism splits 
                     "Since some EP groups will get 0 expert, this is an under-utilization of GPU resources. We recommend decreasing TP or DP for better use of your accelerators."
                 )
 
-            if not Decimal(experts_per_ep) % 1 == 0:
+            if Decimal(experts_per_ep) % 1 != 0:
                 col2.caption(
                     "The total number of experts is not divisible by EP size you selected. However, vLLM handles uneven split of experts (see this [PR](https://github.com/vllm-project/vllm/pull/21497)), so some EP groups will have fewer experts than others."
                 )
@@ -368,9 +390,7 @@ def hardware_specification():
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_info = user_scenario.model_info
     model_config = user_scenario.model_config
-    text_config = user_scenario.text_config
 
-    concurrency = user_scenario.concurrency
     tp = user_scenario.tp_size
     pp = user_scenario.pp_size
     dp = user_scenario.dp_size
@@ -519,7 +539,6 @@ def memory_util_chart(st_context):
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
     model_info = user_scenario.model_info
     model_config = user_scenario.model_config
-    text_config = user_scenario.text_config
     gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
     gpu_memory_util = user_scenario.gpu_mem_util
     concurrency = user_scenario.concurrency
@@ -555,7 +574,7 @@ def memory_util_chart(st_context):
         sizes,
         colors=colors,
         startangle=90,  # Start at top
-        wedgeprops=dict(width=0.4),  # <-- Makes it a donut,
+        wedgeprops={"width": 0.4},  # <-- Makes it a donut,
         labeldistance=1.1,  # Push labels outward
         pctdistance=0.7,  # Adjust percentage position
     )

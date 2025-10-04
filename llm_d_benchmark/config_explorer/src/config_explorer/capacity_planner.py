@@ -135,7 +135,7 @@ def get_model_info_from_hf(model_name: str, hf_token: str | None = None) -> Mode
     return model_info
 
 
-def get_model_config_from_hf(model_name: str, hf_token: str = None) -> AutoConfig:
+def get_model_config_from_hf(model_name: str, hf_token: str | None = None) -> AutoConfig:
     """
     Returns LLM model config
     """

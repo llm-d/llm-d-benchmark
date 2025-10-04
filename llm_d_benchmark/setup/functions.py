@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-def announce(message: str, logfile: str = None):
+def announce(message: str, logfile: str | None = None):
     work_dir = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
     log_dir = os.path.join(work_dir, "logs")
 
@@ -663,7 +663,7 @@ def get_image(image_registry: str, image_repo: str, image_name: str, image_tag: 
                         if len(parts) >= 2:
                             is_latest_tag = parts[1]
                 # The || true part in bash means we don't fail if command fails
-            except:
+            except Exception:
                 pass
         else:
             # Use skopeo to get latest tag
@@ -676,7 +676,7 @@ def get_image(image_registry: str, image_repo: str, image_name: str, image_tag: 
                 if tags_data.get("Tags"):
                     # Use jq -r .Tags[] | tail -1 equivalent
                     is_latest_tag = tags_data["Tags"][-1]
-            except:
+            except Exception:
                 is_latest_tag = ""
 
         if not is_latest_tag:
@@ -1167,7 +1167,7 @@ def is_hf_model_gated(model_id: str) -> bool:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         data = response.json()
-        return data.get("gated", False) != False
+        return data.get("gated", False)
     except requests.RequestException as e:
         announce("❌ ERROR - Request failed:", e)
         return False

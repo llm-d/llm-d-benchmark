@@ -40,7 +40,6 @@ try:
         get_model_info_from_hf,
         get_text_config,
         gpus_required,
-        kv_cache_req,
         max_concurrent_requests,
         max_context_len,
         model_memory_req,
@@ -248,7 +247,7 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
                         f"TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.",
                         ignore_if_failed,
                     )
-            except AttributeError:
+            except AttributeError as e:
                 # Error: config['num_attention_heads'] not in config
                 announce_failed(
                     f"Cannot obtain data on the number of attention heads, cannot find valid tp values: {e}",

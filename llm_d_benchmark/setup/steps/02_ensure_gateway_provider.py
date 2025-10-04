@@ -20,14 +20,6 @@ except ImportError as e:
     print("Please run: ./setup/install_deps.sh")
     sys.exit(1)
 
-try:
-    import requests
-    from kubernetes import client, config
-except ImportError as e:
-    print(f"Warning: Could not import required modules: {e}")
-    print("Please install required dependencies: pip install kubernetes requests")
-    sys.exit(1)
-
 
 def ensure_helm_repository(helm_cmd: str, chart_name: str, repo_url: str, dry_run: bool, verbose: bool) -> int:
     """
@@ -371,8 +363,6 @@ def ensure_gateway_provider(ev: dict, dry_run: bool, verbose: bool) -> int:
     repo_url = ev.get("vllm_modelservice_helm_repository_url", "")
     chart_version = ev.get("vllm_modelservice_chart_version", "")
     helm_repo = ev.get("vllm_modelservice_helm_repository", "")
-    gateway_class = ev.get("vllm_modelservice_gateway_class_name", "")
-    release_name = ev.get("vllm_modelservice_release", "")
 
     # Step 1: Ensure helm repository
     result = ensure_helm_repository(helm_cmd, chart_name, repo_url, dry_run, verbose)

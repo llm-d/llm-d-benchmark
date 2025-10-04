@@ -2,6 +2,7 @@
 Tests Capacity Planner functions
 """
 
+import math
 import sys
 from pathlib import Path
 
@@ -12,7 +13,23 @@ import pytest
 config_explorer_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(config_explorer_dir / "src"))
 
-from config_explorer.capacity_planner import *
+from config_explorer.capacity_planner import (
+    allocatable_kv_cache_memory,
+    experts_per_ep_group,
+    find_possible_tp,
+    get_model_config_from_hf,
+    get_model_info_from_hf,
+    get_num_experts,
+    get_text_config,
+    gpus_required,
+    is_moe,
+    kv_cache_req,
+    max_concurrent_requests,
+    model_memory_req,
+    model_total_params,
+    parameter_memory_req,
+    precision_to_byte,
+)
 
 
 # ---- Constants ----
@@ -264,11 +281,11 @@ def test_is_moe():
 
     for model in moes:
         model_config = get_model_config_from_hf(model)
-        assert is_moe(model_config) == True
+        assert is_moe(model_config)
 
     for model in non_moes:
         model_config = get_model_config_from_hf(model)
-        assert is_moe(model_config) == False
+        assert not is_moe(model_config)
 
 
 def test_get_num_experts():

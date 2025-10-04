@@ -11,7 +11,6 @@ import logging
 import os
 import shutil
 import subprocess
-from datetime import datetime
 from pathlib import Path
 
 import kubernetes
@@ -279,13 +278,11 @@ def main():
     apiclient = client.ApiClient()
     cluster = Cluster(name="in-cluster", apiclient=apiclient, namespace=namespace)
 
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-
     logger.info("Starting benchmark run")
 
     try:
         # run benchmark which will create the evaluation job
-        results = run_benchmark(
+        run_benchmark(
             cluster=cluster,
             stack_spec=stack_spec,
             workload_spec=workload_spec,
@@ -304,7 +301,6 @@ def main():
         if eval_path == "/requests":  # customize eval path if default dir is /requests
             eval_path = f"{results_dir}/{harness_name}_{experiment_id}_{stack_name}"
         eval_log_file = eval_path + stem
-        eval_data_dir = f"{eval_path}/analysis/data/"
 
         job_name = f"lmbenchmark-evaluate-{job_id}"
         logger.info(f"Waiting for evaluation job {job_name} to complete...")
@@ -312,7 +308,7 @@ def main():
         # Wait for the evaluation job to complete
         asyncio.run(wait_for_job(job_name, namespace))
 
-        logs = capture_pod_logs(job_name, namespace, eval_log_file)
+        capture_pod_logs(job_name, namespace, eval_log_file)
         if move_data_result(eval_log_file, eval_path):
             logger.info(f"Data moved to {eval_path}")
         # Create benchmark report
