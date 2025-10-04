@@ -5,24 +5,26 @@ Benchmark 'nop' harness
 """
 
 from __future__ import annotations
+
 import ast
-from dataclasses import dataclass, field, fields
-from datetime import datetime
-from enum import StrEnum
 import io
 import json
+import logging
 import os
 import re
 import subprocess
 import time
-import logging
+from dataclasses import dataclass, field, fields
+from datetime import datetime
+from enum import StrEnum
+from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlparse
-from pathlib import Path
+
 import requests
 import yaml
-
 from kubernetes import client, config
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -203,21 +205,15 @@ class BenchmarkCategory:
         return BenchmarkCategory._dump(self, include_not_defined)
 
     @staticmethod
-    def _dump(
-        benchmark_category: BenchmarkCategory, include_not_defined: bool
-    ) -> list[dict[str, Any]]:
+    def _dump(benchmark_category: BenchmarkCategory, include_not_defined: bool) -> list[dict[str, Any]]:
         categories = []
         category = benchmark_category
         while category is not None:
             if category.defined or include_not_defined:
                 dump_dict = {"title": category.title}
                 procs = [
-                    ""
-                    if category.start.log_line is None
-                    else category.start.log_line.process_desc(),
-                    ""
-                    if category.end.log_line is None
-                    else category.end.log_line.process_desc(),
+                    "" if category.start.log_line is None else category.start.log_line.process_desc(),
+                    "" if category.end.log_line is None else category.end.log_line.process_desc(),
                 ]
                 if procs[0] != procs[1]:
                     raise ValueError(
@@ -226,10 +222,7 @@ class BenchmarkCategory:
                         f"the same as end process '{procs[1]}'"
                     )
 
-                if (
-                    category.start.log_line is not None
-                    and category.start.log_line.process is not None
-                ):
+                if category.start.log_line is not None and category.start.log_line.process is not None:
                     dump_dict["process"] = category.start.log_line.process.dump()
                 dump_dict["elapsed"] = 0.0
                 if (
@@ -238,14 +231,10 @@ class BenchmarkCategory:
                     and category.start.log_line.time is not None
                     and category.end.log_line.time is not None
                 ):
-                    dump_dict["elapsed"] = (
-                        category.end.log_line.time - category.start.log_line.time
-                    ).total_seconds()
+                    dump_dict["elapsed"] = (category.end.log_line.time - category.start.log_line.time).total_seconds()
 
                 if category.root_child is not None:
-                    dump_dict["categories"] = BenchmarkCategory._dump(
-                        category.root_child, include_not_defined
-                    )
+                    dump_dict["categories"] = BenchmarkCategory._dump(category.root_child, include_not_defined)
 
                 categories.append(dump_dict)
             category = category.next
@@ -362,11 +351,7 @@ class BenchmarkScenario:
         dump_dict = {}
         for f in fields(self):
             value = getattr(self, f.name)
-            dump_dict[f.name] = (
-                value.dump()
-                if hasattr(value, "dump") and callable(value.dump)
-                else value
-            )
+            dump_dict[f.name] = value.dump() if hasattr(value, "dump") and callable(value.dump) else value
 
         return dump_dict
 
@@ -389,11 +374,7 @@ class MetricsTime:
         dump_dict = {}
         for f in fields(self):
             value = getattr(self, f.name)
-            dump_dict[f.name] = (
-                value.dump()
-                if hasattr(value, "dump") and callable(value.dump)
-                else value
-            )
+            dump_dict[f.name] = value.dump() if hasattr(value, "dump") and callable(value.dump) else value
         dump_dict["duration"] = self.stop - self.start
         return dump_dict
 
@@ -429,11 +410,7 @@ class BenchmarkMetrics:
             if f.name in ["load_cached_compiled_graph", "compile_graph"] and value == 0:
                 continue
 
-            dump_dict[f.name] = (
-                value.dump()
-                if hasattr(value, "dump") and callable(value.dump)
-                else value
-            )
+            dump_dict[f.name] = value.dump() if hasattr(value, "dump") and callable(value.dump) else value
         transfer_rate = 0.0
         if self.load_time != 0.0:
             transfer_rate = self.size / self.load_time
@@ -461,11 +438,7 @@ class BenchmarkResult:
         dump_dict = {}
         for f in fields(self):
             value = getattr(self, f.name)
-            dump_dict[f.name] = (
-                value.dump()
-                if hasattr(value, "dump") and callable(value.dump)
-                else value
-            )
+            dump_dict[f.name] = value.dump() if hasattr(value, "dump") and callable(value.dump) else value
 
         return dump_dict
 
@@ -548,9 +521,7 @@ def sleep(base_url: str, level: int, timeout: float):
     url = urljoin(base_url, "sleep")
     response = requests.post(url, params={"level": str(level)}, timeout=timeout)
     if response.status_code != 200:
-        raise RuntimeError(
-            f"sleep level {level} url {url} error code {response.status_code}."
-        )
+        raise RuntimeError(f"sleep level {level} url {url} error code {response.status_code}.")
 
     sleeping = False
     start = time.perf_counter()
@@ -595,23 +566,17 @@ def wake(base_url: str, timeout: float):
             raise RuntimeError(f"Server failed sleeping status after {elapsed} secs.")
 
 
-def get_vllm_pod_info(
-    v1: client.CoreV1Api, namespace: str, deployment_name: str
-) -> dict[str, str]:
+def get_vllm_pod_info(v1: client.CoreV1Api, namespace: str, deployment_name: str) -> dict[str, str]:
     """get vllm pod name"""
 
     selectors = get_deployment_selectors(namespace, deployment_name)
     if len(selectors) == 0:
-        raise RuntimeError(
-            f"No deployment selectors for deployment {deployment_name} on namespace {namespace}."
-        )
+        raise RuntimeError(f"No deployment selectors for deployment {deployment_name} on namespace {namespace}.")
 
     selector = selectors[0]
     pod_infos = get_pod_infos(v1, namespace, selector)
     if len(pod_infos) == 0:
-        raise RuntimeError(
-            f"No pods found on namespace {namespace} with selector 'app={selector}'."
-        )
+        raise RuntimeError(f"No pods found on namespace {namespace} with selector 'app={selector}'.")
 
     return pod_infos[0]
 
@@ -619,13 +584,9 @@ def get_vllm_pod_info(
 def get_deployment_selectors(namespace: str, name: str) -> list[str]:
     """get deployment label selectors based on prefix"""
 
-    deployment = client.AppsV1Api().read_namespaced_deployment(
-        name=name, namespace=namespace
-    )
+    deployment = client.AppsV1Api().read_namespaced_deployment(name=name, namespace=namespace)
     if deployment is None:
-        raise RuntimeError(
-            f"No deployment found with name {name} on namespace {namespace}."
-        )
+        raise RuntimeError(f"No deployment found with name {name} on namespace {namespace}.")
     selectors = []
     if deployment.spec.selector and deployment.spec.selector.match_labels:
         dict_selector = deployment.spec.selector.match_labels
@@ -635,14 +596,10 @@ def get_deployment_selectors(namespace: str, name: str) -> list[str]:
     return selectors
 
 
-def get_pod_infos(
-    v1: client.CoreV1Api, namespace: str, selector: str
-) -> list[dict[str, str]]:
+def get_pod_infos(v1: client.CoreV1Api, namespace: str, selector: str) -> list[dict[str, str]]:
     """get pods by selector"""
 
-    pod_list = v1.list_namespaced_pod(
-        namespace=namespace, label_selector=f"app={selector}"
-    )
+    pod_list = v1.list_namespaced_pod(namespace=namespace, label_selector=f"app={selector}")
     pod_infos = []
     for pod in pod_list.items:
         image = pod.spec.containers[0].image
@@ -655,9 +612,7 @@ def get_pod_infos(
 def get_pod_logs(v1: client.CoreV1Api, namespace: str, pod_name: str) -> bytes:
     """get pod logs"""
 
-    response = v1.read_namespaced_pod_log(
-        name=pod_name, namespace=namespace, pretty=False, _preload_content=False
-    )
+    response = v1.read_namespaced_pod_log(name=pod_name, namespace=namespace, pretty=False, _preload_content=False)
     return response.data
 
 
@@ -684,9 +639,7 @@ def extract_datetime(log_line: str) -> datetime | None:
         return None
 
 
-def initialize_benchmark_categories(
-    defined_categories: list[Any], parent: BenchmarkCategory
-) -> BenchmarkCategory:
+def initialize_benchmark_categories(defined_categories: list[Any], parent: BenchmarkCategory) -> BenchmarkCategory:
     """initialize categories"""
     root_benchmark_category = None
     prev_benchmark_category = None
@@ -700,15 +653,10 @@ def initialize_benchmark_categories(
 
         benchmark_category.title = defined_category.get("title")
         benchmark_category.defined = True
-        benchmark_category.start.pattern = re.compile(
-            rf"{defined_category.get('start')}"
-        )
+        benchmark_category.start.pattern = re.compile(rf"{defined_category.get('start')}")
         benchmark_category.end.pattern = re.compile(rf"{defined_category.get('end')}")
         benchmark_category.parent = parent
-        if (
-            benchmark_category.parent is not None
-            and benchmark_category.parent.root_child is None
-        ):
+        if benchmark_category.parent is not None and benchmark_category.parent.root_child is None:
             benchmark_category.parent.root_child = benchmark_category
 
         defined_children = defined_category.get("children")
@@ -733,9 +681,7 @@ def get_log_list(logs: str) -> list[LogLine]:
     return log_list
 
 
-def get_log_list_per_process(
-    vllm_model: str, log_list: list[LogLine]
-) -> dict[BenchmarkProcess, list[LogLine]]:
+def get_log_list_per_process(vllm_model: str, log_list: list[LogLine]) -> dict[BenchmarkProcess, list[LogLine]]:
     """get log list divided by Process"""
 
     tensorizer_serialization_end = f"End model {vllm_model} serialization"
@@ -789,9 +735,7 @@ def populate_benchmark_categories(
     for _, log_list_process in log_list_per_process.items():
         index = 0
         while index < len(log_list_process):
-            index = populate_benchmark_category(
-                index, log_list_process, root_benchmark_category
-            )
+            index = populate_benchmark_category(index, log_list_process, root_benchmark_category)
             index += 1
 
 
@@ -826,9 +770,7 @@ def add_uncategorized_categories(benchmark_category: BenchmarkCategory):
         category = category.next
 
 
-def populate_benchmark_category(
-    index: int, log_list: list[LogLine], benchmark_category: BenchmarkCategory
-) -> int:
+def populate_benchmark_category(index: int, log_list: list[LogLine], benchmark_category: BenchmarkCategory) -> int:
     """populate category from log line"""
 
     category = benchmark_category
@@ -904,8 +846,7 @@ def parse_logs(logs: str) -> BenchmarkResult:
             and benchmark_result.metrics.gpu_in_use != 0
             and benchmark_result.metrics.wake != 0
             and (
-                benchmark_result.metrics.load_cached_compiled_graph != 0
-                or benchmark_result.metrics.compile_graph != 0
+                benchmark_result.metrics.load_cached_compiled_graph != 0 or benchmark_result.metrics.compile_graph != 0
             )
         ):
             break
@@ -918,9 +859,7 @@ def parse_logs(logs: str) -> BenchmarkResult:
                 start_index += len(server_non_default_args)
                 args = line[start_index:].strip()
                 try:
-                    benchmark_result.scenario.platform.engine.args = ast.literal_eval(
-                        args
-                    )
+                    benchmark_result.scenario.platform.engine.args = ast.literal_eval(args)
                 except Exception:
                     logger.exception(
                         "log args dict parsing returned error converting: %s",
@@ -945,9 +884,7 @@ def parse_logs(logs: str) -> BenchmarkResult:
                 end_index = line.find(",", start_index)
                 if end_index >= 0:
                     format_value = line[start_index:end_index].strip()
-                    benchmark_result.scenario.load_format = (
-                        LoadFormat.loadformat_from_value(format_value)
-                    )
+                    benchmark_result.scenario.load_format = LoadFormat.loadformat_from_value(format_value)
 
         if benchmark_result.metrics.load_time == 0:
             floats = find_floats_in_line(model_load_string, line)
@@ -975,10 +912,7 @@ def parse_logs(logs: str) -> BenchmarkResult:
                 benchmark_result.metrics.wake = floats[0]
                 continue
 
-        if (
-            benchmark_result.metrics.load_cached_compiled_graph == 0
-            and benchmark_result.metrics.compile_graph == 0
-        ):
+        if benchmark_result.metrics.load_cached_compiled_graph == 0 and benchmark_result.metrics.compile_graph == 0:
             floats = find_floats_in_line(cached_compiled_graph, line)
             if len(floats) > 0:
                 benchmark_result.metrics.load_cached_compiled_graph = floats[0]
@@ -1036,9 +970,7 @@ def convert_result(result_filepath: str, output_filepath: str) -> tuple[str, str
         logger.exception("convert.py returned error converting: %s", result_filepath)
 
 
-def write_benchmark_categories_to_log(
-    level: int, benchmark_category: BenchmarkCategory, file: io.BufferedWriter
-):
+def write_benchmark_categories_to_log(level: int, benchmark_category: BenchmarkCategory, file: io.BufferedWriter):
     """write benchmark category tree log"""
     blank_string = "  " * level if level > 0 else ""
     category = benchmark_category
@@ -1059,22 +991,18 @@ def write_benchmark_categories_to_log(
         time_format = "%m-%d %H:%M:%S.%f"
         date_str = (
             category.start.log_line.time.strftime(time_format)[:-3]
-            if category.start.log_line is not None
-            and category.start.log_line.time is not None
+            if category.start.log_line is not None and category.start.log_line.time is not None
             else ""
         )
         file.write(f"{blank_string}  Start date   : '{date_str}'\n")
         date_str = (
             category.end.log_line.time.strftime(time_format)[:-3]
-            if category.end.log_line is not None
-            and category.end.log_line.time is not None
+            if category.end.log_line is not None and category.end.log_line.time is not None
             else ""
         )
         file.write(f"{blank_string}  End date     : '{date_str}'\n")
         file.write(f"{blank_string}  Elapsed      : {elapsed}\n")
-        file.write(
-            f"{blank_string}  Start pattern: '{category.start.pattern_desc()}'\n"
-        )
+        file.write(f"{blank_string}  Start pattern: '{category.start.pattern_desc()}'\n")
         file.write(f"{blank_string}  End pattern  : '{category.end.pattern_desc()}'\n")
         if category.start.log_line is None:
             file.write(f"{blank_string}  Start line   :\n")
@@ -1087,8 +1015,7 @@ def write_benchmark_categories_to_log(
             file.write(f"{blank_string}  End line     :\n")
         else:
             file.write(
-                f"{blank_string}  End line     : "
-                f"{category.end.log_line.line_number} '{category.end.log_line.line}'\n"
+                f"{blank_string}  End line     : {category.end.log_line.line_number} '{category.end.log_line.line}'\n"
             )
         if category.root_child is not None:
             write_benchmark_categories_to_log(level + 1, category.root_child, file)
@@ -1148,9 +1075,7 @@ def main():
             pod_info["image"],
         )
     except Exception as e:
-        logger.info(
-            "Skipping harness because vLLM standalone pod not found: %s", str(e)
-        )
+        logger.info("Skipping harness because vLLM standalone pod not found: %s", str(e))
         return
 
     vllm_version = get_vllm_version(endpoint_url, REQUEST_TIMEOUT)
@@ -1199,12 +1124,8 @@ def main():
     # write log categories log file
     log_categories_filepath = os.path.join(requests_dir, "categories.log")
     with open(log_categories_filepath, "w", encoding="utf-8", newline="") as file:
-        write_benchmark_categories_to_log(
-            0, benchmark_result.metrics.root_category, file
-        )
-        logger.info(
-            "benchmark categories log file saved to path: %s", log_categories_filepath
-        )
+        write_benchmark_categories_to_log(0, benchmark_result.metrics.root_category, file)
+        logger.info("benchmark categories log file saved to path: %s", log_categories_filepath)
 
     benchmark_result.metrics.time.start = start_time
     benchmark_result.metrics.time.stop = datetime.now().timestamp()

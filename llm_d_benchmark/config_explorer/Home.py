@@ -2,18 +2,22 @@
 Main Page
 """
 
-from matplotlib import pyplot as plt
-import streamlit as st
-import db
-import util
-from src.config_explorer.capacity_planner import *
 from decimal import Decimal
+
+import db
+import streamlit as st
+from matplotlib import pyplot as plt
+from src.config_explorer.capacity_planner import *
+
+import util
+
 
 def update_gpu_spec():
     """
     Update user selected GPU spec in session state
     """
-    st.session_state['scenario'].gpu_spec = st.session_state['gpu_spec'][st.session_state['selected_gpu_spec']]
+    st.session_state["scenario"].gpu_spec = st.session_state["gpu_spec"][st.session_state["selected_gpu_spec"]]
+
 
 @st.dialog("Register a new accelerator")
 def register_new_accelerator():
@@ -25,12 +29,9 @@ def register_new_accelerator():
 
     if st.button("Register", use_container_width=True):
         if acc_name:
-
-            db.gpu_specs[acc_name] = {
-                "name": acc_name,
-                "memory": acc_mem
-            }
+            db.gpu_specs[acc_name] = {"name": acc_name, "memory": acc_mem}
             st.rerun()
+
 
 def model_specification():
     """
@@ -44,11 +45,12 @@ def model_specification():
     with st.container(border=True):
         st.write("**Model Specification**")
 
-        selected_model = st.text_input("Model (Hugging Face format)",
-                                        value=user_scenario.get_model_name(),
-                                        key=util.SELECTED_MODEL_KEY,
-                                        on_change=util.on_update_model_name,
-                                       )
+        selected_model = st.text_input(
+            "Model (Hugging Face format)",
+            value=user_scenario.get_model_name(),
+            key=util.SELECTED_MODEL_KEY,
+            on_change=util.on_update_model_name,
+        )
         hf_token = None
 
         if selected_model and selected_model != "":
@@ -83,7 +85,9 @@ def model_specification():
             try:
                 model_gpu_memory_req = round(model_memory_req(model_info), 2)
             except Exception as e:
-                st.warning(f"Cannot retrieve relevant information about the model, {e}. The Capacity Planner only has partial information and functionality.")
+                st.warning(
+                    f"Cannot retrieve relevant information about the model, {e}. The Capacity Planner only has partial information and functionality."
+                )
                 return None
 
             # Display first precision
@@ -91,7 +95,9 @@ def model_specification():
 
             col1.info(f"Size of model in memory: ~{model_gpu_memory_req} GB")
             with col2.expander("See how model size is calculated below"):
-                st.write("""Below shows how model memory is estimated. The number of parameters and precision are fetched from Hugging Face. Common data types include `BF16` (floating point 16-bit) and `F8_E4M3` (floating point 8-bit, 4 for exponents and 3 for mantissa). The total is then summed.""")
+                st.write(
+                    """Below shows how model memory is estimated. The number of parameters and precision are fetched from Hugging Face. Common data types include `BF16` (floating point 16-bit) and `F8_E4M3` (floating point 8-bit, 4 for exponents and 3 for mantissa). The total is then summed."""
+                )
 
                 data_types = []
                 bytes_list = []
@@ -118,10 +124,13 @@ def model_specification():
                 }
                 st.dataframe(data, hide_index=True)
 
-                st.write("In addition, vLLM [profiles memory](https://github.com/vllm-project/vllm/blob/dcf2f3ec067711ff69e5ab7478fca6ffb4f11daf/vllm/worker/worker.py#L229) by doing a forward pass with `--max-model-len` with dummy data to estimate the non-torch and torch activation peak memory consumption. This means the estimation of the model memory is actually an underestimation. Estimating intermediate memory footprint is currently work in progress.")
+                st.write(
+                    "In addition, vLLM [profiles memory](https://github.com/vllm-project/vllm/blob/dcf2f3ec067711ff69e5ab7478fca6ffb4f11daf/vllm/worker/worker.py#L229) by doing a forward pass with `--max-model-len` with dummy data to estimate the non-torch and torch activation peak memory consumption. This means the estimation of the model memory is actually an underestimation. Estimating intermediate memory footprint is currently work in progress."
+                )
 
         else:
             return None
+
 
 def parallelism_specification():
     """
@@ -141,31 +150,34 @@ def parallelism_specification():
         # Display some useful info
         col1, col2 = st.columns(2)
         possible_tp_sizes = find_possible_tp(model_config)
-        tp_size = col1.selectbox("Tensor parallel size (shard model weights across GPUs)",
-                                    options=possible_tp_sizes,
-                                    index=possible_tp_sizes.index(user_scenario.tp_size),
-                                    key=util.SELECTED_TP_SIZE_KEY,
-                                    help=f"Must be divisible by the number of attention heads (`{model_config.num_attention_heads}` for this model)",
-                                    on_change=util.on_update_parallelism,
-                                    args=[util.SELECTED_TP_SIZE_KEY, "tp_size"]
-                                    )
-        pp_size = col2.number_input("Pipeline parallel size (shard layers across GPUs)",
-                                    min_value=1,
-                                    max_value=model_config.num_hidden_layers,
-                                    key=util.SELECTED_PP_SIZE_KEY,
-                                    value=user_scenario.pp_size,
-                                    help=f"This number is capped by the number of hidden layers (`{model_config.num_hidden_layers}` for this model). \
+        tp_size = col1.selectbox(
+            "Tensor parallel size (shard model weights across GPUs)",
+            options=possible_tp_sizes,
+            index=possible_tp_sizes.index(user_scenario.tp_size),
+            key=util.SELECTED_TP_SIZE_KEY,
+            help=f"Must be divisible by the number of attention heads (`{model_config.num_attention_heads}` for this model)",
+            on_change=util.on_update_parallelism,
+            args=[util.SELECTED_TP_SIZE_KEY, "tp_size"],
+        )
+        pp_size = col2.number_input(
+            "Pipeline parallel size (shard layers across GPUs)",
+            min_value=1,
+            max_value=model_config.num_hidden_layers,
+            key=util.SELECTED_PP_SIZE_KEY,
+            value=user_scenario.pp_size,
+            help=f"This number is capped by the number of hidden layers (`{model_config.num_hidden_layers}` for this model). \
                                     Also, vLLM handles uneven splits, see the [documentation](https://docs.vllm.ai/en/latest/api/vllm/distributed/index.html#vllm.distributed.get_pp_indices)",
-                                    on_change=util.on_update_parallelism,
-                                    args=[util.SELECTED_PP_SIZE_KEY, "pp_size"]
-                                    )
-        dp_size = col1.number_input("Data parallel size (replicas of model)",
-                        min_value=1,
-                        key=util.SELECTED_DP_SIZE_KEY,
-                                    value=user_scenario.dp_size,
-                        on_change=util.on_update_parallelism,
-                        args=[util.SELECTED_DP_SIZE_KEY, "dp_size"]
-                        )
+            on_change=util.on_update_parallelism,
+            args=[util.SELECTED_PP_SIZE_KEY, "pp_size"],
+        )
+        dp_size = col1.number_input(
+            "Data parallel size (replicas of model)",
+            min_value=1,
+            key=util.SELECTED_DP_SIZE_KEY,
+            value=user_scenario.dp_size,
+            on_change=util.on_update_parallelism,
+            args=[util.SELECTED_DP_SIZE_KEY, "dp_size"],
+        )
 
         # Enable EP
         is_moe_model = is_moe(model_config)
@@ -177,14 +189,15 @@ def parallelism_specification():
 Tensor parallelism splits expert weights across GPUs. Expert parallelism splits incoming token's hidden state across GPUs. In vLLM, enabling data parallelism on MoE models essentially achieves the latter purpose.
 """
 
-        enable_ep = col2.toggle("Enable expert parallelism",
-                value=user_scenario.enable_ep,
-                disabled=not is_moe_model,
-                help=help,
-                key=util.SELECTED_ENABLE_EP_KEY,
-                on_change=util.update_scenario,
-                args=[util.SELECTED_ENABLE_EP_KEY, "enable_ep"]
-                )
+        enable_ep = col2.toggle(
+            "Enable expert parallelism",
+            value=user_scenario.enable_ep,
+            disabled=not is_moe_model,
+            help=help,
+            key=util.SELECTED_ENABLE_EP_KEY,
+            on_change=util.update_scenario,
+            args=[util.SELECTED_ENABLE_EP_KEY, "enable_ep"],
+        )
         if enable_ep:
             total_experts = get_num_experts(model_config)
             ep_size = get_ep_size(tp_size, dp_size)
@@ -196,11 +209,14 @@ Tensor parallelism splits expert weights across GPUs. Expert parallelism splits 
 `EP size = (TP x DP) = {ep_size}`, meaning each group will get `{total_experts} / {ep_size} = {experts_per_ep_str}` experts per group.
 """)
             if experts_per_ep < 1:
-                col2.warning("Since some EP groups will get 0 expert, this is an under-utilization of GPU resources. We recommend decreasing TP or DP for better use of your accelerators.")
+                col2.warning(
+                    "Since some EP groups will get 0 expert, this is an under-utilization of GPU resources. We recommend decreasing TP or DP for better use of your accelerators."
+                )
 
             if not Decimal(experts_per_ep) % 1 == 0:
-                col2.caption("The total number of experts is not divisible by EP size you selected. However, vLLM handles uneven split of experts (see this [PR](https://github.com/vllm-project/vllm/pull/21497)), so some EP groups will have fewer experts than others.")
-
+                col2.caption(
+                    "The total number of experts is not divisible by EP size you selected. However, vLLM handles uneven split of experts (see this [PR](https://github.com/vllm-project/vllm/pull/21497)), so some EP groups will have fewer experts than others."
+                )
 
         st.info(f"GPUs required (`TP x PP x DP`): `{gpus_required(tp_size, pp_size, dp_size)}`")
 
@@ -229,7 +245,9 @@ def workload_specification():
             st.warning("Model config not available, cannot estimate KV cache size.")
             return None
 
-        st.caption(f"Estimate KV cache memory requirements for the selected model based on workload. Note that the model uses data type of `{inference_dtype(model_config)}` for KV cache during inference.")
+        st.caption(
+            f"Estimate KV cache memory requirements for the selected model based on workload. Note that the model uses data type of `{inference_dtype(model_config)}` for KV cache during inference."
+        )
 
         col1, col2 = st.columns(2)
 
@@ -241,21 +259,24 @@ def workload_specification():
             value=user_scenario.max_model_len,
             key=util.SELECTED_MAX_MODEL_LEN_KEY,
             on_change=util.on_update_max_model_len,
-            )
-        col1.caption("Maximum model length for the model: how many tokens (input + output) the model can process. \
+        )
+        col1.caption(
+            "Maximum model length for the model: how many tokens (input + output) the model can process. \
 Higher max model length means fewer concurrent requests can be served, \
                 because for the same GPU memory available for KV cache, \
                 each request requires more memory allocation. \
-")
+"
+        )
 
-        col2.number_input("Input the max number of concurrent requests to process",
+        col2.number_input(
+            "Input the max number of concurrent requests to process",
             min_value=0,
             step=1,
             key=util.SELECTED_CONCURRENCY_KEY,
             value=user_scenario.concurrency,
             on_change=util.update_scenario,
-            args=[util.SELECTED_CONCURRENCY_KEY, "concurrency"]
-            )
+            args=[util.SELECTED_CONCURRENCY_KEY, "concurrency"],
+        )
 
         try:
             max_concurrent_requests_num = max_concurrent_requests(
@@ -270,7 +291,9 @@ Higher max model length means fewer concurrent requests can be served, \
             )
 
         except Exception:
-            col2.warning("Model does not have safetensors data available, cannot estimate KV cache memory requirement.")
+            col2.warning(
+                "Model does not have safetensors data available, cannot estimate KV cache memory requirement."
+            )
             return None
 
         try:
@@ -284,7 +307,9 @@ Higher max model length means fewer concurrent requests can be served, \
             col2.warning(f"There is not enough information to estimate KV cache requirement per request: {e}")
             return None
 
-        col2.info(f"Assuming the worst case scenario, such that every request contains `--max-model-len` tokens, each request takes {util.pretty_round(kv_details.per_request_kv_cache_gb)} GB for KV cache, which means the maximum concurrent requests that can be processed is {max_concurrent_requests_num}.")
+        col2.info(
+            f"Assuming the worst case scenario, such that every request contains `--max-model-len` tokens, each request takes {util.pretty_round(kv_details.per_request_kv_cache_gb)} GB for KV cache, which means the maximum concurrent requests that can be processed is {max_concurrent_requests_num}."
+        )
 
         # Display details on how KV cache is estimated
         with st.expander("See how KV cache is calculated below"):
@@ -335,7 +360,6 @@ KV cache for max concurrency = kv_cache_per_request x concurrency
 """)
 
 
-
 def hardware_specification():
     """
     Get hardware inputs like name and number of accelerators available
@@ -354,7 +378,9 @@ def hardware_specification():
     # Hardware
     with st.container(border=True):
         st.write("**Hardware Specification**")
-        st.caption("Identify suitable accelerators for serving the model based on parallelism optimization and workload.")
+        st.caption(
+            "Identify suitable accelerators for serving the model based on parallelism optimization and workload."
+        )
 
         if model_config is None:
             st.warning("Model config not found.")
@@ -366,23 +392,25 @@ def hardware_specification():
         if user_scenario.gpu_name in db.gpu_specs.keys():
             index = list(db.gpu_specs.keys()).index(user_scenario.gpu_name)
 
-        col1.number_input("GPU utilization ratio",
-                key=util.SELECTED_GPU_MEMORY_UTIL_KEY,
-                value=user_scenario.gpu_mem_util,
-                min_value=0.0,
-                step=0.01,
-                on_change=util.update_scenario,
-                args=[util.SELECTED_GPU_MEMORY_UTIL_KEY, "gpu_mem_util"]
-                )
+        col1.number_input(
+            "GPU utilization ratio",
+            key=util.SELECTED_GPU_MEMORY_UTIL_KEY,
+            value=user_scenario.gpu_mem_util,
+            min_value=0.0,
+            step=0.01,
+            on_change=util.update_scenario,
+            args=[util.SELECTED_GPU_MEMORY_UTIL_KEY, "gpu_mem_util"],
+        )
 
         # Select GPU type
-        selected_gpu_name = col1.selectbox("Accelerator",
-                                key=util.SELECTED_GPU_NAME_KEY,
-                                index=index,
-                                options=db.gpu_specs,
-                                on_change=util.update_scenario,
-                                args=[util.SELECTED_GPU_NAME_KEY, "gpu_name"],
-                                )
+        selected_gpu_name = col1.selectbox(
+            "Accelerator",
+            key=util.SELECTED_GPU_NAME_KEY,
+            index=index,
+            options=db.gpu_specs,
+            on_change=util.update_scenario,
+            args=[util.SELECTED_GPU_NAME_KEY, "gpu_name"],
+        )
 
         # Dialog for registering new accelerator data
         col2.write("\n\nDon't see your accelerator? Register a new one below")
@@ -391,7 +419,6 @@ def hardware_specification():
 
         # For the selected GPU, show memory requirements
         if selected_gpu_name:
-
             # Get info
             gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
             available_gpu_count = gpus_required(tp, pp, dp)
@@ -404,18 +431,21 @@ def hardware_specification():
                 return None
 
             model_size_per_gpu = per_gpu_model_memory_required(model_info, tp, pp)
-            allocatable_kv_cache = allocatable_kv_cache_memory(model_info,
-                                                    model_config,
-                                                    gpu_memory,
-                                                    user_scenario.gpu_mem_util,
-                                                    tp,
-                                                    pp,
-                                                    dp,
-                                                    )
-            kv_details = KVCacheDetail(model_info, model_config,
-                                    user_scenario.max_model_len,
-                                    user_scenario.concurrency,
-                                    )
+            allocatable_kv_cache = allocatable_kv_cache_memory(
+                model_info,
+                model_config,
+                gpu_memory,
+                user_scenario.gpu_mem_util,
+                tp,
+                pp,
+                dp,
+            )
+            kv_details = KVCacheDetail(
+                model_info,
+                model_config,
+                user_scenario.max_model_len,
+                user_scenario.concurrency,
+            )
             per_request_kv_cache_memory = kv_details.per_request_kv_cache_gb
             all_request_kv_cache_memory = kv_details.kv_cache_size_gb
 
@@ -475,10 +505,11 @@ def hardware_specification():
     --pipeline-parallel-size {pp} \\
     --data-parallel-size {user_scenario.dp_size}"""
                 if user_scenario.enable_ep:
-                    vllm_serve_cmd += f""" \\
+                    vllm_serve_cmd += """ \\
     --enable-expert-parallel
         """
                 col2.code(vllm_serve_cmd)
+
 
 def memory_util_chart(st_context):
     """
@@ -510,7 +541,12 @@ def memory_util_chart(st_context):
 
     # Display chart iff model and cache size are selected
     labels = ["Model", "KV Cache", "Free", "Reserved"]
-    sizes = [util.pretty_round(model_size), util.pretty_round(max_concurrency_kv_cache), util.pretty_round(free), util.pretty_round(reserved)]
+    sizes = [
+        util.pretty_round(model_size),
+        util.pretty_round(max_concurrency_kv_cache),
+        util.pretty_round(free),
+        util.pretty_round(reserved),
+    ]
     colors = ["#ff9999", "#66b3ff", "#99ff99", "#808080"]
 
     # Create donut chart
@@ -518,14 +554,16 @@ def memory_util_chart(st_context):
     wedges, texts = ax.pie(
         sizes,
         colors=colors,
-        startangle=90,               # Start at top
-        wedgeprops=dict(width=0.4),   # <-- Makes it a donut,
-        labeldistance=1.1,   # Push labels outward
-        pctdistance=0.7,      # Adjust percentage position
+        startangle=90,  # Start at top
+        wedgeprops=dict(width=0.4),  # <-- Makes it a donut,
+        labeldistance=1.1,  # Push labels outward
+        pctdistance=0.7,  # Adjust percentage position
     )
 
     # Add total as text in the center of the donut
-    ax.text(0, 0, f"Total\n{util.pretty_round(total_memory)} GB", ha="center", va="center", fontsize=12, fontweight="bold")
+    ax.text(
+        0, 0, f"Total\n{util.pretty_round(total_memory)} GB", ha="center", va="center", fontsize=12, fontweight="bold"
+    )
 
     # Create a custom legend, including the total
     legend_labels = [f"{labels[i]}: {sizes[i]} GB" for i in range(len(labels))]
@@ -536,31 +574,37 @@ def memory_util_chart(st_context):
         legend_labels,
         title="Total Storage Breakdown",
         loc="center left",
-        bbox_to_anchor=(1, 0, 0.5, 1)
+        bbox_to_anchor=(1, 0, 0.5, 1),
     )
 
     # Render in Streamlit
-    _, col, _ = st_context.columns([.5, 1, .5])
+    _, col, _ = st_context.columns([0.5, 1, 0.5])
     with col:
         st.pyplot(fig, bbox_inches="tight")
 
-if __name__ == '__main__':
 
+if __name__ == "__main__":
     # Set up streamlit config
-    st.set_page_config(page_title="Configuration Explorer",
-                       page_icon=None,
-                       layout="wide",
-                       initial_sidebar_state="expanded",
-                       menu_items=None)
+    st.set_page_config(
+        page_title="Configuration Explorer",
+        page_icon=None,
+        layout="wide",
+        initial_sidebar_state="expanded",
+        menu_items=None,
+    )
 
     st.title("Configuration Explorer")
-    st.caption("This tool helps you find the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements.")
+    st.caption(
+        "This tool helps you find the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements."
+    )
 
     util.init_session_state()
 
     # Display Capacity Planner headings
     st.subheader("Capacity Planner")
-    st.caption("Determine how many GPUs you need to fit your model and how many requests can be served at once depending on request patterns.")
+    st.caption(
+        "Determine how many GPUs you need to fit your model and how many requests can be served at once depending on request patterns."
+    )
 
     # Get user inputs and show outputs
     model_specification()

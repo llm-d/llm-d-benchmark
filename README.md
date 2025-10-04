@@ -7,12 +7,13 @@ This repository provides an automated workflow for benchmarking LLM inference us
 Provide a single source of automation for repeatable and reproducible experiments and performance evaluation on `llm-d`.
 
 ### 📦 Repository Setup
+Install pdm following the official instructions: https://pdm-project.org/en/latest/#installation
 
+Then, clone this repository and install the dependencies:
 ```
-git clone https://github.com/llm-d/llm-d-benchmark.git
-cd llm-d-benchmark
-./setup/install_deps.sh
-pip install -r config_explorer/requirements.txt
+git clone https://github.com/llm-d/llm-d-benchmark.git && cd llm-d-benchmark/
+pdm install
+cd llm_d_benchmark/ && ./setup/install_deps.sh
 ```
 
 ## Quickstart

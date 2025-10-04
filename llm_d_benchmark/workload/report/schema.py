@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 
-from enum import StrEnum, auto
 import json
+from enum import StrEnum, auto
 from operator import attrgetter
-from typing import Optional, Any
+from typing import Any, Optional
 
-from pydantic import BaseModel, model_validator
 import yaml
+from pydantic import BaseModel, model_validator
 
 
 # BenchmarkReport schema version
-VERSION = '0.1'
+VERSION = "0.1"
+
 
 class Parallelism(BaseModel):
     """Accelerator parallelism details."""
@@ -64,7 +65,7 @@ class Host(BaseModel):
     type: list[HostType]
     metadata: Optional[Any] = None
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_types(self):
         """Types must be either all 'replica' or a mix of 'prefill' and 'decode'."""
         if len(self.type) <= 1:
@@ -73,12 +74,12 @@ class Host(BaseModel):
         type_ref = self.type[0]
         if type_ref == HostType.REPLICA:
             if HostType.DECODE in self.type:
-                raise ValueError(f'Cannot mix "replica" with "prefill"/"decode" types.')
+                raise ValueError('Cannot mix "replica" with "prefill"/"decode" types.')
             if HostType.PREFILL in self.type:
-                raise ValueError(f'Cannot mix "replica" with "prefill"/"decode" types.')
+                raise ValueError('Cannot mix "replica" with "prefill"/"decode" types.')
         else:
             if HostType.REPLICA in self.type:
-                raise ValueError(f'Cannot mix "replica" with "prefill"/"decode" types.')
+                raise ValueError('Cannot mix "replica" with "prefill"/"decode" types.')
         return self
 
 
@@ -101,6 +102,7 @@ class Platform(BaseModel):
 
 class Model(BaseModel):
     """AI model details."""
+
     name: str
     quantization: Optional[str] = None
     adapters: Optional[list[dict[str, str]]] = None
@@ -126,9 +128,9 @@ class WorkloadGenerator(StrEnum):
 
     FMPERF = auto()
     GUIDELLM = auto()
-    INFERENCE_PERF = 'inference-perf'
-    VLLM_BENCHMARK = 'vllm-benchmark'
-    NOP = 'nop'
+    INFERENCE_PERF = "inference-perf"
+    VLLM_BENCHMARK = "vllm-benchmark"
+    NOP = "nop"
 
 
 class Load(BaseModel):
@@ -218,33 +220,41 @@ class Units(StrEnum):
     MS = auto()
     S = auto()
     # Memory
-    MB = 'MB'
-    GB = 'GB'
-    TB = 'TB'
-    MIB = 'MiB'
-    GIB = 'GiB'
-    TIB = 'TiB'
+    MB = "MB"
+    GB = "GB"
+    TB = "TB"
+    MIB = "MiB"
+    GIB = "GiB"
+    TIB = "TiB"
     # Bandwidth
-    MBIT_PER_S = 'Mbit/s'
-    GBIT_PER_S = 'Gbit/s'
-    TBIT_PER_S = 'Tbit/s'
+    MBIT_PER_S = "Mbit/s"
+    GBIT_PER_S = "Gbit/s"
+    TBIT_PER_S = "Tbit/s"
     GIB_PER_S = "GiB/s"
 
-    MB_PER_S = 'MB/s'
-    GB_PER_S = 'GB/s'
-    TB_PER_S = 'TB/s'
+    MB_PER_S = "MB/s"
+    GB_PER_S = "GB/s"
+    TB_PER_S = "TB/s"
     # Generation latency
-    MS_PER_TOKEN = 'ms/token'
-    S_PER_TOKEN = 's/token'
+    MS_PER_TOKEN = "ms/token"
+    S_PER_TOKEN = "s/token"
     # Power
     WATTS = "Watts"
+
 
 # Lists of compatible units
 units_quantity = [Units.COUNT]
 units_portion = [Units.PERCENT, Units.FRACTION]
 units_time = [Units.MS, Units.S]
 units_memory = [Units.MB, Units.GB, Units.TB, Units.MIB, Units.GIB, Units.TIB]
-units_bandwidth = [Units.MBIT_PER_S, Units.GBIT_PER_S, Units.TBIT_PER_S, Units.MB_PER_S, Units.GB_PER_S, Units.TB_PER_S]
+units_bandwidth = [
+    Units.MBIT_PER_S,
+    Units.GBIT_PER_S,
+    Units.TBIT_PER_S,
+    Units.MB_PER_S,
+    Units.GB_PER_S,
+    Units.TB_PER_S,
+]
 units_gen_latency = [Units.MS_PER_TOKEN, Units.S_PER_TOKEN]
 units_power = [Units.WATTS]
 
@@ -262,7 +272,7 @@ class Statistics(BaseModel):
     p5: Optional[float | int] = None
     p10: Optional[float | int] = None
     p25: Optional[float | int] = None
-    p50: Optional[float | int] = None # This is the same as median
+    p50: Optional[float | int] = None  # This is the same as median
     p75: Optional[float | int] = None
     p90: Optional[float | int] = None
     p95: Optional[float | int] = None
@@ -285,7 +295,7 @@ class Requests(BaseModel):
     output_length: Statistics
     """Output sequence length."""
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_units(self):
         if self.input_length.units not in units_quantity:
             raise ValueError(f'Invalid units "{self.input_length.units}", must be one of: {" ".join(units_quantity)}')
@@ -323,16 +333,27 @@ class Latency(BaseModel):
     request_latency: Optional[Statistics] = None
     """End-to-end request latency."""
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_units(self):
         if self.time_to_first_token.units not in units_time:
-            raise ValueError(f'Invalid units "{self.time_to_first_token.units}", must be one of: {" ".join(units_time)}')
-        if self.normalized_time_per_output_token and self.normalized_time_per_output_token.units not in units_gen_latency:
-            raise ValueError(f'Invalid units "{self.normalized_time_per_output_token.units}", must be one of: {" ".join(units_gen_latency)}')
+            raise ValueError(
+                f'Invalid units "{self.time_to_first_token.units}", must be one of: {" ".join(units_time)}'
+            )
+        if (
+            self.normalized_time_per_output_token
+            and self.normalized_time_per_output_token.units not in units_gen_latency
+        ):
+            raise ValueError(
+                f'Invalid units "{self.normalized_time_per_output_token.units}", must be one of: {" ".join(units_gen_latency)}'
+            )
         if self.time_per_output_token and self.time_per_output_token.units not in units_gen_latency:
-            raise ValueError(f'Invalid units "{self.time_per_output_token.units}", must be one of: {" ".join(units_gen_latency)}')
+            raise ValueError(
+                f'Invalid units "{self.time_per_output_token.units}", must be one of: {" ".join(units_gen_latency)}'
+            )
         if self.inter_token_latency and self.inter_token_latency.units not in units_gen_latency:
-            raise ValueError(f'Invalid units "{self.inter_token_latency.units}", must be one of: {" ".join(units_gen_latency)}')
+            raise ValueError(
+                f'Invalid units "{self.inter_token_latency.units}", must be one of: {" ".join(units_gen_latency)}'
+            )
         if self.request_latency and self.request_latency.units not in units_time:
             raise ValueError(f'Invalid units "{self.request_latency.units}", must be one of: {" ".join(units_time)}')
         return self
@@ -354,7 +375,7 @@ class Service(BaseModel):
     queue_size: Optional[Statistics] = None
     kv_cache_size: Optional[Statistics] = None
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_units(self):
         if self.batch_size and self.batch_size.units not in units_quantity:
             raise ValueError(f'Invalid units "{self.batch_size.units}", must be one of: {" ".join(units_quantity)}')
@@ -372,7 +393,7 @@ class MemoryMetrics(BaseModel):
     utilization: Optional[Statistics] = None
     bandwidth: Optional[Statistics] = None
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_units(self):
         if self.consumption and self.consumption.units not in units_memory:
             raise ValueError(f'Invalid units "{self.consumption.units}", must be one of: {" ".join(units_memory)}')
@@ -388,7 +409,7 @@ class ComputeMetrics(BaseModel):
 
     utilization: Optional[Statistics] = None
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_units(self):
         if self.utilization.units not in units_portion:
             raise ValueError(f'Invalid units "{self.utilization.units}", must be one of: {" ".join(units_portion)}')
@@ -402,7 +423,7 @@ class AcceleratorMetrics(BaseModel):
     compute: Optional[ComputeMetrics] = None
     power: Optional[Statistics] = None
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_units(self):
         if self.power and self.power.units not in units_power:
             raise ValueError(f'Invalid units "{self.power.units}", must be one of: {" ".join(units_power)}')
@@ -438,20 +459,20 @@ class BenchmarkReport(BaseModel):
     metrics: Metrics
     metadata: Optional[Any] = None
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_version(self):
         """Ensure version is compatible."""
         if self.version != VERSION:
             raise ValueError(f'Invalid version "{self.version}", must be "{VERSION}".')
         return self
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_corresponding_lengths(self):
         """Ensure the lengths of the following match (if present):
-            - scenario.host.accelerator
-            - scenario.host.type
-            - scenario.platform.engine
-            - metrics.resources.accelerator
+        - scenario.host.accelerator
+        - scenario.host.type
+        - scenario.platform.engine
+        - metrics.resources.accelerator
         """
         entity_lengths = {
             "scenario.host.accelerator": None,
@@ -477,9 +498,7 @@ class BenchmarkReport(BaseModel):
         length_ref = entity_lengths.pop(entity_ref)
         for entity, length in entity_lengths.items():
             if length != length_ref:
-                raise ValueError(
-                    f'Length of "{entity}" ({length}) must match "{entity_ref}" ({length_ref})'
-                )
+                raise ValueError(f'Length of "{entity}" ({length}) must match "{entity_ref}" ({length_ref})')
         return self
 
     def dump(self) -> dict[str, Any]:
@@ -500,7 +519,7 @@ class BenchmarkReport(BaseModel):
         Args:
             filename: File to save BenchmarkReport to.
         """
-        with open(filename, 'w') as file:
+        with open(filename, "w") as file:
             json.dump(self.dump(), file, indent=2)
 
     def export_yaml(self, filename) -> None:
@@ -509,20 +528,16 @@ class BenchmarkReport(BaseModel):
         Args:
             filename: File to save BenchmarkReport to.
         """
-        with open(filename, 'w') as file:
+        with open(filename, "w") as file:
             yaml.dump(self.dump(), file, indent=2)
 
     def print_json(self) -> None:
         """Print BenchmarkReport as JSON."""
-        print(
-            json.dumps(self.dump(), indent=2)
-        )
+        print(json.dumps(self.dump(), indent=2))
 
     def print_yaml(self) -> None:
         """Print BenchmarkReport as YAML."""
-        print(
-            yaml.dump(self.dump(), indent=2)
-        )
+        print(yaml.dump(self.dump(), indent=2))
 
 
 def make_json_schema() -> str:
@@ -546,6 +561,7 @@ def create_from_str(yaml_str: str) -> BenchmarkReport:
         BenchmarkReport: Instance with values from string.
     """
     return BenchmarkReport(**yaml.safe_load(yaml_str))
+
 
 # If this is executed directly, print JSON schema.
 if __name__ == "__main__":

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 import os
-import sys
 import subprocess
+import sys
 from pathlib import Path
+
 
 # Add project root to Python path
 current_file = Path(__file__).resolve()
@@ -11,9 +12,10 @@ project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
 # Import from functions.py
-from functions import environment_variable_to_dict, announce, llmdbench_execute_cmd, model_attribute
+from functions import announce, environment_variable_to_dict, llmdbench_execute_cmd, model_attribute
 
-def gateway_values(provider : str, host: str) -> str:
+
+def gateway_values(provider: str, host: str) -> str:
     if provider == "istio":
         return f"""gateway:
   gatewayClassName: istio
@@ -44,24 +46,20 @@ provider:
     else:
         return ""
 
+
 def auto_detect_version(ev, chart, version_key, repo_key) -> int:
     if ev.get(version_key) == "auto":
         announce(f"🔍 Auto-detecting {chart} chart version...")
 
         try:
-            #FIXME (USE llmdbench_execute_cmd)
+            # FIXME (USE llmdbench_execute_cmd)
             helm_search_cmd = f"{ev['control_hcmd']} search repo {ev[repo_key]}"
             result = subprocess.run(
-                helm_search_cmd,
-                capture_output=True,
-                text=True,
-                shell=True,
-                executable="/bin/bash",
-                check=False
+                helm_search_cmd, capture_output=True, text=True, shell=True, executable="/bin/bash", check=False
             )
 
             if result.returncode == 0 and result.stdout.strip():
-                lines = result.stdout.strip().split('\n')
+                lines = result.stdout.strip().split("\n")
                 if len(lines) > 1:  # Skip header line
                     last_line = lines[-1]
                     version = last_line.split()[1] if len(last_line.split()) > 1 else ""
@@ -85,6 +83,7 @@ def auto_detect_version(ev, chart, version_key, repo_key) -> int:
             return 1
     return 0
 
+
 def main():
     """Set up helm repositories and create helmfile configurations for model deployments."""
     os.environ["CURRENT_STEP_NAME"] = os.path.splitext(os.path.basename(__file__))[0]
@@ -95,7 +94,6 @@ def main():
 
     # Check if modelservice environment is active
     if ev["control_environment_type_modelservice_active"]:
-
         # Add and update llm-d-modelservic helm repository
         announce("🔧 Setting up helm repositories ...")
 
@@ -108,10 +106,12 @@ def main():
         result = llmdbench_execute_cmd(
             actual_cmd=helm_repo_add_cmd,
             dry_run=int(ev.get("control_dry_run", 0)),
-            verbose=int(ev.get("control_verbose", 0))
+            verbose=int(ev.get("control_verbose", 0)),
         )
         if result != 0:
-            announce(f"❌ Failed setting up llm-d-modelservice helm repository with \"{helm_repo_add_cmd}\" (exit code: {result})")
+            announce(
+                f'❌ Failed setting up llm-d-modelservice helm repository with "{helm_repo_add_cmd}" (exit code: {result})'
+            )
             exit(result)
 
         # Add llm-d-infra helm repository
@@ -122,10 +122,12 @@ def main():
         result = llmdbench_execute_cmd(
             actual_cmd=helm_repo_add_cmd,
             dry_run=int(ev.get("control_dry_run", 0)),
-            verbose=int(ev.get("control_verbose", 0))
+            verbose=int(ev.get("control_verbose", 0)),
         )
         if result != 0:
-            announce(f"❌ Failed setting up llm-d-infra helm repository with \"{helm_repo_add_cmd}\" (exit code: {result})")
+            announce(
+                f'❌ Failed setting up llm-d-infra helm repository with "{helm_repo_add_cmd}" (exit code: {result})'
+            )
             exit(result)
 
         # Update helm repositories
@@ -133,17 +135,24 @@ def main():
         result = llmdbench_execute_cmd(
             actual_cmd=helm_repo_update_cmd,
             dry_run=int(ev.get("control_dry_run", 0)),
-            verbose=int(ev.get("control_verbose", 0))
+            verbose=int(ev.get("control_verbose", 0)),
         )
         if result != 0:
-            announce(f"❌ Failed setting up helm repositories with \"{helm_repo_update_cmd}\" (exit code: {result})")
+            announce(f'❌ Failed setting up helm repositories with "{helm_repo_update_cmd}" (exit code: {result})')
             exit(result)
 
         # Auto-detect chart version if needed
-        result = auto_detect_version(ev, ev['vllm_modelservice_chart_name'], "vllm_modelservice_chart_version", "vllm_modelservice_helm_repository")
+        result = auto_detect_version(
+            ev,
+            ev["vllm_modelservice_chart_name"],
+            "vllm_modelservice_chart_version",
+            "vllm_modelservice_helm_repository",
+        )
         if 0 != result:
             exit(result)
-        result = auto_detect_version(ev, ev['vllm_infra_chart_name'], "vllm_infra_chart_version", "vllm_infra_helm_repository")
+        result = auto_detect_version(
+            ev, ev["vllm_infra_chart_name"], "vllm_infra_chart_version", "vllm_infra_helm_repository"
+        )
         if 0 != result:
             exit(result)
 
@@ -152,9 +161,14 @@ def main():
         helm_base_dir.mkdir(parents=True, exist_ok=True)
 
         # Create infra values file
-        infra_value_file = Path(helm_base_dir / "infra.yaml" )
-        with open(infra_value_file, 'w') as f:
-            f.write(gateway_values(ev['vllm_modelservice_gateway_class_name'], f"gaie-inference-scheduling-epp.{ev['vllm_common_namespace']}.svc.cluster.local"))
+        infra_value_file = Path(helm_base_dir / "infra.yaml")
+        with open(infra_value_file, "w") as f:
+            f.write(
+                gateway_values(
+                    ev["vllm_modelservice_gateway_class_name"],
+                    f"gaie-inference-scheduling-epp.{ev['vllm_common_namespace']}.svc.cluster.local",
+                )
+            )
 
         # Process each model
         model_number = 0
@@ -174,16 +188,16 @@ def main():
 
             # Generate helmfile YAML content
             helmfile_content = f"""repositories:
-  - name: {ev['vllm_modelservice_helm_repository']}
-    url: {ev['vllm_modelservice_helm_repository_url']}
-  - name: {ev['vllm_infra_helm_repository']}
-    url: {ev['vllm_infra_helm_repository_url']}
+  - name: {ev["vllm_modelservice_helm_repository"]}
+    url: {ev["vllm_modelservice_helm_repository_url"]}
+  - name: {ev["vllm_infra_helm_repository"]}
+    url: {ev["vllm_infra_helm_repository_url"]}
 
 releases:
-  - name: infra-{ev['vllm_modelservice_release']}
-    namespace: {ev['vllm_common_namespace']}
-    chart: {ev['vllm_infra_helm_repository']}/{ev['vllm_infra_chart_name']}
-    version: {ev['vllm_infra_chart_version']}
+  - name: infra-{ev["vllm_modelservice_release"]}
+    namespace: {ev["vllm_common_namespace"]}
+    chart: {ev["vllm_infra_helm_repository"]}/{ev["vllm_infra_chart_name"]}
+    version: {ev["vllm_infra_chart_version"]}
     installed: true
     labels:
       type: infrastructure
@@ -192,25 +206,25 @@ releases:
       - infra.yaml
 
   - name: {model_id_label}-ms
-    namespace: {ev['vllm_common_namespace']}
-    chart: {ev['vllm_modelservice_helm_repository']}/{ev['vllm_modelservice_chart_name']}
-    version: {ev['vllm_modelservice_chart_version']}
+    namespace: {ev["vllm_common_namespace"]}
+    chart: {ev["vllm_modelservice_helm_repository"]}/{ev["vllm_modelservice_chart_name"]}
+    version: {ev["vllm_modelservice_chart_version"]}
     installed: true
     needs:
-      - {ev['vllm_common_namespace']}/infra-{ev['vllm_modelservice_release']}
-      - {ev['vllm_common_namespace']}/{model_id_label}-gaie
+      - {ev["vllm_common_namespace"]}/infra-{ev["vllm_modelservice_release"]}
+      - {ev["vllm_common_namespace"]}/{model_id_label}-gaie
     values:
       - {model_num}/ms-values.yaml
     labels:
       kind: inference-stack
 
   - name: {model_id_label}-gaie
-    namespace: {ev['vllm_common_namespace']}
-    chart: {ev['vllm_gaie_chart_name']}
-    version: {ev['vllm_gaie_chart_version']}
+    namespace: {ev["vllm_common_namespace"]}
+    chart: {ev["vllm_gaie_chart_name"]}
+    version: {ev["vllm_gaie_chart_version"]}
     installed: true
     needs:
-      -  {ev['vllm_common_namespace']}/infra-{ev['vllm_modelservice_release']}
+      -  {ev["vllm_common_namespace"]}/infra-{ev["vllm_modelservice_release"]}
     values:
       - {model_num}/gaie-values.yaml
     labels:
@@ -219,7 +233,7 @@ releases:
 
             # Write helmfile configuration
             helmfile_path = helm_base_dir / f"helmfile-{model_num}.yaml"
-            with open(helmfile_path, 'w') as f:
+            with open(helmfile_path, "w") as f:
                 f.write(helmfile_content)
 
             announce(f"📝 Created helmfile configuration for model {model} ({model_num})")
@@ -230,22 +244,24 @@ releases:
 
             model_number += 1
 
-        announce(f"🚀 Installing helm chart \"infra-{ev['vllm_modelservice_release']}\" via helmfile...")
-        install_cmd=f"helmfile --namespace {ev['vllm_common_namespace']} --kubeconfig {ev['control_work_dir']}/environment/context.ctx --selector name=infra-{ev['vllm_modelservice_release']} apply -f {ev['control_work_dir']}/setup/helm/{ev['vllm_modelservice_release']}/helmfile-00.yaml --skip-diff-on-install"
+        announce(f'🚀 Installing helm chart "infra-{ev["vllm_modelservice_release"]}" via helmfile...')
+        install_cmd = f"helmfile --namespace {ev['vllm_common_namespace']} --kubeconfig {ev['control_work_dir']}/environment/context.ctx --selector name=infra-{ev['vllm_modelservice_release']} apply -f {ev['control_work_dir']}/setup/helm/{ev['vllm_modelservice_release']}/helmfile-00.yaml --skip-diff-on-install"
         result = llmdbench_execute_cmd(
             actual_cmd=install_cmd,
             dry_run=int(ev.get("control_dry_run", 0)),
-            verbose=int(ev.get("control_verbose", 0))
+            verbose=int(ev.get("control_verbose", 0)),
         )
         if result != 0:
-            announce(f"❌ Failed Failed installing chart \"infra-{ev['vllm_modelservice_release']}\" (exit code: {result})")
+            announce(
+                f'❌ Failed Failed installing chart "infra-{ev["vllm_modelservice_release"]}" (exit code: {result})'
+            )
             exit(result)
-        announce(f"✅ chart \"infra-{ev['vllm_modelservice_release']}\" deployed successfully")
+        announce(f'✅ chart "infra-{ev["vllm_modelservice_release"]}" deployed successfully')
 
         announce("✅ Completed gaie deployment")
     else:
         deploy_methods = ev.get("deploy_methods", "")
-        announce(f"⏭️ Environment types are \"{deploy_methods}\". Skipping this step.")
+        announce(f'⏭️ Environment types are "{deploy_methods}". Skipping this step.')
 
     return 0
 

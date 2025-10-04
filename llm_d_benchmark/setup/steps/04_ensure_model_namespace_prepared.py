@@ -1,13 +1,12 @@
+import asyncio
+import base64
 import os
 import sys
 import time
-import base64
 from pathlib import Path
 
 import pykube
 from pykube.exceptions import PyKubeError
-
-import asyncio
 
 
 current_file = Path(__file__).resolve()
@@ -20,17 +19,17 @@ sys.path.insert(0, str(project_root))
 
 
 from functions import (
+    SecurityContextConstraints,
     announce,
-    wait_for_job,
-    validate_and_create_pvc,
-    launch_download_job,
-    model_attribute,
     create_namespace,
-    kube_connect,
-    llmdbench_execute_cmd,
     environment_variable_to_dict,
     is_openshift,
-    SecurityContextConstraints,
+    kube_connect,
+    launch_download_job,
+    llmdbench_execute_cmd,
+    model_attribute,
+    validate_and_create_pvc,
+    wait_for_job,
 )
 
 
@@ -66,9 +65,7 @@ def add_scc_to_service_account(
 
     # check if the service account is already in the list
     if sa_user_name in scc.obj["users"]:
-        announce(
-            f'Service Account "{sa_user_name}" already has SCC "{scc_name}". No changes needed'
-        )
+        announce(f'Service Account "{sa_user_name}" already has SCC "{scc_name}". No changes needed')
     else:
         if dry_run:
             announce(f'DRY RUN: Would add "{sa_user_name}" to SCC "{scc_name}"')
@@ -80,23 +77,18 @@ def add_scc_to_service_account(
 
 
 def main():
-
-    os.environ["LLMDBENCH_CURRENT_STEP"] = os.path.splitext(os.path.basename(__file__))[
-        0
-    ]
+    os.environ["LLMDBENCH_CURRENT_STEP"] = os.path.splitext(os.path.basename(__file__))[0]
 
     ev = {}
     environment_variable_to_dict(ev)
 
     env_cmd = f'source "{ev["control_dir"]}/env.sh"'
-    result = llmdbench_execute_cmd(
-        actual_cmd=env_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"]
-    )
+    result = llmdbench_execute_cmd(actual_cmd=env_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
     if result != 0:
         announce(f'❌ Failed while running "{env_cmd}" (exit code: {result})')
         exit(result)
 
-    api = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
+    api = kube_connect(f"{ev['control_work_dir']}/environment/context.ctx")
     if ev["control_dry_run"]:
         announce("DRY RUN enabled. No actual changes will be made.")
 
@@ -108,9 +100,7 @@ def main():
     )
 
     if ev["hf_token"]:
-        announce(
-            f'🔑 Creating or updating secret "{ev["vllm_common_hf_token_name"]}"...'
-        )
+        announce(f'🔑 Creating or updating secret "{ev["vllm_common_hf_token_name"]}"...')
         secret_obj = {
             "apiVersion": "v1",
             "kind": "Secret",
@@ -119,11 +109,7 @@ def main():
                 "namespace": ev["vllm_common_namespace"],
             },
             "type": "Opaque",
-            "data": {
-                ev["vllm_common_hf_token_key"]: base64.b64encode(
-                    ev["hf_token"].encode()
-                ).decode()
-            },
+            "data": {ev["vllm_common_hf_token_key"]: base64.b64encode(ev["hf_token"].encode()).decode()},
         }
         secret = pykube.Secret(api, secret_obj)
         if ev["control_dry_run"] != "1":
@@ -133,24 +119,15 @@ def main():
                 secret.create()
             announce("Secret created/updated.")
 
-    models = [
-        model.strip() for model in ev["deploy_model_list"].split(",") if model.strip()
-    ]
+    models = [model.strip() for model in ev["deploy_model_list"].split(",") if model.strip()]
     for model_name in models:
-        if (
-            ev["vllm_modelservice_uri_protocol"] == "pvc"
-            or ev["control_environment_type_standalone_active"]
-        ):
+        if ev["vllm_modelservice_uri_protocol"] == "pvc" or ev["control_environment_type_standalone_active"]:
             download_model = model_attribute(model=model_name, attribute="model")
-            model_artifact_uri = (
-                f'pvc://{ev["vllm_common_pvc_name"]}/models/{download_model}'
-            )
+            model_artifact_uri = f"pvc://{ev['vllm_common_pvc_name']}/models/{download_model}"
             protocol, pvc_and_model_path = model_artifact_uri.split(
                 "://"
             )  # protocol var unused but exists in prev script
-            pvc_name, model_path = pvc_and_model_path.split(
-                "/", 1
-            )  # split from first occurence
+            pvc_name, model_path = pvc_and_model_path.split("/", 1)  # split from first occurence
 
             validate_and_create_pvc(
                 api=api,
@@ -203,9 +180,7 @@ def main():
             ev["control_dry_run"],
         )
 
-    announce(
-        f"🚚 Creating configmap with contents of all files under workload/preprocesses..."
-    )
+    announce("🚚 Creating configmap with contents of all files under workload/preprocesses...")
     config_map_name = "llm-d-benchmark-preprocesses"
     config_map_data = {}
     preprocess_dir = Path(ev["main_dir"]) / "setup" / "preprocess"
@@ -216,9 +191,7 @@ def main():
         for path in file_paths:
             config_map_data[path.name] = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        announce(
-            f"Warning: Directory not found at {preprocess_dir}. Creating empty ConfigMap."
-        )
+        announce(f"Warning: Directory not found at {preprocess_dir}. Creating empty ConfigMap.")
 
     cm_obj = {
         "apiVersion": "v1",

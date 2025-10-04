@@ -13,10 +13,9 @@ import time
 
 import psutil
 
+
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -53,9 +52,7 @@ def vllm_health(
         elapsed = time.perf_counter() - start
         if elapsed > max_health_wait:
             # if vllm hasn't responded
-            logger.info(
-                "vLLM process is stuck for more than %.2f secs, aborting ...", elapsed
-            )
+            logger.info("vLLM process is stuck for more than %.2f secs, aborting ...", elapsed)
             kill_process(proc)
             return
 
@@ -183,9 +180,7 @@ def logging_config(path: str) -> None:
         if vllm_formatter is not None:
             format_str = vllm_formatter.get("format")
             if format_str is not None:
-                vllm_formatter["format"] = format_str.replace(
-                    "%(asctime)s", "%(asctime)s.%(msecs)03d"
-                )
+                vllm_formatter["format"] = format_str.replace("%(asctime)s", "%(asctime)s.%(msecs)03d")
 
     # change default config
     json_string = json.dumps(json_data, indent=4)
@@ -209,9 +204,7 @@ def create_logging_config(path: str):
     process.join()
 
     if process.exitcode is not None and process.exitcode != 0:
-        raise RuntimeError(
-            f"Custom logging config process exited with code '{process.exitcode}'"
-        )
+        raise RuntimeError(f"Custom logging config process exited with code '{process.exitcode}'")
 
 
 def preprocess_run() -> str:

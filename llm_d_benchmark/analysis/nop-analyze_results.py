@@ -4,15 +4,16 @@
 Benchmark 'nop' analysis
 """
 
-from datetime import datetime
 import io
-import os
 import logging
+import os
+from datetime import datetime
 from typing import Any
+
 import pandas as pd
 import yaml
-
 from schema import BenchmarkReport
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -122,11 +123,7 @@ def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkR
     write_benchmark_scenario(file, benchmark_report)
     file.write("\n")
 
-    time_iso = (
-        datetime.fromtimestamp(benchmark_report.metrics.time.start)
-        .astimezone()
-        .isoformat()
-    )
+    time_iso = datetime.fromtimestamp(benchmark_report.metrics.time.start).astimezone().isoformat()
     duration = benchmark_report.metrics.time.duration
 
     metrics_metadata = benchmark_report.metrics.metadata
@@ -148,9 +145,7 @@ def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkR
     if load_cached_compiled_graph is not None or compile_graph is not None:
         file.write("   Compiled Graph\n")
         if load_cached_compiled_graph is not None:
-            file.write(
-                f"     Load from Cache(secs) : {load_cached_compiled_graph['value']:7.3f}\n"
-            )
+            file.write(f"     Load from Cache(secs) : {load_cached_compiled_graph['value']:7.3f}\n")
         if compile_graph is not None:
             file.write(f"     Compile(secs)         : {compile_graph['value']:7.3f}\n")
     file.write("   Sleep\n")
@@ -197,13 +192,9 @@ def main():
     logger.addHandler(console_handler)
 
     # read possible existent universal yaml file
-    benchmark_report_filepath = os.path.join(
-        requests_dir, "benchmark_report", "result.yaml"
-    )
+    benchmark_report_filepath = os.path.join(requests_dir, "benchmark_report", "result.yaml")
     if not os.path.isfile(benchmark_report_filepath):
-        logger.info(
-            "no benchmark reports file found on path: %s", benchmark_report_filepath
-        )
+        logger.info("no benchmark reports file found on path: %s", benchmark_report_filepath)
         return
 
     benchmark_report = None

@@ -1,10 +1,11 @@
-import os
-import sys
-import platform
-import subprocess
 import json
+import os
+import platform
 import shutil
+import subprocess
+import sys
 from pathlib import Path
+
 
 # Add project root to path for imports
 current_file = Path(__file__).resolve()
@@ -12,8 +13,8 @@ project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
 try:
-    from functions import announce, environment_variable_to_dict
     import requests
+    from functions import announce, environment_variable_to_dict
 except ImportError as e:
     # Fallback for when dependencies are not available
     print(f"Warning: Could not import required modules: {e}")
@@ -27,24 +28,23 @@ def get_platform_info():
     """Get platform information using native Python instead of shell commands"""
     system = platform.system().lower()
     return {
-        'system': system,
-        'machine': platform.machine(),
-        'is_mac': system == 'darwin',
-        'is_linux': system == 'linux'
+        "system": system,
+        "machine": platform.machine(),
+        "is_mac": system == "darwin",
+        "is_linux": system == "linux",
     }
 
 
 def is_conda_available():
     """Check if conda is available using native Python instead of shell command"""
-    return shutil.which('conda') is not None
+    return shutil.which("conda") is not None
 
 
 def get_conda_info():
     """Get conda information using JSON output instead of shell parsing"""
     try:
-        #FIXME (USE llmdbench_execute_cmd)
-        result = subprocess.run(['conda', 'info', '--json'],
-                              capture_output=True, text=True, check=True)
+        # FIXME (USE llmdbench_execute_cmd)
+        result = subprocess.run(["conda", "info", "--json"], capture_output=True, text=True, check=True)
         return json.loads(result.stdout)
     except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError):
         return None
@@ -53,9 +53,8 @@ def get_conda_info():
 def check_conda_environment(env_name: str):
     """Check if conda environment exists using conda env list"""
     try:
-        #FIXME (USE llmdbench_execute_cmd)
-        result = subprocess.run(['conda', 'env', 'list'],
-                              capture_output=True, text=True, check=True)
+        # FIXME (USE llmdbench_execute_cmd)
+        result = subprocess.run(["conda", "env", "list"], capture_output=True, text=True, check=True)
         return env_name in result.stdout
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
@@ -72,15 +71,15 @@ def install_miniforge_macos(dry_run: bool, verbose: bool):
         return 0, anaconda_path, conda_sh
 
     # Check if brew is available
-    if not shutil.which('brew'):
+    if not shutil.which("brew"):
         raise EnvironmentError("Homebrew not found. Please install Homebrew first.")
 
     # Install miniforge using brew
-    cmd = ['brew', 'install', '--cask', 'miniforge']
+    cmd = ["brew", "install", "--cask", "miniforge"]
     if verbose:
         announce(f"---> executing: {' '.join(cmd)}")
 
-    #FIXME (USE llmdbench_execute_cmd)
+    # FIXME (USE llmdbench_execute_cmd)
     result = subprocess.run(cmd, capture_output=not verbose, text=True)
 
     if result.returncode != 0:
@@ -119,12 +118,12 @@ def install_miniforge_linux(dry_run: bool, verbose: bool):
             announce("---> running miniforge installer")
 
         # Run installer
-        #FIXME (USE llmdbench_execute_cmd)
+        # FIXME (USE llmdbench_execute_cmd)
         process = subprocess.Popen(
-            ['bash', '-s', '--', '-b', '-p', '/opt/miniconda'],
+            ["bash", "-s", "--", "-b", "-p", "/opt/miniconda"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE if not verbose else None,
-            stderr=subprocess.PIPE if not verbose else None
+            stderr=subprocess.PIPE if not verbose else None,
         )
 
         stdout, stderr = process.communicate(input=response.content)
@@ -159,7 +158,7 @@ def update_shell_rc_file(anaconda_path: str, shell_name: str, dry_run: bool):
                 return True
 
         # Add anaconda path to RC file
-        with open(rc_file, 'a') as f:
+        with open(rc_file, "a") as f:
             f.write(f"\n{anaconda_path}\n")
 
         announce(f"✅ Anaconda path added to {rc_file}")
@@ -179,7 +178,6 @@ def source_conda_script(conda_sh: Path, dry_run: bool, verbose: bool):
     if not conda_sh.exists():
         raise FileNotFoundError(f"Could not find conda.sh at {conda_sh}")
 
-
     announce(f"⏭️ running {conda_sh}")
 
     # Note: sourcing in subprocess doesn't affect parent shell
@@ -188,9 +186,8 @@ def source_conda_script(conda_sh: Path, dry_run: bool, verbose: bool):
     if verbose:
         announce(f"---> executing: {cmd}")
 
-    #FIXME (USE llmdbench_execute_cmd)
-    result = subprocess.run(['bash', '-c', cmd],
-                          capture_output=not verbose, text=True)
+    # FIXME (USE llmdbench_execute_cmd)
+    result = subprocess.run(["bash", "-c", cmd], capture_output=not verbose, text=True)
 
     if result.returncode != 0:
         raise RuntimeError(f"Failed to source conda.sh: {result.stderr if not verbose else ''}")
@@ -201,52 +198,52 @@ def source_conda_script(conda_sh: Path, dry_run: bool, verbose: bool):
 def create_conda_environment(env_name: str, dry_run: bool, verbose: bool):
     """Create and configure conda environment"""
     if check_conda_environment(env_name):
-        announce(f"⏭️  Conda environment \"{env_name}\" already created, skipping installation")
+        announce(f'⏭️  Conda environment "{env_name}" already created, skipping installation')
         return 0
 
-    announce(f"📜 Configuring conda environment \"{env_name}\"...")
+    announce(f'📜 Configuring conda environment "{env_name}"...')
 
     if dry_run:
         announce(f"---> would create conda environment: {env_name}")
         announce(f"---> would activate conda environment: {env_name}")
-        announce(f"---> would install requirements")
+        announce("---> would install requirements")
         return 0
 
     try:
         # Create environment
-        cmd = ['conda', 'create', '--name', env_name, '-y']
+        cmd = ["conda", "create", "--name", env_name, "-y"]
         if verbose:
             announce(f"---> executing: {' '.join(cmd)}")
 
-        #FIXME (USE llmdbench_execute_cmd)
+        # FIXME (USE llmdbench_execute_cmd)
         result = subprocess.run(cmd, capture_output=not verbose, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to create conda environment: {result.stderr if not verbose else ''}")
 
         # Activate environment
-        cmd = ['conda', 'activate', env_name]
+        cmd = ["conda", "activate", env_name]
         if verbose:
             announce(f"---> executing: {' '.join(cmd)}")
 
-        #FIXME (USE llmdbench_execute_cmd)
+        # FIXME (USE llmdbench_execute_cmd)
         result = subprocess.run(cmd, capture_output=not verbose, text=True)
         if result.returncode != 0:
             announce(f"Warning: conda activate returned {result.returncode} (this is often normal)")
 
         # Install requirements if available
-        requirements_file = Path(os.getenv('LLMDBENCH_MAIN_DIR', '.')) / 'build' / 'requirements.txt'
+        requirements_file = Path(os.getenv("LLMDBENCH_MAIN_DIR", ".")) / "build" / "requirements.txt"
         if requirements_file.exists():
-            python_cmd = os.getenv('LLMDBENCH_CONTROL_PCMD', 'python')
+            python_cmd = os.getenv("LLMDBENCH_CONTROL_PCMD", "python")
 
             # Show environment info
             announce(f"ℹ️  Python: {shutil.which(python_cmd) or 'not found'}")
 
             # Install requirements
-            cmd = [python_cmd, '-m', 'pip', 'install', '-r', str(requirements_file)]
+            cmd = [python_cmd, "-m", "pip", "install", "-r", str(requirements_file)]
             if verbose:
                 announce(f"---> executing: {' '.join(cmd)}")
 
-            #FIXME (USE llmdbench_execute_cmd)
+            # FIXME (USE llmdbench_execute_cmd)
             result = subprocess.run(cmd, capture_output=not verbose, text=True)
             if result.returncode != 0:
                 announce(f"Warning: pip install returned {result.returncode}")
@@ -258,12 +255,7 @@ def create_conda_environment(env_name: str, dry_run: bool, verbose: bool):
 
 
 def ensure_local_conda(
-    run_locally: bool,
-    host_os: str,
-    host_shell: str,
-    env_name: str,
-    dry_run: bool,
-    verbose: bool
+    run_locally: bool, host_os: str, host_shell: str, env_name: str, dry_run: bool, verbose: bool
 ) -> int:
     """
     Ensure local conda environment is set up using native Python libraries where possible.
@@ -282,7 +274,9 @@ def ensure_local_conda(
 
     # Early exit check
     if not run_locally:
-        announce("⏭️  Environment variable \"LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY\" is set to 0, skipping local setup of conda environment")
+        announce(
+            '⏭️  Environment variable "LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY" is set to 0, skipping local setup of conda environment'
+        )
         return 0
 
     try:
@@ -291,9 +285,9 @@ def ensure_local_conda(
         # Check if conda is already available
         if not is_conda_available():
             # Install conda based on platform
-            if platform_info['is_mac']:
+            if platform_info["is_mac"]:
                 exit_code, anaconda_path, conda_sh = install_miniforge_macos(dry_run, verbose)
-            elif platform_info['is_linux']:
+            elif platform_info["is_linux"]:
                 exit_code, anaconda_path, conda_sh = install_miniforge_linux(dry_run, verbose)
             else:
                 raise RuntimeError(f"Unsupported platform: {platform_info['system']}")
@@ -310,11 +304,11 @@ def ensure_local_conda(
             if not conda_info:
                 raise RuntimeError("Could not get conda information")
 
-            root_prefix = Path(conda_info.get('root_prefix', ''))
-            if platform_info['is_mac']:
-                conda_sh = root_prefix / 'base' / 'etc' / 'profile.d' / 'conda.sh'
+            root_prefix = Path(conda_info.get("root_prefix", ""))
+            if platform_info["is_mac"]:
+                conda_sh = root_prefix / "base" / "etc" / "profile.d" / "conda.sh"
             else:
-                conda_sh = root_prefix / 'etc' / 'profile.d' / 'conda.sh'
+                conda_sh = root_prefix / "etc" / "profile.d" / "conda.sh"
 
         # Source conda.sh
         source_conda_script(conda_sh, dry_run, verbose)
@@ -322,7 +316,7 @@ def ensure_local_conda(
         # Create and configure conda environment
         create_conda_environment(env_name, dry_run, verbose)
 
-        announce(f"✅ Conda environment \"{env_name}\" configured")
+        announce(f'✅ Conda environment "{env_name}" configured')
         return 0
 
     except Exception as e:
@@ -339,18 +333,17 @@ def main():
     ev = {}
     environment_variable_to_dict(ev)
 
-    if ev["control_dry_run"]:
+    if ev.get("control_dry_run", False):
         announce("DRY RUN enabled. No actual changes will be made.")
-
 
     # Execute the main logic
     return ensure_local_conda(
-        run_locally=ev["run_experiment_analyze_locally"],
-        host_os=ev["control_deploy_host_os"],
-        host_shell=ev["control_deploy_host_shell"] ,
-        env_name=ev["harness_conda_env_name"],
-        dry_run=ev["control_dry_run"],
-        verbose=ev["control_verbose"]
+        run_locally=ev.get("run_experiment_analyze_locally", False),
+        host_os=ev.get("control_deploy_host_os", ""),
+        host_shell=ev.get("control_deploy_host_shell", ""),
+        env_name=ev.get("harness_conda_env_name", ""),
+        dry_run=ev.get("control_dry_run", False),
+        verbose=ev.get("control_verbose", False),
     )
 
 

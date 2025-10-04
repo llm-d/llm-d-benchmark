@@ -43,6 +43,17 @@ data/**/logs/
 
 # Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# PDM
+pdm.lock
+__pypackages__/
+.pdm-python
+.pdm.toml
 
 # Jupyter Notebook
 .ipynb_checkpoints

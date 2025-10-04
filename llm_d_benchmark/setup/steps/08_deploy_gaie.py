@@ -4,6 +4,7 @@ import os
 import sys
 from pathlib import Path
 
+
 # Add project root to Python path
 current_file = Path(__file__).resolve()
 project_root = current_file.parents[1]
@@ -11,13 +12,13 @@ sys.path.insert(0, str(project_root))
 
 # Import from functions.py
 from functions import (
-    environment_variable_to_dict,
+    add_config,
     announce,
-    llmdbench_execute_cmd,
-    model_attribute,
+    environment_variable_to_dict,
     extract_environment,
     get_image,
-    add_config,
+    llmdbench_execute_cmd,
+    model_attribute,
 )
 
 
@@ -43,9 +44,7 @@ def main():
         model_list = ev.get("deploy_model_list", "").replace(",", " ").split()
 
         for model in model_list:
-            announce(
-                f"🔄 Processing model {model_number + 1}/{len(model_list)}: {model}"
-            )
+            announce(f"🔄 Processing model {model_number + 1}/{len(model_list)}: {model}")
 
             # Get model attribute
             model_id_label = model_attribute(model, "modelid_label")
@@ -55,13 +54,7 @@ def main():
             model_num = f"{model_number:02d}"
 
             # Create directory structure
-            helm_dir = (
-                Path(ev["control_work_dir"])
-                / "setup"
-                / "helm"
-                / ev["vllm_modelservice_release"]
-                / model_num
-            )
+            helm_dir = Path(ev["control_work_dir"]) / "setup" / "helm" / ev["vllm_modelservice_release"] / model_num
             helm_dir.mkdir(parents=True, exist_ok=True)
 
             # A plugin config file is identified by ev["vllm_modelservice_gaie_plugins_configfile"]
@@ -75,9 +68,7 @@ def main():
             # look for benchmark provided ev["vllm_modelservice_gaie_plugins_configfile"]
             # expose it as ev["vllm_modelservice_gaie_presets_full_path"]
             if ev["vllm_modelservice_gaie_plugins_configfile"].startswith("/"):
-                ev["vllm_modelservice_gaie_presets_full_path"] = ev[
-                    "vllm_modelservice_gaie_plugins_configfile"
-                ]
+                ev["vllm_modelservice_gaie_presets_full_path"] = ev["vllm_modelservice_gaie_plugins_configfile"]
             else:
                 configfile = ev["vllm_modelservice_gaie_plugins_configfile"]
                 if not configfile.endswith(".yaml"):
@@ -93,21 +84,15 @@ def main():
                 with open(ev["vllm_modelservice_gaie_presets_full_path"], "r") as f:
                     presets_content = f.read()
                 if "vllm_modelservice_gaie_custom_plugins" not in ev:
-                    plugin_config = (
-                        f'{ev["vllm_modelservice_gaie_plugins_configfile"]}: |\n'
-                        + "\n".join(
-                            f"  {line}" for line in presets_content.splitlines()
-                        )
+                    plugin_config = f"{ev['vllm_modelservice_gaie_plugins_configfile']}: |\n" + "\n".join(
+                        f"  {line}" for line in presets_content.splitlines()
                     )
             except FileNotFoundError:
                 # The (benchmark) plugin config file does not exist
                 # - use ev["vllm_modelservice_gaie_custom_plugins"] if it is defined
                 if "vllm_modelservice_gaie_custom_plugins" in ev:
                     plugin_config = "\n".join(
-                        f"{line}"
-                        for line in ev[
-                            "vllm_modelservice_gaie_custom_plugins"
-                        ].splitlines()
+                        f"{line}" for line in ev["vllm_modelservice_gaie_custom_plugins"].splitlines()
                     )
 
             # Get image tag
@@ -132,8 +117,8 @@ def main():
             gaie_values_content = f"""inferenceExtension:
   replicas: 1
   image:
-    name: {ev['llmd_inferencescheduler_image_name']}
-    hub: {ev['llmd_inferencescheduler_image_registry']}/{ev['llmd_inferencescheduler_image_repo']}
+    name: {ev["llmd_inferencescheduler_image_name"]}
+    hub: {ev["llmd_inferencescheduler_image_registry"]}/{ev["llmd_inferencescheduler_image_repo"]}
     tag: {image_tag}
     pullPolicy: Always
   extProcPort: 9002
@@ -147,10 +132,10 @@ def main():
       targetPort: 5557
       protocol: TCP
   {hf_token_env}
-  pluginsConfigFile: "{ev['vllm_modelservice_gaie_plugins_configfile']}"
+  pluginsConfigFile: "{ev["vllm_modelservice_gaie_plugins_configfile"]}"
 {add_config(plugin_config, 4, "pluginsCustomConfig:")}
 inferencePool:
-  targetPortNumber: {ev['vllm_common_inference_port']}
+  targetPortNumber: {ev["vllm_common_inference_port"]}
   modelServerType: vllm
   apiVersion: "inference.networking.x-k8s.io/v1alpha2"
   modelServers:
@@ -158,7 +143,7 @@ inferencePool:
       llm-d.ai/inferenceServing: "true"
       llm-d.ai/model: {model_id_label}
 provider:
-  name: {provider(ev['vllm_modelservice_gateway_class_name'])}
+  name: {provider(ev["vllm_modelservice_gateway_class_name"])}
 """
             # Write GAIE values file
             gaie_values_file = helm_dir / "gaie-values.yaml"
@@ -166,9 +151,7 @@ provider:
                 f.write(gaie_values_content)
 
             # Deploy helm chart via helmfile
-            announce(
-                f"🚀 Installing helm chart \"gaie-{ev['vllm_modelservice_release']}\" via helmfile..."
-            )
+            announce(f'🚀 Installing helm chart "gaie-{ev["vllm_modelservice_release"]}" via helmfile...')
             helmfile_cmd = (
                 f"helmfile --namespace {ev['vllm_common_namespace']} "
                 f"--kubeconfig {ev['control_work_dir']}/environment/context.ctx "
@@ -184,13 +167,11 @@ provider:
             )
             if result != 0:
                 announce(
-                    f"❌ Failed installing helm chart \"gaie-{ev['vllm_modelservice_release']}\" via helmfile with \"{helmfile_cmd}\" (exit code: {result})"
+                    f'❌ Failed installing helm chart "gaie-{ev["vllm_modelservice_release"]}" via helmfile with "{helmfile_cmd}" (exit code: {result})'
                 )
                 exit(result)
 
-            announce(
-                f"✅ {ev['vllm_common_namespace']}-{model_id_label}-gaie helm chart deployed successfully"
-            )
+            announce(f"✅ {ev['vllm_common_namespace']}-{model_id_label}-gaie helm chart deployed successfully")
 
             # List relevant resources
             resource_list = "deployment,service,pods,secrets,inferencepools"
@@ -198,7 +179,7 @@ provider:
                 resource_list += ",route"
 
             announce(
-                f"ℹ️ A snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\":"
+                f'ℹ️ A snapshot of the relevant (model-specific) resources on namespace "{ev["vllm_common_namespace"]}":'
             )
 
             if int(ev.get("control_dry_run", 0)) == 0:
@@ -211,7 +192,7 @@ provider:
                 )
                 if result != 0:
                     announce(
-                        f"❌ Failed to get a snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\" with \"{kubectl_cmd}\" (exit code: {result})"
+                        f'❌ Failed to get a snapshot of the relevant (model-specific) resources on namespace "{ev["vllm_common_namespace"]}" with "{kubectl_cmd}" (exit code: {result})'
                     )
                     exit(result)
 
