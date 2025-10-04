@@ -50,7 +50,6 @@ dist/
 build/
 
 # PDM
-pdm.lock
 __pypackages__/
 .pdm-python
 .pdm.toml

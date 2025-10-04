@@ -185,9 +185,6 @@ def main():
     config_map_data = {}
     preprocess_dir = Path(ev["main_dir"]) / "setup" / "preprocess"
 
-    print(f">>>>>>>>>>>>>{ev["control_dry_run"]}")
-    exit(0)
-
     try:
         file_paths = sorted([p for p in preprocess_dir.rglob("*") if p.is_file()])
         # this loop reads every file and adds its content to the dictionary
@@ -204,7 +201,7 @@ def main():
     }
 
     cm = pykube.ConfigMap(api, cm_obj)
-    if ev["control_dry_run"] != "1":
+    if not ev["control_dry_run"]:
         if cm.exists():
             cm.update()
         else:

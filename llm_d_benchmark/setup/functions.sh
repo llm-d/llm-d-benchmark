@@ -468,6 +468,11 @@ function check_storage_class {
     fi
   fi
 
+  if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
+    announce "ℹ️ Dry-run mode enabled. Skipping storage class validation for \"$LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS\"."
+    return 0
+  fi
+  
   local has_sc=$($LLMDBENCH_CONTROL_KCMD get storageclasses | grep $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS || true)
   if [[ -z $has_sc ]]; then
     announce "❌ ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=$LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS but could not find such storage class"

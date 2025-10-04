@@ -12,12 +12,6 @@ config_explorer_src = workspace_root / "config_explorer" / "src"
 sys.path.insert(0, str(config_explorer_src))
 sys.path.insert(1, str(setup_dir))
 sys.path.insert(2, str(workspace_root))
-if "PYTHONPATH" in os.environ:
-    os.environ["PYTHONPATH"] = f"{config_explorer_src}:{setup_dir}:{workspace_root}:{os.environ['PYTHONPATH']}"
-else:
-    os.environ["PYTHONPATH"] = f"{config_explorer_src}:{setup_dir}:{workspace_root}"
-
-print(f"Workspace root directory added to PYTHONPATH: {os.environ['PYTHONPATH']}")
 
 try:
     from huggingface_hub import ModelInfo

@@ -47,7 +47,10 @@ provider:
         return ""
 
 
-def auto_detect_version(ev, chart, version_key, repo_key) -> int:
+def auto_detect_version(ev, chart, version_key, repo_key, dry_run=False) -> int:
+    if dry_run:
+        announce(f"ℹ️ Dry-run mode enabled. Skipping auto-detection of chart: {chart}, version key: {version_key}, repo key: {repo_key}.")
+        return 0
     if ev.get(version_key) == "auto":
         announce(f"🔍 Auto-detecting {chart} chart version...")
 
@@ -147,11 +150,13 @@ def main():
             ev["vllm_modelservice_chart_name"],
             "vllm_modelservice_chart_version",
             "vllm_modelservice_helm_repository",
+            dry_run=ev["control_dry_run"],
         )
         if 0 != result:
             exit(result)
         result = auto_detect_version(
-            ev, ev["vllm_infra_chart_name"], "vllm_infra_chart_version", "vllm_infra_helm_repository"
+            ev, ev["vllm_infra_chart_name"], "vllm_infra_chart_version", "vllm_infra_helm_repository",
+            dry_run=ev["control_dry_run"],
         )
         if 0 != result:
             exit(result)

@@ -12,7 +12,7 @@ Install pdm following the official instructions: https://pdm-project.org/en/late
 Then, clone this repository and install the dependencies:
 ```
 git clone https://github.com/llm-d/llm-d-benchmark.git && cd llm-d-benchmark/
-pdm install
+pdm install && pdm run $SHELL
 cd llm_d_benchmark/ && ./setup/install_deps.sh
 ```
 
