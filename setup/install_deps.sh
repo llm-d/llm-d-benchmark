@@ -119,9 +119,11 @@ done
 # Check minimum Python version (3.11+) based on new requirements
 # 
 python_present=""
+verlist=""
 for pybin in python3 python3.{13..11}; do
     if command -v ${pybin} &>/dev/null; then
         ver=$(${pybin} -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+	verlist=$ver,$verlist
         major=$(echo ${ver} | cut -d. -f1)
         minor=$(echo ${ver} | cut -d. -f2)
         if (( major > 3 || (major == 3 && minor >= 11) )); then
@@ -132,7 +134,7 @@ for pybin in python3 python3.{13..11}; do
 done
 
 if [[ -z "${python_present}" ]]; then
-    echo "ERROR: Python 3.11 and up is required but not found."
+    echo "ERROR: Python 3.11 and up is required, but only versions \"$(echo ${verlist} | sed 's^,$^^g')\" but found."
     exit 1
 else
     echo "${python_present} is available on system." >> ~/.llmdbench_dependencies_checked
