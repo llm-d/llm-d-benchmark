@@ -75,13 +75,13 @@ RUN echo "fmperf: ${FM_PERF_REPO} ${FM_PERF_BRANCH}" > /workspace/repos.txt; \
 
 RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
 
-ADD workload/harnesses/ /usr/local/bin/
-COPY workload/report/*.py /usr/local/bin/
-COPY analysis/fmperf-analyze_results.py /usr/local/bin/fmperf-analyze_results.py
-COPY analysis/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
-COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
-COPY analysis/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
-COPY analysis/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
+ADD llm_d_benchmark/workload/harnesses/ /usr/local/bin/
+COPY llm_d_benchmark/workload/report/*.py /usr/local/bin/
+COPY llm_d_benchmark/analysis/fmperf-analyze_results.py /usr/local/bin/fmperf-analyze_results.py
+COPY llm_d_benchmark/analysis/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
+COPY llm_d_benchmark/analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
+COPY llm_d_benchmark/analysis/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
+COPY llm_d_benchmark/analysis/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
 
 # Install requirements for analysis scripts
 COPY build/requirements-analysis.txt .

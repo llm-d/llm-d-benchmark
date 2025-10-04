@@ -1,4 +1,4 @@
-name: Config Explorer Test
+name: Python Test
 
 on: [push, pull_request]
 

@@ -37,23 +37,28 @@ jobs:
       - name: Run install_deps
         run: |
           sudo apt-get update
-          ./setup/install_deps.sh
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          cd llm_d_benchmark && ./setup/install_deps.sh
         shell: bash
 
-      - name: Install config explorer dependencies
-        run: pip install -r config_explorer/requirements.txt
+      - name: Install python dependencies
+        run: |
+          pdm install
         shell: bash
 
       - name: Standup a modelservice using llm-d-inference-sim
         run: |
-          ./setup/standup.sh -c kind_sim_fb -t modelservice -s 0,1,2,4,7,8,9
+          cd llm_d_benchmark
+          pdm run bash -x ./setup/standup.sh -c kind_sim_fb -t modelservice -s 0,1,2,4,7,8,9
 
       - name: Run harness (mock)
         env:
           LLMD_CONTROL_DRY_RUN: 1 # TODO: harness doesn't work now for kind bc no harness endpoint
         run: |
-          ./setup/run.sh -c kind_sim_fb --dry-run
+          cd llm_d_benchmark
+          pdm run bash -x ./setup/run.sh -c kind_sim_fb --dry-run
 
       - name: Teardown
         run: |
-          ./setup/teardown.sh -c kind_sim_fb
+          cd llm_d_benchmark
+          pdm run bash -x ./setup/teardown.sh -c kind_sim_fb

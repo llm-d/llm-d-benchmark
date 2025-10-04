@@ -62,73 +62,75 @@ jobs:
       - name: Run install_deps.sh
         run: |
           sudo apt-get update
-          ./setup/install_deps.sh
+          curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+          cd llm_d_benchmark && ./setup/install_deps.sh
         shell: bash
 
-      - name: Install config explorer dependencies
-        run: pip install -r config_explorer/requirements.txt
+      - name: Install python dependencies
+        run: |
+          pdm install
         shell: bash
 
       - name: Cleanup target cloud (modelservice)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c ocp_L40_fb -t modelservice -d
+        run: cd llm_d_benchmark && ./setup/teardown.sh -c ocp_L40_fb -t modelservice -d
 
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c ocp_L40_fb -t standalone -d
+        run: cd llm_d_benchmark && ./setup/teardown.sh -c ocp_L40_fb -t standalone -d
 
       - name: Standup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/standup.sh -c ocp_L40_fb -t standalone
+        run: cd llm_d_benchmark && ./setup/standup.sh -c ocp_L40_fb -t standalone
 
       - name: Run benchmark (standalone, inference-perf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c ocp_L40_fb -t standalone
+        run: cd llm_d_benchmark && ./setup/run.sh -c ocp_L40_fb -t standalone
 
       - name: Run benchmark (standalone, fmperf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c ocp_L40_fb -t standalone -l fmperf -w sanity_short-input
+        run: cd llm_d_benchmark && ./setup/run.sh -c ocp_L40_fb -t standalone -l fmperf -w sanity_short-input
 
       - name: Run benchmark (standalone, guidellm)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c ocp_L40_fb -t standalone -l guidellm -w sanity_concurrent
+        run: cd llm_d_benchmark && ./setup/run.sh -c ocp_L40_fb -t standalone -l guidellm -w sanity_concurrent
 
       - name: Run benchmark (standalone, vllm-benchmark)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c ocp_L40_fb -t standalone -l vllm-benchmark
+        run: cd llm_d_benchmark && ./setup/run.sh -c ocp_L40_fb -t standalone -l vllm-benchmark
 
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c ocp_L40_fb -t standalone -d
+        run: cd llm_d_benchmark && ./setup/teardown.sh -c ocp_L40_fb -t standalone -d
 
       - name: E2E target cloud (modelservice, inference-perf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep
+        run: cd llm_d_benchmark && ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep
 
       - name: E2E target cloud (modelservice, fmperf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l fmperf -w sanity_short-input.yaml
+        run: cd llm_d_benchmark && ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l fmperf -w sanity_short-input.yaml
 
       - name: E2E target cloud (modelservice, guidellm)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
+        run: cd llm_d_benchmark && ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
 
 
       - name: E2E target cloud (modelservice, vllm-benchmark)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l vllm-benchmark
+        run: cd llm_d_benchmark && ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l vllm-benchmark
 
 
       - name: Install AWS CLI
