@@ -57,7 +57,7 @@ env.bak/
 venv.bak/
 environment/
 
-scenarios/none.sh
+llm_d_benchmark/scenarios/none.sh
 
 # Python specifics
 **/*.egg-info
