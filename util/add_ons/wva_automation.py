@@ -327,8 +327,6 @@ def undeploy_wva(
         )
         return False
 
-    logger.info("Finished undeploying.")
-
     return True
 
 
@@ -486,17 +484,17 @@ def main() -> int:
         project_root = current_file.parents[1]
         sys.path.insert(0, str(project_root))
 
+        if not dependency_check(logger):
+            return 1
+
+        repo_dir = clone_or_update_repo(git_repo_ssh, git_branch, logger)
+        if repo_dir == "":
+            return 1
+
         if action == DEPLOY_STR:
 
             logger.info(f"Starting deployment for cluster type: {cluster_type}")
             logger.info(f"Monitoring namespace: {monitoring_namespace}")
-
-            if not dependency_check(logger):
-                return 1
-
-            repo_dir = clone_or_update_repo(git_repo_ssh, git_branch, logger)
-            if repo_dir == "":
-                return 1
 
             if not update_prometheus_config(
                 Path(f"{repo_dir}/config/manager/configmap.yaml"), cluster_type, logger
@@ -514,13 +512,6 @@ def main() -> int:
 
         elif action == UNDEPLOY_STR:
 
-            if not dependency_check(logger):
-                return 1
-
-            repo_dir = clone_or_update_repo(git_repo_ssh, git_branch, logger)
-            if repo_dir == "":
-                return 1
-
             if not undeploy_wva(
                 llmd_namespace,
                 wva_namespace,
@@ -530,6 +521,8 @@ def main() -> int:
                 logger,
             ):
                 return 1
+
+            logger.info("Finished undeploying WVA.")
 
         else:
             logger.error(f"Unsupported Action")
