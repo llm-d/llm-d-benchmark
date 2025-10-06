@@ -450,6 +450,12 @@ if [[ ! -z ${has_minikube} ]]; then
   export LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE=1
 fi
 
+export LLMDBENCH_CONTROL_DEPLOY_IS_KIND=${LLMDBENCH_CONTROL_DEPLOY_IS_KIND:-0}
+has_kind=$($LLMDBENCH_CONTROL_KCMD get pods -n kube-system 2>&1 | grep 'kind-cluster-control-plane' || true)
+if [[ ! -z ${has_kind} ]]; then
+  export LLMDBENCH_CONTROL_DEPLOY_IS_KIND=1
+fi
+
 for mt in standalone modelservice; do
   is_env=$(echo $LLMDBENCH_DEPLOY_METHODS | grep $mt || true)
   if [[ -z $is_env ]]; then

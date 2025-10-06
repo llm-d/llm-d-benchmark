@@ -1084,7 +1084,7 @@ def add_additional_env_to_yaml(env_vars_string: str) -> str:
             if env_value :
                 processed_value = render_string(env_value)
             else:
-                env_value = ""
+                processed_value = ""
 
             env_lines.append(f"{name_indent}- name: {clean_name}")
             env_lines.append(f"{value_indent}value: \"{processed_value}\"")
