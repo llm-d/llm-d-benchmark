@@ -41,7 +41,7 @@ jobs:
         shell: bash
 
       - name: Install config explorer dependencies
-        run: pip install -r config_explorer/requirements.txt
+        run: pip install ./config_explorer
         shell: bash
 
       - name: Standup a modelservice using llm-d-inference-sim
