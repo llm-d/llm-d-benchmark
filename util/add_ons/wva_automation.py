@@ -4,15 +4,20 @@ import os
 import sys
 import shutil
 import subprocess
-import yaml
 import logging
 import argparse
 import time
 import tempfile
-import pykube
 
 from pathlib import Path
-from pykube import Pod
+
+try:
+    import yaml
+    import pykube
+    from pykube import Pod
+except ModuleNotFoundError as e:
+    print("[Error]: Please install the following python requirements:")
+    print("         pyaml, pykube")
 
 
 def setup_logger() -> logging.Logger:
