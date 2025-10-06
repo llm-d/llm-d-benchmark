@@ -1,4 +1,4 @@
-name: CI - Config Explorer Usability Check
+name: CI - Config Explorer Test
 
 on:
   pull_request:
@@ -24,37 +24,34 @@ jobs:
       - name: Display Python version
         run: python -c "import sys; print(sys.version)"
 
-      - name: Independent of llm-d-benchmark check
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r config_explorer/requirements.txt
+          pip list
+
+      - name: Package functionality check
         shell: bash
         env:
           MODEL: "Qwen/Qwen3-0.6B"
         run: |
-
-          python -m venv .venv
-          source .venv/bin/activate
-          python -m pip install --upgrade pip
-          python -m pip install "config_explorer @ git+https://github.com/${{ github.repository }}.git@${{ github.head_ref }}/head/#subdirectory=config_explorer"
           cat <<EOF > test.py
           import os
           from config_explorer.capacity_planner import *
-
           model = os.environ.get("MODEL")
-          info = get_model_info_from_hf(model, token)
+          info = get_model_info_from_hf(model)
           print(info)
 
-          config = get_model_config_from_hf(model, token)
+          config = get_model_config_from_hf(model)
           print(config)
           EOF
           python test.py
-          rm -rf .venv
 
-      - name: Dependent on llm-d-benchmark check
+      - name: llm-d-benchmark Integration check
         shell: bash
         env:
           LLMDBENCH_DEPLOY_MODEL_LIST: "Qwen/Qwen3-0.6B"
           LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY: "80"
         run: |
-          python -m venv .venv
           ./setup/standup.sh -c inference-scheduling -s 0
-          rm -rf .venv2
 
