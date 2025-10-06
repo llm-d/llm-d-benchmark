@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r config_explorer/requirements.txt
+          pip install ./config_explorer
           pip list
 
       - name: Package functionality check
