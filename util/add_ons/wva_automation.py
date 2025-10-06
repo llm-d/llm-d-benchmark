@@ -8,6 +8,7 @@ import yaml
 import logging
 import argparse
 import time
+import tempfile
 import pykube
 
 from pathlib import Path
@@ -67,7 +68,7 @@ def dependency_check(logger: logging.Logger) -> bool:
 
 def clone_or_update_repo(
     repo_url: str, branch_name: str, logger: logging.Logger
-) -> bool:
+) -> Path:
     """
     Clone the repository if it doesn't exist, or pull the latest changes if it does.
 
@@ -77,13 +78,15 @@ def clone_or_update_repo(
         logger (logging.Logger): Logger for logging messages.
 
     Returns:
-        bool: True if successful, False otherwise.
+        str: repo path
     """
+
     try:
+        tmp_dir = tempfile.mkdtemp()
         repo_name = repo_url.split("/")[-1].replace(".git", "")
-        repo_dir = Path(f"{Path(__file__).resolve().parents[0]}/{repo_name}")
+        repo_dir = Path(tmp_dir) / repo_name
         if not repo_dir.exists():
-            logger.info(f"Cloning {repo_url} into {repo_dir}...")
+            logger.info(f"Cloning {repo_url} \n       WVA Directory: {repo_dir}")
             subprocess.run(
                 ["git", "clone", "-b", branch_name, repo_url, str(repo_dir)],
                 check=True,
@@ -111,10 +114,10 @@ def clone_or_update_repo(
                 stderr=subprocess.DEVNULL,
             )
             logger.info(f"Repository updated to the latest '{branch_name}' branch.")
-        return True
+        return Path(repo_dir)
     except (subprocess.CalledProcessError, OSError, PermissionError) as e:
         logger.error(f"Git operation failed: {e}")
-        return False
+        return ""
 
 
 def update_prometheus_config(
@@ -196,13 +199,19 @@ def deploy_wva(wva_dir: Path, deploy_image: str, logger: logging.Logger) -> bool
 
 
 def undeploy_wva(
-    namespace: str, api: Path, wva_dir: Path, logger: logging.Logger
+    llmd_namespace: str,
+    wva_namespace: str,
+    monitoring_namespace: str,
+    api: Path,
+    wva_dir: Path,
+    logger: logging.Logger,
 ) -> bool:
     """
     Undeploy the Workload Variant Autoscaler using the Makefile.
 
     Args:
-        namespace (str): Kubernetes namespace to check pods in.
+        wva_namespace (str): Kubernetes namespace to clean.
+        monitoring_namespace (str): Kubernetes namespace to clean.
         api (Path): Path to kubeconfig ctx.
         wva_dir (Path): WVA repository directory.
         logger (logging.Logger): Logger for logging messages.
@@ -238,16 +247,84 @@ def undeploy_wva(
             return False
 
         try:
-            pods = Pod.objects(api).filter(namespace=namespace)
+            pods = Pod.objects(api).filter(namespace=wva_namespace)
         except Exception as e:
-            logger.error(f"Failed to list pods in namespace '{namespace}': {e}")
+            logger.error(
+                f"Failed to list pods in namespace '{wva_namespace
+            }': {e}"
+            )
             return False
 
         if pods:
             logger.error(f"Undeployment failed: {e}")
             return False
-        logger.info(f"Nothing left to undeploy in {namespace} namespace.")
-        return True
+
+    class ServiceMonitor(pykube.objects.NamespacedAPIObject):
+        version = "monitoring.coreos.com/v1"
+        endpoint = "servicemonitors"
+        kind = "ServiceMonitor"
+
+    def delete_resource(resource_class, name, namespace):
+        try:
+            obj = (
+                resource_class.objects(api)
+                .filter(namespace=namespace, selector={"metadata.name": name})
+                .get()
+            )
+            obj.delete()
+            logger.info(
+                f"Deleted {resource_class.kind} '{name}' in namespace '{namespace}'"
+            )
+        except pykube.exceptions.ObjectDoesNotExist:
+            logger.info(
+                f"{resource_class.kind} '{name}' not found in namespace '{namespace}', skipping..."
+            )
+
+    def delete_servicemonitor(name, namespace):
+        try:
+            sm = ServiceMonitor.objects(api).filter(namespace=namespace).get(name=name)
+            sm.delete()
+            logger.info(f"Deleted ServiceMonitor '{name}' in namespace '{namespace}'")
+        except pykube.exceptions.ObjectDoesNotExist:
+            logger.info(
+                f"ServiceMonitor '{name}' not found in namespace '{namespace}', skipping..."
+            )
+
+    delete_resource(
+        pykube.HorizontalPodAutoscaler, "vllm-deployment-hpa", llmd_namespace
+    )
+    delete_resource(pykube.ConfigMap, "prometheus-ca", monitoring_namespace)
+    delete_servicemonitor(
+        "workload-variant-autoscaler-controller-manager-metrics-monitor",
+        monitoring_namespace,
+    )
+
+    result = subprocess.run(
+        [
+            "helm",
+            "uninstall",
+            "prometheus-adapter",
+            "-n",
+            "prometheus-adapter",
+            "--ignore-not-found",
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if result.returncode == 0:
+        logger.info(
+            f"Helm release 'prometheus-adapter' uninstalled successfully in namespace '{monitoring_namespace}'"
+        )
+    else:
+        logger.error(
+            f"Failed to uninstall Helm release 'prometheus-adapter' in namespace '{monitoring_namespace}'"
+        )
+        return False
+
+    logger.info("Finished undeploying.")
+
+    return True
 
 
 def check_pods_running(
@@ -371,12 +448,6 @@ def main() -> int:
             help="Specify the cluster type: 'kind' or 'openshift'.",
         )
         parser.add_argument(
-            "--llmd-namespace",
-            type=str,
-            required=True,
-            help="Namespace where wva is deployed.",
-        )
-        parser.add_argument(
             "--monitoring-namespace",
             type=str,
             default="openshift-user-workload-monitoring",
@@ -388,6 +459,12 @@ def main() -> int:
             default="workload-variant-autoscaler-system",
             help="Namespace where wva is deployed.",
         )
+        parser.add_argument(
+            "--llmd-namespace",
+            type=str,
+            required=True,
+            help="Namespace where llmd is deployed.",
+        )
         args = parser.parse_args()
 
         action = args.action
@@ -398,14 +475,11 @@ def main() -> int:
         cluster_type = args.cluster_type
         monitoring_namespace = args.monitoring_namespace
         wva_namespace = args.wva_namespace
+        llmd_namespace = args.llmd_namespace
 
         current_file = Path(__file__).resolve()
-        project_curr_dir = current_file.parent
         project_root = current_file.parents[1]
         sys.path.insert(0, str(project_root))
-        wva_dir = Path(
-            f'{project_curr_dir}/{git_repo_ssh.split("/")[-1].replace(".git", "")}'
-        )
 
         if action == DEPLOY_STR:
 
@@ -415,15 +489,16 @@ def main() -> int:
             if not dependency_check(logger):
                 return 1
 
-            if not clone_or_update_repo(git_repo_ssh, git_branch, logger):
+            repo_dir = clone_or_update_repo(git_repo_ssh, git_branch, logger)
+            if repo_dir == "":
                 return 1
 
             if not update_prometheus_config(
-                Path(f"{wva_dir}/config/manager/configmap.yaml"), cluster_type, logger
+                Path(f"{repo_dir}/config/manager/configmap.yaml"), cluster_type, logger
             ):
                 return 1
 
-            if not deploy_wva(wva_dir, wva_image, logger):
+            if not deploy_wva(repo_dir, wva_image, logger):
                 return 1
 
             if not check_pods_running(wva_namespace, Path(kubeconfig_ctx), logger):
@@ -437,13 +512,16 @@ def main() -> int:
             if not dependency_check(logger):
                 return 1
 
-            if not clone_or_update_repo(git_repo_ssh, git_branch, logger):
+            repo_dir = clone_or_update_repo(git_repo_ssh, git_branch, logger)
+            if repo_dir == "":
                 return 1
 
             if not undeploy_wva(
+                llmd_namespace,
                 wva_namespace,
+                monitoring_namespace,
                 Path(kubeconfig_ctx),
-                wva_dir,
+                repo_dir,
                 logger,
             ):
                 return 1
