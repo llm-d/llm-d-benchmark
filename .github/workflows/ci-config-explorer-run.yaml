@@ -1,12 +1,12 @@
-name: CI - PR Benchmark Run
+name: CI - Config Explorer Usability Check
 
 on:
   pull_request:
 
 jobs:
 
-  run-benchmark-sh:
-    name: Config Explorer Usability Check
+  run-config-explorer:
+    name: Usability Check
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -29,10 +29,11 @@ jobs:
         env:
           MODEL: "Qwen/Qwen3-0.6B"
         run: |
+
           python -m venv .venv
           source .venv/bin/activate
           python -m pip install --upgrade pip
-          python -m pip install "config_explorer @ git+https://github.com/llm-d/llm-d-benchmark.git/#subdirectory=config_explorer"
+          python -m pip install "config_explorer @ git+https://github.com/${{ github.repository }}.git@${{ github.head_ref }}/head/#subdirectory=config_explorer"
           cat <<EOF > test.py
           import os
           from config_explorer.capacity_planner import *
