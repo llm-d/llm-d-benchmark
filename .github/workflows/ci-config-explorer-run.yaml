@@ -35,7 +35,7 @@ jobs:
         env:
           MODEL: "Qwen/Qwen3-0.6B"
         run: |
-          cat <<EOF > test.py
+          cat <<EOF > ~/test.py
           import os
           from config_explorer.capacity_planner import *
           model = os.environ.get("MODEL")
@@ -45,7 +45,7 @@ jobs:
           config = get_model_config_from_hf(model)
           print(config)
           EOF
-          python test.py
+          python ~/test.py
 
       - name: llm-d-benchmark Integration check
         shell: bash
