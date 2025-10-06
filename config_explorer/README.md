@@ -26,6 +26,14 @@ Currently, the core functionality is in the form of a Python module within `llm-
 
 2. The `config_explorer` package can be installed via `pip`
 
+    If you have cloned the `llm-d-benchmark` repository, run the following at the project root:
+
+    ```
+    pip install ./config_explorer
+    ```
+
+    Otherwise, to use `config_explorer` independently of `llm-d-benchmark`, run the following:
+
     ```
     python -m pip install "config_explorer @ git+https://github.com/llm-d/llm-d-benchmark.git/#subdirectory=config_explorer"
     ```
