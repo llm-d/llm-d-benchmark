@@ -27,7 +27,7 @@ Currently, the core functionality is in the form of a Python module within `llm-
 2. The `config_explorer` package can be installed via `pip`
 
     ```
-    pip install git+https://github.com/llm-d/llm-d-benchmark.git
+    python -m pip install "config_explorer @ git+https://github.com/llm-d/llm-d-benchmark.git/#subdirectory=config_explorer"
     ```
 
 3. Invoke functions in the package via
@@ -35,15 +35,6 @@ Currently, the core functionality is in the form of a Python module within `llm-
     ```
     from config_explorer.capacity_planner import *
     ```
-
-pip install git+https://github.com/llm-d/llm-d-benchmark/tree/main/config_explorer.git
-
-
-python -m pip install "config_explorer @ git+https://github.com/llm-d/llm-d-benchmark.git/#subdirectory=config_explorer"
-
-python -m pip install "config_explorer @ git+https://github.com/jgchn/llm-d-benchmark.git/#subdirectory=config_explorer"
-
-python -m pip install config_explorer git+https://github.com/llm-d/llm-d-benchmark.git/#subdirectory=config_explorer
 
 ## Use
 
