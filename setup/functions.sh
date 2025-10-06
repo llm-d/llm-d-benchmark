@@ -794,7 +794,7 @@ export -f get_harness_list
 
 function add_env_vars_to_pod {
     local varpattern=$1
-    varlist=$(env | grep -E "$varpattern" | cut -d "=" -f 1)
+    varlist=$(env | grep -E "$varpattern" | cut -d "=" -f 1 | sort)
     echo "#    "
     for envvar in $varlist; do
       envvalue=${!envvar}
@@ -805,8 +805,10 @@ function add_env_vars_to_pod {
       if [[ -f $envvalue ]]; then
         envvalue=$(cat $envvalue | base64 $LLMDBENCH_BASE64_ARGS)
       fi
-      echo "    - name: ${envvar}"
-      echo "      value: \"${envvalue}\"" | $LLMDBENCH_CONTROL_SCMD -e 's^____\"\$^____REPLACE_ENV_^g' -e 's^: ""$^: " "^g' -e 's^""^"^g'
+      if [[ ! -z ${envvalue} ]]; then
+        echo "    - name: ${envvar}"
+        echo "      value: \"${envvalue}\"" | $LLMDBENCH_CONTROL_SCMD -e 's^____\"\$^____REPLACE_ENV_^g' -e 's^: ""$^: " "^g' -e 's^""^"^g'
+      fi
     done
 }
 export -f add_env_vars_to_pod
@@ -850,20 +852,8 @@ spec:
     env:
     - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
       value: "1"
-    - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY
-      value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY}"
-    - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS
-      value: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
-    - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
-      value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}"
-    - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME
-      value: "$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE"
-    - name: LLMDBENCH_RUN_EXPERIMENT_ID
-      value: "${LLMDBENCH_RUN_EXPERIMENT_ID}"
     - name: LLMDBENCH_HARNESS_NAME
       value: "${LLMDBENCH_HARNESS_NAME}"
-    - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
-      value: $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
     - name: LLMDBENCH_CONTROL_WORK_DIR
       value: "${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}"
     - name: LLMDBENCH_HARNESS_NAMESPACE
