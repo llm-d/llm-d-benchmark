@@ -82,6 +82,34 @@ See the logs for a TaskRun:
 tkn tr logs <taskrun_name> -f
 ```
 
+## Managing Parallelism
+
+The sample `PipelineRun` (`pipeline/pipelinerun-matrix.yaml`) executes all the tasks in parallel. Depdending on the size of the matrix, this may require a large number of resources.
+A _matrix_ based `Task` can be unrolled into multiple tasks to reduce the parallelism.
+The utility script `utility/transform-pr-parallel.py` does this as follows:
+
+1. Unroll a single parameter into one `Task` per value. Each resulting Task defines a matrix over the remaining parameters.
+
+    ```shell
+    python transform-pr.py pipelinerun-matrix.yaml --unroll gaiePluginConfig -o pr-unrolled.yaml
+    ```
+
+2. Unroll multiple parameters into [their Cartesian product] Tasks. Each resulting Task defines a matrix over the remaining parameters.
+
+    ```shell
+    python transform-pr.py pipelinerun-matrix.yaml --unroll gaiePluginConfig,question_len -o pr-unrolled-2.yaml
+    ```
+
+3. Unroll all the parameters into [their Cartian product] Tasks. Allow _n_ to run at once. This can be done using a _barrier_ strategy or a _sliding_window_ strategy
+
+    ```shell
+    # Barrier (default)
+    python transform-pr.py pipelinerun-matrix.yaml -n 3 -o pr-expanded-barrier.yaml
+
+    # Sliding window
+    python transform-pr.py pipelinerun-matrix.yaml -n 3 --sliding-window -o pr-expanded-sliding.yaml
+    ```
+
 ## Cautions
 
 - be sure to set the namespace parameter in the pipeline run; this is where the pipeline runs and is the base of the name for each experiment
