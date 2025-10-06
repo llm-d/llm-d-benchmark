@@ -21,3 +21,6 @@ where = ["config_explorer/src"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["config_explorer/requirements.txt"]}
+
+[egg_info]
+egg_base = src
