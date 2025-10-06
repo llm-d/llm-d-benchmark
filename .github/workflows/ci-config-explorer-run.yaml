@@ -47,12 +47,20 @@ jobs:
           EOF
           python ~/test.py
 
+      - name: Create k8s Kind Cluster
+        uses: helm/kind-action@v1
+
+      - name: Run install_deps
+        run: |
+          sudo apt-get update
+          ./setup/install_deps.sh
+        shell: bash
+
       - name: llm-d-benchmark Integration check
         shell: bash
         env:
           LLMDBENCH_DEPLOY_MODEL_LIST: "Qwen/Qwen3-0.6B"
           LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY: "80"
         run: |
-          ./setup/install_deps.sh
           ./setup/standup.sh -c inference-scheduling -s 0
 
