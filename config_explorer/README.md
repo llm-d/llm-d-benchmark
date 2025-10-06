@@ -41,6 +41,8 @@ pip install git+https://github.com/llm-d/llm-d-benchmark/tree/main/config_explor
 
 python -m pip install "config_explorer @ git+https://github.com/llm-d/llm-d-benchmark.git/#subdirectory=config_explorer"
 
+python -m pip install "config_explorer @ git+https://github.com/jgchn/llm-d-benchmark.git/#subdirectory=config_explorer"
+
 python -m pip install config_explorer git+https://github.com/llm-d/llm-d-benchmark.git/#subdirectory=config_explorer
 
 ## Use
