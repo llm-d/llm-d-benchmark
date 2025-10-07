@@ -235,14 +235,14 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
         export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="LLMDBENCH_BASE64_CONTEXT_CONTENTS|^LLMDBENCH_VLLM_COMMON|^LLMDBENCH_VLLM_STANDALONE|^LLMDBENCH_DEPLOY"
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
-        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | grep standalone | awk '{print $1}' || true)
+        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers -l stood-up-via=${LLMDBENCH_DEPLOY_METHODS} | awk '{print $1}' || true)
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
       fi
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
         export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="LLMDBENCH_BASE64_CONTEXT_CONTENTS|^LLMDBENCH_VLLM_COMMON|^LLMDBENCH_VLLM_MODELSERVICE|^LLMDBENCH_DEPLOY|^LLMDBENCH_VLLM_INFRA|^LLMDBENCH_VLLM_GAIE|^LLMDBENCH_LLMD_IMAGE"
         export LLMDBENCH_HARNESS_STACK_TYPE=llm-d
-        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers | grep ^infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway | awk '{print $1}')
+        export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get gateway --no-headers -l stood-up-via=${LLMDBENCH_DEPLOY_METHODS} | awk '{print $1}')
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
       fi
 
@@ -274,7 +274,9 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       fi
 
       if [[ -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
-        announce "❌ ERROR: could not find an endpoint name for a stack deployed via method \"$LLMDBENCH_DEPLOY_METHODS\""
+        announce "❌ ERROR: could not find an endpoint name for a stack deployed via method \"$LLMDBENCH_DEPLOY_METHODS\" (i.e., with label \"stood-up-via=$LLMDBENCH_DEPLOY_METHODS\")"
+        announce "📌 Tip: If the llm-d stack you're trying to benchmark was NOT deployed via \"standup.sh\", just use \"run.sh -t <string that matches the service/gateway name>\""
+
         exit 1
       fi
 

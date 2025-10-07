@@ -295,6 +295,11 @@ EOF
 
     fi
 
+    announce "📜 Labelling gateway for model ${model} "
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} label gateway/infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway stood-up-by=$LLMDBENCH_CONTROL_USERNAME stood-up-from=llm-d-benchmark stood-up-via=$LLMDBENCH_DEPLOY_METHODS" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    announce "✅ Service for pods service model ${model} created"
+
+
     if [[ $LLMDBENCH_VLLM_MODELSERVICE_ROUTE == "true" && $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
       is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get route -o name --ignore-not-found | grep -E "/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway-route$" || true)
       if [[ -z $is_route ]]
