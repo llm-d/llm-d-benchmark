@@ -1,5 +1,5 @@
 # PRECISE PREFIX CACHE AWARE ROUTING WELL LIT PATH
-# Based on https://github.com/llm-d/llm-d/blob/dev/guides/precise-prefix-cache-aware/README.md
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/precise-prefix-cache-aware
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
 # Removed extra volumes metrics-volume and torch-compile-volume; they are not needed for this model and tested hardware.
 # Use LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES to add them if needed.

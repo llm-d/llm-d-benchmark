@@ -1,5 +1,5 @@
 # P/D DISAGGREGATION WELL LIT PATH
-# Based on https://github.com/llm-d/llm-d/blob/dev/guides/pd-disaggregation/README.md
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
 # Removed extra volumes metrics-volume and torch-compile-volume; they are not needed for this model and tested hardware.
 # Use LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES to add them if needed.
