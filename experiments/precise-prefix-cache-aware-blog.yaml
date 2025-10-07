@@ -1,0 +1,34 @@
+# This follows https://llm-d.ai/blog/kvcache-wins-you-can-see
+setup:
+  constants:
+    - LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN: 12000
+    - LLMDBENCH_VLLM_COMMON_BLOCK_SIZE: 64
+    - LLMDBENCH_DEPLOY_MODEL_LIST: Qwen/Qwen3-32B
+    - LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM: 2
+    - LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS: 8
+    - LLMDBENCH_HARNESS_EXPERIMENT_PROFILE: shared_prefix_synthetic_aggressive.yaml
+    - LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL: true
+    - LLMDBENCH_CONTROL_WAIT_TIMEOUT: 900000
+    - LLMDBENCH_HARNESS_WAIT_TIMEOUT: 900000
+    - LLMDBENCH_IMAGE_REGISTRY: quay.io
+    - LLMDBENCH_IMAGE_REPO: namasluk
+    - LLMDBENCH_IMAGE_NAME: llm-d-benchmark
+    - LLMDBENCH_IMAGE_TAG: 251002.1
+  factors:
+    - LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE
+  levels:
+    LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE: random-scheduling,estimated-scheduling,load-scheduling,precise-scheduling
+  treatments:
+    random_scheduling: random-scheduling
+    estimated_scheduling: estimated-scheduling
+    load_scheduling: load-scheduling
+    precise_scheduling: precise-scheduling
+run:
+  factors:
+    - question_len
+    - output_len
+  levels:
+    question_len: "1200"
+    output_len: "1000"
+  treatments:
+    - "1200,1000"

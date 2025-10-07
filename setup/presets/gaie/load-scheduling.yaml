@@ -1,0 +1,17 @@
+apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+- type: queue-scorer
+- type: kv-cache-scorer
+- type: max-score-picker
+  parameters:
+    maxNumOfEndpoints: 1
+- type: single-profile-handler
+schedulingProfiles:
+- name: default
+  plugins:
+  - pluginRef: queue-scorer
+    weight: 1
+  - pluginRef: kv-cache-scorer
+    weight: 1
+  - pluginRef: max-score-picker
