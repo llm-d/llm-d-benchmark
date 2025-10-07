@@ -291,6 +291,16 @@ def kv_cache_req(model_info: ModelInfo,
 
     return KVCacheDetail(model_info, model_config, context_len, batch_size).kv_cache_size_gb
 
+def kv_cache_per_token(model_info: ModelInfo,
+                    model_config: AutoConfig,
+                    context_len: int,
+                    batch_size: int = 1,
+                    ) -> int:
+    """
+    Calculates the KV cache needed per token in bytes
+    """
+    return KVCacheDetail(model_info, model_config, context_len, batch_size).per_token_memory_bytes
+
 def max_concurrent_requests(model_info: ModelInfo,
                         model_config: AutoConfig,
                         max_model_len: int,
