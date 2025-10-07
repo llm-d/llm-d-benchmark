@@ -54,6 +54,7 @@ function show_usage {
              -o/--overrides [comma-separated list of workload profile parameters to be overriden (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES)] \n \
              -z/--skip [skip the execution of the experiment, and only collect data (default=$LLMDBENCH_HARNESS_SKIP_RUN)] \n \
              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE)] \n \
+             -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)]
              -s/--wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means "do not wait\""] \n \
              -d/--debug [execute harness in \"debug-mode\" (default=$LLMDBENCH_HARNESS_DEBUG)] \n \
              -h/--help (show this help)"
@@ -145,6 +146,13 @@ while [[ $# -gt 0 ]]; do
         ;;
         -t|--methods)
         export LLMDBENCH_CLIOVERRIDE_DEPLOY_METHODS="$2"
+        shift
+        ;;
+        -x=*|--dataset=*)
+        export LLMDBENCH_CLIOVERRIDE_RUN_DATASET_URL=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -x|--dataset)
+        export LLMDBENCH_CLIOVERRIDE_RUN_DATASET_URL="$2"
         shift
         ;;
         -z|--skip)
