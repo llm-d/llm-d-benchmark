@@ -4,6 +4,7 @@ on: [push, pull_request]
 
 jobs:
   config-explorer-pytest:
+    name: Unit Test
     runs-on: ubuntu-latest
     strategy:
       matrix:

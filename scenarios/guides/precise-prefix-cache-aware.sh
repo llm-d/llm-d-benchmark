@@ -1,5 +1,5 @@
 # PRECISE PREFIX CACHE AWARE ROUTING WELL LIT PATH
-# Based on https://github.com/llm-d/llm-d/blob/dev/guides/precise-prefix-cache-aware/README.md
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/precise-prefix-cache-aware
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
 # Removed extra volumes metrics-volume and torch-compile-volume; they are not needed for this model and tested hardware.
 # Use LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES to add them if needed.
@@ -53,20 +53,6 @@ export LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG=v0.2.1
 # Common parameters across standalone and llm-d (prefill and decode) pods
 export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
 export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
-
-export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS=$(mktemp)
-cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS}
-- name: dshm
-  mountPath: /dev/shm
-EOF
-
-export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES=$(mktemp)
-cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES}
-- name: dshm
-  emptyDir:
-    medium: Memory
-    sizeLimit: 16Gi
-EOF
 
 #             Uncomment (###) to select additional network devices (e.g., when multi-nic is enabled)
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
@@ -135,6 +121,20 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"}' \
 --kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_SERVICE_NAME.REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NAMESPACE.svc.cluster.local:5557\",\"topic\":\"kv@\${POD_IP}@QREPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL\"}" \
 --enforce-eager
+EOF
+
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS}
+- name: dshm
+  mountPath: /dev/shm
+EOF
+
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES}
+- name: dshm
+  emptyDir:
+    medium: Memory
+    sizeLimit: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM
 EOF
 
 # Workload parameters

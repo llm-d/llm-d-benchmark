@@ -164,6 +164,13 @@ def main():
         announce(f"❌ Failed while running \"{env_cmd}\" (exit code: {result})")
         exit(result)
 
+    environment_variable_to_dict(ev)
+
+    if not ev["control_environment_type_modelservice_active"]:
+        deploy_methods = ev.get("deploy_methods", "unknown")
+        announce(f"⏭️ Environment types are \"{deploy_methods}\". Skipping this step.")
+        return 0
+
     api = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
     if ev["control_dry_run"] :
         announce("DRY RUN enabled. No actual changes will be made.")

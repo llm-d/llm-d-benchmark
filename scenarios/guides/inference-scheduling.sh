@@ -1,5 +1,5 @@
 # INFERENCE SCHEDULING WELL LIT PATH
-# Based on https://github.com/llm-d-incubation/llm-d-infra/tree/main/quickstart/examples/inference-scheduling
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/inference-scheduling
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
 # Removed extra volumes metrics-volume and torch-compile-volume; they are not needed for this model and tested hardware.
 # Use LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES to add them if needed.
@@ -55,7 +55,7 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 ###- name: NCCL_IB_HCA
 ###  value: mlx5_1
 - name: VLLM_NIXL_SIDE_CHANNEL_PORT
-  value: "${LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT}"
+  value: "REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT"
 - name: VLLM_NIXL_SIDE_CHANNEL_HOST
   valueFrom:
     fieldRef:
@@ -66,12 +66,12 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
   value: "1"
 EOF
 
-export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_CONTAINER_CONFIG=$(mktemp)
-cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_CONTAINER_CONFIG}
+export LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG}
 ports:
-  - containerPort: ${LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT}
+  - containerPort: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT
     protocol: TCP
-  - containerPort: ${LLMDBENCH_VLLM_COMMON_METRICS_PORT}
+  - containerPort: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_METRICS_PORT
     name: metrics
     protocol: TCP
 EOF
