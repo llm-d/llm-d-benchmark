@@ -6,8 +6,10 @@ spec:
   description: >
     Runs an llm-d-benchmark experiment.
 
-  params:
+  workspaces:
+    - name: data
 
+  params:
     - name: question_len
       type: string
     - name: output_len
@@ -29,16 +31,6 @@ spec:
     - name: experimentName
       type: string
       default: "experiment"
-
-    - name: workspace-pvc-name
-      type: string
-      default: workspace-pvc
-    - name: workspace-pvc-size
-      type: string
-      default: 20Gi
-    - name: workspace-storage-class
-      type: string
-      default: ocs-storagecluster-cephfs
 
     - name: model-pvc-name
       type: string
@@ -104,6 +96,15 @@ spec:
       type: string
       default: 900
 
+    - name: llmdbenchImageRegistry
+      default: "quay.io"
+    - name: llmdbenchImageRepo
+      default: "namasluk"
+    - name: llmdbenchImageName
+      default: "llm-d-benchmark"
+    - name: llmdbenchImageTag
+      default: "251002.1"
+
     - name: harnessName
       type: string
       default: inference-perf
@@ -113,9 +114,19 @@ spec:
     - name: stackType
       type: string
       default: lld-d
-    - name: experimentIDBase
+    - name: pipelineUID
       type: string
       default: experiment
+
+    - name: bucket
+      type: string
+      default: "cloud-object-storage-cos-standard-ere"
+    - name: prefix
+      type: string
+      default: "results"
+    - name: endpoint
+      type: string
+      default: "https://s3.us-east.cloud-object-storage.appdomain.cloud"
 
     - name: dry-run
       type: string 
@@ -202,22 +213,6 @@ spec:
         #!/bin/sh
         echo "⏳ TBD: Wait for download job to complete"
 
-    # TBD use tekton notion of workspace ??
-    - name: create-workspace-pvc
-      ref: 
-        name: create-rwx-pvc
-      params:
-        - name: name
-          value: $(params.workspace-pvc-name)
-        - name: namespace
-          value: $(params.namespace)-$(context.taskRun.name)
-        - name: size
-          value: $(params.workspace-pvc-size)
-        - name: storage-class
-          value: $(params.workspace-storage-class)
-        - name: dry-run
-          value: $(params.dry-run)
-
     - name: gateway
       ref: 
         name: helm-upgrade-install
@@ -246,7 +241,7 @@ spec:
         name: helm-upgrade-install
       params:
         - name: releaseName
-          value: $(params.experimentName)-gaie
+          value: $(params.experimentName)-gaie-NAMESPACE_HASH
         - name: chart
           value: oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
         - name: version
@@ -283,6 +278,11 @@ spec:
           value: 15m
         - name: valuesYamlUrl
           value: "$(params.experimentBaseUrl)/ms-values.yaml"
+        - name: extraArgs
+          value: >
+            --set routing.inferencePool.name=$(params.experimentName)-gaie-NAMESPACE_HASH
+            --set routing.httpRoute.rules[0].backendRefs[0].name=$(params.experimentName)-gaie-NAMESPACE_HASH
+            --set routing.httpRoute.rules[1].backendRefs[0].name=$(params.experimentName)-gaie-NAMESPACE_HASH
 
         - name: dry-run
           value: $(params.dry-run)
@@ -333,94 +333,199 @@ spec:
         # echo "✅ prefill pods serving model ${MODEL_ID} ready"
 
     - name: workload
-      ref: 
-        name: helm-upgrade-install
-      params:
-        # Location of helm chart
-        - name: git_url
-          value: "https://github.com/kalantar/llm-d-benchmark"
-        - name: git_revision
-          value: "tekton-poc"
-        - name: checkout_dir
-          value: "/tmp/llm-d-benchmark"
+      image: $(params.llmdbenchImageRegistry)/$(params.llmdbenchImageRepo)/$(params.llmdbenchImageName):$(params.llmdbenchImageTag)
+      env:
+        - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
+          value: "1"
+        - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY
+          value: "0"
+        - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS
+          value: "$(params.harnessName)-llm-d-benchmark.sh"
+        - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
+          value: "$(params.harnessName)-analyze_results.sh"
+        - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME
+          value: "$(params.harnessProfile)"
+        - name: LLMDBENCH_HARNESS_NAME
+          value: "$(params.harnessName)"
+        - name: LLMDBENCH_HARNESS_NAMESPACE
+          value: "$(params.namespace)-$(context.taskRun.name)"
+        - name: LLMDBENCH_HARNESS_STACK_TYPE
+          value: "llm-d"
+        - name: LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+          value: "http://experiment-gateway-inference-gateway.$(params.namespace)-$(context.taskRun.name).svc.cluster.local:80"
+        - name: LLMDBENCH_DEPLOY_METHODS
+          value: "modelservice"
+        - name: LLMDBENCH_MAGIC_ENVAR
+          value: "harness_pod"
 
-        # Helm arguments
-        - name: releaseName
-          value: $(params.experimentName)-harness
-        - name: chart
-          value: /tmp/llm-d-benchmark/charts/harness        
-        - name: namespace
-          value: $(params.namespace)-$(context.taskRun.name)
-        - name: timeout
-          value: 15m
-        # - name: valuesYamlUrl
-        #   value: "/tmp/llm-d-benchmark/charts/harness/values.yaml"
-        - name: extraArgs
-          value: >
-            --set harness.image.registry=quay.io
-            --set harness.image.repository=namasluk
-            --set harness.image.name=llm-d-benchmark
-            --set harness.image.tag=251002.1
-            --set experiment.profile.name=$(params.harnessProfile)
-            --set experiment.profile.shared_prefix.question_len=$(params.question_len)
-            --set experiment.profile.shared_prefix.output_len=$(params.output_len)
-            --set experiment.identifier=experiment-DATE
-            --set stack.model=$(params.model-id)
-            --set stack.name=$(context.taskRun.name)
-            --set stack.endpointUrl='http://experiment-gateway-inference-gateway:80'
+        - name: LLMDBENCH_LLMD_IMAGE_REGISTRY
+          value: "$(params.llmdbenchImageRegistry)"
+        - name: LLMDBENCH_LLMD_IMAGE_REPO
+          value: "$(params.llmdbenchImageRepo)"
+        - name: LLMDBENCH_LLMD_IMAGE_NAME
+          value: "$(params.llmdbenchImageName)"
+        - name: LLMDBENCH_LLMD_IMAGE_TAG
+          value: "$(params.llmdbenchImageTag)"
 
-        - name: dry-run
-          value: $(params.dry-run)
+        #  TBD add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD
+        - name: LLMDBENCH_DEPLOY_CURRENT_MODEL
+          value: "$(params.model-id)"
+        - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS
+          value: "0"
+        - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS
+          value: "2"
+        - name: LLMDBENCH_VLLM_COMMON_AFFINITY
+          value: "nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3"
+        - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM
+          value: "4"
+        - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM
+          value: "1"
+        - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM
+          value: "1"
+        - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM
+          value: "1"
 
-    - name: wait-for-workload
-      image: alpine/kubectl:1.34.1
-      script : |
-        #!/bin/sh
+        - name: HF_TOKEN_SECRET
+          value: "hf-secret"
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-secret
+              key: HF_TOKEN
+
+      computeResources:
+        requests:
+          memory: "32Gi"
+          cpu: "16"
+        limits:
+          memory: "32Gi"
+          cpu: "16"
+
+      script: |
+        #!/bin/bash
+
+        export EXPERIMENT_ID="experiment-$(echo -n $(params.pipelineUID) | cut -c1-8)"
+        export LLMDBENCH_RUN_EXPERIMENT_ID="${EXPERIMENT_ID}"
+        export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR="$(workspaces.data.path)/$(params.harnessName)_${EXPERIMENT_ID}_$(context.taskRun.name)"
+        export LLMDBENCH_CONTROL_WORK_DIR="$(workspaces.data.path)/$(params.harnessName)_${EXPERIMENT_ID}_$(context.taskRun.name)"
+        export LLMDBENCH_HARNESS_STACK_NAME=$(echo "$(params.model-id)" | tr '[:upper:]' '[:lower:]' | sed 's/[./]/-/g')
+        export LLMDBENCH_DEPLOY_CURRENT_MODELID="${LLMDBENCH_HARNESS_STACK_NAME}"
+        export LLMDBENCH_DEPLOY_CURRENT_TOKENIZER="$(params.model-id)"
+
+        export QUESTION_LEN=$(params.question_len)
+        export OUTPUT_LEN=$(params.output_len)
+
+        get_profiles() {
+          git init llm-d-benchmark
+          cd llm-d-benchmark
+          git remote add origin https://github.com/llm-d/llm-d-benchmark.git
+          git config core.sparseCheckout true
+          echo "workload/profiles/" >> .git/info/sparse-checkout
+          git pull origin main
+        }
 
         if [ "$(params.dry-run)" = "true" ]; then
           echo ">> skipping"
           exit 0
         fi
 
-        NAMESPACE="$(params.namespace)-$(context.taskRun.name)"
-        HARNESS_NAME="$(params.harnessName)"
+        get_profiles
 
-        echo "⏳ Waiting for pod ${HARNESS_NAME}-launcher to complete..."
+        echo "creating CONTROL directories"
+        mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup
+        rm -f ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
+        touch ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
 
-        while true; do
-          STATUS=$(kubectl --namespace ${NAMESPACE} get pod ${HARNESS_NAME}-launcher -o jsonpath='{.status.phase}')
-          if [ "$STATUS" = "Succeeded" ] || [ "$STATUS" = "Failed" ]; then
-            echo "Pod completed with status: $STATUS"
-            break
-          fi
-          echo "⏳ Still waiting for pod to complete..."
-          sleep 5
+        workload=$(echo $(params.harnessProfile) | sed 's^\.yaml^^g' )
+        echo "workload = $workload"
+        workload_template_list=$(find workload/profiles/ -name "${workload}.yaml.in")
+        echo "workload_template_list = $workload_template_list"
+
+        for workload_template_full_path in $workload_template_list; do
+          echo "PROCESSING $workload_template_full_path"
+          workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
+          echo "workload_template_type = $workload_template_type"
+          workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | sed -e "s^\.yaml.in$^^g")
+          echo "workload_template_file_name = $workload_template_file_name"
+          ## 
+          workload_output_file=${LLMDBENCH_CONTROL_WORK_DIR}/shared_prefix_synthetic_short.yaml
+          # workload_output_file=${LLMDBENCH_CONTROL_WORK_DIR}/$workload_template_type/$workload_template_file_name
+          echo "workload_output_file = $workload_output_file"
+          ##
+          mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/$workload_template_type
+
+          echo "s^REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL^${LLMDBENCH_DEPLOY_CURRENT_MODEL}^g" >> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
+          echo "s^REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL^${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL}^g" >> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
+          echo "s^REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER^${LLMDBENCH_DEPLOY_CURRENT_TOKENIZER}^g" >> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
+          echo "s^question_len: .*^question_len: ${QUESTION_LEN}^g" >> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
+          echo "s^output_len: .*^output_len: ${OUTPUT_LEN}^g" >> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
+          echo "s^    path: .*^    path: ${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}^g" >> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
+
+          echo "------"
+          cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
+          echo "------"
+          echo "workload_output_file=$workload_output_file"
+          sed -f ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands $workload_template_full_path > $workload_output_file
+
+          cat $workload_output_file
         done
 
-        echo "✅ workload completed"
+        llm-d-benchmark.sh
 
     - name: upload-results
-      image: alpine:3.20
-      script : |
-        #!/bin/sh
-        echo "🚚 TBD: Upload results"
+      image: amazon/aws-cli:2.31.9
+      workingDir: $(workspaces.data.path)
+      env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: ibm-cos-secret
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ibm-cos-secret
+              key: AWS_SECRET_ACCESS_KEY
+        - name: AWS_EC2_METADATA_DISABLED
+          value: "true"
+      script: |
+        #!/usr/bin/env sh
+        set -euo pipefail
+
+        dnf install tar gzip -y
+
+        EXPERIMENT_ID="experiment-$(echo -n $(params.pipelineUID) | cut -c1-8)"
+        EXPERIMENT_RESULTS_FOLDER="$(params.harnessName)_${EXPERIMENT_ID}_$(context.taskRun.name)"
+        ARCHIVE_NAME="${EXPERIMENT_RESULTS_FOLDER}.tar.gz"
+
+        tar -czf ${ARCHIVE_NAME} -C "$(workspaces.data.path)" ${EXPERIMENT_RESULTS_FOLDER}
+
+        aws s3 cp ${ARCHIVE_NAME} "s3://$(params.bucket)/${ARCHIVE_NAME}" \
+            --endpoint-url "$(params.endpoint)" \
+            --content-type "application/x-tar" \
+            --content-encoding "gzip" \
+            --no-progress
+            # --recursive \
+
+        rm -rf ${ARCHIVE_NAME}
+        
+        echo "✅ Uploaded results to ${ARCHIVE_NAME}"
 
     - name: delete-namespace
       image: alpine/helm:3.14.0
       script : |
         #!/bin/sh
 
+        NAMESPACE="$(params.namespace)-$(context.taskRun.name)"
+
         if [ "$(params.dry-run)" = "true" ]; then
           echo ">> skipping"
           exit 0
         fi
 
-        NAMESPACE="$(params.namespace)-$(context.taskRun.name)"
-
-        # helm delete --namespace ${NAMESPACE} $(params.experimentName)-harness
         # kubectl delete namespace ${NAMESPACE}
 
-        echo "✅ workload pod deleted"
+        echo "✅ workload namespace deleted"
 
     - name: log-completion
       image: alpine:3.20

@@ -21,15 +21,13 @@ spec:
             workspace: data
         params:
           - name: namespace
-            value: CHANGE_ME
+            value: kalantar
           - name: model-id
             value: "Qwen/Qwen3-0.6B"
           - name: experimentBaseUrl
             value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
           - name: harnessProfile
-            value: shared_prefix_synthetic_short.yaml
-          - name: pipelineUID
-            value: "$(context.pipelineRun.uid)"
+            value: shared_prefix_synthetic.yaml
         matrix:
           params:
             - name: gaiePluginConfig
@@ -48,3 +46,36 @@ spec:
                 - "100"
                 - "300"
                 - "1000"
+          include:
+            - name: combo-1
+              params:
+                - name: gaiePluginConfig
+                  value: "inf-sche-none.yaml"
+                - name: question_len
+                  value: "100"
+                - name: output_len
+                  value: "100"
+            - name: combo-2
+              params:
+                - name: gaiePluginConfig
+                  value: "inf-sche-prefix.yaml"
+                - name: question_len
+                  value: "300"
+                - name: output_len
+                  value: "300"
+            - name: combo-3
+              params:
+                - name: gaiePluginConfig
+                  value: "inf-sche-kv.yaml"
+                - name: question_len
+                  value: "1000"
+                - name: output_len
+                  value: "100"
+            - name: combo-4
+              params:
+                - name: gaiePluginConfig
+                  value: "inf-sche-queue.yaml"
+                - name: question_len
+                  value: "300"
+                - name: output_len
+                  value: "1000"

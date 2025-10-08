@@ -236,6 +236,10 @@ spec:
       exit 0
     fi
 
+    SHA256CMD=$(type -p gsha256sum || type -p sha256sum)
+    NAMESPACE_HASH=$(echo -n "$HELM_NAMESPACE" | $SHA256CMD | awk '{print $1}' | cut -c1-8)
+    HELM_RELEASE=$(echo "$HELM_RELEASE" | sed "s/NAMESPACE_HASH/$NAMESPACE_HASH/g")
+  
     # if a GIT_URL is defined, clone the project; we will use helm chart from this
     if [ -n "${GIT_URL:-}" ]; then
       mkdir -p "$CHECKOUT_DIR"
@@ -300,7 +304,7 @@ spec:
     esac
 
     if [ -n "${HELM_EXTRA_ARGS:-}" ]; then
-      HELM_EXTRA_ARGS=$(echo "$HELM_EXTRA_ARGS" | sed "s/DATE/$(date +%s)/g")
+      HELM_EXTRA_ARGS=$(echo "$HELM_EXTRA_ARGS" | sed "s/NAMESPACE_HASH/$NAMESPACE_HASH/g")
     fi
 
     echo "==> helm upgrade --install ${HELM_RELEASE} ${CHART_REF} --namespace ${HELM_NAMESPACE} ${VERSION_FLAG} ${CREATE_NS_FLAG} ${WAIT_FLAG} ${TIMEOUT_FLAG} ${VALUES_FLAG} ${HELM_EXTRA_ARGS}"
