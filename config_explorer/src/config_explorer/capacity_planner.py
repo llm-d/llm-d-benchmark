@@ -61,9 +61,9 @@ class KVCacheDetail:
         self.hidden_size = model_config.hidden_size
         self.num_attention_heads = model_config.num_attention_heads
         self.num_key_value_heads = model_config.num_key_value_heads
-        self.head_dimension = getattr(model_config,
-                                      "head_dim", self.hidden_size / self.num_attention_heads)
-
+        self.head_dimension = model_config.head_dim
+        if self.head_dimension is None:
+            self.head_dimension = self.hidden_size / self.num_attention_heads
         # Determine attention type
         if use_mla(self.model):
             self.attention_type = AttentionType.MLA
