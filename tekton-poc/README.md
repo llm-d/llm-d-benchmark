@@ -37,8 +37,8 @@ A single Task measures performance over a single set of values from the factor/v
 4. Download the model from HuggingFace to a PVC
 5. Deploy the model
 6. Run the workload for a single set of parameters
-7. Upload the results to external storage (not yet implemented)\
-8. Delete the experiment namespace
+7. Upload the results to external storage (s3)
+8. Delete the experiment namespace (not yet implemented)
 
 A PipelineRun is created that embeds a Pipeline containing one Task with a matrix of values for a set of factors.  An example is `pipelinerun-matrix.yaml`.
 
@@ -60,12 +60,15 @@ A PipelineRun is created that embeds a Pipeline containing one Task with a matri
     ```shell
     kubectl apply -f pipeline/roles.yaml
     ```
-4. Deploy the steps and tasks:
+
+4. Create a RWX PVC `workspace-pvc` for storing execution results. This PVC is shared between all tasks.
+
+5. Deploy the steps and tasks:
     ```shell
     kubectl apply -f pipeline/stepactions.yaml
     kubectl apply -f pipeline/experiment-task.yaml
     ```
-5. Run experiments (set the parameter `namespace` to $NAMESPACE):
+6. Run experiments (set the parameter `namespace` to $NAMESPACE):
     ```shell
     kubectl apply -f pipeline/pipelinerun-matrix.yaml
     ```
@@ -84,9 +87,17 @@ tkn tr logs <taskrun_name> -f
 
 ## Managing Parallelism
 
-The sample `PipelineRun` (`pipeline/pipelinerun-matrix.yaml`) executes all the tasks in parallel. Depdending on the size of the matrix, this may require a large number of resources.
-A _matrix_ based `Task` can be unrolled into multiple tasks to reduce the parallelism.
-The utility script `utility/transform-pr-parallel.py` does this as follows:
+The default PipelineSpec (in `pipeline/pipelinerun-matrix.yaml`) executes all the tasks in parallel. It can be modified in a number of ways to reduce the amount of parallel execution (at the expense of time).
+
+Some examples are provided:
+
+- `pipeline/pipelinerun-matrix-subset.yaml`: Uses `matrix.include` to list an explicit set of combinations to execute.
+- `pipeline/pipelinerun-sequential-1.yaml`: Executes 1 task at a time. Each task depends on the previous one.
+- `pipeline/pipelinerun-sequential-4-barrier.yaml`: Executes 4 tasks at a time. When all 4 complete, the next 4 start.
+- `pipeline/pipelinerun-sequential-4-sliding.yaml`: Executes 4 tasks at a time. When one task completes another starts.
+- `pipeline/pipelinerun-sequential-unroll-gaiePluginConfig.yaml`: Creates one task for each value of one dimention of the matrix. Each is executed in sequence. However, for other dimensions, parallel execution takes place.
+
+The utility script `utility/transform-pr-parallel.py` can be used to transform a default `PipelineRun` into alternatives as follows:
 
 1. Unroll a single parameter into one `Task` per value. Each resulting Task defines a matrix over the remaining parameters.
 
