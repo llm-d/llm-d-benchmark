@@ -4,23 +4,52 @@ import sys
 from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Tuple
-from transformers import AutoConfig
-from huggingface_hub import ModelInfo
-from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
 
-from config_explorer.capacity_planner import gpus_required, get_model_info_from_hf, get_model_config_from_hf, get_text_config, find_possible_tp, max_context_len, available_gpu_memory, model_total_params, model_memory_req, allocatable_kv_cache_memory, kv_cache_req, max_concurrent_requests
-
-# Add project root to path for imports
 current_file = Path(__file__).resolve()
-project_root = current_file.parents[1]
-sys.path.insert(0, str(project_root))
+workspace_root = current_file.parents[2]
+setup_dir = current_file.parents[1]
+config_explorer_src = workspace_root / "config_explorer" / "src"
+sys.path.insert(0, str(config_explorer_src))
+sys.path.insert(1, str(setup_dir))
+sys.path.insert(2, str(workspace_root))
+if "PYTHONPATH" in os.environ:
+    os.environ["PYTHONPATH"] = f"{config_explorer_src}:{setup_dir}:{workspace_root}:{os.environ['PYTHONPATH']}"
+else:
+    os.environ["PYTHONPATH"] = f"{config_explorer_src}:{setup_dir}:{workspace_root}"
+
+print(f"Workspace root directory added to PYTHONPATH: {os.environ['PYTHONPATH']}")
+
+try:
+    from transformers import AutoConfig
+    from huggingface_hub import ModelInfo
+    from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
+except ModuleNotFoundError as e:
+    print(f"❌ ERROR: Required dependency not installed: {e}")
+    print("Please install the required dependencies:")
+    print(f"  pip install -r {workspace_root / 'config_explorer' / 'requirements.txt'}")
+    sys.exit(1)
+
+# Import config_explorer module
+try:
+    from config_explorer.capacity_planner import KVCacheDetail, gpus_required, get_model_info_from_hf, get_model_config_from_hf, get_text_config, find_possible_tp, max_context_len, available_gpu_memory, model_total_params, model_memory_req, allocatable_kv_cache_memory, kv_cache_req, max_concurrent_requests
+except ModuleNotFoundError as e:
+    print(f"❌ ERROR: Failed to import config_explorer module: {e}")
+    print(f"\nTry: pip install -r {workspace_root / 'config_explorer' / 'requirements.txt'}")
+    sys.exit(1)
+except Exception as e:
+    print(f"❌ ERROR: An unexpected error occurred while importing config_explorer: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+
+
 
 # ---------------- Import local packages ----------------
 try:
     from functions import announce, environment_variable_to_dict, get_accelerator_nr, is_standalone_deployment, get_accelerator_type
 except ImportError as e:
     # Fallback for when dependencies are not available
-    print(f"Warning: Could not import required modules: {e}")
+    print(f"❌ ERROR: Could not import required modules: {e}")
     print("This script requires the llm-d environment to be properly set up.")
     print("Please run: ./setup/install_deps.sh")
     sys.exit(1)
@@ -211,8 +240,8 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
 
                 announce(f"ℹ️ Allocatable memory for KV cache {available_kv_cache} GB")
 
-                per_request_kv_cache_req = kv_cache_req(model_info, model_config, max_model_len)
-                announce(f"ℹ️ KV cache memory for a request taking --max-model-len={max_model_len} requires {per_request_kv_cache_req} GB of memory")
+                kv_details = KVCacheDetail(model_info, model_config, max_model_len, batch_size=1)
+                announce(f"ℹ️ KV cache memory for a request taking --max-model-len={max_model_len} requires {kv_details.per_request_kv_cache_gb} GB of memory")
 
                 total_concurrent_reqs = max_concurrent_requests(
                     model_info, model_config, max_model_len,
@@ -281,10 +310,10 @@ def validate_modelservice_vllm_params(ev: dict, ignore_if_failed: bool):
     prefill_params = get_validation_param(ev, type=PREFILL)
     decode_params = get_validation_param(ev, type=DECODE)
 
-    announce("Validating prefill vLLM arguments...")
+    announce(f"Validating prefill vLLM arguments for {prefill_params.models} ...")
     validate_vllm_params(prefill_params, ignore_if_failed, type=PREFILL)
 
-    announce("Validating decode vLLM arguments...")
+    announce(f"Validating decode vLLM arguments for {decode_params.models} ...")
     validate_vllm_params(decode_params, ignore_if_failed, type=DECODE)
 
 def main():

@@ -6,6 +6,7 @@ import os
 import time
 from pathlib import Path
 import subprocess
+import requests
 import inspect
 import pykube
 import hashlib
@@ -266,8 +267,12 @@ def validate_and_create_pvc(
     announce("Provisioning model storage…")
 
     if '/' not in download_model:
-        announce(f"'{download_model}' is not in Hugging Face format <org>/<repo>")
+        announce(f"❌ '{download_model}' is not in Hugging Face format <org>/<repo>")
         sys.exit(1)
+
+    if not pvc_name :
+        announce(f"ℹ️ Skipping pvc creation")
+        return True
 
     announce(f"🔍 Checking storage class '{pvc_class}'...")
     try:
@@ -336,7 +341,7 @@ def launch_download_job(
     model_path: str,
     pvc_name: str,
     dry_run: bool = False,
-    verbose: bool = False
+    verbose: bool = False,
 ):
 
     work_dir_str = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
@@ -350,16 +355,45 @@ def launch_download_job(
 
     announce("Launching model download job...")
 
-    command_args = (
-        'mkdir -p "${MOUNT_PATH}/${MODEL_PATH}" && '
-        'pip install huggingface_hub && '
-        'export PATH="${PATH}:${HOME}/.local/bin" && '
-        'hf auth login --token "${HF_TOKEN}" && '
-        'hf download "${HF_MODEL_ID}" --local-dir "/cache/${MODEL_PATH}"'
-    )
+    base_cmds = [
+        'mkdir -p "${MOUNT_PATH}/${MODEL_PATH}"',
+        "pip install huggingface_hub",
+        'export PATH="${PATH}:${HOME}/.local/bin"',
+    ]
 
-    job_name = 'download-model'
+    hf_cmds = []
+    hf_token_env = ""
+    if is_hf_model_gated(os.getenv("LLMDBENCH_DEPLOY_MODEL_LIST")):
+        if user_has_hf_model_access(
+            os.getenv("LLMDBENCH_DEPLOY_MODEL_LIST"), os.getenv("LLMDBENCH_HF_TOKEN")
+        ):
+            #
+            # Login is only required for GATED models.
+            # https://huggingface.co/docs/hub/models-gated
+            #
+            hf_cmds.append('hf auth login --token "${HF_TOKEN}"')
+            hf_token_env = f"""- name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {secret_name}
+                  key: HF_TOKEN"""
+        else:
+            #
+            # In theory - since we already check this in `env.sh` we shoudn't need to error
+            # out here, we should really just be organizing the command for the yaml creation
+            # but we haven't fully converted to python yet and for extra carefulness, lets just
+            # check this here again since there may be some code path that some how gets here
+            # without first sourcing env.sh and running the precheck there...
+            #
+            announce(
+                f"❌ Unauthorized access to gated model {model_path}. Check your HF Token."
+            )
+            sys.exit(1)
+    hf_cmds.append('hf download "${HF_MODEL_ID}" --local-dir "/cache/${MODEL_PATH}"')
+    base_cmds.extend(hf_cmds)
+    command_args = " && ".join(base_cmds)
 
+    job_name = "download-model"
 
     job_yaml = f"""
 apiVersion: batch/v1
@@ -385,11 +419,7 @@ spec:
               value: {model_path}
             - name: HF_MODEL_ID
               value: {download_model}
-            - name: HF_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {secret_name}
-                  key: HF_TOKEN
+            {hf_token_env}
             - name: HF_HOME
               value: /tmp/huggingface
             - name: HOME
@@ -407,30 +437,25 @@ spec:
 """
 
     try:
-        yaml.safe_load(job_yaml) # validate yaml
+        yaml.safe_load(job_yaml)  # validate yaml
         yaml_file_path.write_text(job_yaml)
         announce(f"Generated YAML file at: {yaml_file_path}")
     except IOError as e:
         announce(f"Error writing YAML file: {e}")
         sys.exit(1)
 
-    #FIXME (USE PYKUBE)
+    # FIXME (USE PYKUBE)
     delete_cmd = f"{kcmd} delete job {job_name} -n {namespace} --ignore-not-found=true"
-    announce(f"--> Deleting previous job '{job_name}' (if it exists) to prevent conflicts...")
-    llmdbench_execute_cmd(
-        actual_cmd=delete_cmd,
-        dry_run=dry_run,
-        verbose=verbose,
-        silent=True
+    announce(
+        f"--> Deleting previous job '{job_name}' (if it exists) to prevent conflicts..."
     )
-    #FIXME (USE PYKUBE)
+    llmdbench_execute_cmd(
+        actual_cmd=delete_cmd, dry_run=dry_run, verbose=verbose, silent=True
+    )
+    # FIXME (USE PYKUBE)
     apply_cmd = f"{kcmd} apply -n {namespace} -f {yaml_file_path}"
     llmdbench_execute_cmd(
-        actual_cmd=apply_cmd,
-        dry_run=dry_run,
-        verbose=verbose,
-        silent=True,
-        attempts=1
+        actual_cmd=apply_cmd, dry_run=dry_run, verbose=verbose, silent=True, attempts=1
     )
 
 
@@ -1056,7 +1081,10 @@ def add_additional_env_to_yaml(env_vars_string: str) -> str:
             env_value = os.environ.get(envvar, "")
 
             # Process REPLACE_ENV variables in the value (equivalent to bash sed processing)
-            processed_value = render_string(env_value) if env_value else ""
+            if env_value :
+                processed_value = render_string(env_value)
+            else:
+                processed_value = ""
 
             env_lines.append(f"{name_indent}- name: {clean_name}")
             env_lines.append(f"{value_indent}value: \"{processed_value}\"")
@@ -1077,6 +1105,8 @@ def add_config(obj_or_filename, num_spaces=0, label=""):
                 contents = f.read()
         except FileNotFoundError:
             pass
+
+    contents = render_string(contents)
 
     indented_contents = '\n'.join(f"{spaces}{line}" for line in contents.splitlines())
     if indented_contents.strip() not in ["{}", "[]"] :
@@ -1105,3 +1135,79 @@ def get_accelerator_type(ev: dict) -> str | None:
         # LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3
         parsed = common_affinity.split(":")
         return parsed[-1]
+
+
+def is_hf_model_gated(model_id: str) -> bool:
+    """
+    Check if a Hugging Face model is gated, meaning it requires manual approval
+    before a user can access it.
+
+    Gated models require the user to authenticate with a valid Hugging Face token
+    that has been granted access to use the model.
+
+    Args:
+        model_id (str): The model identifier within the repository, e.g., "ibm-granite/granite-3.1-8b-instruct".
+
+    Returns:
+        bool: True if the model is gated and requires manual approval, False otherwise.
+
+    Notes:
+        If the request to the Hugging Face API fails for any reason, the function
+        will print the error and return False.
+
+    Usage:
+        >> is_hf_model_gated("ibm-granite/granite-3.1-8b-instruct")
+        True
+    """
+    url = f"https://huggingface.co/api/models/{model_id}"
+    try:
+        headers = {"Accept": "application/json"}
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("gated", False) != False
+    except requests.RequestException as e:
+        announce("❌ ERROR - Request failed:", e)
+        return False
+
+
+def user_has_hf_model_access(model_id: str, hf_token: str) -> bool:
+    """
+    Check if a Hugging Face user (identified by hf_token) has access to a model.
+
+    This is done by attempting to access a common file (config.json) in the
+    model repository. If the file can be retrieved successfully, the user has access.
+
+    Args:
+        model_id (str): The model identifier within the repository, e.g., "ibm-granite/granite-3.1-8b-instruct".
+        hf_token (str): Hugging Face API token with user authentication.
+
+    Returns:
+        bool: True if the user has access to the model, False if access is denied
+              or if the request fails.
+
+    Notes:
+        - The function checks access to `config.json` as a proxy for model access.
+        - Status codes 401 (Unauthorized) or 403 (Forbidden) are treated as no access.
+        - Other exceptions during the request will print an error and return False.
+
+    Usage:
+        >> user_has_hf_model_access("ibm-granite/granite-3.1-8b-instruct", "<YOUR_HF_TOKEN>")
+        True
+    """
+    url = f"https://huggingface.co/{model_id}/resolve/main/config.json"
+    headers = {"Authorization": f"Bearer {hf_token}"}
+
+    try:
+        with requests.get(
+            url, headers=headers, allow_redirects=True, stream=True
+        ) as response:
+            if response.status_code == 200:
+                return True
+            elif response.status_code in (401, 403):
+                return False
+            else:
+                response.raise_for_status()
+    except requests.RequestException as e:
+        announce("❌ ERROR - Request failed:", e)
+        return False

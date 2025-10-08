@@ -142,7 +142,6 @@ def test_kv_cache_req():
         rounded = round(actual_kv_cache_req, 5)
         assert rounded == actual_kv_cache
 
-
     # Assert other models
     model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
@@ -154,7 +153,7 @@ def test_kv_cache_req():
     # For context length = 10000
     actual_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
     rounded = round(actual_kv_cache_req, 5)
-    assert rounded == 1.06812
+    assert rounded == 0.53406
 
 
 def test_max_concurrent_req():

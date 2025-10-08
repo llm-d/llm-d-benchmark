@@ -218,8 +218,6 @@ def workload_specification():
     # Workload
     with st.container(border=True):
         st.write("**Workload Characteristics**")
-        st.caption(f"Estimate KV cache memory requirements for the selected model based on workload. Note that the model uses data type of `{inference_dtype(model_config)}` for KV cache during inference.")
-
         if model_config is None:
             st.warning("Model config not found.")
             return None
@@ -230,6 +228,8 @@ def workload_specification():
         if model_config is None:
             st.warning("Model config not available, cannot estimate KV cache size.")
             return None
+
+        st.caption(f"Estimate KV cache memory requirements for the selected model based on workload. Note that the model uses data type of `{inference_dtype(model_config)}` for KV cache during inference.")
 
         col1, col2 = st.columns(2)
 
@@ -273,7 +273,68 @@ Higher max model length means fewer concurrent requests can be served, \
             col2.warning("Model does not have safetensors data available, cannot estimate KV cache memory requirement.")
             return None
 
-        col2.info(f"Assuming the worst case scenario, such that every request contains `--max-model-len` tokens, the maximum concurrent requests that can be processed is {max_concurrent_requests_num}.")
+        try:
+            kv_details = KVCacheDetail(
+                model_info,
+                model_config,
+                user_scenario.max_model_len,
+                user_scenario.concurrency,
+            )
+        except AttributeError as e:
+            col2.warning(f"There is not enough information to estimate KV cache requirement per request: {e}")
+            return None
+
+        col2.info(f"Assuming the worst case scenario, such that every request contains `--max-model-len` tokens, each request takes {util.pretty_round(kv_details.per_request_kv_cache_gb)} GB for KV cache, which means the maximum concurrent requests that can be processed is {max_concurrent_requests_num}.")
+
+        # Display details on how KV cache is estimated
+        with st.expander("See how KV cache is calculated below"):
+            st.write(f"""First, the per-token memory requirement is estimated given the following inputs:
+- KV cache data type: `{kv_details.kv_data_type}` = {kv_details.precision_in_bytes} bytes in memory
+- Hidden layers: {model_config.num_hidden_layers}
+
+This model uses _{kv_details.attention_type}_. The relevant parameters are:
+""")
+            if kv_details.attention_type == AttentionType.MLA:
+                st.write(f"""- KV lora rank: {kv_details.kv_lora_rank}
+- QK rope head dimension: {kv_details.qk_rope_head_dim}""")
+
+                st.code(f"""
+Per-token memory = layers x (kv_lora_rank + qk_rope_head_dim) x precision_in_bytes
+                 = {kv_details.num_hidden_layers} x ({kv_details.kv_lora_rank} + {kv_details.qk_rope_head_dim}) x {kv_details.precision_in_bytes}
+                 = {kv_details.per_token_memory_bytes} bytes
+""")
+            else:
+                st.write(f"""- Head dimension: {kv_details.head_dimension}
+- Attention heads: {kv_details.num_attention_heads}
+- KV heads: {kv_details.num_key_value_heads}
+- Number of attention groups: {kv_details.num_attention_group}
+""")
+
+                st.code(f"""
+Per-token memory = layers x 2 (two for K and V matrices) x head_dimension x (kv_heads / num_attention_groups) x precision_in_bytes
+                 = {kv_details.num_hidden_layers} x 2 x {kv_details.head_dimension} x ({kv_details.num_attention_heads} / {kv_details.num_key_value_heads}) x {kv_details.precision_in_bytes}
+                 = {kv_details.per_token_memory_bytes} bytes
+""")
+
+            st.write(f"""Finally, the per-token-memory is then multiplied by the context length (max-model-len) and batch size (concurrency).
+- Number of tokens (context length): {user_scenario.max_model_len}
+- Concurrency: {user_scenario.concurrency}
+""")
+            st.code(f"""
+KV cache per request = per_token_memory x context_len x batch_size
+                     = {kv_details.per_token_memory_bytes} x {user_scenario.max_model_len} x {user_scenario.concurrency}
+                     = {kv_details.per_request_kv_cache_bytes} bytes
+                     = {kv_details.per_request_kv_cache_bytes} / (1024 ^ 3)
+                     = {kv_details.per_request_kv_cache_gb} GB
+""")
+
+            st.code(f"""
+KV cache for max concurrency = kv_cache_per_request x concurrency
+                             = {kv_details.per_request_kv_cache_gb} GB x {user_scenario.concurrency}
+                             = {kv_details.kv_cache_size_gb} GB
+""")
+
+
 
 def hardware_specification():
     """
@@ -351,15 +412,12 @@ def hardware_specification():
                                                     pp,
                                                     dp,
                                                     )
-            per_request_kv_cache_memory = kv_cache_req(model_info,
-                                    model_config,
+            kv_details = KVCacheDetail(model_info, model_config,
                                     user_scenario.max_model_len,
+                                    user_scenario.concurrency,
                                     )
-            all_request_kv_cache_memory = kv_cache_req(model_info,
-                                    model_config,
-                                    user_scenario.max_model_len,
-                                    concurrency,
-                                    )
+            per_request_kv_cache_memory = kv_details.per_request_kv_cache_gb
+            all_request_kv_cache_memory = kv_details.kv_cache_size_gb
 
             # Compute more info for pretty print
             total_memory = gpu_memory * available_gpu_count

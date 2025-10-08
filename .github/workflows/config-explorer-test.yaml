@@ -4,6 +4,7 @@ on: [push, pull_request]
 
 jobs:
   config-explorer-pytest:
+    name: Unit Test
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -29,4 +30,5 @@ jobs:
       - name: Test with pytest
         run: |
           pip install pytest pytest-cov
-          pytest -s config_explorer/tests/ --doctest-modules --junitxml=junit/test-results.xml --cov=com --cov-report=xml --cov-report=html
+          cd config_explorer
+          pytest -s tests/ --doctest-modules --junitxml=junit/test-results.xml --cov=config_explorer --cov-report=xml --cov-report=html
