@@ -140,7 +140,7 @@ spec:
         echo "🔄 Starting sweep step ..."
 
     - name: prepare-namespace
-      image: quay.io/openshift/origin-cli:latest
+      image: quay.io/openshift/origin-cli:4.21
       script: |
         #!/bin/sh
 
@@ -155,7 +155,6 @@ spec:
         kubectl create namespace ${NAMESPACE} \
           --dry-run=client -o yaml | kubectl apply -f -
         
-        # HF_TOKEN=$(
         HF_TOKEN=$(
           kubectl get secret hf-secret \
           --namespace "$(context.taskRun.namespace)" \
@@ -163,7 +162,7 @@ spec:
           | tr -d '\n' \
           | base64 -d
         )
-        # kubectl --namespace $(context.taskRun.namespace) get secret hf-secret -o jsonpath='{.data.HF_TOKEN}' | tr -d '\n' | base64 -d)
+
         kubectl create secret generic hf-secret \
           --namespace ${NAMESPACE} \
           --from-literal="HF_TOKEN=${HF_TOKEN}" \
@@ -311,6 +310,7 @@ spec:
           --timeout=${MODEL_START_TIMEOUT}s
         echo "✅ (decode) pods serving model ${MODEL_ID} created"
  
+        # TBD check if any prefill pods and wait if so
         # kubectl --namespace ${NAMESPACE} \
         #   wait pod \
         #   -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=prefill \
@@ -325,6 +325,7 @@ spec:
           --timeout=${MODEL_START_TIMEOUT}s
         echo "✅ (decode) pods serving model ${MODEL_ID} ready"
 
+        # TBD check if any prefill pods and wait if so
         # kubectl --namespace ${NAMESPACE} \
         #   wait pod \
         #   -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=prefill \
