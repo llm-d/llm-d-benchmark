@@ -108,7 +108,7 @@ class KVCacheDetail:
             self.per_token_memory_bytes = self.num_hidden_layers * (self.kv_lora_rank + self.qk_rope_head_dim) * self.precision_in_bytes
         else:
             self.num_attention_group = int(self.num_attention_heads / self.num_key_value_heads)
-            self.per_token_memory_bytes = self.num_hidden_layers * 2 * self.head_dimension * (self.num_key_value_heads / self.num_attention_group) * self.precision_in_bytes
+            self.per_token_memory_bytes = int(self.num_hidden_layers * 2 * self.head_dimension * (self.num_key_value_heads / self.num_attention_group) * self.precision_in_bytes)
 
         # Calculate kv cache size in bytes and in gb
         self.per_request_kv_cache_bytes = self.per_token_memory_bytes * self.context_len
