@@ -22,7 +22,7 @@ cd llm-d-benchmark
 ./setup/install_deps.sh
 ```
 
-See [list of dependencies](https://github.com/deanlorenz/llm-d-benchmark?tab=readme-ov-file#dependencies).
+See [list of dependencies](https://github.com/llm-d/llm-d-benchmark/blob/main/README.md#dependencies).
 
 
 ### Prepare an `llm-d` cluster
@@ -39,7 +39,7 @@ In this example, the benchmark sends requests to an `infra-inference-scheduling-
 
 You will need a `yaml` specification to tell `inference-perf` how to generate the _Workload_ that would be used to benchmark your stack. `inference-perf` will generate prompts (AKA a _Data Set_) with timing (AKA _Load_).
 
-Several workload examples are available under [llm-d-benchmark/workload/profiles/inference-perf](/workload/profiles/inference-perf). We demonstrate with the workload profile `shared_prefix_synthetic`.
+Several workload examples are available under [llm-d-benchmark/workload/profiles/inference-perf](https://github.com/llm-d/llm-d-benchmark/tree/main/workload/profiles/inference-perf). We demonstrate with the workload profile `shared_prefix_synthetic`.
 
 <details>
 <summary><b><code>Click to view</code></b> <pre><b>shared_prefix_synthetic.yaml.in</b></pre></summary>
