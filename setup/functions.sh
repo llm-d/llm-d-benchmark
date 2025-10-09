@@ -79,7 +79,7 @@ function get_image {
   is_latest_tag=$image_tag
   if [[ $image_tag == "auto" ]]; then
     if [[ $LLMDBENCH_CONTROL_CCMD == "podman" ]]; then
-      is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags ${image_registry}/${image_repo}/${image_name} | tail -1 | awk '{ print $2 }' || true)
+      is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags --limit 1000 ${image_registry}/${image_repo}/${image_name} | tail -1 | awk '{ print $2 }' || true)
     else
       is_latest_tag=$(skopeo list-tags docker://${image_registry}/${image_repo}/${image_name} | jq -r .Tags[] | tail -1)
     fi
