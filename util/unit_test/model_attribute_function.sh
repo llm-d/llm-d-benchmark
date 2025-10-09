@@ -26,7 +26,7 @@ export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_SETUP_DIR}/../)
 source ${LLMDBENCH_SETUP_DIR}/env.sh
 
 printf "%-15s %-45s %-50s\n" "Parameter" "| Bash output" "| Python output"
-model_list="meta-llama/Llama-3.2-3B-Instruct RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic meta-llama/Llama-4-Scout-17B-16E-Instruct Qwen/Qwen1.5-MoE-A2.7B-Chat ibm-granite/granite-speech-3.3-8b ibm-granite/granite-vision-3.3-2b facebook/opt-125m Qwen/Qwen3-0.6B"
+model_list="meta-llama/Llama-3.2-3B-Instruct RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic meta-llama/Llama-4-Scout-17B-16E-Instruct Qwen/Qwen1.5-MoE-A2.7B-Chat ibm-ai-platform/micro-g3.3-8b-instruct-1b ibm-granite/granite-speech-3.3-8b ibm-granite/granite-vision-3.3-2b facebook/opt-125m Qwen/Qwen3-0.6B"
 for i in $model_list
 do
   echo "--------------------------------------------------------------------------------------------------------"

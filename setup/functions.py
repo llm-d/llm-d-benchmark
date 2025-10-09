@@ -529,7 +529,11 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
 
 def model_attribute(model: str, attribute: str) -> str:
 
-    model, modelid = model.split(':', 1) if ':' in model else (model, model)
+    if ':' in model :
+        model, modelid = model.split(':', 1)
+    else :
+        modelid = model
+
     modelid = modelid.replace('/', '-').replace('.','-')
 
     #  split the model name into provider and rest
@@ -547,7 +551,7 @@ def model_attribute(model: str, attribute: str) -> str:
     model_components = model_components_str.split('-')
 
     # get individual attributes using regex
-    type_str = ""
+    type_str = "base"
     for comp in model_components:
         if re.search(r"nstruct|hf|chat|speech|vision|opt", comp, re.IGNORECASE):
             type_str = comp
@@ -556,9 +560,8 @@ def model_attribute(model: str, attribute: str) -> str:
     parameters = ""
     for comp in model_components:
         if re.search(r"[0-9].*[bm]", comp, re.IGNORECASE):
-            parameters = re.sub(r'^[a-z]', '', comp, count=1)
-            parameters = parameters.replace('.', 'p')
-            break
+            parameters = re.sub(r'^[a-z]', '', comp)
+            parameters = parameters.split('.')[-1]
 
     major_version = "1"
     for comp in model_components:
@@ -584,9 +587,10 @@ def model_attribute(model: str, attribute: str) -> str:
     attributes = {
         "model": model,
         "modelid": modelid,
+        "modelcomponents": ' '.join(model_components),
         "modelid_label": modelid_label,
         "provider": provider,
-        "type": type_str,
+        "modeltype": type_str,
         "parameters": parameters,
         "majorversion": major_version,
         "kind": " ".join(kind.split("_")),
@@ -1098,6 +1102,7 @@ def add_additional_env_to_yaml(env_vars_string: str) -> str:
         lines = []
         with open(env_vars_string, 'r') as fp:
             for line in fp:
+                line = render_string(line)
                 lines.append(name_indent + line.rstrip())
         return '\n'.join(lines)
 
