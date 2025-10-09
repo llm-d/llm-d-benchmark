@@ -178,3 +178,8 @@ The utility script `utility/transform-pr-parallel.py` can be used to transform a
 - be sure to set the namespace parameter in the pipeline run; this is where the pipeline runs and is the base of the name for each experiment
 - the upload of data is not yet implemented
 - there are hardcoded assumptions/values about the use case in several places; these will be removed as more use cases are explored
+
+
+# Issues
+
+- document set up s3 keys

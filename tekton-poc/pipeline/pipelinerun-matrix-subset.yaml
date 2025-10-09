@@ -9,6 +9,24 @@ spec:
     - name: data
       persistentVolumeClaim:
         claimName: workspace-pvc
+  params:
+    - name: namespace
+      value: kalantar
+    - name: model-id
+      value: "Qwen/Qwen3-0.6B"
+
+    # Harness / Workload
+    - name: harnessProfile
+      value: shared_prefix_synthetic_short.yaml
+
+    # Output Location
+    - name: s3-keys
+      value: ibm-cos-secret
+    - name: s3-bucket
+      value: "cloud-object-storage-cos-standard-ere"
+    - name: s3-endpoint
+      value: "https://s3.us-east.cloud-object-storage.appdomain.cloud"
+
   pipelineSpec:
     workspaces:
       - name: data
@@ -21,31 +39,25 @@ spec:
             workspace: data
         params:
           - name: namespace
-            value: kalantar
+            value: $(params.namespace)
           - name: model-id
-            value: "Qwen/Qwen3-0.6B"
+            value: $(params.model-id)
           - name: experimentBaseUrl
             value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+
+          - name: s3-keys
+            value: $(params.s3-keys)
+          - name: s3-bucket
+            value: $(params.s3-bucket)
+          - name: s3-endpoint
+            value: $(params.s3-endpoint)
+
           - name: harnessProfile
-            value: shared_prefix_synthetic.yaml
+            value: $(params.harnessProfile)
+
+          - name: pipelineUID
+            value: "$(context.pipelineRun.uid)"
         matrix:
-          params:
-            - name: gaiePluginConfig
-              value: 
-                - "inf-sche-none.yaml"
-                - "inf-sche-prefix.yaml"
-                - "inf-sche-kv.yaml"
-                - "inf-sche-queue.yaml"
-            - name: question_len
-              value:
-                - "100"
-                - "300"
-                - "1000"
-            - name: output_len
-              value: 
-                - "100"
-                - "300"
-                - "1000"
           include:
             - name: combo-1
               params:
@@ -63,19 +75,3 @@ spec:
                   value: "300"
                 - name: output_len
                   value: "300"
-            - name: combo-3
-              params:
-                - name: gaiePluginConfig
-                  value: "inf-sche-kv.yaml"
-                - name: question_len
-                  value: "1000"
-                - name: output_len
-                  value: "100"
-            - name: combo-4
-              params:
-                - name: gaiePluginConfig
-                  value: "inf-sche-queue.yaml"
-                - name: question_len
-                  value: "300"
-                - name: output_len
-                  value: "1000"

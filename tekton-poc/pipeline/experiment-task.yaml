@@ -14,6 +14,8 @@ spec:
       type: string
     - name: output_len
       type: string
+    - name: gaiePluginConfig
+      type: string
 
     - name: namespace
       type: string
@@ -118,15 +120,13 @@ spec:
       type: string
       default: experiment
 
-    - name: bucket
+    - name: s3-keys
       type: string
-      default: "cloud-object-storage-cos-standard-ere"
-    - name: prefix
+      default: "s3-keys"
+    - name: s3-bucket
       type: string
-      default: "results"
-    - name: endpoint
+    - name: s3-endpoint
       type: string
-      default: "https://s3.us-east.cloud-object-storage.appdomain.cloud"
 
     - name: dry-run
       type: string 
@@ -137,7 +137,10 @@ spec:
       image: alpine:3.20
       script: |
         #!/bin/sh
-        echo "🔄 Starting sweep step ..."
+        echo "🔄 Starting sweep step for ..."
+        echo "     gaiePluginConfig = $(params.gaiePluginConfig)"
+        echo "         question_len = $(params.question_len)"
+        echo "           output_len = $(params.output_len)"
 
     - name: prepare-namespace
       image: quay.io/openshift/origin-cli:4.21
@@ -480,12 +483,12 @@ spec:
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
-              name: ibm-cos-secret
+              name: $(params.s3-keys)
               key: AWS_ACCESS_KEY_ID
         - name: AWS_SECRET_ACCESS_KEY
           valueFrom:
             secretKeyRef:
-              name: ibm-cos-secret
+              name: $(params.s3-keys)
               key: AWS_SECRET_ACCESS_KEY
         - name: AWS_EC2_METADATA_DISABLED
           value: "true"
@@ -499,10 +502,11 @@ spec:
         EXPERIMENT_RESULTS_FOLDER="$(params.harnessName)_${EXPERIMENT_ID}_$(context.taskRun.name)"
         ARCHIVE_NAME="${EXPERIMENT_RESULTS_FOLDER}.tar.gz"
 
-        tar -czf ${ARCHIVE_NAME} -C "$(workspaces.data.path)" ${EXPERIMENT_RESULTS_FOLDER}
+        tar -czf ${ARCHIVE_NAME} \
+            -C "$(workspaces.data.path)" ${EXPERIMENT_RESULTS_FOLDER}
 
-        aws s3 cp ${ARCHIVE_NAME} "s3://$(params.bucket)/${ARCHIVE_NAME}" \
-            --endpoint-url "$(params.endpoint)" \
+        aws s3 cp ${ARCHIVE_NAME} "s3://$(params.s3-bucket)/${ARCHIVE_NAME}" \
+            --endpoint-url "$(params.s3-endpoint)" \
             --content-type "application/x-tar" \
             --content-encoding "gzip" \
             --no-progress
