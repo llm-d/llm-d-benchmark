@@ -21,7 +21,7 @@ print(f"Workspace root directory added to PYTHONPATH: {os.environ['PYTHONPATH']}
 
 # ---------------- Import local packages ----------------
 try:
-    from functions import announce, environment_variable_to_dict, is_standalone_deployment, capacity_planner_sanity_check
+    from functions import announce, environment_variable_to_dict
 except ImportError as e:
     # Fallback for when dependencies are not available
     print(f"❌ ERROR: Could not import required modules: {e}")
@@ -40,9 +40,6 @@ def main():
 
     if ev["control_dry_run"]:
         announce("DRY RUN enabled. No actual changes will be made.")
-
-    # # Invoke capacity planning
-    # capacity_planner_sanity_check(ev)
 
 if __name__ == "__main__":
     sys.exit(main())

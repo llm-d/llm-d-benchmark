@@ -832,7 +832,6 @@ def check_affinity(ev: dict):
 
                     found_accelerator = None
                     for node in nodes:
-                        print(f"{node=}")
                         labels = node.metadata.get("labels", {})
                         for pattern in accelerator_patterns:
                             for label_key, label_value in labels.items():
