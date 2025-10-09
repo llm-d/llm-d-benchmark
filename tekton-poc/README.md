@@ -44,6 +44,12 @@ A PipelineRun is created that embeds a Pipeline containing one Task with a matri
 
 ## Usage
 
+### Requirements
+
+1. HF token
+2. s3 bucket and necessary keys
+3. 
+
 ### Setup
 
 1. Create a namespace where the Tekton pipeline will execute.
@@ -56,7 +62,7 @@ A PipelineRun is created that embeds a Pipeline containing one Task with a matri
     kubectl config set-context --current --namespace $NAMESPACE
     ```
 
-2. Deploy a secret `hf-secret` containing your HuggingFace token in the namespace.
+2. Create a secret `hf-secret` containing your HuggingFace token in the namespace.
     ```shell
     kubectl create secret generic hf-secret \
           --namespace ${NAMESPACE} \
@@ -64,12 +70,14 @@ A PipelineRun is created that embeds a Pipeline containing one Task with a matri
           --dry-run=client -o yaml | kubectl apply -f -
     ```
 
-3. Give the task needed permissions
+3. Create a secret containing your s3 credentials `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
+
+4. Give the task needed permissions
     ```shell
     envsubst '$NAMESPACE' < pipeline/roles.yaml | kubectl apply -f -
     ```
 
-4. Create a RWX PVC `workspace-pvc` for storing execution results. This PVC is shared between all tasks.  For example:
+5. Create a RWX PVC `workspace-pvc` for storing execution results. This PVC is shared between all tasks.  For example:
     ```shell
     cat <<EOF | kubectl apply -f -
     apiVersion: v1
@@ -96,7 +104,13 @@ A PipelineRun is created that embeds a Pipeline containing one Task with a matri
     kubectl apply -f pipeline/experiment-task.yaml
     ```
 
-2. Run experiments (set the parameter `namespace` to $NAMESPACE):
+2. Configure the `PipelineRun` and execute experiment.
+Edit one of the sample PipelineRuns or create your own. In particular, set:
+
+    - the namespace (where the PipelineRun executes)
+    - s3 details: secret name, bucket name and endpoint URL
+
+Run by creating the PipelineRun:
     ```shell
     kubectl apply -f pipeline/pipelinerun-matrix.yaml
     ```
@@ -182,4 +196,4 @@ The utility script `utility/transform-pr-parallel.py` can be used to transform a
 
 # Issues
 
-- document set up s3 keys
+
