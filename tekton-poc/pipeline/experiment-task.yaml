@@ -449,7 +449,7 @@ spec:
           workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | sed -e "s^\.yaml.in$^^g")
           echo "workload_template_file_name = $workload_template_file_name"
           ## 
-          workload_output_file=${LLMDBENCH_CONTROL_WORK_DIR}/shared_prefix_synthetic_short.yaml
+          workload_output_file=${LLMDBENCH_CONTROL_WORK_DIR}/${workload_template_file_name}.yaml
           # workload_output_file=${LLMDBENCH_CONTROL_WORK_DIR}/$workload_template_type/$workload_template_file_name
           echo "workload_output_file = $workload_output_file"
           ##
