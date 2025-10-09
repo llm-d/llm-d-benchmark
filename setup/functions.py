@@ -258,7 +258,6 @@ def environment_variable_to_dict(ev: dict = {}) :
     ev["control_work_dir"] = ev.get("control_work_dir", ".")
     ev["control_kcmd"] = ev.get("control_kcmd", "kubectl")
     ev["vllm_modelservice_gateway_class_name"] = ev.get("vllm_modelservice_gateway_class_name", "").lower()
-    ev['sanity_check_done'] = False
 
 def create_namespace(api: pykube.HTTPClient, namespace_name: str, dry_run: bool = False, verbose: bool = False):
     if not namespace_name:
