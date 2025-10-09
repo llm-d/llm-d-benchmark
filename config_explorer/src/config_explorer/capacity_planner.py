@@ -160,6 +160,7 @@ def max_context_len(model_config: AutoConfig) -> int:
     """
     Returns the max context length accepted by model
     """
+    model_config = get_text_config(model_config)
     return model_config.max_position_embeddings
 
 def __estimate_vllm_non_torch_memory() -> int:
