@@ -50,6 +50,12 @@ jobs:
       - name: Create k8s Kind Cluster
         uses: helm/kind-action@v1
 
+      - name: Patch node with dummy GPU label
+        shell: bash
+        run: |
+          kubectl patch node $(kubectl get nodes -o name) -p '{"metadata":{"labels":{"nvidia.com/gpu.product":"NVIDIA-H100-80GB-HBM3"}}}'
+          kubectl get nodes --show-labels
+
       - name: Run install_deps
         run: |
           sudo apt-get update
