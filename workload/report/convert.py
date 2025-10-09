@@ -131,7 +131,7 @@ def _get_llmd_benchmark_envars() -> dict:
         return {
             "scenario": {
                 "model": {
-                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
+                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODEL']
                 },
                 "host": {
                     "type": ['replica'] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS']),
@@ -147,9 +147,9 @@ def _get_llmd_benchmark_envars() -> dict:
                 },
                 "platform": {
                     "engine": [{
-                        "name": os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY'] + \
-                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO'] + \
-                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME'] + \
+                        "name": os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY'] + '/' + \
+                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO'] + '/' + \
+                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME'] + ':' + \
                                 os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG'],
                     }] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS'])
                 },
@@ -194,7 +194,7 @@ def _get_llmd_benchmark_envars() -> dict:
         return {
             "scenario": {
                 "model": {
-                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
+                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODEL']
                 },
                 "host": {
                     "type": ['prefill'] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
@@ -223,9 +223,9 @@ def _get_llmd_benchmark_envars() -> dict:
                         "inferenceScheduler": epp_config,
                     },
                     "engine": [{
-                            "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
-                                    os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + \
-                                    os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + \
+                            "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + '/' + \
+                                    os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + '/' + \
+                                    os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + ':' + \
                                     os.environ['LLMDBENCH_LLMD_IMAGE_TAG'],
                     }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
                          int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
@@ -937,6 +937,9 @@ def import_nop(results_file: str) -> BenchmarkReport:
         for cat in cat_list:
             cat_dict = {}
             cat_dict["title"] = cat["title"]
+            process = cat.get("process")
+            if process is not None:
+                cat_dict["process"] = process["name"]
             cat_dict["elapsed"] = {
                         "units": Units.S,
                         "value": cat["elapsed"],
@@ -1084,6 +1087,14 @@ def import_nop(results_file: str) -> BenchmarkReport:
             },
         },
     }
+
+    for name in ["load_cached_compiled_graph", "compile_graph"]:
+        value = results["metrics"].get(name)
+        if value is not None:
+            results_dict["metrics"]["metadata"][name] = {
+                                "units": Units.S,
+                                "value": value,
+                            }
 
     update_dict(br_dict, results_dict)
 

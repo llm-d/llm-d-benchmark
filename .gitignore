@@ -58,3 +58,8 @@ venv.bak/
 environment/
 
 scenarios/none.sh
+
+# Python specifics
+**/*.egg-info
+# config_explorer/build/
+# .pytest

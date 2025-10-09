@@ -36,6 +36,8 @@ MAX_VLLM_WAIT = 15.0 * 60.0  # time (seconds) to wait for vllm to respond
 # MM-DD HH:MM:SS or MM-DD HH:MM:SS.MMM
 DATE_PATTERN = re.compile(r"\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}(?:\.\d{3})?")
 
+PROCESS_PATTERN = re.compile(r"\(.*?\)")
+
 DEFINED_CATEGORIES = [
     {
         "title": "Detect Platform",
@@ -45,22 +47,17 @@ DEFINED_CATEGORIES = [
     {
         "title": "LLM Imports",
         "start": "detected platform",
-        "end": "All plugins in this group will be loaded",
-    },
-    {
-        "title": "Add CLI Args",
-        "start": "All plugins in this group will be loaded",
-        "end": "vLLM API server version",
+        "end": "Available plugins for group",
     },
     {
         "title": "Get Model Info",
-        "start": "non-default args:",
+        "start": "vLLM API server version",
         "end": "Using max model len",
     },
     {
         "title": "Worker Initialization",
-        "start": "Setting max_num_batched_tokens",
-        "end": "Initializing a V1 LLM engine",
+        "start": "Waiting for init message",
+        "end": "Starting to load model",
     },
     {
         "title": "Model Loading",
@@ -79,27 +76,101 @@ DEFINED_CATEGORIES = [
             },
             {
                 "title": "Inductor",
-                "start": "De-functionalized",
-                "end": "Compiling a graph",
-            },
-            {
-                "title": "Dynamo Serialization",
-                "start": "Computation graph saved",
+                "start": "Dynamo bytecode transform",
                 "end": "torch.compile takes",
             },
         ],
     },
     {
         "title": "CUDA Graph Capture",
-        "start": "Capturing CUDA graph.*?0%",
-        "end": "Capturing CUDA graph.*?100%",
+        "start": "torch.compile takes",
+        "end": "init engine",
     },
     {
         "title": "API Server Starts",
-        "start": "EngineCore waiting for work",
-        "end": "Available routes are",
+        "start": "Starting vLLM API server",
+        "end": "Route: /metrics",
     },
 ]
+
+
+@dataclass(frozen=True)
+class BenchmarkProcess:
+    """Process details"""
+
+    name: str
+    pid: int
+
+    @staticmethod
+    def process_from_line(line: str) -> BenchmarkProcess | None:
+        """access process details from pattern"""
+
+        matches = PROCESS_PATTERN.findall(line)
+        for match in reversed(matches):
+            start_index = match.find("pid=")
+            if start_index < 0:
+                continue
+
+            name = match[:start_index].strip("( ")
+            start_index += len("pid=")
+            end_index = match.find(")", start_index)
+            pid = 0
+            if end_index > 0:
+                try:
+                    pid = int(match[start_index:end_index].strip())
+                except ValueError:
+                    logger.exception("error getting pid from '%s'", match)
+            return BenchmarkProcess(name, pid)
+
+        return None
+
+    def desc(self) -> str:
+        """process description"""
+        if self.name == "" and self.pid == 0:
+            return ""
+        return f"{self.name} pid={self.pid}"
+
+    def dump(self) -> dict[str, Any]:
+        """Convert class BenchmarkProcess to dict.
+        Returns:
+            dict: Defined fields of BenchmarkProcess.
+        """
+        dump_dict = {}
+        for f in fields(self):
+            dump_dict[f.name] = getattr(self, f.name)
+
+        return dump_dict
+
+
+@dataclass
+class LogLine:
+    """log line info"""
+
+    time: datetime | None = None
+    process: BenchmarkProcess | None = None
+    line: str = ""
+    line_number: int = 0
+
+    def process_desc(self) -> str:
+        """process description"""
+        return "" if self.process is None else self.process.desc()
+
+
+@dataclass
+class BenchmarkCategoryDetails:
+    """Category details"""
+
+    pattern: re.Pattern[str] | None = None
+    log_line: LogLine | None = None
+
+    def matches(self, log_line: LogLine) -> bool:
+        """check if line matches"""
+        match = self.pattern.search(log_line.line)
+        return match is not None
+
+    def pattern_desc(self) -> str:
+        """pattern string"""
+        return "" if self.pattern is None else self.pattern.pattern
 
 
 @dataclass
@@ -107,59 +178,76 @@ class BenchmarkCategory:
     """Benchmark category"""
 
     title: str = ""
-    start_time: datetime | None = None
-    end_time: datetime | None = None
-    start: str = ""
-    start_pattern: re.Pattern[str] | None = None
-    end: str = ""
-    end_pattern: re.Pattern[str] | None = None
-    start_line: str = ""
-    start_line_number: int = 0
-    end_line: str = ""
-    end_line_number: int = 0
+    defined: bool = False
+    start: BenchmarkCategoryDetails = field(default_factory=BenchmarkCategoryDetails)
+    end: BenchmarkCategoryDetails = field(default_factory=BenchmarkCategoryDetails)
     next: BenchmarkCategory | None = None
     parent: BenchmarkCategory | None = None
     root_child: BenchmarkCategory | None = None
 
-    def is_start_line(self, line: str) -> bool:
-        """check if line is a start line"""
-        if self.start_pattern is None:
-            self.start_pattern = re.compile(rf"{self.start}")
-        match = self.start_pattern.search(line)
-        return match is not None
+    def process_desc(self) -> str:
+        """process description"""
+        procs = [
+            "" if self.start.log_line is None else self.start.log_line.process_desc(),
+            "" if self.end.log_line is None else self.end.log_line.process_desc(),
+        ]
+        return procs[0] if procs[0] == procs[1] else ", ".join(procs)
 
-    def is_end_line(self, line: str) -> bool:
-        """check if line is an end line"""
-        if self.end_pattern is None:
-            self.end_pattern = re.compile(rf"{self.end}")
-        match = self.end_pattern.search(line)
-        return match is not None
-
-    def dump(self) -> list[dict[str, Any]]:
-        """Convert LogCategory to list.
-
+    def dump(self, include_not_defined: bool = False) -> list[dict[str, Any]]:
+        """Convert BenchmarkCategory to list.
+        Args:
+            include_not_defined (bool): includes or not filler categories
         Returns:
-            list: Defined fields of LogCategory.
+            list: Defined fields of BenchmarkCategory.
         """
-        return BenchmarkCategory._dump(self)
+        return BenchmarkCategory._dump(self, include_not_defined)
 
     @staticmethod
-    def _dump(benchmark_category: BenchmarkCategory) -> list[dict[str, Any]]:
+    def _dump(
+        benchmark_category: BenchmarkCategory, include_not_defined: bool
+    ) -> list[dict[str, Any]]:
         categories = []
         category = benchmark_category
         while category is not None:
-            dump_dict = {}
-            dump_dict["title"] = category.title
-            dump_dict["elapsed"] = (
-                (category.end_time - category.start_time).total_seconds()
-                if category.start_time is not None and category.end_time is not None
-                else 0.0
-            )
+            if category.defined or include_not_defined:
+                dump_dict = {"title": category.title}
+                procs = [
+                    ""
+                    if category.start.log_line is None
+                    else category.start.log_line.process_desc(),
+                    ""
+                    if category.end.log_line is None
+                    else category.end.log_line.process_desc(),
+                ]
+                if procs[0] != procs[1]:
+                    raise ValueError(
+                        f"Category '{category.title}': "
+                        f"start process '{procs[0]}' must be "
+                        f"the same as end process '{procs[1]}'"
+                    )
 
-            if category.root_child is not None:
-                dump_dict["categories"] = BenchmarkCategory._dump(category.root_child)
+                if (
+                    category.start.log_line is not None
+                    and category.start.log_line.process is not None
+                ):
+                    dump_dict["process"] = category.start.log_line.process.dump()
+                dump_dict["elapsed"] = 0.0
+                if (
+                    category.start.log_line is not None
+                    and category.end.log_line is not None
+                    and category.start.log_line.time is not None
+                    and category.end.log_line.time is not None
+                ):
+                    dump_dict["elapsed"] = (
+                        category.end.log_line.time - category.start.log_line.time
+                    ).total_seconds()
 
-            categories.append(dump_dict)
+                if category.root_child is not None:
+                    dump_dict["categories"] = BenchmarkCategory._dump(
+                        category.root_child, include_not_defined
+                    )
+
+                categories.append(dump_dict)
             category = category.next
 
         return categories
@@ -321,6 +409,9 @@ class BenchmarkMetrics:
     gpu_freed: float = 0.0
     gpu_in_use: float = 0.0
     wake: float = 0.0
+    load_cached_compiled_graph: float = 0.0
+    compile_graph: float = 0.0
+
     root_category: BenchmarkCategory | None = None
 
     def dump(self) -> dict[str, Any]:
@@ -335,6 +426,9 @@ class BenchmarkMetrics:
                 continue
 
             value = getattr(self, f.name)
+            if f.name in ["load_cached_compiled_graph", "compile_graph"] and value == 0:
+                continue
+
             dump_dict[f.name] = (
                 value.dump()
                 if hasattr(value, "dump") and callable(value.dump)
@@ -572,7 +666,6 @@ def extract_datetime(log_line: str) -> datetime | None:
 
     match = DATE_PATTERN.search(log_line)
     if match is None:
-        logger.info("Timestamp not found in log line '%s'", log_line)
         return None
 
     value = match.group()
@@ -606,8 +699,11 @@ def initialize_benchmark_categories(
         prev_benchmark_category = benchmark_category
 
         benchmark_category.title = defined_category.get("title")
-        benchmark_category.start = defined_category.get("start")
-        benchmark_category.end = defined_category.get("end")
+        benchmark_category.defined = True
+        benchmark_category.start.pattern = re.compile(
+            rf"{defined_category.get('start')}"
+        )
+        benchmark_category.end.pattern = re.compile(rf"{defined_category.get('end')}")
         benchmark_category.parent = parent
         if (
             benchmark_category.parent is not None
@@ -622,44 +718,81 @@ def initialize_benchmark_categories(
     return root_benchmark_category
 
 
-def categorize_logs(vllm_model: str, logs: str) -> BenchmarkCategory:
+def get_log_list(logs: str) -> list[LogLine]:
+    """get log lines info"""
+
+    log_list = []
+    for idx, line in enumerate(logs.splitlines()):
+        log_line = LogLine()
+        log_line.line_number = idx + 1
+        log_line.line = line
+        log_line.time = extract_datetime(log_line.line)
+        log_line.process = BenchmarkProcess.process_from_line(log_line.line)
+        log_list.append(log_line)
+
+    return log_list
+
+
+def get_log_list_per_process(
+    vllm_model: str, log_list: list[LogLine]
+) -> dict[BenchmarkProcess, list[LogLine]]:
+    """get log list divided by Process"""
+
+    tensorizer_serialization_end = f"End model {vllm_model} serialization"
+
+    # look for possible tensorizer serialization end
+    idx = 0
+    for log_line in log_list:
+        if tensorizer_serialization_end in log_line.line:
+            # skips tensorizer serialization lines
+            idx = log_line.line_number
+            break
+
+    log_list_per_process = {}
+    if idx > 0:
+        if idx >= len(log_list):
+            return log_list_per_process
+        log_line = log_list[idx]
+        logger.info(
+            "Skip tensorizer serialization. Start from log line %d: %s",
+            log_line.line_number,
+            log_line.line,
+        )
+
+    for log_line in log_list[idx:]:
+        if log_line.process not in log_list_per_process:
+            log_list_per_process[log_line.process] = []
+
+        log_list_per_process[log_line.process].append(log_line)
+
+    return log_list_per_process
+
+
+def categorize_logs(
+    log_list_per_process: dict[BenchmarkProcess, list[LogLine]],
+) -> BenchmarkCategory:
     """parse logs and categorize it"""
 
     root_benchmark_category = initialize_benchmark_categories(DEFINED_CATEGORIES, None)
-    populate_benchmark_categories(vllm_model, logs, root_benchmark_category)
+    populate_benchmark_categories(log_list_per_process, root_benchmark_category)
     # add uncategorized categories
     add_uncategorized_categories(root_benchmark_category)
     return root_benchmark_category
 
 
 def populate_benchmark_categories(
-    vllm_model: str, logs: str, root_benchmark_category: BenchmarkCategory
+    log_list_per_process: dict[BenchmarkProcess, list[LogLine]],
+    root_benchmark_category: BenchmarkCategory,
 ):
     """populate categories from log lines"""
 
-    tensorizer_serialization_end = f"End model {vllm_model} serialization"
-    # log list
-    log_list = logs.splitlines()
-    index = 0
-
-    # look for possible tensorizer serialization end
-    idx = 0
-    while idx < len(log_list):
-        if tensorizer_serialization_end in log_list[idx]:
-            # skips tensorizer serialization lines
-            index = idx + 1
-            logger.info(
-                "Skip tensorizer serialization. Start from log line %d: %s",
-                index + 1,
-                log_list[index],
+    for _, log_list_process in log_list_per_process.items():
+        index = 0
+        while index < len(log_list_process):
+            index = populate_benchmark_category(
+                index, log_list_process, root_benchmark_category
             )
-            break
-
-        idx += 1
-
-    while index < len(log_list):
-        index = populate_benchmark_category(index, log_list, root_benchmark_category)
-        index += 1
+            index += 1
 
 
 def add_uncategorized_categories(benchmark_category: BenchmarkCategory):
@@ -674,18 +807,16 @@ def add_uncategorized_categories(benchmark_category: BenchmarkCategory):
         next_category = category.next
         if (
             next_category is not None
-            and category.end_time is not None
-            and next_category.start_time is not None
-            and category.end_time < next_category.start_time
+            and category.end.log_line is not None
+            and category.end.log_line.time is not None
+            and next_category.start.log_line is not None
+            and next_category.start.log_line.time is not None
+            and category.end.log_line.time < next_category.start.log_line.time
         ):
             benchmark_category = BenchmarkCategory()
             benchmark_category.title = "Uncategorized"
-            benchmark_category.start_time = category.end_time
-            benchmark_category.start_line = category.end_line
-            benchmark_category.start_line_number = category.end_line_number
-            benchmark_category.end_time = next_category.start_time
-            benchmark_category.end_line = next_category.start_line
-            benchmark_category.end_line_number = next_category.start_line_number
+            benchmark_category.start.log_line = category.end.log_line
+            benchmark_category.end.log_line = next_category.start.log_line
             benchmark_category.parent = category.parent
             benchmark_category.next = next_category
             category.next = benchmark_category
@@ -696,39 +827,32 @@ def add_uncategorized_categories(benchmark_category: BenchmarkCategory):
 
 
 def populate_benchmark_category(
-    index: int, log_list: list[str], benchmark_category: BenchmarkCategory
+    index: int, log_list: list[LogLine], benchmark_category: BenchmarkCategory
 ) -> int:
     """populate category from log line"""
 
     category = benchmark_category
     while category is not None and index < len(log_list):
-        if category.start_line == "" and category.is_start_line(log_list[index]):
-            category.start_time = extract_datetime(log_list[index])
-            # if date extract failed, try next log line
-            while category.start_time is None:
+        if category.start.log_line is None and category.start.matches(log_list[index]):
+            category.start.log_line = log_list[index]
+            category.end.log_line = None
+            # if no date, try next log line
+            while category.start.log_line.time is None:
                 index += 1
                 if index >= len(log_list):
                     return index
 
-                category.start_time = extract_datetime(log_list[index])
+                category.start.log_line = log_list[index]
 
-            if category.start_time is not None:
-                category.start_line = log_list[index]
-                category.start_line_number = index + 1
-
-        if category.end_line == "" and category.is_end_line(log_list[index]):
-            category.end_time = extract_datetime(log_list[index])
-            # if date extract failed, try next log line
-            while category.end_time is None:
+        if category.end.log_line is None and category.end.matches(log_list[index]):
+            category.end.log_line = log_list[index]
+            # if no date, try next log line
+            while category.end.log_line.time is None:
                 index += 1
                 if index >= len(log_list):
                     return index
 
-                category.end_time = extract_datetime(log_list[index])
-
-            if category.end_time is not None:
-                category.end_line = log_list[index]
-                category.end_line_number = index + 1
+                category.end = log_list[index]
 
         if category.root_child is not None:
             index = populate_benchmark_category(index, log_list, category.root_child)
@@ -756,6 +880,14 @@ def parse_logs(logs: str) -> BenchmarkResult:
     # Sleep mode freed 69.50 GiB memory, 0.75 GiB memory is still in use.
     model_gpu_freed = "Sleep mode freed"
 
+    # Directly load the compiled graph(s) for dynamic shape from the cache, took %.3f s
+    # Directly load the compiled graph(s) for shape %s from the cache, took %.3f s
+    cached_compiled_graph = "Directly load the compiled graph(s) for "
+
+    # Compiling a graph for dynamic shape takes %.2f s
+    # Compiling a graph for shape %s takes %.2f s
+    compiled_graph = "Compiling a graph for "
+
     benchmark_result = BenchmarkResult()
 
     # loop from the bottom to catch latest statistics before old ones
@@ -771,6 +903,10 @@ def parse_logs(logs: str) -> BenchmarkResult:
             and benchmark_result.metrics.gpu_freed != 0
             and benchmark_result.metrics.gpu_in_use != 0
             and benchmark_result.metrics.wake != 0
+            and (
+                benchmark_result.metrics.load_cached_compiled_graph != 0
+                or benchmark_result.metrics.compile_graph != 0
+            )
         ):
             break
 
@@ -839,6 +975,19 @@ def parse_logs(logs: str) -> BenchmarkResult:
                 benchmark_result.metrics.wake = floats[0]
                 continue
 
+        if (
+            benchmark_result.metrics.load_cached_compiled_graph == 0
+            and benchmark_result.metrics.compile_graph == 0
+        ):
+            floats = find_floats_in_line(cached_compiled_graph, line)
+            if len(floats) > 0:
+                benchmark_result.metrics.load_cached_compiled_graph = floats[0]
+                continue
+            floats = find_floats_in_line(compiled_graph, line)
+            if len(floats) > 0:
+                benchmark_result.metrics.compile_graph = floats[0]
+                continue
+
     return benchmark_result
 
 
@@ -851,7 +1000,7 @@ def find_floats_in_line(key: str, line: str) -> list[float]:
     return []
 
 
-def extract_floats(text) -> list[float]:
+def extract_floats(text: str) -> list[float]:
     """extracts all float numbers from a string"""
     return [float(num) for num in re.findall(r"[-+]?\d*\.\d+|\d+", text)]
 
@@ -895,35 +1044,52 @@ def write_benchmark_categories_to_log(
     category = benchmark_category
     while category is not None:
         elapsed = ""
-        if category.start_time is not None and category.end_time is not None:
-            time_difference = category.end_time - category.start_time
+        if (
+            category.start.log_line is not None
+            and category.start.log_line.time is not None
+            and category.end.log_line is not None
+            and category.end.log_line.time is not None
+        ):
+            time_difference = category.end.log_line.time - category.start.log_line.time
             elapsed = f"{time_difference.total_seconds():.3f}"
 
+        file.write("\n")
         file.write(f"{blank_string}Log category   : '{category.title}'\n")
+        file.write(f"{blank_string}  Process      : '{category.process_desc()}'\n")
         time_format = "%m-%d %H:%M:%S.%f"
         date_str = (
-            category.start_time.strftime(time_format)[:-3]
-            if category.start_time is not None
+            category.start.log_line.time.strftime(time_format)[:-3]
+            if category.start.log_line is not None
+            and category.start.log_line.time is not None
             else ""
         )
-        file.write(f"{blank_string}  start date   : '{date_str}'\n")
+        file.write(f"{blank_string}  Start date   : '{date_str}'\n")
         date_str = (
-            category.end_time.strftime(time_format)[:-3]
-            if category.end_time is not None
+            category.end.log_line.time.strftime(time_format)[:-3]
+            if category.end.log_line is not None
+            and category.end.log_line.time is not None
             else ""
         )
-        file.write(f"{blank_string}  end date     : '{date_str}'\n")
-        file.write(f"{blank_string}  elapsed      : {elapsed}\n")
-        file.write(f"{blank_string}  start pattern: '{category.start}'\n")
-        file.write(f"{blank_string}  end pattern  : '{category.end}'\n")
+        file.write(f"{blank_string}  End date     : '{date_str}'\n")
+        file.write(f"{blank_string}  Elapsed      : {elapsed}\n")
         file.write(
-            f"{blank_string}  start line   : "
-            f"{category.start_line_number} '{category.start_line}'\n"
+            f"{blank_string}  Start pattern: '{category.start.pattern_desc()}'\n"
         )
-        file.write(
-            f"{blank_string}  end line     : "
-            f"{category.end_line_number} '{category.end_line}'\n"
-        )
+        file.write(f"{blank_string}  End pattern  : '{category.end.pattern_desc()}'\n")
+        if category.start.log_line is None:
+            file.write(f"{blank_string}  Start line   :\n")
+        else:
+            file.write(
+                f"{blank_string}  Start line   : "
+                f"{category.start.log_line.line_number} '{category.start.log_line.line}'\n"
+            )
+        if category.end.log_line is None:
+            file.write(f"{blank_string}  End line     :\n")
+        else:
+            file.write(
+                f"{blank_string}  End line     : "
+                f"{category.end.log_line.line_number} '{category.end.log_line.line}'\n"
+            )
         if category.root_child is not None:
             write_benchmark_categories_to_log(level + 1, category.root_child, file)
         category = category.next
@@ -948,6 +1114,7 @@ def main():
     control_work_dir = envs[2]
     load_format = LoadFormat.loadformat_from_value(envs[3])
     requests_dir = control_work_dir
+    write_log_per_process = False
 
     Path(requests_dir).mkdir(parents=True, exist_ok=True)
 
@@ -1008,9 +1175,9 @@ def main():
         benchmark_result.scenario.load_format = load_format
 
     # categorize logs
-    benchmark_result.metrics.root_category = categorize_logs(
-        vllm_model, pod_logs.decode("utf-8")
-    )
+    log_list = get_log_list(pod_logs.decode("utf-8"))
+    log_list_per_process = get_log_list_per_process(vllm_model, log_list)
+    benchmark_result.metrics.root_category = categorize_logs(log_list_per_process)
 
     os.makedirs(requests_dir, exist_ok=True)
 
@@ -1019,6 +1186,25 @@ def main():
     with open(logs_filepath, "wb") as file:
         file.write(pod_logs)
         logger.info("vllm log file saved to path: %s", logs_filepath)
+
+    if write_log_per_process:
+        # write vllm logs per process
+        for idx, (_, log_list_process) in enumerate(log_list_per_process.items()):
+            logs_filepath = os.path.join(requests_dir, f"vllm-{idx}.log")
+            with open(logs_filepath, "w", encoding="utf-8") as file:
+                for log_line in log_list_process:
+                    file.write(f"{log_line.line_number:5d} {log_line.line}\n")
+                logger.info("vllm log file saved to path: %s", logs_filepath)
+
+    # write log categories log file
+    log_categories_filepath = os.path.join(requests_dir, "categories.log")
+    with open(log_categories_filepath, "w", encoding="utf-8", newline="") as file:
+        write_benchmark_categories_to_log(
+            0, benchmark_result.metrics.root_category, file
+        )
+        logger.info(
+            "benchmark categories log file saved to path: %s", log_categories_filepath
+        )
 
     benchmark_result.metrics.time.start = start_time
     benchmark_result.metrics.time.stop = datetime.now().timestamp()
@@ -1033,16 +1219,6 @@ def main():
     os.makedirs(benchmark_report_filepath, exist_ok=True)
     benchmark_report_filepath = os.path.join(benchmark_report_filepath, "result.yaml")
     convert_result(result_filepath, benchmark_report_filepath)
-
-    # write log categories log file
-    log_categories_filepath = os.path.join(requests_dir, "categories.log")
-    with open(log_categories_filepath, "w", encoding="utf-8", newline="") as file:
-        write_benchmark_categories_to_log(
-            0, benchmark_result.metrics.root_category, file
-        )
-        logger.info(
-            "benchmark categories log file saved to path: %s", log_categories_filepath
-        )
 
 
 if __name__ == "__main__":

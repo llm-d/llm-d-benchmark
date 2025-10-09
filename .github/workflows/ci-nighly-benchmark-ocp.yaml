@@ -28,6 +28,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
 
       - name: Display OS used
         run: |
@@ -63,6 +66,10 @@ jobs:
         run: |
           sudo apt-get update
           ./setup/install_deps.sh
+        shell: bash
+
+      - name: Install config explorer dependencies
+        run: pip install ./config_explorer
         shell: bash
 
       - name: Cleanup target cloud (modelservice)

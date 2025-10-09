@@ -2,6 +2,8 @@
 Capacity planner provides functionality to estimate the minimum number of GPUs required for loading model and KV cache
 """
 
+from dataclasses import dataclass
+from enum import StrEnum
 import math
 from functools import reduce
 import re
@@ -9,8 +11,114 @@ from typing import List
 from huggingface_hub import HfApi, ModelInfo
 from transformers import AutoConfig, AutoModel
 
+class AttentionType(StrEnum):
+    """
+    AttentionType describe the attention mechanism used by the model
+    """
+
+    MLA = "Multi-head latent attention"
+    MHA = "Multi-head attention"
+    GQA = "Grouped-query attention"
+    MQA = "Multi-query attention"
+
+@dataclass
+class KVCacheDetail:
+    # Required inputs from model config
+    model: str
+    attention_type: AttentionType
+    kv_data_type: str
+    precision_in_bytes: int
+    num_hidden_layers: int
+    hidden_size: int
+    num_attention_heads: int
+    num_key_value_heads: int
+    head_dimension: int
+
+    # Derived outputs from input
+    num_attention_group: int
+    per_token_memory_bytes: int
+    per_request_kv_cache_bytes: int
+    per_request_kv_cache_gb: float          # Single request kv cache
+    kv_cache_size_gb: float                 # Batch size kv cache
+
+    # Workload inputs
+    context_len: int = 1
+    batch_size: int = 1
+
+    # Required inputs for MLA attention models
+    kv_lora_rank: int | None = None
+    qk_rope_head_dim: int | None = None
+
+    def __init__(self, model_info: ModelInfo, model_config: AutoConfig, context_len: int=1, batch_size: int=1):
+        """
+        KVCacheDetail stores information that are relevant to calculating KV cache memory requirement
+        """
+        self.model = model_info.id
+        self.kv_data_type = inference_dtype(model_config)
+        self.precision_in_bytes = precision_to_byte(self.kv_data_type)
+        
+        # kv_data_type is stored at the model_config level, so need to fetch text_config afterward
+        model_config = get_text_config(model_config)
+        self.num_hidden_layers = model_config.num_hidden_layers
+        self.hidden_size = model_config.hidden_size
+        self.num_attention_heads = model_config.num_attention_heads
+        self.num_key_value_heads = model_config.num_key_value_heads
+        self.head_dimension = getattr(model_config,"head_dim", None)
+        if self.head_dimension is None:
+            self.head_dimension = self.hidden_size / self.num_attention_heads
+        # Determine attention type
+        if use_mla(self.model):
+            self.attention_type = AttentionType.MLA
+            self.kv_lora_rank = model_config.kv_lora_rank
+            self.qk_rope_head_dim = model_config.qk_rope_head_dim
+        else:
+            if self.num_key_value_heads == 1:
+                self.attention_type = AttentionType.MQA
+
+            elif self.num_key_value_heads == self.num_attention_heads:
+                self.attention_type = AttentionType.MHA
+
+            else:
+                # At this point, 1 < num_key_value_heads < num_attention_heads
+                # For example, 8 KV heads with 32 attention heads, so 4 attention heads share the same KV matrices
+                self.attention_type = AttentionType.GQA
+
+        # Calculate kv cache size in bytes and in gb
+        self.set_context_len(context_len)
+        self.set_batch_size(batch_size)
+
+    def set_context_len(self, context_len: int):
+        """
+        Sets context length and recalculates memory requirement
+        """
+        self.context_len = context_len
+        self.__recalculate()
+
+    def set_batch_size(self, batch_size: int):
+        """
+        Sets batch size and recalculates memory requirement
+        """
+        self.batch_size = batch_size
+        self.__recalculate()
+
+    def __recalculate(self):
+        """"
+        Recalculates per token memory, kv cache size in bytes, and in GB
+        """
+        # Calculate per token memory bytes depending on attention type
+        if self.attention_type == AttentionType.MLA:
+            self.per_token_memory_bytes = self.num_hidden_layers * (self.kv_lora_rank + self.qk_rope_head_dim) * self.precision_in_bytes
+        else:
+            self.num_attention_group = int(self.num_attention_heads / self.num_key_value_heads)
+            self.per_token_memory_bytes = int(self.num_hidden_layers * 2 * self.head_dimension * (self.num_key_value_heads / self.num_attention_group) * self.precision_in_bytes)
+
+        # Calculate kv cache size in bytes and in gb
+        self.per_request_kv_cache_bytes = self.per_token_memory_bytes * self.context_len
+        self.per_request_kv_cache_gb = self.per_request_kv_cache_bytes / (1024 ** 3)
+        self.kv_cache_size_gb = self.per_request_kv_cache_gb * self.batch_size
+
 # Model
-def get_model_info_from_hf(model_name: str, hf_token: str | None = None):
+def get_model_info_from_hf(model_name: str, hf_token: str | None = None) -> ModelInfo:
     """
     Fetches model info from HF, does not handle error
     """
@@ -54,6 +162,7 @@ def max_context_len(model_config: AutoConfig) -> int:
     """
     Returns the max context length accepted by model
     """
+    model_config = get_text_config(model_config)
     return model_config.max_position_embeddings
 
 def __estimate_vllm_non_torch_memory() -> int:
@@ -161,44 +270,29 @@ def inference_dtype(model_config: AutoConfig) -> str:
 
     return str(model_config.torch_dtype)
 
-def kv_cache_req(model_info: ModelInfo,
-                 model_config: AutoConfig,
-                 context_len: int,
-                 batch_size: int = 1,
-                 ) -> int:
+def use_mla(model_name: str) -> bool:
     """
-    Calculates the KV cache GPU memory requirement for the model based on context length and batch size
+    Returns true for models that use MLA attention
     """
 
-    precision_in_bytes = precision_to_byte(inference_dtype(model_config))
     deepseek_mla_models = [
         "DeepSeek-V3",
         "DeepSeek-V2",
         "DeepSeek-R1",
     ]
 
-    per_token_memory = 0
+    return any(deepseek in model_name for deepseek in deepseek_mla_models)
 
-    # DeepSeek MLA attention, all other models use MHA, GQA, or MQA
-    mla = any(deepseek in model_info.id for deepseek in deepseek_mla_models)
+def kv_cache_req(model_info: ModelInfo,
+                    model_config: AutoConfig,
+                    context_len: int,
+                    batch_size: int = 1,
+                    ) -> float:
+    """
+    Calculates the KV cache requirement in GiB
+    """
 
-    try:
-        num_layers = model_config.num_hidden_layers
-        if mla:
-            kv_lora_rank = model_config.kv_lora_rank
-            qk_rope_head_dim = model_config.qk_rope_head_dim
-            per_token_memory = num_layers * (kv_lora_rank + qk_rope_head_dim) * precision_in_bytes
-        else:
-            head_dimension = getattr(model_config, "head_dim", model_config.hidden_size / model_config.num_attention_heads)
-            kv_heads = model_config.num_key_value_heads
-            per_token_memory = num_layers * 2 * head_dimension * kv_heads * precision_in_bytes
-    except Exception as e:
-        print(e)
-        return 0
-
-    kv_cache_size = per_token_memory * context_len * batch_size
-    kv_cache_size_gb =  kv_cache_size / (1024 ** 3)
-    return kv_cache_size_gb
+    return KVCacheDetail(model_info, model_config, context_len, batch_size).kv_cache_size_gb
 
 def max_concurrent_requests(model_info: ModelInfo,
                         model_config: AutoConfig,
@@ -247,7 +341,7 @@ def available_gpu_memory(memory: int, gpu_utilization: float=0.9) -> float:
 
     return memory * gpu_utilization
 
-def gpus_required(tp: int, pp: int, dp: int) -> int:
+def gpus_required(tp: int=1, pp: int=1, dp: int=1) -> int:
     """
     Determines the number of GPUs required based on parallelism strategies
     """

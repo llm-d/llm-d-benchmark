@@ -10,6 +10,7 @@ RUN apt-get update; \
     patch \
     curl \
     yq \
+    wget \
     && apt-get clean && rm -rf /var/cache/apt
 
 RUN echo "# /etc/rsyncd: configuration file for rsync daemon mode" > /etc/rsyncd.conf; echo -e "\

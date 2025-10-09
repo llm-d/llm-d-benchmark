@@ -703,21 +703,6 @@
           "title": "Mean",
           "type": "number"
         },
-        "median": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Median"
-        },
         "mode": {
           "anyOf": [
             {
@@ -760,7 +745,7 @@
           "default": null,
           "title": "Min"
         },
-        "p001": {
+        "p0p1": {
           "anyOf": [
             {
               "type": "number"
@@ -773,9 +758,9 @@
             }
           ],
           "default": null,
-          "title": "P001"
+          "title": "P0P1"
         },
-        "p01": {
+        "p1": {
           "anyOf": [
             {
               "type": "number"
@@ -788,9 +773,9 @@
             }
           ],
           "default": null,
-          "title": "P01"
+          "title": "P1"
         },
-        "p05": {
+        "p5": {
           "anyOf": [
             {
               "type": "number"
@@ -803,7 +788,7 @@
             }
           ],
           "default": null,
-          "title": "P05"
+          "title": "P5"
         },
         "p10": {
           "anyOf": [
@@ -910,7 +895,7 @@
           "default": null,
           "title": "P99"
         },
-        "p999": {
+        "p99p9": {
           "anyOf": [
             {
               "type": "number"
@@ -923,7 +908,7 @@
             }
           ],
           "default": null,
-          "title": "P999"
+          "title": "P99P9"
         },
         "max": {
           "anyOf": [
@@ -1047,7 +1032,7 @@
       "type": "object"
     },
     "Units": {
-      "description": "Enumeration of units\n\nAttributes\n    COUNT: str\n        Count\n    MS: str\n        Milliseconds\n    S: str\n        Seconds\n    MB: str\n        Megabytes\n    GB: str\n        Gigabytes\n    TB: str\n        Terabytes\n    MIB: str\n        Mebibytes\n    GIB: str\n        Gibibytes\n    TIB: str\n        Tebibytes\n    MBIT_PER_S: str\n        Megabbits per second\n    GBIT_PER_S: str\n        Gigabits per second\n    TBIT_PER_S: str\n        Terabits per second\n    MB_PER_S: str\n        Megabytes per second\n    GB_PER_S: str\n        Gigabytes per second\n    TB_PER_S: str\n        Terabytes per second\n    MS_PER_TOKEN: str\n        Milliseconds per token\n    WATTS: str\n        Watts",
+      "description": "Enumeration of units\n\nAttributes\n    COUNT: str\n        Count\n    MS: str\n        Milliseconds\n    S: str\n        Seconds\n    MB: str\n        Megabytes\n    GB: str\n        Gigabytes\n    TB: str\n        Terabytes\n    MIB: str\n        Mebibytes\n    GIB: str\n        Gibibytes\n    TIB: str\n        Tebibytes\n    MBIT_PER_S: str\n        Megabbits per second\n    GBIT_PER_S: str\n        Gigabits per second\n    TBIT_PER_S: str\n        Terabits per second\n    MB_PER_S: str\n        Megabytes per second\n    GB_PER_S: str\n        Gigabytes per second\n    TB_PER_S: str\n        Terabytes per second\n    GIB_PER_S: str\n        GiB per second\n    MS_PER_TOKEN: str\n        Milliseconds per token\n    S_PER_TOKEN: str\n        Seconds per token\n    WATTS: str\n        Watts",
       "enum": [
         "count",
         "percent",
@@ -1063,22 +1048,25 @@
         "Mbit/s",
         "Gbit/s",
         "Tbit/s",
+        "GiB/s",
         "MB/s",
         "GB/s",
         "TB/s",
         "ms/token",
+        "s/token",
         "Watts"
       ],
       "title": "Units",
       "type": "string"
     },
     "WorkloadGenerator": {
-      "description": "Enumeration of supported workload generators\n\nAttributes\n    FMPERF: str\n        fmperf\n    GUIDELLM: str\n        GuideLLM\n    INFERENCE_PERF: str\n        Inference Perf\n    VLLM_BENCHMARK: str\n        benchmark_serving from vLLM",
+      "description": "Enumeration of supported workload generators\n\nAttributes\n    FMPERF: str\n        fmperf\n    GUIDELLM: str\n        GuideLLM\n    INFERENCE_PERF: str\n        Inference Perf\n    VLLM_BENCHMARK: str\n        benchmark_serving from vLLM\n    NOP: str\n        vLLM Load times",
       "enum": [
         "fmperf",
         "guidellm",
         "inference-perf",
-        "vllm-benchmark"
+        "vllm-benchmark",
+        "nop"
       ],
       "title": "WorkloadGenerator",
       "type": "string"

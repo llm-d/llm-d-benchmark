@@ -32,7 +32,7 @@ function model_attribute {
   local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
   local provider=$(echo $model | cut -d '/' -f 1)
   local modeltype=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision|opt" || echo base)
-  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b|[0-9].*m" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^')
+  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b|[0-9].*m" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^' -e 's/[0-9].*p//g' | tail -1)
   local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" |  $LLMDBENCH_CONTROL_SCMD -e "s/$parameters//g" | cut -d '.' -f 1)
   if [[ -z $majorversion ]]; then
     local majorversion=1
@@ -363,48 +363,20 @@ function add_config {
 
   local spacec=$(printf '%*s' $num_spaces '')
 
-  if [[ -f ${object_to_render} ]]; then
-    if [[ -n $label ]]; then
-      echo "$label:"
-    else
-      echo ""
-    fi
-    echo "$(cat $object_to_render)" | $LLMDBENCH_CONTROL_SCMD -e "s^\\n^\\\\\n^g" | $LLMDBENCH_CONTROL_SCMD -e "s#^#$spacec#g"
+  if [[ -n $label ]]; then
+    echo "$label:"
   else
-    echo ${object_to_render}
+    echo ""
+  fi
+
+  if [[ -f ${object_to_render} ]]; then
+    render_template $object_to_render $object_to_render.rendered none 0 0
+    echo "$(cat $object_to_render.rendered)" | $LLMDBENCH_CONTROL_SCMD -e "s^\\n^\\\\\n^g" | $LLMDBENCH_CONTROL_SCMD -e "s#^#$spacec#g"
+  else
+    render_string $object_to_render
   fi
 }
 export -f add_config
-
-# make sure things are defined; should be easier with python
-function add_config_prep {
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_POD_CONFIG="#no____config"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG="#no____config"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS="[]"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES="[]"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_POD_CONFIG="#no____config"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG="#no____config"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS="[]"
-  fi
-  if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES} ]]; then
-    export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES="[]"
-  fi
-}
-export -f add_config
-
 
 function add_command {
   local model_command=$1
@@ -822,7 +794,7 @@ export -f get_harness_list
 
 function add_env_vars_to_pod {
     local varpattern=$1
-    varlist=$(env | grep -E "$varpattern" | cut -d "=" -f 1)
+    varlist=$(env | grep -E "$varpattern" | cut -d "=" -f 1 | sort)
     echo "#    "
     for envvar in $varlist; do
       envvalue=${!envvar}
@@ -833,8 +805,10 @@ function add_env_vars_to_pod {
       if [[ -f $envvalue ]]; then
         envvalue=$(cat $envvalue | base64 $LLMDBENCH_BASE64_ARGS)
       fi
-      echo "    - name: ${envvar}"
-      echo "      value: \"${envvalue}\"" | $LLMDBENCH_CONTROL_SCMD -e 's^____\"\$^____REPLACE_ENV_^g' -e 's^: ""$^: " "^g' -e 's^""^"^g'
+      if [[ ! -z ${envvalue} ]]; then
+        echo "    - name: ${envvar}"
+        echo "      value: \"${envvalue}\"" | $LLMDBENCH_CONTROL_SCMD -e 's^____\"\$^____REPLACE_ENV_^g' -e 's^: ""$^: " "^g' -e 's^""^"^g'
+      fi
     done
 }
 export -f add_env_vars_to_pod
@@ -878,20 +852,12 @@ spec:
     env:
     - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
       value: "1"
-    - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY
-      value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY}"
-    - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS
-      value: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
-    - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
-      value: "${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}"
-    - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME
-      value: "$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE"
-    - name: LLMDBENCH_RUN_EXPERIMENT_ID
-      value: "${LLMDBENCH_RUN_EXPERIMENT_ID}"
+    - name: LLMDBENCH_RUN_DATASET_URL
+      value: "$LLMDBENCH_RUN_DATASET_URL"
+    - name: LLMDBENCH_RUN_WORKSPACE_DIR
+      value: "$LLMDBENCH_RUN_WORKSPACE_DIR"
     - name: LLMDBENCH_HARNESS_NAME
       value: "${LLMDBENCH_HARNESS_NAME}"
-    - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
-      value: $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
     - name: LLMDBENCH_CONTROL_WORK_DIR
       value: "${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}"
     - name: LLMDBENCH_HARNESS_NAMESPACE
@@ -1039,23 +1005,34 @@ function generate_standup_parameter_scenarios {
   cat $standup_parameter_file | yq -r .setup.treatments | while IFS=: read -r name treatment; do
     if [ -z "$treatment" ]; then  # handle list without keys
       treatment=$(yq .[] <<<"$name")
-      name=setup_${treatment//,/_}
+      local name=setup_${treatment//,/_}
     fi
-    name=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${name}")   # remove non alphanumeric
+    local name=$($LLMDBENCH_CONTROL_SCMD -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${name}")   # remove non alphanumeric
     cat $scenario_file > $output_dir/treatment_$name.sh
     $LLMDBENCH_CONTROL_SCMD -i "1i#treatment_$name"  $output_dir/treatment_$name.sh
     local j=1
     for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
       local param=$(cat $standup_parameter_file | yq -r ".setup.factors[$(($j - 1))]")
-      has_param=$(cat $output_dir/treatment_$name.sh | grep "$param=" || true)
+      local has_param=$(cat $output_dir/treatment_$name.sh | grep "$param=" || true)
       if [[ -z $has_param ]]; then
-        echo "$param=$value" >> $output_dir/treatment_$name.sh
+        echo "export $param=$value" >> $output_dir/treatment_$name.sh
       else
-        $LLMDBENCH_CONTROL_SCMD -i "s^$param=.*^$param=$value^g"  $output_dir/treatment_$name.sh
+        $LLMDBENCH_CONTROL_SCMD -i "s^.*$param=.*^export $param=$value^g"  $output_dir/treatment_$name.sh
       fi
       $LLMDBENCH_CONTROL_SCMD -i "s^REPLACE_TREATMENT_NR^treatment_$name^g"  $output_dir/treatment_$name.sh
       $LLMDBENCH_CONTROL_SCMD -i "s^_treatment_nr^treatment_$name^g"  $output_dir/treatment_$name.sh
       j=$((j+1))
+    done
+    for parvar in $(cat $standup_parameter_file | yq -r '.setup.constants[]' | $LLMDBENCH_CONTROL_SCMD 's^: ^_____^g')
+    do
+      local param=$(echo $parvar | $LLMDBENCH_CONTROL_SCMD 's^_____^ ^g' | cut -d ' ' -f 1)
+      local value=$(echo $parvar | $LLMDBENCH_CONTROL_SCMD 's^_____^ ^g' | cut -d ' ' -f 2)
+      local has_param=$(cat $output_dir/treatment_$name.sh | grep "$param=" || true)
+      if [[ -z $has_param ]]; then
+        echo "export $param=$value" >> $output_dir/treatment_$name.sh
+      else
+        $LLMDBENCH_CONTROL_SCMD -i "s^.*$param=.*^export $param=$value^g"  $output_dir/treatment_$name.sh
+      fi
     done
   done
 }
@@ -1090,10 +1067,18 @@ function generate_profile_parameter_treatments {
       echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_${name}.txt
       j=$((j+1))
     done
+
+    for parvar in $(cat $run_parameter_file | yq -r '.run.constants[]' | $LLMDBENCH_CONTROL_SCMD 's^: ^_____^g')
+    do
+      local cparam=$(echo $parvar | $LLMDBENCH_CONTROL_SCMD 's^_____^ ^g' | cut -d ' ' -f 1)
+      local cvalue=$(echo $parvar | $LLMDBENCH_CONTROL_SCMD 's^_____^ ^g' | cut -d ' ' -f 2)
+      echo "s^$cparam:.*^$cparam: $cvalue^g" >> $output_dir/treatment_${name}.txt
+    done
+
     if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES ]]; then
       for entry in $(echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
-        parm=$(echo $entry | cut -d '=' -f 1)
-        val=$(echo $entry | cut -d '=' -f 2)
+        local parm=$(echo $entry | cut -d '=' -f 1)
+        local val=$(echo $entry | cut -d '=' -f 2)
         echo "s^$parm:.*^$parm: $val^g" >> $output_dir/treatment_${name}.txt
       done
     fi
@@ -1157,7 +1142,12 @@ function backup_work_dir {
 
   if [[ $backup -eq 1 ]]; then
     # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
-    mv -f $LLMDBENCH_CONTROL_WORK_DIR $backup_target
+    if [[ -d $backup_target ]]; then
+      rsync -a --inplace --delete $LLMDBENCH_CONTROL_WORK_DIR/ $backup_target/
+    else
+      mv -f $LLMDBENCH_CONTROL_WORK_DIR/ $backup_target/
+    fi
+
     export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
     prepare_work_dir
     if [[ -f $backup_target/environment/context.ctx ]]; then
@@ -1168,3 +1158,40 @@ function backup_work_dir {
   fi
 }
 export -f backup_work_dir
+
+# Check if a Hugging Face model is gated (requires manual approval)
+# Usage: is_hf_model_gated <model_id>
+# Example: is_hf_model_gated ibm-granite granite-3.1-8b-instruct
+function is_hf_model_gated {
+    local model_id="$1"
+    local url="https://huggingface.co/api/models/${model_id}"
+
+    local response=$(curl -s -H "Accept: application/json" "${url}")
+    if [[ $? -ne 0 || -z "${response}" ]]; then
+        return 2
+    fi
+
+    local gated=$(echo "${response}" | jq -r '.gated // false')
+    if [[ ${gated} == "false" ]]; then
+      return 1
+    else
+      return 0
+    fi
+}
+export -f is_hf_model_gated
+
+# Check if a Hugging Face user (via token) has access to a model
+# Usage: user_has_hf_model_access <model_id> <hf_token>
+# Example: user_has_hf_model_access ibm-granite granite-3.1-8b-instruct $HF_TOKEN
+function user_has_hf_model_access {
+    local model_id="$1"
+    local hf_token="$2"
+    local url="https://huggingface.co/${model_id}/resolve/main/config.json"
+
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        -H "Authorization: Bearer ${hf_token}" \
+        -L "${url}")
+
+    case "$http_code" in 200) return 0 ;; 401|403) return 1 ;; *) return 2 ;; esac
+}
+export -f user_has_hf_model_access
