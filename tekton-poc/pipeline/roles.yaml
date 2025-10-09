@@ -2,6 +2,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: helm-installer
+  namespace: ${NAMESPACE}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -54,12 +55,13 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: helm-installer
-  namespace: CHANGE_ME
+  namespace: ${NAMESPACE}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: helm-installer-restricted-scc
+  namespace: ${NAMESPACE}
 subjects:
   - kind: ServiceAccount
     name: helm-installer
@@ -72,6 +74,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: helm-access
+  namespace: ${NAMESPACE}
 rules:
 - apiGroups: [""]
   resources: ["secrets", "configmaps", "services", "pods", "namespaces", "serviceaccounts", "persistentvolumeclaims"]
@@ -109,10 +112,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: helm-access-binding
+  namespace: ${NAMESPACE}
 subjects:
 - kind: ServiceAccount
   name: helm-installer
-  namespace: CHANGE_ME
+  namespace: ${NAMESPACE}
 roleRef:
   kind: Role
   name: helm-access

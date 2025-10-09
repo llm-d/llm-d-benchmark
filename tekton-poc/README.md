@@ -42,13 +42,20 @@ A single Task measures performance over a single set of values from the factor/v
 
 A PipelineRun is created that embeds a Pipeline containing one Task with a matrix of values for a set of factors.  An example is `pipelinerun-matrix.yaml`.
 
-## Use
+## Usage
 
-1. Create a namespace, for example: $NAMESPACE and set to current context:
+### Setup
+
+1. Create a namespace where the Tekton pipeline will execute.
     ```shell
+    export $NAMESPACE=your_namespace
     kubectl create ns $NAMESPACE
+    ```
+    For convenience, set the current context:
+    ```shell
     kubectl config set-context --current --namespace $NAMESPACE
     ```
+
 2. Deploy a secret `hf-secret` containing your HuggingFace token in the namespace.
     ```shell
     kubectl create secret generic hf-secret \
@@ -56,34 +63,79 @@ A PipelineRun is created that embeds a Pipeline containing one Task with a matri
           --from-literal="HF_TOKEN=${HF_TOKEN}" \
           --dry-run=client -o yaml | kubectl apply -f -
     ```
+
 3. Give the task needed permissions (edit to set namespace)
     ```shell
-    kubectl apply -f pipeline/roles.yaml
+    envsubst '$NAMESPACE' < pipeline/roles.yaml | kubectl apply -f -
     ```
 
-4. Create a RWX PVC `workspace-pvc` for storing execution results. This PVC is shared between all tasks.
+4. Create a RWX PVC `workspace-pvc` for storing execution results. This PVC is shared between all tasks.  For example:
+    ```shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+        name: workspace-pvc
+        namespace: ${NAMESPACE}
+    spec:
+        accessModes:
+        - ReadWriteMany
+        resources:
+            requests:
+                storage: 20Gi
+        storageClassName: ocs-storagecluster-cephfs
+        volumeMode: Filesystem
+    EOF
+    ```
 
-5. Deploy the steps and tasks:
+### Starting a `Pipeline`
+
+1. Deploy the steps and tasks:
     ```shell
     kubectl apply -f pipeline/stepactions.yaml
     kubectl apply -f pipeline/experiment-task.yaml
     ```
-6. Run experiments (set the parameter `namespace` to $NAMESPACE):
+
+2. Run experiments (set the parameter `namespace` to $NAMESPACE):
     ```shell
     kubectl apply -f pipeline/pipelinerun-matrix.yaml
     ```
 
-See the TaskRun objects created:
+### Inspection
+
+See the `PipelineRun` object created:
+
+```shell
+tkn pr list
+```
+
+See the `TaskRun` objects created:
 
 ```shell
 tkn tr list
 ```
 
-See the logs for a TaskRun:
+See the logs for a `TaskRun`:
 
 ```shell
 tkn tr logs <taskrun_name> -f
 ```
+
+Describe a `TaskRun`:
+
+```shell
+tkn tr describe <taskrun_name>
+```
+
+### Cleanup
+
+Delete the `PipelineRun`: 
+
+```shell
+tkn pr delete <pipelinerun_name> -f
+```
+
+**Note**: The current implementation does not remove the namespaces created by each sweep step. Manually delete them to release all their resources.  If you leave them, subsequent executions of the pipeline will attempt to reuse the resources.
 
 ## Managing Parallelism
 
