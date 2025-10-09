@@ -74,7 +74,7 @@ def main():
                     plugin_config = f'{ev["vllm_modelservice_gaie_plugins_configfile"]}: |\n' + '\n'.join(f"  {line}" for line in presets_content.splitlines())
             except FileNotFoundError:
                 # The (benchmark) plugin config file does not exist
-                # - use ev["vllm_modelservice_gaie_custom_plugins"] of it is defined
+                # - use ev["vllm_modelservice_gaie_custom_plugins"] if it is defined
                 if "vllm_modelservice_gaie_custom_plugins" in ev:
                     plugin_config = '\n'.join(f"{line}" for line in ev["vllm_modelservice_gaie_custom_plugins"].splitlines())
 

@@ -19,7 +19,9 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
     else
       export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH=$(echo ${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
     fi
-    echo "ℹ️ full path = ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH}"
+
+    echo "ℹ️ Full path to inference scheduler config: ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH}"
+
     # if the file exists and user hasn't provided one use the file
     if [[ -f $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_FULL_PATH ]]; then
       if [[ -z ${LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS} ]]; then

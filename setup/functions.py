@@ -170,7 +170,8 @@ def llmdbench_execute_cmd(
             time.sleep(delay)
 
     if ecode != 0:
-        announce(f"\nERROR while executing command \"{actual_cmd}\"")
+        if not silent :
+            announce(f"\nERROR while executing command \"{actual_cmd}\"")
 
         if last_stdout_log and last_stdout_log.exists():
             try:
@@ -925,9 +926,15 @@ def render_string(input_string):
 def add_command_line_options(args_string):
     """
     Generate command line options for container args.
+    In case args_string is a file path, open the file and read the contents first
     Equivalent to the bash add_command_line_options function.
     """
     current_step = os.environ.get("LLMDBENCH_CURRENT_STEP", "")
+
+    if os.access(args_string, os.R_OK):
+        with open(args_string, 'r') as fp:
+            fc = fp.read()
+        args_string = fc
 
     # Process REPLACE_ENV variables first
     if args_string:
@@ -951,17 +958,36 @@ def add_command_line_options(args_string):
 
             return f"        - |\n          {processed_args}"
         elif current_step == "09":
-            # For step 09 (modelservice), different formatting
+            # For step 09 (modelservice), format as proper YAML list
             if "[" in processed_args and "]" in processed_args:
+                # Handle array format with potential complex arguments
                 processed_args = processed_args.replace("[", "").replace("]", "")
-                processed_args = processed_args.replace("____", " ")
-                processed_args = processed_args.replace(" --", " \\\n        --")
+                # Split on ____  to preserve arguments with spaces/quotes
+                args_list = [arg.strip() for arg in processed_args.split("____") if arg.strip()]
+                # Create proper YAML list items with escaped quotes
+                yaml_list = []
+                for arg in args_list:
+                    if arg.strip():
+                        # Clean up any trailing artifacts from line continuation
+                        cleaned_arg = arg.rstrip('\\').rstrip('"').strip()
+                        if cleaned_arg:
+                            # Handle JSON strings and complex arguments with proper quoting
+                            if cleaned_arg.startswith("'") and cleaned_arg.endswith("'"):
+                                # Already has single quotes - use as-is for JSON strings
+                                yaml_list.append(f"      - {cleaned_arg}")
+                            else:
+                                # Regular argument - wrap in double quotes
+                                yaml_list.append(f"      - \"{cleaned_arg}\"")
+                return "\n".join(yaml_list)
             else:
                 processed_args = processed_args.replace("____", " ")
-                processed_args = processed_args.replace(";", ";\n      ")
-                processed_args = processed_args.replace(" --", " \\\n        --")
-
-            return f"      {processed_args}"
+                args_list = processed_args.split()
+                # Create proper YAML list items with quoted strings
+                yaml_list = []
+                for arg in args_list:
+                    if arg.strip():
+                        yaml_list.append(f"      - \"{arg}\"")
+                return "\n".join(yaml_list)
         else:
             # Default case
             processed_args = processed_args.replace("____", " ")
@@ -977,6 +1003,7 @@ def add_command_line_options(args_string):
 def add_additional_env_to_yaml(env_vars_string: str) -> str:
     """
     Generate additional environment variables YAML.
+    In case env_vars_string is a file path, open the file and read the contents first
     Equivalent to the bash add_additional_env_to_yaml function.
 
     Args:
@@ -1005,8 +1032,8 @@ def add_additional_env_to_yaml(env_vars_string: str) -> str:
 
     if os.access(env_vars_string, os.R_OK):
         lines = []
-        with open(env_vars_string, 'r') as file:
-            for line in file:
+        with open(env_vars_string, 'r') as fp:
+            for line in fp:
                 lines.append(name_indent + line.rstrip())
         return '\n'.join(lines)
 
@@ -1043,74 +1070,12 @@ def add_config(obj_or_filename, num_spaces=0, label=""):
             pass
 
     indented_contents = '\n'.join(f"{spaces}{line}" for line in contents.splitlines())
-    if indented_contents.strip() != "{}" :
+    if indented_contents.strip() not in ["{}", "[]"] :
         indented_contents = f"  {label}\n{indented_contents}"
     else :
         indented_contents = ""
     return indented_contents
 
-def check_storage_class():
-    """
-    Check and validate storage class configuration.
-    Equivalent to the bash check_storage_class function.
-    """
-    caller = os.environ.get("LLMDBENCH_CONTROL_CALLER", "")
-    if caller not in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
-        return True
-
-    storage_class = os.environ.get("LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS", "")
-
-    try:
-        # Use pykube to connect to Kubernetes
-        control_work_dir = os.environ.get("LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark")
-        api = kube_connect(f'{control_work_dir}/environment/context.ctx')
-
-        # Create StorageClass object using object_factory since it's not built into pykube
-        StorageClass = pykube.object_factory(api, "storage.k8s.io/v1", "StorageClass")
-
-        # Handle default storage class
-        if storage_class == "default":
-            if caller in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
-                try:
-                    # Find default storage class using pykube
-                    storage_classes = StorageClass.objects(api)
-                    default_sc = None
-
-                    for sc in storage_classes:
-                        annotations = sc.metadata.get("annotations", {})
-                        if annotations.get("storageclass.kubernetes.io/is-default-class") == "true":
-                            default_sc = sc.name
-                            break
-
-                    if default_sc:
-                        announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to \"{default_sc}\"")
-                        os.environ["LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS"] = default_sc
-                        storage_class = default_sc
-                    else:
-                        announce("❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class")
-                        return False
-                except Exception as e:
-                    announce(f"❌ Error checking default storage class: {e}")
-                    return False
-
-        # Verify storage class exists using pykube
-        try:
-            sc = StorageClass.objects(api).get(name=storage_class)
-            if sc.exists():
-                return True
-            else:
-                announce(f"❌ ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS={storage_class} but could not find such storage class")
-                return False
-        except pykube.exceptions.ObjectDoesNotExist:
-            announce(f"❌ ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS={storage_class} but could not find such storage class")
-            return False
-        except Exception as e:
-            announce(f"❌ Error checking storage class: {e}")
-            return False
-
-    except Exception as e:
-        announce(f"❌ Error connecting to Kubernetes: {e}")
-        return False
 
 
 def check_affinity():

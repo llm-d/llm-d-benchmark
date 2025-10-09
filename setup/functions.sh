@@ -202,16 +202,6 @@ function extract_environment {
 }
 export -f extract_environment
 
-function reconfigure_gateway_after_deploy {
-  if [[ $LLMDBENCH_VLLM_MODELSERVICE_RECONFIGURE_GATEWAY_AFTER_DEPLOY -eq 1 ]]; then
-    if [[ $LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME == "kgateway" ]]; then
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace kgateway-system delete pod -l kgateway=kgateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace kgateway-system  wait --for=condition=Ready=True pod -l kgateway=kgateway" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    fi
-  fi
-}
-export -f reconfigure_gateway_after_deploy
-
 function add_annotations {
   local output="REPLACEFIRSTNEWLINE"
   local varname=$1
@@ -322,7 +312,7 @@ function render_template {
     cat $additional_replace_commands >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
 
-  for entry in $(cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' -e 's^\.^\n^g' -e 's^\/^\n^g' | grep -E "REPLACE_ENV" | uniq); do
+  for entry in $(cat ${template_file_path} | grep -v ^# | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' -e 's^\.^\n^g' -e 's^\/^\n^g' | grep -E "REPLACE_ENV" | uniq); do
     render_string $entry &>/dev/null
   done
 
@@ -454,16 +444,22 @@ function add_command_line_options {
 export -f add_command_line_options
 
 function check_storage_class {
-  if [[ ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" && ${LLMDBENCH_CONTROL_CALLER} != "e2e.sh" ]]; then
+  if [[ ${LLMDBENCH_CONTROL_CALLER} != "standup.sh" && ${LLMDBENCH_CONTROL_CALLER} != "e2e.sh" && ${LLMDBENCH_CONTROL_CALLER} != "run.sh" ]]; then
     return 0
   fi
 
+  if [[ $($LLMDBENCH_CONTROL_KCMD get storageclasses --no-headers -o name | wc -l) -eq 0 ]];
+  then
+      announce "❌ ERROR: at least one storage class is required for execution of the benchmark (a PVC is needed to hold performance data)\""
+      return 1
+  fi
+
   if [[ $LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS == "default" ]]; then
-    if [[ ${LLMDBENCH_CONTROL_CALLER} == "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} == "e2e.sh" ]]; then
+    if [[ ${LLMDBENCH_CONTROL_CALLER} == "standup.sh" || ${LLMDBENCH_CONTROL_CALLER} == "e2e.sh" || ${LLMDBENCH_CONTROL_CALLER} == "run.sh" ]]; then
       has_default_sc=$($LLMDBENCH_CONTROL_KCMD get storageclass -o=jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{@.metadata.name}{"\n"}{end}' || true)
       if [[ -z $has_default_sc ]]; then
           announce "❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class\""
-          exit 1
+          return 1
       fi
       announce "ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to \"${has_default_sc}\""
       export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=${has_default_sc}
@@ -497,9 +493,9 @@ function check_affinity {
   #      export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=$(echo ${has_default_accelerator} | cut -d ':' -f 1)
         export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=nvidia.com/gpu
         export LLMDBENCH_VLLM_COMMON_AFFINITY=$has_default_accelerator
-        announce "ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"${has_default_accelerator}\""
+        announce "ℹ️  Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"${has_default_accelerator}\""
       else
-        announce "ℹ️ Minikube detected. Variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"kubernetes.io/os:linux\""
+        announce "ℹ️  Minikube detected. Variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"kubernetes.io/os:linux\""
       fi
     fi
   else
@@ -714,6 +710,10 @@ function launch_download_job {
 
   announce "🚀 Launching model download job..."
 
+  # Conditionally determine if we are running simulation - if we are,
+  # then don't login to huggingface since we will not be using models
+  # from restrictive HF repositories in the current and distant future
+  # during simulation.
 cat << EOF > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_download_pod_job.yaml
 apiVersion: batch/v1
 kind: Job
@@ -730,7 +730,11 @@ spec:
             - mkdir -p "\${MOUNT_PATH}/\${MODEL_PATH}" && \
               pip install huggingface_hub && \
               export PATH="\${PATH}:\${HOME}/.local/bin" && \
-              hf auth login --token "\${HF_TOKEN}" && \
+              $( if echo "${LLMDBENCH_LLMD_IMAGE_NAME}" | grep -q "sim"; then
+                   echo ""
+                 else
+                   echo "hf auth login --token \"\${HF_TOKEN}\" &&"
+                 fi ) \
               hf download "\${HF_MODEL_ID}" --local-dir "/cache/\${MODEL_PATH}"
           env:
             - name: MODEL_PATH
@@ -752,7 +756,6 @@ spec:
             - name: model-cache
               mountPath: /cache
       restartPolicy: OnFailure
-#      imagePullPolicy: IfNotPresent
       volumes:
         - name: model-cache
           persistentVolumeClaim:
@@ -876,7 +879,6 @@ function create_harness_pod {
   # Sanitize the stack name to make it a valid k8s/OpenShift resource name
   local LLMDBENCH_HARNESS_SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | $LLMDBENCH_CONTROL_SCMD 's|[/:]|-|g')
 
-
   cat <<EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/pod_benchmark-launcher.yaml
 apiVersion: v1
 kind: Pod
@@ -983,7 +985,6 @@ function get_model_name_from_pod {
     if [[ -z $has_protocol ]]; then
         local url="http://$url"
     fi
-
     # Check if the URL already contains a port number.
     # If not, append the default port provided.
     if ! echo "$url" | grep -q ':[0-9]'; then
@@ -993,7 +994,7 @@ function get_model_name_from_pod {
 
     local url=$url/v1/models
 
-    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2)
+    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2 0)
     is_jq=$(echo $response | jq -r . || true)
 
     if [[ -z $is_jq ]]; then

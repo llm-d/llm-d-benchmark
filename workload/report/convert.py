@@ -6,6 +6,7 @@
 # that is not specialized to a particular harness.
 
 import argparse
+import base64
 import datetime
 import os
 import re
@@ -164,6 +165,32 @@ def _get_llmd_benchmark_envars() -> dict:
     if os.environ['LLMDBENCH_DEPLOY_METHODS'] == 'modelservice':
         # Given a 'modelservice' deployment, we expect the following environment
         # variables to be available
+
+        # Get EPP configuration
+        epp_config = {}
+        epp_config_content = os.getenv('LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG', '')
+        if epp_config_content == "":
+            sys.stderr.write('Warning: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG empty.')
+        else:
+            epp_config_content = base64.b64decode(epp_config_content).decode("utf-8")
+            epp_config = yaml.safe_load(epp_config_content)
+
+            # Insert default parameter values for scorers if left undefined
+            for ii, plugin in enumerate(epp_config['plugins']):
+                if plugin['type'] == 'prefix-cache-scorer':
+                    if 'parameters' not in plugin:
+                        plugin['parameters'] = {}
+
+                    parameters = plugin['parameters']
+                    if 'blockSize' not in parameters:
+                        parameters['blockSize'] = 16
+                    if 'maxPrefixBlocksToMatch' not in parameters:
+                        parameters['maxPrefixBlocksToMatch'] = 256
+                    if 'lruCapacityPerServer' not in parameters:
+                        parameters['lruCapacityPerServer'] = 31250
+
+                    epp_config['plugins'][ii]['parameters'] = parameters
+
         return {
             "scenario": {
                 "model": {
@@ -192,6 +219,9 @@ def _get_llmd_benchmark_envars() -> dict:
                     }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
                 },
                 "platform": {
+                    "metadata": {
+                        "inferenceScheduler": epp_config,
+                    },
                     "engine": [{
                             "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
                                     os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + \
@@ -718,6 +748,19 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
     # Import results from Inference Perf
     results = import_yaml(results_file)
 
+    # Get stage number from metrics filename
+    stage = int(results_file.rsplit('stage_')[-1].split('_', 1)[0])
+
+    # Import Inference Perf config file
+    config_file = os.path.join(
+        os.path.dirname(results_file),
+        'config.yaml'
+    )
+    if os.path.isfile(config_file):
+        config = import_yaml(config_file)
+    else:
+        config = {}
+
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
     br_dict = _get_llmd_benchmark_envars()
@@ -731,6 +774,10 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
             "model": {"name": model_name},
             "load": {
                 "name": WorkloadGenerator.INFERENCE_PERF,
+                "args": config,
+                "metadata": {
+                    "stage": stage,
+                },
             },
         },
         "metrics": {
@@ -777,7 +824,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
             },
             "latency": {
                 "time_to_first_token": {
-                    "units": Units.MS,
+                    "units": Units.S,
                     "mean": results['successes']['latency']['time_to_first_token']['mean'],
                     "min": results['successes']['latency']['time_to_first_token']['min'],
                     "p0p1": results['successes']['latency']['time_to_first_token']['p0.1'],
@@ -794,7 +841,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
                     "max": results['successes']['latency']['time_to_first_token']['max'],
                 },
                 "normalized_time_per_output_token": {
-                    "units": Units.MS_PER_TOKEN,
+                    "units": Units.S_PER_TOKEN,
                     "mean": results['successes']['latency']['normalized_time_per_output_token']['mean'],
                     "min": results['successes']['latency']['normalized_time_per_output_token']['min'],
                     "p0p1": results['successes']['latency']['normalized_time_per_output_token']['p0.1'],
@@ -811,7 +858,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
                     "max": results['successes']['latency']['normalized_time_per_output_token']['max'],
                 },
                 "time_per_output_token": {
-                    "units": Units.MS_PER_TOKEN,
+                    "units": Units.S_PER_TOKEN,
                     "mean": results['successes']['latency']['time_per_output_token']['mean'],
                     "min": results['successes']['latency']['time_per_output_token']['min'],
                     "p0p1": results['successes']['latency']['time_per_output_token']['p0.1'],
@@ -828,7 +875,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
                     "max": results['successes']['latency']['time_per_output_token']['max'],
                 },
                 "inter_token_latency": {
-                    "units": Units.MS_PER_TOKEN,
+                    "units": Units.S_PER_TOKEN,
                     "mean": results['successes']['latency']['inter_token_latency']['mean'],
                     "min": results['successes']['latency']['inter_token_latency']['min'],
                     "p0p1": results['successes']['latency']['inter_token_latency']['p0.1'],
@@ -845,7 +892,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
                     "max": results['successes']['latency']['inter_token_latency']['max'],
                 },
                 "request_latency": {
-                    "units": Units.MS,
+                    "units": Units.S,
                     "mean": results['successes']['latency']['request_latency']['mean'],
                     "min": results['successes']['latency']['request_latency']['min'],
                     "p0p1": results['successes']['latency']['request_latency']['p0.1'],

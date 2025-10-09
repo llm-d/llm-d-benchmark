@@ -45,7 +45,7 @@ function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
              -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO)] \n \
              -m/--models [list the models to be run against (default=$LLMDBENCH_DEPLOY_MODEL_LIST)] \n \
-             -p/--namespace [namespace where to deploy (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE)] \n \
+             -p/--namespace [comma separated pair of values indicating where a stack was stood up and where to run (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE)] \n \
              -t/--methods [list of standup methods (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\", \"modelservice\" or any other string - pod name or service name - matching a resource on cluster)] \n \
              -l/--harness [harness used to generate load (default=$LLMDBENCH_HARNESS_NAME, possible values $(get_harness_list)] \n \
              -w/--workload [workload to be used by the harness (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE, possible values (check \"workload/profiles\" dir)] \n \
@@ -84,12 +84,18 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
         -p=*|--namespace=*)
-        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE=$(echo $key | cut -d '=' -f 2)
-        export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 1)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 2)
+        if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
+          export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
+        fi
         ;;
         -p|--namespace)
-        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE="$2"
-        export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE="$2"
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE="$(echo $2 | cut -d ',' -f 1)"
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE="$(echo $2 | cut -d ',' -f 2)"
+        if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
+          export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
+        fi
         shift
         ;;
         -s=*|--wait=*)
@@ -180,12 +186,24 @@ set +euo pipefail
 export LLMDBENCH_CURRENT_STEP=05
 if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
   export LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL="NA"
-  export LLMDBENCH_HARNESS_NAMESPACE=$LLMDBENCH_CONTROL_CLUSTER_NAMESPACE
+
+  if [[ -z $LLMDBENCH_CONTROL_CLUSTER_NAMESPACE ]]; then
+    announce "❌ Unable automatically detect namespace. Environment variable \"LLMDBENCH_CONTROL_CLUSTER_NAMESPACE\". Specifiy namespace via CLI option \"-p\--namespace\" or environment variable \"LLMDBENCH_HARNESS_NAMESPACE\""
+    exit 1
+  fi
+
+  if [[ $LLMDBENCH_HARNESS_SERVICE_ACCOUNT == ${LLMDBENCH_HARNESS_NAME}-runner ]]; then
+    LLMDBENCH_HARNESS_SERVICE_ACCOUNT=default
+  fi
+  announce "⚠️ Setting service account to \"$LLMDBENCH_HARNESS_SERVICE_ACCOUNT\"..."
 fi
 
-source ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.sh > /dev/null 2>&1
+source ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.sh 2> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log 1> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
 if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
+  cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log
+  echo "---------------------------"
+  cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
   exit 1
 fi
 set -euo pipefail
@@ -231,16 +249,6 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
         export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="LLMDBENCH_BASE64_CONTEXT_CONTENTS|^LLMDBENCH_VLLM_COMMON_NAMESPACE|^LLMDBENCH_DEPLOY_CURRENT"
         announce "⚠️ Deployment method - $LLMDBENCH_DEPLOY_METHODS - is neither \"standalone\" nor \"modelservice\". "
-
-        if [[ $LLMDBENCH_VLLM_COMMON_NAMESPACE == llmdbench ]]; then
-          export LLMDBENCH_VLLM_COMMON_NAMESPACE=$(${LLMDBENCH_CONTROL_KCMD} project -q)
-        fi
-        announce "ℹ️ Setting namespace to \"$LLMDBENCH_VLLM_COMMON_NAMESPACE\"..."
-
-        if [[ $LLMDBENCH_HARNESS_SERVICE_ACCOUNT == ${LLMDBENCH_HARNESS_NAME}-runner ]]; then
-          LLMDBENCH_HARNESS_SERVICE_ACCOUNT=default
-        fi
-        announce "ℹ️ Setting service account to \"$LLMDBENCH_HARNESS_SERVICE_ACCOUNT\"..."
 
         announce "🔍 Trying to find a matching endpoint name..."
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
@@ -383,6 +391,16 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           mkdir -p ${local_results_dir}
           mkdir -p ${local_analysis_dir}
         else
+          if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE" == /* ]]; then
+            potential_gaie_path=$(echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+          else
+            potential_gaie_path=$(echo ${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+          fi
+
+          if [[ -f $potential_gaie_path ]]; then
+            export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG=$potential_gaie_path
+          fi
+
           create_harness_pod
 
           announce "🚀 Starting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL)..."
