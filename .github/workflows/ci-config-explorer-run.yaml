@@ -62,5 +62,5 @@ jobs:
           LLMDBENCH_DEPLOY_MODEL_LIST: "Qwen/Qwen3-0.6B"
           LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY: "80"
         run: |
-          ./setup/standup.sh -c inference-scheduling -s 0 -m $LLMDBENCH_DEPLOY_MODEL_LIST
+          ./setup/standup.sh -c inference-scheduling -s 0,1,2,3 -m $LLMDBENCH_DEPLOY_MODEL_LIST
 
