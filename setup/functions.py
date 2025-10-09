@@ -850,7 +850,7 @@ def check_affinity(ev: dict):
                         os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"] = f"{os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"]}:{found_accelerator}"
 
                         # Updates the common affinity env var if auto
-                        ev['vllm_common_affinity'] = f"{os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"]}:{found_accelerator}"
+                        ev['vllm_common_affinity'] = f"{os.environ['LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE']}:{found_accelerator}"
                     else:
                         announce("❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_AFFINITY=auto, but unable to find an accelerator on any node")
                         return False
