@@ -308,7 +308,7 @@ def test_experts_per_gpu():
 
 
 def test_head_dim_none():
-    mistral = "mistralai/Mixtral-8x22B-Instruct-v0.1"
+    mistral = "mistralai/Mixtral-8x7B-Instruct-v0.1"
     model_config = get_model_config_from_hf(mistral)
     model_info = get_model_info_from_hf(mistral)
     kv_cache_detail = KVCacheDetail(model_info, model_config)
