@@ -64,7 +64,7 @@ A PipelineRun is created that embeds a Pipeline containing one Task with a matri
           --dry-run=client -o yaml | kubectl apply -f -
     ```
 
-3. Give the task needed permissions (edit to set namespace)
+3. Give the task needed permissions
     ```shell
     envsubst '$NAMESPACE' < pipeline/roles.yaml | kubectl apply -f -
     ```
