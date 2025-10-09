@@ -12,6 +12,8 @@ sys.path.insert(0, str(project_root))
 
 try:
     from functions import (announce,
+                           capacity_planner_sanity_check,
+                           check_affinity,
                            llmdbench_execute_cmd,
                            environment_variable_to_dict,
                            kube_connect,
@@ -166,14 +168,20 @@ def main():
 
     environment_variable_to_dict(ev)
 
+    api = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
+    if ev["control_dry_run"] :
+        announce("DRY RUN enabled. No actual changes will be made.")
+
+    # Check affinity
+    if not check_affinity(ev):
+        announce("❌ Failed to check affinity")
+        return 1
+    capacity_planner_sanity_check(ev)
+
     if not ev["control_environment_type_modelservice_active"]:
         deploy_methods = ev.get("deploy_methods", "unknown")
         announce(f"⏭️ Environment types are \"{deploy_methods}\". Skipping this step.")
         return 0
-
-    api = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
-    if ev["control_dry_run"] :
-        announce("DRY RUN enabled. No actual changes will be made.")
 
     # Execute the main logic
     return ensure_user_workload_monitoring(
