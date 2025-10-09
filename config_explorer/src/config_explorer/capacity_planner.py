@@ -56,7 +56,9 @@ class KVCacheDetail:
         self.model = model_info.id
         self.kv_data_type = inference_dtype(model_config)
         self.precision_in_bytes = precision_to_byte(self.kv_data_type)
-
+        
+        # kv_data_type is stored at the model_config level, so need to fetch text_config afterward
+        model_config = get_text_config(model_config)
         self.num_hidden_layers = model_config.num_hidden_layers
         self.hidden_size = model_config.hidden_size
         self.num_attention_heads = model_config.num_attention_heads
