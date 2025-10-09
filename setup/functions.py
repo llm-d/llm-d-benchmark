@@ -846,7 +846,7 @@ def check_affinity(ev: dict):
                         os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"] = "nvidia.com/gpu"
                         os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"] = found_accelerator
                         announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"{found_accelerator}\"")
-                        os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"] = f"{os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"]}:{found_accelerator}"
+                        os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"] = f"{os.environ['LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE']}:{found_accelerator}"
 
                         # Updates the common affinity env var if auto
                         ev['vllm_common_affinity'] = f"{os.environ.get('LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE')}:{found_accelerator}"
