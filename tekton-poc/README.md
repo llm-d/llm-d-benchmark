@@ -56,7 +56,7 @@ A PipelineRun is created that embeds a Pipeline containing one Task with a matri
           --from-literal="HF_TOKEN=${HF_TOKEN}" \
           --dry-run=client -o yaml | kubectl apply -f -
     ```
-3. Give the task needed permissions
+3. Give the task needed permissions (edit to set namespace)
     ```shell
     kubectl apply -f pipeline/roles.yaml
     ```
