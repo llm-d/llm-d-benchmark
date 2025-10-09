@@ -30,7 +30,7 @@ else
     source "$(conda info --base)/etc/profile.d/conda.sh"
     conda activate "$LLMDBENCH_HARNESS_CONDA_ENV_NAME"
     pip install -r requirements.txt
-    pip install -e .
+    pip install -r config_explorer/requirements.txt
 
     ${LLMDBENCH_CONTROL_CCMD} build -t ${LLMDBENCH_HARNESS_NAME} .
     mkdir -p requests && chmod o+w requests

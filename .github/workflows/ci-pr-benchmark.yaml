@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_HF_TOKEN: token-field-holder
+      LLMDBENCH_HF_TOKEN: "ci-placeholder"
       LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE: llmdbenchcicd-${{ github.event.number }}
 
     steps:
@@ -38,6 +38,10 @@ jobs:
         run: |
           sudo apt-get update
           ./setup/install_deps.sh
+        shell: bash
+
+      - name: Install config explorer dependencies
+        run: pip install ./config_explorer
         shell: bash
 
       - name: Standup a modelservice using llm-d-inference-sim

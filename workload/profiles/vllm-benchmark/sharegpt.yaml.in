@@ -1,0 +1,12 @@
+executable: benchmark_serving.py
+model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+base-url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+dataset-name: sharegpt
+dataset-path: REPLACE_ENV_LLMDBENCH_RUN_DATASET_DIR/REPLACE_ENV_LLMDBENCH_RUN_DATASET_FILE
+max-concurrency: 512
+num-prompts: 2000
+request-rate: 8
+sharegpt-output-len: 1024
+percentile-metrics: "ttft,tpot,itl,e2el"
+metric-percentiles: "0.1,1,5,10,25,75,90,95,99,99.9"
+ignore-eos: none

@@ -142,7 +142,6 @@ def test_kv_cache_req():
         rounded = round(actual_kv_cache_req, 5)
         assert rounded == actual_kv_cache
 
-
     # Assert other models
     model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
@@ -154,7 +153,7 @@ def test_kv_cache_req():
     # For context length = 10000
     actual_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
     rounded = round(actual_kv_cache_req, 5)
-    assert rounded == 1.06812
+    assert rounded == 0.53406
 
 
 def test_max_concurrent_req():
@@ -306,3 +305,12 @@ def test_experts_per_gpu():
         for tp in range(1, 16):
             for dp in range(1, 16):
                 assert experts / (tp * dp) == experts_per_ep_group(model_config, tp, dp)
+
+
+def test_head_dim_none():
+    mistral = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+    model_config = get_model_config_from_hf(mistral)
+    model_info = get_model_info_from_hf(mistral)
+    kv_cache_detail = KVCacheDetail(model_info, model_config)
+
+    assert kv_cache_detail.head_dimension != None

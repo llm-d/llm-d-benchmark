@@ -37,6 +37,7 @@ function show_usage {
             -a/--affinity [kubernetes node affinity] (default=$LLMDBENCH_VLLM_COMMON_AFFINITY) \n \
             -b/--annotations [kubernetes pod annotations] (default=$LLMDBENCH_VLLM_COMMON_ANNOTATIONS) \n \
             -r/--release [modelservice helm chart release name (default=$LLMDBENCH_VLLM_MODELSERVICE_RELEASE)] \n \
+            -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)]
             -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
             -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
             -h/--help (show this help)\n \
@@ -103,6 +104,13 @@ while [[ $# -gt 0 ]]; do
         ;;
         -a|--affinity)
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_AFFINITY="$2"
+        shift
+        ;;
+        -x=*|--dataset=*)
+        export LLMDBENCH_CLIOVERRIDE_RUN_DATASET_URL=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -x|--dataset)
+        export LLMDBENCH_CLIOVERRIDE_RUN_DATASET_URL="$2"
         shift
         ;;
         -b=*|--annotations=*)

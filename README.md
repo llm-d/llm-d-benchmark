@@ -12,6 +12,7 @@ Provide a single source of automation for repeatable and reproducible experiment
 git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 ./setup/install_deps.sh
+pip install ./config_explorer
 ```
 
 ## Quickstart

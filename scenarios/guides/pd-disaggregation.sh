@@ -1,5 +1,5 @@
 # P/D DISAGGREGATION WELL LIT PATH
-# Based on https://github.com/llm-d/llm-d/blob/dev/guides/pd-disaggregation/README.md
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
 # Removed extra volumes metrics-volume and torch-compile-volume; they are not needed for this model and tested hardware.
 # Use LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES to add them if needed.
@@ -54,20 +54,6 @@ export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true # (default is "false")
 export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
 export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=128
 
-export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS=$(mktemp)
-cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS}
-- name: dshm
-  mountPath: /dev/shm
-EOF
-
-export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES=$(mktemp)
-cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES}
-- name: dshm
-  emptyDir:
-    medium: Memory
-    sizeLimit: 16Gi
-EOF
-
 #             Uncomment (###) to select additional network devices (e.g., when multi-nic is enabled)
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
@@ -80,7 +66,7 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 ###- name: NCCL_IB_HCA
 ###  value: mlx5_1
 - name: VLLM_NIXL_SIDE_CHANNEL_PORT
-  value: "$LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT"
+  value: "REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT"
 - name: VLLM_NIXL_SIDE_CHANNEL_HOST
   valueFrom:
     fieldRef:
@@ -97,7 +83,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=2
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=32
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=128Gi
 #              Uncomment (###) the following line to enable multi-nic
-###export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS=deployed-by:$(id -un),modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
+###export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
 #              Uncomment (#####) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
 #####export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/roce_gdr
 #####export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR=1
@@ -117,7 +103,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=32
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=128Gi
 #              Uncomment (###) the following line to enable multi-nic
-###export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$(id -un),modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
+###export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
 #              Uncomment (#####) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
 #####export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
 #####export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=1
@@ -130,6 +116,20 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS="[\
 --max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN____\
 --tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM\
 ]"
+
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS}
+- name: dshm
+  mountPath: /dev/shm
+EOF
+
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES}
+- name: dshm
+  emptyDir:
+    medium: Memory
+    sizeLimit: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM
+EOF
 
 # Timeout for benchmark operations
 export LLMDBENCH_CONTROL_WAIT_TIMEOUT=900000

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "config_explorer"
 version = "0.2.0"
 description = "Finding the most optimal configuration of llm-d."
-readme = "config_explorer/README.md"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "huggingface_hub==0.34.4",
@@ -14,10 +14,10 @@ dependencies = [
 ]
 
 [tool.setuptools]
-include-package-data = true
+package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
-where = ["config_explorer/src"]
+where = ["src"]
 
 [tool.setuptools.dynamic]
-dependencies = {file = ["config_explorer/requirements.txt"]}
+dependencies = {file = ["requirements.txt"]}

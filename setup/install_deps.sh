@@ -7,7 +7,13 @@ else
     target_os=linux
 fi
 
-rm -f ~/.llmdbench_dependencies_checked
+dependencies_checked_file=~/.llmdbench_dependencies_checked
+
+if [[ $1 == "noreset" ]]; then
+  true
+else
+  rm -f $dependencies_checked_file
+fi
 
 # common deps
 tools="sed python3 curl git oc kubectl helm helmfile kustomize rsync make skopeo jq yq openssl"
@@ -94,62 +100,114 @@ function install_kustomize_linux {
 
 pushd /tmp &>/dev/null
 for tool in $tools; do
-    if command -v $tool &> /dev/null; then
-        echo "$tool already installed" >> ~/.llmdbench_dependencies_checked
-        continue
+    grep -q "$tool already installed." $dependencies_checked_file
+    if [[ $? -ne 0 ]]; then
+        if command -v $tool &> /dev/null; then
+            echo "$tool already installed." >> $dependencies_checked_file
+            continue
+        fi
+        echo "---------------------------"
+        echo "Installing $tool..."
+        install_func=install_${tool}_$target_os
+        if declare -F "$install_func" &>/dev/null; then
+            eval $install_func
+        else
+            $PKG_MGR $tool || echo "Could not install $tool"
+        fi
+        if command -v $tool &> /dev/null; then
+            true
+        else
+            echo "$tool failed to install!"
+            exit 1
+        fi
+        echo "---------------------------"
     fi
-    echo "---------------------------"
-    echo "Installing $tool..."
-    install_func=install_${tool}_$target_os
-    if declare -F "$install_func" &>/dev/null; then
-        eval $install_func
-    else
-        $PKG_MGR $tool || echo "Could not install $tool"
-    fi
-    if command -v $tool &> /dev/null; then
-        true
-    else
-        echo "$tool failed to install!"
-        exit 1
-    fi
-    echo "---------------------------"
 done
 
-if ! command -v pip3 &> /dev/null; then
-    echo "pip3 not found. Attempting to install it..."
-    if [ "$target_os" = "mac" ]; then
-        echo "ERROR: pip3 not found. Please ensure python3 from Homebrew is correctly installed"
-        echo "Try running 'brew doctor' or 'brew reinstall python3'"
-        exit 1
-    elif [ "$target_os" = "linux" ]; then
-        PIP_PACKAGE="python3-pip"
-        echo "Attempting to install $PIP_PACKAGE using the system package manager..."
-        $PKG_MGR $PIP_PACKAGE
-    fi
+#
+#
+# Check minimum Python version (3.11+) based on new requirements
+#
 
-    # verify pip was installed successfully
-    if ! command -v pip3 &> /dev/null; then
-        echo "ERROR: Failed to install pip3. Please install it manually and re-run the script."
+grep -q "is available on system." $dependencies_checked_file
+if [[ $? -ne 0 ]]; then
+    python_present=""
+    verlist=""
+    for pybin in python3 python3.{13..11}; do
+        if command -v ${pybin} &>/dev/null; then
+            ver=$(${pybin} -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+            verlist=$ver,$verlist
+            major=$(echo ${ver} | cut -d. -f1)
+            minor=$(echo ${ver} | cut -d. -f2)
+            if (( major > 3 || (major == 3 && minor >= 11) )); then
+                python_present=$(command -v ${pybin})
+                break
+            fi
+        fi
+    done
+
+    if [[ -z "${python_present}" ]]; then
+        echo "ERROR: Python 3.11 and up is required, but only versions \"$(echo ${verlist} | sed 's^,$^^g')\" found."
         exit 1
+    else
+        echo "${python_present} is available on system." >> $dependencies_checked_file
     fi
-    echo "pip3 installed successfully."
 fi
 
-python_deps="kubernetes pykube-ng kubernetes-asyncio GitPython requests PyYAML Jinja2"
+grep -q "pip3 installed successfully." $dependencies_checked_file
+if [[ $? -ne 0 ]]; then
+    if ! command -v pip3 &> /dev/null; then
+        echo "pip3 not found. Attempting to install it..."
+        if [ "$target_os" = "mac" ]; then
+            echo "ERROR: pip3 not found. Please ensure python3 from Homebrew is correctly installed"
+            echo "Try running 'brew doctor' or 'brew reinstall python3'"
+            exit 1
+        elif [ "$target_os" = "linux" ]; then
+            PIP_PACKAGE="python3-pip"
+            echo "Attempting to install $PIP_PACKAGE using the system package manager..."
+            $PKG_MGR $PIP_PACKAGE
+        fi
+
+        # verify pip was installed successfully
+        if ! command -v pip3 &> /dev/null; then
+            echo "ERROR: Failed to install pip3. Please install it manually and re-run the script."
+            exit 1
+        fi
+        echo "pip3 installed successfully." >> $dependencies_checked_file
+    fi
+fi
+
+python_deps="kubernetes pykube-ng kubernetes-asyncio GitPython requests PyYAML Jinja2 requests huggingface_hub==0.34.4 transformers==4.55.4"
 
 for dep in $python_deps; do
-    # use pip3 show to check if the package is already installed
-    if pip3 show "$dep" &>/dev/null; then
-        echo "$dep is already installed." >> ~/.llmdbench_dependencies_checked
-        continue
-    else
-        echo "Installing $dep..."
-        if ! pip3 install "$dep"; then
-            echo "ERROR: Failed to install Python package '$dep'!"
+    pkg_name=$(echo "${dep}" | cut -d= -f1)
+    grep -q "$(echo $dep) is already installed." $dependencies_checked_file
+    if [[ $? -ne 0 ]]; then
+        importdep="import $(echo $dep | cut -d '=' -f 1 | tr '[:upper:]' '[:lower:]' | sed -e 's/-ng//g' -e 's/gitpython/git/g' -e 's/pyyaml/yaml/g' -e 's/-/_/g')"
+        echo "$importdep"
+        if pip3 show "${pkg_name}" &>/dev/null; then
+            # check if a version was specified
+            if [[ "${dep}" == *"=="* ]]; then
+                required_version=$(echo "${dep}" | cut -d= -f3)
+                installed_version=$(pip3 show "${pkg_name}" | awk '/Version:/{print $2}')
+                if [[ "${installed_version}" == "${required_version}" ]]; then
+                    echo "${pkg_name}==${installed_version} is already installed." >> $dependencies_checked_file
+                    continue
+                else
+                    echo "${pkg_name} installed but version mismatch (${installed_version} != ${required_version}). Upgrading..."
+                fi
+            else
+                echo "${pkg_name} is already installed." >> $dependencies_checked_file
+                continue
+            fi
+        fi
+
+        echo "Installing ${dep}..."
+        if ! pip3 install "${dep}"; then
+            echo "ERROR: Failed to install Python package ${dep}!"
             exit 1
         fi
     fi
 done
-echo "---------------------------"
 
 popd &>/dev/null
