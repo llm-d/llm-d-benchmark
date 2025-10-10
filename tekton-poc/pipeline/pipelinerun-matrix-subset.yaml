@@ -28,6 +28,10 @@ spec:
     - name: s3-endpoint
       value: "https://s3.us-east.cloud-object-storage.appdomain.cloud"
 
+    # Control
+    - name: debug
+      value: false
+
   pipelineSpec:
     workspaces:
       - name: data
@@ -56,6 +60,8 @@ spec:
           - name: harnessProfile
             value: $(params.harnessProfile)
 
+          - name: debug
+            value: "$(params.debug)"
           - name: pipelineUID
             value: "$(context.pipelineRun.uid)"
         matrix:

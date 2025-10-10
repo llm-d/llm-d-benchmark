@@ -127,6 +127,9 @@ spec:
     - name: s3-endpoint
       type: string
 
+    - name: debug
+      type: string
+      default: "false"
     - name: dry-run
       type: string 
       default: "false"
@@ -477,10 +480,10 @@ spec:
 
     - name: upload-results
       image: ubuntu:24.04
-      # Tried amazon/aws-cli:2.31.9 but latest tar available via dnf install tar -u is 1.34. 
-      # Had errors "file changed as we read it". It may be caused by the way tar identifes 
-      # file changes in v 1.34 (ctime). Recommended solution to move to 1.35. See https://stackoverflow.com/a/77765876.
-      # and tar release notes https://lists.gnu.org/archive/html/info-gnu/2023-07/msg00005.html)
+      # Tried amazon/aws-cli:2.31.9 but latest tar available via `dnf install tar -y` is 1.34. 
+      # There were sporadic errors "file changed as we read it". It may be caused by the way 
+      # tar identifes file changes in v 1.34 (via ctime). A recommended solution to move to 1.35. 
+      # See https://stackoverflow.com/a/77765876 and tar release notes https://lists.gnu.org/archive/html/info-gnu/2023-07/msg00005.html)
       # A smaller image is probably desirable. A restriction is that AWS CLI v2 requires glibc.
       workingDir: $(workspaces.data.path)
       env:
@@ -531,19 +534,20 @@ spec:
         echo "✅ Uploaded results to ${ARCHIVE_NAME}"
 
     - name: delete-namespace
-      image: alpine/helm:3.14.0
+      image: alpine/kubectl:1.34.1
       script : |
         #!/bin/sh
 
         NAMESPACE="$(params.targetNamespacePrefix)-$(context.taskRun.name)"
+        DEBUG="$(params.debug)"
 
-        if [ "$(params.dry-run)" = "true" ]; then
-          echo ">> skipping"
+        if [ "$(params.debug)" = "true" ]; then
+          echo "⚠️ DEBUG=true; leaving namespace ${NAMESPACE} for inspection"
+          echo "⚠️ Manually clean up resources with \"kubectl delete namespace ${NAMESPACE}\""
           exit 0
         fi
 
-        # kubectl delete namespace ${NAMESPACE}
-
+        kubectl delete namespace ${NAMESPACE}
         echo "✅ workload namespace ${NAMESPACE} deleted"
 
     - name: log-completion
