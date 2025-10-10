@@ -306,7 +306,6 @@ def test_experts_per_gpu():
             for dp in range(1, 16):
                 assert experts / (tp * dp) == experts_per_ep_group(model_config, tp, dp)
 
-
 def test_head_dim_none():
     mistral = "mistralai/Mixtral-8x7B-Instruct-v0.1"
     model_config = get_model_config_from_hf(mistral)
@@ -314,3 +313,11 @@ def test_head_dim_none():
     kv_cache_detail = KVCacheDetail(model_info, model_config)
 
     assert kv_cache_detail.head_dimension != None
+    
+def test_not_mla():
+    # For mistral, it's different
+    qwen = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+    model_config = get_model_config_from_hf(qwen)
+    model_info = get_model_info_from_hf(qwen_model)
+    KVCacheDetail(model_info, model_config)
+    assert KVCacheDetail.attention_type != AttentionType.MLA

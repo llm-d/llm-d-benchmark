@@ -33,6 +33,7 @@ class KVCacheDetail:
     num_attention_heads: int
     num_key_value_heads: int
     head_dimension: int
+    model_architecture: str
 
     # Derived outputs from input
     num_attention_group: int
@@ -56,9 +57,11 @@ class KVCacheDetail:
         self.model = model_info.id
         self.kv_data_type = inference_dtype(model_config)
         self.precision_in_bytes = precision_to_byte(self.kv_data_type)
+        self.model_architecture = model_config.architectures[0]
         
         # kv_data_type is stored at the model_config level, so need to fetch text_config afterward
         model_config = get_text_config(model_config)
+
         self.num_hidden_layers = model_config.num_hidden_layers
         self.hidden_size = model_config.hidden_size
         self.num_attention_heads = model_config.num_attention_heads
@@ -67,7 +70,7 @@ class KVCacheDetail:
         if self.head_dimension is None:
             self.head_dimension = self.hidden_size / self.num_attention_heads
         # Determine attention type
-        if use_mla(self.model):
+        if use_mla(self.model_architecture):
             self.attention_type = AttentionType.MLA
             self.kv_lora_rank = model_config.kv_lora_rank
             self.qk_rope_head_dim = model_config.qk_rope_head_dim
@@ -418,3 +421,4 @@ def experts_per_ep_group(model_config: AutoConfig,
     if num_experts is None:
         return 0
     return num_experts / ep_size
+    
