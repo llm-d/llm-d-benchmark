@@ -12,7 +12,7 @@ spec:
   params:
     - name: targetNamespacePrefix
       # This can be anything.
-      value: $(params.targetNamespacePrefix)
+      value: $(context.pipelineRun.namespace)
     - name: model-id
       value: "Qwen/Qwen3-0.6B"
 
