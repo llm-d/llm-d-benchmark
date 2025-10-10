@@ -11,7 +11,8 @@ spec:
         claimName: workspace-pvc
   params:
     - name: targetNamespacePrefix
-      value: kalantar
+      # This can be anything.
+      value: $(params.targetNamespacePrefix)
     - name: model-id
       value: "Qwen/Qwen3-0.6B"
 
