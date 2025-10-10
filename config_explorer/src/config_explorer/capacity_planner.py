@@ -273,18 +273,17 @@ def inference_dtype(model_config: AutoConfig) -> str:
 
     return str(model_config.torch_dtype)
 
-def use_mla(model_name: str) -> bool:
+def use_mla(model_architecture: str) -> bool:
     """
     Returns true for models that use MLA attention
     """
 
     deepseek_mla_models = [
-        "DeepSeek-V3",
-        "DeepSeek-V2",
-        "DeepSeek-R1",
+        "DeepseekV3ForCausalLM",
+        "DeepseekV2ForCausalLM",
     ]
 
-    return any(deepseek in model_name for deepseek in deepseek_mla_models)
+    return any(deepseek in model_architecture for deepseek in deepseek_mla_models)
 
 def kv_cache_req(model_info: ModelInfo,
                     model_config: AutoConfig,

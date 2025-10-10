@@ -318,5 +318,5 @@ def test_not_mla():
     qwen = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
     model_config = get_model_config_from_hf(qwen)
     model_info = get_model_info_from_hf(qwen_model)
-    KVCacheDetail(model_info, model_config)
-    assert KVCacheDetail.attention_type != AttentionType.MLA
+    kv_cache_detail = KVCacheDetail(model_info, model_config)
+    assert kv_cache_detail.attention_type != AttentionType.MLA
