@@ -44,7 +44,7 @@ def main():
             return 1
 
         # Check affinity
-        if not check_affinity():
+        if not check_affinity(ev):
             announce("❌ Failed to check affinity")
             return 1
 

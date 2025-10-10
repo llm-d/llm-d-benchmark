@@ -32,7 +32,7 @@ function model_attribute {
   local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
   local provider=$(echo $model | cut -d '/' -f 1)
   local modeltype=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision|opt" || echo base)
-  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b|[0-9].*m" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^')
+  local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b|[0-9].*m" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^' -e 's/[0-9].*p//g' | tail -1)
   local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" |  $LLMDBENCH_CONTROL_SCMD -e "s/$parameters//g" | cut -d '.' -f 1)
   if [[ -z $majorversion ]]; then
     local majorversion=1
@@ -79,7 +79,7 @@ function get_image {
   is_latest_tag=$image_tag
   if [[ $image_tag == "auto" ]]; then
     if [[ $LLMDBENCH_CONTROL_CCMD == "podman" ]]; then
-      is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags ${image_registry}/${image_repo}/${image_name} | tail -1 | awk '{ print $2 }' || true)
+      is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags --limit 1000 ${image_registry}/${image_repo}/${image_name} | tail -1 | awk '{ print $2 }' || true)
     else
       is_latest_tag=$(skopeo list-tags docker://${image_registry}/${image_repo}/${image_name} | jq -r .Tags[] | tail -1)
     fi

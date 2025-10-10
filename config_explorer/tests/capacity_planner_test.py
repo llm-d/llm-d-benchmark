@@ -305,3 +305,12 @@ def test_experts_per_gpu():
         for tp in range(1, 16):
             for dp in range(1, 16):
                 assert experts / (tp * dp) == experts_per_ep_group(model_config, tp, dp)
+
+
+def test_head_dim_none():
+    mistral = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+    model_config = get_model_config_from_hf(mistral)
+    model_info = get_model_info_from_hf(mistral)
+    kv_cache_detail = KVCacheDetail(model_info, model_config)
+
+    assert kv_cache_detail.head_dimension != None

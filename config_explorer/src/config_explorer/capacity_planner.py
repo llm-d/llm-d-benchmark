@@ -56,14 +56,16 @@ class KVCacheDetail:
         self.model = model_info.id
         self.kv_data_type = inference_dtype(model_config)
         self.precision_in_bytes = precision_to_byte(self.kv_data_type)
-
+        
+        # kv_data_type is stored at the model_config level, so need to fetch text_config afterward
+        model_config = get_text_config(model_config)
         self.num_hidden_layers = model_config.num_hidden_layers
         self.hidden_size = model_config.hidden_size
         self.num_attention_heads = model_config.num_attention_heads
         self.num_key_value_heads = model_config.num_key_value_heads
-        self.head_dimension = getattr(model_config,
-                                      "head_dim", self.hidden_size / self.num_attention_heads)
-
+        self.head_dimension = getattr(model_config,"head_dim", None)
+        if self.head_dimension is None:
+            self.head_dimension = self.hidden_size / self.num_attention_heads
         # Determine attention type
         if use_mla(self.model):
             self.attention_type = AttentionType.MLA
@@ -160,6 +162,7 @@ def max_context_len(model_config: AutoConfig) -> int:
     """
     Returns the max context length accepted by model
     """
+    model_config = get_text_config(model_config)
     return model_config.max_position_embeddings
 
 def __estimate_vllm_non_torch_memory() -> int:
