@@ -10,7 +10,7 @@ spec:
       persistentVolumeClaim:
         claimName: workspace-pvc
   params:
-    - name: namespace
+    - name: targetNamespacePrefix
       value: kalantar
     - name: model-id
       value: "Qwen/Qwen3-0.6B"
@@ -38,8 +38,8 @@ spec:
           - name: data
             workspace: data
         params:
-          - name: namespace
-            value: $(params.namespace)
+          - name: targetNamespacePrefix
+            value: $(params.targetNamespacePrefix)
           - name: model-id
             value: $(params.model-id)
           - name: experimentBaseUrl

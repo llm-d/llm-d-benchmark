@@ -17,10 +17,9 @@ spec:
     - name: gaiePluginConfig
       type: string
 
-    - name: namespace
+    - name: targetNamespacePrefix
       type: string
-      default: kalantar-llmd
-      description: Target namespace
+      default: llmdbench
 
     - name: model-id
       type: string
@@ -147,7 +146,7 @@ spec:
       script: |
         #!/bin/sh
 
-        NAMESPACE="$(params.namespace)-$(context.taskRun.name)"
+        NAMESPACE="$(params.targetNamespacePrefix)-$(context.taskRun.name)"
         DRY_RUN="$(params.dry-run)"
 
         if [ "${DRY_RUN}" = "true" ]; then
@@ -193,7 +192,7 @@ spec:
         - name: chart
           value: /tmp/llm-d-benchmark/charts/model-download        
         - name: namespace
-          value: $(params.namespace)-$(context.taskRun.name)
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
         - name: timeout
           value: 15m
         # - name: valuesYamlUrl
@@ -229,7 +228,7 @@ spec:
           value: https://llm-d-incubation.github.io/llm-d-infra/
         
         - name: namespace
-          value: $(params.namespace)-$(context.taskRun.name)
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
         - name: timeout
           value: 15m
         - name: valuesYamlUrl
@@ -250,7 +249,7 @@ spec:
           value: $(params.gaieChartVersion)
         
         - name: namespace
-          value: $(params.namespace)-$(context.taskRun.name)
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
         - name: timeout
           value: 15m
         - name: valuesYamlUrl
@@ -275,7 +274,7 @@ spec:
           value: https://llm-d-incubation.github.io/llm-d-modelservice/
         
         - name: namespace
-          value: $(params.namespace)-$(context.taskRun.name)
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
         - name: timeout
           value: 15m
         - name: valuesYamlUrl
@@ -298,7 +297,7 @@ spec:
           echo ">> skipping"
           exit 0
         fi
-        NAMESPACE="$(params.namespace)-$(context.taskRun.name)"
+        NAMESPACE="$(params.targetNamespacePrefix)-$(context.taskRun.name)"
         MODEL_ID="$(params.model-id)"
         MODEL_LABEL=$(echo "$MODEL_ID" | tr '[:upper:]' '[:lower:]' | sed 's/[./]/-/g')
         MODEL_START_TIMEOUT="$(params.modelWaitTimeout)"
@@ -352,11 +351,11 @@ spec:
         - name: LLMDBENCH_HARNESS_NAME
           value: "$(params.harnessName)"
         - name: LLMDBENCH_HARNESS_NAMESPACE
-          value: "$(params.namespace)-$(context.taskRun.name)"
+          value: "$(params.targetNamespacePrefix)-$(context.taskRun.name)"
         - name: LLMDBENCH_HARNESS_STACK_TYPE
           value: "llm-d"
         - name: LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
-          value: "http://experiment-gateway-inference-gateway.$(params.namespace)-$(context.taskRun.name).svc.cluster.local:80"
+          value: "http://experiment-gateway-inference-gateway.$(params.targetNamespacePrefix)-$(context.taskRun.name).svc.cluster.local:80"
         - name: LLMDBENCH_DEPLOY_METHODS
           value: "modelservice"
         - name: LLMDBENCH_MAGIC_ENVAR
@@ -521,7 +520,7 @@ spec:
       script : |
         #!/bin/sh
 
-        NAMESPACE="$(params.namespace)-$(context.taskRun.name)"
+        NAMESPACE="$(params.targetNamespacePrefix)-$(context.taskRun.name)"
 
         if [ "$(params.dry-run)" = "true" ]; then
           echo ">> skipping"
@@ -530,7 +529,7 @@ spec:
 
         # kubectl delete namespace ${NAMESPACE}
 
-        echo "✅ workload namespace deleted"
+        echo "✅ workload namespace ${NAMESPACE} deleted"
 
     - name: log-completion
       image: alpine:3.20
