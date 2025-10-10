@@ -315,7 +315,6 @@ def test_head_dim_none():
     assert kv_cache_detail.head_dimension != None
     
 def test_not_mla():
-    # For mistral, it's different
     qwen = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
     model_config = get_model_config_from_hf(qwen)
     model_info = get_model_info_from_hf(qwen_model)
