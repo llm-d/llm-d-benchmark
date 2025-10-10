@@ -476,7 +476,12 @@ spec:
         llm-d-benchmark.sh
 
     - name: upload-results
-      image: amazon/aws-cli:2.31.9
+      image: ubuntu:24.04
+      # Tried amazon/aws-cli:2.31.9 but latest tar available via dnf install tar -u is 1.34. 
+      # Had errors "file changed as we read it". It may be caused by the way tar identifes 
+      # file changes in v 1.34 (ctime). Recommended solution to move to 1.35. See https://stackoverflow.com/a/77765876.
+      # and tar release notes https://lists.gnu.org/archive/html/info-gnu/2023-07/msg00005.html)
+      # A smaller image is probably desirable. A restriction is that AWS CLI v2 requires glibc.
       workingDir: $(workspaces.data.path)
       env:
         - name: AWS_ACCESS_KEY_ID
@@ -493,13 +498,23 @@ spec:
           value: "true"
       script: |
         #!/usr/bin/env sh
-        set -euo pipefail
 
-        dnf install tar gzip -y
+        apt-get update && \
+            apt-get install -y --no-install-recommends ca-certificates curl unzip tar gzip && \
+            rm -rf /var/lib/apt/lists/*
+
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip && \
+          unzip /tmp/awscliv2.zip -d /tmp && \
+          /tmp/aws/install && \
+        rm -rf /tmp/aws /tmp/awscliv2.zip
+
+        tar --version && gzip --version && aws --version
 
         EXPERIMENT_ID="experiment-$(echo -n $(params.pipelineUID) | cut -c1-8)"
         EXPERIMENT_RESULTS_FOLDER="$(params.harnessName)_${EXPERIMENT_ID}_$(context.taskRun.name)"
         ARCHIVE_NAME="${EXPERIMENT_RESULTS_FOLDER}.tar.gz"
+
+        tar --version && gzip --version && aws --version
 
         tar -czf ${ARCHIVE_NAME} \
             -C "$(workspaces.data.path)" ${EXPERIMENT_RESULTS_FOLDER}
