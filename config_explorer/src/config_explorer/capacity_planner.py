@@ -167,13 +167,7 @@ def is_quantized(model_config: AutoConfig) -> bool:
     Returns True if model is quantized
     """
 
-    try:
-        get_quantization_config(model_config)
-        return True
-    except AttributeError:
-        pass
-
-    return False
+    return hasattr(model_config, 'quantization_config')
 
 def model_total_params(model_info: ModelInfo) -> int:
     """
@@ -280,7 +274,7 @@ def parameter_memory_req(parameter: int, precision: str) -> float:
 
 def parameter_precision_memory_req(parameter: int, precision_in_byte: int) -> float:
     """
-    Calculates the memory requirement (in GiB) for hte number of parameters for the specified precision in byte
+    Calculates the memory requirement (in GiB) for the number of parameters for the specified precision in byte
     """
 
     return bytes_to_gib(parameter * precision_in_byte)
