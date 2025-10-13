@@ -274,7 +274,7 @@ def parameter_memory_req(parameter: int, precision: str) -> float:
 
 def parameter_precision_memory_req(parameter: int, precision_in_byte: int) -> float:
     """
-    Calculates the memory requirement (in GiB) for the number of parameters for the specified precision in byte
+    Calculates the memory requirement (in GiB) for the number of parameters for the specified precision in bytes.
     """
 
     return bytes_to_gib(parameter * precision_in_byte)
