@@ -1416,12 +1416,12 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
 
         # # Calculate model memory requirement
         announce("👉 Collecting model information....")
-        if model_info is not None:
+        if model_info is not None and model_config is not None:
             try:
                 model_params = model_total_params(model_info)
                 announce(f"ℹ️ {model} has a total of {model_params} parameters")
 
-                model_mem_req = model_memory_req(model_info)
+                model_mem_req = model_memory_req(model_info, model_config)
                 announce(f"ℹ️ {model} requires {model_mem_req} GB of memory")
 
                 # Estimate KV cache memory and max number of requests that can be served in worst case scenario
