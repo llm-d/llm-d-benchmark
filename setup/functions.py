@@ -13,10 +13,13 @@ import pykube
 import hashlib
 from pykube.exceptions import PyKubeError
 
+import random
+import string
+
 import yaml
 
 import kubernetes
-from kubernetes import client as k8s_client, config as k8s_config
+from kubernetes import client as k8s_client, config as k8s_config, stream as k8s_stream
 
 from kubernetes_asyncio import client as k8s_async_client
 from kubernetes_asyncio import config as k8s_async_config
@@ -1248,6 +1251,75 @@ def user_has_hf_model_access(model_id: str, hf_token: str) -> bool:
     except requests.RequestException as e:
         announce("❌ ERROR - Request failed:", e)
         return False
+
+
+def get_rand_string(length: int = 8):
+    """
+    Generate a random string with lower case characters and digits
+    """
+
+    characters = string.ascii_lowercase + string.digits
+    random_string = ''.join(random.choices(characters, k=length))
+    return random_string
+
+
+def get_model_name_from_pod(
+    namespace: str,
+    image: str,
+    ip: str,
+    port: str):
+    """
+    Get model name by starting/running a pod
+    """
+
+    k8s_config.load_kube_config()
+
+    pod_name = f"testinference-pod-{get_rand_string()}"
+    if 'http://' not in ip:
+        ip = 'http://' + ip 
+    if ip.count(':') == 1:
+        ip = ip + ':' + port
+    ip = ip + '/v1/models'
+    command = ["/bin/bash", "-c", f"curl --no-progress-meter {ip}"]
+
+    pod_manifest = k8s_client.V1Pod(
+        metadata=k8s_client.V1ObjectMeta(name=pod_name, namespace=namespace),
+        spec=k8s_client.V1PodSpec(
+            restart_policy="Never",
+            containers=[
+                k8s_client.V1Container(
+                    name="model",
+                    image=image,
+                    command=command
+                )
+            ]
+        )
+    )
+
+    api_instance = k8s_client.CoreV1Api()
+    api_instance.create_namespaced_pod(namespace=namespace, body=pod_manifest)
+
+    while True:
+        pod_status = api_instance.read_namespaced_pod_status(pod_name, namespace)
+        if pod_status.status.phase != "Pending":
+            break
+        time.sleep(1)
+
+    pod_logs = api_instance.read_namespaced_pod_log(
+        name=pod_name,
+        namespace=namespace,
+        tail_lines=100 
+    )
+    
+    model_name = pod_logs.split("'id': '")[1].split("', '")[0]
+
+    # Clean up
+    api_instance.delete_namespaced_pod(
+        name=pod_name,
+        namespace=namespace, 
+        body=k8s_client.V1DeleteOptions(propagation_policy='Foreground', grace_period_seconds=10))
+    return model_name 
+
 
 # ----------------------- Capacity Planner Sanity Check -----------------------
 COMMON = "COMMON"
