@@ -3,6 +3,6 @@ gateway:
   service:
     type: NodePort
   destinationRule:
-    host: gaie-inference-scheduling-epp.kalantar-is.svc.cluster.local
+    host: experiment-gaie-685a862b-epp.kalantar-is.svc.cluster.local
   gatewayParameters:
     enabled: true
