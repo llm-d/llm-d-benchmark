@@ -105,15 +105,15 @@ def write_benchmark_scenario(file: io.TextIOWrapper, benchmark_report: Benchmark
 
     scenario = benchmark_report.scenario
     file.write("Scenario\n")
-    file.write(f" Harness       : {scenario.load.name}\n")
-    file.write(f" Load Format   : {scenario.metadata['load_format']}\n")
-    file.write(f" Sleep Mode On : {scenario.metadata['sleep_mode']}\n")
-    file.write(f" Model         : {scenario.model.name}\n")
+    file.write(f"  Harness       : {scenario.load.name}\n")
+    file.write(f"  Load Format   : {scenario.metadata['load_format']}\n")
+    file.write(f"  Sleep Mode On : {scenario.metadata['sleep_mode']}\n")
+    file.write(f"  Model         : {scenario.model.name}\n")
     for engine in scenario.platform.engine:
-        file.write(" Engine\n")
-        file.write(f"  Name         : {engine.name}\n")
-        file.write(f"  Version      : {engine.version}\n")
-        file.write(f"  Args         : {str(engine.args)}\n")
+        file.write("  Engine\n")
+        file.write(f"    Name        : {engine.name}\n")
+        file.write(f"    Version     : {engine.version}\n")
+        file.write(f"    Args        : {str(engine.args)}\n")
 
 
 def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkReport):
@@ -130,36 +130,52 @@ def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkR
     duration = benchmark_report.metrics.time.duration
 
     metrics_metadata = benchmark_report.metrics.metadata
-    elapsed = metrics_metadata["load_time"]["value"]
-    rate = metrics_metadata["transfer_rate"]["value"]
-    sleep = metrics_metadata["sleep"]["value"]
-    freed = metrics_metadata["gpu_freed"]["value"]
-    use = metrics_metadata["gpu_in_use"]["value"]
+    elapsed = metrics_metadata["load"]["time"]["value"]
+    rate = metrics_metadata["load"]["transfer_rate"]["value"]
+    dynamo_bytecode_transform = metrics_metadata["dynamo_bytecode_transform"]["value"]
+    torch_compile = metrics_metadata["torch_compile"]["value"]
+    initial_free = metrics_metadata["memory_profiling"]["initial_free"]["value"]
+    after_free = metrics_metadata["memory_profiling"]["after_free"]["value"]
+    profiling_time = metrics_metadata["memory_profiling"]["time"]["value"]
+    sleep = metrics_metadata["sleep"]["time"]["value"]
+    freed = metrics_metadata["sleep"]["gpu_freed"]["value"]
+    use = metrics_metadata["sleep"]["gpu_in_use"]["value"]
     wake = metrics_metadata["wake"]["value"]
     load_cached_compiled_graph = metrics_metadata.get("load_cached_compiled_graph")
     compile_graph = metrics_metadata.get("compile_graph")
 
     file.write("Benchmark\n")
-    file.write(f"  Start                    : {time_iso}\n")
-    file.write(f"  Elapsed(secs)            : {duration:7.3f}\n")
-    file.write("   Model Load\n")
-    file.write(f"     Elapsed(secs)         : {elapsed:7.3f}\n")
-    file.write(f"     Rate(GiB/secs)        : {rate:7.3f}\n")
+    file.write(f"  Start                           : {time_iso}\n")
+    file.write(f"  Elapsed(secs)                   : {duration:7.3f}\n")
+    file.write("  Model Load\n")
+    file.write(f"    Elapsed(secs)                 : {elapsed:7.3f}\n")
+    file.write(f"    Rate(GiB/secs)                : {rate:7.3f}\n")
+    file.write(
+        f"  Dynamo Bytecode Transform(secs) : {dynamo_bytecode_transform:7.2f}\n"
+    )
     if load_cached_compiled_graph is not None or compile_graph is not None:
-        file.write("   Compiled Graph\n")
+        file.write("  Compiled Graph\n")
         if load_cached_compiled_graph is not None:
             file.write(
-                f"     Load from Cache(secs) : {load_cached_compiled_graph['value']:7.3f}\n"
+                f"    Load from Cache(secs)         : {load_cached_compiled_graph['value']:7.3f}\n"
             )
         if compile_graph is not None:
-            file.write(f"     Compile(secs)         : {compile_graph['value']:7.3f}\n")
-    file.write("   Sleep\n")
-    file.write(f"     Elapsed(secs)         : {sleep:7.3f}\n")
-    file.write("      Memory GPU(GiB)\n")
-    file.write(f"        Freed              : {freed:7.3f}\n")
-    file.write(f"        in Use             : {use:7.3f}\n")
-    file.write("   Wake\n")
-    file.write(f"     Elapsed(secs)         : {wake:7.3f}\n")
+            file.write(
+                f"    Compile(secs)                 : {compile_graph['value']:7.3f}\n"
+            )
+    file.write(f"  Torch Compile(secs)             : {torch_compile:7.2f}\n")
+    file.write("  Memory Profiling\n")
+    file.write(f"    Elapsed(secs)                 : {profiling_time:7.2f}\n")
+    file.write("    Free Memory GPU(GiB)\n")
+    file.write(f"      Initial                     : {initial_free:7.2f}\n")
+    file.write(f"      After                       : {after_free:7.2f}\n")
+    file.write("  Sleep\n")
+    file.write(f"    Elapsed(secs)                 : {sleep:7.3f}\n")
+    file.write("    Memory GPU(GiB)\n")
+    file.write(f"      Freed                       : {freed:7.2f}\n")
+    file.write(f"      in Use                      : {use:7.2f}\n")
+    file.write("  Wake\n")
+    file.write(f"    Elapsed(secs)                 : {wake:7.3f}\n")
 
     categories = metrics_metadata.get("categories")
     if categories is None:

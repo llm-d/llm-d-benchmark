@@ -399,18 +399,91 @@ class MetricsTime:
 
 
 @dataclass
+class MetricsSleep:
+    """Sleep metrics"""
+
+    time: float = 0.0
+    gpu_freed: float = 0.0
+    gpu_in_use: float = 0.0
+
+    def dump(self) -> dict[str, Any]:
+        """Convert MetricsSleep to dict.
+
+        Returns:
+            dict: Defined fields of MetricsSleep.
+        """
+        dump_dict = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            dump_dict[f.name] = value
+
+        return dump_dict
+
+
+@dataclass
+class MetricsMemoryProfiling:
+    """Memory Profiling metrics"""
+
+    initial_free: float = 0.0
+    after_free: float = 0.0
+    time: float = 0.0
+
+    def dump(self) -> dict[str, Any]:
+        """Convert MetricsMemoryProfiling to dict.
+
+        Returns:
+            dict: Defined fields of MetricsMemoryProfiling.
+        """
+        dump_dict = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            dump_dict[f.name] = value
+
+        return dump_dict
+
+
+@dataclass
+class MetricsLoad:
+    """Load metrics"""
+
+    time: float = 0.0
+    size: float = 0.0
+
+    def dump(self) -> dict[str, Any]:
+        """Convert MetricsLoad to dict.
+
+        Returns:
+            dict: Defined fields of MetricsLoad.
+        """
+        dump_dict = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            dump_dict[f.name] = value
+
+        transfer_rate = 0.0
+        if self.time != 0.0:
+            transfer_rate = self.size / self.time
+        dump_dict["transfer_rate"] = transfer_rate
+
+        return dump_dict
+
+
+@dataclass
 class BenchmarkMetrics:
     """Benchmark Metrics"""
 
     time: MetricsTime = field(default_factory=MetricsTime)
-    load_time: float = 0.0
+    load: MetricsLoad = field(default_factory=MetricsLoad)
     size: float = 0.0
-    sleep: float = 0.0
-    gpu_freed: float = 0.0
-    gpu_in_use: float = 0.0
-    wake: float = 0.0
+    dynamo_bytecode_transform: float = 0.0
     load_cached_compiled_graph: float = 0.0
     compile_graph: float = 0.0
+    torch_compile: float = 0.0
+    memory_profiling: MetricsMemoryProfiling = field(
+        default_factory=MetricsMemoryProfiling
+    )
+    sleep: MetricsSleep = field(default_factory=MetricsSleep)
+    wake: float = 0.0
 
     root_category: BenchmarkCategory | None = None
 
@@ -434,10 +507,6 @@ class BenchmarkMetrics:
                 if hasattr(value, "dump") and callable(value.dump)
                 else value
             )
-        transfer_rate = 0.0
-        if self.load_time != 0.0:
-            transfer_rate = self.size / self.load_time
-        dump_dict["transfer_rate"] = transfer_rate
 
         if self.root_category is not None:
             dump_dict["categories"] = self.root_category.dump()
@@ -872,13 +941,9 @@ def parse_logs(logs: str) -> BenchmarkResult:
     model_load_format = "load_format="
     # Model loading took 15.2209 GB and 12.221976 seconds
     model_load_string = "Model loading took"
-    # It took 0.001315 seconds to fall asleep.
-    model_sleep_string = " seconds to fall asleep"
-    # It took 0.000018 seconds to wake up.
-    model_wake_string = " seconds to wake up"
-    model_took_string = " It took "
-    # Sleep mode freed 69.50 GiB memory, 0.75 GiB memory is still in use.
-    model_gpu_freed = "Sleep mode freed"
+
+    # Dynamo bytecode transform time: 3.96 s
+    dynamo_bytecode_transform = "Dynamo bytecode transform time"
 
     # Directly load the compiled graph(s) for dynamic shape from the cache, took %.3f s
     # Directly load the compiled graph(s) for shape %s from the cache, took %.3f s
@@ -887,6 +952,26 @@ def parse_logs(logs: str) -> BenchmarkResult:
     # Compiling a graph for dynamic shape takes %.2f s
     # Compiling a graph for shape %s takes %.2f s
     compiled_graph = "Compiling a graph for "
+
+    # torch.compile takes 17.88 s in total
+    torch_compile = "torch.compile takes"
+
+    # Initial free memory: 43.90 GiB; Requested memory: 0.95 (util), 42.17 GiB
+    initial_free_memory = "Initial free memory:"
+    # Free memory after profiling: 42.85 GiB (total), 41.12 GiB (within requested)
+    free_memory_after_profiling = "Free memory after profiling:"
+    # Memory profiling takes 26.21 seconds. Total non KV cache memory: 1.48GiB
+    # torch peak memory increase: 0.52GiB; non-torch forward increase memory: 0.04GiB;
+    # weights memory: 0.93GiB.
+    memory_profiling = "Memory profiling takes"
+
+    # It took 0.001315 seconds to fall asleep.
+    model_sleep_string = " seconds to fall asleep"
+    # It took 0.000018 seconds to wake up.
+    model_wake_string = " seconds to wake up"
+    model_took_string = " It took "
+    # Sleep mode freed 69.50 GiB memory, 0.75 GiB memory is still in use.
+    model_gpu_freed = "Sleep mode freed"
 
     benchmark_result = BenchmarkResult()
 
@@ -898,15 +983,20 @@ def parse_logs(logs: str) -> BenchmarkResult:
             args is not None
             and sleep_mode != ""
             and benchmark_result.scenario.load_format != LoadFormat.UNKNOWN
-            and benchmark_result.metrics.load_time != 0
-            and benchmark_result.metrics.sleep != 0
-            and benchmark_result.metrics.gpu_freed != 0
-            and benchmark_result.metrics.gpu_in_use != 0
-            and benchmark_result.metrics.wake != 0
+            and benchmark_result.metrics.load.time != 0
+            and benchmark_result.metrics.dynamo_bytecode_transform != 0
             and (
                 benchmark_result.metrics.load_cached_compiled_graph != 0
                 or benchmark_result.metrics.compile_graph != 0
             )
+            and benchmark_result.metrics.memory_profiling.initial_free != 0
+            and benchmark_result.metrics.memory_profiling.after_free != 0
+            and benchmark_result.metrics.memory_profiling.time != 0
+            and benchmark_result.metrics.torch_compile != 0
+            and benchmark_result.metrics.sleep.time != 0
+            and benchmark_result.metrics.sleep.gpu_freed != 0
+            and benchmark_result.metrics.sleep.gpu_in_use != 0
+            and benchmark_result.metrics.wake != 0
         ):
             break
 
@@ -949,30 +1039,17 @@ def parse_logs(logs: str) -> BenchmarkResult:
                         LoadFormat.loadformat_from_value(format_value)
                     )
 
-        if benchmark_result.metrics.load_time == 0:
+        if benchmark_result.metrics.load.time == 0:
             floats = find_floats_in_line(model_load_string, line)
             if len(floats) > 1:
-                benchmark_result.metrics.size = floats[0]
-                benchmark_result.metrics.load_time = floats[1]
+                benchmark_result.metrics.load.size = floats[0]
+                benchmark_result.metrics.load.time = floats[1]
                 continue
 
-        if benchmark_result.metrics.sleep == 0 and model_sleep_string in line:
-            floats = find_floats_in_line(model_took_string, line)
+        if benchmark_result.metrics.dynamo_bytecode_transform == 0:
+            floats = find_floats_in_line(dynamo_bytecode_transform, line)
             if len(floats) > 0:
-                benchmark_result.metrics.sleep = floats[0]
-                continue
-
-        if benchmark_result.metrics.gpu_freed == 0:
-            floats = find_floats_in_line(model_gpu_freed, line)
-            if len(floats) > 1:
-                benchmark_result.metrics.gpu_freed = floats[0]
-                benchmark_result.metrics.gpu_in_use = floats[1]
-                continue
-
-        if benchmark_result.metrics.wake == 0 and model_wake_string in line:
-            floats = find_floats_in_line(model_took_string, line)
-            if len(floats) > 0:
-                benchmark_result.metrics.wake = floats[0]
+                benchmark_result.metrics.dynamo_bytecode_transform = floats[0]
                 continue
 
         if (
@@ -986,6 +1063,49 @@ def parse_logs(logs: str) -> BenchmarkResult:
             floats = find_floats_in_line(compiled_graph, line)
             if len(floats) > 0:
                 benchmark_result.metrics.compile_graph = floats[0]
+                continue
+
+        if benchmark_result.metrics.torch_compile == 0:
+            floats = find_floats_in_line(torch_compile, line)
+            if len(floats) > 0:
+                benchmark_result.metrics.torch_compile = floats[0]
+                continue
+
+        if benchmark_result.metrics.memory_profiling.initial_free == 0:
+            floats = find_floats_in_line(initial_free_memory, line)
+            if len(floats) > 0:
+                benchmark_result.metrics.memory_profiling.initial_free = floats[0]
+                continue
+
+        if benchmark_result.metrics.memory_profiling.after_free == 0:
+            floats = find_floats_in_line(free_memory_after_profiling, line)
+            if len(floats) > 0:
+                benchmark_result.metrics.memory_profiling.after_free = floats[0]
+                continue
+
+        if benchmark_result.metrics.memory_profiling.time == 0:
+            floats = find_floats_in_line(memory_profiling, line)
+            if len(floats) > 0:
+                benchmark_result.metrics.memory_profiling.time = floats[0]
+                continue
+
+        if benchmark_result.metrics.sleep.time == 0 and model_sleep_string in line:
+            floats = find_floats_in_line(model_took_string, line)
+            if len(floats) > 0:
+                benchmark_result.metrics.sleep.time = floats[0]
+                continue
+
+        if benchmark_result.metrics.sleep.gpu_freed == 0:
+            floats = find_floats_in_line(model_gpu_freed, line)
+            if len(floats) > 1:
+                benchmark_result.metrics.sleep.gpu_freed = floats[0]
+                benchmark_result.metrics.sleep.gpu_in_use = floats[1]
+                continue
+
+        if benchmark_result.metrics.wake == 0 and model_wake_string in line:
+            floats = find_floats_in_line(model_took_string, line)
+            if len(floats) > 0:
+                benchmark_result.metrics.wake = floats[0]
                 continue
 
     return benchmark_result

@@ -976,29 +976,55 @@ def import_nop(results_file: str) -> BenchmarkReport:
         },
         "metrics": {
             "metadata": {
-                "load_time": {
+                "load": {
+                    "time": {
                         "units": Units.S,
-                        "value": results["metrics"]["load_time"],
+                        "value": results["metrics"]["load"]["time"],
                     },
-                "size": {
+                    "size": {
                         "units": Units.GIB,
-                        "value": results["metrics"]["size"],
+                        "value": results["metrics"]["load"]["size"],
                     },
-                "transfer_rate": {
+                    "transfer_rate": {
                         "units": Units.GIB_PER_S,
-                        "value": results["metrics"]["transfer_rate"],
+                        "value": results["metrics"]["load"]["transfer_rate"],
                     },
-                "sleep": {
+                },
+                "dynamo_bytecode_transform": {
                         "units": Units.S,
-                        "value": results["metrics"]["sleep"],
+                        "value": results["metrics"]["dynamo_bytecode_transform"],
                     },
-                "gpu_freed": {
-                        "units": Units.GIB,
-                        "value": results["metrics"]["gpu_freed"],
+                "torch_compile": {
+                        "units": Units.S,
+                        "value": results["metrics"]["torch_compile"],
                     },
-                "gpu_in_use": {
-                        "units": Units.GIB,
-                        "value": results["metrics"]["gpu_in_use"],
+                "memory_profiling": {
+                        "initial_free": {
+                            "units": Units.GIB,
+                            "value": results["metrics"]["memory_profiling"]["initial_free"],
+                        },
+                        "after_free": {
+                            "units": Units.GIB,
+                            "value": results["metrics"]["memory_profiling"]["after_free"],
+                        },
+                        "time": {
+                            "units": Units.S,
+                            "value": results["metrics"]["memory_profiling"]["time"],
+                        },
+                },
+                "sleep": {
+                        "time": {
+                            "units": Units.S,
+                            "value": results["metrics"]["sleep"]["time"],
+                        },
+                        "gpu_freed": {
+                            "units": Units.GIB,
+                            "value": results["metrics"]["sleep"]["gpu_freed"],
+                        },
+                        "gpu_in_use": {
+                            "units": Units.GIB,
+                            "value": results["metrics"]["sleep"]["gpu_in_use"],
+                        },
                     },
                 "wake": {
                         "units": Units.S,
