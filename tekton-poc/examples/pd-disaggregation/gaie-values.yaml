@@ -30,7 +30,7 @@ inferencePool:
   modelServers:
     matchLabels:
       llm-d.ai/inferenceServing: "true"
-      llm-d.ai/model: meta-lla-1b4505f6-instruct
+      llm-d.ai/model: meta-llama-llama-3-1-8b-instruct
 provider:
   name: none
 
