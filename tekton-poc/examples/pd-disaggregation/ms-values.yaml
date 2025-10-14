@@ -92,7 +92,7 @@ decode:
       - "--max-model-len"
       - "16000"
       - "--tensor-parallel-size"
-      - "4" 
+      - "1" 
     env:
       - name: VLLM_NIXL_SIDE_CHANNEL_HOST
         valueFrom:
@@ -193,7 +193,7 @@ prefill:
       - "--max-model-len"
       - "16000"
       - "--tensor-parallel-size"
-      - "4" 
+      - "1" 
     env:
       - name: VLLM_IS_PREFILL
         value: "1"
