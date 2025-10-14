@@ -155,7 +155,7 @@ tkn pr delete <pipelinerun_name> -f
 
 The default PipelineSpec (in `pipeline/pipelinerun-matrix.yaml`) executes all the tasks in parallel. It can be modified in a number of ways to reduce the amount of parallel execution (at the expense of time).
 
-Some examples are provided:
+Some examples are provided (**Note** examples need to be updated):
 
 - `pipeline/pipelinerun-matrix-subset.yaml`: Uses `matrix.include` to list an explicit set of combinations to execute.
 - `pipeline/pipelinerun-sequential-1.yaml`: Executes 1 task at a time. Each task depends on the previous one.
@@ -194,6 +194,23 @@ The utility script `utility/transform-pr-parallel.py` can be used to transform a
 - there are hardcoded assumptions/values about the use case in several places; these will be removed as more use cases are explored
 
 
-# Issues
+# To Do
 
+- modify script to handle unroll better
+- modify script to handle unroll and n together
 
+- single experiment namespace (possibly different from tekton ns)
+- use more stepActions
+- incorporate memory planner (Jing)
+- PD example (Nick)
+    - [IN PROGRESS] deployment of the pd scenario
+    - [DONE] enabling multiple harnesses (inference-perf and vllm-benchmark)
+    - [DONE] making factors/treatments general (they are hardcoded)
+    - [NOT STARTED] use capacity planner to determine whether or not to continue
+    - [IN PROGRESS] move step implementations to stepactions
+    - [NOT STARTED] move from multiple namespaces to single namespace
+
+- can we have just one prepare-profile now that we have treatments?
+- should we have a convert step independent of the analysis step?
+- eventually one for analysis based on analysis of converted results
+- need to wait for model download

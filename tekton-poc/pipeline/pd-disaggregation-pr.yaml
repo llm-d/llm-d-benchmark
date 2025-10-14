@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
-  name: experiment-matrix-run
+  name: pd
 spec:
   taskRunTemplate:
     serviceAccountName: helm-installer
@@ -14,13 +14,13 @@ spec:
       # This can be anything.
       value: $(context.pipelineRun.namespace)
     - name: model-id
-      value: "Qwen/Qwen3-0.6B"
+      value: "meta-llama/Llama-3.1-8B-Instruct"
 
     # Harness / Workload
     - name: harnessName
-      value: inference-perf
+      value: vllm-benchmark
     - name: harnessProfile
-      value: shared_prefix_synthetic_short.yaml
+      value: random_concurrent.yaml
 
     # Output Location
     - name: s3-keys
@@ -50,7 +50,7 @@ spec:
           - name: model-id
             value: $(params.model-id)
           - name: experimentBaseUrl
-            value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+            value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/pd-disaggregation/
 
           - name: s3-keys
             value: $(params.s3-keys)
@@ -84,15 +84,11 @@ spec:
                 }
               }
 
-          - name: max-concurrency
-            value: "1"
-          - name: num-prompts
-            value: "10"
-
           - name: debug
             value: "$(params.debug)"
           - name: pipelineUID
             value: "$(context.pipelineRun.uid)"
+
         matrix:
           include:
             - name: combo-0
@@ -100,17 +96,55 @@ spec:
                 - name: treatment
                   value: |
                     {
-                      "gaiePluginConfig": "inf-sche-queue.yaml",
-                      "question_len": 100,
-                      "output_len": 100
+                      "prefillReplicas": 1,
+                      "prefillTensorParallelism": 1,
+                      "decodeReplicas": 1,
+                      "decodeTensorParallelism": 1,
+                      "max-concurrency": 1,
+                      "num-prompts": 10
                     }
-            - name: combo-1
-              params:
-                - name: treatment
-                  value: |
-                    {
-                      "gaiePluginConfig": "inf-sche-prefix.yaml",
-                      "question_len": 300,
-                      "output_len": 300
-                    }
+            # - name: combo-1
+            #   params:
+            #     - name: treatment
+            #       value: |
+            #         {
+            #           "prefillReplicas": 1,
+            #           "prefillTensorParallelism": 2,
+            #           "decodeReplicas": 1,
+            #           "decodeTensorParallelism": 1,
+            #           "max-concurrency": 1,
+            #           "num-prompts": 10
+            #         }
 
+          # params:
+          #   - name: max-concurrency
+          #     value:
+          #       - "1"
+          #       # - "8"
+          #       # - "32"
+          #       # - "64"
+          #       # - "128"
+          #       # - "256"
+          #   - name: num-prompts
+          #     value: 
+          #       - "10"
+          #       # - "80"
+          #       # - "320"
+          #       # - "640"
+          #       # - "1280"
+          #       # - "2560"
+
+# LLMDBENCH_VLLM_COMMON_REPLICAS: "2,4"
+#   decode.replicas
+# LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM: "8"
+#   decode.parallelism.tensor
+
+# LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS: "2,4,6,8"
+#   prefill.replicas
+# LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM: "1,2"
+#   prefill.parallelism.tensor
+# LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS: "1,2,4"
+#   decode.replicas
+# LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM: "2,4,8"
+#   decodeTensorParallelism
+#   decode.parallelism.tensor

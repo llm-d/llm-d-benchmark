@@ -165,6 +165,9 @@ spec:
     - name: extraArgs
       type: string
       default: ""
+    - name: treatmentAnalysis
+      type: string
+      default: ""
 
     - name: dry-run
       type: string
@@ -224,6 +227,9 @@ spec:
     - name: HELM_EXTRA_ARGS
       value: "$(params.extraArgs)"
 
+    - name: TREATMENT_ANALYSIS
+      value: "$(params.treatmentAnalysis)"
+
     - name: DRY_RUN
       value: $(params.dry-run)
 
@@ -235,6 +241,11 @@ spec:
       echo ">> skipping"
       exit 0
     fi
+
+    apk add --no-cache jq >/dev/null
+
+    echo ">>> helm step: treatment"
+    printf "%s" "${TREATMENT_ANALYSIS}"
 
     SHA256CMD=$(type -p gsha256sum || type -p sha256sum)
     NAMESPACE_HASH=$(echo -n "$HELM_NAMESPACE" | $SHA256CMD | awk '{print $1}' | cut -c1-8)
@@ -302,6 +313,10 @@ spec:
       */*|oci://*) : ;;
       *) if [ -n "${HELM_REPO_NAME:-}" ]; then CHART_REF="${HELM_REPO_NAME}/${HELM_CHART}"; fi ;;
     esac
+
+    if [ -n "${TREATMENT_ANALYSIS:-}" ]; then
+      HELM_EXTRA_ARGS="${HELM_EXTRA_ARGS} $(echo ${TREATMENT_ANALYSIS} | jq -r '.setArgs')"
+    fi
 
     if [ -n "${HELM_EXTRA_ARGS:-}" ]; then
       HELM_EXTRA_ARGS=$(echo "$HELM_EXTRA_ARGS" | sed "s/NAMESPACE_HASH/$NAMESPACE_HASH/g")

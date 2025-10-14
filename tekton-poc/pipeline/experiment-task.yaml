@@ -10,12 +10,15 @@ spec:
     - name: data
 
   params:
-    - name: question_len
+    - name: factorMapping
       type: string
-    - name: output_len
+      description: |
+        JSON string mapping factor to path in source yaml file sorted by purpose.
+    - name: treatment
       type: string
-    - name: gaiePluginConfig
-      type: string
+      description: |
+        JSON string of factors and values for one treatment. 
+        Includes both infrastructure and workload factors.
 
     - name: targetNamespacePrefix
       type: string
@@ -134,15 +137,73 @@ spec:
       type: string 
       default: "false"
 
+  results:
+    - name: treatmentAnalysisModelservice
+      value: $(steps.analyze-modelservice-factors.results.treatmentAnalysis)
+    - name: treatmentAnalysisGaie
+      value: $(steps.analyze-gaie-factors.results.treatmentAnalysis)
+    - name: treatmentAnalysisWorkload
+      value: $(steps.analyze-workload-factors.results.treatmentAnalysis)
+
   steps:
     - name: log-start
       image: alpine:3.20
       script: |
         #!/bin/sh
         echo "🔄 Starting sweep step for ..."
-        echo "     gaiePluginConfig = $(params.gaiePluginConfig)"
-        echo "         question_len = $(params.question_len)"
-        echo "           output_len = $(params.output_len)"
+        printf "%s" "$(params.treatment)"
+
+    - name: analyze-modelservice-factors
+      ref:
+        name: analyze-treatment
+      params:
+        - name: factorType
+          value: modelservice
+        - name: factorMapping
+          value: $(params.factorMapping)
+        - name: treatment
+          value: $(params.treatment)
+
+    - name: analyze-gaie-factors
+      ref:
+        name: analyze-treatment
+      params:
+        - name: factorType
+          value: gaie
+        - name: factorMapping
+          value: $(params.factorMapping)
+        - name: treatment
+          value: $(params.treatment)
+
+    - name: analyze-workload-factors
+      ref:
+        name: analyze-treatment
+      params:
+        - name: factorType
+          value: workload
+        - name: factorMapping
+          value: $(params.factorMapping)
+        - name: treatment
+          value: $(params.treatment)
+
+    - name: display-treatment-analysis
+      image: alpine:3.20
+      env:
+        - name: MODELSERVICE_SET_ARGS
+          value: "$(steps.analyze-modelservice-factors.results.treatmentAnalysis)"
+        - name: GAIE_SET_ARGS
+          value: "$(steps.analyze-gaie-factors.results.treatmentAnalysis)"
+        - name: WORKLOAD_SET_ARGS
+          value: "$(steps.analyze-workload-factors.results.treatmentAnalysis)"
+
+      script: |
+        #!/bin/sh
+        apk add --no-cache jq yq-go >/dev/null
+        jq --version
+
+        echo "helm upgrade --install ... $(echo ${MODELSERVICE_SET_ARGS} | jq '.setArgs')"
+        echo "helm upgrade --install ...  $(echo ${GAIE_SET_ARGS} | jq '.setArgs')"
+        echo "$(echo ${WORKLOAD_SET_ARGS} | jq '.updates')"
 
     - name: prepare-namespace
       image: quay.io/openshift/origin-cli:4.21
@@ -257,8 +318,8 @@ spec:
           value: 15m
         - name: valuesYamlUrl
           value: "$(params.experimentBaseUrl)/gaie-values.yaml"
-        - name: extraArgs
-          value: "--set inferenceExtension.pluginsConfigFile=$(params.gaiePluginConfig)"
+        - name: treatmentAnalysis
+          value: "$(steps.analyze-gaie-factors.results.treatmentAnalysis)"
 
         - name: dry-run
           value: $(params.dry-run)
@@ -287,6 +348,8 @@ spec:
             --set routing.inferencePool.name=$(params.experimentName)-gaie-NAMESPACE_HASH
             --set routing.httpRoute.rules[0].backendRefs[0].name=$(params.experimentName)-gaie-NAMESPACE_HASH
             --set routing.httpRoute.rules[1].backendRefs[0].name=$(params.experimentName)-gaie-NAMESPACE_HASH
+        - name: treatmentAnalysis
+          value: "$(steps.analyze-modelservice-factors.results.treatmentAnalysis)"
 
         - name: dry-run
           value: $(params.dry-run)
@@ -338,67 +401,33 @@ spec:
         #   --timeout=${MODEL_START_TIMEOUT}s
         # echo "✅ prefill pods serving model ${MODEL_ID} ready"
 
-    - name: workload
-      image: $(params.llmdbenchImageRegistry)/$(params.llmdbenchImageRepo)/$(params.llmdbenchImageName):$(params.llmdbenchImageTag)
-      env:
-        - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
-          value: "1"
-        - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY
-          value: "0"
-        - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS
-          value: "$(params.harnessName)-llm-d-benchmark.sh"
-        - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
-          value: "$(params.harnessName)-analyze_results.sh"
-        - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME
-          value: "$(params.harnessProfile)"
-        - name: LLMDBENCH_HARNESS_NAME
-          value: "$(params.harnessName)"
-        - name: LLMDBENCH_HARNESS_NAMESPACE
-          value: "$(params.targetNamespacePrefix)-$(context.taskRun.name)"
-        - name: LLMDBENCH_HARNESS_STACK_TYPE
-          value: "llm-d"
-        - name: LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
-          value: "http://experiment-gateway-inference-gateway.$(params.targetNamespacePrefix)-$(context.taskRun.name).svc.cluster.local:80"
-        - name: LLMDBENCH_DEPLOY_METHODS
-          value: "modelservice"
-        - name: LLMDBENCH_MAGIC_ENVAR
-          value: "harness_pod"
+    - name: inference-perf-prepare-profile
+      ref: 
+        name: inference-perf-prepare-profile
+      params:
+        - name: harnessName
+          value: $(params.harnessName)
+        - name: harnessProfile
+          value: $(params.harnessProfile)
+        - name: treatmentAnalysis
+          value: $(steps.analyze-workload-factors.results.treatmentAnalysis)
+        - name: model-id
+          value: $(params.model-id)
+        - name: namespace
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
+        - name: pipelineUID
+          value: $(params.pipelineUID)
 
-        - name: LLMDBENCH_LLMD_IMAGE_REGISTRY
-          value: "$(params.llmdbenchImageRegistry)"
-        - name: LLMDBENCH_LLMD_IMAGE_REPO
-          value: "$(params.llmdbenchImageRepo)"
-        - name: LLMDBENCH_LLMD_IMAGE_NAME
-          value: "$(params.llmdbenchImageName)"
-        - name: LLMDBENCH_LLMD_IMAGE_TAG
-          value: "$(params.llmdbenchImageTag)"
-
-        #  TBD add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD
-        - name: LLMDBENCH_DEPLOY_CURRENT_MODEL
-          value: "$(params.model-id)"
-        - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS
-          value: "0"
-        - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS
-          value: "2"
-        - name: LLMDBENCH_VLLM_COMMON_AFFINITY
-          value: "nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3"
-        - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM
-          value: "4"
-        - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM
-          value: "1"
-        - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM
-          value: "1"
-        - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM
-          value: "1"
-
-        - name: HF_TOKEN_SECRET
-          value: "hf-secret"
-        - name: HUGGING_FACE_HUB_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: hf-secret
-              key: HF_TOKEN
-
+    - name: inference-perf-run
+      ref:
+        name: inference-perf-run
+      params:
+        - name: harnessName
+          value: $(params.harnessName)
+        - name: harnessProfile
+          value: $(params.harnessProfile)
+        - name: pipelineUID
+          value: $(params.pipelineUID)
       computeResources:
         requests:
           memory: "32Gi"
@@ -407,131 +436,58 @@ spec:
           memory: "32Gi"
           cpu: "16"
 
-      script: |
-        #!/bin/bash
+    - name: inference-perf-analyze-results
+      ref:
+        name: inference-perf-analyze-results
+      params:
+        - name: harnessName
+          value: $(params.harnessName)
+        - name: pipelineUID
+          value: $(params.pipelineUID)
 
-        export EXPERIMENT_ID="experiment-$(echo -n $(params.pipelineUID) | cut -c1-8)"
-        export LLMDBENCH_RUN_EXPERIMENT_ID="${EXPERIMENT_ID}"
-        export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR="$(workspaces.data.path)/$(params.harnessName)_${EXPERIMENT_ID}_$(context.taskRun.name)"
-        export LLMDBENCH_CONTROL_WORK_DIR="$(workspaces.data.path)/$(params.harnessName)_${EXPERIMENT_ID}_$(context.taskRun.name)"
-        export LLMDBENCH_HARNESS_STACK_NAME=$(echo "$(params.model-id)" | tr '[:upper:]' '[:lower:]' | sed 's/[./]/-/g')
-        export LLMDBENCH_DEPLOY_CURRENT_MODELID="${LLMDBENCH_HARNESS_STACK_NAME}"
-        export LLMDBENCH_DEPLOY_CURRENT_TOKENIZER="$(params.model-id)"
+    - name: vllm-benchmark-prepare-profile
+      ref: 
+        name: vllm-benchmark-prepare-profile
+      params:
+        - name: harnessName
+          value: $(params.harnessName)
+        - name: harnessProfile
+          value: $(params.harnessProfile)
+        - name: treatmentAnalysis
+          value: $(steps.analyze-workload-factors.results.treatmentAnalysis)
+        - name: model-id
+          value: $(params.model-id)
+        - name: namespace
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
+        - name: pipelineUID
+          value: $(params.pipelineUID)
 
-        export QUESTION_LEN=$(params.question_len)
-        export OUTPUT_LEN=$(params.output_len)
+    - name: vllm-benchmark-run
+      ref:
+        name: vllm-benchmark-run
+      params:
+        - name: harnessName
+          value: $(params.harnessName)
+        - name: harnessProfile
+          value: $(params.harnessProfile)
+        - name: pipelineUID
+          value: $(params.pipelineUID)
+      computeResources:
+        requests:
+          memory: "32Gi"
+          cpu: "16"
+        limits:
+          memory: "32Gi"
+          cpu: "16"
 
-        get_profiles() {
-          git init llm-d-benchmark
-          cd llm-d-benchmark
-          git remote add origin https://github.com/llm-d/llm-d-benchmark.git
-          git config core.sparseCheckout true
-          echo "workload/profiles/" >> .git/info/sparse-checkout
-          git pull origin main
-        }
-
-        if [ "$(params.dry-run)" = "true" ]; then
-          echo ">> skipping"
-          exit 0
-        fi
-
-        get_profiles
-
-        echo "creating CONTROL directories"
-        mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup
-        rm -f ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
-        touch ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
-
-        workload=$(echo $(params.harnessProfile) | sed 's^\.yaml^^g' )
-        echo "workload = $workload"
-        workload_template_list=$(find workload/profiles/ -name "${workload}.yaml.in")
-        echo "workload_template_list = $workload_template_list"
-
-        for workload_template_full_path in $workload_template_list; do
-          echo "PROCESSING $workload_template_full_path"
-          workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
-          echo "workload_template_type = $workload_template_type"
-          workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | sed -e "s^\.yaml.in$^^g")
-          echo "workload_template_file_name = $workload_template_file_name"
-          ## 
-          workload_output_file=${LLMDBENCH_CONTROL_WORK_DIR}/${workload_template_file_name}.yaml
-          # workload_output_file=${LLMDBENCH_CONTROL_WORK_DIR}/$workload_template_type/$workload_template_file_name
-          echo "workload_output_file = $workload_output_file"
-          ##
-          mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/$workload_template_type
-
-          echo "s^REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL^${LLMDBENCH_DEPLOY_CURRENT_MODEL}^g" >> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
-          echo "s^REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL^${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL}^g" >> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
-          echo "s^REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER^${LLMDBENCH_DEPLOY_CURRENT_TOKENIZER}^g" >> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
-          echo "s^question_len: .*^question_len: ${QUESTION_LEN}^g" >> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
-          echo "s^output_len: .*^output_len: ${OUTPUT_LEN}^g" >> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
-          echo "s^    path: .*^    path: ${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}^g" >> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
-
-          echo "------"
-          cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands
-          echo "------"
-          echo "workload_output_file=$workload_output_file"
-          sed -f ${LLMDBENCH_CONTROL_WORK_DIR}/setup/sed-commands $workload_template_full_path > $workload_output_file
-
-          cat $workload_output_file
-        done
-
-        llm-d-benchmark.sh
-
-    - name: upload-results
-      image: ubuntu:24.04
-      # Tried amazon/aws-cli:2.31.9 but latest tar available via `dnf install tar -y` is 1.34. 
-      # There were sporadic errors "file changed as we read it". It may be caused by the way 
-      # tar identifes file changes in v 1.34 (via ctime). A recommended solution to move to 1.35. 
-      # See https://stackoverflow.com/a/77765876 and tar release notes https://lists.gnu.org/archive/html/info-gnu/2023-07/msg00005.html)
-      # A smaller image is probably desirable. A restriction is that AWS CLI v2 requires glibc.
-      workingDir: $(workspaces.data.path)
-      env:
-        - name: AWS_ACCESS_KEY_ID
-          valueFrom:
-            secretKeyRef:
-              name: $(params.s3-keys)
-              key: AWS_ACCESS_KEY_ID
-        - name: AWS_SECRET_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: $(params.s3-keys)
-              key: AWS_SECRET_ACCESS_KEY
-        - name: AWS_EC2_METADATA_DISABLED
-          value: "true"
-      script: |
-        #!/usr/bin/env sh
-
-        apt-get update && \
-            apt-get install -y --no-install-recommends ca-certificates curl unzip tar gzip && \
-            rm -rf /var/lib/apt/lists/*
-
-        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip && \
-          unzip /tmp/awscliv2.zip -d /tmp && \
-          /tmp/aws/install && \
-        rm -rf /tmp/aws /tmp/awscliv2.zip
-
-        tar --version && gzip --version && aws --version
-
-        EXPERIMENT_ID="experiment-$(echo -n $(params.pipelineUID) | cut -c1-8)"
-        EXPERIMENT_RESULTS_FOLDER="$(params.harnessName)_${EXPERIMENT_ID}_$(context.taskRun.name)"
-        ARCHIVE_NAME="${EXPERIMENT_RESULTS_FOLDER}.tar.gz"
-
-        tar --version && gzip --version && aws --version
-
-        tar -czf ${ARCHIVE_NAME} \
-            -C "$(workspaces.data.path)" ${EXPERIMENT_RESULTS_FOLDER}
-
-        aws s3 cp ${ARCHIVE_NAME} "s3://$(params.s3-bucket)/${ARCHIVE_NAME}" \
-            --endpoint-url "$(params.s3-endpoint)" \
-            --content-type "application/x-tar" \
-            --content-encoding "gzip" \
-            --no-progress
-            # --recursive \
-
-        rm -rf ${ARCHIVE_NAME}
-        
-        echo "✅ Uploaded results to ${ARCHIVE_NAME}"
+    - name: vllm-benchmark-analyze-results
+      ref:
+        name: vllm-benchmark-analyze-results
+      params:
+        - name: harnessName
+          value: $(params.harnessName)
+        - name: pipelineUID
+          value: $(params.pipelineUID)
 
     - name: delete-namespace
       image: alpine/kubectl:1.34.1
