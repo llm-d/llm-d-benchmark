@@ -19,7 +19,7 @@ inferenceExtension:
     - name: HF_TOKEN
       valueFrom:
         secretKeyRef:
-          name: hf-token
+          name: hf-secret
           key: HF_TOKEN
   pluginsConfigFile: "plugins-v2.yaml"
 
