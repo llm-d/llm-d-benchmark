@@ -1,0 +1,36 @@
+inferenceExtension:
+  replicas: 1
+  image:
+    name: llm-d-inference-scheduler
+    hub: ghcr.io/llm-d
+    tag: v0.2.1
+    pullPolicy: Always
+  extProcPort: 9002
+  extraContainerPorts:
+    - name: zmq
+      containerPort: 5557
+      protocol: TCP
+  extraServicePorts:
+    - name: zmq
+      port: 5557
+      targetPort: 5557
+      protocol: TCP
+  env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-token
+          key: HF_TOKEN
+  pluginsConfigFile: "plugins-v2.yaml"
+
+inferencePool:
+  targetPortNumber: 8000
+  modelServerType: vllm
+  apiVersion: "inference.networking.x-k8s.io/v1alpha2"
+  modelServers:
+    matchLabels:
+      llm-d.ai/inferenceServing: "true"
+      llm-d.ai/model: meta-lla-1b4505f6-instruct
+provider:
+  name: none
+
