@@ -192,7 +192,7 @@ def table(tab: DeltaGenerator, benchmark_data):
         # Get the indices of selected rows
         selected_indices = selected_rows_df.index.tolist()
 
-        tab.markdown("##### llm-d configuration:")
+        tab.markdown("##### vLLM configuration:")
 
         # Iterate over selected rows and fetch data from the original df
         for idx in selected_indices:
@@ -428,7 +428,7 @@ def inputs(tab: DeltaGenerator, data):
                         return None
 
                 try:
-                    model_gpu_memory_req = round(model_memory_req(model_info), 2)
+                    model_gpu_memory_req = round(model_memory_req(model_info, model_config), 2)
                 except Exception as e:
                     st.warning(f"Cannot retrieve relevant information about the model, {e}. The Capacity Planner only has partial information and functionality.")
                     return None
