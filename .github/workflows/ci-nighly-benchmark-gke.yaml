@@ -20,8 +20,8 @@ on:
     - cron: '0 0 * * *'  # Daily at midnight UTC
 
 jobs:
-  run-benchmark:
-    name: Benchmark Test
+  run-benchmark-gke:
+    name: Nightly Benchmark on GKE
     runs-on: [k8s-util]
     timeout-minutes: 240
 
