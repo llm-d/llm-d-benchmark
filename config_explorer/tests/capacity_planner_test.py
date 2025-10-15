@@ -9,6 +9,9 @@ from src.config_explorer.capacity_planner import *
 precision_types = ["fp32", "fp16", "fp8", "int4"]
 small_model_id = "repo/small-model"
 qwen_model = "Qwen/Qwen3-0.6B"
+deepseek3 = "deepseek-ai/DeepSeek-V3.1"
+gpt_oss = "openai/gpt-oss-20b"
+redhat_qwen = "RedHatAI/Qwen3-8B-FP8-dynamic"
 
 def test_get_model_info_and_config_from_hf():
     """
@@ -107,13 +110,28 @@ def test_model_memory_req():
     Tests model memory can be correctly estimated
     """
 
+    # GQA model
     model_info = get_model_info_from_hf(qwen_model)
-    assert model_memory_req(model_info) == 1.4000244140625
+    model_config = get_model_config_from_hf(qwen_model)
+    assert model_memory_req(model_info, model_config) == 1.4000244140625
+
+    # MLA model
+    model_info = get_model_info_from_hf(deepseek3)
+    model_config = get_model_config_from_hf(deepseek3)
+    assert model_memory_req(model_info, model_config) == 641.2852922081947
+
+    # MXFP4 model
+    model_info = get_model_info_from_hf(gpt_oss)
+    model_config = get_model_config_from_hf(gpt_oss)
+    assert model_memory_req(model_info, model_config) == 13.111648678779602
 
     # No param info for facebook/opt-125m
     with pytest.raises(Exception):
-        model_info = get_model_info_from_hf("facebook/opt-125m")
-        model_memory_req(model_info)
+        hf_model = "facebook/opt-125m"
+        model_info = get_model_info_from_hf(hf_model)
+        model_config = get_model_config_from_hf(hf_model)
+        model_memory_req(model_info, model_config)
+
 
 def test_kv_cache_req():
     """
@@ -142,7 +160,6 @@ def test_kv_cache_req():
         rounded = round(actual_kv_cache_req, 5)
         assert rounded == actual_kv_cache
 
-
     # Assert other models
     model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
@@ -154,7 +171,7 @@ def test_kv_cache_req():
     # For context length = 10000
     actual_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
     rounded = round(actual_kv_cache_req, 5)
-    assert rounded == 1.06812
+    assert rounded == 0.53406
 
 
 def test_max_concurrent_req():
@@ -165,7 +182,7 @@ def test_max_concurrent_req():
     # This model does not take up 40GB GPU, so model size is negligible
     model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
-    model_memory = model_memory_req(model_info)
+    model_memory = model_memory_req(model_info, model_config)
     per_req_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
 
     for tp in range(1, 16):
@@ -221,7 +238,7 @@ def test_allocatable_kv_cache_memory():
 
     model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
-    model_memory = model_memory_req(model_info)
+    model_memory = model_memory_req(model_info, model_config)
 
     gpu_memory = 40
     gpu_util = 1
@@ -306,3 +323,76 @@ def test_experts_per_gpu():
         for tp in range(1, 16):
             for dp in range(1, 16):
                 assert experts / (tp * dp) == experts_per_ep_group(model_config, tp, dp)
+
+def test_head_dim_none():
+    """
+    Tests head dimension field for models that don't have them
+    """
+    mistral = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+    model_config = get_model_config_from_hf(mistral)
+    model_info = get_model_info_from_hf(mistral)
+    kv_cache_detail = KVCacheDetail(model_info, model_config)
+
+    assert kv_cache_detail.head_dimension != None
+
+def test_not_mla():
+    """
+    Verify MLA attentin check
+    """
+    qwen = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+    model_config = get_model_config_from_hf(qwen)
+    model_info = get_model_info_from_hf(qwen_model)
+    kv_cache_detail = KVCacheDetail(model_info, model_config)
+    assert kv_cache_detail.attention_type != AttentionType.MLA
+
+def test_get_quant_method():
+    """
+    Tests getting quant method for models
+    """
+
+    model_to_quant_method = {
+        gpt_oss: "mxfp4",
+        redhat_qwen: "compressed-tensors",
+        deepseek3: "fp8",
+        qwen_model: "",
+    }
+
+    for model, expected in model_to_quant_method.items():
+        model_config = get_model_config_from_hf(model)
+        assert get_quant_method(model_config) == expected
+
+def test_get_quant_bytes():
+    """
+    Tests that the byte requirement for the quant method can be fetched
+    """
+
+    model_to_quant_bytes = {
+        gpt_oss: 4.25 / 8,      # mxfp4
+        redhat_qwen: 1,         # num_bits: 8
+        deepseek3: 1,           # fp8
+    }
+
+    for model, expected in model_to_quant_bytes.items():
+        model_config = get_model_config_from_hf(model)
+        assert get_quant_bytes(model_config) == expected
+
+def test_inference_dtype():
+    """
+    Tests that inference dtype can be determined for quantized and unquantized models
+    """
+
+    model_to_dtype = {
+        # quantized
+        gpt_oss: "mxfp4",
+        redhat_qwen: "bfloat16",
+        "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic": "bfloat16",
+
+        # unquantized
+        qwen_model: "bfloat16",
+        deepseek3: "bfloat16",
+    }
+
+    for model, expceted in model_to_dtype.items():
+        model_config = get_model_config_from_hf(model)
+        assert inference_dtype(model_config) == expceted
+

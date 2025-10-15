@@ -1,5 +1,5 @@
 # WIDE EP/DP WITH LWS WELL LIT PATH
-# Based on https://github.com/llm-d/llm-d/blob/dev/guides/wide-ep-lws/README.md
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/wide-ep-lws
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
 # Removed extra volumes metrics-volume and torch-compile-volume; they are not needed for this model and tested hardware.
 # Use LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES to add them if needed.
@@ -9,14 +9,17 @@
 # Many commonly defined values were left blank (default) so that this scenario is applicable to as many environments as possible.
 
 # Model parameters
-# export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
-# export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
-export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
+#export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
 
-# Workload parameters
-export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=random_concurrent.yaml
-export LLMDBENCH_HARNESS_NAME=vllm-benchmark
+# PVC parameters
+#             Storage class (leave uncommented to automatically detect the "default" storage class)
+#export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=standard-rwx
+#export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=shared-vast
+#export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=ocs-storagecluster-cephfs
+export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
 
 # Routing configuration (via gaie)
 export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE=pd-config.yaml
@@ -28,19 +31,18 @@ export LLMDBENCH_VLLM_MODELSERVICE_EPP=true
 # export LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR=nixlv2 # already the default
 export LLMDBENCH_LLMD_ROUTINGSIDECAR_DEBUG_LEVEL=3
 
-# Common parameters across standalone and llm-d (prefill and decode) pods
-#export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
-#export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
-
-#             Affinity to select node with appropriate accelerator (leave uncommented to automatically detect GPU)
-#export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3
-#export LLMDBENCH_VLLM_COMMON_AFFINITY=gpu.nvidia.com/model:H200
-#export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-L40S
-#export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-A100-SXM4-80GB
+#             Affinity to select node with appropriate accelerator (leave uncommented to automatically detect GPU... WILL WORK FOR OpenShift, Kubernetes and GKE)
+#export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3        # OpenShift
+#export LLMDBENCH_VLLM_COMMON_AFFINITY=gpu.nvidia.com/model:H200                           # Kubernetes
+#export LLMDBENCH_VLLM_COMMON_AFFINITY=cloud.google.com/gke-accelerator:nvidia-tesla-a100  # GKE
+#export LLMDBENCH_VLLM_COMMON_AFFINITY=cloud.google.com/gke-accelerator:nvidia-h100-80gb   # GKE
+#export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-L40S                  # OpenShift
+#export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-A100-SXM4-80GB        # OpenShift
+#export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu                                      # ANY GPU (useful for Minikube)
 
 #             Uncomment to request specific network devices
-#export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/roce_gdr
-#export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib
+#####export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/roce_gdr
+#######export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib
 #export LLMDBENCH_VLLM_COMMON_NETWORK_NR=4
 
 #             Uncomment to use hostNetwork (onlye ONE PODE PER NODE)
@@ -53,6 +55,10 @@ export LLMDBENCH_LLMD_ROUTINGSIDECAR_DEBUG_LEVEL=3
 # Prefill and Decode configiration (via modelservice)
 
 export LLMDBENCH_VLLM_MODELSERVICE_MULTINODE=true
+
+# Common parameters across standalone and llm-d (prefill and decode) pods
+#export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
+#export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
 
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
@@ -104,7 +110,7 @@ cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
 START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE_LOCAL ))
         source /opt/vllm/bin/activate
         exec vllm serve /model-cache/models/Qwen/Qwen3-0.6B \
---port 8200 \
+--port $LLMDBENCH_VLLM_COMMON_INFERENCE_PORT \
 --disable-log-requests \
 --disable-uvicorn-access-log \
 --enable-expert-parallel \
@@ -141,7 +147,7 @@ EOF
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1
 # Uncomment the following line to enable multi-nic
-#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$(id -un),modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
+#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
 # Uncomment the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
 #export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
 #export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=4
@@ -170,3 +176,10 @@ START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE_LOCAL ))
 --trust-remote-code \
 --kv_transfer_config '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'
 EOF
+
+# Workload parameters
+export LLMDBENCH_HARNESS_NAME=vllm-benchmark
+export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=random_concurrent.yaml
+
+# Local directory to copy benchmark runtime files and results
+export LLMDBENCH_CONTROL_WORK_DIR=~/data/wide_ep_lws

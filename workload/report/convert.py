@@ -6,6 +6,7 @@
 # that is not specialized to a particular harness.
 
 import argparse
+import base64
 import datetime
 import os
 import re
@@ -130,7 +131,7 @@ def _get_llmd_benchmark_envars() -> dict:
         return {
             "scenario": {
                 "model": {
-                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
+                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODEL']
                 },
                 "host": {
                     "type": ['replica'] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS']),
@@ -146,9 +147,9 @@ def _get_llmd_benchmark_envars() -> dict:
                 },
                 "platform": {
                     "engine": [{
-                        "name": os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY'] + \
-                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO'] + \
-                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME'] + \
+                        "name": os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY'] + '/' + \
+                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO'] + '/' + \
+                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME'] + ':' + \
                                 os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG'],
                     }] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS'])
                 },
@@ -164,10 +165,36 @@ def _get_llmd_benchmark_envars() -> dict:
     if os.environ['LLMDBENCH_DEPLOY_METHODS'] == 'modelservice':
         # Given a 'modelservice' deployment, we expect the following environment
         # variables to be available
+
+        # Get EPP configuration
+        epp_config = {}
+        epp_config_content = os.getenv('LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG', '')
+        if epp_config_content == "":
+            sys.stderr.write('Warning: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG empty.')
+        else:
+            epp_config_content = base64.b64decode(epp_config_content).decode("utf-8")
+            epp_config = yaml.safe_load(epp_config_content)
+
+            # Insert default parameter values for scorers if left undefined
+            for ii, plugin in enumerate(epp_config['plugins']):
+                if plugin['type'] == 'prefix-cache-scorer':
+                    if 'parameters' not in plugin:
+                        plugin['parameters'] = {}
+
+                    parameters = plugin['parameters']
+                    if 'blockSize' not in parameters:
+                        parameters['blockSize'] = 16
+                    if 'maxPrefixBlocksToMatch' not in parameters:
+                        parameters['maxPrefixBlocksToMatch'] = 256
+                    if 'lruCapacityPerServer' not in parameters:
+                        parameters['lruCapacityPerServer'] = 31250
+
+                    epp_config['plugins'][ii]['parameters'] = parameters
+
         return {
             "scenario": {
                 "model": {
-                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODELID']
+                    "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODEL']
                 },
                 "host": {
                     "type": ['prefill'] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
@@ -192,10 +219,13 @@ def _get_llmd_benchmark_envars() -> dict:
                     }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
                 },
                 "platform": {
+                    "metadata": {
+                        "inferenceScheduler": epp_config,
+                    },
                     "engine": [{
-                            "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + \
-                                    os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + \
-                                    os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + \
+                            "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + '/' + \
+                                    os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + '/' + \
+                                    os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + ':' + \
                                     os.environ['LLMDBENCH_LLMD_IMAGE_TAG'],
                     }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
                          int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
@@ -304,9 +334,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
                     "units": Units.MS,
                     "mean": results['mean_ttft_ms'],
                     "stddev": results['std_ttft_ms'],
-                    "p00p1": results['p0.1_ttft_ms'],
-                    "p01": results['p1_ttft_ms'],
-                    "p05": results['p5_ttft_ms'],
+                    "p0p1": results['p0.1_ttft_ms'],
+                    "p1": results['p1_ttft_ms'],
+                    "p5": results['p5_ttft_ms'],
                     "p10": results['p10_ttft_ms'],
                     "P25": results['p25_ttft_ms'],
                     "p50": results['median_ttft_ms'],
@@ -320,9 +350,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
                     "units": Units.MS_PER_TOKEN,
                     "mean": results['mean_tpot_ms'],
                     "stddev": results['std_tpot_ms'],
-                    "p00p1": results['p0.1_tpot_ms'],
-                    "p01": results['p1_tpot_ms'],
-                    "p05": results['p5_tpot_ms'],
+                    "p0p1": results['p0.1_tpot_ms'],
+                    "p1": results['p1_tpot_ms'],
+                    "p5": results['p5_tpot_ms'],
                     "p10": results['p10_tpot_ms'],
                     "P25": results['p25_tpot_ms'],
                     "p50": results['median_tpot_ms'],
@@ -336,9 +366,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
                     "units": Units.MS_PER_TOKEN,
                     "mean": results['mean_itl_ms'],
                     "stddev": results['std_itl_ms'],
-                    "p00p1": results['p0.1_itl_ms'],
-                    "p01": results['p1_itl_ms'],
-                    "p05": results['p5_itl_ms'],
+                    "p0p1": results['p0.1_itl_ms'],
+                    "p1": results['p1_itl_ms'],
+                    "p5": results['p5_itl_ms'],
                     "p10": results['p10_itl_ms'],
                     "P25": results['p25_itl_ms'],
                     "p90": results['p90_itl_ms'],
@@ -350,9 +380,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
                     "units": Units.MS,
                     "mean": results['mean_e2el_ms'],
                     "stddev": results['std_e2el_ms'],
-                    "p00p1": results['p0.1_e2el_ms'],
-                    "p01": results['p1_e2el_ms'],
-                    "p05": results['p5_e2el_ms'],
+                    "p0p1": results['p0.1_e2el_ms'],
+                    "p1": results['p1_e2el_ms'],
+                    "p5": results['p5_e2el_ms'],
                     "p10": results['p10_e2el_ms'],
                     "P25": results['p25_e2el_ms'],
                     "p90": results['p90_e2el_ms'],
@@ -718,6 +748,19 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
     # Import results from Inference Perf
     results = import_yaml(results_file)
 
+    # Get stage number from metrics filename
+    stage = int(results_file.rsplit('stage_')[-1].split('_', 1)[0])
+
+    # Import Inference Perf config file
+    config_file = os.path.join(
+        os.path.dirname(results_file),
+        'config.yaml'
+    )
+    if os.path.isfile(config_file):
+        config = import_yaml(config_file)
+    else:
+        config = {}
+
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
     br_dict = _get_llmd_benchmark_envars()
@@ -731,6 +774,10 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
             "model": {"name": model_name},
             "load": {
                 "name": WorkloadGenerator.INFERENCE_PERF,
+                "args": config,
+                "metadata": {
+                    "stage": stage,
+                },
             },
         },
         "metrics": {
@@ -777,7 +824,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
             },
             "latency": {
                 "time_to_first_token": {
-                    "units": Units.MS,
+                    "units": Units.S,
                     "mean": results['successes']['latency']['time_to_first_token']['mean'],
                     "min": results['successes']['latency']['time_to_first_token']['min'],
                     "p0p1": results['successes']['latency']['time_to_first_token']['p0.1'],
@@ -794,7 +841,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
                     "max": results['successes']['latency']['time_to_first_token']['max'],
                 },
                 "normalized_time_per_output_token": {
-                    "units": Units.MS_PER_TOKEN,
+                    "units": Units.S_PER_TOKEN,
                     "mean": results['successes']['latency']['normalized_time_per_output_token']['mean'],
                     "min": results['successes']['latency']['normalized_time_per_output_token']['min'],
                     "p0p1": results['successes']['latency']['normalized_time_per_output_token']['p0.1'],
@@ -811,7 +858,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
                     "max": results['successes']['latency']['normalized_time_per_output_token']['max'],
                 },
                 "time_per_output_token": {
-                    "units": Units.MS_PER_TOKEN,
+                    "units": Units.S_PER_TOKEN,
                     "mean": results['successes']['latency']['time_per_output_token']['mean'],
                     "min": results['successes']['latency']['time_per_output_token']['min'],
                     "p0p1": results['successes']['latency']['time_per_output_token']['p0.1'],
@@ -828,7 +875,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
                     "max": results['successes']['latency']['time_per_output_token']['max'],
                 },
                 "inter_token_latency": {
-                    "units": Units.MS_PER_TOKEN,
+                    "units": Units.S_PER_TOKEN,
                     "mean": results['successes']['latency']['inter_token_latency']['mean'],
                     "min": results['successes']['latency']['inter_token_latency']['min'],
                     "p0p1": results['successes']['latency']['inter_token_latency']['p0.1'],
@@ -845,7 +892,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
                     "max": results['successes']['latency']['inter_token_latency']['max'],
                 },
                 "request_latency": {
-                    "units": Units.MS,
+                    "units": Units.S,
                     "mean": results['successes']['latency']['request_latency']['mean'],
                     "min": results['successes']['latency']['request_latency']['min'],
                     "p0p1": results['successes']['latency']['request_latency']['p0.1'],
@@ -890,6 +937,9 @@ def import_nop(results_file: str) -> BenchmarkReport:
         for cat in cat_list:
             cat_dict = {}
             cat_dict["title"] = cat["title"]
+            process = cat.get("process")
+            if process is not None:
+                cat_dict["process"] = process["name"]
             cat_dict["elapsed"] = {
                         "units": Units.S,
                         "value": cat["elapsed"],
@@ -926,29 +976,55 @@ def import_nop(results_file: str) -> BenchmarkReport:
         },
         "metrics": {
             "metadata": {
-                "load_time": {
+                "load": {
+                    "time": {
                         "units": Units.S,
-                        "value": results["metrics"]["load_time"],
+                        "value": results["metrics"]["load"]["time"],
                     },
-                "size": {
+                    "size": {
                         "units": Units.GIB,
-                        "value": results["metrics"]["size"],
+                        "value": results["metrics"]["load"]["size"],
                     },
-                "transfer_rate": {
+                    "transfer_rate": {
                         "units": Units.GIB_PER_S,
-                        "value": results["metrics"]["transfer_rate"],
+                        "value": results["metrics"]["load"]["transfer_rate"],
                     },
-                "sleep": {
+                },
+                "dynamo_bytecode_transform": {
                         "units": Units.S,
-                        "value": results["metrics"]["sleep"],
+                        "value": results["metrics"]["dynamo_bytecode_transform"],
                     },
-                "gpu_freed": {
-                        "units": Units.GIB,
-                        "value": results["metrics"]["gpu_freed"],
+                "torch_compile": {
+                        "units": Units.S,
+                        "value": results["metrics"]["torch_compile"],
                     },
-                "gpu_in_use": {
-                        "units": Units.GIB,
-                        "value": results["metrics"]["gpu_in_use"],
+                "memory_profiling": {
+                        "initial_free": {
+                            "units": Units.GIB,
+                            "value": results["metrics"]["memory_profiling"]["initial_free"],
+                        },
+                        "after_free": {
+                            "units": Units.GIB,
+                            "value": results["metrics"]["memory_profiling"]["after_free"],
+                        },
+                        "time": {
+                            "units": Units.S,
+                            "value": results["metrics"]["memory_profiling"]["time"],
+                        },
+                },
+                "sleep": {
+                        "time": {
+                            "units": Units.S,
+                            "value": results["metrics"]["sleep"]["time"],
+                        },
+                        "gpu_freed": {
+                            "units": Units.GIB,
+                            "value": results["metrics"]["sleep"]["gpu_freed"],
+                        },
+                        "gpu_in_use": {
+                            "units": Units.GIB,
+                            "value": results["metrics"]["sleep"]["gpu_in_use"],
+                        },
                     },
                 "wake": {
                         "units": Units.S,
@@ -1037,6 +1113,14 @@ def import_nop(results_file: str) -> BenchmarkReport:
             },
         },
     }
+
+    for name in ["load_cached_compiled_graph", "compile_graph"]:
+        value = results["metrics"].get(name)
+        if value is not None:
+            results_dict["metrics"]["metadata"][name] = {
+                                "units": Units.S,
+                                "value": value,
+                            }
 
     update_dict(br_dict, results_dict)
 

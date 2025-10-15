@@ -1,0 +1,72 @@
+name: CI - Config Explorer Test
+
+on:
+  pull_request:
+
+jobs:
+
+  run-config-explorer:
+    name: Usability Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Display Python version
+        run: python -c "import sys; print(sys.version)"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./config_explorer
+          pip list
+
+      - name: Package functionality check
+        shell: bash
+        env:
+          MODEL: "Qwen/Qwen3-0.6B"
+        run: |
+          cat <<EOF > ~/test.py
+          import os
+          from config_explorer.capacity_planner import *
+          model = os.environ.get("MODEL")
+          info = get_model_info_from_hf(model)
+          print(info)
+
+          config = get_model_config_from_hf(model)
+          print(config)
+          EOF
+          python ~/test.py
+
+      - name: Create k8s Kind Cluster
+        uses: helm/kind-action@v1
+
+      - name: Patch node with dummy GPU label
+        shell: bash
+        run: |
+          kubectl patch node $(kubectl get nodes -o name | cut -d'/' -f2) -p '{"metadata":{"labels":{"nvidia.com/gpu.product":"NVIDIA-H100-80GB-HBM3"}}}'
+          kubectl get nodes --show-labels
+
+      - name: Run install_deps
+        run: |
+          sudo apt-get update
+          ./setup/install_deps.sh
+        shell: bash
+
+      - name: llm-d-benchmark Integration check
+        shell: bash
+        env:
+          LLMDBENCH_DEPLOY_MODEL_LIST: "Qwen/Qwen3-0.6B"
+          LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY: "80"
+        run: |
+          ./setup/standup.sh -c inference-scheduling -s 0,1,2,3 -m $LLMDBENCH_DEPLOY_MODEL_LIST
+

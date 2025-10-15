@@ -30,7 +30,7 @@ else
     source "$(conda info --base)/etc/profile.d/conda.sh"
     conda activate "$LLMDBENCH_HARNESS_CONDA_ENV_NAME"
     pip install -r requirements.txt
-    pip install -e .
+    pip install -r config_explorer/requirements.txt
 
     ${LLMDBENCH_CONTROL_CCMD} build -t ${LLMDBENCH_HARNESS_NAME} .
     mkdir -p requests && chmod o+w requests
@@ -41,9 +41,21 @@ else
   announce "✅ harness setup locally."
 fi
 
-if [[ $LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL != "NA" ]]; then
-  announce "🔄 Creating namespace (${LLMDBENCH_HARNESS_NAMESPACE}), service account (${LLMDBENCH_HARNESS_SERVICE_ACCOUNT}) and rbac for harness..."
-  cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_namespace_sa_rbac_secret.yaml
+check_storage_class
+if [[ $? -ne 0 ]]
+then
+  announce "❌ Failed to check storage class"
+  if [[ "${BASH_SOURCE[0]}" == "${0}" ]]
+  then
+      exit 1
+  else
+      return 1
+  fi
+fi
+
+announce "🔄 Creating namespace (${LLMDBENCH_HARNESS_NAMESPACE}), service account (${LLMDBENCH_HARNESS_SERVICE_ACCOUNT}) and rbac for harness..."
+create_namespace "${LLMDBENCH_CONTROL_KCMD}" "${LLMDBENCH_HARNESS_NAMESPACE}"
+cat << EOF > $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_namespace_sa_rbac_secret.yaml
 ---
 apiVersion: v1
 kind: Namespace
@@ -118,12 +130,11 @@ data:
   HF_TOKEN: "$(echo ${LLMDBENCH_HF_TOKEN} | base64)"
 EOF
 
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_namespace_sa_rbac_secret.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  if [[ $? -ne 0 ]]; then
-    return 1
-  fi
-  announce "✅ Namespace (${LLMDBENCH_HARNESS_NAMESPACE}), service account (${LLMDBENCH_HARNESS_SERVICE_ACCOUNT}) and rbac for harness created"
+llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $LLMDBENCH_CONTROL_WORK_DIR/setup/yamls/${LLMDBENCH_CURRENT_STEP}_namespace_sa_rbac_secret.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+if [[ $? -ne 0 ]]; then
+  return 1
 fi
+announce "✅ Namespace (${LLMDBENCH_HARNESS_NAMESPACE}), service account (${LLMDBENCH_HARNESS_SERVICE_ACCOUNT}) and rbac for harness created"
 
 for vol in ${LLMDBENCH_HARNESS_PVC_NAME}; do
 

@@ -32,6 +32,60 @@ def register_new_accelerator():
             }
             st.rerun()
 
+def get_model_size_df(model_info: ModelInfo, model_config: AutoConfig) -> dict:
+    """
+    Returns dataframe for displaying how model size is calculated
+    """
+
+    data_types = []
+    quantized_data_types = []
+    bytes_list = []
+    params = []
+    memory_req = []
+
+    quant_method = ""
+    quant_method_byte = 0
+
+    try:
+        quant_method = get_quant_method(model_config)
+        quant_method_byte = get_quant_bytes(model_config)
+    except AttributeError:
+        # Model doesn't contain quant config
+        pass
+
+    for d_type, param in model_info.safetensors.parameters.items():
+        param_bytes = 0
+        try:
+            param_bytes = precision_to_byte(d_type)
+        except Exception:
+            pass
+
+        # Update info
+        data_types.append(d_type)
+        params.append(param)
+
+        if param_bytes >= 2 or quant_method == "":
+            quantized_data_types.append(d_type)
+            bytes_list.append(param_bytes)
+            memory_req.append(parameter_memory_req(param, d_type))
+        else:
+            quantized_data_types.append(quant_method)
+            bytes_list.append(quant_method_byte)
+            memory_req.append(parameter_precision_memory_req(param, quant_method_byte))
+
+    data = {
+        "Data type": data_types,
+        "Quantized data type": quantized_data_types,
+        "Size in bytes": bytes_list,
+        "Number of parameters": params,
+        "Memory in GB (params x bytes)": memory_req,
+    }
+
+    if quant_method == "":
+        del data["Quantized data type"]
+
+    return data
+
 def model_specification():
     """
     Get model inputs like model name, precision
@@ -81,41 +135,23 @@ def model_specification():
                     return None
 
             try:
-                model_gpu_memory_req = round(model_memory_req(model_info), 2)
+                model_gpu_memory_req = util.pretty_round(model_memory_req(model_info, model_config))
             except Exception as e:
                 st.warning(f"Cannot retrieve relevant information about the model, {e}. The Capacity Planner only has partial information and functionality.")
                 return None
 
-            # Display first precision
+            # Display model memory calculation
             col1, col2 = st.columns(2)
 
             col1.info(f"Size of model in memory: ~{model_gpu_memory_req} GB")
             with col2.expander("See how model size is calculated below"):
                 st.write("""Below shows how model memory is estimated. The number of parameters and precision are fetched from Hugging Face. Common data types include `BF16` (floating point 16-bit) and `F8_E4M3` (floating point 8-bit, 4 for exponents and 3 for mantissa). The total is then summed.""")
 
-                data_types = []
-                bytes_list = []
-                params = []
-                memory_req = []
+                if is_quantized(model_config):
+                    quant_method = get_quant_method(model_config)
+                    st.write(f"This model contains a quantization config. The quantization method is: `{quant_method}`")
 
-                for d_type, param in model_info.safetensors.parameters.items():
-                    data_types.append(d_type)
-                    params.append(param)
-
-                    try:
-                        bytes_list.append(precision_to_byte(d_type))
-                    except Exception as e:
-                        st.warning(e)
-                        pass
-
-                    memory_req.append(parameter_memory_req(param, d_type))
-
-                data = {
-                    "Data type": data_types,
-                    "Size in bytes": bytes_list,
-                    "Number of parameters": params,
-                    "Memory in GB (params x bytes)": memory_req,
-                }
+                data = get_model_size_df(model_info, model_config)
                 st.dataframe(data, hide_index=True)
 
                 st.write("In addition, vLLM [profiles memory](https://github.com/vllm-project/vllm/blob/dcf2f3ec067711ff69e5ab7478fca6ffb4f11daf/vllm/worker/worker.py#L229) by doing a forward pass with `--max-model-len` with dummy data to estimate the non-torch and torch activation peak memory consumption. This means the estimation of the model memory is actually an underestimation. Estimating intermediate memory footprint is currently work in progress.")
@@ -218,8 +254,6 @@ def workload_specification():
     # Workload
     with st.container(border=True):
         st.write("**Workload Characteristics**")
-        st.caption(f"Estimate KV cache memory requirements for the selected model based on workload. Note that the model uses data type of `{inference_dtype(model_config)}` for KV cache during inference.")
-
         if model_config is None:
             st.warning("Model config not found.")
             return None
@@ -230,6 +264,9 @@ def workload_specification():
         if model_config is None:
             st.warning("Model config not available, cannot estimate KV cache size.")
             return None
+
+
+        st.caption(f"Estimate KV cache memory requirements for the selected model based on workload. Note that the model uses data type of `{inference_dtype(model_config)}` for KV cache during inference.")
 
         col1, col2 = st.columns(2)
 
@@ -279,50 +316,68 @@ Higher max model length means fewer concurrent requests can be served, \
             col2.warning("Model does not have safetensors data available, cannot estimate KV cache memory requirement.")
             return None
 
-        col2.info(f"Assuming the worst case scenario, such that every request contains `--max-model-len` tokens, each request takes {util.pretty_round(per_request_kv_cache)} GB for KV cache, which means the maximum concurrent requests that can be processed is {max_concurrent_requests_num}.")
+        try:
+            kv_details = KVCacheDetail(
+                model_info,
+                model_config,
+                user_scenario.max_model_len,
+                user_scenario.concurrency,
+            )
+        except AttributeError as e:
+            col2.warning(f"There is not enough information to estimate KV cache requirement per request: {e}")
+            return None
 
+        col2.info(f"Assuming the worst case scenario, such that every request contains `--max-model-len` tokens, each request takes {util.pretty_round(kv_details.per_request_kv_cache_gb)} GB for KV cache, which means the maximum concurrent requests that can be processed is {max_concurrent_requests_num}.")
+
+        # Display details on how KV cache is estimated
         with st.expander("See how KV cache is calculated below"):
-            num_layers = model_config.num_hidden_layers
-            precision_in_bytes = precision_to_byte(inference_dtype(model_config))
             st.write(f"""First, the per-token memory requirement is estimated given the following inputs:
-- KV cache data type: `{inference_dtype(model_config)}` = {precision_to_byte(inference_dtype(model_config))} bytes in memory
+- KV cache data type: `{kv_details.kv_data_type}` = {kv_details.precision_in_bytes} bytes in memory
 - Hidden layers: {model_config.num_hidden_layers}
+
+This model uses _{kv_details.attention_type}_. The relevant parameters are:
 """)
-
-            if is_mla(user_scenario.model_name):
-                # TODO: incomplete for mla
-                st.write(f"""This model uses MLA attention. The relevant parameters are:
-- KV lora rank: {model_config.kv_lora_rank}
-- QK rope head dimension: {model_config.qk_rope_head_dim}
-
-Per-token memory = layers x (kv_lora_rank + qk_rope_head_dim) * precison_in_bytes
-                 = `{model_config.num_hidden_layers} x ({model_config.kv_lora_rank} + {model_config.qk_rope_head_dim}) * {precision_to_byte(inference_dtype(model_config))}`
-""")
-            else:
-                head_dimension = getattr(model_config, "head_dim", model_config.hidden_size / model_config.num_attention_heads)
-                kv_heads = model_config.num_key_value_heads
-                per_token_memory = num_layers * 2 * head_dimension * kv_heads * precision_in_bytes
-
-                st.write(f"""This model uses MHA/GQA  attention. The relevant parameters are:
-- Head dimension: {getattr(model_config, "head_dim", model_config.hidden_size / model_config.num_attention_heads)}
-- KV heads: {model_config.num_key_value_heads}""")
+            if kv_details.attention_type == AttentionType.MLA:
+                st.write(f"""- KV lora rank: {kv_details.kv_lora_rank}
+- QK rope head dimension: {kv_details.qk_rope_head_dim}""")
 
                 st.code(f"""
-Per-token memory = layers x 2 (two for K and V matrices) x head_dimension x kv_heads x precision_in_bytes
-                 = {num_layers} x 2 x {head_dimension} x {kv_heads} x {precision_in_bytes}
-                 = {per_token_memory} bytes
+Per-token memory = layers x (kv_lora_rank + qk_rope_head_dim) x precision_in_bytes
+                 = {kv_details.num_hidden_layers} x ({kv_details.kv_lora_rank} + {kv_details.qk_rope_head_dim}) x {kv_details.precision_in_bytes}
+                 = {kv_details.per_token_memory_bytes} bytes
 """)
-            kv_cache_size = per_token_memory * user_scenario.max_model_len * user_scenario.concurrency
-            kv_cache_size_gb =  kv_cache_size / (1024 ** 3)
-            st.write("Finally, the per-token-memory is then multiplied by the context length (max-model-len) and batch size (concurrency).")
-            st.code(f"""
-KV cache per request = per-token-memory x context-len x batch-size
-                     = {per_token_memory} x {user_scenario.max_model_len} x {user_scenario.concurrency}
-                     = {kv_cache_size} bytes
-                     = {kv_cache_size} / (1024 ** 3)
-                     = {kv_cache_size_gb} GB
+            else:
+                st.write(f"""- Head dimension: {kv_details.head_dimension}
+- Attention heads: {kv_details.num_attention_heads}
+- KV heads: {kv_details.num_key_value_heads}
+- Number of attention groups: {kv_details.num_attention_group}
+""")
 
+                st.code(f"""
+Per-token memory = layers x 2 (two for K and V matrices) x head_dimension x (kv_heads / num_attention_groups) x precision_in_bytes
+                 = {kv_details.num_hidden_layers} x 2 x {kv_details.head_dimension} x ({kv_details.num_attention_heads} / {kv_details.num_key_value_heads}) x {kv_details.precision_in_bytes}
+                 = {kv_details.per_token_memory_bytes} bytes
 """)
+
+            st.write(f"""Finally, the per-token-memory is then multiplied by the context length (max-model-len) and batch size (concurrency).
+- Number of tokens (context length): {user_scenario.max_model_len}
+- Concurrency: {user_scenario.concurrency}
+""")
+            st.code(f"""
+KV cache per request = per_token_memory x context_len x batch_size
+                     = {kv_details.per_token_memory_bytes} x {user_scenario.max_model_len} x {user_scenario.concurrency}
+                     = {kv_details.per_request_kv_cache_bytes} bytes
+                     = {kv_details.per_request_kv_cache_bytes} / (1024 ^ 3)
+                     = {kv_details.per_request_kv_cache_gb} GB
+""")
+
+            st.code(f"""
+KV cache for max concurrency = kv_cache_per_request x concurrency
+                             = {kv_details.per_request_kv_cache_gb} GB x {user_scenario.concurrency}
+                             = {kv_details.kv_cache_size_gb} GB
+""")
+
+
 
 def hardware_specification():
     """
@@ -386,12 +441,12 @@ def hardware_specification():
             available_gpu_mem = available_gpu_memory(gpu_memory, user_scenario.gpu_mem_util)
 
             try:
-                model_size = model_memory_req(model_info)
+                model_size = model_memory_req(model_info, model_config)
             except Exception:
                 st.warning("Model does not have safetensor data available, cannot estimate model memory.")
                 return None
 
-            model_size_per_gpu = per_gpu_model_memory_required(model_info, tp, pp)
+            model_size_per_gpu = per_gpu_model_memory_required(model_info, model_config, tp, pp)
             allocatable_kv_cache = allocatable_kv_cache_memory(model_info,
                                                     model_config,
                                                     gpu_memory,
@@ -400,15 +455,13 @@ def hardware_specification():
                                                     pp,
                                                     dp,
                                                     )
-            per_request_kv_cache_memory = kv_cache_req(model_info,
-                                    model_config,
+
+            kv_details = KVCacheDetail(model_info, model_config,
                                     user_scenario.max_model_len,
+                                    user_scenario.concurrency,
                                     )
-            all_request_kv_cache_memory = kv_cache_req(model_info,
-                                    model_config,
-                                    user_scenario.max_model_len,
-                                    concurrency,
-                                    )
+            per_request_kv_cache_memory = kv_details.per_request_kv_cache_gb
+            all_request_kv_cache_memory = kv_details.kv_cache_size_gb
 
             # Compute more info for pretty print
             total_memory = gpu_memory * available_gpu_count
@@ -491,7 +544,7 @@ def memory_util_chart(st_context):
     total_memory = gpus_required(tp, pp, dp) * gpu_memory
     available = gpus_required(tp, pp, dp) * available_gpu_memory(gpu_memory, gpu_memory_util)
     reserved = total_memory - available
-    model_size = model_memory_req(model_info) * dp
+    model_size = model_memory_req(model_info, model_config) * dp
     max_concurrency_kv_cache = kv_cache_req(model_info, model_config, user_scenario.max_model_len, concurrency)
     free = available - model_size - max_concurrency_kv_cache
 

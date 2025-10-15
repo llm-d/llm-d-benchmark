@@ -22,6 +22,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
   # deploy models
   model_number=0
   for model in ${LLMDBENCH_DEPLOY_MODEL_LIST//,/ }; do
+
     export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
     export LLMDBENCH_DEPLOY_CURRENT_MODEL_ID=$(model_attribute $model modelid)
     export LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL=$(model_attribute $model modelid_label)
@@ -59,18 +60,16 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
 EOF
     fi
 
-    add_config_prep
-
     cat << EOF >$LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-values.yaml
 fullnameOverride: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}
 multinode: ${LLMDBENCH_VLLM_MODELSERVICE_MULTINODE}
-
+#############
 modelArtifacts:
   uri: $LLMDBENCH_VLLM_MODELSERVICE_URI
   size: $LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE
   authSecretName: "llm-d-hf-token"
   name: $(model_attribute $model model)
-
+#############
 routing:
   servicePort: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
   parentRefs:
@@ -110,10 +109,9 @@ routing:
             type: ReplacePrefixMatch
             replacePrefixMatch: /
     $(cat $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-rules.yaml)
-
   epp:
     create: ${LLMDBENCH_VLLM_MODELSERVICE_EPP}
-
+#############
 decode:
   create: $(echo $LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS | $LLMDBENCH_CONTROL_SCMD -e 's/^0/false/' -e 's/[1-9].*/true/')
   replicas: ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS}
@@ -179,7 +177,7 @@ decode:
     $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG} 6)
     volumeMounts: $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS} 4)
   volumes: $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES} 2)
-
+#############
 prefill:
   create: $(echo $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS | $LLMDBENCH_CONTROL_SCMD -e 's/^0/false/' -e 's/[1-9].*/true/')
   replicas: ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS}
@@ -245,8 +243,8 @@ prefill:
         failureThreshold: 3
         periodSeconds: 5
     $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG} 6)
-    volumeMounts: $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS} 4)
-  volumes: $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES} 2)
+    $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS} 4 volumeMounts)
+  $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES} 2 volumes)
 EOF
     # cleanup temp file
     rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/helm/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}/${MODEL_NUM}/ms-rules.yaml
@@ -296,6 +294,11 @@ EOF
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} logs --tail=-1 --prefix=true -l llm-d.ai/model=${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL},llm-d.ai/role=prefill > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/logs/llm-d-prefill.log" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
     fi
+
+    announce "📜 Labelling gateway for model ${model} "
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} label gateway/infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway stood-up-by=$LLMDBENCH_CONTROL_USERNAME stood-up-from=llm-d-benchmark stood-up-via=$LLMDBENCH_DEPLOY_METHODS" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    announce "✅ Service for pods service model ${model} created"
+
 
     if [[ $LLMDBENCH_VLLM_MODELSERVICE_ROUTE == "true" && $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
       is_route=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} get route -o name --ignore-not-found | grep -E "/${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway-route$" || true)

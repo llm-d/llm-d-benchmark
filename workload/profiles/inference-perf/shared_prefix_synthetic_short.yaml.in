@@ -1,0 +1,31 @@
+load:
+  type: constant
+  stages:
+    - rate: 1
+      duration: 60
+api:
+  type: completion
+  streaming: true
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+data:
+  type: shared_prefix
+  shared_prefix:
+    num_groups: 32                # Number of distinct shared prefixes
+    num_prompts_per_group: 32     # Number of unique questions per shared prefix
+    system_prompt_len: 2048       # Length of the shared prefix (in tokens)
+    question_len: 256             # Length of the unique question part (in tokens)
+    output_len: 256               # Target length for the model's generated output (in tokens)
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+storage:
+  local_storage:
+    path: /workspace

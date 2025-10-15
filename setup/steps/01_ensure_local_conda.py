@@ -282,7 +282,7 @@ def ensure_local_conda(
 
     # Early exit check
     if not run_locally:
-        announce("⏭️ Environment variable \"LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY\" is set to 0, skipping local setup of conda environment")
+        announce("⏭️  Environment variable \"LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY\" is set to 0, skipping local setup of conda environment")
         return 0
 
     try:

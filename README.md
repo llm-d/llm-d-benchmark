@@ -12,6 +12,7 @@ Provide a single source of automation for repeatable and reproducible experiment
 git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 ./setup/install_deps.sh
+pip install ./config_explorer
 ```
 
 ## Quickstart
@@ -112,6 +113,7 @@ The configuration explorer is a library that helps find the most cost-effective,
 #### [Reproducibility](docs/reproducibility.md)
 #### [Observability](docs/observability.md)
 #### [Quickstart](docs/quickstart.md)
+#### [Resource Requirements](docs/resource_requirements.md)
 #### [FAQ](docs/faq.md)
 
 ## Contribute
