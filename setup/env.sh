@@ -47,6 +47,12 @@ export LLMDBENCH_HARNESS_GIT_BRANCH="${LLMDBENCH_HARNESS_GIT_BRANCH:-main}"
 export LLMDBENCH_DEPLOY_MODEL_LIST=${LLMDBENCH_DEPLOY_MODEL_LIST:-"meta-llama/Llama-3.2-1B-Instruct"}
 export LLMDBENCH_DEPLOY_METHODS=${LLMDBENCH_DEPLOY_METHODS:-"modelservice"}
 
+# WVA and Monioring Service
+export LLMDBENCH_WVA_ENABLED="${LLMDBENCH_WVA_ENABLED:-0}"
+export LLMDBENCH_WVA_SOURCE="${LLMDBENCH_WVA_SOURCE:-git@github.com:Vezio/workload-variant-autoscaler.git}"
+export LLMDBENCH_WVA_VERSION="${LLMDBENCH_WVA_VERSION:-installation-and-test-refactor}"
+export LLMDBENCH_OPENSHIFT_USER_WORKLOAD_MONITORING_NS="${LLMDBENCH_OPENSHIFT_USER_WORKLOAD_MONITORING_NS:-openshift-user-workload-monitoring}"
+
 # Applicable to both standalone and modelservice
 export LLMDBENCH_IGNORE_FAILED_VALIDATION="${LLMDBENCH_IGNORE_FAILED_VALIDATION:-true}"    # default is to continue deployment if validation fails
 export LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY="${LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY:-auto}"

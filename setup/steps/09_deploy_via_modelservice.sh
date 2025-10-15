@@ -311,6 +311,36 @@ EOF
       announce "✅ Model \"${model}\" and associated service deployed."
     fi
 
+
+    if [[ ${LLMDBENCH_WVA_ENABLED} -eq 1 ]];
+    then
+      announce "WVA is Enabled, will create scaling resources such as HPA, VA, vllmService, and Service Monitor"
+      tmp_dir=$(mktemp -d)
+      llmdbench_execute_cmd "git clone --branch ${LLMDBENCH_WVA_VERSION} ${LLMDBENCH_WVA_SOURCE} ${tmp_dir}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      
+      pushd ${tmp_dir} >/dev/null 2>&1
+
+      export LLMD_NAMESPACE="${LLMDBENCH_VLLM_COMMON_NAMESPACE}"
+      export LLMD_MODEL_NAME="${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}"
+      export LLMD_MODEL_ID=${LLMDBENCH_DEPLOY_CURRENT_MODEL}
+      export VA_ACCELERATOR="H100"
+      export VLLM_NODE_PORT=30001
+      export GUIDELLM_TARGET="http://infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway:80"
+      
+      ./config/samples/install.sh >/dev/null 2>&1
+      llmdbench_execute_cmd "./config/samples/install.sh" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
+      unset LLMD_NAMESPACE
+      unset LLMD_MODEL_NAME
+      unset LLMD_MODEL_ID
+      unset VA_ACCELERATOR
+      unset VLLM_NODE_PORT
+      unset GUIDELLM_TARGET
+
+      popd >/dev/null 2>&1
+      announce "✅ WVA Infra Installed"
+    fi
+
     unset LLMDBENCH_DEPLOY_CURRENT_MODEL
     unset LLMDBENCH_DEPLOY_CURRENT_MODEL_ID
     unset LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL
