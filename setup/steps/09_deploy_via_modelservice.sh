@@ -323,25 +323,8 @@ EOF
       export LLMD_NAMESPACE="${LLMDBENCH_VLLM_COMMON_NAMESPACE}"
       export LLMD_MODEL_NAME="${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}"
       export LLMD_MODEL_ID=${LLMDBENCH_DEPLOY_CURRENT_MODEL}
-
-      for _accelerator in G2 A100 H100 L40S MI300X; do
-        if [[ "${LLMDBENCH_VLLM_COMMON_AFFINITY}" == *"${_accelerator}"* ]]; then
-          export VA_ACCELERATOR="${_accelerator}"
-          break
-        fi
-      done
-
-      min_port=10000
-      max_port=32768
-      while true; do
-        _port=$((min_port + RANDOM % (max_port - min_port + 1)))
-        if ${LLMDBENCH_CONTROL_KCMD} get svc --all-namespaces -o jsonpath='{.items[*].spec.ports[*].nodePort}' | grep -qw "${_port}"; then
-          continue
-        fi
-        export VLLM_NODE_PORT=_port
-        break
-      done
-
+      export VA_ACCELERATOR=$(find_accelerator_prefix "G2 A100 H100 L40S MI300X")
+      export VLLM_NODE_PORT=$(get_random_node_port 10000 32768)
       export GUIDELLM_TARGET="http://infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway:80"
       
       ./config/samples/install.sh >/dev/null 2>&1
