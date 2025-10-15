@@ -65,7 +65,7 @@ jobs:
             echo "Using provided output dir: ${{ github.event.inputs.output_dir }}"
           fi
 
-     - name: Authenticate to Google Cloud
+      - name: Authenticate to Google Cloud
         id: auth
         uses: google-github-actions/auth@b7593ed2efd1c1617e1b0254da33b86225adb2a5
         with:
