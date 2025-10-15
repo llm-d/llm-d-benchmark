@@ -56,7 +56,7 @@ def check_deployment(ev: dict):
             announce_failed(f"❌Error finding the service: {e}", False)
     else:
         pod_string = "decode"
-        route_string=f"{ev.get("vllm_modelservice_release", "")}-inference-gateway-route"
+        route_string=f"{ev.get('vllm_modelservice_release', '')}-inference-gateway-route"
         service_type = "gateway"
         try:
             api_instance = k8s_client.CustomObjectsApi()
@@ -67,7 +67,7 @@ def check_deployment(ev: dict):
                 plural="gateways"
             )
             for service in gateways['items']:
-                if service['metadata']['name'] == f"infra-{ev.get("vllm_modelservice_release", "")}-inference-gateway":
+                if service['metadata']['name'] == f"infra-{ev.get('vllm_modelservice_release', '')}-inference-gateway":
                     service_name = service['metadata']['name']
                     for address in service["status"]["addresses"]:
                         if address.get("type") == "IPAddress":
