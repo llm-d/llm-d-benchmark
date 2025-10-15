@@ -52,7 +52,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
       - group: inference.networking.x-k8s.io
         kind: InferencePool
         name: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
-        port: 8000
+        port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
         weight: 1
       timeouts:
         backendRequest: 0s
@@ -68,7 +68,7 @@ modelArtifacts:
   uri: $LLMDBENCH_VLLM_MODELSERVICE_URI
   size: $LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE
   authSecretName: "llm-d-hf-token"
-  name: $(model_attribute $model model)
+  name: ${LLMDBENCH_DEPLOY_CURRENT_MODEL}
 #############
 routing:
   servicePort: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
@@ -93,7 +93,7 @@ routing:
       - group: inference.networking.x-k8s.io
         kind: InferencePool
         name: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
-        port: 8000
+        port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
         weight: 1
       timeouts:
         backendRequest: 0s
@@ -171,7 +171,7 @@ decode:
       readinessProbe:
         httpGet:
           path: /health
-          port: 8200
+          port: ${LLMDBENCH_VLLM_COMMON_METRICS_PORT}
         failureThreshold: 3
         periodSeconds: 5
     $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG} 6)
@@ -323,8 +323,25 @@ EOF
       export LLMD_NAMESPACE="${LLMDBENCH_VLLM_COMMON_NAMESPACE}"
       export LLMD_MODEL_NAME="${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}"
       export LLMD_MODEL_ID=${LLMDBENCH_DEPLOY_CURRENT_MODEL}
-      export VA_ACCELERATOR="H100"
-      export VLLM_NODE_PORT=30001
+
+      for _accelerator in G2 A100 H100 L40S MI300X; do
+        if [[ "${LLMDBENCH_VLLM_COMMON_AFFINITY}" == *"${_accelerator}"* ]]; then
+          export VA_ACCELERATOR="${_accelerator}"
+          break
+        fi
+      done
+
+      min_port=10000
+      max_port=32768
+      while true; do
+        _port=$((min_port + RANDOM % (max_port - min_port + 1)))
+        if ${LLMDBENCH_CONTROL_KCMD} get svc --all-namespaces -o jsonpath='{.items[*].spec.ports[*].nodePort}' | grep -qw "${_port}"; then
+          continue
+        fi
+        export VLLM_NODE_PORT=_port
+        break
+      done
+
       export GUIDELLM_TARGET="http://infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway:80"
       
       ./config/samples/install.sh >/dev/null 2>&1
