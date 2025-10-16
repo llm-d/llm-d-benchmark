@@ -1,4 +1,4 @@
-name: CI - Nightly Run Benchmark
+name: Nightly Benchmark on GKE
 
 on:
   workflow_dispatch:
