@@ -44,7 +44,7 @@ def main():
             return 1
 
         # Check affinity
-        if not check_affinity():
+        if not check_affinity(ev):
             announce("❌ Failed to check affinity")
             return 1
 
@@ -325,6 +325,8 @@ spec:
           value: "{ev.get('vllm_standalone_vllm_logging_level', '')}"
         - name: HF_HOME
           value: {ev.get('vllm_standalone_pvc_mountpoint', '')}
+        - name: LLMDBENCH_VLLM_COMMON_AFFINITY
+          value: "{os.environ.get('LLMDBENCH_VLLM_COMMON_AFFINITY', '')}"
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:

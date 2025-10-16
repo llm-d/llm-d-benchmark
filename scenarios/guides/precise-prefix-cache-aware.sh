@@ -23,7 +23,6 @@ export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
 
 # Routing configuration (via gaie)
 #export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="default-plugins.yaml" (default is "plugins-v2.yaml")
-export LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG=v0.2.1
 
 # Routing configuration (via modelservice)
 #export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true # already the default

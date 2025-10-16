@@ -33,6 +33,7 @@ class KVCacheDetail:
     num_attention_heads: int
     num_key_value_heads: int
     head_dimension: int
+    model_architecture: str
 
     # Derived outputs from input
     num_attention_group: int
@@ -56,18 +57,20 @@ class KVCacheDetail:
         self.model = model_info.id
         self.kv_data_type = inference_dtype(model_config)
         self.precision_in_bytes = precision_to_byte(self.kv_data_type)
-        
+        self.model_architecture = model_config.architectures[0]
+
         # kv_data_type is stored at the model_config level, so need to fetch text_config afterward
         model_config = get_text_config(model_config)
+
         self.num_hidden_layers = model_config.num_hidden_layers
         self.hidden_size = model_config.hidden_size
         self.num_attention_heads = model_config.num_attention_heads
         self.num_key_value_heads = model_config.num_key_value_heads
         self.head_dimension = getattr(model_config,"head_dim", None)
         if self.head_dimension is None:
-            self.head_dimension = self.hidden_size / self.num_attention_heads
+            self.head_dimension = int(self.hidden_size / self.num_attention_heads)
         # Determine attention type
-        if use_mla(self.model):
+        if use_mla(self.model_architecture):
             self.attention_type = AttentionType.MLA
             self.kv_lora_rank = model_config.kv_lora_rank
             self.qk_rope_head_dim = model_config.qk_rope_head_dim
@@ -114,7 +117,7 @@ class KVCacheDetail:
 
         # Calculate kv cache size in bytes and in gb
         self.per_request_kv_cache_bytes = self.per_token_memory_bytes * self.context_len
-        self.per_request_kv_cache_gb = self.per_request_kv_cache_bytes / (1024 ** 3)
+        self.per_request_kv_cache_gb = bytes_to_gib(self.per_request_kv_cache_bytes)
         self.kv_cache_size_gb = self.per_request_kv_cache_gb * self.batch_size
 
 # Model
@@ -151,6 +154,20 @@ def get_text_config(model_config: AutoConfig) -> dict:
         model_config = model_config.text_config
 
     return model_config
+
+def get_quantization_config(model_config: AutoConfig) -> dict:
+    """
+    Returns the quantization config
+    """
+
+    return model_config.quantization_config
+
+def is_quantized(model_config: AutoConfig) -> bool:
+    """
+    Returns True if model is quantized
+    """
+
+    return hasattr(model_config, 'quantization_config')
 
 def model_total_params(model_info: ModelInfo) -> int:
     """
@@ -195,41 +212,48 @@ def __estimate_vllm_peak_memory(config: AutoConfig,
     total_bytes = kv_bytes + hidden_bytes
     return total_bytes
 
-def precision_to_byte(precision: str) -> int:
+def precision_to_byte(precision: str) -> float:
     """
-    Returns the byte requirement for a parameter for the highest precision of the model
+    Returns the byte requirement the data type
     """
+
+    precision = precision.strip().lower()
 
     mapping = {
         # Floating point
-        "F64": 8,
-        "F32": 4,
-        "F16": 2,
-        "BF16": 2,
-        "F8_E5M2": 1,
-        "F8_E4M3": 1,
-        "FP4": 0.5,
+        "f64": 8,
+        "f32": 4,
+        "f16": 2,
+        "bf16": 2,
+        "f8_e5m2": 1,
+        "f8_e4m3": 1,
+        "fp4": 0.5,
 
         # Integers
-        "I64": 8,
-        "INT64": 8,
-        "I32": 4,
-        "INT32": 4,
-        "I16": 2,
-        "INT16": 2,
-        "I8": 1,
-        "INT8": 1,
-        "U8": 1,
-        "U4": 0.5,
-        "I4": 0.5,
-        "INT4": 0.5,
+        "i64": 8,
+        "int64": 8,
+        "i32": 4,
+        "int32": 4,
+        "i16": 2,
+        "int16": 2,
+        "i8": 1,
+        "int8": 1,
+        "u8": 1,
+        "u4": 0.5,
+        "i4": 0.5,
+        "int4": 0.5,
 
         # Boolean
-        "BOOL": 1,  # stored as byte per element
+        "bool": 1,  # stored as byte per element
+
+        # Special data types
+        # gpt-oss: https://cdn.openai.com/pdf/419b6906-9da6-406c-a19d-1bb078ac7637/oai_gpt-oss_model_card.pdf
+        # 4.25 bits per param
+        "mxfp4": 4.25 / 8,
     }
 
     if precision in mapping:
-        return mapping[precision]
+        return float(mapping[precision])
     else:
         # Try to infer the precision from the first whole number
         match = re.search(r"\d+", precision)
@@ -246,17 +270,83 @@ def parameter_memory_req(parameter: int, precision: str) -> float:
     """
 
     precision_byte = precision_to_byte(precision)
-    return parameter * precision_byte / (1024 ** 3)
+    return bytes_to_gib(parameter * precision_byte)
 
-def model_memory_req(model_info: ModelInfo) -> float:
+def parameter_precision_memory_req(parameter: int, precision_in_byte: int) -> float:
+    """
+    Calculates the memory requirement (in GiB) for the number of parameters for the specified precision in bytes.
+    """
+
+    return bytes_to_gib(parameter * precision_in_byte)
+
+def get_quant_method(model_config: AutoConfig) -> str:
+    """
+    Tries to determine the quant method used in quantization_config
+    """
+
+    if is_quantized(model_config):
+        quantization_config = get_quantization_config(model_config)
+
+        if "quant_method" in quantization_config:
+            return quantization_config['quant_method']
+
+    return ""
+
+def get_quant_bytes(model_config: AutoConfig) -> float:
+    """
+    Returns the number of bytes specified by quant_method
+    """
+
+    quant_config = get_quantization_config(model_config)
+    quant_method = get_quant_method(model_config)
+    if quant_method != "":
+        try:
+            return precision_to_byte(quant_method)
+
+        # Quant method not convertible like "compressed-tensors"
+        # Example: https://huggingface.co/RedHatAI/Qwen3-8B-FP8-dynamic/blob/main/config.json
+        except ValueError:
+
+            # Sometimes bits are given
+            if "bits" in quant_config:
+                return float(bits_to_bytes(quant_config['bits']))
+
+            # Sometimes bits are nested in config groups
+            if 'config_groups' in quant_config:
+                if 'group_0' in quant_config['config_groups']:
+                    if 'weights' in quant_config['config_groups']['group_0']:
+                        num_bits = quant_config['config_groups']['group_0']['weights']['num_bits']
+                        return float(bits_to_bytes(num_bits))
+    # Not quantized
+    else:
+        return 0.0
+
+
+def model_memory_req(model_info: ModelInfo, model_config: AutoConfig) -> float:
     """
     Calculates the GPU memory (in GiB) required for loading the model
     """
 
     model_params = model_info.safetensors.parameters
     memory = 0
+
+    # Check if model is quantized
+    quantization_byte = None
+    if is_quantized(model_config):
+        quantization_byte = get_quant_bytes(model_config)
+
     for precision, num_params in model_params.items():
-        memory += parameter_memory_req(num_params, precision)
+        precision_in_byte = precision_to_byte(precision)
+
+        # IF FP16 or FP32, keep it as so
+        if precision_in_byte >= 2:
+            memory += parameter_memory_req(num_params, precision)
+        else:
+            # Otherwise, check if model is quantized, and use that as the precision
+            if quantization_byte is not None:
+                memory += parameter_precision_memory_req(num_params, quantization_byte)
+            else:
+                memory += parameter_memory_req(num_params, precision)
 
     return memory
 
@@ -265,23 +355,35 @@ def inference_dtype(model_config: AutoConfig) -> str:
     Returns the inference KV cache data type used
     """
 
+    dtype = None
+
     if hasattr(model_config, "dtype"):
-        return str(model_config.dtype)
+        dtype = model_config.dtype
 
-    return str(model_config.torch_dtype)
+    if hasattr(model_config, "torch_dtype"):
+        dtype = model_config.torch_dtype
 
-def use_mla(model_name: str) -> bool:
+    # It is possible that the model config sets this field to None
+    if dtype is not None:
+        return str(dtype)
+
+    # At this point, it can be a quantized model, so use dtype in quantization_config
+    if is_quantized(model_config):
+        return get_quant_method(model_config)
+
+    return ""
+
+def use_mla(model_architecture: str) -> bool:
     """
     Returns true for models that use MLA attention
     """
 
     deepseek_mla_models = [
-        "DeepSeek-V3",
-        "DeepSeek-V2",
-        "DeepSeek-R1",
+        "DeepseekV3ForCausalLM",
+        "DeepseekV2ForCausalLM",
     ]
 
-    return any(deepseek in model_name for deepseek in deepseek_mla_models)
+    return any(deepseek in model_architecture for deepseek in deepseek_mla_models)
 
 def kv_cache_req(model_info: ModelInfo,
                     model_config: AutoConfig,
@@ -348,12 +450,15 @@ def gpus_required(tp: int=1, pp: int=1, dp: int=1) -> int:
 
     return tp * pp * dp
 
-def per_gpu_model_memory_required(model_info: ModelInfo, tp: int = 1, pp: int = 1) -> int:
+def per_gpu_model_memory_required(model_info: ModelInfo,
+                                  model_config: AutoConfig,
+                                  tp: int = 1,
+                                  pp: int = 1) -> int:
     """
     Calculates model memory requirement for each GPU
     """
 
-    model_memory = model_memory_req(model_info)
+    model_memory = model_memory_req(model_info, model_config)
     return model_memory / (tp * pp)
 
 def allocatable_kv_cache_memory(model_info: ModelInfo,
@@ -366,7 +471,7 @@ def allocatable_kv_cache_memory(model_info: ModelInfo,
                             ) -> float:
     gpu_count = tp * pp * dp
     available_memory = available_gpu_memory(gpu_memory, gpu_util) * gpu_count
-    model_size = model_memory_req(model_info) * dp
+    model_size = model_memory_req(model_info, model_config) * dp
 
     # TODO: non torch memory
     # TOOD: peak activation memory
@@ -418,3 +523,18 @@ def experts_per_ep_group(model_config: AutoConfig,
     if num_experts is None:
         return 0
     return num_experts / ep_size
+
+# ---------------------- Utility helpers ----------------------
+def bits_to_bytes(bits: int) -> int:
+    """
+    Convert number of bits to byte, assuming num bits is divisible
+    """
+
+    return int(bits / 8)
+
+def bytes_to_gib(bytes: int) -> float:
+    """
+    Convert number of bytes to GiB
+    """
+
+    return bytes / (1024 ** 3)

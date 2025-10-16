@@ -13,10 +13,13 @@ import pykube
 import hashlib
 from pykube.exceptions import PyKubeError
 
+import random
+import string
+
 import yaml
 
 import kubernetes
-from kubernetes import client as k8s_client, config as k8s_config
+from kubernetes import client as k8s_client, config as k8s_config, stream as k8s_stream
 
 from kubernetes_asyncio import client as k8s_async_client
 from kubernetes_asyncio import config as k8s_async_config
@@ -846,11 +849,13 @@ def check_affinity(ev: dict):
                         if found_accelerator:
                             break
 
-                    if found_accelerator:
+                    if os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"] == "auto" :
                         os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"] = "nvidia.com/gpu"
+
+                    if found_accelerator:
                         os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"] = found_accelerator
                         announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to \"{found_accelerator}\"")
-                        os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"] = f"{os.environ['LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE']}:{found_accelerator}"
+                        os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"] = f"{found_accelerator}"
 
                         # Updates the common affinity env var if auto
                         ev['vllm_common_affinity'] = f"{os.environ.get('LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE')}:{found_accelerator}"
@@ -1247,6 +1252,75 @@ def user_has_hf_model_access(model_id: str, hf_token: str) -> bool:
         announce("❌ ERROR - Request failed:", e)
         return False
 
+
+def get_rand_string(length: int = 8):
+    """
+    Generate a random string with lower case characters and digits
+    """
+
+    characters = string.ascii_lowercase + string.digits
+    random_string = ''.join(random.choices(characters, k=length))
+    return random_string
+
+
+def get_model_name_from_pod(
+    namespace: str,
+    image: str,
+    ip: str,
+    port: str):
+    """
+    Get model name by starting/running a pod
+    """
+
+    k8s_config.load_kube_config()
+
+    pod_name = f"testinference-pod-{get_rand_string()}"
+    if 'http://' not in ip:
+        ip = 'http://' + ip 
+    if ip.count(':') == 1:
+        ip = ip + ':' + port
+    ip = ip + '/v1/models'
+    command = ["/bin/bash", "-c", f"curl --no-progress-meter {ip}"]
+
+    pod_manifest = k8s_client.V1Pod(
+        metadata=k8s_client.V1ObjectMeta(name=pod_name, namespace=namespace),
+        spec=k8s_client.V1PodSpec(
+            restart_policy="Never",
+            containers=[
+                k8s_client.V1Container(
+                    name="model",
+                    image=image,
+                    command=command
+                )
+            ]
+        )
+    )
+
+    api_instance = k8s_client.CoreV1Api()
+    api_instance.create_namespaced_pod(namespace=namespace, body=pod_manifest)
+
+    while True:
+        pod_status = api_instance.read_namespaced_pod_status(pod_name, namespace)
+        if pod_status.status.phase != "Pending":
+            break
+        time.sleep(1)
+
+    pod_logs = api_instance.read_namespaced_pod_log(
+        name=pod_name,
+        namespace=namespace,
+        tail_lines=100 
+    )
+    
+    model_name = pod_logs.split("'id': '")[1].split("', '")[0]
+
+    # Clean up
+    api_instance.delete_namespaced_pod(
+        name=pod_name,
+        namespace=namespace, 
+        body=k8s_client.V1DeleteOptions(propagation_policy='Foreground', grace_period_seconds=10))
+    return model_name 
+
+
 # ----------------------- Capacity Planner Sanity Check -----------------------
 COMMON = "COMMON"
 PREFILL = "PREFILL"
@@ -1414,12 +1488,12 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
 
         # # Calculate model memory requirement
         announce("👉 Collecting model information....")
-        if model_info is not None:
+        if model_info is not None and model_config is not None:
             try:
                 model_params = model_total_params(model_info)
                 announce(f"ℹ️ {model} has a total of {model_params} parameters")
 
-                model_mem_req = model_memory_req(model_info)
+                model_mem_req = model_memory_req(model_info, model_config)
                 announce(f"ℹ️ {model} requires {model_mem_req} GB of memory")
 
                 # Estimate KV cache memory and max number of requests that can be served in worst case scenario
