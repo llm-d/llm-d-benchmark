@@ -396,6 +396,30 @@ def kv_cache_req(model_info: ModelInfo,
 
     return KVCacheDetail(model_info, model_config, context_len, batch_size).kv_cache_size_gb
 
+def total_kv_cache_blocks(model_info: ModelInfo,
+                    model_config: AutoConfig,
+                    context_len: int,
+                    gpu_memory: int,
+                    gpu_mem_util: float=0.9,
+                    batch_size: int = 1,
+                    block_size: int = 16,
+                    ) -> int:
+
+    # Compute per-token and per-block memory 
+    kv_cache_detail = KVCacheDetail(model_info, model_config, context_len, batch_size)
+    per_token_memory = kv_cache_detail.per_token_memory
+    per_block_memory = per_token_memory * block_size
+
+    # Compute allocatable KV cache memory
+    kv_cache_allocatable = allocatable_kv_cache_memory(
+        model_info, model_config, gpu_memory, gpu_mem_util
+    )
+
+    # Compute total KV cache blocks
+    total_kv_blocks = int((kv_cache_allocatable * (1024 ** 3)) // per_block_memory)
+
+    return total_kv_blocks
+
 def max_concurrent_requests(model_info: ModelInfo,
                         model_config: AutoConfig,
                         max_model_len: int,
