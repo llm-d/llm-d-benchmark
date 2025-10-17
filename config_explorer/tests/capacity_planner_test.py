@@ -171,7 +171,7 @@ def test_kv_cache_req():
     # For context length = 10000
     actual_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
     rounded = round(actual_kv_cache_req, 5)
-    assert rounded == 0.53406
+    assert rounded == 1.06812
 
 
 def test_max_concurrent_req():

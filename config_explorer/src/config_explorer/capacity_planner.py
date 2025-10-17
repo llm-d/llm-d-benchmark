@@ -424,7 +424,7 @@ def total_kv_cache_blocks(model_info: ModelInfo,
     )
 
     # Compute total KV cache blocks
-    total_kv_blocks = int(gib_to_bytes(kv_cache_allocatable) // per_block_memory)
+    total_kv_blocks = gib_to_bytes(kv_cache_allocatable) // per_block_memory
 
     return total_kv_blocks
 
