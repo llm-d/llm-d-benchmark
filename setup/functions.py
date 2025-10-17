@@ -1276,7 +1276,7 @@ def get_model_name_from_pod(
 
     pod_name = f"testinference-pod-{get_rand_string()}"
     if 'http://' not in ip:
-        ip = 'http://' + ip 
+        ip = 'http://' + ip
     if ip.count(':') == 1:
         ip = ip + ':' + port
     ip = ip + '/v1/models'
@@ -1308,17 +1308,17 @@ def get_model_name_from_pod(
     pod_logs = api_instance.read_namespaced_pod_log(
         name=pod_name,
         namespace=namespace,
-        tail_lines=100 
+        tail_lines=100
     )
-    
+
     model_name = pod_logs.split("'id': '")[1].split("', '")[0]
 
     # Clean up
     api_instance.delete_namespaced_pod(
         name=pod_name,
-        namespace=namespace, 
+        namespace=namespace,
         body=k8s_client.V1DeleteOptions(propagation_policy='Foreground', grace_period_seconds=10))
-    return model_name 
+    return model_name
 
 
 # ----------------------- Capacity Planner Sanity Check -----------------------
@@ -1507,7 +1507,7 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
 
                     if available_kv_cache < 0:
                         announce_failed(f"There is not enough GPU memory to stand up model. Exceeds by {abs(available_kv_cache)} GB.", ignore_if_failed)
-
+                    else:
                         announce(f"ℹ️ Allocatable memory for KV cache {available_kv_cache} GB")
 
                         kv_details = KVCacheDetail(model_info, model_config, max_model_len, batch_size=1)
