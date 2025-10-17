@@ -17,7 +17,7 @@ if "PYTHONPATH" in os.environ:
 else:
     os.environ["PYTHONPATH"] = f"{config_explorer_src}:{setup_dir}:{workspace_root}"
 
-print(f"Workspace root directory added to PYTHONPATH: {os.environ['PYTHONPATH']}")
+#print(f"Workspace root directory added to PYTHONPATH: {os.environ['PYTHONPATH']}")
 
 # ---------------- Import local packages ----------------
 try:

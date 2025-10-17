@@ -9,7 +9,11 @@ from functools import reduce
 import re
 from typing import List
 from huggingface_hub import HfApi, ModelInfo
-from transformers import AutoConfig, AutoModel
+
+import contextlib
+import io
+with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+    from transformers import AutoConfig, AutoModel
 
 class AttentionType(StrEnum):
     """
