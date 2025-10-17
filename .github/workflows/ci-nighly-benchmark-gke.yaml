@@ -1,0 +1,117 @@
+name: CI - Nightly Benchmark on GKE
+
+on:
+  workflow_dispatch:
+    inputs:
+      input_dir:
+        description: 'Input directory for benchmark results'
+        required: false
+        default: '/tmp/cicd/analysis'
+      output_dir:
+        description: 'Output directory name'
+        required: false
+        default: ''
+
+#  push:
+#    branches:
+#      - main
+
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  run-benchmark-gke:
+    name: CI - Nightly Benchmark on GKE
+    runs-on: [k8s-util]
+    timeout-minutes: 240
+
+    env:
+      GCP_PROJECT_ID: llm-d-scale
+      GKE_CLUSTER_NAME: llm-d-e2e-us-east5
+      GKE_CLUSTER_ZONE: us-east5
+      GATEWAY: gke-l7-regional-external-managed
+      GATEWAY_TYPE: gke
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Display OS used
+        run: |
+          cat /etc/*os-*
+        shell: bash
+
+      - name: Set input and output directory environment variables
+        run: |
+          DEFAULT_INPUT_DIR=/tmp/cicd/analysis
+          INPUT_DIR="${{ github.event.inputs.input_dir }}"
+          if [ -z "$INPUT_DIR" ]; then
+            INPUT_DIR="$DEFAULT_INPUT_DIR"
+          fi
+          echo "INPUT_DIR=$INPUT_DIR" >> $GITHUB_ENV
+
+          if [ -z "${{ github.event.inputs.output_dir }}" ]; then
+            timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+            echo "OUTPUT_DIR=benchmark-results-${timestamp}" >> $GITHUB_ENV
+            echo "Using generated output dir: benchmark-results-${timestamp}"
+          else
+            echo "OUTPUT_DIR=${{ github.event.inputs.output_dir }}" >> $GITHUB_ENV
+            echo "Using provided output dir: ${{ github.event.inputs.output_dir }}"
+          fi
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@b7593ed2efd1c1617e1b0254da33b86225adb2a5
+        with:
+          credentials_json: ${{ secrets.GKE_SA_KEY }}
+
+      - name: Set up gcloud CLI and kubectl
+        uses: google-github-actions/setup-gcloud@cb1e50a9932213ecece00a606661ae9ca44f3397
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          install_components: 'kubectl,gke-gcloud-auth-plugin'
+
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" --zone "${{ env.GKE_CLUSTER_ZONE }}"
+
+      - name: Run install_deps.sh
+        run: |
+          sudo apt-get update
+          ./setup/install_deps.sh
+        shell: bash
+
+      - name: Install config explorer dependencies
+        run: pip install ./config_explorer
+        shell: bash
+
+      - name: Cleanup target cloud (standalone)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/teardown.sh -c gke_H100_fb -t standalone -d
+
+      - name: Standup target cloud (standalone)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/standup.sh -c gke_H100_fb -t standalone
+
+      - name: Run benchmark (standalone, inference-perf)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/run.sh -c gke_H100_fb -t standalone
+
+      - name: Cleanup target cloud (standalone)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/teardown.sh -c gke_H100_fb -t standalone -d
+
+      - name: Archive benchmark results as GitHub artifact
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.OUTPUT_DIR }}
+          path: ${{ env.INPUT_DIR }}
+          retention-days: 14
