@@ -403,6 +403,9 @@ def total_kv_cache_blocks(model_info: ModelInfo,
                     gpu_mem_util: float=0.9,
                     batch_size: int = 1,
                     block_size: int = 16,
+                    tp: int=1,
+                    pp: int=1,
+                    dp: int=1,
                     ) -> int:
 
     # Compute per-token and per-block memory 
@@ -412,7 +415,9 @@ def total_kv_cache_blocks(model_info: ModelInfo,
 
     # Compute allocatable KV cache memory
     kv_cache_allocatable = allocatable_kv_cache_memory(
-        model_info, model_config, gpu_memory, gpu_mem_util
+        model_info, model_config,
+        gpu_memory, gpu_mem_util,
+        tp, pp, dp
     )
 
     # Compute total KV cache blocks
