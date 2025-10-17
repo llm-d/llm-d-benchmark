@@ -421,7 +421,7 @@ def total_kv_cache_blocks(model_info: ModelInfo,
     )
 
     # Compute total KV cache blocks
-    total_kv_blocks = int((kv_cache_allocatable * (1024 ** 3)) // per_block_memory)
+    total_kv_blocks = int(gib_to_bytes(kv_cache_allocatable) // per_block_memory)
 
     return total_kv_blocks
 
@@ -567,3 +567,10 @@ def bytes_to_gib(bytes: int) -> float:
     """
 
     return bytes / (1024 ** 3)
+
+def gib_to_bytes(gib: int) -> float:
+    """
+    Convert number of GiB to bytes
+    """
+
+    return gib * (1024 ** 3)
