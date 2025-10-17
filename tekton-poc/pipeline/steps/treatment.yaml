@@ -7,8 +7,6 @@ spec:
     Produce '--set/--set-string path=value' flags for factorType and
     apply values into a JSON/YAML file. Works with flat or nested treatment.
   image: alpine:3.20
-  # Pass params via env (StepAction scripts cannot use $(params.*) directly).
-  # We'll read these envs inside the script.
   params:
     - name: factorType
       type: string
@@ -18,17 +16,9 @@ spec:
     - name: treatment
       type: string
       description: JSON values (flat or nested by key)
-    # - name: file
-    #   type: string
-    #   description: Target file path (relative to workdir or absolute)
-    # - name: workdir
-    #   type: string
-    #   description: Working directory (usually the bound workspace path)
-    #   default: /workspace
   results:
     - name: treatmentAnalysis
       description: Space-separated '--set/--set-string path=value' tokens
-  # workingDir: $(params.workdir)
   env:
     - name: SELECTOR
       value: $(params.factorType)
@@ -36,18 +26,10 @@ spec:
       value: $(params.factorMapping)
     - name: VAL_JSON
       value: $(params.treatment)
-    # - name: TARGET_FILE
-    #   value: $(params.file)
   script: |
     #!/bin/sh
     set -eu
     apk add --no-cache jq yq >/dev/null
-    # jq --version
-    # yq --version
-
-    # echo "$SELECTOR"
-    # echo "$MAP_JSON"
-    # echo "$VAL_JSON"
 
     # Build updates + flags (uses $val for type checks — fixed version)
     jq -r -n \
@@ -63,7 +45,7 @@ spec:
                 updates: [
                   $m | to_entries[]
                   | select($v[.key] != null)
-                  | { path: (.value | split(".")), value: $v[.key] }
+                  | { name: .key, path: (.value | split(".")), value: $v[.key] }
                 ],
                 setArgs: (
                   [ $m | to_entries[]
@@ -80,38 +62,4 @@ spec:
         end
       ' > /tmp/out.json
 
-    # FLAGS=$(jq -r '.setArgs' /tmp/out.json)
-    # jq '.updates' /tmp/out.json > /tmp/updates.json
-
-    # if [ ! -f "$TARGET_FILE" ]; then
-    #   echo "ERROR: File not found: $TARGET_FILE" >&2
-    #   # still write empty result
-    #   printf "" > "$(step.results.treatmentAnalysis.path)"
-    #   exit 1
-    # fi
-
-    # # Apply updates to JSON or YAML
-    # if [ "$(jq 'length' /tmp/updates.json)" -gt 0 ]; then
-    #   ext="${TARGET_FILE##*.}"
-    #   tmp="${TARGET_FILE}.tmp"
-
-    #   if [ "$ext" = "json" ]; then
-    #     jq --slurpfile upds /tmp/updates.json '
-    #       reduce $upds[0][] as $u (. ; setpath($u.path; $u.value))
-    #     ' "$TARGET_FILE" > "$tmp"
-    #     mv "$tmp" "$TARGET_FILE"
-    #   else
-    #     # YAML path: YAML → JSON → apply → YAML
-    #     yq -o=json '.' "$TARGET_FILE" \
-    #       | jq --slurpfile upds /tmp/updates.json '
-    #           reduce $upds[0][] as $u (. ; setpath($u.path; $u.value))
-    #         ' \
-    #       | yq -P > "$tmp"
-    #     mv "$tmp" "$TARGET_FILE"
-    #   fi
-    # fi
-
-    # printf "%s" "$(cat /tmp/out.json)"
-    # Emit flags as a step-scoped result
-    # printf "%s" "$FLAGS" > "$(step.results.treatmentAnalysis.path)"
     printf "%s" "$(cat /tmp/out.json)" > "$(step.results.treatmentAnalysis.path)"

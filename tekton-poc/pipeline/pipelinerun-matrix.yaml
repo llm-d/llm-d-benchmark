@@ -1,3 +1,8 @@
+#####
+# This is an example of how the matrix specification works.
+# It is currently out of date.
+# To test, use pipelinerun-matrix-subset.yaml instead.
+#####
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
@@ -68,17 +73,17 @@ spec:
           params:
             - name: gaiePluginConfig
               value: 
-                # - "inf-sche-none.yaml"
-                # - "inf-sche-prefix.yaml"
-                # - "inf-sche-kv.yaml"
+                - "inf-sche-none.yaml"
+                - "inf-sche-prefix.yaml"
+                - "inf-sche-kv.yaml"
                 - "inf-sche-queue.yaml"
             - name: question_len
               value:
-                # - "100"
-                # - "300"
+                - "100"
+                - "300"
                 - "1000"
             - name: output_len
               value: 
-                # - "100"
+                - "100"
                 - "300"
                 - "1000"

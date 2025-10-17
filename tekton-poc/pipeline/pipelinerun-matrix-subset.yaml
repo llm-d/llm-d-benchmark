@@ -33,6 +33,8 @@ spec:
     # Control
     - name: debug
       value: true
+    - name: step-upload-results
+      value: false
 
   pipelineSpec:
     workspaces:
@@ -91,6 +93,8 @@ spec:
 
           - name: debug
             value: "$(params.debug)"
+          - name: step-upload-results
+            value: "$(params.step-upload-results)"
           - name: pipelineUID
             value: "$(context.pipelineRun.uid)"
         matrix:

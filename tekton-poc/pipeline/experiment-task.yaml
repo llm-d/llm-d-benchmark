@@ -10,15 +10,16 @@ spec:
     - name: data
 
   params:
-    - name: factorMapping
-      type: string
-      description: |
-        JSON string mapping factor to path in source yaml file sorted by purpose.
     - name: treatment
       type: string
       description: |
         JSON string of factors and values for one treatment. 
         Includes both infrastructure and workload factors.
+
+    - name: factorMapping
+      type: string
+      description: |
+        JSON string mapping factor to path in source yaml file sorted by purpose.
 
     - name: targetNamespacePrefix
       type: string
@@ -29,6 +30,27 @@ spec:
       default: "meta-llama/Llama-3.2-1B-Instruct"
     - name: inferencePort
       default: 8000
+
+    # Properties needed to evaluate stack capacity (will it be able to host the model)?
+    - name: validateCapacity
+      default: "true"
+    - name: behaviorOnValidationFailure
+      default: "terminate"
+
+    - name: maxModelLength
+
+    - name: decodeReplicas
+    - name: decodeTensorParallelism
+    - name: decodeDataParallelism
+    - name: decodeNumGpus
+
+    - name: prefillReplicas
+    - name: prefillTensorParallelism
+    - name: prefillDataParallelism
+    - name: prefillNumGpus
+
+    - name: gpuType
+    - name: gpuMemory
 
     - name: experimentBaseUrl
       type: string
@@ -133,6 +155,9 @@ spec:
     - name: debug
       type: string
       default: "false"
+    - name: step-upload-results
+      type: string
+      default: "true"
     - name: dry-run
       type: string 
       default: "false"
@@ -186,24 +211,192 @@ spec:
         - name: treatment
           value: $(params.treatment)
 
-    - name: display-treatment-analysis
-      image: alpine:3.20
-      env:
-        - name: MODELSERVICE_SET_ARGS
-          value: "$(steps.analyze-modelservice-factors.results.treatmentAnalysis)"
-        - name: GAIE_SET_ARGS
-          value: "$(steps.analyze-gaie-factors.results.treatmentAnalysis)"
-        - name: WORKLOAD_SET_ARGS
-          value: "$(steps.analyze-workload-factors.results.treatmentAnalysis)"
+    # - name: display-treatment-analysis
+    #   image: alpine:3.20
+    #   env:
+    #     - name: MODELSERVICE_SET_ARGS
+    #       value: "$(steps.analyze-modelservice-factors.results.treatmentAnalysis)"
+    #     - name: GAIE_SET_ARGS
+    #       value: "$(steps.analyze-gaie-factors.results.treatmentAnalysis)"
+    #     - name: WORKLOAD_SET_ARGS
+    #       value: "$(steps.analyze-workload-factors.results.treatmentAnalysis)"
 
-      script: |
-        #!/bin/sh
-        apk add --no-cache jq yq-go >/dev/null
-        jq --version
+    #   script: |
+    #     #!/bin/sh
+    #     apk add --no-cache jq yq-go >/dev/null
+    #     jq --version
 
-        echo "helm upgrade --install ... $(echo ${MODELSERVICE_SET_ARGS} | jq '.setArgs')"
-        echo "helm upgrade --install ...  $(echo ${GAIE_SET_ARGS} | jq '.setArgs')"
-        echo "$(echo ${WORKLOAD_SET_ARGS} | jq '.updates')"
+    #     echo "helm upgrade --install ... $(echo ${MODELSERVICE_SET_ARGS} | jq '.setArgs')"
+    #     echo "helm upgrade --install ...  $(echo ${GAIE_SET_ARGS} | jq '.setArgs')"
+    #     echo "$(echo ${WORKLOAD_SET_ARGS} | jq '.updates')"
+
+    #     printf "%s" "$MODELSERVICE_SET_ARGS"
+
+    - name: compute-decode-dp
+      ref:
+        name:
+          compute-value
+      params:
+        - name: name
+          value: "decodeDataParallelism"
+        - name: value
+          value: $(params.decodeDataParallelism)
+        - name: defaultValue
+          value: 1
+
+    - name: compute-decode-tp
+      ref:
+        name:
+          compute-value
+      params:
+        - name: name
+          value: "decodeTensorParallelism"
+        - name: value
+          value: $(params.decodeTensorParallelism)
+        - name: defaultValue
+          value: 1
+
+    - name: compute-decode-replicas
+      ref:
+        name:
+          compute-value
+      params:
+        - name: name
+          value: "decodeReplicas"
+        - name: value
+          value: $(params.decodeReplicas)
+        - name: defaultValue
+          value: 1
+
+    - name: compute-decode-num-gpus
+      ref:
+        name:
+          compute-num-gpus
+      params:
+        - name: name
+          value: "decodeNumGpus"
+        - name: value
+          value: $(params.decodeNumGpus)
+        - name: dp
+          value: $(steps.compute-decode-dp.results.value)
+        - name: tp
+          value: $(steps.compute-decode-tp.results.value)
+
+    # - name: display-decode-values
+    #   image: alpine:3.20
+    #   env:
+    #     - name: REPLICAS
+    #       value: "$(steps.compute-decode-replicas.results.value)"
+    #     - name: TP
+    #       value: "$(steps.compute-decode-tp.results.value)"
+    #     - name: DP
+    #       value: "$(steps.compute-decode-dp.results.value)"
+    #     - name: NUM_GPUS
+    #       value: "$(steps.compute-decode-num-gpus.results.value)"
+
+    #   script: |
+    #     #!/bin/sh
+
+    #     echo "decodeReplicas = ${REPLICAS}"
+    #     echo "decodeTensorParallelism = ${TP}"
+    #     echo "decodeDataParallelism = ${DP}"
+    #     echo "decodeNumGpus = ${NUM_GPUS}"
+
+    - name: compute-prefill-dp
+      ref:
+        name:
+          compute-value
+      params:
+        - name: name
+          value: "prefillDataParallelism"
+        - name: value
+          value: $(params.prefillDataParallelism)
+        - name: defaultValue
+          value: 1
+
+    - name: compute-prefill-tp
+      ref:
+        name:
+          compute-value
+      params:
+        - name: name
+          value: "prefillTensorParallelism"
+        - name: value
+          value: $(params.prefillTensorParallelism)
+        - name: defaultValue
+          value: 1
+
+    - name: compute-prefill-replicas
+      ref:
+        name:
+          compute-value
+      params:
+        - name: name
+          value: "prefillReplicas"
+        - name: value
+          value: $(params.prefillReplicas)
+        - name: defaultValue
+          value: 1
+
+    - name: compute-prefill-num-gpus
+      ref:
+        name:
+          compute-num-gpus
+      params:
+        - name: name
+          value: "prefillNumGpus"
+        - name: value
+          value: $(params.prefillNumGpus)
+        - name: dp
+          value: $(steps.compute-prefill-dp.results.value)
+        - name: tp
+          value: $(steps.compute-prefill-tp.results.value)
+
+    - name: check-decode-capacity
+      ref:
+        name: check-capacity
+      params:
+        - name: validateCapacity
+          value: $(params.validateCapacity)
+        - name: behaviorOnValidationFailure
+          value: $(params.behaviorOnValidationFailure)
+        - name: model
+          value: $(params.model-id)
+        - name: max_model_len
+          value: $(params.maxModelLength)
+        - name: replicas
+          value: $(steps.compute-decode-replicas.results.value)
+        - name: tp
+          value: $(steps.compute-decode-tp.results.value)
+        - name: dp
+          value: $(steps.compute-decode-dp.results.value)
+        - name: gpu_memory
+          value: $(params.gpuMemory)
+        - name: user_requested_gpu_count
+          value: $(steps.compute-decode-num-gpus.results.value)
+
+    - name: check-prefill-capacity
+      ref:
+        name: check-capacity
+      params:
+        - name: validateCapacity
+          value: $(params.validateCapacity)
+        - name: behaviorOnValidationFailure
+          value: $(params.behaviorOnValidationFailure)
+        - name: model
+          value: $(params.model-id)
+        - name: max_model_len
+          value: $(params.maxModelLength)
+        - name: replicas
+          value: $(steps.compute-prefill-replicas.results.value)
+        - name: tp
+          value: $(steps.compute-prefill-tp.results.value)
+        - name: dp
+          value: $(steps.compute-prefill-dp.results.value)
+        - name: gpu_memory
+          value: $(params.gpuMemory)
+        - name: user_requested_gpu_count
+          value: $(steps.compute-prefill-num-gpus.results.value)
 
     - name: prepare-namespace
       image: quay.io/openshift/origin-cli:4.21
@@ -238,6 +431,9 @@ spec:
         oc adm policy add-scc-to-user anyuid -z helm-installer -n ${NAMESPACE}
         # oc adm policy add-scc-to-user privileged -z helm-installer -n ${NAMESPACE}
 
+    # TBD when move from multiple NS to single NS then can move to 
+    # step implementation instead of kubernetes job (replacing the next 2 steps)
+    # Can't do yet because step executes in a different NS from target.
     - name: model-download
       ref: 
         name: helm-upgrade-install
@@ -273,10 +469,45 @@ spec:
           value: $(params.dry-run)
 
     - name: wait-for-download
-      image: alpine:3.20
+      image: alpine/kubectl:1.34.1
+      env:
+        - name: JOB_NAME
+          value: "llm-d-benchark-job"
+        - name: NAMESPACE
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
+        - name: TIMEOUT
+          value: "300" # seconds
+        - name: SLEEP_INTERVAL
+          value: "5"   # seconds
       script : |
-        #!/bin/sh
-        echo "⏳ TBD: Wait for download job to complete"
+        #!/usr/bin/env sh
+
+        echo "⏳ Wait for model to download"
+
+        elapsed=0
+
+        while [ "$elapsed" -lt "${TIMEOUT}" ]; do
+          status=$(kubectl get job "${JOB_NAME}" -n "${NAMESPACE}" -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')
+          if [ "$status" = "True" ]; then
+            echo "✅ Job succeeded"
+            kubectl delete job "${JOB_NAME}" -n "${NAMESPACE}" --ignore-not-found
+            exit 0
+          fi
+
+          status=$(kubectl get job "${JOB_NAME}" -n "${NAMESPACE}" -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}')
+          if [ "$status" = "True" ]; then
+            echo "❌ Job failed"
+            kubectl delete job "${JOB_NAME}" -n "${NAMESPACE}" --ignore-not-found
+            exit 1
+          fi
+
+          sleep "${SLEEP_INTERVAL}"
+          elapsed=$((elapsed + SLEEP_INTERVAL))
+        done
+
+        echo "❌ Timed out waiting for job to complete or fail"
+        kubectl delete job "${JOB_NAME}" -n "${NAMESPACE}" --ignore-not-found
+        exit 2
 
     - name: gateway
       ref: 
@@ -355,6 +586,11 @@ spec:
           value: $(params.dry-run)
 
     - name: wait-for-model
+      env:
+        - name: DECODE_REPLICAS
+          value: $(steps.compute-decode-replicas.results.value)
+        - name: PREFILL_REPLICAS
+          value: $(steps.compute-prefill-replicas.results.value)
       image: alpine/kubectl:1.34.1
       script: |
         #!/bin/sh
@@ -371,39 +607,45 @@ spec:
         echo "⏳ Waiting for pods serving model ${MODEL_ID} to be 'Running'"
         echo "Model label = ${MODEL_LABEL}"
 
-        kubectl --namespace ${NAMESPACE} \
-          wait pod \
-          -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=decode \
-          --for=create \
-          --timeout=${MODEL_START_TIMEOUT}s
-        echo "✅ (decode) pods serving model ${MODEL_ID} created"
+        if [ ${DECODE_REPLICAS} -gt 0 ]; then
+          kubectl --namespace ${NAMESPACE} \
+            wait pod \
+              -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=decode \
+              --for=create \
+              --timeout=${MODEL_START_TIMEOUT}s
+          echo "✅ (decode) pods serving model ${MODEL_ID} created"
+        fi
  
-        # TBD check if any prefill pods and wait if so
-        # kubectl --namespace ${NAMESPACE} \
-        #   wait pod \
-        #   -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=prefill \
-        #   --for=create \
-        #   --timeout=${MODEL_START_TIMEOUT}s
-        # echo "✅ prefill pods serving model ${MODEL_ID} created"
+        if [ ${PREFILL_REPLICAS} -gt 0 ]; then
+          kubectl --namespace ${NAMESPACE} \
+            wait pod \
+              -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=prefill \
+              --for=create \
+              --timeout=${MODEL_START_TIMEOUT}s
+          echo "✅ prefill pods serving model ${MODEL_ID} created"
+        fi
 
-        kubectl --namespace ${NAMESPACE} \
+        if [ ${DECODE_REPLICAS} -gt 0 ]; then
+          kubectl --namespace ${NAMESPACE} \
+            wait pod \
+              -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=decode \
+              --for=condition=Ready=True \
+              --timeout=${MODEL_START_TIMEOUT}s
+          echo "✅ (decode) pods serving model ${MODEL_ID} ready"
+        fi
+
+        if [ ${PREFILL_REPLICAS} -gt 0 ]; then
+         kubectl --namespace ${NAMESPACE} \
           wait pod \
-          -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=decode \
-          --for=condition=Ready=True \
-          --timeout=${MODEL_START_TIMEOUT}s
-        echo "✅ (decode) pods serving model ${MODEL_ID} ready"
+            -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=prefill \
+            --for=condition=Ready=True \
+            --timeout=${MODEL_START_TIMEOUT}s
+          echo "✅ prefill pods serving model ${MODEL_ID} ready"
+        fi
 
-        # TBD check if any prefill pods and wait if so
-        # kubectl --namespace ${NAMESPACE} \
-        #   wait pod \
-        #   -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=prefill \
-        #   --for=condition=Ready=True \
-        #   --timeout=${MODEL_START_TIMEOUT}s
-        # echo "✅ prefill pods serving model ${MODEL_ID} ready"
-
-    - name: inference-perf-prepare-profile
+    - name: prepare-workload-profile
       ref: 
-        name: inference-perf-prepare-profile
+        name: prepare-workload-profile
       params:
         - name: harnessName
           value: $(params.harnessName)
@@ -445,23 +687,6 @@ spec:
         - name: pipelineUID
           value: $(params.pipelineUID)
 
-    - name: vllm-benchmark-prepare-profile
-      ref: 
-        name: vllm-benchmark-prepare-profile
-      params:
-        - name: harnessName
-          value: $(params.harnessName)
-        - name: harnessProfile
-          value: $(params.harnessProfile)
-        - name: treatmentAnalysis
-          value: $(steps.analyze-workload-factors.results.treatmentAnalysis)
-        - name: model-id
-          value: $(params.model-id)
-        - name: namespace
-          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
-        - name: pipelineUID
-          value: $(params.pipelineUID)
-
     - name: vllm-benchmark-run
       ref:
         name: vllm-benchmark-run
@@ -488,6 +713,66 @@ spec:
           value: $(params.harnessName)
         - name: pipelineUID
           value: $(params.pipelineUID)
+
+    - name: upload-results
+      image: ubuntu:24.04
+      # Tried amazon/aws-cli:2.31.9 but latest tar available via `dnf install tar -y` is 1.34.
+      # There were sporadic errors "file changed as we read it". It may be caused by the way
+      # tar identifes file changes in v 1.34 (via ctime). A recommended solution to move to 1.35.
+      # See https://stackoverflow.com/a/77765876 and tar release notes https://lists.gnu.org/archive/html/info-gnu/2023-07/msg00005.html)
+      # A smaller image is probably desirable. A restriction is that AWS CLI v2 requires glibc.
+      workingDir: $(workspaces.data.path)
+      env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: $(params.s3-keys)
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: $(params.s3-keys)
+              key: AWS_SECRET_ACCESS_KEY
+        - name: AWS_EC2_METADATA_DISABLED
+          value: "true"
+      script: |
+        #!/usr/bin/env sh
+
+        if [ "$(params.step-upload-results)" = "false" ]; then
+          echo "Upload disabled ... skipping."
+          exit 0
+        fi
+
+        apt-get update && \
+            apt-get install -y --no-install-recommends ca-certificates curl unzip tar gzip && \
+            rm -rf /var/lib/apt/lists/*
+
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip && \
+          unzip /tmp/awscliv2.zip -d /tmp && \
+          /tmp/aws/install && \
+        rm -rf /tmp/aws /tmp/awscliv2.zip
+
+        tar --version && gzip --version && aws --version
+
+        EXPERIMENT_ID="experiment-$(echo -n $(params.pipelineUID) | cut -c1-8)"
+        EXPERIMENT_RESULTS_FOLDER="$(params.harnessName)_${EXPERIMENT_ID}_$(context.taskRun.name)"
+        ARCHIVE_NAME="${EXPERIMENT_RESULTS_FOLDER}.tar.gz"
+
+        tar --version && gzip --version && aws --version
+
+        tar -czf ${ARCHIVE_NAME} \
+            -C "$(workspaces.data.path)" ${EXPERIMENT_RESULTS_FOLDER}
+
+        aws s3 cp ${ARCHIVE_NAME} "s3://$(params.s3-bucket)/${ARCHIVE_NAME}" \
+            --endpoint-url "$(params.s3-endpoint)" \
+            --content-type "application/x-tar" \
+            --content-encoding "gzip" \
+            --no-progress
+            # --recursive \
+
+        rm -rf ${ARCHIVE_NAME}
+
+        echo "✅ Uploaded results to ${ARCHIVE_NAME}"
 
     - name: delete-namespace
       image: alpine/kubectl:1.34.1

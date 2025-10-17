@@ -204,13 +204,19 @@ The utility script `utility/transform-pr-parallel.py` can be used to transform a
 - incorporate memory planner (Jing)
 - PD example (Nick)
     - [IN PROGRESS] deployment of the pd scenario
+        - [DONE] wait for model download
+        - [NOT STARTED] move from helm chart (job) to step - depends on ns change
+        - [NOT STARTED] debug --tensor-parallel-size argument
     - [DONE] enabling multiple harnesses (inference-perf and vllm-benchmark)
     - [DONE] making factors/treatments general (they are hardcoded)
-    - [NOT STARTED] use capacity planner to determine whether or not to continue
+    - [DONE] use capacity planner to determine whether or not to continue
     - [IN PROGRESS] move step implementations to stepactions
     - [NOT STARTED] move from multiple namespaces to single namespace
 
-- can we have just one prepare-profile now that we have treatments?
 - should we have a convert step independent of the analysis step?
 - eventually one for analysis based on analysis of converted results
-- need to wait for model download
+
+- wrapper to generate pipelineRun
+- generate task?
+
+- missing steps: validate accelerator configuartion (wrt to cluster)

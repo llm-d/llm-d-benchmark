@@ -15,6 +15,42 @@ spec:
       value: $(context.pipelineRun.namespace)
     - name: model-id
       value: "meta-llama/Llama-3.1-8B-Instruct"
+      # value: "meta-llama/Llama-3.1-70B-Instruct"
+
+    # Properties needed to evaluate stack capacity (will it be able to host the model)?
+    - name: validateCapacity
+      value: true
+    - name: behaviorOnValidationFailure
+      value: terminate
+    - name: maxModelLength
+      value: 16000
+    # will be set via treatment below
+    # - name: decodeReplicas
+    # - name: decodeTensorParallelism
+    - name: decodeDataParallelism
+      value: 1
+    # If not set, will be set to decodeTensorParallelism * decodeDataParallelism
+    # - name: decodeNumGpus
+
+    # will be set via treatment below
+    # - name: prefillReplicas
+    # - name: prefillTensorParallelism
+    - name: prefillDataParallelism
+      value: 1
+    # If not set, will be set to prefillTensorParallelism * prefillDataParallelism
+    # - name: prefillNumGpus
+
+    # Rely on default value
+    # Assume the same for prefill and decode
+    # - name: targetGpuMemoryUtilization
+
+    # Required
+    # Assume the same for prefill and decode
+    # TBD - attempt to read from the cluster
+    - name: gpuType
+      value: "NVIDIA-H100-80GB-HBM3"
+    - name: gpuMemory
+      value: 80 #GB
 
     # Harness / Workload
     - name: harnessName
@@ -37,6 +73,26 @@ spec:
   pipelineSpec:
     workspaces:
       - name: data
+    params:
+      - name: maxModelLength
+        default: ""
+      - name: decodeReplicas
+        default: ""
+      - name: decodeTensorParallelism
+        default: ""
+      - name: decodeDataParallelism
+        default: ""
+      - name: decodeNumGpus
+        default: ""
+      - name: prefillReplicas
+        default: ""
+      - name: prefillTensorParallelism
+        default: ""
+      - name: prefillDataParallelism
+        default: ""
+      - name: prefillNumGpus
+        default: ""
+
     tasks:
       - name: run-experiment
         taskRef:
@@ -45,10 +101,43 @@ spec:
           - name: data
             workspace: data
         params:
-          - name: targetNamespacePrefix
-            value: $(params.targetNamespacePrefix)
           - name: model-id
             value: $(params.model-id)
+
+          # Properties needed to evaluate stack capacity (will it be able to host the model)?
+          - name: validateCapacity
+            value: $(params.validateCapacity)
+          - name: behaviorOnValidationFailure
+            value: $(params.behaviorOnValidationFailure)
+
+          - name: maxModelLength
+            value: $(params.maxModelLength)
+
+          - name: decodeReplicas
+            value: $(params.decodeReplicas)
+          - name: decodeTensorParallelism
+            value: $(params.decodeTensorParallelism)
+          - name: decodeDataParallelism
+            value: $(params.decodeDataParallelism)
+          - name: decodeNumGpus
+            value: $(params.decodeNumGpus)
+
+          - name: prefillReplicas
+            value: $(params.prefillReplicas)
+          - name: prefillTensorParallelism
+            value: $(params.prefillTensorParallelism)
+          - name: prefillDataParallelism
+            value: $(params.prefillDataParallelism)
+          - name: prefillNumGpus
+            value: $(params.prefillNumGpus)
+
+          - name: gpuType
+            value: $(params.gpuType)
+          - name: gpuMemory
+            value: $(params.gpuMemory)
+
+          - name: targetNamespacePrefix
+            value: $(params.targetNamespacePrefix)
           - name: experimentBaseUrl
             value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/pd-disaggregation/
 
@@ -86,6 +175,8 @@ spec:
 
           - name: debug
             value: "$(params.debug)"
+          - name: step-upload-results
+            value: false
           - name: pipelineUID
             value: "$(context.pipelineRun.uid)"
 
@@ -133,18 +224,3 @@ spec:
           #       # - "640"
           #       # - "1280"
           #       # - "2560"
-
-# LLMDBENCH_VLLM_COMMON_REPLICAS: "2,4"
-#   decode.replicas
-# LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM: "8"
-#   decode.parallelism.tensor
-
-# LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS: "2,4,6,8"
-#   prefill.replicas
-# LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM: "1,2"
-#   prefill.parallelism.tensor
-# LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS: "1,2,4"
-#   decode.replicas
-# LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM: "2,4,8"
-#   decodeTensorParallelism
-#   decode.parallelism.tensor
