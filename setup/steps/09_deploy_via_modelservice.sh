@@ -52,7 +52,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
       - group: inference.networking.x-k8s.io
         kind: InferencePool
         name: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
-        port: 8000
+        port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
         weight: 1
       timeouts:
         backendRequest: 0s
@@ -68,7 +68,7 @@ modelArtifacts:
   uri: $LLMDBENCH_VLLM_MODELSERVICE_URI
   size: $LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE
   authSecretName: "llm-d-hf-token"
-  name: $(model_attribute $model model)
+  name: ${LLMDBENCH_DEPLOY_CURRENT_MODEL}
 #############
 routing:
   servicePort: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
@@ -93,7 +93,7 @@ routing:
       - group: inference.networking.x-k8s.io
         kind: InferencePool
         name: ${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}-gaie
-        port: 8000
+        port: ${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT}
         weight: 1
       timeouts:
         backendRequest: 0s
@@ -171,7 +171,7 @@ decode:
       readinessProbe:
         httpGet:
           path: /health
-          port: 8200
+          port: ${LLMDBENCH_VLLM_COMMON_METRICS_PORT}
         failureThreshold: 3
         periodSeconds: 5
     $(add_config ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG} 6)
@@ -309,6 +309,36 @@ EOF
         announce "✅ Service for pods service model ${model} created"
       fi
       announce "✅ Model \"${model}\" and associated service deployed."
+    fi
+
+
+    if [[ ${LLMDBENCH_WVA_ENABLED} -eq 1 ]];
+    then
+      announce "WVA is Enabled, will create scaling resources such as HPA, VA, vllmService, and Service Monitor"
+      tmp_dir=$(mktemp -d)
+      llmdbench_execute_cmd "git clone --branch ${LLMDBENCH_WVA_VERSION} ${LLMDBENCH_WVA_SOURCE} ${tmp_dir}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+      
+      pushd ${tmp_dir} >/dev/null 2>&1
+
+      export LLMD_NAMESPACE="${LLMDBENCH_VLLM_COMMON_NAMESPACE}"
+      export LLMD_MODEL_NAME="${LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL}"
+      export LLMD_MODEL_ID=${LLMDBENCH_DEPLOY_CURRENT_MODEL}
+      export VA_ACCELERATOR=$(find_accelerator_prefix "G2 A100 H100 L40S MI300X")
+      export VLLM_NODE_PORT=$(get_random_node_port 10000 32768)
+      export GUIDELLM_TARGET="http://infra-${LLMDBENCH_VLLM_MODELSERVICE_RELEASE}-inference-gateway:80"
+      
+      ./config/samples/install.sh >/dev/null 2>&1
+      llmdbench_execute_cmd "./config/samples/install.sh" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+
+      unset LLMD_NAMESPACE
+      unset LLMD_MODEL_NAME
+      unset LLMD_MODEL_ID
+      unset VA_ACCELERATOR
+      unset VLLM_NODE_PORT
+      unset GUIDELLM_TARGET
+
+      popd >/dev/null 2>&1
+      announce "✅ WVA Infra Installed"
     fi
 
     unset LLMDBENCH_DEPLOY_CURRENT_MODEL

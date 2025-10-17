@@ -208,6 +208,8 @@ else
   role
   rolebinding
   serviceaccount
+  hpa
+  va
   pod
   pvc
 )

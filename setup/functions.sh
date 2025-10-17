@@ -1195,3 +1195,33 @@ function user_has_hf_model_access {
     case "$http_code" in 200) return 0 ;; 401|403) return 1 ;; *) return 2 ;; esac
 }
 export -f user_has_hf_model_access
+
+
+function get_random_node_port() {
+  local min_port=$1
+  local max_port=$2
+  local _port
+  while true; do
+    _port=$((min_port + RANDOM % (max_port - min_port + 1)))
+    if ${LLMDBENCH_CONTROL_KCMD} get svc --all-namespaces -o jsonpath='{.items[*].spec.ports[*].nodePort}' | grep -qw "${_port}"; then
+      continue
+    fi
+    echo "${_port}"
+    return 0
+  done
+}
+export -f get_random_node_port
+
+
+function find_accelerator_prefix() {
+  local accelerators=($1)
+  local _accelerator
+  for _accelerator in "${accelerators[@]}"; do
+    if [[ "${LLMDBENCH_VLLM_COMMON_AFFINITY}" == *"${_accelerator}"* ]]; then
+      echo "${_accelerator}"
+      return 0
+    fi
+  done
+  return 1
+}
+export -f find_accelerator_prefix

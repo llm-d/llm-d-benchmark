@@ -113,6 +113,9 @@ while [[ $# -gt 0 ]]; do
         export LLMDBENCH_CLIOVERRIDE_RUN_DATASET_URL="$2"
         shift
         ;;
+        -u|--wva)
+        export LLMDBENCH_WVA_ENABLED=1
+        ;;
         -b=*|--annotations=*)
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_ANNOTATIONS=$(echo $key | cut -d '=' -f 2)
         ;;

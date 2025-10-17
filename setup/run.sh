@@ -155,6 +155,9 @@ while [[ $# -gt 0 ]]; do
         export LLMDBENCH_CLIOVERRIDE_RUN_DATASET_URL="$2"
         shift
         ;;
+        -u|--wva)
+        export LLMDBENCH_WVA_ENABLED=1
+        ;;
         -z|--skip)
         export LLMDBENCH_CLIOVERRIDE_HARNESS_SKIP_RUN=1
         ;;

@@ -154,6 +154,9 @@ while [[ $# -gt 0 ]]; do
         export LLMDBENCH_CLIOVERRIDE_VLLM_MODELSERVICE_RELEASE="$2"
         shift
         ;;
+        -u|--wva)
+        export LLMDBENCH_WVA_ENABLED=1
+        ;;
         -a=*|--affinity=*)
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_AFFINITY=$(echo $key | cut -d '=' -f 2)
         ;;
