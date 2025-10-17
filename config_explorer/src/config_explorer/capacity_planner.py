@@ -407,10 +407,13 @@ def total_kv_cache_blocks(model_info: ModelInfo,
                     pp: int=1,
                     dp: int=1,
                     ) -> int:
+    """
+    Calculate the total number of KV cache blocks that can fit in GPU memory.
+    """
 
     # Compute per-token and per-block memory 
     kv_cache_detail = KVCacheDetail(model_info, model_config, context_len, batch_size)
-    per_token_memory = kv_cache_detail.per_token_memory_bytes
+    per_token_memory = kv_cache_detail.per_token_memory_bytes / (tp * pp)
     per_block_memory = per_token_memory * block_size
 
     # Compute allocatable KV cache memory
