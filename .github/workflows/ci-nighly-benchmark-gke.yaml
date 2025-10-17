@@ -1,4 +1,4 @@
-name: Nightly Benchmark on GKE
+name: CI - Nightly Benchmark on GKE
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         required: false
         default: '/tmp/cicd/analysis'
       output_dir:
-        description: 'Output directory name (S3 prefix and artifact name)'
+        description: 'Output directory name'
         required: false
         default: ''
 
@@ -21,7 +21,7 @@ on:
 
 jobs:
   run-benchmark-gke:
-    name: Nightly Benchmark on GKE
+    name: CI - Nightly Benchmark on GKE
     runs-on: [k8s-util]
     timeout-minutes: 240
 
@@ -29,11 +29,8 @@ jobs:
       GCP_PROJECT_ID: llm-d-scale
       GKE_CLUSTER_NAME: llm-d-e2e-us-east5
       GKE_CLUSTER_ZONE: us-east5
-      NAMESPACE: llm-d-inference-scheduling
       GATEWAY: gke-l7-regional-external-managed
       GATEWAY_TYPE: gke
-      PR_OR_BRANCH: ${{ github.event.inputs.pr_or_branch || github.event.issue.number || github.event.number || 'main' }}
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
     steps:
       - name: Checkout code
@@ -91,11 +88,6 @@ jobs:
         run: pip install ./config_explorer
         shell: bash
 
-      - name: Cleanup target cloud (modelservice)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c gke_H100_fb -t modelservice -d
-
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
@@ -115,11 +107,6 @@ jobs:
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: ./setup/teardown.sh -c gke_H100_fb -t standalone -d
-
-      - name: E2E target cloud (modelservice, inference-perf)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c gke_H100_fb -t modelservice --deep
 
       - name: Archive benchmark results as GitHub artifact
         if: success() || failure()

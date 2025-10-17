@@ -1,5 +1,5 @@
 export LLMDBENCH_CONTROL_WORK_DIR=/tmp/cicd/
-export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
+export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.2-1B"
 export LLMDBENCH_VLLM_COMMON_NAMESPACE=llmdbenchcicd
 export LLMDBENCH_HARNESS_NAMESPACE=llmdbenchcicd
 export LLMDBENCH_VLLM_COMMON_AFFINITY=cloud.google.com/gke-accelerator:nvidia-h100-80gb
