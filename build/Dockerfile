@@ -47,7 +47,7 @@ RUN cd fmperf; \
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
 ARG INFERENCE_PERF_BRANCH=main
-ARG INFERENCE_PERF_COMMIT=1ccc48b6bb9c9abb61558b719041fb000b265e59
+ARG INFERENCE_PERF_COMMIT=b81afa49e026417749884ac905425e70837ebfd3
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
