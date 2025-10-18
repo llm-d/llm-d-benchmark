@@ -110,11 +110,11 @@ class SLO:
 
     def __init__(self, col: str, value: float):
         if col not in COLUMNS:
-            raise ValueError('Column does not exist: %s' % col)
+            raise ValueError(f'Column does not exist: {col}')
         if COLUMNS[col].dtype != 'float':
-            raise TypeError('Column must have float datatype: %s' % col)
+            raise TypeError(f'Column must have float datatype: {col}')
         if COLUMNS[col].pref == Pref.NEUTRAL:
-            raise Exception('Column must have a preferred direction: %s' % col)
+            raise Exception(f'Column must have a preferred direction: {col}')
         self.col = col
         self.value = value
 
@@ -901,7 +901,7 @@ def add_benchmark_report_to_df(
             if plugin['pluginRef'] == 'queue-scorer':
                 queue_scorer_weight = plugin.get('weight', 1)
 
-    # TODO getting concurrency is speciffic to each harness, will need
+    # TODO getting concurrency is specific to each harness, will need
     # a way to capture this universally in the report so we don't have to do
     # extractions like this
     if report.scenario.load.args and 'max_concurrency' in report.scenario.load.args:
@@ -1087,7 +1087,7 @@ def get_scenarios(runs_df: pd.DataFrame, scenario_columns: list[str]) -> list[di
     """
     for col in scenario_columns:
         if col not in runs_df.columns:
-            raise KeyError('Invalid column: %s' % col)
+            raise KeyError(f'Invalid column: {col}')
     scenario_tuples = list(set(runs_df.set_index(scenario_columns).index.dropna()))
     scenarios = []
     for s_tuple in scenario_tuples:
@@ -1184,7 +1184,7 @@ def get_meet_slo_df(
             # Must be greater than or equal to SLO value to meet SLO
             runs_meet_slo_df = runs_meet_slo_df[runs_meet_slo_df[slo.col].__ge__(slo.value)]
         else:
-            raise Exception('Invalid SLO: %s' % slo.col)
+            raise Exception(f'Invalid SLO: {slo.col}')
     return runs_meet_slo_df
 
 
@@ -1206,11 +1206,9 @@ def get_pareto_front_df(
     """
     # Make sure columns have a preferred direction
     if COLUMNS[col_a].pref == Pref.NEUTRAL:
-        raise Exception ('Column does not have a preferred direction: %s'
-                         % col_a)
+        raise Exception (f'Column does not have a preferred direction: {col_a}')
     if COLUMNS[col_b].pref == Pref.NEUTRAL:
-        raise Exception ('Column does not have a preferred direction: %s'
-                         % col_b)
+        raise Exception (f'Column does not have a preferred direction: {col_b}')
 
     def better(a: Any, b: Any, col: str) -> bool:
         """Return true if column in 'a' is better than 'b'."""
@@ -1218,7 +1216,7 @@ def get_pareto_front_df(
             return a[col] < b[col]
         if COLUMNS[col].pref == Pref.HIGH:
             return a[col] > b[col]
-        raise Exception('Invalid preference for column: %s' % col)
+        raise Exception(f'Invalid preference for column: {col}')
 
     pareto_set = set(runs_df.index.tolist())
     for ii, rowa in runs_df.iterrows():

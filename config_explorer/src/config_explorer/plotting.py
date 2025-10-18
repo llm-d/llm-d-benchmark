@@ -74,7 +74,7 @@ def plot_scenario(
     """
     for col in scenario:
         if col not in runs_df.columns:
-            raise KeyError('Invalid column: %s' % col)
+            raise KeyError(f'Invalid column: {col}')
     
     # Filter runs to specific scenario
     runs_df = get_scenario_df(runs_df, scenario)
@@ -181,7 +181,7 @@ def plot_scenario_tradeoff(
     """
     for col in scenario:
         if col not in runs_df.columns:
-            raise KeyError('Invalid column: %s' % col)
+            raise KeyError(f'Invalid column: {col}')
     
     # Filter runs to specific scenario
     runs_df = get_scenario_df(runs_df, scenario)
@@ -277,7 +277,7 @@ def plot_pareto_tradeoff(
     """
     for col in scenario:
         if col not in runs_df.columns:
-            raise KeyError('Invalid column: %s' % col)
+            raise KeyError(f'Invalid column: {col}')
 
     # Filter runs to specific scenario
     scenario_df = get_scenario_df(runs_df, scenario)
