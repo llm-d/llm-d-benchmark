@@ -108,15 +108,13 @@ class SLO:
     # Value the metric must be no worse than
     value: float
 
-    def __init__(self, col: str, value: float):
-        if col not in COLUMNS:
-            raise ValueError(f'Column does not exist: {col}')
-        if COLUMNS[col].dtype != 'float':
-            raise TypeError(f'Column must have float datatype: {col}')
-        if COLUMNS[col].pref == Pref.NEUTRAL:
-            raise Exception(f'Column must have a preferred direction: {col}')
-        self.col = col
-        self.value = value
+    def __post_init__(self):
+        if self.col not in COLUMNS:
+            raise ValueError(f'Column does not exist: {self.col}')
+        if COLUMNS[self.col].dtype != 'float':
+            raise TypeError(f'Column must have float datatype: {self.col}')
+        if COLUMNS[self.col].pref == Pref.NEUTRAL:
+            raise Exception(f'Column must have a preferred direction: {self.col}')
 
 
 def check_dir(dir: str) -> None:
@@ -870,9 +868,11 @@ def add_benchmark_report_to_df(
     prefix_cache_scorer_lur_capacity_per_server = None
     prefix_cache_scorer_max_blocks_to_match = None
     prefix_cache_scorer_tracking = False
-    if report.scenario.platform.metadata:
+    if report.scenario.platform.metadata and \
+    isinstance(report.scenario.platform.metadata, dict) and \
+    get_nested(report.scenario.platform.metadata, ['inferenceScheduler', 'plugins']):
         for plugin in report.scenario.platform.metadata['inferenceScheduler']['plugins']:
-            if plugin['type'] == 'prefix-cache-scorer':
+            if plugin.get('type') == 'prefix-cache-scorer':
                 if 'parameters' not in plugin:
                     continue
                 prefix_cache_scorer_block_size = plugin['parameters'].get('blockSize', 16)
@@ -891,14 +891,16 @@ def add_benchmark_report_to_df(
     # In addition we assume the plugins have not been renamed, and the pluginRef
     # is the same as the plugin type.
     # https://gateway-api-inference-extension.sigs.k8s.io/guides/epp-configuration/config-text/
-    if report.scenario.platform.metadata:
+    if report.scenario.platform.metadata and \
+    isinstance(report.scenario.platform.metadata, dict) and \
+    get_nested(report.scenario.platform.metadata, ['inferenceScheduler', 'schedulingProfiles', 0, 'plugins']):
         for plugin in report.scenario.platform.metadata['inferenceScheduler']['schedulingProfiles'][0]['plugins']:
         # is the same as the plugin type.
-            if plugin['pluginRef'] == 'prefix-cache-scorer':
+            if plugin.get('pluginRef') == 'prefix-cache-scorer':
                 prefix_cache_scorer_weight = plugin.get('weight', 1)
-            if plugin['pluginRef'] == 'kv-cache-scorer':
+            if plugin.get('pluginRef') == 'kv-cache-scorer':
                 kv_cache_scorer_weight = plugin.get('weight', 1)
-            if plugin['pluginRef'] == 'queue-scorer':
+            if plugin.get('pluginRef') == 'queue-scorer':
                 queue_scorer_weight = plugin.get('weight', 1)
 
     # TODO getting concurrency is specific to each harness, will need
@@ -915,7 +917,7 @@ def add_benchmark_report_to_df(
         concurrency = None
 
     max_qps = None
-    if report.scenario.platform.metadata:
+    if report.scenario.load.name == schema.WorkloadGenerator.INFERENCE_PERF:
         # Workload generator stage
         stage = report.scenario.load.metadata.get('stage', -1)
         if stage >= 0:
