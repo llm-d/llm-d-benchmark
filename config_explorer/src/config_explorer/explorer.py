@@ -37,6 +37,7 @@ of metrics, showing, for example, the tradeoff between throughput and latency.
 """
 
 from dataclasses import dataclass
+from math import floor
 import os
 from pathlib import Path
 from typing import Any
@@ -989,8 +990,8 @@ def add_benchmark_report_to_df(
         'Workload_Generator': report.scenario.load.name,
         'ISL': int(round(report.metrics.requests.input_length.mean)),
         'OSL': int(round(report.metrics.requests.output_length.mean)),
-        'ISL_500': int(round(report.metrics.requests.input_length.mean/500)*500+250),
-        'OSL_500': int(round(report.metrics.requests.output_length.mean/500)*500+250),
+        'ISL_500': floor(report.metrics.requests.input_length.mean/500) * 500 + 250,
+        'OSL_500': floor(report.metrics.requests.output_length.mean/500) * 500 + 250,
         'Target_OSL': int(get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'output_len'], -1)),
         'Max_Concurrency': concurrency,
         'Max_QPS': max_qps,
