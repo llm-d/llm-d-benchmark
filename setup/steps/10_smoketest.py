@@ -53,7 +53,7 @@ def check_deployment(ev: dict):
             service_type = "service"
             route_string = service_name + '-route'
         except k8s_client.ApiException as e:
-            announce_failed(f"❌Error finding the service: {e}", False)
+            announce(f"ERROR: unable to find service: {e}")
     else:
         pod_string = "decode"
         route_string=f"{ev.get('vllm_modelservice_release', '')}-inference-gateway-route"
@@ -75,7 +75,7 @@ def check_deployment(ev: dict):
                             break
                     break
         except k8s_client.ApiException as e:
-            announce(f"ERROR: Error finding the gateway: {e}")
+            announce(f"ERROR: unable to finding gateway: {e}")
 
     if dry_run:
         service_name = "localhost"
@@ -115,7 +115,7 @@ def check_deployment(ev: dict):
         announce(f"ERROR: Unable to find pods in namespace {ev['vllm_common_namespace']}: {e}")
 
     if not pod_ip_list:
-        announce(f"EROOR: Unable to find IPs for pods \"{pod_string}\"!")
+        announce(f"ERROR: Unable to find IPs for pods \"{pod_string}\"!")
 
     announce(f"🚀 Testing all pods \"{pod_string}\" (port {ev['vllm_common_inference_port']})...")
     for pod_ip in pod_ip_list:
@@ -158,7 +158,7 @@ def check_deployment(ev: dict):
             )
                 route_url = route["spec"]["host"]
             except k8s_client.ApiException as e:
-                announce_failed(f"Error fetching route: {e}", False)
+                announce(f"ERROR: unable to fetch route: {e}")
 
     if route_url:
         announce(f"🚀 Testing external route \"{route_url}\"...")

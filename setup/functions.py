@@ -59,7 +59,7 @@ except ModuleNotFoundError as e:
     print(f"  pip install -r {workspace_root / 'config_explorer' / 'requirements.txt'}")
     sys.exit(1)
 
-def announce(msgcont: str, logfile : str = None, msgtype : str = "", ignore_if_failed: bool = False):
+def announce(msgcont: str, logfile : str = None, ignore_if_failed: bool = False):
     work_dir = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", '.')
     log_dir = os.path.join(work_dir, 'logs')
 
@@ -67,10 +67,10 @@ def announce(msgcont: str, logfile : str = None, msgtype : str = "", ignore_if_f
     os.makedirs(log_dir, exist_ok=True)
 
     if msgcont.count("ERROR:") :
-        msgtype = "failed"
+        msgcont = f"❌  {msgcont}"
 
-    if msgtype == "failed" :
-        msgcont = f"❌ {msgcont}"
+    if msgcont.count("WARNING:") :
+        msgcont = f"⚠️  {msgcont}"
 
     if not logfile:
         cur_step = os.getenv("CURRENT_STEP_NAME", 'step')
@@ -90,7 +90,7 @@ def announce(msgcont: str, logfile : str = None, msgtype : str = "", ignore_if_f
     except Exception as e:
         logger.error(f"An unexpected error occurred with logfile '{logpath}'. Reason: {e}")
 
-    if msgtype == "failed" and not ignore_if_failed:
+    if msgcont.count("ERROR:") and not ignore_if_failed:
         sys.exit(1)
 
 def kube_connect(config_path : str = '~/.kube/config'):
@@ -1385,15 +1385,20 @@ def get_model_info(model_name: str, hf_token: str, ignore_if_failed: bool) -> Mo
     Obtains model info from HF
     """
 
+    if ignore_if_failed :
+        msgtag="WARNING:"
+    else :
+        msgtag="ERROR:"
+
     try:
         return get_model_info_from_hf(model_name, hf_token)
 
     except GatedRepoError:
-        announce_failed("Model is gated and the token provided via LLMDBENCH_HF_TOKEN does not, work. Please double check.", ignore_if_failed)
+        announce(f"{msgtag} Model is gated and the token provided via LLMDBENCH_HF_TOKEN does not, work. Please double check.")
     except HfHubHTTPError as hf_exp:
-        announce_failed(f"Error reaching Hugging Face API: Is LLMDBENCH_HF_TOKEN correctly set? {hf_exp}", ignore_if_failed)
+        announce(f"{msgtag} unable to connect to Hugging Face API gateway: Is LLMDBENCH_HF_TOKEN correctly set? {hf_exp}")
     except Exception as e:
-        announce_failed(f"Cannot retrieve ModelInfo: {e}", ignore_if_failed)
+        announce(f"{msgtag} Cannot retrieve ModelInfo: {e}")
 
     return None
 
@@ -1402,16 +1407,21 @@ def get_model_config_and_text_config(model_name: str, hf_token: str, ignore_if_f
     Obtains model config and text config from HF
     """
 
+    if ignore_if_failed :
+        msgtag="WARNING:"
+    else :
+        msgtag="ERROR:"
+
     try:
         config = get_model_config_from_hf(model_name, hf_token)
         return config, get_text_config(config)
 
     except GatedRepoError:
-        announce_failed("Model is gated and the token provided via LLMDBENCH_HF_TOKEN does not work. Please double check.", ignore_if_failed)
+        announce(f"{msgtag} Model is gated and the token provided via LLMDBENCH_HF_TOKEN does not work. Please double check.")
     except HfHubHTTPError as hf_exp:
-        announce_failed(f"Error reaching Hugging Face API. Is LLMDBENCH_HF_TOKEN correctly set? {hf_exp}", ignore_if_failed)
+        announce(f"{msgtag} unable to connect to Hugging Face API gateway. Is LLMDBENCH_HF_TOKEN correctly set? {hf_exp}")
     except Exception as e:
-        announce_failed(f"Cannot retrieve model config: {e}", ignore_if_failed)
+        announce(f"{msgtag} Cannot retrieve model config: {e}")
 
     return None, None
 
@@ -1419,6 +1429,11 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
     """
     Given a list of vLLM parameters, validate using capacity planner
     """
+
+    if ignore_if_failed :
+        msgtag="WARNING:"
+    else :
+        msgtag="ERROR:"
 
     env_var_prefix = COMMON
     if type != COMMON:
@@ -1437,7 +1452,7 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
     # Sanity check on user inputs. If GPU memory cannot be determined, return False indicating that the sanity check is incomplete
     skip_gpu_tests = False
     if gpu_memory is None or gpu_memory == 0:
-        announce_failed("Cannot determine accelerator memory. Please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY to enable Capacity Planner. Skipping GPU memory required checks, especially KV cache estimation.", ignore_if_failed)
+        announce(f"{msgtag} Cannot determine accelerator memory. Please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY to enable Capacity Planner. Skipping GPU memory required checks, especially KV cache estimation.")
         skip_gpu_tests = True
 
     per_replica_requirement = gpus_required(tp=tp, dp=dp)
@@ -1446,10 +1461,10 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
     total_gpu_requirement = per_replica_requirement
 
     if total_gpu_requirement > user_requested_gpu_count:
-        announce_failed(f"Accelerator requested is {user_requested_gpu_count} but it is not enough to stand up the model. Set LLMDBENCH_VLLM_{env_var_prefix}_ACCELERATOR_NR to TP x DP = {tp} x {dp} = {total_gpu_requirement}", ignore_if_failed)
+        announce(f"{msgtag} Accelerator requested is {user_requested_gpu_count} but it is not enough to stand up the model. Set LLMDBENCH_VLLM_{env_var_prefix}_ACCELERATOR_NR to TP x DP = {tp} x {dp} = {total_gpu_requirement}")
 
     if total_gpu_requirement < user_requested_gpu_count:
-        announce(f"⚠️ For each replica, model requires {total_gpu_requirement}, but you requested {user_requested_gpu_count} for the deployment. Note that some GPUs will be idle.")
+        announce(f"{msgtag} For each replica, model requires {total_gpu_requirement}, but you requested {user_requested_gpu_count} for the deployment. Note that some GPUs will be idle.")
 
     # Use capacity planner for further validation
     for model in models_list:
@@ -1461,10 +1476,10 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
             try:
                 valid_tp_values = find_possible_tp(text_config)
                 if tp not in valid_tp_values:
-                    announce_failed(f"TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.", ignore_if_failed)
+                    announce(f"{msgtag} TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.")
             except AttributeError:
                 # Error: config['num_attention_heads'] not in config
-                announce_failed(f"Cannot obtain data on the number of attention heads, cannot find valid tp values: {e}", ignore_if_failed)
+                announce(f"{msgtag} Cannot obtain data on the number of attention heads, cannot find valid tp values: {e}")
 
             # Check if model context length is valid
             valid_max_context_len = 0
@@ -1472,12 +1487,12 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
                 # Error: config['max_positional_embeddings'] not in config
                 valid_max_context_len = max_context_len(model_config)
             except AttributeError as e:
-                announce_failed(f"Cannot obtain data on the max context length for model: {e}", ignore_if_failed)
+                announce(f"{msgtag} Cannot obtain data on the max context length for model: {e}")
 
             if max_model_len > valid_max_context_len:
-                announce_failed(f"Max model length = {max_model_len} exceeds the acceptable for {model}. Set LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN to a value below or equal to {valid_max_context_len}", ignore_if_failed)
+                announce(f"{msgtag}  Max model length = {max_model_len} exceeds the acceptable for {model}. Set LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN to a value below or equal to {valid_max_context_len}")
         else:
-            announce_failed(f"Model config on parameter shape not available.", ignore_if_failed)
+            announce(f"{msgtag} Model config on parameter shape not available.")
 
         # Display memory info
         if not skip_gpu_tests:
@@ -1506,7 +1521,7 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
                     )
 
                     if available_kv_cache < 0:
-                        announce_failed(f"There is not enough GPU memory to stand up model. Exceeds by {abs(available_kv_cache)} GB.", ignore_if_failed)
+                        announce(f"{msgtag} There is not enough GPU memory to stand up model. Exceeds by {abs(available_kv_cache)} GB.")
                     else:
                         announce(f"ℹ️ Allocatable memory for KV cache {available_kv_cache} GB")
 
@@ -1522,9 +1537,9 @@ def validate_vllm_params(param: ValidationParam, ignore_if_failed: bool, type: s
 
             except AttributeError as e:
                 # Model might not have safetensors data on parameters
-                announce_failed(f"Does not have enough information about model to estimate model memory or KV cache: {e}", ignore_if_failed)
+                announce(f"{msgtag} Does not have enough information about model to estimate model memory or KV cache: {e}")
         else:
-            announce_failed(f"Model info on model's architecture not available.", ignore_if_failed)
+            announce(f"{msgtag} Model info on model's architecture not available.")
 
 def get_validation_param(ev: dict, type: str=COMMON) -> ValidationParam:
     """
