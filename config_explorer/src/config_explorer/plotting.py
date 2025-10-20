@@ -106,8 +106,7 @@ def plot_scenario(
             if config_keys[jj] == col_seg_by:
                 continue
             labels.append(f'{COLUMNS[config_keys[jj]].label}={val}')
-        # Remove trailing ", " when joining
-        label = ', '.join(labels)[:-2]
+        label = ', '.join(labels)
 
         # Make plot
         plot_func(conf_df[col_x], conf_df[col_y],
@@ -213,8 +212,7 @@ def plot_scenario_tradeoff(
             if config_keys[jj] == col_seg_by:
                 continue
             labels.append(f'{COLUMNS[config_keys[jj]].label}={val}')
-        # Remove trailing ", " when joining
-        label = ', '.join(labels)[:-2]
+        label = ', '.join(labels)
 
         # Make plot
         plot_func(conf_df[col_x], conf_df[col_y],
