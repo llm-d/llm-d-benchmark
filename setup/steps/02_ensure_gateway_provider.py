@@ -227,17 +227,17 @@ def install_kgateway(
             f.write(f"""
 releases:
   - name: kgateway-crds
-    chart: oci://cr.kgateway.dev/kgateway-dev/charts/kgateway-crds
+    chart: {ev["gateway_provider_kgateway_helm_repository_url"]}/kgateway-crds
     namespace: kgateway-system
-    version: {ev["vllm_common_kgateway_chart_version"]}
+    version: {ev["gateway_provider_kgateway_chart_version"]}
     installed: true
     labels:
       type: gateway-provider
       kind: gateway-crds
 
   - name: kgateway
-    chart: oci://cr.kgateway.dev/kgateway-dev/charts/kgateway
-    version: {ev["vllm_common_kgateway_chart_version"]}
+    chart: {ev["gateway_provider_kgateway_helm_repository_url"]}/kgateway
+    version: {ev["gateway_provider_kgateway_chart_version"]}
     namespace: kgateway-system
     installed: true
     needs:
@@ -259,7 +259,7 @@ releases:
 """)
         install_cmd = f"helmfile apply -f {helmfile_path}"
 
-        announce(f"🚀 Installing kgateway ({ev['vllm_common_kgateway_chart_version']})")
+        announce(f"🚀 Installing kgateway helm charts from {ev['gateway_provider_kgateway_helm_repository_url']} ({ev['gateway_provider_kgateway_chart_version']})")
         llmdbench_execute_cmd(install_cmd, dry_run, verbose)
         announce("✅ kgateway installed")
         return 0
@@ -295,8 +295,8 @@ def install_istio(
             f.write(f"""
 releases:
   - name: istio-base
-    chart: oci://gcr.io/istio-testing/charts/base
-    version: {ev["vllm_common_istio_chart_version"]}
+    chart: {ev["gateway_provider_istio_helm_repository_url"]}/base
+    version: {ev["gateway_provider_istio_chart_version"]}
     namespace: istio-system
     installed: true
     labels:
@@ -304,8 +304,8 @@ releases:
       kind: gateway-crds
 
   - name: istiod
-    chart: oci://gcr.io/istio-testing/charts/istiod
-    version: {ev["vllm_common_istio_chart_version"]}
+    chart: {ev["gateway_provider_istio_helm_repository_url"]}/istiod
+    version: {ev["gateway_provider_istio_chart_version"]}
     namespace: istio-system
     installed: true
     needs:
@@ -318,7 +318,7 @@ releases:
         pilot:
           env:
             SUPPORT_GATEWAY_API_INFERENCE_EXTENSION: true
-        tag: {ev["vllm_common_istio_chart_version"]}
+        tag: {ev["gateway_provider_istio_chart_version"]}
         hub: "gcr.io/istio-testing"
     labels:
       type: gateway-provider
@@ -327,7 +327,7 @@ releases:
 
         install_cmd = f"helmfile apply -f {helmfile_path}"
 
-        announce(f"🚀 Installing istio")
+        announce(f"🚀 Installing istio helm charts from {ev['gateway_provider_istio_helm_repository_url']} ({ev['gateway_provider_istio_chart_version']})")
         llmdbench_execute_cmd(install_cmd, dry_run, verbose)
         announce("✅ istio installed")
         return 0
