@@ -902,14 +902,11 @@ def add_benchmark_report_to_df(
 
     # TODO getting concurrency is specific to each harness, will need
     # a way to capture this universally in the report so we don't have to do
-    # extractions like this
-    if report.scenario.load.args and 'max_concurrency' in report.scenario.load.args:
-        # vLLM Benchmark
-        concurrency = report.scenario.load.args['max_concurrency']
-    elif report.scenario.load.args and 'profile' in report.scenario.load.args \
-    and 'measured_concurrencies' in report.scenario.load.args['profile']:
-        # GuideLLM
-        concurrency = report.scenario.load.args['profile']['measured_concurrencies'][0]
+    # specific extractions like this.
+    if report.scenario.load.name == schema.WorkloadGenerator.VLLM_BENCHMARK:
+        concurrency = report.scenario.load.args.get('max_concurrency')
+    elif report.scenario.load.name == schema.WorkloadGenerator.GUIDELLM:
+        concurrency = get_nested(report.scenario.load.args, ['profile', 'measured_concurrencies'])[0]
     else:
         concurrency = None
 

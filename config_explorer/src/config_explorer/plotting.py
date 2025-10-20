@@ -52,15 +52,12 @@ def plot_scenario(
 
     An example would be viewing throughput (Y) vs queries per second (X).
 
-    config_keys is a list of columns to be grouped together as a set of
-    configuration parameters to be compared within the plot. Each unique
-    grouping of these columns will be a trace on the plot.
-
     Args:
         runs_df (pandas.DataFrame): Benchmark run data.
         scenario (dict[str, Any]): Scenario from benchmark data to plot.
-        config_keys (list[str]): Columns to group together as a configuration
-            key.
+        config_keys (list[str]): a list of columns to be grouped together as a
+            set of configuration parameters to be compared within the plot.
+            Each unique grouping of these columns will be a trace on the plot.
         col_x (str): Column from benchmark data for X axis.
         col_y (str): Column from benchmark data for Y axis.
         col_seg_by (str): Group points with matching config_keys only
@@ -103,14 +100,14 @@ def plot_scenario(
         color = COLORS[ii%len(COLORS)]
         # Make a DataFrame for specific configuration
         conf_df = runs_df
-        label = ''
+        labels = []
         for jj, val in enumerate(conf):
             conf_df = conf_df[(conf_df[config_keys[jj]] == val)].sort_values(by=col_x)
             if config_keys[jj] == col_seg_by:
                 continue
-            label += f'{COLUMNS[config_keys[jj]].label}={val}, '
-        # Remove trailing ", "
-        label = label.rsplit(', ', 1)[0]
+            labels.append(f'{COLUMNS[config_keys[jj]].label}={val}')
+        # Remove trailing ", " when joining
+        label = ', '.join(labels)[:-2]
 
         # Make plot
         plot_func(conf_df[col_x], conf_df[col_y],
@@ -210,14 +207,14 @@ def plot_scenario_tradeoff(
         color = COLORS[ii%len(COLORS)]
         # Make a DataFrame for specific configuration
         conf_df = runs_df
-        label = ''
+        labels = []
         for jj, val in enumerate(conf):
             conf_df = conf_df[(conf_df[config_keys[jj]] == val)].sort_values(by=col_z)
             if config_keys[jj] == col_seg_by:
                 continue
-            label += f'{COLUMNS[config_keys[jj]].label}={val}, '
-        # Remove trailing ", "
-        label = label.rsplit(', ', 1)[0]
+            labels.append(f'{COLUMNS[config_keys[jj]].label}={val}')
+        # Remove trailing ", " when joining
+        label = ', '.join(labels)[:-2]
 
         # Make plot
         plot_func(conf_df[col_x], conf_df[col_y],
