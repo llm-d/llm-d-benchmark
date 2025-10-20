@@ -891,8 +891,8 @@ def add_benchmark_report_to_df(
     # is the same as the plugin type.
     # https://gateway-api-inference-extension.sigs.k8s.io/guides/epp-configuration/config-text/
     if report.scenario.platform.metadata and isinstance(report.scenario.platform.metadata, dict):
-        for plugin in get_nested(report.scenario.platform.metadata, ['inferenceScheduler', 'schedulingProfiles', 0, 'plugins'], []):
-        # is the same as the plugin type.
+        plugins = get_nested(report.scenario.platform.metadata, ['inferenceScheduler', 'schedulingProfiles'], [{}])[0].get('plugins', [])
+        for plugin in plugins:
             if plugin.get('pluginRef') == 'prefix-cache-scorer':
                 prefix_cache_scorer_weight = plugin.get('weight', 1)
             if plugin.get('pluginRef') == 'kv-cache-scorer':
@@ -1127,6 +1127,10 @@ def print_scenarios(
             scenario data from.
         min_count (int): Only show scenarios with at least this many rows.
     """
+
+    if not scenarios:
+        print(f'{Text.BOLD}{Text.RED}No scenarios available!{Text.DEFAULT}')
+        return
 
     # Get maximum text length for each column, including header
     spans = list(map(len, scenarios[0].keys()))
