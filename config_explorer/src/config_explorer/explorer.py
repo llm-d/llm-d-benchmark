@@ -100,100 +100,6 @@ class ColumnProperties:
     units: str = ''
 
 
-@dataclass
-class SLO:
-    """Service level objective."""
-
-    # Column of metric assiciated with the SLO
-    col: str
-    # Value the metric must be no worse than
-    value: float
-
-    def __post_init__(self):
-        if self.col not in COLUMNS:
-            raise ValueError(f'Column does not exist: {self.col}')
-        if COLUMNS[self.col].dtype != 'float':
-            raise TypeError(f'Column must have float datatype: {self.col}')
-        if COLUMNS[self.col].pref == Pref.NEUTRAL:
-            raise Exception(f'Column must have a preferred direction: {self.col}')
-
-
-def check_dir(dir: str) -> None:
-    """Print an error if directory does not exist.
-
-    Args:
-        dir (str): Directory to check existence of.
-    """
-    if not os.path.isdir(dir):
-        raise Exception(f'Invalid path: {dir}')
-
-
-def check_file(file: str) -> None:
-    """Print an error if file does not exist.
-
-    Args:
-        file (str): File to check existence of.
-    """
-    if not os.path.isfile(file):
-        raise Exception(f'Invalid file: {file}')
-
-
-def get_nested(ndict: dict[Any, Any], path: list[Any], default: Any = None) -> Any:
-    """Get value from path through nested dicts.
-
-    Args:
-        d (dict): Nested dict to get value from.
-        path (list): Path through nested dict, as a list of keys.
-        default (Any): Value to return if path does not exist.
-
-    Returns:
-        Any: Value at path location, or default value if path does not exist.
-    """
-
-    d_cur = ndict
-    for key in path:
-        if not isinstance(d_cur, dict):
-            # Path hit a non-dict
-            return default
-        if key not in d_cur:
-            # Key is not in dict
-            return default
-        d_cur = d_cur[key]
-    return d_cur
-
-
-def mul(a: int | None, b: int | None) -> int | None:
-    """Multiply two values, returning None if either value is None.
-
-    Args:
-        a (int | None): First multiplicand.
-        b (int | None): Second multiplicand.
-
-    Returns:
-        int | None: Multiplied result if multiplicands exist, otherwise None.
-    """
-    if a and b:
-        return a * b
-    return None
-
-
-def get_benchmark_report_files(source_dir: str) -> list[str]:
-    """Get a list of benchmark report files within provided path (recursive).
-
-    Args:
-        source_dir (str): Directory to recursively search for results files.
-    
-    Returns:
-        list: List of paths to benchmark report files.
-    """
-    rb_files = []
-    check_dir(source_dir)
-    path = Path(source_dir)
-    for file in path.rglob("benchmark_report,_*.yaml"):
-        rb_files.append(str(file))
-    return rb_files
-
-
 # Dataset columns and properties
 COLUMNS = {
     # Details about particular run
@@ -317,9 +223,9 @@ COLUMNS = {
         dtype='int',
         label='Max Blocks',
     ),
-    'Prefix_Cache_Scorer_Tracking': ColumnProperties(
+    'Prefix_Cache_Scorer_Mode': ColumnProperties(
         dtype='bool',
-        label='Tracking',
+        label='Mode',
     ),
     # Workload
     'Workload_Generator': ColumnProperties(
@@ -780,6 +686,100 @@ COLUMNS = {
 }
 
 
+@dataclass
+class SLO:
+    """Service level objective."""
+
+    # Column of metric associated with the SLO
+    col: str
+    # Value the metric must be no worse than
+    value: float
+
+    def __post_init__(self):
+        if self.col not in COLUMNS:
+            raise ValueError(f'Column does not exist: {self.col}')
+        if COLUMNS[self.col].dtype != 'float':
+            raise TypeError(f'Column must have float datatype: {self.col}')
+        if COLUMNS[self.col].pref == Pref.NEUTRAL:
+            raise Exception(f'Column must have a preferred direction: {self.col}')
+
+
+def check_dir(dir: str) -> None:
+    """Print an error if directory does not exist.
+
+    Args:
+        dir (str): Directory to check existence of.
+    """
+    if not os.path.isdir(dir):
+        raise Exception(f'Invalid path: {dir}')
+
+
+def check_file(file: str) -> None:
+    """Print an error if file does not exist.
+
+    Args:
+        file (str): File to check existence of.
+    """
+    if not os.path.isfile(file):
+        raise Exception(f'Invalid file: {file}')
+
+
+def get_nested(ndict: dict[Any, Any], path: list[Any], default: Any = None) -> Any:
+    """Get value from path through nested dicts.
+
+    Args:
+        d (dict): Nested dict to get value from.
+        path (list): Path through nested dict, as a list of keys.
+        default (Any): Value to return if path does not exist.
+
+    Returns:
+        Any: Value at path location, or default value if path does not exist.
+    """
+
+    d_cur = ndict
+    for key in path:
+        if not isinstance(d_cur, dict):
+            # Path hit a non-dict
+            return default
+        if key not in d_cur:
+            # Key is not in dict
+            return default
+        d_cur = d_cur[key]
+    return d_cur
+
+
+def mul(a: int | None, b: int | None) -> int | None:
+    """Multiply two values, returning None if either value is None.
+
+    Args:
+        a (int | None): First multiplicand.
+        b (int | None): Second multiplicand.
+
+    Returns:
+        int | None: Multiplied result if multiplicands exist, otherwise None.
+    """
+    if a and b:
+        return a * b
+    return None
+
+
+def get_benchmark_report_files(source_dir: str) -> list[str]:
+    """Get a list of benchmark report files within provided path (recursive).
+
+    Args:
+        source_dir (str): Directory to recursively search for results files.
+    
+    Returns:
+        list: List of paths to benchmark report files.
+    """
+    rb_files = []
+    check_dir(source_dir)
+    path = Path(source_dir)
+    for file in path.rglob("benchmark_report,_*.yaml"):
+        rb_files.append(str(file))
+    return rb_files
+
+
 def make_benchmark_runs_df() -> pd.DataFrame:
     """Create DataFrame for benchmark run results.
 
@@ -838,12 +838,12 @@ def _get_replicas_and_parallelism(report: schema.BenchmarkReport) -> dict[str, i
     # We have a P/D setup
     rp['is_pd'] = True
     for ii, accel in enumerate(report.scenario.host.accelerator):
-        if report.scenario.host.type[ii] is schema.HostType.PREFILL and not rp['p_tp']:
+        if report.scenario.host.type[ii] is schema.HostType.PREFILL and rp['p_tp'] is None:
             rp['p_tp'] = accel.parallelism.tp
             rp['p_dp'] = accel.parallelism.dp
             rp['p_pp'] = accel.parallelism.pp
             rp['p_ep'] = accel.parallelism.ep
-        if report.scenario.host.type[ii] is schema.HostType.DECODE and not rp['d_tp']:
+        if report.scenario.host.type[ii] is schema.HostType.DECODE and rp['d_tp'] is None:
             rp['d_tp'] = accel.parallelism.tp
             rp['d_dp'] = accel.parallelism.dp
             rp['d_pp'] = accel.parallelism.pp
@@ -868,11 +868,9 @@ def add_benchmark_report_to_df(
     prefix_cache_scorer_block_size = None
     prefix_cache_scorer_lur_capacity_per_server = None
     prefix_cache_scorer_max_blocks_to_match = None
-    prefix_cache_scorer_tracking = False
-    if report.scenario.platform.metadata and \
-    isinstance(report.scenario.platform.metadata, dict) and \
-    get_nested(report.scenario.platform.metadata, ['inferenceScheduler', 'plugins']):
-        for plugin in report.scenario.platform.metadata['inferenceScheduler']['plugins']:
+    prefix_cache_scorer_mode = None
+    if report.scenario.platform.metadata and isinstance(report.scenario.platform.metadata, dict):
+        for plugin in get_nested(report.scenario.platform.metadata, ['inferenceScheduler', 'plugins'], []):
             if plugin.get('type') == 'prefix-cache-scorer':
                 if 'parameters' not in plugin:
                     continue
@@ -880,7 +878,7 @@ def add_benchmark_report_to_df(
                 prefix_cache_scorer_lur_capacity_per_server = plugin['parameters'].get('lruCapacityPerServer', 31250)
                 prefix_cache_scorer_max_blocks_to_match = plugin['parameters'].get('maxPrefixBlocksToMatch', 256)
                 # If mode is 'cache_tracking', then precise prefix scoring is used
-                prefix_cache_scorer_tracking = plugin['parameters'].get('mode', '') == 'cache_tracking'
+                prefix_cache_scorer_mode = plugin['parameters'].get('mode', '')
 
     # Set default weights to zero (disabled)
     # TODO: capture other settings for prefix cache scorer
@@ -892,10 +890,8 @@ def add_benchmark_report_to_df(
     # In addition we assume the plugins have not been renamed, and the pluginRef
     # is the same as the plugin type.
     # https://gateway-api-inference-extension.sigs.k8s.io/guides/epp-configuration/config-text/
-    if report.scenario.platform.metadata and \
-    isinstance(report.scenario.platform.metadata, dict) and \
-    get_nested(report.scenario.platform.metadata, ['inferenceScheduler', 'schedulingProfiles', 0, 'plugins']):
-        for plugin in report.scenario.platform.metadata['inferenceScheduler']['schedulingProfiles'][0]['plugins']:
+    if report.scenario.platform.metadata and isinstance(report.scenario.platform.metadata, dict):
+        for plugin in get_nested(report.scenario.platform.metadata, ['inferenceScheduler', 'schedulingProfiles', 0, 'plugins'], []):
         # is the same as the plugin type.
             if plugin.get('pluginRef') == 'prefix-cache-scorer':
                 prefix_cache_scorer_weight = plugin.get('weight', 1)
@@ -920,19 +916,20 @@ def add_benchmark_report_to_df(
     max_qps = None
     if report.scenario.load.name == schema.WorkloadGenerator.INFERENCE_PERF:
         # Workload generator stage
-        stage = report.scenario.load.metadata.get('stage', -1)
-        if stage >= 0:
+        stage = report.scenario.load.metadata.get('stage')
+        if stage is not None:
             stage_list = get_nested(report.scenario.load.args, ['load', 'stages'])
-            if stage_list and len(stage_list) > stage:
-                 max_qps = stage_list[stage].get('rate')
+            max_qps = stage_list[stage].get('rate')
 
     rp = _get_replicas_and_parallelism(report)
     if rp['is_pd']:
         num_gpus = 0
+        # We assume that EP = TP, where EP is used on expert layers, so no
+        # need to add EP into the GPU count.
         if rp['p_replicas']:
-            num_gpus += rp['p_tp']*rp['p_replicas']
+            num_gpus += rp['p_tp']*rp['p_dp']*rp['p_pp']*rp['p_replicas']
         if rp['d_replicas']:
-            num_gpus += rp['d_tp']*rp['d_replicas']
+            num_gpus += rp['d_tp']*rp['d_dp']*rp['d_pp']*rp['d_replicas']
     else:
         num_gpus = rp['tp']*rp['replicas']
 
@@ -985,7 +982,7 @@ def add_benchmark_report_to_df(
         'Prefix_Cache_Scorer_Block_Size': prefix_cache_scorer_block_size,
         'Prefix_Cache_Scorer_LRU_Capacity_Per_Server': prefix_cache_scorer_lur_capacity_per_server,
         'Prefix_Cache_Scorer_Max_Blocks_To_Match': prefix_cache_scorer_max_blocks_to_match,
-        'Prefix_Cache_Scorer_Tracking': prefix_cache_scorer_tracking,
+        'Prefix_Cache_Scorer_Mode': prefix_cache_scorer_mode,
         # Workload
         'Workload_Generator': report.scenario.load.name,
         'ISL': int(round(report.metrics.requests.input_length.mean)),
