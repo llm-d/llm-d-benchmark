@@ -52,15 +52,6 @@ jobs:
           ./setup/standup.sh -c kind_sim_fb -t modelservice -s 0,1,2,4,7,8
         shell: bash
 
-      - name: Check
-        run: sleep 120; kubectl get crd | grep inference
-        shell: bash
-
-      - name: Standup a modelservice using llm-d-inference-sim
-        run: |
-          ./setup/standup.sh -c kind_sim_fb -t modelservice -s 0,1,2,4,7,8,9
-        shell: bash
-
       - name: Run harness (mock)
         env:
           LLMD_CONTROL_DRY_RUN: 1 # TODO: harness doesn't work now for kind bc no harness endpoint

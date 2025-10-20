@@ -224,12 +224,12 @@ def install_kgateway(
         helm_base_dir.mkdir(parents=True, exist_ok=True)
         helmfile_path = helm_base_dir / f'helmfile-{ev["current_step"]}.yaml'
         with open(helmfile_path, 'w') as f:
-            f.write("""
+            f.write(f"""
 releases:
   - name: kgateway-crds
     chart: oci://cr.kgateway.dev/kgateway-dev/charts/kgateway-crds
     namespace: kgateway-system
-    version: v2.0.3
+    version: {ev["vllm_common_kgateway_chart_version"]}
     installed: true
     labels:
       type: gateway-provider
@@ -237,7 +237,7 @@ releases:
 
   - name: kgateway
     chart: oci://cr.kgateway.dev/kgateway-dev/charts/kgateway
-    version: v2.0.3
+    version: {ev["vllm_common_kgateway_chart_version"]}
     namespace: kgateway-system
     installed: true
     needs:
@@ -259,7 +259,7 @@ releases:
 """)
         install_cmd = f"helmfile apply -f {helmfile_path}"
 
-        announce(f"🚀 Installing kgateway")
+        announce(f"🚀 Installing kgateway ({ev['vllm_common_kgateway_chart_version']})")
         llmdbench_execute_cmd(install_cmd, dry_run, verbose)
         announce("✅ kgateway installed")
         return 0
@@ -292,11 +292,11 @@ def install_istio(
         helm_base_dir.mkdir(parents=True, exist_ok=True)
         helmfile_path = helm_base_dir / f'helmfile-{ev["current_step"]}.yaml'
         with open(helmfile_path, 'w') as f:
-            f.write("""
+            f.write(f"""
 releases:
   - name: istio-base
     chart: oci://gcr.io/istio-testing/charts/base
-    version: 1.28-alpha.89f30b26ba71bf5e538083a4720d0bc2d8c06401
+    version: {ev["vllm_common_istio_chart_version"]}
     namespace: istio-system
     installed: true
     labels:
@@ -305,7 +305,7 @@ releases:
 
   - name: istiod
     chart: oci://gcr.io/istio-testing/charts/istiod
-    version: 1.28-alpha.89f30b26ba71bf5e538083a4720d0bc2d8c06401
+    version: {ev["vllm_common_istio_chart_version"]}
     namespace: istio-system
     installed: true
     needs:
@@ -318,7 +318,7 @@ releases:
         pilot:
           env:
             SUPPORT_GATEWAY_API_INFERENCE_EXTENSION: true
-        tag: 1.28-alpha.89f30b26ba71bf5e538083a4720d0bc2d8c06401
+        tag: {ev["vllm_common_istio_chart_version"]}
         hub: "gcr.io/istio-testing"
     labels:
       type: gateway-provider

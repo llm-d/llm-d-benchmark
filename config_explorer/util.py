@@ -7,6 +7,7 @@ from transformers import AutoConfig
 from dataclasses import dataclass
 from src.config_explorer.capacity_planner import *
 
+
 # Session state variables pertaining to user selected values
 USER_SCENARIO_KEY = "scenario"
 SELECTED_MODEL_KEY = "selected_model"

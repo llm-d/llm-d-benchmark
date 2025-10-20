@@ -18,10 +18,10 @@ k8s_config.load_kube_config()
 # ---------------- Import local packages ----------------
 
 try:
-    from functions import announce, announce_failed, environment_variable_to_dict, get_accelerator_nr, is_standalone_deployment, get_accelerator_type, llmdbench_execute_cmd, model_attribute, get_model_name_from_pod, get_image
+    from functions import announce, environment_variable_to_dict, get_accelerator_nr, is_standalone_deployment, get_accelerator_type, llmdbench_execute_cmd, model_attribute, get_model_name_from_pod, get_image
 except ImportError as e:
     # Fallback for when dependencies are not available
-    announce(f"❌ ERROR: Could not import required modules: {e}")
+    announce(f"ERROR: Could not import required modules: {e}")
     announce("This script requires the llm-d environment to be properly set up.")
     announce("Please run: ./setup/install_deps.sh")
     sys.exit(1)
@@ -75,18 +75,18 @@ def check_deployment(ev: dict):
                             break
                     break
         except k8s_client.ApiException as e:
-            announce_failed(f"❌Error finding the gateway: {e}", False)
+            announce(f"ERROR: Error finding the gateway: {e}")
 
     if dry_run:
         service_name = "localhost"
         service_ip = "127.0.0.8"
     else:
         if not service_name:
-            announce_failed(f"❌ No {service_type} found with string \"{pod_string}\"!", False)
+            announce(f"ERROR: No {service_type} found with string \"{pod_string}\"!")
         elif not service_ip:
-            announce_failed(f"❌ Unable to find IP for service/gateway \"{service}\"!", False)
+            announce(f"ERROR: Unable to find IP for service/gateway \"{service}\"!")
         elif not ipaddress.ip_address(service_ip):
-            announce_failed(f"❌ Invalid IP (\"{service_ip}\") for service/gateway \"{service_name}\"!", False)
+            announce(f"ERROR: Invalid IP (\"{service_ip}\") for service/gateway \"{service_name}\"!")
 
     """
     Checking if pods were successfully deployed
@@ -96,7 +96,7 @@ def check_deployment(ev: dict):
         current_model = model_attribute(model, "model")
         current_model_ID = model_attribute(model, "modelid")
         current_model_ID_label = model_attribute(model, "modelid_label")
-    
+
     if dry_run:
         pod_ip_list = "127.0.0.4"
     try:
@@ -110,12 +110,12 @@ def check_deployment(ev: dict):
         else:
             pods = api_instance.list_namespaced_pod(namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={current_model_ID_label},llm-d.ai/role={pod_string}")
             for pod in pods.items:
-                pod_ip_list.append(pod.status.pod_ip)  
+                pod_ip_list.append(pod.status.pod_ip)
     except k8s_client.ApiException as e:
-        announce_failed(f"❌ Error fetching pods: {e}", False)
+        announce(f"ERROR: Unable to find pods in namespace {ev['vllm_common_namespace']}: {e}")
 
     if not pod_ip_list:
-        announce_failed(f"❌ Unable to find IPs for pods \"{pod_string}\"!", False)
+        announce(f"EROOR: Unable to find IPs for pods \"{pod_string}\"!")
 
     announce(f"🚀 Testing all pods \"{pod_string}\" (port {ev['vllm_common_inference_port']})...")
     for pod_ip in pod_ip_list:
@@ -124,11 +124,11 @@ def check_deployment(ev: dict):
             announce(f"       ✅ Pod ip \"{pod_ip}\" responded successfully ({current_model})")
         else:
             image_url = get_image(ev['llmd_image_registry'], ev['llmd_image_repo'], ev['llmd_image_name'], ev['llmd_image_tag'])
-            received_model_name = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, pod_ip, ev['vllm_common_inference_port'])
+            received_model_name, curl_command_used = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, pod_ip, ev['vllm_common_inference_port'])
             if received_model_name == current_model:
                 announce(f"       ✅ Pod ip \"{pod_ip}\" responded successfully ({received_model_name})")
             else:
-                announce_failed(f"       ❌ Pod ip \"{pod_ip}\" responded with model name \"{received_model_name}\" (instead of {current_model})!", False)
+                announce(f"       ERROR: Pod ip \"{pod_ip}\" responded to \"{curl_command_used}\" with model name \"{received_model_name}\" (instead of {current_model})!")
 
     announce(f"✅ All pods respond successfully")
     announce(f"🚀 Testing service/gateway \"{service_ip}\" (port 80)...")
@@ -137,11 +137,11 @@ def check_deployment(ev: dict):
         announce(f"✅ Service responds successfully ({current_model})")
     else:
         image_url = get_image(ev['llmd_image_registry'], ev['llmd_image_repo'], ev['llmd_image_name'], ev['llmd_image_tag'])
-        received_model_name = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, service_ip, "80")
+        received_model_name, curl_command_used = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, service_ip, "80")
         if received_model_name == current_model:
             announce(f"✅ Service responds successfully ({received_model_name})")
         else:
-            announce_failed(f"❌ Service responded with model name \"{received_model_name}\" (instead of {current_model})!", False)
+            announce(f"ERROR: Service responded to \"{curl_command_used}\" with model name \"{received_model_name}\" (instead of {current_model})!")
 
     if dry_run:
         route_url = ""
@@ -159,17 +159,17 @@ def check_deployment(ev: dict):
                 route_url = route["spec"]["host"]
             except k8s_client.ApiException as e:
                 announce_failed(f"Error fetching route: {e}", False)
-    
+
     if route_url:
         announce(f"🚀 Testing external route \"{route_url}\"...")
         if is_standalone_deployment(ev):
-            received_model_name = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, route_url, '80')
+            received_model_name, curl_command_used = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, route_url, '80')
         else:
-            received_model_name = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, route_url + ':80/' + current_model_ID, '80')
+            received_model_name, curl_command_used = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, route_url + ':80/' + current_model_ID, '80')
         if received_model_name == current_model:
             announce(f"✅ External route responds successfully ({received_model_name})")
         else:
-            announce_failed(f"❌ External route responded with model name \"{received_model_name}\" (instead of {current_model})!", False)
+            announce(f"ERROR: External route responded to \"{curl_command_used}\" with model name \"{received_model_name}\" (instead of {current_model})!")
 
 
 def main():

@@ -59,13 +59,18 @@ except ModuleNotFoundError as e:
     print(f"  pip install -r {workspace_root / 'config_explorer' / 'requirements.txt'}")
     sys.exit(1)
 
-def announce(message: str, logfile : str = None):
+def announce(msgcont: str, logfile : str = None, msgtype : str = "", ignore_if_failed: bool = False):
     work_dir = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", '.')
     log_dir = os.path.join(work_dir, 'logs')
 
     # ensure logs dir exists
     os.makedirs(log_dir, exist_ok=True)
 
+    if msgcont.count("ERROR:") :
+        msgtype = "failed"
+
+    if msgtype == "failed" :
+        msgcont = f"❌ {msgcont}"
 
     if not logfile:
         cur_step = os.getenv("CURRENT_STEP_NAME", 'step')
@@ -73,11 +78,11 @@ def announce(message: str, logfile : str = None):
 
     logpath = os.path.join(log_dir, logfile)
 
-    logger.info(message)
+    logger.info(msgcont)
 
     try:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        log_line = f"{timestamp} : {message}"
+        log_line = f"{timestamp} : {msgcont}"
         with open(logpath, 'a', encoding='utf-8') as f:
             f.write(log_line + '\n')
     except IOError as e:
@@ -85,7 +90,8 @@ def announce(message: str, logfile : str = None):
     except Exception as e:
         logger.error(f"An unexpected error occurred with logfile '{logpath}'. Reason: {e}")
 
-
+    if msgtype == "failed" and not ignore_if_failed:
+        sys.exit(1)
 
 def kube_connect(config_path : str = '~/.kube/config'):
     api = None
@@ -1280,8 +1286,8 @@ def get_model_name_from_pod(
     if ip.count(':') == 1:
         ip = ip + ':' + port
     ip = ip + '/v1/models'
-    command = ["/bin/bash", "-c", f"curl --no-progress-meter {ip}"]
-
+    curl_command = f"curl --no-progress-meter {ip}"
+    full_command = ["/bin/bash", "-c", f"curl --no-progress-meter {ip}"]
     pod_manifest = k8s_client.V1Pod(
         metadata=k8s_client.V1ObjectMeta(name=pod_name, namespace=namespace),
         spec=k8s_client.V1PodSpec(
@@ -1290,7 +1296,7 @@ def get_model_name_from_pod(
                 k8s_client.V1Container(
                     name="model",
                     image=image,
-                    command=command
+                    command=full_command
                 )
             ]
         )
@@ -1311,14 +1317,18 @@ def get_model_name_from_pod(
         tail_lines=100
     )
 
-    model_name = pod_logs.split("'id': '")[1].split("', '")[0]
-
+    model_name = "empty"
+    if pod_logs :
+        if pod_logs.count("'id': '") :
+            model_name = pod_logs.split("'id': '")[1].split("', '")[0]
+        else:
+            model_name = "malformed"
     # Clean up
     api_instance.delete_namespaced_pod(
         name=pod_name,
         namespace=namespace,
         body=k8s_client.V1DeleteOptions(propagation_policy='Foreground', grace_period_seconds=10))
-    return model_name
+    return model_name, curl_command
 
 
 # ----------------------- Capacity Planner Sanity Check -----------------------
@@ -1339,16 +1349,6 @@ class ValidationParam:
     requested_accelerator_nr: int
     gpu_memory_util: float
     max_model_len: int
-
-
-def announce_failed(msg: str, ignore_if_failed: bool):
-    """
-    Prints out failure message and exits execution if ignore_if_failed==False, otherwise continue
-    """
-
-    announce(f"❌ {msg}")
-    if not ignore_if_failed:
-        sys.exit(1)
 
 def convert_accelerator_memory(gpu_name: str, accelerator_memory_param: str) -> int:
     """
