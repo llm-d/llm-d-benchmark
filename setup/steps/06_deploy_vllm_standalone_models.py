@@ -315,8 +315,6 @@ spec:
         args:
 {args}
         env:
-        - name: LD_LIBRARY_PATH
-          value: ${{LD_LIBRARY_PATH}}:/usr/local/nvidia/lib64
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL
           value: "{os.environ.get('LLMDBENCH_DEPLOY_CURRENT_MODEL', '')}"
         - name: LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT
