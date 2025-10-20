@@ -5,6 +5,19 @@ metadata:
 spec:
   taskRunTemplate:
     serviceAccountName: helm-installer
+  taskRunSpecs:
+    - pipelineTaskName: run-experiment
+      computeResources:
+        requests:
+          memory: "16Gi"
+          cpu: "8"
+          # memory: "32Gi"
+          # cpu: "16"
+        limits:
+          memory: "16Gi"
+          cpu: "8"
+          # memory: "32Gi"
+          # cpu: "16"
   workspaces:
     - name: data
       persistentVolumeClaim:
@@ -190,7 +203,7 @@ spec:
                       "prefillReplicas": 1,
                       "prefillTensorParallelism": 1,
                       "decodeReplicas": 1,
-                      "decodeTensorParallelism": 1,
+                      "decodeTensorParallelism": 2,
                       "max-concurrency": 1,
                       "num-prompts": 10
                     }

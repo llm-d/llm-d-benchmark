@@ -232,42 +232,26 @@ spec:
 
     #     printf "%s" "$MODELSERVICE_SET_ARGS"
 
-    - name: compute-decode-dp
+    # TBD split into individual steps to compute each value?
+    - name: compute-capacity-validation-values
       ref:
         name:
-          compute-value
+          compute-values
       params:
-        - name: name
-          value: "decodeDataParallelism"
-        - name: value
+        - name: decodeDataParallelism
           value: $(params.decodeDataParallelism)
-        - name: defaultValue
-          value: 1
-
-    - name: compute-decode-tp
-      ref:
-        name:
-          compute-value
-      params:
-        - name: name
-          value: "decodeTensorParallelism"
-        - name: value
+        - name: decodeTensorParallelism
           value: $(params.decodeTensorParallelism)
-        - name: defaultValue
-          value: 1
-
-    - name: compute-decode-replicas
-      ref:
-        name:
-          compute-value
-      params:
-        - name: name
-          value: "decodeReplicas"
-        - name: value
+        - name: decodeReplicas
           value: $(params.decodeReplicas)
-        - name: defaultValue
-          value: 1
+        - name: prefillDataParallelism
+          value: $(params.prefillDataParallelism)
+        - name: prefillTensorParallelism
+          value: $(params.prefillTensorParallelism)
+        - name: prefillReplicas
+          value: $(params.prefillReplicas)
 
+    # TBD fold into compute-capacity-validation-values ?
     - name: compute-decode-num-gpus
       ref:
         name:
@@ -278,66 +262,13 @@ spec:
         - name: value
           value: $(params.decodeNumGpus)
         - name: dp
-          value: $(steps.compute-decode-dp.results.value)
+          # value: $(steps.compute-decode-dp.results.value)
+          value: $(steps.compute-capacity-validation-values.results.decodeDataParallelism)
         - name: tp
-          value: $(steps.compute-decode-tp.results.value)
+          # value: $(steps.compute-decode-tp.results.value)
+          value: $(steps.compute-capacity-validation-values.results.decodeTensorParallelism)
 
-    # - name: display-decode-values
-    #   image: alpine:3.20
-    #   env:
-    #     - name: REPLICAS
-    #       value: "$(steps.compute-decode-replicas.results.value)"
-    #     - name: TP
-    #       value: "$(steps.compute-decode-tp.results.value)"
-    #     - name: DP
-    #       value: "$(steps.compute-decode-dp.results.value)"
-    #     - name: NUM_GPUS
-    #       value: "$(steps.compute-decode-num-gpus.results.value)"
-
-    #   script: |
-    #     #!/bin/sh
-
-    #     echo "decodeReplicas = ${REPLICAS}"
-    #     echo "decodeTensorParallelism = ${TP}"
-    #     echo "decodeDataParallelism = ${DP}"
-    #     echo "decodeNumGpus = ${NUM_GPUS}"
-
-    - name: compute-prefill-dp
-      ref:
-        name:
-          compute-value
-      params:
-        - name: name
-          value: "prefillDataParallelism"
-        - name: value
-          value: $(params.prefillDataParallelism)
-        - name: defaultValue
-          value: 1
-
-    - name: compute-prefill-tp
-      ref:
-        name:
-          compute-value
-      params:
-        - name: name
-          value: "prefillTensorParallelism"
-        - name: value
-          value: $(params.prefillTensorParallelism)
-        - name: defaultValue
-          value: 1
-
-    - name: compute-prefill-replicas
-      ref:
-        name:
-          compute-value
-      params:
-        - name: name
-          value: "prefillReplicas"
-        - name: value
-          value: $(params.prefillReplicas)
-        - name: defaultValue
-          value: 1
-
+    # TBD fold into compute-capacity-validation-values ?
     - name: compute-prefill-num-gpus
       ref:
         name:
@@ -348,9 +279,11 @@ spec:
         - name: value
           value: $(params.prefillNumGpus)
         - name: dp
-          value: $(steps.compute-prefill-dp.results.value)
+          # value: $(steps.compute-prefill-dp.results.value)
+          value: $(steps.compute-capacity-validation-values.results.prefillDataParallelism)
         - name: tp
-          value: $(steps.compute-prefill-tp.results.value)
+          # value: $(steps.compute-prefill-tp.results.value)
+          value: $(steps.compute-capacity-validation-values.results.prefillDataParallelism)
 
     - name: check-decode-capacity
       ref:
@@ -365,15 +298,19 @@ spec:
         - name: max_model_len
           value: $(params.maxModelLength)
         - name: replicas
-          value: $(steps.compute-decode-replicas.results.value)
+          value: $(steps.compute-capacity-validation-values.results.decodeReplicas)
         - name: tp
-          value: $(steps.compute-decode-tp.results.value)
+          value: $(steps.compute-capacity-validation-values.results.decodeTensorParallelism)
         - name: dp
-          value: $(steps.compute-decode-dp.results.value)
+          value: $(steps.compute-capacity-validation-values.results.decodeDataParallelism)
         - name: gpu_memory
           value: $(params.gpuMemory)
         - name: user_requested_gpu_count
           value: $(steps.compute-decode-num-gpus.results.value)
+      when:
+        - input: $(params.validateCapacity)
+          operator: in
+          values: [ "true" ]
 
     - name: check-prefill-capacity
       ref:
@@ -388,15 +325,19 @@ spec:
         - name: max_model_len
           value: $(params.maxModelLength)
         - name: replicas
-          value: $(steps.compute-prefill-replicas.results.value)
+          value: $(steps.compute-capacity-validation-values.results.prefillReplicas)
         - name: tp
-          value: $(steps.compute-prefill-tp.results.value)
+          value: $(steps.compute-capacity-validation-values.results.prefillTensorParallelism)
         - name: dp
-          value: $(steps.compute-prefill-dp.results.value)
+          value: $(steps.compute-capacity-validation-values.results.prefillDataParallelism)
         - name: gpu_memory
           value: $(params.gpuMemory)
         - name: user_requested_gpu_count
           value: $(steps.compute-prefill-num-gpus.results.value)
+      when:
+        - input: $(params.validateCapacity)
+          operator: in
+          values: [ "true" ]
 
     - name: prepare-namespace
       image: quay.io/openshift/origin-cli:4.21
@@ -588,9 +529,9 @@ spec:
     - name: wait-for-model
       env:
         - name: DECODE_REPLICAS
-          value: $(steps.compute-decode-replicas.results.value)
+          value: $(steps.compute-capacity-validation-values.results.decodeReplicas)
         - name: PREFILL_REPLICAS
-          value: $(steps.compute-prefill-replicas.results.value)
+          value: $(steps.compute-capacity-validation-values.results.prefillReplicas)
       image: alpine/kubectl:1.34.1
       script: |
         #!/bin/sh
@@ -670,13 +611,17 @@ spec:
           value: $(params.harnessProfile)
         - name: pipelineUID
           value: $(params.pipelineUID)
-      computeResources:
-        requests:
-          memory: "32Gi"
-          cpu: "16"
-        limits:
-          memory: "32Gi"
-          cpu: "16"
+      when:
+        - input: $(params.harnessName)
+          operator: in
+          values: [ "inference-perf" ]
+      # computeResources:
+      #   requests:
+      #     memory: "32Gi"
+      #     cpu: "16"
+      #   limits:
+      #     memory: "32Gi"
+      #     cpu: "16"
 
     - name: inference-perf-analyze-results
       ref:
@@ -686,6 +631,10 @@ spec:
           value: $(params.harnessName)
         - name: pipelineUID
           value: $(params.pipelineUID)
+      when:
+        - input: $(params.harnessName)
+          operator: in
+          values: [ "inference-perf" ]
 
     - name: vllm-benchmark-run
       ref:
@@ -697,13 +646,17 @@ spec:
           value: $(params.harnessProfile)
         - name: pipelineUID
           value: $(params.pipelineUID)
-      computeResources:
-        requests:
-          memory: "32Gi"
-          cpu: "16"
-        limits:
-          memory: "32Gi"
-          cpu: "16"
+      when:
+        - input: $(params.harnessName)
+          operator: in
+          values: [ "vllm-benchmark" ]
+      # computeResources:
+      #   requests:
+      #     memory: "32Gi"
+      #     cpu: "16"
+      #   limits:
+      #     memory: "32Gi"
+      #     cpu: "16"
 
     - name: vllm-benchmark-analyze-results
       ref:
@@ -713,6 +666,10 @@ spec:
           value: $(params.harnessName)
         - name: pipelineUID
           value: $(params.pipelineUID)
+      when:
+        - input: $(params.harnessName)
+          operator: in
+          values: [ "vllm-benchmark" ]
 
     - name: upload-results
       image: ubuntu:24.04
