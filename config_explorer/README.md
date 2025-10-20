@@ -6,7 +6,7 @@ This library provides the tooling for LLM serving such as
 - Capacity planning:
   - for any LLM on Hugging Face, determine the per-GPU memory requirement for loading the model and serving requests, taking into account parallelism strategies
   - from workload characteristics in terms of max model length and concurrency, determine the KV cache memory requirement
-- 🚧 Configuration sweep and recommendation (WIP)
+- 🚧 Configuration sweep and recommendation
   - given SLO requirements in terms of TTFT, TPOT, and throughput, visualize the optimal `llm-d` configuration, including Inference Scheduler and vLLM, for achieving the SLO
   - For unseen configurations, predict latency and throughput from a inference performance estimator
 
@@ -19,7 +19,7 @@ This library provides the tooling for LLM serving such as
 Currently, the core functionality is in the form of a Python module within `llm-d-benchmark`. In the future, we might consider shipping as a separate package depending on community interest.
 
 1. (optional) Set up a Python virtual environment
-    ```
+    ```bash
     python -m venv .venv
     source .venv/bin/activate
     ```
@@ -28,25 +28,31 @@ Currently, the core functionality is in the form of a Python module within `llm-
 
     If you have cloned the `llm-d-benchmark` repository, run the following at the project root:
 
-    ```
+    ```bash
     pip install ./config_explorer
     ```
 
     Otherwise, to use `config_explorer` independently of `llm-d-benchmark`, run the following:
 
-    ```
+    ```bash
     python -m pip install "config_explorer @ git+https://github.com/llm-d/llm-d-benchmark.git/#subdirectory=config_explorer"
     ```
 
 3. Invoke functions in the package via
 
-    ```
-    from config_explorer.capacity_planner import *
+    ```python
+    import config_explorer.capacity_planner as cp
+    import config_explorer.explorer as ex
+    from config_explorer.plotting import (
+        plot_scenario,
+        plot_scenario_tradeoff,
+        plot_pareto_tradeoff
+    )
     ```
 
 ## Use
 
-There are two ways to interact with the Configuration Explorer: via an experimental frontend or via a library.
+To demonstrate usage of the configuration explorer library, an experimental frontend has been developed. A Jupyter notebook [analysis.ipynb](../analysis/analysis.ipynb) is also available, which can be used for interactive analysis of benchmarking data results.
 
 ### Frontend
 A Streamlit frontend is provided to showcase the capabilities of the Configuration Explorer rapidly. Since the core functions are in a module, users may feel free to build their own frontend, such as a CLI, by making use of those functions.
@@ -58,6 +64,10 @@ git clone https://github.com/llm-d/llm-d-benchmark.git
 pip install -r config_explorer/requirements-streamlit.txt
 .venv/bin/streamlit run config_explorer/Home.py
 ```
+
+### Analysis Notebook
+
+See [../analysis/README.md](../analysis/README.md) for notebook usage.
 
 ### Library
 Users may import the functions like the following to use in their code after `pip install git+https://github.com/llm-d/llm-d-benchmark.git`.
