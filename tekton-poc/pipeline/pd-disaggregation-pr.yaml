@@ -6,7 +6,7 @@ spec:
   taskRunTemplate:
     serviceAccountName: helm-installer
   taskRunSpecs:
-    - pipelineTaskName: run-experiment
+    - pipelineTaskName: treatment
       computeResources:
         requests:
           memory: "16Gi"
@@ -107,9 +107,9 @@ spec:
         default: ""
 
     tasks:
-      - name: run-experiment
+      - name: treatment
         taskRef:
-          name: experiment
+          name: treatment
         workspaces:
           - name: data
             workspace: data
@@ -151,7 +151,7 @@ spec:
 
           - name: targetNamespacePrefix
             value: $(params.targetNamespacePrefix)
-          - name: experimentBaseUrl
+          - name: stackBaseUrl
             value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/pd-disaggregation/
 
           - name: s3-keys

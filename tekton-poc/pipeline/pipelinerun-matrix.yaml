@@ -52,7 +52,7 @@ spec:
             value: $(params.targetNamespacePrefix)
           - name: model-id
             value: $(params.model-id)
-          - name: experimentBaseUrl
+          - name: stackBaseUrl
             value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
 
           - name: s3-keys

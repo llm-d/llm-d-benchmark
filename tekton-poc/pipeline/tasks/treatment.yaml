@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
-  name: experiment
+  name: treatment
 spec:
   description: >
     Runs an llm-d-benchmark experiment.
@@ -52,7 +52,7 @@ spec:
     - name: gpuType
     - name: gpuMemory
 
-    - name: experimentBaseUrl
+    - name: stackBaseUrl
       type: string
     - name: experimentName
       type: string
@@ -468,7 +468,7 @@ spec:
         - name: timeout
           value: 15m
         - name: valuesYamlUrl
-          value: "$(params.experimentBaseUrl)/gateway-values.yaml"
+          value: "$(params.stackBaseUrl)/gateway-values.yaml"
 
         - name: dry-run
           value: $(params.dry-run)
@@ -489,7 +489,7 @@ spec:
         - name: timeout
           value: 15m
         - name: valuesYamlUrl
-          value: "$(params.experimentBaseUrl)/gaie-values.yaml"
+          value: "$(params.stackBaseUrl)/gaie-values.yaml"
         - name: treatmentAnalysis
           value: "$(steps.analyze-gaie-factors.results.treatmentAnalysis)"
 
@@ -514,7 +514,7 @@ spec:
         - name: timeout
           value: 15m
         - name: valuesYamlUrl
-          value: "$(params.experimentBaseUrl)/ms-values.yaml"
+          value: "$(params.stackBaseUrl)/ms-values.yaml"
         - name: extraArgs
           value: >
             --set routing.inferencePool.name=$(params.experimentName)-gaie-NAMESPACE_HASH

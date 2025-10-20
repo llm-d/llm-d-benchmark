@@ -24,7 +24,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -45,7 +45,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -66,7 +66,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -87,7 +87,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -108,7 +108,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -134,7 +134,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -160,7 +160,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -186,7 +186,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -212,7 +212,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -238,7 +238,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -264,7 +264,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -290,7 +290,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -316,7 +316,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -342,7 +342,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -368,7 +368,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -394,7 +394,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -420,7 +420,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -446,7 +446,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -472,7 +472,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -498,7 +498,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -524,7 +524,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -550,7 +550,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -576,7 +576,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -602,7 +602,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -628,7 +628,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -654,7 +654,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -680,7 +680,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -706,7 +706,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -732,7 +732,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -758,7 +758,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -784,7 +784,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -810,7 +810,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -836,7 +836,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -862,7 +862,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -888,7 +888,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
@@ -914,7 +914,7 @@ spec:
         value: kalantar
       - name: model-id
         value: Qwen/Qwen3-0.6B
-      - name: experimentBaseUrl
+      - name: stackBaseUrl
         value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
       - name: harnessProfile
         value: shared_prefix_synthetic.yaml
