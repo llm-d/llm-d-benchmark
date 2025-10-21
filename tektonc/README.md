@@ -9,12 +9,18 @@ It is designed for the [`llm-d-benchmark`](https://llm-d.ai) repository, where m
 
 ## ✨ Purpose
 
-In many `llm-d` benchmarking workflows, you often have a base pipeline structure that needs to repeat the same sequence of tasks for several models,
-prefixes, or configuration sweeps.
+Tekton already provides a powerful foundation for modular and reproducible orchestration:
+- **Modularity** — reusable `Task` definitions and `Step`-level composition.  
+- **Precedence & dependencies** — control flow through `runAfter` relationships.  
+- **Parallelism** — automatic execution of independent tasks.  
+- **Failure tolerance** — built-in retries and error handling.  
+- **Cleanup & teardown** — handled elegantly using `finally` blocks.
 
-Manually writing these combinations leads to large, hard-to-maintain YAML.
-`tektonc` solves that by introducing a **single, minimal construct** for
-compile-time expansion:
+However, in complex `llm-d` benchmarking workflows, you often have a base pipeline structure that needs to repeat the same sequence of tasks for several **models**, **workload variants**, or **inference configurations**.
+
+Manually authoring these combinations quickly leads to large, repetitive, and error-prone YAML.
+
+`tektonc` solves this problem by introducing a **single, minimal construct** for compile-time expansion, enabling high-level loops and parameter sweeps while keeping everything 100% Tekton-compatible.
 
 ```yaml
 loopName: <id>
@@ -27,7 +33,7 @@ tasks:
     runAfter: ...
 ```
 
-Everything else remains **pure Tekton**.
+Everything else remains **pure Tekton** — `tektonc` only handles structured expansion.
 
 ---
 
@@ -116,7 +122,7 @@ spec:
     runAfter:
     - print-start
     params:
-    - { name: model, value: qwen-2.5-7b }
+    - { name: model, value: qwen-2-5-7b }
 ```
 
 ---
@@ -126,7 +132,7 @@ spec:
 - **Single construct** — only `loopName + foreach + tasks`
 - **Nested loops** — define inner/outer iterations naturally
 - **Native Tekton** — all fields (`retries`, `when`, `workspaces`, etc.) pass through unchanged
-- **Finally blocks** — support the same loop semantics
+- **Finally blocks** — support the same loop semantics for teardown/cleanup
 - **Deterministic expansion** — Cartesian product enumeration of domains
 - **Safe** — Jinja variables (`{{ }}`) resolved at compile-time; Tekton params (`$(params.xxx)`) left untouched
 
@@ -135,7 +141,7 @@ spec:
 ## 🧠 When to Use It
 
 Use `tektonc` when you need to:
-- generate a Tekton pipeline for benchmarking llm-d configurations,
+- generate a Tekton pipeline for benchmarking `llm-d` configurations,
 - run configuration sweeps or inference experiments,
 - keep YAML human-readable while supporting complex graph expansions.
 
@@ -179,4 +185,5 @@ tektonc -t TEMPLATE -f VALUES [-o OUTPUT] [--explain]
 ---
 
 **In short:**  
-`tektonc` makes Tekton authoring for llm-d-benchmarking scalable — without inventing a new DSL. It keeps templates clean, YAML valid, and expansion predictable.
+`tektonc` makes Tekton authoring for `llm-d-benchmark` scalable — without inventing a new DSL.  
+It keeps templates clean, YAML valid, and expansion predictable.
