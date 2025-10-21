@@ -17,9 +17,21 @@ from explorer import (
 
 # Plot trace colors
 COLORS = [
-    '#FF0000', '#FFAA00', '#DDDD00', '#00DD00', '#00FFFF',
-    '#0000FF', '#FF00FF', '#666666', '#000000', '#990000', 
-    '#777700', '#007700', '#009999', '#000099'
+    '#FF0000', '#FFAA00', '#DDDD00', '#00DD00', '#00FFFF', '#0000FF', 
+    '#FF00FF', '#666666', '#000000', '#990000', '#777700', '#007700',
+    '#009999', '#000099'
+]
+
+
+# Plot line styles
+LINE_STYLES = [
+    'solid', 'dashed', 'dashdot', 'dotted'
+]
+
+
+# Plot marker styles
+MARKERS = [
+    'o', 'v', 's', '*', 'd', 'X', 'p'
 ]
 
 
@@ -41,7 +53,7 @@ def _column_axis_label(col: str) -> str:
 def plot_scenario(
         runs_df: pd.DataFrame,
         scenario: dict[str, Any],
-        config_keys: list[str],
+        config_keys: list[str] | list[list[str]],
         col_x: str,
         col_y: str,
         col_seg_by: str = '',
@@ -55,14 +67,16 @@ def plot_scenario(
     Args:
         runs_df (pandas.DataFrame): Benchmark run data.
         scenario (dict[str, Any]): Scenario from benchmark data to plot.
-        config_keys (list[str]): a list of columns to be grouped together as a
-            set of configuration parameters to be compared within the plot.
-            Each unique grouping of these columns will be a trace on the plot.
+        config_keys (list[str] | list[list[str]]): a list of columns to be
+            grouped together as a set of configuration parameters to be
+            compared within the plot. Each unique grouping of these columns
+            will be a trace on the plot. A list of configuration keys may
+            also be provided (list of lists of column names).
         col_x (str): Column from benchmark data for X axis.
         col_y (str): Column from benchmark data for Y axis.
         col_seg_by (str): Group points with matching config_keys only
             if they come from rows where this column also matches. This is
-            effectively another configuartion key, but its value is not
+            effectively another configuration key, but its value is not
             displayed on the plot. This is helpful when repeated runs of the
             same experiment are viewed, and this is set to the source
             directory that is common only to points within a run.
@@ -75,17 +89,6 @@ def plot_scenario(
     
     # Filter runs to specific scenario
     runs_df = get_scenario_df(runs_df, scenario)
-    
-    # Get unique configurations of values for config_keys columns
-    if col_seg_by and col_seg_by not in config_keys:
-        # Make a copy of config_keys so we can modify it without side effects.
-        config_keys = config_keys[:]
-        config_keys.append(col_seg_by)
-
-    # Given config_keys, find the set of unique combinations of these columns
-    # within the dataset.
-    config_sets = list(set(runs_df.set_index(config_keys).index.dropna()))
-    config_sets.sort()
 
     if log_x and log_y:
         plot_func = plt.loglog
@@ -96,24 +99,40 @@ def plot_scenario(
     else:
         plot_func = plt.plot
 
-    for ii, conf in enumerate(config_sets):
-        color = COLORS[ii%len(COLORS)]
-        # Make a DataFrame for specific configuration
-        conf_df = runs_df
-        labels = []
-        for jj, val in enumerate(conf):
-            conf_df = conf_df[(conf_df[config_keys[jj]] == val)].sort_values(by=col_x)
-            if config_keys[jj] == col_seg_by:
-                continue
-            labels.append(f'{COLUMNS[config_keys[jj]].label}={val}')
-        label = ', '.join(labels)
+    # Ensure we always have a list of configuration keys
+    if isinstance(config_keys[0], str):
+        config_keys = [config_keys]
 
-        # Make plot
-        plot_func(conf_df[col_x], conf_df[col_y],
-                 label=label,
-                 marker='o', markersize=4,
-                 color=color
-                )
+    for kk, ck_ in enumerate(config_keys):
+        # Make a copy of config keys so we can modify it without side effects.
+        ck = ck_[:]
+        if col_seg_by and col_seg_by not in ck:
+            ck.append(col_seg_by)
+
+        # Given configuration keys, find the set of unique combinations of
+        # these columns within the dataset.
+        config_sets = list(set(runs_df.set_index(ck).index.dropna()))
+        config_sets.sort()
+
+        for ii, conf in enumerate(config_sets):
+            # Make a DataFrame for specific configuration
+            conf_df = runs_df
+            labels = []
+            for jj, val in enumerate(conf):
+                conf_df = conf_df[(conf_df[ck[jj]] == val)].sort_values(by=col_x)
+                if ck[jj] == col_seg_by:
+                    continue
+                labels.append(f'{COLUMNS[ck[jj]].label}={val}')
+            label = ', '.join(labels)
+
+            # Make plot
+            plot_func(
+                conf_df[col_x], conf_df[col_y],
+                label=label,
+                marker=MARKERS[kk%len(MARKERS)], markersize=4,
+                color=COLORS[ii%len(COLORS)],
+                linestyle=LINE_STYLES[kk%len(LINE_STYLES)]
+            )
 
     if log_x and log_y:
         plt.axis([None, None, None, None])
@@ -141,7 +160,7 @@ def plot_scenario(
 def plot_scenario_tradeoff(
         runs_df: pd.DataFrame,
         scenario: dict[str, Any],
-        config_keys: list[str],
+        config_keys: list[str] | list[list[str]],
         col_x: str,
         col_y: str,
         col_z: str,
@@ -154,21 +173,20 @@ def plot_scenario_tradeoff(
     An example would be viewing throughput vs latency as concurrency is
     adjusted.
 
-    config_keys is a list of columns to be grouped together as a set of
-    configuration parameters to be compared within the plot. Each unique
-    grouping of these columns will be a trace on the plot.
-
     Args:
         runs_df (pandas.DataFrame): Benchmark run data.
         scenario (dict[str, Any]): Scenario from benchmark data to plot.
-        config_keys (list[str]): Columns to group together as a configuration
-            key.
+        config_keys (list[str] | list[list[str]]): a list of columns to be
+            grouped together as a set of configuration parameters to be
+            compared within the plot. Each unique grouping of these columns
+            will be a trace on the plot. A list of configuration keys may
+            also be provided (list of lists of column names).
         col_x (str): Column from benchmark data to plot on X axis.
         col_y (str): Column from benchmark data to plot on Y axis.
         col_z (str): Column from benchmark data to label points with.
         col_seg_by (str): Group points with matching config_keys only
             if they come from rows where this column also matches. This is
-            effectively another configuartion key, but its value is not
+            effectively another configuration key, but its value is not
             displayed on the plot. This is helpful when repeated runs of the
             same experiment are viewed, and this is set to the source
             directory that is common only to points within a run.
@@ -181,17 +199,6 @@ def plot_scenario_tradeoff(
     
     # Filter runs to specific scenario
     runs_df = get_scenario_df(runs_df, scenario)
-    
-    # Get unique configurations of values for config_keys columns
-    if col_seg_by and col_seg_by not in config_keys:
-        # Make a copy of config_keys so we can modify it without side effects.
-        config_keys = config_keys[:]
-        config_keys.append(col_seg_by)
-
-    # Given config_keys, find the set of unique combinations of these columns
-    # within the dataset.
-    config_sets = list(set(runs_df.set_index(config_keys).index.dropna()))
-    config_sets.sort()
 
     if log_x and log_y:
         plot_func = plt.loglog
@@ -202,29 +209,45 @@ def plot_scenario_tradeoff(
     else:
         plot_func = plt.plot
 
-    for ii, conf in enumerate(config_sets):
-        color = COLORS[ii%len(COLORS)]
-        # Make a DataFrame for specific configuration
-        conf_df = runs_df
-        labels = []
-        for jj, val in enumerate(conf):
-            conf_df = conf_df[(conf_df[config_keys[jj]] == val)].sort_values(by=col_z)
-            if config_keys[jj] == col_seg_by:
-                continue
-            labels.append(f'{COLUMNS[config_keys[jj]].label}={val}')
-        label = ', '.join(labels)
+    # Ensure we always have a list of configuration keys
+    if isinstance(config_keys[0], str):
+        config_keys = [config_keys]
 
-        # Make plot
-        plot_func(conf_df[col_x], conf_df[col_y],
-                 label=label,
-                 marker='o', markersize=4,
-                 color=color
-                )
-        # Add Z labels to plot
-        for jj, val in enumerate(conf_df[col_z]):
-            plt.text(list(conf_df[col_x])[jj],
-                     list(conf_df[col_y])[jj]+runs_df[col_y].max()*0.02,
-                     str(val), ha='center', color=color)
+    for kk, ck_ in enumerate(config_keys):
+        # Make a copy of config keys so we can modify it without side effects.
+        ck = ck_[:]
+        if col_seg_by and col_seg_by not in ck:
+            ck.append(col_seg_by)
+
+        # Given configuration keys, find the set of unique combinations of
+        # these columns within the dataset.
+        config_sets = list(set(runs_df.set_index(ck).index.dropna()))
+        config_sets.sort()
+
+        for ii, conf in enumerate(config_sets):
+            # Make a DataFrame for specific configuration
+            conf_df = runs_df
+            labels = []
+            for jj, val in enumerate(conf):
+                conf_df = conf_df[(conf_df[ck[jj]] == val)].sort_values(by=col_z)
+                if ck[jj] == col_seg_by:
+                    continue
+                labels.append(f'{COLUMNS[ck[jj]].label}={val}')
+            label = ', '.join(labels)
+
+            # Make plot
+            plot_func(
+                conf_df[col_x], conf_df[col_y],
+                label=label,
+                marker=MARKERS[kk%len(MARKERS)], markersize=4,
+                color=COLORS[ii%len(COLORS)],
+                linestyle=LINE_STYLES[kk%len(LINE_STYLES)]
+            )
+            # Add Z labels to plot
+            for jj, val in enumerate(conf_df[col_z]):
+                plt.text(list(conf_df[col_x])[jj],
+                         list(conf_df[col_y])[jj]+runs_df[col_y].max()*0.02,
+                         str(val), ha='center', color=COLORS[ii%len(COLORS)])
 
     if log_x and log_y:
         plt.axis([None, None, None, None])
@@ -294,24 +317,27 @@ def plot_pareto_tradeoff(
     else:
         plot_func = plt.plot
 
-    plot_func(pareto_df[col_x], pareto_df[col_y],
-             marker='o', markersize=4,
-             color='#FF00FF',
-             linestyle='',
-             label='Pareto front'
-            )
-    plot_func(meet_slo_not_pareto_df[col_x], meet_slo_not_pareto_df[col_y],
-             marker='o', markersize=4,
-             color='#000000',
-             linestyle='',
-             label='Meets SLOs, non-optimal'
-            )
-    plot_func(fail_slo_df[col_x], fail_slo_df[col_y],
-             marker='o', markersize=4,
-             color='#CCCCCC',
-             linestyle='',
-             label='Fails SLOs'
-            )
+    plot_func(
+        pareto_df[col_x], pareto_df[col_y],
+        marker='o', markersize=4,
+        color='#FF00FF',
+        linestyle='',
+        label='Pareto front'
+    )
+    plot_func(
+        meet_slo_not_pareto_df[col_x], meet_slo_not_pareto_df[col_y],
+        marker='o', markersize=4,
+        color='#000000',
+        linestyle='',
+        label='Meets SLOs, non-optimal'
+    )
+    plot_func(
+        fail_slo_df[col_x], fail_slo_df[col_y],
+        marker='o', markersize=4,
+        color='#CCCCCC',
+        linestyle='',
+        label='Fails SLOs'
+    )
 
     if log_x and log_y:
         plt.axis([None, None, None, None])
