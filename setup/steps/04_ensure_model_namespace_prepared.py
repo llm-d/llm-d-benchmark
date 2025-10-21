@@ -9,15 +9,10 @@ from pykube.exceptions import PyKubeError
 
 import asyncio
 
-
+# Add project root to path for imports
 current_file = Path(__file__).resolve()
-
-# get the projects root directory by going up 1 parent directories
 project_root = current_file.parents[1]
-
-# add the project root to the system path
 sys.path.insert(0, str(project_root))
-
 
 from functions import (
     announce,

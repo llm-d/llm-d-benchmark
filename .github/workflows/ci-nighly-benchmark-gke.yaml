@@ -39,14 +39,14 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Set LD_LIBRARY_PATH
-        run: |
-          echo "LD_LIBRARY_PATH=$(python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent.parent / "lib")'):$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        shell: bash
-
       - name: Display OS used
         run: |
           cat /etc/*os-*
+        shell: bash
+
+      - name: Set LD_LIBRARY_PATH
+        run: |
+          echo "LD_LIBRARY_PATH=$(python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent.parent / "lib")'):$LD_LIBRARY_PATH" >> $GITHUB_ENV
         shell: bash
 
       - name: Set input and output directory environment variables
@@ -86,32 +86,35 @@ jobs:
       - name: Run install_deps.sh
         run: |
           sudo apt-get update
+          sudo apt install -y libpython3.11-stdlib python3.11-dev
           ./setup/install_deps.sh
-        shell: bash
-
-      - name: Install config explorer dependencies
-        run: pip install ./config_explorer
         shell: bash
 
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c gke_H100_fb -t standalone -d
+        run: |
+          ./setup/teardown.sh -c gke_H100_fb -t standalone -d
+        shell: bash
 
       - name: Standup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/standup.sh -c gke_H100_fb -t standalone
+        run: |
+          ./setup/standup.sh -c gke_H100_fb -t standalone
+        shell: bash
 
       - name: Run benchmark (standalone, inference-perf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: ./setup/run.sh -c gke_H100_fb -t standalone
+        shell: bash
 
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: ./setup/teardown.sh -c gke_H100_fb -t standalone -d
+        shell: bash
 
       - name: Archive benchmark results as GitHub artifact
         if: success() || failure()

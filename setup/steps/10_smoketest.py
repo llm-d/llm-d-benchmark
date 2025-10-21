@@ -5,20 +5,27 @@ import sys
 import tempfile
 import re
 from pathlib import Path
-from kubernetes import client as k8s_client, config as k8s_config
+import pykube
 import ipaddress
-# import openshift as oc
 
-# Add project root to path and load k8s config for imports
+# Add project root to path for imports
 current_file = Path(__file__).resolve()
 project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
-k8s_config.load_kube_config()
 
 # ---------------- Import local packages ----------------
 
 try:
-    from functions import announce, environment_variable_to_dict, get_accelerator_nr, is_standalone_deployment, get_accelerator_type, llmdbench_execute_cmd, model_attribute, get_model_name_from_pod, get_image
+    from functions import announce, \
+         environment_variable_to_dict, \
+         get_accelerator_nr, \
+         is_standalone_deployment, \
+         get_accelerator_type, \
+         llmdbench_execute_cmd, \
+         model_attribute, \
+         get_model_name_from_pod, \
+         get_image, \
+         kube_connect
 except ImportError as e:
     # Fallback for when dependencies are not available
     announce(f"ERROR: Could not import required modules: {e}")
@@ -28,7 +35,7 @@ except ImportError as e:
 
 # ---------------- Helpers ----------------
 
-def check_deployment(ev: dict):
+def check_deployment(api: pykube.HTTPClient, ev: dict):
     """
     Checking if current deployment was successful
     """
@@ -43,8 +50,7 @@ def check_deployment(ev: dict):
     if is_standalone_deployment(ev):
         pod_string = "standalone"
         try:
-            api_instance = k8s_client.CoreV1Api()
-            all_services = api_instance.list_namespaced_service(namespace=ev["vllm_common_namespace"], watch=False)
+            all_services = api.CoreV1Api().list_namespaced_service(namespace=ev["vllm_common_namespace"], watch=False)
             for service in all_services.items:
                 if pod_string in service.metadata.name:
                     service_name = service.metadata.name
@@ -59,8 +65,7 @@ def check_deployment(ev: dict):
         route_string=f"{ev.get('vllm_modelservice_release', '')}-inference-gateway-route"
         service_type = "gateway"
         try:
-            api_instance = k8s_client.CustomObjectsApi()
-            gateways = api_instance.list_namespaced_custom_object(
+            gateways = api.CustomObjectsApi().list_namespaced_custom_object(
                 group="gateway.networking.k8s.io",
                 version="v1",
                 namespace=ev["vllm_common_namespace"],
@@ -74,7 +79,7 @@ def check_deployment(ev: dict):
                             service_ip = address.get("value")
                             break
                     break
-        except k8s_client.ApiException as e:
+        except api.ApiException as e:
             announce(f"ERROR: unable to finding gateway: {e}")
 
     if dry_run:
@@ -100,18 +105,17 @@ def check_deployment(ev: dict):
     if dry_run:
         pod_ip_list = "127.0.0.4"
     try:
-        api_instance = k8s_client.CoreV1Api()
         pod_ip_list = []
         if is_standalone_deployment(ev):
-            pods = api_instance.list_namespaced_pod(namespace=ev["vllm_common_namespace"])
+            pods = api.CoreV1Api().list_namespaced_pod(namespace=ev["vllm_common_namespace"])
             for pod in pods.items:
                 if pod_string in pod.metadata.name:
                     pod_ip_list.append(pod.status.pod_ip)
         else:
-            pods = api_instance.list_namespaced_pod(namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={current_model_ID_label},llm-d.ai/role={pod_string}")
+            pods = api.CoreV1Api().list_namespaced_pod(namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={current_model_ID_label},llm-d.ai/role={pod_string}")
             for pod in pods.items:
                 pod_ip_list.append(pod.status.pod_ip)
-    except k8s_client.ApiException as e:
+    except api.ApiException as e:
         announce(f"ERROR: Unable to find pods in namespace {ev['vllm_common_namespace']}: {e}")
 
     if not pod_ip_list:
@@ -147,9 +151,8 @@ def check_deployment(ev: dict):
         route_url = ""
     else:
         if ev['control_deploy_is_openshift'] == "1":
-            api_instance = k8s_client.CustomObjectsApi()
             try:
-                route = api_instance.get_namespaced_custom_object(
+                route = api.CustomObjectsApi().get_namespaced_custom_object(
                 group="route.openshift.io",
                 version="v1",
                 name=route_string,
@@ -157,7 +160,7 @@ def check_deployment(ev: dict):
                 plural="routes"
             )
                 route_url = route["spec"]["host"]
-            except k8s_client.ApiException as e:
+            except api.ApiException as e:
                 announce(f"ERROR: unable to fetch route: {e}")
 
     if ev['control_deploy_is_openshift'] == "1" and route_url:
@@ -184,8 +187,10 @@ def main():
     if ev["control_dry_run"]:
         announce("DRY RUN enabled. No actual changes will be made.")
 
+    api = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx', "kube")
+
     # Execute the main logic
-    return check_deployment(ev)
+    return check_deployment(api, ev)
 
 
 if __name__ == "__main__":

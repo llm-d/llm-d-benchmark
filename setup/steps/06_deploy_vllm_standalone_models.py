@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-# Add project root to Python path
+# Add project root to path for imports
 current_file = Path(__file__).resolve()
 project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
