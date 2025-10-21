@@ -1,4 +1,4 @@
-name: CI - Nightly Run Benchmark
+name: CI - Nightly Run Benchmark on OCP
 
 on:
   workflow_dispatch:
