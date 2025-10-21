@@ -225,7 +225,7 @@ COLUMNS = {
     ),
     'Prefix_Cache_Scorer_Mode': ColumnProperties(
         dtype='bool',
-        label='Mode',
+        label='Prefix Mode',
     ),
     # Workload
     'Workload_Generator': ColumnProperties(
@@ -868,7 +868,7 @@ def add_benchmark_report_to_df(
     prefix_cache_scorer_block_size = None
     prefix_cache_scorer_lur_capacity_per_server = None
     prefix_cache_scorer_max_blocks_to_match = None
-    prefix_cache_scorer_mode = None
+    prefix_cache_scorer_mode = ''
     if report.scenario.platform.metadata and isinstance(report.scenario.platform.metadata, dict):
         for plugin in get_nested(report.scenario.platform.metadata, ['inferenceScheduler', 'plugins'], []):
             if plugin.get('type') == 'prefix-cache-scorer':
@@ -878,7 +878,7 @@ def add_benchmark_report_to_df(
                 prefix_cache_scorer_lur_capacity_per_server = plugin['parameters'].get('lruCapacityPerServer', 31250)
                 prefix_cache_scorer_max_blocks_to_match = plugin['parameters'].get('maxPrefixBlocksToMatch', 256)
                 # If mode is 'cache_tracking', then precise prefix scoring is used
-                prefix_cache_scorer_mode = plugin['parameters'].get('mode', '')
+                prefix_cache_scorer_mode = plugin['parameters'].get('mode', 'default')
 
     # Set default weights to zero (disabled)
     # TODO: capture other settings for prefix cache scorer
