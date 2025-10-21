@@ -1,0 +1,52 @@
+# pipeline.yaml.j2
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: {{ pipeline_name }}
+spec:
+  params:
+    - name: message
+      type: string
+
+  tasks:
+    # Plain Tekton task — unchanged by the expander
+    - name: print-start
+      taskRef: { name: echo }
+      params:
+        - name: text
+          value: "Starting pipeline {{ pipeline_name }}"
+
+    # Loop: one task per modelRef
+    - loopName: per-model
+      foreach:
+        domain:
+          modelRef: {{ models|tojson }}
+      tasks:
+        - name: "process-{{ modelRef|dns }}"
+          taskRef: { name: process-model }
+          runAfter: [ print-start ]
+          params:
+            - { name: model, value: "{{ modelRef }}" }
+            - { name: message, value: "$(params.message)" }
+
+    # Aggregate after all per-model tasks finish.
+    # Use an inline list to avoid indentation issues with Jinja.
+    - name: aggregate-results
+      taskRef: { name: aggregate }
+      runAfter: [ {% for m in models %}process-{{ m|dns }}{% if not loop.last %}, {% endif %}{% endfor %} ]
+      params:
+        - name: note
+          value: "All models processed."
+
+  finally:
+    # Loop in 'finally': one cleanup per model, after aggregate-results
+    - loopName: cleanup
+      foreach:
+        domain:
+          modelRef: {{ models|tojson }}
+      tasks:
+        - name: "cleanup-{{ modelRef|dns }}"
+          taskRef: { name: cleanup-model }
+          runAfter: [ aggregate-results ]
+          params:
+            - { name: model, value: "{{ modelRef }}" }
