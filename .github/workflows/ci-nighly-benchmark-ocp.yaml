@@ -75,7 +75,10 @@ jobs:
         shell: bash
 
       - name: Install kubectl-view-allocations
-        run: curl https://raw.githubusercontent.com/davidB/kubectl-view-allocations/master/scripts/getLatest.sh | bash
+        run: |
+          cd /
+          curl https://raw.githubusercontent.com/davidB/kubectl-view-allocations/master/scripts/getLatest.sh | sudo bash
+          kubectl-view-allocations -h
         shell: bash
 
       - name: Cleanup target cloud (modelservice)
@@ -95,7 +98,7 @@ jobs:
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 1.00" | bc) -lt 0 ]]; then sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 10.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
           ./setup/standup.sh -c ocp_fb -t standalone
         shell: bash
 
@@ -138,7 +141,7 @@ jobs:
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 2.00" | bc) -lt 0 ]]; then sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
           ./setup/e2e.sh -c ocp_fb -t modelservice --deep
         shell: bash
 
@@ -146,7 +149,7 @@ jobs:
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 2.00" | bc) -lt 0 ]]; then sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
           ./setup/e2e.sh -c ocp_fb -t modelservice --deep -l fmperf -w sanity_short-input.yaml
         shell: bash
 
@@ -154,7 +157,7 @@ jobs:
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 2.00" | bc) -lt 0 ]]; then sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
           ./setup/e2e.sh -c ocp_fb -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
         shell: bash
 
@@ -162,7 +165,7 @@ jobs:
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 2.00" | bc) -lt 0 ]]; then sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
           ./setup/e2e.sh -c ocp_fb -t modelservice --deep -l vllm-benchmark
         shell: bash
 
