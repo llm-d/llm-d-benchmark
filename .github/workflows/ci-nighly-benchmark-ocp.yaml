@@ -77,8 +77,8 @@ jobs:
       - name: Install kubectl-view-allocations
         run: |
           curl https://raw.githubusercontent.com/davidB/kubectl-view-allocations/master/scripts/getLatest.sh | bash
-          find ~ -name kubectl-view-allocations
-          exit 1
+          sudo find ~ -name kubectl-view-allocations -exec mv {} /usr/local/bin \;
+          kubectl-view-allocations -h
         shell: bash
 
       - name: Cleanup target cloud (modelservice)
