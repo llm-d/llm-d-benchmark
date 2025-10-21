@@ -76,8 +76,8 @@ jobs:
 
       - name: Install kubectl-view-allocations
         run: |
-          cd /
           curl https://raw.githubusercontent.com/davidB/kubectl-view-allocations/master/scripts/getLatest.sh | bash
+          find ~ -name kubectl-view-allocations
           exit 1
         shell: bash
 
