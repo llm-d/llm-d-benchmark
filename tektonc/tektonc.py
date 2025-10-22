@@ -26,9 +26,11 @@ import os
 import sys
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping
 
-import yaml
+import json, yaml
 from jinja2 import Environment, StrictUndefined, TemplateError, Undefined
 from jinja2.runtime import Undefined as RTUndefined
+
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Jinja helpers
@@ -80,16 +82,17 @@ def _enum(seq):
     return [{"i": i, "item": v} for i, v in enumerate(seq)]
 
 def build_env_outer() -> Environment:
-    env = Environment(undefined=PassthroughUndefined, autoescape=False, trim_blocks=True, lstrip_blocks=True)
-    env.filters.update({"dns": _dns_outer, "slug": _slug_outer})
+    env = Environment(undefined=PassthroughUndefined, autoescape=False, trim_blocks=True, lstrip_blocks=False)
+    env.filters.update({"dns": _dns_outer, "slug": _slug_outer, "tojson": json.dumps})
     env.globals.update({"enumerate_list": _enum})
     return env
 
 def build_env_inner() -> Environment:
-    env = Environment(undefined=StrictUndefined, autoescape=False, trim_blocks=True, lstrip_blocks=True)
-    env.filters.update({"dns": _dns_inner, "slug": _slug_inner})
+    env = Environment(undefined=StrictUndefined, autoescape=False, trim_blocks=True, lstrip_blocks=False)
+    env.filters.update({"dns": _dns_inner, "slug": _slug_inner, "tojson": json.dumps})
     env.globals.update({"enumerate_list": _enum})
     return env
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Expander (no validation yet)

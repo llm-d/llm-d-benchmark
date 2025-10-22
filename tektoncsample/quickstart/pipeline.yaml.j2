@@ -1,4 +1,6 @@
-# pipeline.yaml.j2
+# =============================================================================
+# pipeline.yaml.j2 — Minimal example for tektonc (no tojson)
+# =============================================================================
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
@@ -9,28 +11,29 @@ spec:
       type: string
 
   tasks:
-    # Plain Tekton task — unchanged by the expander
+    # 1) Plain Tekton task — unchanged by the expander
     - name: print-start
       taskRef: { name: echo }
       params:
         - name: text
           value: "Starting pipeline {{ pipeline_name }}"
 
-    # Loop: one task per modelRef
+    # 2) Loop: one task per modelRef (compile-time fan-out)
     - loopName: per-model
       foreach:
         domain:
-          modelRef: {{ models|tojson }}
+          # Render the list directly; YAML accepts it (e.g., ['llama-7b','qwen-2.5-7b'])
+          modelRef: {{ models }}
       tasks:
         - name: "process-{{ modelRef|dns }}"
           taskRef: { name: process-model }
           runAfter: [ print-start ]
           params:
             - { name: model, value: "{{ modelRef }}" }
+            # Tekton param — resolved at runtime by Tekton, not by Jinja
             - { name: message, value: "$(params.message)" }
 
-    # Aggregate after all per-model tasks finish.
-    # Use an inline list to avoid indentation issues with Jinja.
+    # 3) Aggregate after all per-model tasks finish (inline list to avoid indent issues)
     - name: aggregate-results
       taskRef: { name: aggregate }
       runAfter: [ {% for m in models %}process-{{ m|dns }}{% if not loop.last %}, {% endif %}{% endfor %} ]
@@ -39,11 +42,11 @@ spec:
           value: "All models processed."
 
   finally:
-    # Loop in 'finally': one cleanup per model, after aggregate-results
+    # 4) Finally loop: one cleanup per model, after aggregate-results
     - loopName: cleanup
       foreach:
         domain:
-          modelRef: {{ models|tojson }}
+          modelRef: {{ models }}
       tasks:
         - name: "cleanup-{{ modelRef|dns }}"
           taskRef: { name: cleanup-model }
