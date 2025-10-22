@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tektonc — minimal render+expand for Tekton templates with loop nodes (Option A).
+tektonc — minimal render+expand for Tekton templates with loop nodes.
 
 Authoring grammar (one construct only):
   Loop node := { loopName: str, foreach: { domain: { var: [..], ... } }, tasks: [ <task or loop>, ... ] }
