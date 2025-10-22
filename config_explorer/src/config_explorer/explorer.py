@@ -134,6 +134,11 @@ COLUMNS = {
         dtype='str',
         label='Accelerator',
     ),
+    'Num_GPUs': ColumnProperties(
+        dtype='int',
+        label='Number of GPUs',
+        pref=Pref.LOW,
+    ),
     'DP': ColumnProperties(
         dtype='int',
         label='DP',
