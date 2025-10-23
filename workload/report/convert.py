@@ -413,8 +413,10 @@ def import_guidellm(results_file: str) -> BenchmarkReport:
     """
     check_file(results_file)
 
-    # Everything falls under ['benchmarks'][0], so just grab that part
-    results = import_yaml(results_file)['benchmarks'][0]
+    data = import_yaml(results_file)
+
+    # TODO: Read each benchmark in file
+    results = data["benchmarks"][0]
 
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
@@ -422,10 +424,10 @@ def import_guidellm(results_file: str) -> BenchmarkReport:
     # Append to that dict the data from GuideLLM
     update_dict(br_dict, {
         "scenario": {
-            "model": {"name": results['worker']['backend_model']},
+            "model": {"name": data["args"].get("model", "unknown")},
             "load": {
                 "name": WorkloadGenerator.GUIDELLM,
-                "args": results['args'],
+                "args": data['args'],
             },
         },
         "metrics": {
