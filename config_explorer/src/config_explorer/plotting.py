@@ -2,6 +2,7 @@
 Plotting functions for configuration explorer.
 """
 
+from math import log10
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -15,9 +16,12 @@ from explorer import (
     get_pareto_front_df
 )
 
+# Figure number
+fignum = 0
+
 # Plot trace colors
 COLORS = [
-    '#FF0000', '#FFAA00', '#DDDD00', '#00DD00', '#00FFFF', '#0000FF', 
+    '#FF0000', '#FFAA00', '#DDDD00', '#00DD00', '#00FFFF', '#0000FF',
     '#FF00FF', '#666666', '#000000', '#990000', '#777700', '#007700',
     '#009999', '#000099'
 ]
@@ -58,7 +62,7 @@ def plot_scenario(
         col_y: str,
         col_seg_by: str = '',
         log_x: bool = False,
-        log_y: bool = False) -> None:
+        log_y: bool = False) -> plt.Figure:
     """Plot the metrics of a scenario from a column (Y) versus another
     column (X).
 
@@ -82,11 +86,14 @@ def plot_scenario(
             directory that is common only to points within a run.
         log_x (bool): Plot X axis on log scale.
         log_y (bool): Plot Y axis on log scale.
+
+    Returns:
+        matplotlib.pyplot.Figure: Plot figure.
     """
     for col in scenario:
         if col not in runs_df.columns:
             raise KeyError(f'Invalid column: {col}')
-    
+
     # Filter runs to specific scenario
     runs_df = get_scenario_df(runs_df, scenario)
 
@@ -99,9 +106,13 @@ def plot_scenario(
     else:
         plot_func = plt.plot
 
-    # Ensure we always have a list of configuration keys
+    # Ensure we always have a list of configuration keys (list of lists)
     if isinstance(config_keys[0], str):
         config_keys = [config_keys]
+
+    global fignum
+    fignum += 1
+    fig = plt.figure(fignum)
 
     for kk, ck_ in enumerate(config_keys):
         # Make a copy of config keys so we can modify it without side effects.
@@ -119,7 +130,8 @@ def plot_scenario(
             conf_df = runs_df
             labels = []
             for jj, val in enumerate(conf):
-                conf_df = conf_df[(conf_df[ck[jj]] == val)].sort_values(by=col_x)
+                conf_df = conf_df[(conf_df[ck[jj]] == val)
+                                  ].sort_values(by=col_x)
                 if ck[jj] == col_seg_by:
                     continue
                 labels.append(f'{COLUMNS[ck[jj]].label}={val}')
@@ -129,9 +141,9 @@ def plot_scenario(
             plot_func(
                 conf_df[col_x], conf_df[col_y],
                 label=label,
-                marker=MARKERS[kk%len(MARKERS)], markersize=4,
-                color=COLORS[ii%len(COLORS)],
-                linestyle=LINE_STYLES[kk%len(LINE_STYLES)]
+                marker=MARKERS[kk % len(MARKERS)], markersize=4,
+                color=COLORS[ii % len(COLORS)],
+                linestyle=LINE_STYLES[kk % len(LINE_STYLES)]
             )
 
     if log_x and log_y:
@@ -154,7 +166,7 @@ def plot_scenario(
     plt.ylabel(_column_axis_label(col_y), fontsize='16')
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
     plt.grid(True, linewidth=1, ls='--', color='gray')
-    plt.show()
+    return fig
 
 
 def plot_scenario_tradeoff(
@@ -166,7 +178,7 @@ def plot_scenario_tradeoff(
         col_z: str,
         col_seg_by: str = '',
         log_x: bool = False,
-        log_y: bool = False) -> None:
+        log_y: bool = False) -> plt.Figure:
     """Make a plot displaying the tradeoff between two columns (X and Y)
     while a third column (Z) is changed.
 
@@ -192,11 +204,14 @@ def plot_scenario_tradeoff(
             directory that is common only to points within a run.
         log_x (bool): Plot X axis on log scale.
         log_y (bool): Plot Y axis on log scale.
+
+    Returns:
+        matplotlib.pyplot.Figure: Plot figure.
     """
     for col in scenario:
         if col not in runs_df.columns:
             raise KeyError(f'Invalid column: {col}')
-    
+
     # Filter runs to specific scenario
     runs_df = get_scenario_df(runs_df, scenario)
 
@@ -209,9 +224,13 @@ def plot_scenario_tradeoff(
     else:
         plot_func = plt.plot
 
-    # Ensure we always have a list of configuration keys
+    # Ensure we always have a list of configuration keys (list of lists)
     if isinstance(config_keys[0], str):
         config_keys = [config_keys]
+
+    global fignum
+    fignum += 1
+    fig = plt.figure(fignum)
 
     for kk, ck_ in enumerate(config_keys):
         # Make a copy of config keys so we can modify it without side effects.
@@ -229,7 +248,8 @@ def plot_scenario_tradeoff(
             conf_df = runs_df
             labels = []
             for jj, val in enumerate(conf):
-                conf_df = conf_df[(conf_df[ck[jj]] == val)].sort_values(by=col_z)
+                conf_df = conf_df[(conf_df[ck[jj]] == val)
+                                  ].sort_values(by=col_z)
                 if ck[jj] == col_seg_by:
                     continue
                 labels.append(f'{COLUMNS[ck[jj]].label}={val}')
@@ -239,15 +259,20 @@ def plot_scenario_tradeoff(
             plot_func(
                 conf_df[col_x], conf_df[col_y],
                 label=label,
-                marker=MARKERS[kk%len(MARKERS)], markersize=4,
-                color=COLORS[ii%len(COLORS)],
-                linestyle=LINE_STYLES[kk%len(LINE_STYLES)]
+                marker=MARKERS[kk % len(MARKERS)], markersize=4,
+                color=COLORS[ii % len(COLORS)],
+                linestyle=LINE_STYLES[kk % len(LINE_STYLES)]
             )
             # Add Z labels to plot
             for jj, val in enumerate(conf_df[col_z]):
+                if log_y:
+                    y_offset = list(conf_df[col_y])[jj] * \
+                        log10(runs_df[col_y].max() - runs_df[col_y].min()) * 0.01
+                else:
+                    y_offset = runs_df[col_y].max() * 0.02
                 plt.text(list(conf_df[col_x])[jj],
-                         list(conf_df[col_y])[jj]+runs_df[col_y].max()*0.02,
-                         str(val), ha='center', color=COLORS[ii%len(COLORS)])
+                         list(conf_df[col_y])[jj] + y_offset,
+                         str(val), ha='center', color=COLORS[ii % len(COLORS)])
 
     if log_x and log_y:
         plt.axis([None, None, None, None])
@@ -270,7 +295,7 @@ def plot_scenario_tradeoff(
     plt.ylabel(_column_axis_label(col_y), fontsize='16')
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
     plt.grid(True, linewidth=1, ls='--', color='gray')
-    plt.show()
+    return fig
 
 
 def plot_pareto_tradeoff(
@@ -280,7 +305,7 @@ def plot_pareto_tradeoff(
         col_y: str,
         slos: list[SLO] = [],
         log_x: bool = False,
-        log_y: bool = False) -> None:
+        log_y: bool = False) -> plt.Figure:
     """Make a plot displaying the tradeoff between two columns (X and Y),
     highlighting the Pareto front and graying out points failng SLOs.
 
@@ -292,6 +317,9 @@ def plot_pareto_tradeoff(
         slos (list[SLO]): Service level objectives.
         log_x (bool): Plot X axis on log scale.
         log_y (bool): Plot Y axis on log scale.
+
+    Returns:
+        matplotlib.pyplot.Figure: Plot figure.
     """
     for col in scenario:
         if col not in runs_df.columns:
@@ -304,9 +332,11 @@ def plot_pareto_tradeoff(
     # From rows matching SLOs, get rows on Pareto front
     pareto_df = get_pareto_front_df(meet_slo_df, col_x, col_y)
     # Rows that fail SLOs
-    fail_slo_df = scenario_df[~scenario_df.index.isin(meet_slo_df.index.tolist())]
+    fail_slo_df = scenario_df[~scenario_df.index.isin(
+        meet_slo_df.index.tolist())]
     # Rows that meet SLOs, but are not on the Pareto front
-    meet_slo_not_pareto_df = meet_slo_df[~meet_slo_df.index.isin(pareto_df.index.tolist())]
+    meet_slo_not_pareto_df = meet_slo_df[~meet_slo_df.index.isin(
+        pareto_df.index.tolist())]
 
     if log_x and log_y:
         plot_func = plt.loglog
@@ -316,6 +346,10 @@ def plot_pareto_tradeoff(
         plot_func = plt.semilogy
     else:
         plot_func = plt.plot
+
+    global fignum
+    fignum += 1
+    fig = plt.figure(fignum)
 
     plot_func(
         pareto_df[col_x], pareto_df[col_y],
@@ -347,7 +381,7 @@ def plot_pareto_tradeoff(
         plt.axis([0, None, None, None])
     else:
         plt.axis([0, None, 0, None])
-    
+
     title = ''
     for key, value in scenario.items():
         if len(title.rsplit('\n')[-1]) > 30:
@@ -359,4 +393,4 @@ def plot_pareto_tradeoff(
     plt.ylabel(_column_axis_label(col_y), fontsize='16')
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
     plt.grid(True, linewidth=1, ls='--', color='gray')
-    plt.show()
+    return fig

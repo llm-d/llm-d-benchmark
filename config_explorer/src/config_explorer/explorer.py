@@ -3,10 +3,9 @@ This file contains function for configuration exploration using benchmarking
 data from llm-d-benchmark.
 
 The entrypoint is make_benchmark_runs_df() to initialize an empty Pandas
-DataFrame which will store benchmark results, and 
-add_benchmark_report_to_df() to populate the DataFrame with data from a
-benchmark report file. The columns in the DataFrame are described in the
-COLUMNS dictionary.
+DataFrame which will store benchmark results, and add_benchmark_report_to_df()
+to populate the DataFrame with data from a benchmark report file. The columns
+in the DataFrame are described in the COLUMNS dictionary.
 
 To assist with loading benchmark report files, get_benchmark_report_files() can
 be used to find all benchmark report files within a search directory.
@@ -706,7 +705,9 @@ class SLO:
         if COLUMNS[self.col].dtype != 'float':
             raise TypeError(f'Column must have float datatype: {self.col}')
         if COLUMNS[self.col].pref == Pref.NEUTRAL:
-            raise Exception(f'Column must have a preferred direction: {self.col}')
+            raise Exception(
+                f'Column must have a preferred direction: {
+                    self.col}')
 
 
 def check_dir(dir: str) -> None:
@@ -729,7 +730,8 @@ def check_file(file: str) -> None:
         raise Exception(f'Invalid file: {file}')
 
 
-def get_nested(ndict: dict[Any, Any], path: list[Any], default: Any = None) -> Any:
+def get_nested(ndict: dict[Any, Any], path: list[Any],
+               default: Any = None) -> Any:
     """Get value from path through nested dicts.
 
     Args:
@@ -773,7 +775,7 @@ def get_benchmark_report_files(source_dir: str) -> list[str]:
 
     Args:
         source_dir (str): Directory to recursively search for results files.
-    
+
     Returns:
         list: List of paths to benchmark report files.
     """
@@ -797,7 +799,8 @@ def make_benchmark_runs_df() -> pd.DataFrame:
     return pd.DataFrame(schema)
 
 
-def _get_replicas_and_parallelism(report: schema.BenchmarkReport) -> dict[str, int | None]:
+def _get_replicas_and_parallelism(
+        report: schema.BenchmarkReport) -> dict[str, int | None]:
     """Get the number of replicas and parallelisms.
 
     Args:
@@ -859,8 +862,8 @@ def _get_replicas_and_parallelism(report: schema.BenchmarkReport) -> dict[str, i
 
 
 def add_benchmark_report_to_df(
-    runs_df: pd.DataFrame,
-    br_file: str) -> None:
+        runs_df: pd.DataFrame,
+        br_file: str) -> None:
     """Load a results file and add it to the DataFrame of benchmark runs.
 
     Args:
@@ -874,16 +877,24 @@ def add_benchmark_report_to_df(
     prefix_cache_scorer_lur_capacity_per_server = None
     prefix_cache_scorer_max_blocks_to_match = None
     prefix_cache_scorer_mode = ''
-    if report.scenario.platform.metadata and isinstance(report.scenario.platform.metadata, dict):
-        for plugin in get_nested(report.scenario.platform.metadata, ['inferenceScheduler', 'plugins'], []):
+    if report.scenario.platform.metadata and isinstance(
+            report.scenario.platform.metadata, dict):
+        for plugin in get_nested(
+            report.scenario.platform.metadata, [
+                'inferenceScheduler', 'plugins'], []):
             if plugin.get('type') == 'prefix-cache-scorer':
                 if 'parameters' not in plugin:
                     continue
-                prefix_cache_scorer_block_size = plugin['parameters'].get('blockSize', 16)
-                prefix_cache_scorer_lur_capacity_per_server = plugin['parameters'].get('lruCapacityPerServer', 31250)
-                prefix_cache_scorer_max_blocks_to_match = plugin['parameters'].get('maxPrefixBlocksToMatch', 256)
-                # If mode is 'cache_tracking', then precise prefix scoring is used
-                prefix_cache_scorer_mode = plugin['parameters'].get('mode', 'default')
+                prefix_cache_scorer_block_size = plugin['parameters'].get(
+                    'blockSize', 16)
+                prefix_cache_scorer_lur_capacity_per_server = plugin['parameters'].get(
+                    'lruCapacityPerServer', 31250)
+                prefix_cache_scorer_max_blocks_to_match = plugin['parameters'].get(
+                    'maxPrefixBlocksToMatch', 256)
+                # If mode is 'cache_tracking', then precise prefix scoring is
+                # used
+                prefix_cache_scorer_mode = plugin['parameters'].get(
+                    'mode', 'default')
 
     # Set default weights to zero (disabled)
     # TODO: capture other settings for prefix cache scorer
@@ -895,8 +906,13 @@ def add_benchmark_report_to_df(
     # In addition we assume the plugins have not been renamed, and the pluginRef
     # is the same as the plugin type.
     # https://gateway-api-inference-extension.sigs.k8s.io/guides/epp-configuration/config-text/
-    if report.scenario.platform.metadata and isinstance(report.scenario.platform.metadata, dict):
-        plugins = get_nested(report.scenario.platform.metadata, ['inferenceScheduler', 'schedulingProfiles'], [{}])[0].get('plugins', [])
+    if report.scenario.platform.metadata and isinstance(
+            report.scenario.platform.metadata, dict):
+        plugins = get_nested(
+            report.scenario.platform.metadata, [
+                'inferenceScheduler', 'schedulingProfiles'], [
+                {}])[0].get(
+            'plugins', [])
         for plugin in plugins:
             if plugin.get('pluginRef') == 'prefix-cache-scorer':
                 prefix_cache_scorer_weight = plugin.get('weight', 1)
@@ -911,7 +927,9 @@ def add_benchmark_report_to_df(
     if report.scenario.load.name == schema.WorkloadGenerator.VLLM_BENCHMARK:
         concurrency = report.scenario.load.args.get('max_concurrency')
     elif report.scenario.load.name == schema.WorkloadGenerator.GUIDELLM:
-        concurrency = get_nested(report.scenario.load.args, ['profile', 'measured_concurrencies'])[0]
+        concurrency = get_nested(
+            report.scenario.load.args, [
+                'profile', 'measured_concurrencies'])[0]
     else:
         concurrency = None
 
@@ -920,7 +938,9 @@ def add_benchmark_report_to_df(
         # Workload generator stage
         stage = report.scenario.load.metadata.get('stage')
         if stage is not None:
-            stage_list = get_nested(report.scenario.load.args, ['load', 'stages'])
+            stage_list = get_nested(
+                report.scenario.load.args, [
+                    'load', 'stages'])
             max_qps = stage_list[stage].get('rate')
 
     rp = _get_replicas_and_parallelism(report)
@@ -929,15 +949,15 @@ def add_benchmark_report_to_df(
         # We assume that EP = TP, where EP is used on expert layers, so no
         # need to add EP into the GPU count.
         if rp['p_replicas']:
-            num_gpus += rp['p_tp']*rp['p_dp']*rp['p_pp']*rp['p_replicas']
+            num_gpus += rp['p_tp'] * rp['p_dp'] * rp['p_pp'] * rp['p_replicas']
         if rp['d_replicas']:
-            num_gpus += rp['d_tp']*rp['d_dp']*rp['d_pp']*rp['d_replicas']
+            num_gpus += rp['d_tp'] * rp['d_dp'] * rp['d_pp'] * rp['d_replicas']
     else:
-        num_gpus = rp['tp']*rp['replicas']
+        num_gpus = rp['tp'] * rp['replicas']
 
-    thpt_per_gpu = report.metrics.throughput.output_tokens_per_sec/num_gpus
+    thpt_per_gpu = report.metrics.throughput.output_tokens_per_sec / num_gpus
     if concurrency:
-        thpt_per_user = report.metrics.throughput.output_tokens_per_sec/concurrency
+        thpt_per_user = report.metrics.throughput.output_tokens_per_sec / concurrency
     else:
         thpt_per_user = None
 
@@ -989,8 +1009,8 @@ def add_benchmark_report_to_df(
         'Workload_Generator': report.scenario.load.name,
         'ISL': int(round(report.metrics.requests.input_length.mean)),
         'OSL': int(round(report.metrics.requests.output_length.mean)),
-        'ISL_500': floor(report.metrics.requests.input_length.mean/500) * 500 + 250,
-        'OSL_500': floor(report.metrics.requests.output_length.mean/500) * 500 + 250,
+        'ISL_500': floor(report.metrics.requests.input_length.mean / 500) * 500 + 250,
+        'OSL_500': floor(report.metrics.requests.output_length.mean / 500) * 500 + 250,
         'Target_OSL': int(get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'output_len'], -1)),
         'Max_Concurrency': concurrency,
         'Max_QPS': max_qps,
@@ -1076,7 +1096,8 @@ def add_benchmark_report_to_df(
     }
 
 
-def get_scenarios(runs_df: pd.DataFrame, scenario_columns: list[str]) -> list[dict[str, Any]]:
+def get_scenarios(runs_df: pd.DataFrame,
+                  scenario_columns: list[str]) -> list[dict[str, Any]]:
     """Get a list of available scenarios from runs DataFrame.
 
     Args:
@@ -1090,20 +1111,21 @@ def get_scenarios(runs_df: pd.DataFrame, scenario_columns: list[str]) -> list[di
     for col in scenario_columns:
         if col not in runs_df.columns:
             raise KeyError(f'Invalid column: {col}')
-    scenario_tuples = list(set(runs_df.set_index(scenario_columns).index.dropna()))
+    scenario_tuples = list(
+        set(runs_df.set_index(scenario_columns).index.dropna()))
     scenarios = []
     for s_tuple in scenario_tuples:
         s_dict = {}
         for ii, col in enumerate(scenario_columns):
             s_dict[col] = s_tuple[ii]
-        
+
         scenarios.append(s_dict)
     return scenarios
 
 
 def get_scenario_df(
-    runs_df: pd.DataFrame,
-    scenario: dict[str, Any]):
+        runs_df: pd.DataFrame,
+        scenario: dict[str, Any]):
     """Get rows from a dataframe matching a scenario.
 
     Args:
@@ -1123,7 +1145,7 @@ def print_scenarios(
     scenarios: list[dict[str, Any]],
     runs_df: pd.DataFrame | None = None,
     min_count: int = 0
-    ) -> None:
+) -> None:
     """Print a formatted table of scenarios.
 
     Args:
@@ -1148,8 +1170,13 @@ def print_scenarios(
     if runs_df is None:
         header = f'{Text.BOLD}{Text.BLUE}IDX  {Text.DEFAULT}{Text.BOLD}'
     else:
-        header = f'{Text.BOLD}{Text.BLUE}IDX  {Text.RED}Count  {Text.DEFAULT}{Text.BOLD}'
-        
+        header = f'{
+            Text.BOLD}{
+            Text.BLUE}IDX  {
+            Text.RED}Count  {
+                Text.DEFAULT}{
+                    Text.BOLD}'
+
     # Add each column name to header
     for ii, col in enumerate(scenarios[0].keys()):
         header += col + " " * (spans[ii] - len(col) + 2)
@@ -1163,15 +1190,16 @@ def print_scenarios(
             count = len(get_scenario_df(runs_df, sc))
             if count < min_count:
                 continue
-            row += f'{Text.RED}{count}{Text.DEFAULT}' + " " * (7 - len(str(count)))
+            row += f'{Text.RED}{count}{Text.DEFAULT}' + \
+                " " * (7 - len(str(count)))
         for jj, val in enumerate(sc.values()):
             row += f'{str(val)}' + " " * (spans[jj] - len(str(val)) + 2)
         print(row)
 
 
 def get_meet_slo_df(
-    runs_df: pd.DataFrame,
-    slos: list[SLO]) -> pd.DataFrame:
+        runs_df: pd.DataFrame,
+        slos: list[SLO]) -> pd.DataFrame:
     """Get rows from dataset meeting provided SLOs.
 
     Args:
@@ -1185,20 +1213,22 @@ def get_meet_slo_df(
     for slo in slos:
         if COLUMNS[slo.col].pref == Pref.LOW:
             # Must be less than or equal to SLO value to meet SLO
-            runs_meet_slo_df = runs_meet_slo_df[runs_meet_slo_df[slo.col].__le__(slo.value)]
+            runs_meet_slo_df = runs_meet_slo_df[runs_meet_slo_df[slo.col].__le__(
+                slo.value)]
         elif COLUMNS[slo.col].pref == Pref.HIGH:
             # Must be greater than or equal to SLO value to meet SLO
-            runs_meet_slo_df = runs_meet_slo_df[runs_meet_slo_df[slo.col].__ge__(slo.value)]
+            runs_meet_slo_df = runs_meet_slo_df[runs_meet_slo_df[slo.col].__ge__(
+                slo.value)]
         else:
             raise Exception(f'Invalid SLO: {slo.col}')
     return runs_meet_slo_df
 
 
 def get_pareto_front_df(
-    runs_df: pd.DataFrame,
-    col_a: str,
-    col_b: str,
-    sort: bool = False) -> pd.DataFrame:
+        runs_df: pd.DataFrame,
+        col_a: str,
+        col_b: str,
+        sort: bool = False) -> pd.DataFrame:
     """Get rows from dataset on Pareto front for the provided metrics.
 
     Args:
@@ -1212,9 +1242,9 @@ def get_pareto_front_df(
     """
     # Make sure columns have a preferred direction
     if COLUMNS[col_a].pref == Pref.NEUTRAL:
-        raise Exception (f'Column does not have a preferred direction: {col_a}')
+        raise Exception(f'Column does not have a preferred direction: {col_a}')
     if COLUMNS[col_b].pref == Pref.NEUTRAL:
-        raise Exception (f'Column does not have a preferred direction: {col_b}')
+        raise Exception(f'Column does not have a preferred direction: {col_b}')
 
     def better(a: Any, b: Any, col: str) -> bool:
         """Return true if column in 'a' is better than 'b'."""
