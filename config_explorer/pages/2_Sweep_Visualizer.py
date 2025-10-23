@@ -298,9 +298,20 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
     if selected_display_preset:
         scenario_preset = scenarios_mapping[selected_display_preset]
         tab.caption(scenario_preset['description'])
+        filtered_data = filter_data_on_inputs(original_benchmark_data, user_inputs)
+
+        # if selected_display_preset == PD_DISAGG:
+        #     plot = xplotting.get_plot_scenario(
+        #         runs_df=runs,
+        #         scenario=scenarios[idx],
+        #         config_keys=config_keys,
+        #         col_x=col_x,
+        #         col_y=col_y,
+        #         col_seg_by=col_seg_by,
+        #         log_x=log_x,
+        #         log_y=log_y)
 
         if selected_display_preset == INFERENCE_SCHEDULING:
-            filtered_data = filter_data_on_inputs(original_benchmark_data, user_inputs)
 
             # Inputs specifically for inference scheduling
             selected_system_prompt_length = tab.selectbox(

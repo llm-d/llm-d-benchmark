@@ -44,8 +44,8 @@ from typing import Any
 
 import pandas as pd
 
-from . import convert
-from . import schema
+from config_explorer import convert
+from config_explorer import schema
 
 
 class Text:

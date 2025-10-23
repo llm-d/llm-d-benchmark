@@ -17,7 +17,7 @@ import yaml
 import numpy as np
 from scipy import stats
 
-from .schema import BenchmarkReport, Units, WorkloadGenerator
+from config_explorer.schema import BenchmarkReport, Units, WorkloadGenerator
 
 
 def check_file(file_path: str) -> None:
