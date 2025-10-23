@@ -171,7 +171,7 @@ def test_kv_cache_req():
     # For context length = 10000
     actual_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
     rounded = round(actual_kv_cache_req, 5)
-    assert rounded == 0.53406
+    assert rounded == 1.06812
 
 
 def test_max_concurrent_req():
@@ -206,6 +206,74 @@ def test_max_concurrent_req():
                     expected = 0
 
         assert actual_max_concurrent_req == expected
+
+
+def test_total_kv_cache_blocks(monkeypatch):
+    """
+    Tests that total KV cache blocks are estimated correctly given model and GPU configuration.
+    """
+    
+    known_model = "Qwen/Qwen2.5-0.5B"
+    # Load lightweight GQA model for reproducibility
+    model_info = get_model_info_from_hf(known_model)
+    model_config = get_model_config_from_hf(known_model)
+
+    # Reference parameters
+    context_len = 32768
+    gpu_mem = 80  # GB
+    gpu_util = 0.9
+
+    # Compute expected per-block memory
+    kv_cache_detail = KVCacheDetail(model_info, model_config, context_len)
+    estimated_per_token_memory = kv_cache_detail.per_token_memory_bytes
+
+    ## per token memory
+    num_layers = model_config.num_hidden_layers
+    precision_in_bytes = precision_to_byte(inference_dtype(model_config))
+    head_dimension = getattr(model_config, "head_dim", model_config.hidden_size / model_config.num_attention_heads)
+    kv_heads = model_config.num_key_value_heads
+
+    actual_per_token_memory = num_layers * 2 * head_dimension * kv_heads * precision_in_bytes
+
+    assert estimated_per_token_memory == actual_per_token_memory
+
+    # Mock allocatable_kv_cache_memory depending on tp, pp for know values of qwen
+    def fake_allocatable_kv_cache_memory(model_info, model_config,
+                                         gpu_memory, gpu_mem_util,
+                                         tp, pp, dp):
+        if tp == 1:
+            return 68.89 # observed in experiments
+        elif tp == 2:
+            return 68.09 # observed in experiments
+        
+    monkeypatch.setattr(
+        "src.config_explorer.capacity_planner.allocatable_kv_cache_memory",
+        fake_allocatable_kv_cache_memory
+    )
+    ## tp = 1
+    actual_blocks = total_kv_cache_blocks(
+        model_info=model_info,
+        model_config=model_config,
+        context_len=context_len,
+        gpu_memory=gpu_mem,
+        gpu_mem_util=gpu_util,
+    )
+
+    assert actual_blocks == 376231 
+
+    ## tp = 2
+    actual_blocks = total_kv_cache_blocks(
+        model_info=model_info,
+        model_config=model_config,
+        context_len=context_len,
+        gpu_memory=gpu_mem,
+        gpu_mem_util=gpu_util,
+        tp = 2
+    )
+
+    assert actual_blocks == 743724
+
+
 
 def test_find_possible_tp():
     """

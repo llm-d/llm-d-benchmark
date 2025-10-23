@@ -1,4 +1,4 @@
-name: CI - Nightly Run Benchmark
+name: CI - Nightly Run Benchmark on OCP
 
 on:
   workflow_dispatch:
@@ -54,6 +54,7 @@ jobs:
             echo "OUTPUT_DIR=${{ github.event.inputs.output_dir }}" >> $GITHUB_ENV
             echo "Using provided output dir: ${{ github.event.inputs.output_dir }}"
           fi
+        shell: bash
 
       - name: Set up kubeconfig from secret
         run: |
@@ -65,6 +66,7 @@ jobs:
       - name: Run install_deps.sh
         run: |
           sudo apt-get update
+          sudo apt install bc
           ./setup/install_deps.sh
         shell: bash
 
@@ -72,67 +74,100 @@ jobs:
         run: pip install ./config_explorer
         shell: bash
 
+      - name: Install kubectl-view-allocations
+        run: |
+          cd /
+          curl https://raw.githubusercontent.com/davidB/kubectl-view-allocations/master/scripts/getLatest.sh | sudo bash
+          kubectl-view-allocations -h
+        shell: bash
+
       - name: Cleanup target cloud (modelservice)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c ocp_L40_fb -t modelservice -d
+        run: ./setup/teardown.sh -c ocp_fb -t modelservice -d
+        shell: bash
 
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c ocp_L40_fb -t standalone -d
+        run: |
+          ./setup/teardown.sh -c ocp_fb -t standalone -d
+        shell: bash
 
       - name: Standup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/standup.sh -c ocp_L40_fb -t standalone
+        run: |
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 10.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
+          ./setup/standup.sh -c ocp_fb -t standalone
+        shell: bash
 
       - name: Run benchmark (standalone, inference-perf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c ocp_L40_fb -t standalone
+        run: |
+          ./setup/run.sh -c ocp_fb -t standalone
+        shell: bash
 
       - name: Run benchmark (standalone, fmperf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c ocp_L40_fb -t standalone -l fmperf -w sanity_short-input
+        run: |
+          ./setup/run.sh -c ocp_fb -t standalone -l fmperf -w sanity_short-input
+        shell: bash
 
       - name: Run benchmark (standalone, guidellm)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c ocp_L40_fb -t standalone -l guidellm -w sanity_concurrent
+        run: |
+          ./setup/run.sh -c ocp_fb -t standalone -l guidellm -w sanity_concurrent
+        shell: bash
 
       - name: Run benchmark (standalone, vllm-benchmark)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/run.sh -c ocp_L40_fb -t standalone -l vllm-benchmark
+        run: |
+          ./setup/run.sh -c ocp_fb -t standalone -l vllm-benchmark
+        shell: bash
 
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c ocp_L40_fb -t standalone -d
+        run: |
+          ./setup/teardown.sh -c ocp_fb -t standalone -d
+        shell: bash
 
       - name: E2E target cloud (modelservice, inference-perf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep
+        run: |
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
+          ./setup/e2e.sh -c ocp_fb -t modelservice --deep
+        shell: bash
 
       - name: E2E target cloud (modelservice, fmperf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l fmperf -w sanity_short-input.yaml
+        run: |
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
+          ./setup/e2e.sh -c ocp_fb -t modelservice --deep -l fmperf -w sanity_short-input.yaml
+        shell: bash
 
       - name: E2E target cloud (modelservice, guidellm)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
-
+        run: |
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
+          ./setup/e2e.sh -c ocp_fb -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
+        shell: bash
 
       - name: E2E target cloud (modelservice, vllm-benchmark)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/e2e.sh -c ocp_L40_fb -t modelservice --deep -l vllm-benchmark
-
+        run: |
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
+          ./setup/e2e.sh -c ocp_fb -t modelservice --deep -l vllm-benchmark
+        shell: bash
 
       - name: Install AWS CLI
         run: |

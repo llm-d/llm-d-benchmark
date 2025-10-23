@@ -47,15 +47,13 @@ export LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG=1.0.0-amd64
 
 export LLMDBENCH_VLLM_STANDALONE_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_STANDALONE_ARGS
-vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+/home/senuser/container-scripts/simple_vllm_serve.sh REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_INFERENCE_PORT \
 --max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
 --tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM \
 --max-num-seqs 32 \
---disable-log-requests \
 --enable-auto-tool-choice \
---tool-call-parser granite; \
-sleep 120
+--tool-call-parser granite
 EOF
 
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)

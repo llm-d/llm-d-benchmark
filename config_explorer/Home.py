@@ -572,7 +572,7 @@ def memory_util_chart(st_context):
     ax.legend(
         wedges + [plt.Line2D([0], [0], color="#CCCCCC", lw=10)],  # Add fake handle for total
         legend_labels,
-        title="Total Storage Breakdown",
+        title="Total GPU Memory Breakdown",
         loc="center left",
         bbox_to_anchor=(1, 0, 0.5, 1)
     )

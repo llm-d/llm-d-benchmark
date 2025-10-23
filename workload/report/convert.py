@@ -334,9 +334,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
                     "units": Units.MS,
                     "mean": results['mean_ttft_ms'],
                     "stddev": results['std_ttft_ms'],
-                    "p00p1": results['p0.1_ttft_ms'],
-                    "p01": results['p1_ttft_ms'],
-                    "p05": results['p5_ttft_ms'],
+                    "p0p1": results['p0.1_ttft_ms'],
+                    "p1": results['p1_ttft_ms'],
+                    "p5": results['p5_ttft_ms'],
                     "p10": results['p10_ttft_ms'],
                     "P25": results['p25_ttft_ms'],
                     "p50": results['median_ttft_ms'],
@@ -350,9 +350,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
                     "units": Units.MS_PER_TOKEN,
                     "mean": results['mean_tpot_ms'],
                     "stddev": results['std_tpot_ms'],
-                    "p00p1": results['p0.1_tpot_ms'],
-                    "p01": results['p1_tpot_ms'],
-                    "p05": results['p5_tpot_ms'],
+                    "p0p1": results['p0.1_tpot_ms'],
+                    "p1": results['p1_tpot_ms'],
+                    "p5": results['p5_tpot_ms'],
                     "p10": results['p10_tpot_ms'],
                     "P25": results['p25_tpot_ms'],
                     "p50": results['median_tpot_ms'],
@@ -366,9 +366,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
                     "units": Units.MS_PER_TOKEN,
                     "mean": results['mean_itl_ms'],
                     "stddev": results['std_itl_ms'],
-                    "p00p1": results['p0.1_itl_ms'],
-                    "p01": results['p1_itl_ms'],
-                    "p05": results['p5_itl_ms'],
+                    "p0p1": results['p0.1_itl_ms'],
+                    "p1": results['p1_itl_ms'],
+                    "p5": results['p5_itl_ms'],
                     "p10": results['p10_itl_ms'],
                     "P25": results['p25_itl_ms'],
                     "p90": results['p90_itl_ms'],
@@ -380,9 +380,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
                     "units": Units.MS,
                     "mean": results['mean_e2el_ms'],
                     "stddev": results['std_e2el_ms'],
-                    "p00p1": results['p0.1_e2el_ms'],
-                    "p01": results['p1_e2el_ms'],
-                    "p05": results['p5_e2el_ms'],
+                    "p0p1": results['p0.1_e2el_ms'],
+                    "p1": results['p1_e2el_ms'],
+                    "p5": results['p5_e2el_ms'],
                     "p10": results['p10_e2el_ms'],
                     "P25": results['p25_e2el_ms'],
                     "p90": results['p90_e2el_ms'],
@@ -976,29 +976,55 @@ def import_nop(results_file: str) -> BenchmarkReport:
         },
         "metrics": {
             "metadata": {
-                "load_time": {
+                "load": {
+                    "time": {
                         "units": Units.S,
-                        "value": results["metrics"]["load_time"],
+                        "value": results["metrics"]["load"]["time"],
                     },
-                "size": {
+                    "size": {
                         "units": Units.GIB,
-                        "value": results["metrics"]["size"],
+                        "value": results["metrics"]["load"]["size"],
                     },
-                "transfer_rate": {
+                    "transfer_rate": {
                         "units": Units.GIB_PER_S,
-                        "value": results["metrics"]["transfer_rate"],
+                        "value": results["metrics"]["load"]["transfer_rate"],
                     },
-                "sleep": {
+                },
+                "dynamo_bytecode_transform": {
                         "units": Units.S,
-                        "value": results["metrics"]["sleep"],
+                        "value": results["metrics"]["dynamo_bytecode_transform"],
                     },
-                "gpu_freed": {
-                        "units": Units.GIB,
-                        "value": results["metrics"]["gpu_freed"],
+                "torch_compile": {
+                        "units": Units.S,
+                        "value": results["metrics"]["torch_compile"],
                     },
-                "gpu_in_use": {
-                        "units": Units.GIB,
-                        "value": results["metrics"]["gpu_in_use"],
+                "memory_profiling": {
+                        "initial_free": {
+                            "units": Units.GIB,
+                            "value": results["metrics"]["memory_profiling"]["initial_free"],
+                        },
+                        "after_free": {
+                            "units": Units.GIB,
+                            "value": results["metrics"]["memory_profiling"]["after_free"],
+                        },
+                        "time": {
+                            "units": Units.S,
+                            "value": results["metrics"]["memory_profiling"]["time"],
+                        },
+                },
+                "sleep": {
+                        "time": {
+                            "units": Units.S,
+                            "value": results["metrics"]["sleep"]["time"],
+                        },
+                        "gpu_freed": {
+                            "units": Units.GIB,
+                            "value": results["metrics"]["sleep"]["gpu_freed"],
+                        },
+                        "gpu_in_use": {
+                            "units": Units.GIB,
+                            "value": results["metrics"]["sleep"]["gpu_in_use"],
+                        },
                     },
                 "wake": {
                         "units": Units.S,

@@ -9,7 +9,11 @@ from functools import reduce
 import re
 from typing import List
 from huggingface_hub import HfApi, ModelInfo
-from transformers import AutoConfig, AutoModel
+
+import contextlib
+import io
+with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+    from transformers import AutoConfig, AutoModel
 
 class AttentionType(StrEnum):
     """
@@ -113,7 +117,7 @@ class KVCacheDetail:
             self.per_token_memory_bytes = self.num_hidden_layers * (self.kv_lora_rank + self.qk_rope_head_dim) * self.precision_in_bytes
         else:
             self.num_attention_group = int(self.num_attention_heads / self.num_key_value_heads)
-            self.per_token_memory_bytes = int(self.num_hidden_layers * 2 * self.head_dimension * (self.num_key_value_heads / self.num_attention_group) * self.precision_in_bytes)
+            self.per_token_memory_bytes = int(self.num_hidden_layers * 2 * self.head_dimension * self.num_key_value_heads * self.precision_in_bytes)
 
         # Calculate kv cache size in bytes and in gb
         self.per_request_kv_cache_bytes = self.per_token_memory_bytes * self.context_len
@@ -396,6 +400,38 @@ def kv_cache_req(model_info: ModelInfo,
 
     return KVCacheDetail(model_info, model_config, context_len, batch_size).kv_cache_size_gb
 
+def total_kv_cache_blocks(model_info: ModelInfo,
+                    model_config: AutoConfig,
+                    context_len: int,
+                    gpu_memory: int,
+                    gpu_mem_util: float=0.9,
+                    batch_size: int = 1,
+                    block_size: int = 16,
+                    tp: int=1,
+                    pp: int=1,
+                    dp: int=1,
+                    ) -> int:
+    """
+    Calculate the total number of KV cache blocks that can fit in GPU memory.
+    """
+
+    # Compute per-token and per-block memory 
+    kv_cache_detail = KVCacheDetail(model_info, model_config, context_len, batch_size)
+    per_token_memory = kv_cache_detail.per_token_memory_bytes / (tp * pp)
+    per_block_memory = per_token_memory * block_size
+
+    # Compute allocatable KV cache memory
+    kv_cache_allocatable = allocatable_kv_cache_memory(
+        model_info, model_config,
+        gpu_memory, gpu_mem_util,
+        tp, pp, dp
+    )
+
+    # Compute total KV cache blocks
+    total_kv_blocks = gib_to_bytes(kv_cache_allocatable) // per_block_memory
+
+    return total_kv_blocks
+
 def max_concurrent_requests(model_info: ModelInfo,
                         model_config: AutoConfig,
                         max_model_len: int,
@@ -538,3 +574,10 @@ def bytes_to_gib(bytes: int) -> float:
     """
 
     return bytes / (1024 ** 3)
+
+def gib_to_bytes(gib: int) -> float:
+    """
+    Convert number of GiB to bytes
+    """
+
+    return gib * (1024 ** 3)

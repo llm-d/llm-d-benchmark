@@ -29,8 +29,8 @@ def gateway_values(provider : str, host: str) -> str:
   gatewayClassName: kgateway
   service:
     type: NodePort
-  destinationRule:
-    host: {host}
+#  destinationRule:
+#    host: {host}
   gatewayParameters:
     enabled: true
   """
