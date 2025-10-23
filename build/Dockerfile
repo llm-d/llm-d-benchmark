@@ -62,12 +62,12 @@ RUN cd vllm; \
     cd ..; mv -f vllm vllm-benchmark
 
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
-ARG GUIDELLM_BRANCH=main
-ARG GUIDELLM_COMMIT=72374efdf7d4432173fafec3924dc94ac3b11449
+ARG GUIDELLM_BRANCH=fix/synthetic_as_dict
+ARG GUIDELLM_COMMIT=76efd1c122abd9105de75a0521036dd9d6710951
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
-    pip install .
+    pip install .[recommended]
 
 RUN echo "fmperf: ${FM_PERF_REPO} ${FM_PERF_BRANCH}" > /workspace/repos.txt; \
     echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \
