@@ -1,4 +1,4 @@
-Based on experiments with Tekton, some basic composable tasks might include:  
+Based on experiments with Tekton, some basic composable tasks might include the following.  
 
 ## Tooling
 
@@ -38,12 +38,16 @@ _ _name_ - name of gateway created
 - _serviceUrl_ - endpoint (incl. port) to be used by requests
 
 ### Task: `deploy_gaie`
+
+**Description**:
+
+Installs Kubernetes Gateway Inference Extension objects: an endpoint picker and inference pool.
     
 **Inputs**: 
 
 - *namespace*
 - *model_label* - used to configure `InferencePool` match labels.
-- *release_name* - Helm release name
+- *release_name* - Helm release name; unique to stack
 - *helm_chart_values* - [samples](https://github.com/llm-d/llm-d/tree/main/guides/prereq/gateway-provider/common-configurations)
 - *helm_chart* - (default: `oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool`)
 - *helm_chart_version* (default: `v1.0.1`)
@@ -54,7 +58,20 @@ _ _name_ - name of gateway created
 
 ### Task: `deploy_model`
 
+**Description**:
+
+Installs vllm engines.
+
 **Inputs**:
+
+- *namespace*
+- *model_label* - used to configure labels.
+- *release_name* - Helm release name; unique to stack
+- *helm_chart_values* - [samples](https://github.com/llm-d/llm-d/tree/main/guides/prereq/gateway-provider/common-configurations)
+- *helm_chart* - (default: `llm-d-modelservice/llm-d-modelservice`)
+- *helm_chart_version* (default: `none` (latest))
+- *helm_chart_repository_url* (default: `https://llm-d-incubation.github.io/llm-d-modelservice/`)
+- *helm_overrides* - list of fields to set? values file to apply?
 
 **Outputs**:
 
@@ -108,26 +125,81 @@ Modify a workload profile template for a particular execution. The profile forma
 
 - **workload_profile** - yaml string or url to location
 
-### Task: `run_workload`
+### Task: `run_workload_inference-perf`
 
 **Description**:
 
-Configure and run a workload generator (harness). On completion, results are saved to a locally mounted filesystem and are converted to a universal format. Should conversion be a separate task?
+Generate workload using _inference perf_. On completion, results are saved to a locally mounted filesystem.
 
 **Inputs**:
 
-- **harness_type**
 - **workoad_profile** - workload profile (yaml)
-- **HF_TOKEN** - required by some generators (`vllm-benchmark`) 
 - **path** - path to where results should be saved
 
 **Outputs**:
+
+### Task: `transform_results_inference-perf`
+
+**Description**:
+
+Convert results from execution of _inference perf_ to a universal format.
+
+**Inputs**:
+
+- **source_path** - path to where results are saved
+- **target_path** - location where converted results should be saved
+
+**Outputs**:
+
+### Task: `run_workload_vllm_benchmark`
+
+**Description**:
+
+Generate workload using _vllm benchmark_. On completion, results are saved to a locally mounted filesystem.
+
+Details as above for `run_workload_inference_perf` with addition of input `HF_TOKEN`.
+
+### Task: `transform_results_vllm_benchmark`
+
+**Description**:
+
+Convert results from execution of _vllm benchmark_ to a universal format. Details are as above for `convert_profile_inference-perf.
+
+### Task: `run_workload_guidellm`
+
+**Description**:
+
+Generate workload using _guidellm_. On completion, results are saved to a locally mounted filesystem.
+
+Details as above for `run_workload_inference_perf`.
+
+### Task: `transform_results_guidellm`
+
+**Description**:
+
+Convert results from execution of _guidellm_ to a universal format. Details are as above for `convert_profile_inference-perf.
+
+### Task: `run_workload_fmperf`
+
+**Description**:
+
+Generate workload using _fmperf_. On completion, results are saved to a locally mounted filesystem.
+
+Details as above for `run_workload_inference_perf`.
+
+### Task: `transform_results_fmperf`
+
+**Description**:
+
+Convert results from execution of _fmperf_ to a universal format. Details are as above for `convert_profile_inference-perf.
+
+## Document
 
 ### Task: `record`
 
 **Description**:
 
-Record configuration of stack and workload. Should this be part of **run_workload**?
+Record configuration of one stack and one or more workload executions.
 
 **Inputs**:
 
