@@ -7,7 +7,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from explorer import (
+from .explorer import (
     COLUMNS,
     SLO,
     get_scenario_df,
@@ -17,7 +17,7 @@ from explorer import (
 
 # Plot trace colors
 COLORS = [
-    '#FF0000', '#FFAA00', '#DDDD00', '#00DD00', '#00FFFF', '#0000FF', 
+    '#FF0000', '#FFAA00', '#DDDD00', '#00DD00', '#00FFFF', '#0000FF',
     '#FF00FF', '#666666', '#000000', '#990000', '#777700', '#007700',
     '#009999', '#000099'
 ]
@@ -49,8 +49,7 @@ def _column_axis_label(col: str) -> str:
         label += ' (' + COLUMNS[col].units + ')'
     return label
 
-
-def plot_scenario(
+def get_plot_scenario(
         runs_df: pd.DataFrame,
         scenario: dict[str, Any],
         config_keys: list[str] | list[list[str]],
@@ -86,7 +85,7 @@ def plot_scenario(
     for col in scenario:
         if col not in runs_df.columns:
             raise KeyError(f'Invalid column: {col}')
-    
+
     # Filter runs to specific scenario
     runs_df = get_scenario_df(runs_df, scenario)
 
@@ -157,6 +156,74 @@ def plot_scenario(
     plt.show()
 
 
+def get_plot_scenario(
+        runs_df: pd.DataFrame,
+        scenario: dict[str, Any],
+        config_keys: list[str] | list[list[str]],
+        col_x: str,
+        col_y: str,
+        col_seg_by: str = '',
+        log_x: bool = False,
+        log_y: bool = False) -> plt.Figure:
+
+    # Create a new figure and axis
+    fig, ax = plt.subplots()
+
+    # Replace plt.plot etc. with ax.plot equivalents
+    if log_x and log_y:
+        plot_func = ax.loglog
+    elif log_x:
+        plot_func = ax.semilogx
+    elif log_y:
+        plot_func = ax.semilogy
+    else:
+        plot_func = ax.plot
+
+    # Ensure config_keys is a list of lists
+    if isinstance(config_keys[0], str):
+        config_keys = [config_keys]
+
+    for kk, ck_ in enumerate(config_keys):
+        ck = ck_[:]
+        if col_seg_by and col_seg_by not in ck:
+            ck.append(col_seg_by)
+
+        config_sets = list(set(runs_df.set_index(ck).index.dropna()))
+        config_sets.sort()
+
+        for ii, conf in enumerate(config_sets):
+            conf_df = runs_df
+            labels = []
+            for jj, val in enumerate(conf):
+                conf_df = conf_df[(conf_df[ck[jj]] == val)].sort_values(by=col_x)
+                if ck[jj] == col_seg_by:
+                    continue
+                labels.append(f'{COLUMNS[ck[jj]].label}={val}')
+            label = ', '.join(labels)
+
+            plot_func(
+                conf_df[col_x], conf_df[col_y],
+                label=label,
+                marker=MARKERS[kk % len(MARKERS)], markersize=4,
+                color=COLORS[ii % len(COLORS)],
+                linestyle=LINE_STYLES[kk % len(LINE_STYLES)]
+            )
+
+    ax.grid(True, linewidth=1, ls='--', color='gray')
+    ax.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+
+    title = ''
+    for key, value in scenario.items():
+        if len(title.rsplit('\n')[-1]) > 30:
+            title += '\n'
+        title += f'{COLUMNS[key].label}: {value}  '
+    ax.set_title(title.strip())
+    ax.set_xlabel(_column_axis_label(col_x), fontsize='16')
+    ax.set_ylabel(_column_axis_label(col_y), fontsize='16')
+
+    return fig
+
+
 def plot_scenario_tradeoff(
         runs_df: pd.DataFrame,
         scenario: dict[str, Any],
@@ -196,7 +263,7 @@ def plot_scenario_tradeoff(
     for col in scenario:
         if col not in runs_df.columns:
             raise KeyError(f'Invalid column: {col}')
-    
+
     # Filter runs to specific scenario
     runs_df = get_scenario_df(runs_df, scenario)
 
@@ -347,7 +414,7 @@ def plot_pareto_tradeoff(
         plt.axis([0, None, None, None])
     else:
         plt.axis([0, None, 0, None])
-    
+
     title = ''
     for key, value in scenario.items():
         if len(title.rsplit('\n')[-1]) > 30:

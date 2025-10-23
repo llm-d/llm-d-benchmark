@@ -3,7 +3,7 @@ This file contains function for configuration exploration using benchmarking
 data from llm-d-benchmark.
 
 The entrypoint is make_benchmark_runs_df() to initialize an empty Pandas
-DataFrame which will store benchmark results, and 
+DataFrame which will store benchmark results, and
 add_benchmark_report_to_df() to populate the DataFrame with data from a
 benchmark report file. The columns in the DataFrame are described in the
 COLUMNS dictionary.
@@ -44,8 +44,8 @@ from typing import Any
 
 import pandas as pd
 
-import convert
-import schema
+from . import convert
+from . import schema
 
 
 class Text:
@@ -773,7 +773,7 @@ def get_benchmark_report_files(source_dir: str) -> list[str]:
 
     Args:
         source_dir (str): Directory to recursively search for results files.
-    
+
     Returns:
         list: List of paths to benchmark report files.
     """
@@ -1096,7 +1096,7 @@ def get_scenarios(runs_df: pd.DataFrame, scenario_columns: list[str]) -> list[di
         s_dict = {}
         for ii, col in enumerate(scenario_columns):
             s_dict[col] = s_tuple[ii]
-        
+
         scenarios.append(s_dict)
     return scenarios
 
@@ -1149,7 +1149,7 @@ def print_scenarios(
         header = f'{Text.BOLD}{Text.BLUE}IDX  {Text.DEFAULT}{Text.BOLD}'
     else:
         header = f'{Text.BOLD}{Text.BLUE}IDX  {Text.RED}Count  {Text.DEFAULT}{Text.BOLD}'
-        
+
     # Add each column name to header
     for ii, col in enumerate(scenarios[0].keys()):
         header += col + " " * (spans[ii] - len(col) + 2)

@@ -1,5 +1,9 @@
 """
 Mocks DB storing info about common accelerators used for LLM serving and inference
 """
-import json,os
-gpu_specs=json.loads('db.json')
+import json
+
+gpu_specs = {}
+
+with open("config_explorer/db.json") as f:
+    gpu_specs = json.load(f)
