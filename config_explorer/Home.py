@@ -120,7 +120,6 @@ def model_specification():
                 model_config = get_model_config_from_hf(selected_model, hf_token=hf_token)
                 text_config = get_text_config(model_config)
                 user_scenario.model_config = model_config
-                user_scenario.text_config = text_config
             except Exception as e:
                 e_str = str(e)
                 if "gated" in e_str:

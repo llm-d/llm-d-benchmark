@@ -84,22 +84,22 @@ def user_benchmark_path():
 
     benchmark_path = st.text_input("Enter absolute path to `llm-d` benchmark data",
                 value="",
-                key=BENCHMARK_PATH_KEY,
+                # key=BENCHMARK_PATH_KEY,
                 help="Navigate to the [llm-d community Google Drive](https://drive.google.com/drive/u/0/folders/1r2Z2Xp1L0KonUlvQHvEzed8AO9Xj8IPm) to download data.",
                 )
 
-    benchmark_path = st.session_state[BENCHMARK_PATH_KEY]
+    if st.button("Import data", type='primary'):
+        # Populate the runs DataFrame with new path
+        # benchmark_path = st.session_state[BENCHMARK_PATH_KEY]
+        if benchmark_path != "":
+            st.toast(f'Searching for benchmark report files within `{benchmark_path}`')
 
-    # Populate the runs DataFrame
-    if benchmark_path != "":
-        st.toast(f'Searching for benchmark report files within `{benchmark_path}`')
+            try:
+                st.session_state[BENCHMARK_DATA_KEY] = read_benchmark_path(benchmark_path)
 
-        try:
-            st.session_state[BENCHMARK_DATA_KEY] = read_benchmark_path(benchmark_path)
-
-            st.toast(f"Successfully imported {len(st.session_state[BENCHMARK_DATA_KEY])} report files. You may view the raw data below.", icon="🎉")
-        except Exception:
-            st.toast("File not found, please double check path.", icon='⚠️')
+                st.toast(f"Successfully imported {len(st.session_state[BENCHMARK_DATA_KEY])} report files. You may view the raw data below.", icon="🎉")
+            except Exception:
+                st.toast("File not found, please double check path.", icon='⚠️')
 
 def filter_data_on_inputs(data: DataFrame, user_inputs: dict) -> DataFrame:
     """
@@ -110,22 +110,9 @@ def filter_data_on_inputs(data: DataFrame, user_inputs: dict) -> DataFrame:
         (data['Model'] == user_inputs['model']) &
         (data['GPU'] == user_inputs['gpu_type']) &
         (data['Num_GPUs'] <= user_inputs['num_gpus']) &
-
         (data['ISL'] >= user_inputs['isl']) &
         (data['OSL'] >= user_inputs['osl']) &
-
-        # (data['ISL'] >= user_inputs['isl'][0]) &
-        # (data['ISL'] <= user_inputs['isl'][1]) &
-        # (data['OSL'] >= user_inputs['osl'][0]) &
-        # (data['OSL'] <= user_inputs['osl'][1]) &
-
         (data['Max_QPS'] <= user_inputs['max_qps'])
-
-        # (data['Mean_E2EL_ms'] <= user_inputs['latency_p95']) &
-        # (data['Mean_TTFT_ms'] <= user_inputs['ttft']) &
-        # (data['Mean_ITL_ms'] <= user_inputs['itl']) &
-        # (data['Total_Token_Throughput'] >= user_inputs['throughput'])
-
         ]
 
 def inputs(tab: DeltaGenerator):
@@ -137,6 +124,10 @@ def inputs(tab: DeltaGenerator):
     tab.caption("Select initial filters on benchmarking data such as model and workload characteristics.")
 
     benchmark_data = st.session_state[BENCHMARK_DATA_KEY]
+
+    if len(benchmark_data) == 0:
+        tab.info("Import data above.")
+        return None
 
     with tab.container(border=True):
         selected_model = st.selectbox(
@@ -150,7 +141,7 @@ def inputs(tab: DeltaGenerator):
         )
 
         selected_num_gpus = st.number_input(
-            "Total number of GPUs (this will filter out parallelism combinations that are invalid)",
+            "Select max accelerator count",
             value=16,
             min_value=1
             )
@@ -173,30 +164,31 @@ def inputs(tab: DeltaGenerator):
 
         preset_scenarios = {
             "Chatbot": {
-                "request_rate": 1,
-                # "input_len": (100, 500),
-                # "output_len": [100, 200],
-
+                "description": "This application maps to workload patterns with high queries per second and concurrency, high prefix hit rate, and low latency.",
                 "input_len": 100,
                 "output_len": 300,
-
-
                 "max_qps": float64(10),
+                "system_prompt_length": 2048,
+                "question_length": 100,
                 "latency_p90": 100,
                 "throughput": 100,
                 "ttft": 2000,
                 "itl": 50,
                 },
-
+            "Document summarization": {
+                "description": "This application maps to workload requests with high input length and short output length.",
+                "input_len": 1000,
+                "output_len": 100,
+                "max_qps": float64(5),
+                "latency_p90": 1000,
+                "throughput": 100,
+                "ttft": 10000,
+                "itl": 100,
+                },
             "Custom": {
-                "request_rate": 1,
-
-                # "input_len": [10, 200],
-                # "output_len": [200, 1000],
-
+                "description": "Design the workload patterns for your own custom application type.",
                 "input_len": 300,
                 "output_len": 1000,
-
                 "max_qps": float64(10),
                 "latency_p90": 200,
                 "throughput": 200,
@@ -205,11 +197,9 @@ def inputs(tab: DeltaGenerator):
             }
         }
 
-        selected_workload = st.radio("Select workload",
-                options=preset_scenarios.keys())
+        selected_workload = st.radio("Select workload", options=preset_scenarios.keys())
 
         info = preset_scenarios[selected_workload]
-
         isl = info['input_len']
         osl = info['output_len']
         max_qps = info['max_qps']
@@ -217,19 +207,21 @@ def inputs(tab: DeltaGenerator):
         throughput = info['throughput']
         ttft = info['ttft']
         itl = info['itl']
+        extra = {}
 
+        st.caption(info['description'])
         selected_isl_range = st.number_input(
             "Input sequence length",
             value=isl,
             min_value=1,
-            max_value=runs['ISL'].max(),
+            max_value=max(runs['ISL'].max(), isl),
             )
 
         selected_osl_range = st.number_input(
             "Output sequence length",
             value=osl,
             min_value=1,
-            max_value=runs['OSL'].max(),
+            max_value=max(runs['OSL'].max(), osl),
             )
 
         selected_max_qps = st.number_input(
@@ -277,6 +269,7 @@ def inputs(tab: DeltaGenerator):
         "ttft": ttft,
         "itl": itl,
         "throughput": throughput,
+        "extra": extra
     }
 
     return data_to_return
@@ -300,25 +293,51 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
         help="Scenario presents define a set of parameters to filter that showcase a certain feature or capability. For example, comparing throughput per user vs. throughput per GPU tradeoff for PD disaggregation scenarios."
         )
 
+    # tab.write(user_inputs)
+
     if selected_display_preset:
         scenario_preset = scenarios_mapping[selected_display_preset]
         tab.caption(scenario_preset['description'])
 
         if selected_display_preset == INFERENCE_SCHEDULING:
-
             filtered_data = filter_data_on_inputs(original_benchmark_data, user_inputs)
-            # tab.dataframe(filtered_data)
 
-            # scenarios = xp.get_scenarios(filtered_data, ['Model', "GPU", "Num_GPUs", "ISL_500", "OSL_500", "Max_QPS"])
+            # Inputs specifically for inference scheduling
+            selected_system_prompt_length = tab.selectbox(
+                "System Prompt Length",
+                options=filtered_data['System_Prompt_Length'].unique(),
+                help="The number of tokens (words or characters) in the initial instructions given to a large language model to define its persona and behavior. It will likely be the same among different users and sessions."
+            )
+            selected_question_length = tab.selectbox(
+                "Question Length",
+                options=filtered_data['Question_Length'].unique(),
+                help="Question length is the user input part of the prompt as they interact with the chatbot. This is different from system prompt, which is the shared prefix of the prompt which is likely to be the same for different users and sessions."
+            )
+
+            selected_groups = tab.selectbox(
+                "Number of groups",
+                options=filtered_data['Groups'].unique(),
+                help="The number of shared prefix groups in the workload traffic."
+            )
+
+            selected_prompts_per_group = tab.selectbox(
+                "Number of prompts per group",
+                options=filtered_data['Prompts_Per_Group'].unique(),
+                help="The number of unique questions per group."
+            )
+
+
             plot = xplotting.get_plot_scenario(
                 runs_df=original_benchmark_data,
                 scenario={
                     "Model": user_inputs['model'],
                     "GPU": user_inputs['gpu_type'],
                     "Num_GPUs": user_inputs['num_gpus'],
-                    "ISL": user_inputs['isl'],
-                    "OSL": user_inputs['osl'],
-                    "Max_QPS": user_inputs['max_qps'],
+                    "OSL_500": user_inputs['osl'],
+                    "Question_Length": selected_question_length,
+                    "System_Prompt_Length": selected_system_prompt_length,
+                    "Groups": selected_groups,
+                    "Prompts_Per_Group": selected_prompts_per_group
                 },
                 config_keys=scenario_preset['config_keys'],
                 col_x=scenario_preset['col_x'],
@@ -328,7 +347,30 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
 
             tab.pyplot(plot)
 
+            # Plot the tradeoff
+            tab.divider()
 
+            tab.subheader("Optimal configuration")
+            tradeoff_plot = xplotting.get_scenario_tradeoff_plot(
+                runs_df=original_benchmark_data,
+                scenario={
+                    "Model": user_inputs['model'],
+                    "GPU": user_inputs['gpu_type'],
+                    "Num_GPUs": user_inputs['num_gpus'],
+                    "OSL_500": user_inputs['osl'],
+                    "Question_Length": selected_question_length,
+                    "System_Prompt_Length": selected_system_prompt_length,
+                    "Groups": selected_groups,
+                    "Prompts_Per_Group": selected_prompts_per_group
+                },
+                config_keys=scenario_preset['config_keys'],
+                col_x=scenario_preset['pareto']['col_x'],
+                col_y=scenario_preset['pareto']['col_y'],
+                col_z=scenario_preset['pareto']['col_z'],
+                col_seg_by=scenario_preset['col_seg_by'],
+                )
+
+            tab.pyplot(tradeoff_plot)
 
 
 if __name__ == "__main__":
