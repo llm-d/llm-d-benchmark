@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
 
+if [[ $0 != "-bash" ]]; then
+    pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
+fi
+
+export LLMDBENCH_INSTALLDEPS_DIR=$(realpath $(pwd)/)
+
+if [ $0 != "-bash" ] ; then
+    popd  > /dev/null 2>&1
+fi
+
 is_mac=$(uname -s | grep -i darwin || true)
 if [[ ! -z $is_mac ]]; then
     target_os=mac
 else
     target_os=linux
+    source /etc/os-release
 fi
 
 dependencies_checked_file=~/.llmdbench_dependencies_checked
@@ -16,7 +27,7 @@ else
 fi
 
 # common deps
-tools="sed python3 curl git oc kubectl helm helmfile kustomize rsync make skopeo jq yq openssl"
+tools="sed python3 curl git oc kubectl helm helmfile kustomize rsync make skopeo jq yq openssl podman"
 
 # get package manager
 if [ "$target_os" = "mac" ]; then
@@ -99,8 +110,12 @@ function install_kustomize_linux {
 }
 
 pushd /tmp &>/dev/null
+command -v docker &> /dev/null
+if [[ $? -eq 0 ]]; then
+    tool=$(echo $tool | sed 's/podman//g' )
+fi
 for tool in $tools; do
-    grep -q "$tool already installed." $dependencies_checked_file
+    grep -q "$tool already installed." $dependencies_checked_file &> /dev/null
     if [[ $? -ne 0 ]]; then
         if command -v $tool &> /dev/null; then
             echo "$tool already installed." >> $dependencies_checked_file
@@ -129,7 +144,7 @@ done
 # Check minimum Python version (3.11+) based on new requirements
 #
 
-grep -q "is available on system." $dependencies_checked_file
+grep -q "is available on system." $dependencies_checked_file &> /dev/null
 if [[ $? -ne 0 ]]; then
     python_present=""
     verlist=""
@@ -154,7 +169,7 @@ if [[ $? -ne 0 ]]; then
     fi
 fi
 
-grep -q "pip3 installed successfully." $dependencies_checked_file
+grep -q "pip3 installed successfully." $dependencies_checked_file &> /dev/null
 if [[ $? -ne 0 ]]; then
     if ! command -v pip3 &> /dev/null; then
         echo "pip3 not found. Attempting to install it..."
@@ -177,14 +192,13 @@ if [[ $? -ne 0 ]]; then
     fi
 fi
 
-python_deps="kubernetes pykube-ng kubernetes-asyncio GitPython requests PyYAML Jinja2 requests huggingface_hub==0.34.4 transformers==4.55.4"
+python_deps="kubernetes pykube-ng kubernetes-asyncio GitPython requests PyYAML Jinja2 requests"
 
 for dep in $python_deps; do
     pkg_name=$(echo "${dep}" | cut -d= -f1)
     grep -q "$(echo $dep) is already installed." $dependencies_checked_file
     if [[ $? -ne 0 ]]; then
         importdep="import $(echo $dep | cut -d '=' -f 1 | tr '[:upper:]' '[:lower:]' | sed -e 's/-ng//g' -e 's/gitpython/git/g' -e 's/pyyaml/yaml/g' -e 's/-/_/g')"
-        echo "$importdep"
         if pip3 show "${pkg_name}" &>/dev/null; then
             # check if a version was specified
             if [[ "${dep}" == *"=="* ]]; then
@@ -202,12 +216,28 @@ for dep in $python_deps; do
             fi
         fi
 
-        echo "Installing ${dep}..."
+        echo "Installing ${dep} (python3 -c \"$importdep\")..."
         if ! pip3 install "${dep}"; then
             echo "ERROR: Failed to install Python package ${dep}!"
+            if [[ $ID == "ubuntu" ]]; then
+                echo "###### Try to install everything on python virtual environment (e.g. \"python3 -m venv llm-d-benchmark && source llm-d-benchmark/bin/activate\")"
+            fi
             exit 1
         fi
     fi
 done
+
+grep -q "$(echo config_explorer) is already installed." $dependencies_checked_file &> /dev/null
+if [[ $? -ne 0 ]]; then
+    if ! pip3 show "config_explorer" &>/dev/null; then
+        pushd $LLMDBENCH_INSTALLDEPS_DIR/../config_explorer/ &> /dev/null
+        pip install .
+        if [[ $? -ne 0 ]]; then
+            echo "ERROR: Failed to install Python package config_explorer!"
+            exit 1
+        fi
+        popd &> /dev/null
+    fi
+fi
 
 popd &>/dev/null

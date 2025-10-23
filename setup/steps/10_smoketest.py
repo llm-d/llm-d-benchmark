@@ -165,7 +165,7 @@ def check_deployment(ev: dict):
         if is_standalone_deployment(ev):
             received_model_name, curl_command_used = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, route_url, '80')
         else:
-            received_model_name, curl_command_used = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, route_url + ':80/' + current_model_ID, '80')
+            received_model_name, curl_command_used = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, route_url, '80')
         if received_model_name == current_model:
             announce(f"✅ External route responds successfully ({received_model_name})")
         else:
