@@ -1,13 +1,13 @@
-Based on experiments with Tekton, some basic composable operations might include:  
+Based on experiments with Tekton, some basic composable tasks might include:  
 
 ## Tooling
 
-Operations to install tooling and to configure the environment. This might include installing and configuring the cluster; for example, a gateway provider (istio, kgateway, gke), LWS, Tekton, etc.
+Tasks to install tooling and to configure the environment. This might include installing and configuring the cluster; for example, a gateway provider (istio, kgateway, gke), LWS, Tekton, etc.
 It might also include installing runtime tooling such as llmdbench, helm, yq, git, kubectl, oc, etc.
 
 ## Stack Creation
 
-Operations to create elements of the model stack -- gateway, GAIE, and model servers.
+Tasks to create elements of the model stack -- gateway, GAIE, and model servers.
 
 To delpoy each stack, a unique DNS compatible identifier (`model_label`) is required. It serves two purposes:
 
@@ -15,7 +15,7 @@ To delpoy each stack, a unique DNS compatible identifier (`model_label`) is requ
 
 (b) At the level of the Gateway, there must be a means to distinguish requests for one model service vs. another. For most workload generators, the simplest mechanism is to modify the request path by inserting a model specific prefix in the path. This prefix must be unique to the instance of the deployed model. Again, the `model_label` can be used for this (in an `HTTPRoute`).
 
-### Operation: `deploy_gateway`
+### Task: `deploy_gateway`
 
 **Description:** 
 
@@ -37,7 +37,7 @@ Notes: A gateway pod can be used for multiple namespaces. This requires addition
 _ _name_ - name of gateway created
 - _serviceUrl_ - endpoint (incl. port) to be used by requests
 
-### Operation: `deploy_gaie`
+### Task: `deploy_gaie`
     
 **Inputs**: 
 
@@ -52,13 +52,13 @@ _ _name_ - name of gateway created
 
 **Outputs**:
 
-### Operation: `deploy_model`
+### Task: `deploy_model`
 
 **Inputs**:
 
 **Outputs**:
 
-### Operation: `create_httproute`
+### Task: `create_httproute`
 
 **Description:** 
 
@@ -71,7 +71,7 @@ Create an `HTTPRoute` object to match requests to a Gateway to the GAIE `Inferen
 
 **Outputs**:
 
-### Operation: `download_model`
+### Task: `download_model`
 
 **Description:** 
 
@@ -89,7 +89,7 @@ Downloads model from HF to a locally mounted disk.
 
 ## Run Workloads
 
-### Operation: `create_workload_profile`
+### Task: `create_workload_profile`
 
 **Description**:
 
@@ -108,11 +108,11 @@ Modify a workload profile template for a particular execution. The profile forma
 
 - **workload_profile** - yaml string or url to location
 
-### Operation: `run_workload`
+### Task: `run_workload`
 
 **Description**:
 
-Configure and run a workload generator (harness). On completion, results are saved to a locally mounted filesystem and are converted to a universal format. Should conversion be a separate operation?
+Configure and run a workload generator (harness). On completion, results are saved to a locally mounted filesystem and are converted to a universal format. Should conversion be a separate task?
 
 **Inputs**:
 
@@ -123,7 +123,7 @@ Configure and run a workload generator (harness). On completion, results are sav
 
 **Outputs**:
 
-### Operation: `record`
+### Task: `record`
 
 **Description**:
 
@@ -137,11 +137,11 @@ Record configuration of stack and workload. Should this be part of **run_workloa
 
 - list of paths?
 
-### Operation: `upload`
+### Task: `upload`
 
 **Description**:
 
-Copy results from a locally mounted files to remote location. Should there be one operation per target type?
+Copy results from a locally mounted files to remote location. Should there be one task per target type?
 
 **Inputs**:
 
