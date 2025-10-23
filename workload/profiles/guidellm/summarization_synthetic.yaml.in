@@ -1,0 +1,16 @@
+target: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+request_type: text_completions
+profile: constant
+rate: [1,2,4,8]
+max_seconds: 120
+data:
+- prompt_tokens_min: 10
+  prompt_tokens_max: 4096
+  prompt_tokens: 2048
+  prompt_tokens_stdev: 1024
+  output_tokens_min: 10
+  output_tokens_max: 256
+  output_tokens: 128
+  output_tokens_stdev: 64
+  samples: 1000
