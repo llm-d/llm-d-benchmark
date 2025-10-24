@@ -17,7 +17,13 @@ import yaml
 import numpy as np
 from scipy import stats
 
-from config_explorer.schema import BenchmarkReport, Units, WorkloadGenerator
+# TODO fix this during refactor after repository has been converted into
+# full Python.
+# Hack to ensure schema can be imported from harness pod or config explorer.
+try:
+    from schema import BenchmarkReport, Units, WorkloadGenerator
+except ImportError:
+    from config_explorer.schema import BenchmarkReport, Units, WorkloadGenerator
 
 
 def check_file(file_path: str) -> None:

@@ -8,13 +8,26 @@ from typing import Any
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from config_explorer.explorer import (
-    COLUMNS,
-    SLO,
-    get_scenario_df,
-    get_meet_slo_df,
-    get_pareto_front_df
-)
+# TODO These packages can be imported in different ways depending on whether
+# these are imported as a notebook, or installed as a config_explorer library
+# in a Python environment. This needs to be made consistent as the overall
+# llm-d-benchmark repository is refactored into full Python.
+try:
+    from explorer import (
+        COLUMNS,
+        SLO,
+        get_scenario_df,
+        get_meet_slo_df,
+        get_pareto_front_df
+    )
+except ImportError:
+    from config_explorer.explorer import (
+        COLUMNS,
+        SLO,
+        get_scenario_df,
+        get_meet_slo_df,
+        get_pareto_front_df
+    )
 
 
 # Figure number

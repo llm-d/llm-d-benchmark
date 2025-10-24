@@ -43,8 +43,16 @@ from typing import Any
 
 import pandas as pd
 
-from config_explorer import convert
-from config_explorer import schema
+# TODO These packages can be imported in different ways depending on whether
+# these are imported as a notebook, or installed as a config_explorer library
+# in a Python environment. This needs to be made consistent as the overall
+# llm-d-benchmark repository is refactored into full Python.
+try:
+    import convert
+    import schema
+except ImportError:
+    from config_explorer import convert
+    from config_explorer import schema
 
 
 class Text:
