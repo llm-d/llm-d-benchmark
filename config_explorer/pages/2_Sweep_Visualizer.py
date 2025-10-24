@@ -346,7 +346,6 @@ def display_optimal_config_overview(container: DeltaGenerator,
     runs_pareto_front = xp.get_pareto_front_df(runs_meet_slo, col_x, col_y, True)
 
     # Print the rows on Pareto front, showing just the columns of interest
-    config_columns = ['Replicas', 'TP', 'P_Replicas', 'P_TP', 'D_Replicas', 'D_TP']
     columns_of_interest = config_columns[:]
     columns_of_interest.append(col_x)
     columns_of_interest.append(col_y)
@@ -388,8 +387,10 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
 
         scenario_preset = scenarios_config_keys_mapping[selected_display_preset]
         user_selected_scenario = user_inputs['scenario']
+        pareto_config_columns = []
 
         if selected_display_preset == PD_DISAGG:
+            pareto_config_columns = ['Replicas', 'TP', 'P_Replicas', 'P_TP', 'D_Replicas', 'D_TP']
             tab1.write("""The prefill/decode disaggregation scenario compares the effects of :blue[aggregate] inference vs. :blue[disaggregated] inference.""")
 
             tab1.subheader("Performance comparison (Throughput/GPU vs. Concurrency)")
@@ -448,9 +449,7 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
         if selected_display_preset == "Custom":
             tab1.warning("This feature is not yet available. To perform you own data exploration, see this [example Jupyter notebook](https://github.com/llm-d/llm-d-benchmark/blob/main/analysis/analysis.ipynb) for analysis using the `config_explorer` library.")
 
-
-        config_columns = ['Replicas', 'TP', 'P_Replicas', 'P_TP', 'D_Replicas', 'D_TP']
-        display_optimal_config_overview(tab2, config_columns, original_benchmark_data, user_inputs, user_selected_scenario)
+        display_optimal_config_overview(tab2, scenario_preset['config_keys'], original_benchmark_data, user_inputs, user_selected_scenario)
 
 if __name__ == "__main__":
     # Set up streamlit config
