@@ -296,6 +296,7 @@ def inputs(tab: DeltaGenerator):
 
 def display_optimal_config_overview(container: DeltaGenerator,
                                     config_columns: List[str],
+                                    slo_columns: List[str],
                                     original_benchmark_data: DataFrame,
                                     user_inputs: dict,
                                     user_selected_scenario: Dict[str, Any]
@@ -345,9 +346,7 @@ def display_optimal_config_overview(container: DeltaGenerator,
     runs_pareto_front = xp.get_pareto_front_df(runs_meet_slo, col_x, col_y, True)
 
     # Print the rows on Pareto front, showing just the columns of interest
-    columns_of_interest = config_columns[:]
-    columns_of_interest.append(col_x)
-    columns_of_interest.append(col_y)
+    columns_of_interest = config_columns + slo_columns
 
     # Display info
     container.info(f"Out of the {len(runs_meet_slo)} configurations that meet SLO requirements, {len(runs_pareto_front)} are optimal. Their configuration and performance metrics are shown below.")
@@ -376,6 +375,7 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
         help="Scenario presents define a set of parameters to filter that showcase a certain feature or capability. For example, comparing throughput per user vs. throughput per GPU tradeoff for PD disaggregation scenarios."
         )
 
+    slos_cols = []
     if selected_display_preset:
 
         tab1, tab2 = tab.tabs(["📈 Performance overview", "🌟 Optimal configuration overview"])
@@ -386,10 +386,10 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
 
         scenario_preset = scenarios_config_keys_mapping[selected_display_preset]
         user_selected_scenario = user_inputs['scenario']
-        pareto_config_columns = []
+
 
         if selected_display_preset == PD_DISAGG:
-            pareto_config_columns = ['Replicas', 'TP', 'P_Replicas', 'P_TP', 'D_Replicas', 'D_TP']
+
             tab1.write("""The prefill/decode disaggregation scenario compares the effects of :blue[aggregate] inference vs. :blue[disaggregated] inference.""")
 
             tab1.subheader("Performance comparison (Throughput/GPU vs. Concurrency)")
@@ -417,6 +417,9 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             )
             tab1.pyplot(tradeoff_plot)
 
+            # Add slos
+            config_cols = ['Replicas', 'TP', 'P_Replicas', 'P_TP', 'D_Replicas', 'D_TP']
+            slos_cols = ['Mean_TTFT_ms', 'Thpt_per_GPU', 'Num_GPUs']
 
         if selected_display_preset == INFERENCE_SCHEDULING:
             tab1.subheader("Performance comparison (QPS vs. TTFT)")
@@ -445,10 +448,13 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             )
             tab1.pyplot(tradeoff_plot)
 
+            config_cols = scenario_preset['config_keys']
+            slos_cols = ["P90_TTFT_ms", "P90_TPOT_ms", "Total_Token_Throughput", "Num_GPUs"]
+
         if selected_display_preset == "Custom":
             tab1.warning("This feature is not yet available. To perform you own data exploration, see this [example Jupyter notebook](https://github.com/llm-d/llm-d-benchmark/blob/main/analysis/analysis.ipynb) for analysis using the `config_explorer` library.")
 
-        display_optimal_config_overview(tab2, scenario_preset['config_keys'], original_benchmark_data, user_inputs, user_selected_scenario)
+        display_optimal_config_overview(tab2, config_cols, slos_cols, original_benchmark_data, user_inputs, user_selected_scenario)
 
 if __name__ == "__main__":
     # Set up streamlit config
