@@ -37,7 +37,7 @@ def main():
 
     # Check if modelservice environment is active
     if int(ev.get("control_environment_type_modelservice_active", 0)) == 1:
-        extract_environment()
+        extract_environment(ev)
 
         model_number = 0
         model_list = ev.get("deploy_model_list", "").replace(",", " ").split()

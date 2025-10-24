@@ -66,19 +66,21 @@ def announce(msgcont: str, logfile : str = None, ignore_if_failed: bool = False)
     # ensure logs dir exists
     os.makedirs(log_dir, exist_ok=True)
 
-    if msgcont.count("ERROR:") :
-        msgcont = f"❌  {msgcont}"
-
-    if msgcont.count("WARNING:") :
-        msgcont = f"⚠️  {msgcont}"
-
     if not logfile:
         cur_step = os.getenv("CURRENT_STEP_NAME", 'step')
         logfile = cur_step + '.log'
 
     logpath = os.path.join(log_dir, logfile)
 
-    logger.info(msgcont)
+    if msgcont.count("ERROR:") :
+        msgcont = f"❌  {msgcont.replace('ERROR: ','')}"
+        logger.error(msgcont)
+
+    elif msgcont.count("WARNING:") :
+        msgcont = f"⚠️  {msgcont.replace('WARNING: ','')}"
+        logger.warn(msgcont)
+    else :
+        logger.info(msgcont)
 
     try:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -231,8 +233,6 @@ def llmdbench_execute_cmd(
 
     return ecode
 
-
-
 def environment_variable_to_dict(ev: dict = {}) :
     for key in dict(os.environ).keys():
         if "LLMDBENCH_" in key:
@@ -288,7 +288,6 @@ def create_namespace(api: pykube.HTTPClient, namespace_name: str, dry_run: bool 
                 announce(f"✅ Namespace '{namespace_name}' created successfully.")
     except PyKubeError as e:
         announce(f"Failed to create or check namespace '{namespace_name}': {e}")
-
 
 def validate_and_create_pvc(
     api: pykube.HTTPClient,
@@ -367,7 +366,6 @@ def validate_and_create_pvc(
     except PyKubeError as e:
         announce(f"Failed to create or check PVC '{pvc_name}': {e}")
         sys.exit(1)
-
 
 def launch_download_job(
     namespace: str,
@@ -492,7 +490,6 @@ spec:
     llmdbench_execute_cmd(
         actual_cmd=apply_cmd, dry_run=dry_run, verbose=verbose, silent=True, attempts=1
     )
-
 
 async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False):
     """Wait for the  job to complete"""
@@ -640,14 +637,12 @@ def apply_configmap(yaml_file: Path, kubectl_cmd: str, dry_run: bool, verbose: b
         silent=not verbose
     )
 
-
-def extract_environment():
+def extract_environment(ev):
     """
     Extract and display environment variables for debugging.
     Equivalent to the bash extract_environment function.
     """
 
-    ev = {}
     for key, value in os.environ.items():
         if "LLMDBENCH_" in key:
             ev[key.split("LLMDBENCH_")[1].lower()] = value
@@ -659,6 +654,8 @@ def extract_environment():
             env_vars.append(f"{key}={value}")
 
     env_vars.sort()
+
+    environment_variable_to_dict(ev)
 
     # Check if environment variables have been displayed before
     envvar_displayed = int(os.environ.get("LLMDBENCH_CONTROL_ENVVAR_DISPLAYED", 0))
@@ -739,18 +736,11 @@ def get_image(image_registry: str, image_repo: str, image_name: str, image_tag: 
     else:
         return f"{image_registry}/{image_repo}/{image_name}:{is_latest_tag}"
 
-
-def check_storage_class():
+def check_storage_class(ev):
     """
     Check and validate storage class configuration.
     Equivalent to the bash check_storage_class function.
     """
-    caller = os.environ.get("LLMDBENCH_CONTROL_CALLER", "")
-    if caller not in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
-        return True
-
-    storage_class = os.environ.get("LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS", "")
-
     try:
         # Use pykube to connect to Kubernetes
         control_work_dir = os.environ.get("LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark")
@@ -768,8 +758,9 @@ def check_storage_class():
                 kind = "StorageClass"
 
         # Handle default storage class
-        if storage_class == "default":
-            if caller in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
+        if ev["vllm_common_pvc_storage_class"] == "default":
+            if ev["control_caller"] in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
+
                 try:
                     # Find default storage class using pykube
                     storage_classes = StorageClass.objects(api)
@@ -784,33 +775,33 @@ def check_storage_class():
                     if default_sc:
                         announce(f"ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to \"{default_sc}\"")
                         os.environ["LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS"] = default_sc
-                        storage_class = default_sc
+                        ev["vllm_common_pvc_storage_class"] = default_sc
+
                     else:
-                        announce("❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class")
+                        announce(f"ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class")
                         return False
                 except Exception as e:
-                    announce(f"❌ Error checking default storage class: {e}")
+                    announce(f"Error checking default storage class: {e}")
                     return False
 
         # Verify storage class exists using pykube
         try:
-            sc = StorageClass.objects(api).get(name=storage_class)
+            sc = StorageClass.objects(api).get(name=ev["vllm_common_pvc_storage_class"] )
             if sc.exists():
                 return True
             else:
-                announce(f"❌ ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS={storage_class} but could not find such storage class")
+                announce(f"ERROR: Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS={ev['common_pvc_storage_class']} but could not find such storage class")
                 return False
         except pykube.exceptions.ObjectDoesNotExist:
-            announce(f"❌ ERROR. Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS={storage_class} but could not find such storage class")
+            announce(f"ERROR: Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS={ev['common_pvc_storage_class']} but could not find such storage class")
             return False
         except Exception as e:
-            announce(f"❌ Error checking storage class: {e}")
+            announce(f"ERROR: checking storage class: {e}")
             return False
 
     except Exception as e:
-        announce(f"❌ Error connecting to Kubernetes: {e}")
+        announce(f"ERROR: connecting to Kubernetes: {e}")
         return False
-
 
 def check_affinity(ev: dict):
     """
@@ -946,7 +937,6 @@ def add_annotations(varname: str) -> str:
 
     return "\n".join(annotation_lines)
 
-
 def render_string(input_string):
     """
     Process REPLACE_ENV variables in a string, equivalent to bash render_string function.
@@ -1001,6 +991,15 @@ def render_string(input_string):
 
     return processed_string
 
+def add_command(model_command: str) -> str:
+    """
+    Generate command section for container based on model_command type.
+    """
+    if model_command == "custom":
+        return """command:
+      - /bin/sh
+      - '-c'"""
+    return ""
 
 def add_command_line_options(args_string):
     """
@@ -1041,6 +1040,7 @@ def add_command_line_options(args_string):
             if "[" in processed_args and "]" in processed_args:
                 # Handle array format with potential complex arguments
                 processed_args = processed_args.replace("[", "").replace("]", "")
+
                 # Split on ____  to preserve arguments with spaces/quotes
                 args_list = [arg.strip() for arg in processed_args.split("____") if arg.strip()]
                 # Create proper YAML list items with escaped quotes
@@ -1059,14 +1059,15 @@ def add_command_line_options(args_string):
                                 yaml_list.append(f"      - \"{cleaned_arg}\"")
                 return "\n".join(yaml_list)
             else:
-                processed_args = processed_args.replace("____", " ")
-                args_list = processed_args.split()
-                # Create proper YAML list items with quoted strings
-                yaml_list = []
+                processed_args = f"{processed_args.replace('____', ' ')}"
+                args_list = processed_args.split('--')
+                cmd_param_list = ["- |"]
                 for arg in args_list:
-                    if arg.strip():
-                        yaml_list.append(f"      - \"{arg}\"")
-                return "\n".join(yaml_list)
+                    cmd_param_list.append(f"        --{arg.strip()} \\")
+
+                cmd_param_list[-1] = cmd_param_list[-1].replace("\\","")
+                cmd_string = "\n".join(cmd_param_list).replace("--",'',1)
+                return cmd_string
         else:
             # Default case
             processed_args = processed_args.replace("____", " ")
@@ -1078,8 +1079,7 @@ def add_command_line_options(args_string):
         else:
             return ""
 
-
-def add_additional_env_to_yaml(env_vars_string: str) -> str:
+def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
     """
     Generate additional environment variables YAML.
     In case env_vars_string is a file path, open the file and read the contents first
@@ -1096,13 +1096,10 @@ def add_additional_env_to_yaml(env_vars_string: str) -> str:
     """
 
     # Determine indentation based on environment type
-    standalone_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE", 0))
-    modelservice_active = int(os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE", 0))
-
-    if standalone_active == 1:
+    if ev["control_environment_type_standalone_active"] :
         name_indent = " " * 8
         value_indent = " " * 10
-    elif modelservice_active == 1:
+    elif ev["control_environment_type_modelservice_active"] :
         name_indent = " " * 6
         value_indent = " " * 8
     else:
@@ -1113,8 +1110,9 @@ def add_additional_env_to_yaml(env_vars_string: str) -> str:
         lines = []
         with open(env_vars_string, 'r') as fp:
             for line in fp:
-                line = render_string(line)
-                lines.append(name_indent + line.rstrip())
+                if line[0] != "#" :
+                    line = render_string(line)
+                    lines.append(name_indent + line.rstrip())
         return '\n'.join(lines)
 
     # Parse environment variables (comma-separated list)
@@ -1136,7 +1134,6 @@ def add_additional_env_to_yaml(env_vars_string: str) -> str:
             env_lines.append(f"{value_indent}value: \"{processed_value}\"")
 
     return "\n".join(env_lines)
-
 
 def add_config(obj_or_filename, num_spaces=0, label=""):
     spaces = " " * num_spaces
@@ -1161,7 +1158,6 @@ def add_config(obj_or_filename, num_spaces=0, label=""):
         indented_contents = ""
     return indented_contents
 
-
 def is_standalone_deployment(ev: dict) -> bool:
     """
     Returns true if it is a standalone deployment
@@ -1181,7 +1177,6 @@ def get_accelerator_type(ev: dict) -> str | None:
         # LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3
         parsed = common_affinity.split(":")
         return parsed[-1]
-
 
 def is_hf_model_gated(model_id: str) -> bool:
     """
@@ -1215,7 +1210,6 @@ def is_hf_model_gated(model_id: str) -> bool:
     except requests.RequestException as e:
         announce("❌ ERROR - Request failed:", e)
         return False
-
 
 def user_has_hf_model_access(model_id: str, hf_token: str) -> bool:
     """
@@ -1258,7 +1252,6 @@ def user_has_hf_model_access(model_id: str, hf_token: str) -> bool:
         announce("❌ ERROR - Request failed:", e)
         return False
 
-
 def get_rand_string(length: int = 8):
     """
     Generate a random string with lower case characters and digits
@@ -1267,7 +1260,6 @@ def get_rand_string(length: int = 8):
     characters = string.ascii_lowercase + string.digits
     random_string = ''.join(random.choices(characters, k=length))
     return random_string
-
 
 def get_model_name_from_pod(
     namespace: str,
@@ -1329,6 +1321,70 @@ def get_model_name_from_pod(
         namespace=namespace,
         body=k8s_client.V1DeleteOptions(propagation_policy='Foreground', grace_period_seconds=10))
     return model_name, curl_command
+
+# FIXME (USE PYKUBE)
+def wait_for_pods_creation(ev: dict, component_nr: int, component: str) -> int:
+    """
+    Wait for pods to be created.
+    """
+    wait_timeout = int(ev["control_wait_timeout"]) // 2
+    result = 0
+    if int(component_nr) > 0:
+        announce(f"⏳ waiting for ({component}) pods serving model to be created...")
+        wait_cmd = f"kubectl --namespace {ev['vllm_common_namespace']} wait --timeout={wait_timeout}s --for=create pod -l llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}"
+        result = llmdbench_execute_cmd(wait_cmd, ev["control_dry_run"], ev["control_verbose"], 1, 2)
+        if result == 0:
+            announce(f"✅ ({component}) pods serving model created")
+    return result
+
+# FIXME (USE PYKUBE)
+def wait_for_pods_running(ev: dict, component_nr: int, component: str) -> int:
+    """
+    Wait for pods to be in Running state.
+    """
+    wait_timeout = int(ev["control_wait_timeout"])
+    result = 0
+    if int(component_nr) > 0:
+        announce(f"⏳ Waiting for ({component}) pods serving model to be in \"Running\" state (timeout={wait_timeout}s)...")
+        wait_cmd = f"kubectl --namespace {ev['vllm_common_namespace']} wait --timeout={wait_timeout}s --for=jsonpath='{{.status.phase}}'=Running pod -l llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}"
+        result = llmdbench_execute_cmd(wait_cmd,  ev["control_dry_run"], ev["control_verbose"])
+        if result == 0:
+            announce(f"🚀 ({component}) pods serving model running")
+    return result
+
+# FIXME (USE PYKUBE)
+def wait_for_pods_ready(ev: dict, component_nr: int, component: str) -> int:
+    """
+    Wait for pods to be Ready.
+    """
+    wait_timeout = int(ev["control_wait_timeout"])
+
+    result = 0
+    if int(component_nr) > 0:
+        announce(f"⏳ Waiting for ({component}) pods serving model to be Ready (timeout={wait_timeout}s)...")
+        wait_cmd = f"kubectl --namespace {ev['vllm_common_namespace']} wait --timeout={wait_timeout}s --for=condition=Ready=True pod -l llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}"
+        result = llmdbench_execute_cmd(wait_cmd, ev["control_dry_run"], ev["control_verbose"])
+        if result == 0:
+            announce(f"🚀 ({component}) pods serving model ready")
+    return result
+
+# FIXME (USE PYKUBE)
+def collect_logs(ev: dict, component_nr: int, component: str) -> int:
+    """
+    Collect logs from component pods.
+    """
+    if component_nr == 0:
+        return ""
+
+    # Create logs directory
+    logs_dir = Path(ev['control_work_dir']) / "setup" / "logs"
+    if not ev["control_dry_run"]:
+        logs_dir.mkdir(parents=True, exist_ok=True)
+
+    # Collect logs
+    log_file = logs_dir / f"llm-d-{component}.log"
+    log_cmd = f"kubectl --namespace {ev['vllm_common_namespace']} logs --tail=-1 --prefix=true -l llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component} > {log_file}"
+    return llmdbench_execute_cmd(log_cmd, ev["control_dry_run"], ev["control_verbose"])
 
 
 # ----------------------- Capacity Planner Sanity Check -----------------------
@@ -1587,7 +1643,6 @@ def validate_standalone_vllm_params(ev: dict, ignore_if_failed: bool):
     standalone_params = get_validation_param(ev)
     validate_vllm_params(standalone_params, ignore_if_failed)
 
-
 def validate_modelservice_vllm_params(ev: dict, ignore_if_failed: bool):
     """
     Validates vllm modelservice configuration. Returns True if validation is complete.
@@ -1600,7 +1655,6 @@ def validate_modelservice_vllm_params(ev: dict, ignore_if_failed: bool):
 
     announce(f"Validating decode vLLM arguments for {decode_params.models} ...")
     validate_vllm_params(decode_params, ignore_if_failed, type=DECODE)
-
 
 def capacity_planner_sanity_check(ev: dict):
     """

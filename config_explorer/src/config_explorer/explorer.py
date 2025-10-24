@@ -1141,6 +1141,26 @@ def get_scenario_df(
     return runs_df
 
 
+def get_scenario_counts(
+    runs_df: pd.DataFrame,
+    scenarios: list[dict[str, Any]],
+) -> list[int]:
+    """Get a count of rows in DataFrame matching each scenario.
+
+    Args:
+        runs_df (pandas.DataFrame): Benchmark runs to count scenario rows from.
+        scenarios (list[dict[str, Any]]): Scenario groups to count.
+
+    Returns:
+        list[int]: Counts for each scenario.
+    """
+    counts = []
+    for sc in scenarios:
+        count = len(get_scenario_df(runs_df, sc))
+        counts.append(count)
+    return counts
+
+
 def print_scenarios(
     scenarios: list[dict[str, Any]],
     runs_df: pd.DataFrame | None = None,
@@ -1170,6 +1190,7 @@ def print_scenarios(
     if runs_df is None:
         header = f'{Text.BOLD}{Text.BLUE}IDX  {Text.DEFAULT}{Text.BOLD}'
     else:
+        counts = get_scenario_counts(runs_df, scenarios)
         header = f'{
             Text.BOLD}{
             Text.BLUE}IDX  {
@@ -1186,15 +1207,57 @@ def print_scenarios(
     # Print details of each scenario
     for ii, sc in enumerate(scenarios):
         row = f'{Text.BLUE}{ii}{Text.DEFAULT}' + " " * (5 - len(str(ii)))
-        if runs_df is not None:
-            count = len(get_scenario_df(runs_df, sc))
-            if count < min_count:
+        if counts:
+            if counts[ii] < min_count:
                 continue
-            row += f'{Text.RED}{count}{Text.DEFAULT}' + \
-                " " * (7 - len(str(count)))
+            row += f'{Text.RED}{counts[ii]}{Text.DEFAULT}' + \
+                " " * (7 - len(str(counts[ii])))
         for jj, val in enumerate(sc.values()):
             row += f'{str(val)}' + " " * (spans[jj] - len(str(val)) + 2)
         print(row)
+
+
+def make_scenarios_summary_df(
+    scenarios: list[dict[str, Any]],
+    runs_df: pd.DataFrame,
+    min_count: int = 0
+) -> pd.DataFrame:
+    """
+    Make a DataFrame of schenarios details, analagous to the printout from
+    print_scenarios().
+
+    Args:
+        scenarios (list[dict[str, Any]]): Scenario groups to show.
+        runs_df (pandas.DataFrame): Benchmark runs to retrieve the scenario
+            data from.
+        min_count (int): Only show scenarios with at least this many rows.
+
+    Returns:
+        pandas.DataFrame: Details about available scenarios
+    """
+    # Make DataFrame with matching row counts, and columns values from scenario
+    schema = {
+        'Count': pd.Series(dtype='int'),
+    }
+    if scenarios:
+        # If scenarios is empty, we will end up with a DataFrame having only
+        # a 'Count' column and no rows
+        for col in scenarios[0]:
+            schema[col] = pd.Series(dtype=COLUMNS[col].dtype)
+    df = pd.DataFrame(schema)
+
+    # Populate DataFrame
+    counts = get_scenario_counts(runs_df, scenarios)
+    for ii, sc in enumerate(scenarios):
+        if counts[ii] < min_count:
+            continue
+        row = {'Count': counts[ii]}
+        for col, val in sc.items():
+            row[col] = val
+        # Index of DataFrame will have 1:1 correspondance with scenario index
+        df.loc[ii] = row
+
+    return df
 
 
 def get_meet_slo_df(

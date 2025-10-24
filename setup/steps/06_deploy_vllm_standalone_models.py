@@ -24,9 +24,12 @@ from functions import (
     get_accelerator_nr, \
     is_standalone_deployment, \
     add_config, \
-    environment_variable_to_dict
+    environment_variable_to_dict, \
+    wait_for_pods_creation, \
+    wait_for_pods_running, \
+    wait_for_pods_ready, \
+    collect_logs
 )
-
 
 def main():
     """Deploy vLLM standalone models with Kubernetes Deployment, Service, and HTTPRoute."""
@@ -39,22 +42,17 @@ def main():
     if is_standalone_deployment(ev):
 
         # Check storage class
-        if not check_storage_class():
-            announce("❌ Failed to check storage class")
+        if not check_storage_class(ev):
+            announce("ERROR: Failed to check storage class")
             return 1
 
         # Check affinity
         if not check_affinity(ev):
-            announce("❌ Failed to check affinity")
+            announce("ERROR: Failed to check affinity")
             return 1
 
-        # Re-parse environment variables in case check functions updated them
-        for key in dict(os.environ).keys():
-            if "LLMDBENCH_" in key:
-                ev.update({key.split("LLMDBENCH_")[1].lower(): os.environ.get(key)})
-
         # Extract environment for debugging
-        extract_environment()
+        extract_environment(ev)
 
         # Create yamls directory
         yamls_dir = Path(ev["control_work_dir"]) / "setup" / "yamls"
@@ -83,12 +81,7 @@ def main():
 
             # Apply deployment
             kubectl_deploy_cmd = f"{ev['control_kcmd']} apply -f {deployment_file}"
-            llmdbench_execute_cmd(
-                actual_cmd=kubectl_deploy_cmd,
-                dry_run=int(ev.get("control_dry_run", 0)),
-                verbose=int(ev.get("control_verbose", 0)),
-                fatal=True
-            )
+            llmdbench_execute_cmd(actual_cmd=kubectl_deploy_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], fatal=True)
 
             # Generate Service YAML
             service_yaml = generate_service_yaml(ev, model, model_label)
@@ -98,11 +91,7 @@ def main():
 
             # Apply service
             kubectl_service_cmd = f"{ev['control_kcmd']} apply -f {service_file}"
-            llmdbench_execute_cmd(
-                actual_cmd=kubectl_service_cmd,
-                dry_run=int(ev.get("control_dry_run", 0)),
-                verbose=int(ev.get("control_verbose", 0))
-            )
+            llmdbench_execute_cmd(actual_cmd=kubectl_service_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], fatal=True)
 
             # Optional HTTPRoute for OpenShift
             srl = "deployment,service,route,pods,secrets"
@@ -117,132 +106,64 @@ def main():
 
                 # Apply HTTPRoute
                 kubectl_httproute_cmd = f"{ev['control_kcmd']} apply -f {httproute_file}"
-                llmdbench_execute_cmd(
-                    actual_cmd=kubectl_httproute_cmd,
-                    dry_run=int(ev.get("control_dry_run", 0)),
-                    verbose=int(ev.get("control_verbose", 0))
-                )
+                result = llmdbench_execute_cmd(actual_cmd=kubectl_httproute_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], fatal=True)
 
             announce(f"✅ Model \"{model}\" and associated service deployed.")
 
         # Second pass: Wait for pods to be ready
         for model in model_list:
             model_label = model_attribute(model, "label")
-            namespace = ev["vllm_common_namespace"]
 
-            # Wait for pod creation
-            announce(f"⏳ Waiting for (standalone) pods serving model {model} to be created...")
-            kubectl_wait_create_cmd = (
-                f"{ev['control_kcmd']} --namespace {namespace} wait "
-                f"--timeout={int(ev.get('control_wait_timeout', 600)) // 2}s "
-                f"--for=create pod -l app=vllm-standalone-{model_label}"
-            )
-            llmdbench_execute_cmd(
-                actual_cmd=kubectl_wait_create_cmd,
-                dry_run=int(ev.get("control_dry_run", 0)),
-                verbose=int(ev.get("control_verbose", 0)),
-                fatal=True,
-                attempts=2
-            )
-            announce(f"✅ (standalone) pods serving model {model} created")
+            ev["deploy_current_model_id_label"] = model_label
 
-            # Wait for Running state
-            announce(f"⏳ Waiting for (standalone) pods serving model {model} to be in \"Running\" state (timeout={ev.get('vllm_common_timeout', 300)}s)...")
-            kubectl_wait_running_cmd = (
-                f"{ev['control_kcmd']} --namespace {namespace} wait "
-                f"--timeout={ev.get('vllm_common_timeout', 300)}s "
-                f"--for=jsonpath='{{.status.phase}}'=Running pod -l app=vllm-standalone-{model_label}"
-            )
-            llmdbench_execute_cmd(
-                actual_cmd=kubectl_wait_running_cmd,
-                dry_run=int(ev.get("control_dry_run", 0)),
-                verbose=int(ev.get("control_verbose", 0))
-            )
-            announce(f"🚀 (standalone) pods serving model {model} running")
+            # Wait for vllm pods creation
+            result = wait_for_pods_creation(ev, ev["vllm_common_replicas"], "both")
+            if result != 0:
+                return result
 
-            # Wait for Ready condition
-            announce(f"⏳ Waiting for (standalone) pods serving {model} to be Ready (timeout={ev.get('vllm_common_timeout', 300)}s)...")
-            kubectl_wait_ready_cmd = (
-                f"{ev['control_kcmd']} --namespace {namespace} wait "
-                f"--timeout={ev.get('vllm_common_timeout', 300)}s "
-                f"--for=condition=Ready=True pod -l app=vllm-standalone-{model_label}"
-            )
-            llmdbench_execute_cmd(
-                actual_cmd=kubectl_wait_ready_cmd,
-                dry_run=int(ev.get("control_dry_run", 0)),
-                verbose=int(ev.get("control_verbose", 0))
-            )
-            announce(f"🚀 (standalone) pods serving model {model} ready")
+            # Wait for vllm pods to be running
+            result = wait_for_pods_running(ev, ev["vllm_common_replicas"], "both")
+            if result != 0:
+                return result
 
-            # Collect logs
-            logs_dir = Path(ev["control_work_dir"]) / "setup" / "logs"
-            logs_dir.mkdir(parents=True, exist_ok=True)
-            kubectl_logs_cmd = (
-                f"{ev['control_kcmd']} --namespace {namespace} logs --tail=-1 --prefix=true "
-                f"-l app=vllm-standalone-{model_label} > {logs_dir}/vllm-standalone.log"
-            )
-            llmdbench_execute_cmd(
-                actual_cmd=kubectl_logs_cmd,
-                dry_run=int(ev.get("control_dry_run", 0)),
-                verbose=int(ev.get("control_verbose", 0))
-            )
+            # Wait for vllm pods to be ready
+            result = wait_for_pods_ready(ev, ev["vllm_common_replicas"], "both")
+            if result != 0:
+                return result
+
+            # Collect decode logs
+            collect_logs(ev, ev["vllm_common_replicas"], "both")
 
             # Handle OpenShift route exposure
-            if (int(ev.get("vllm_standalone_route", 0)) != 0 and
-                int(ev.get("control_deploy_is_openshift", 0)) == 1):
+            if (int(ev["vllm_standalone_route"]) != 0 and int(ev["control_deploy_is_openshift"]) == 1):
 
                 # Check if route already exists
                 route_check_cmd = (
-                    f"{ev['control_kcmd']} --namespace {namespace} get route --ignore-not-found | "
-                    f"grep vllm-standalone-{model_label}-route || true"
+                    f"{ev['control_kcmd']} --namespace {ev['vllm_common_namespace']} get route --ignore-not-found | grep vllm-standalone-{model_label}-route"
                 )
-
-                try:
-                    import subprocess
-                    result = subprocess.run(
-                        route_check_cmd,
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        check=False
-                    )
-                    is_route = result.stdout.strip()
-                except Exception:
-                    is_route = ""
-
-                if not is_route:
+                result = llmdbench_execute_cmd(actual_cmd=route_check_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], silent=1, attempts=1, fatal=False)
+                if result:
                     announce(f"📜 Exposing pods serving model {model} as service...")
                     kubectl_expose_cmd = (
-                        f"{ev['control_kcmd']} --namespace {namespace} expose "
-                        f"service/vllm-standalone-{model_label} --namespace {namespace} "
+                        f"{ev['control_kcmd']} --namespace {ev['vllm_common_namespace']} expose "
+                        f"service/vllm-standalone-{model_label} --namespace {ev['vllm_common_namespace']} "
                         f"--target-port={ev['vllm_common_inference_port']} "
                         f"--name=vllm-standalone-{model_label}-route"
                     )
-                    llmdbench_execute_cmd(
-                        actual_cmd=kubectl_expose_cmd,
-                        dry_run=int(ev.get("control_dry_run", 0)),
-                        verbose=int(ev.get("control_verbose", 0))
-                    )
+                    llmdbench_execute_cmd(actual_cmd=kubectl_expose_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], fatal=True)
                     announce(f"✅ Service for pods service model {model} created")
 
                 announce(f"✅ Model \"{model}\" and associated service deployed.")
 
         # Show resource snapshot
         announce(f"ℹ️ A snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\":")
-        if int(ev.get("control_dry_run", 0)) == 0:
-            kubectl_get_cmd = f"{ev['control_kcmd']} get --namespace {ev['vllm_common_namespace']} {srl}"
-            llmdbench_execute_cmd(
-                actual_cmd=kubectl_get_cmd,
-                dry_run=int(ev.get("control_dry_run", 0)),
-                verbose=int(ev.get("control_verbose", 0)),
-                fatal=False
-            )
+        kubectl_get_cmd = f"{ev['control_kcmd']} get --namespace {ev['vllm_common_namespace']} {srl}"
+        llmdbench_execute_cmd(actual_cmd=kubectl_get_cmd,dry_run=ev["control_dry_run"], verbose=ev["control_verbose"],fatal=False)
     else:
         deploy_methods = ev.get("deploy_methods", "")
         announce(f"⏭️  Environment types are \"{deploy_methods}\". Skipping this step.")
 
     return 0
-
 
 def generate_deployment_yaml(ev, model, model_label):
     """Generate Kubernetes Deployment YAML for vLLM standalone model."""
@@ -262,7 +183,7 @@ def generate_deployment_yaml(ev, model, model_label):
     args = add_command_line_options(ev["vllm_standalone_args"])
 
     # Generate additional environment variables
-    additional_env = add_additional_env_to_yaml(ev.get("vllm_common_envvars_to_yaml", ""))
+    additional_env = add_additional_env_to_yaml(ev, ev["vllm_common_envvars_to_yaml"])
 
     # Generate annotations
     annotations = add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")
@@ -402,7 +323,6 @@ spec:
 """
     return deployment_yaml
 
-
 def generate_service_yaml(ev, model, model_label):
     """Generate Kubernetes Service YAML for vLLM standalone model."""
 
@@ -425,7 +345,6 @@ spec:
   type: ClusterIP
 """
     return service_yaml
-
 
 def generate_httproute_yaml(ev, model, model_label):
     """Generate HTTPRoute YAML for vLLM standalone model."""
@@ -458,7 +377,6 @@ spec:
       port: {ev['vllm_common_inference_port']}
 """
     return httproute_yaml
-
 
 if __name__ == "__main__":
     sys.exit(main())
