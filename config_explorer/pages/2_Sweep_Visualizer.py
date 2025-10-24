@@ -349,7 +349,7 @@ def display_optimal_config_overview(container: DeltaGenerator,
     columns_of_interest = config_columns + slo_columns
 
     # Display info
-    container.info(f"Out of the {len(runs_meet_slo)} configurations that meet SLO requirements, {len(runs_pareto_front)} are optimal. Their configuration and performance metrics are shown below.")
+    container.info(f"Out of the {len(runs_meet_slo)} configurations that meet SLO requirements, {len(runs_pareto_front)} are optimal, meaning no metric can be improved without degrading another. Their configuration and performance metrics are shown below.")
 
     container.dataframe(runs_pareto_front[columns_of_interest], hide_index=True)
 
