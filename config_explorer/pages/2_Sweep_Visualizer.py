@@ -172,7 +172,7 @@ def inputs(tab: DeltaGenerator):
                 "output_len": 300,
                 "system_prompt_length": 2048,
                 "question_length": 100,
-                "latency_p95": 100,
+                "e2e_latency": 100,
                 "throughput": 100,
                 "ttft": 2000,
                 "itl": 50,
@@ -182,7 +182,7 @@ def inputs(tab: DeltaGenerator):
                 "input_len": 9999,
                 "output_len": 1000,
                 "max_qps": float64(5),
-                "latency_p95": 1000,
+                "e2e_latency": 1000,
                 "throughput": 100,
                 "ttft": 10000,
                 "itl": 100,
@@ -191,7 +191,7 @@ def inputs(tab: DeltaGenerator):
                 "description": "Design the workload patterns for your own custom application type.",
                 "input_len": 300,
                 "output_len": 1000,
-                "latency_p95": 200,
+                "e2e_latency": 200,
                 "throughput": 200,
                 "ttft": 1000,
                 "itl": 50,
@@ -203,7 +203,7 @@ def inputs(tab: DeltaGenerator):
         info = preset_scenarios[selected_workload]
         isl = info['input_len']
         osl = info['output_len']
-        latency_p95 = info['latency_p95']
+        e2e_latency = info['e2e_latency']
         throughput = info['throughput']
         ttft = info['ttft']
         itl = info['itl']
@@ -233,12 +233,13 @@ def inputs(tab: DeltaGenerator):
             scenario = preset_scenarios[selected_workload]
 
             col1, col2 = st.columns(2)
+            st.caption("Note that all the metrics here refer to the p90 value.")
             throughput = col1.number_input("Throughput (token/s)",
                                          value=scenario['throughput'],
                                          min_value=1,
                                          )
-            latency_p95 = col2.number_input("E2E latency p95 (ms)",
-                                value=scenario['latency_p95'],
+            e2e_latency = col2.number_input("End-to-End latency",
+                                value=scenario['e2e_latency'],
                                 min_value=0,
                                 )
             ttft = col1.number_input("TTFT (ms)",
@@ -256,7 +257,7 @@ def inputs(tab: DeltaGenerator):
         "num_gpus": selected_num_gpus,
         "isl": selected_isl_range,
         "osl": selected_osl_range,
-        "latency_p95": latency_p95,
+        "e2e_latency": e2e_latency,
         "ttft": ttft,
         "itl": itl,
         "throughput": throughput,
@@ -330,6 +331,54 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
                     col_seg_by=scenario_preset['col_seg_by'],
                 )
                 tab.pyplot(tradeoff_plot)
+
+                tab.divider()
+                tab.subheader("Examine optimal configuration")
+
+                slos = [
+                    xp.SLO('P90_TTFT_ms', user_inputs['ttft']),
+                    xp.SLO('P90_ITL_ms', user_inputs['itl']),
+                    xp.SLO('Total_Token_Throughput', user_inputs['throughput']),
+                    xp.SLO('P90_E2EL_ms', user_inputs['e2e_latency']),
+                ]
+
+                # Columns for metrics of interest to optimize
+                col_x = 'Mean_TTFT_ms'
+                col_y = 'Thpt_per_GPU'
+
+                # Select linear or log scales
+                log_x = True
+                log_y = False
+
+                # Configuration columns of interest
+                config_columns = ['Replicas', 'TP', 'P_Replicas', 'P_TP', 'D_Replicas', 'D_TP']
+                tradeoff_plot = xplotting.plot_pareto_tradeoff(
+                    runs_df=filtered_data,
+                    scenario=scenarios[selected_index],
+                    col_x=col_x,
+                    col_y=col_y,
+                    slos=slos,
+                    log_x=log_x,
+                    log_y=log_y
+                    )
+                tab.pyplot(tradeoff_plot)
+
+                # Print table of optimal configurations
+                # Get scenario rows from all runs in dataset
+                runs_scenario = xp.get_scenario_df(filtered_data, scenarios[selected_index])
+
+                # Get just the rows that meet SLOs
+                runs_meet_slo = xp.get_meet_slo_df(runs_scenario, slos)
+
+                # Get rows on Pareto front
+                runs_pareto_front = xp.get_pareto_front_df(runs_meet_slo, col_x, col_y, True)
+
+                # Print the rows on Pareto front, showing just the columns of interest
+                config_columns = ['Replicas', 'TP', 'P_Replicas', 'P_TP', 'D_Replicas', 'D_TP']
+                columns_of_interest = config_columns[:]
+                columns_of_interest.append(col_x)
+                columns_of_interest.append(col_y)
+                tab.dataframe(runs_pareto_front[columns_of_interest])
 
 
         if selected_display_preset == INFERENCE_SCHEDULING:
