@@ -47,7 +47,7 @@ from config_explorer import convert
 from config_explorer import schema
 
 
-lass Text:
+class Text:
     """ANSI SGR control codes for text formatting"""
     DEFAULT = "\x1b[0m"
     BOLD = "\x1b[1m"

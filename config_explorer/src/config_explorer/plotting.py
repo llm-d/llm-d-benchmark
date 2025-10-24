@@ -8,7 +8,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from .explorer import (
+from config_explorer.explorer import (
     COLUMNS,
     SLO,
     get_scenario_df,

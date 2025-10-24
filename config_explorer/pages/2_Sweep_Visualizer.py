@@ -49,9 +49,10 @@ scenarios_mapping = {
         }
     },
 
-    # "Custom": {
-    #     "description": "Carve your own scenario",
-    # }
+    "Custom": {
+        "description": "Carve your own scenario",
+        "columns": ['Model']
+    }
 }
 
 def init_session_state():
@@ -111,8 +112,8 @@ def filter_data_on_inputs(data: DataFrame, user_inputs: dict) -> DataFrame:
         (data['GPU'] == user_inputs['gpu_type']) &
         (data['Num_GPUs'] <= user_inputs['num_gpus']) &
         (data['ISL'] >= user_inputs['isl']) &
-        (data['OSL'] >= user_inputs['osl']) &
-        (data['Max_QPS'] <= user_inputs['max_qps'])
+        (data['OSL'] >= user_inputs['osl'])
+        # (data['Max_QPS'] <= user_inputs['max_qps'])
         ]
 
 def inputs(tab: DeltaGenerator):
@@ -159,28 +160,29 @@ def inputs(tab: DeltaGenerator):
         ]
         scenarios = xp.get_scenarios(runs, ['Model', "GPU", "Num_GPUs", "ISL_500", "OSL_500", "Max_QPS"])
 
-        with st.expander("See summary of input and output sequences"):
+        with st.expander("Input/output sequence summary"):
+            st.write("View the available input and output sequence length pairs in the benchmark data. \
+                     Sequence length within the same 500 tokens are binned together.")
             st.table(scenarios)
 
         preset_scenarios = {
             "Chatbot": {
-                "description": "This application maps to workload patterns with high queries per second and concurrency, high prefix hit rate, and low latency.",
+                "description": "This application typically has high QPS, concurrency, and prefix hit rate, and favors low latency.",
                 "input_len": 100,
                 "output_len": 300,
-                "max_qps": float64(10),
                 "system_prompt_length": 2048,
                 "question_length": 100,
-                "latency_p90": 100,
+                "latency_p95": 100,
                 "throughput": 100,
                 "ttft": 2000,
                 "itl": 50,
                 },
             "Document summarization": {
                 "description": "This application maps to workload requests with high input length and short output length.",
-                "input_len": 1000,
-                "output_len": 100,
+                "input_len": 9999,
+                "output_len": 1000,
                 "max_qps": float64(5),
-                "latency_p90": 1000,
+                "latency_p95": 1000,
                 "throughput": 100,
                 "ttft": 10000,
                 "itl": 100,
@@ -189,8 +191,7 @@ def inputs(tab: DeltaGenerator):
                 "description": "Design the workload patterns for your own custom application type.",
                 "input_len": 300,
                 "output_len": 1000,
-                "max_qps": float64(10),
-                "latency_p90": 200,
+                "latency_p95": 200,
                 "throughput": 200,
                 "ttft": 1000,
                 "itl": 50,
@@ -202,8 +203,7 @@ def inputs(tab: DeltaGenerator):
         info = preset_scenarios[selected_workload]
         isl = info['input_len']
         osl = info['output_len']
-        max_qps = info['max_qps']
-        latency_p90 = info['latency_p90']
+        latency_p95 = info['latency_p95']
         throughput = info['throughput']
         ttft = info['ttft']
         itl = info['itl']
@@ -224,18 +224,10 @@ def inputs(tab: DeltaGenerator):
             max_value=max(runs['OSL'].max(), osl),
             )
 
-        selected_max_qps = st.number_input(
-            "Max Queries Per Second (QPS)",
-            value=max_qps,
-            min_value=float64(1),
-            max_value=runs['Max_QPS'].max(),
-            step=float64(1)
-        )
-
     # SLOs
     with tab.container(border=True):
         st.write("**Goals / SLOs**")
-        st.caption("Define the desire constraints to reach for your application.")
+        st.caption("Define the desire constraints to reach for your application. Default values are suggested for the given application type.")
 
         if selected_workload:
             scenario = preset_scenarios[selected_workload]
@@ -246,7 +238,7 @@ def inputs(tab: DeltaGenerator):
                                          min_value=1,
                                          )
             latency_p95 = col2.number_input("E2E latency p95 (ms)",
-                                value=scenario['latency_p90'],
+                                value=scenario['latency_p95'],
                                 min_value=0,
                                 )
             ttft = col1.number_input("TTFT (ms)",
@@ -264,7 +256,6 @@ def inputs(tab: DeltaGenerator):
         "num_gpus": selected_num_gpus,
         "isl": selected_isl_range,
         "osl": selected_osl_range,
-        "max_qps": selected_max_qps,
         "latency_p95": latency_p95,
         "ttft": ttft,
         "itl": itl,
@@ -284,105 +275,109 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
     tab.caption("Visualize performance results that meet input selection.")
     original_benchmark_data = st.session_state[BENCHMARK_DATA_KEY]
 
-    with tab.expander("See all data (without filter)"):
+
+    with tab.expander("Review raw data"):
         st.dataframe(original_benchmark_data)
+
+    if len(original_benchmark_data) == 0:
+        tab.info("Import data above.")
+        return None
 
     selected_display_preset = tab.radio(
         "Select display presets",
-        options=list(scenarios_mapping.keys()) + ["Custom"],
+        options=list(scenarios_mapping.keys()),
         help="Scenario presents define a set of parameters to filter that showcase a certain feature or capability. For example, comparing throughput per user vs. throughput per GPU tradeoff for PD disaggregation scenarios."
         )
 
-    # tab.write(user_inputs)
-
     if selected_display_preset:
         scenario_preset = scenarios_mapping[selected_display_preset]
-        tab.caption(scenario_preset['description'])
         filtered_data = filter_data_on_inputs(original_benchmark_data, user_inputs)
+        scenario_columns = scenario_preset['columns']
+        scenarios = xp.get_scenarios(filtered_data, scenario_columns)
 
-        # if selected_display_preset == PD_DISAGG:
-        #     plot = xplotting.get_plot_scenario(
-        #         runs_df=runs,
-        #         scenario=scenarios[idx],
-        #         config_keys=config_keys,
-        #         col_x=col_x,
-        #         col_y=col_y,
-        #         col_seg_by=col_seg_by,
-        #         log_x=log_x,
-        #         log_y=log_y)
+        if selected_display_preset == PD_DISAGG:
+            tab.write("""The prefill/decode disaggregation scenario compares the effects of :blue[aggregate] inference vs. :blue[disaggregated] inference.""")
+
+            tab.dataframe(scenarios, hide_index=False)
+
+            selected_index = tab.selectbox("Select a row to compare the details of the runs in that group.",
+                                            options=[i for i in range(len(scenarios))]
+                                            )
+
+            if selected_index is not None:
+
+                tab.subheader("Performance comparison (Throughput/GPU vs. Concurrency)")
+                plot = xplotting.plot_scenario(
+                    runs_df=original_benchmark_data,
+                    scenario=scenarios[selected_index],
+                    config_keys=scenario_preset['config_keys'],
+                    col_x=scenario_preset['col_x'],
+                    col_y=scenario_preset['col_y'],
+                    col_seg_by=scenario_preset['col_seg_by'],
+                )
+                tab.pyplot(plot)
+
+                tab.divider()
+
+                tab.subheader("Performance tradeoff comparison")
+                tradeoff_plot = xplotting.plot_scenario_tradeoff(
+                    runs_df=original_benchmark_data,
+                    scenario=scenarios[selected_index],
+                    config_keys=scenario_preset['config_keys'],
+                    col_x=scenario_preset['pareto']['col_x'],
+                    col_y=scenario_preset['pareto']['col_y'],
+                    col_z=scenario_preset['pareto']['col_z'],
+                    col_seg_by=scenario_preset['col_seg_by'],
+                )
+                tab.pyplot(tradeoff_plot)
+
 
         if selected_display_preset == INFERENCE_SCHEDULING:
 
-            # Inputs specifically for inference scheduling
-            selected_system_prompt_length = tab.selectbox(
-                "System Prompt Length",
-                options=filtered_data['System_Prompt_Length'].unique(),
-                help="The number of tokens (words or characters) in the initial instructions given to a large language model to define its persona and behavior. It will likely be the same among different users and sessions."
-            )
-            selected_question_length = tab.selectbox(
-                "Question Length",
-                options=filtered_data['Question_Length'].unique(),
-                help="Question length is the user input part of the prompt as they interact with the chatbot. This is different from system prompt, which is the shared prefix of the prompt which is likely to be the same for different users and sessions."
-            )
+            tab.write("""The inference scheduling scenario compares the effects of the inference scheduler plugins. This scenario can be explored by examining:
 
-            selected_groups = tab.selectbox(
-                "Number of groups",
-                options=filtered_data['Groups'].unique(),
-                help="The number of shared prefix groups in the workload traffic."
-            )
+- :blue[System prompt length]: the number of tokens (words or characters) in the initial instructions given to a large language model
+- :blue[Question length]: the user input part of the prompt as they interact with the chatbot. This is different from system prompt, which is the shared prefix of the prompt which is likely to be the same for different users and sessions
+- :blue[Number of groups]: the number of shared prefix groups in the workload traffic
+- :blue[Number of prompts per group]: the number of unique questions per group
 
-            selected_prompts_per_group = tab.selectbox(
-                "Number of prompts per group",
-                options=filtered_data['Prompts_Per_Group'].unique(),
-                help="The number of unique questions per group."
-            )
+                     """)
+            tab.dataframe(scenarios, hide_index=False)
 
+            selected_index = tab.selectbox("Select a row to compare the details of the runs in that group.",
+                                            options=[i for i in range(len(scenarios))]
+                                            )
 
-            plot = xplotting.get_plot_scenario(
-                runs_df=original_benchmark_data,
-                scenario={
-                    "Model": user_inputs['model'],
-                    "GPU": user_inputs['gpu_type'],
-                    "Num_GPUs": user_inputs['num_gpus'],
-                    "OSL_500": user_inputs['osl'],
-                    "Question_Length": selected_question_length,
-                    "System_Prompt_Length": selected_system_prompt_length,
-                    "Groups": selected_groups,
-                    "Prompts_Per_Group": selected_prompts_per_group
-                },
-                config_keys=scenario_preset['config_keys'],
-                col_x=scenario_preset['col_x'],
-                col_y=scenario_preset['col_y'],
-                col_seg_by=scenario_preset['col_seg_by'],
-            )
+            if selected_index is not None:
 
-            tab.pyplot(plot)
-
-            # Plot the tradeoff
-            tab.divider()
-
-            tab.subheader("Optimal configuration")
-            tradeoff_plot = xplotting.get_scenario_tradeoff_plot(
-                runs_df=original_benchmark_data,
-                scenario={
-                    "Model": user_inputs['model'],
-                    "GPU": user_inputs['gpu_type'],
-                    "Num_GPUs": user_inputs['num_gpus'],
-                    "OSL_500": user_inputs['osl'],
-                    "Question_Length": selected_question_length,
-                    "System_Prompt_Length": selected_system_prompt_length,
-                    "Groups": selected_groups,
-                    "Prompts_Per_Group": selected_prompts_per_group
-                },
-                config_keys=scenario_preset['config_keys'],
-                col_x=scenario_preset['pareto']['col_x'],
-                col_y=scenario_preset['pareto']['col_y'],
-                col_z=scenario_preset['pareto']['col_z'],
-                col_seg_by=scenario_preset['col_seg_by'],
+                tab.subheader("Performance comparison (QPS vs. TTFT)")
+                plot = xplotting.plot_scenario(
+                    runs_df=original_benchmark_data,
+                    scenario=scenarios[selected_index],
+                    config_keys=scenario_preset['config_keys'],
+                    col_x=scenario_preset['col_x'],
+                    col_y=scenario_preset['col_y'],
+                    col_seg_by=scenario_preset['col_seg_by'],
                 )
+                tab.pyplot(plot)
 
-            tab.pyplot(tradeoff_plot)
+                # Plot the tradeoff
+                tab.divider()
 
+                tab.subheader("Performance tradeoff comparison")
+                tradeoff_plot = xplotting.plot_scenario_tradeoff(
+                    runs_df=original_benchmark_data,
+                    scenario=scenarios[selected_index],
+                    config_keys=scenario_preset['config_keys'],
+                    col_x=scenario_preset['pareto']['col_x'],
+                    col_y=scenario_preset['pareto']['col_y'],
+                    col_z=scenario_preset['pareto']['col_z'],
+                    col_seg_by=scenario_preset['col_seg_by'],
+                )
+                tab.pyplot(tradeoff_plot)
+
+        if selected_display_preset == "Custom":
+            tab.warning("This feature is not yet available. To perform you own data exploration, see this [example Jupyter notebook](https://github.com/llm-d/llm-d-benchmark/blob/main/analysis/analysis.ipynb) for analysis using the `config_explorer` library.")
 
 if __name__ == "__main__":
     # Set up streamlit config
