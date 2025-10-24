@@ -62,7 +62,7 @@ Running the Streamlit frontend requires cloning the `llm-d-benchmark` repo. Make
 ```
 git clone https://github.com/llm-d/llm-d-benchmark.git
 pip install -r config_explorer/requirements-streamlit.txt
-.venv/bin/streamlit run config_explorer/Home.py
+.venv/bin/streamlit run config_explorer/Capacity_Planner.py
 ```
 
 ### Analysis Notebook
@@ -104,6 +104,6 @@ Here is a list of all the data classes and functions for the Capacity Planner:
 |               | `experts_per_ep_group()`          | finds the number of experts per EP group given parallelism strategies                                                                                                                                                                                                                                                    |   |
 | KVCacheDetail | `__init__()`                      | initializes class by passing in ModelInfo, ModelConfig, context_len (int), and batch_size (int)                                                                                                                                                                                                                          |   |
 |               | `set_context_len()`               | recomputes KV cache details given a new context length                                                                                                                                                                                                                                                                   |   |
-|               | `set_batch_size()`                | recomputes KV cache details given a new batch size / concurrency                          
+|               | `set_batch_size()`                | recomputes KV cache details given a new batch size / concurrency
 |               | `total_kv_cache_blocks()`                | Calculate the total number of KV cache blocks that can fit in GPU memory                                                                                                          |   |
 |               | attributes                        | KVCacheDetail stores information relevant to calculating KV cache requirement, <br>such as `attention_type`, `num_hidden_layers`, `kv_lora_rank` for MLA models. <br>Outputs include `num_attention_group`, `per_token_memory_bytes`, `per_request_kv_cache_bytes`,<br>`per_request_kv_cache_gb`, and `kv_cache_size_gb` |   |

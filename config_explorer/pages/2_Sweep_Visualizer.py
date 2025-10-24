@@ -8,7 +8,6 @@ import util
 import src.config_explorer.explorer as xp
 import src.config_explorer.plotting as xplotting
 
-
 BENCHMARK_PATH_KEY = "benchmark_path"
 BENCHMARK_DATA_KEY = "benchmark_data"
 SELECTED_SCENARIO_KEY = "selected_scenario"
