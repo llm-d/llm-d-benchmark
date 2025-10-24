@@ -39,6 +39,7 @@ from jinja2.runtime import Undefined as RTUndefined
 #     - Inner env: strict; resolves loop vars during loop expansion
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 def _dns_inner(s: str) -> str:
     """DNS-1123-ish: lowercase, alnum and dash, trim to 63 chars with hash fallback."""
     import re, hashlib
@@ -67,16 +68,47 @@ def _slug_outer(val: object) -> str:
     return _slug_inner(val)  # type: ignore[arg-type]
 
 class PassthroughUndefined(Undefined):
-    """In OUTER render, keep unknown variables as '{{ name }}' so inner pass can resolve them."""
+    """
+    OUTER render: keep unknown variables as their original Jinja expression,
+    including dotted attributes and item access, so the INNER pass can resolve them.
+      - {{ model }}            -> "{{ model }}"
+      - {{ model.name }}       -> "{{ model.name }}"
+      - {{ model['port'] }}    -> "{{ model['port'] }}"
+      - {{ model.name|dns }}   -> dns_outer will see an Undefined and reconstruct "{{ model.name|dns }}"
+    """
     __slots__ = ()
+
+    # Compose a new Undefined that remembers the full Jinja expression text.
+    def _compose(self, suffix: str) -> "PassthroughUndefined":
+        base = getattr(self, "_undefined_name", None) or "?"
+        expr = f"{base}{suffix}"
+        # Undefined signature: (hint=None, obj=None, name=None, exc=None)
+        return PassthroughUndefined(name=expr)
+
+    # Attribute access: {{ x.y }}
+    def __getattr__(self, name: str) -> "PassthroughUndefined":  # type: ignore[override]
+        return self._compose(f".{name}")
+
+    # Item access: {{ x['k'] }} / {{ x[0] }}
+    def __getitem__(self, key) -> "PassthroughUndefined":  # type: ignore[override]
+        # Use repr to round-trip quotes correctly
+        return self._compose(f"[{repr(key)}]")
+
+    # Function call: {{ f(x) }} -> best-effort string form
+    def __call__(self, *args, **kwargs) -> "PassthroughUndefined":  # type: ignore[override]
+        return self._compose("(...)")
+
+    # Stringification -> the literal Jinja expression
     def __str__(self) -> str:  # type: ignore[override]
         name = getattr(self, "_undefined_name", None)
         return "{{ " + name + " }}" if name else "{{ ?? }}"
-    def __iter__(self):  # allows use in loops without crashing
-        return iter(())
-    def __bool__(self) -> bool:  # treat undefined as False
-        return False
 
+    def __iter__(self):
+        return iter(())
+
+    def __bool__(self):
+        return False
+    
 def _enum(seq):
     """Return [{i, item}, ...] for easy serial chains in Jinja."""
     return [{"i": i, "item": v} for i, v in enumerate(seq)]

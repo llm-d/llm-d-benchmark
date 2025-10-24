@@ -1,0 +1,53 @@
+# pipeline.yaml.j2 — minimal example: iterate over objects
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: "{{ pipeline_name }}"
+spec:
+  params:
+    - name: message
+      type: string
+
+  tasks:
+    # A setup task that runs first
+    - name: print-start
+      taskRef: { name: echo }
+      params:
+        - name: text
+          value: "Starting pipeline {{ pipeline_name }}"
+
+    # Loop over a list of model objects
+    - loopName: per-model
+      foreach:
+        domain:
+          model: {{ models }}
+      tasks:
+        # Each 'model' is a dict with fields: name, port, quant
+        - name: "serve-{{ model.name|dns }}"
+          taskRef: { name: start-service }
+          runAfter: [ print-start ]
+          params:
+            - { name: modelRef, value: "{{ model.name }}" }
+            - { name: port,     value: "{{ model.port }}" }
+            - { name: quant,    value: "{{ model.quant }}" }
+
+        - name: "test-{{ model.name|dns }}"
+          taskRef: { name: run-test }
+          runAfter: [ "serve-{{ model.name|dns }}" ]
+          params:
+            - { name: modelRef, value: "{{ model.name }}" }
+            - { name: port,     value: "{{ model.port }}" }
+            - { name: message,  value: "$(params.message)" }
+
+  finally:
+    # Cleanup task per model
+    - loopName: cleanup
+      foreach:
+        domain:
+          model: {{ models }}
+      tasks:
+        - name: "cleanup-{{ model.name|dns }}"
+          taskRef: { name: stop-service }
+          runAfter: [ "test-{{ model.name|dns }}" ]
+          params:
+            - { name: modelRef, value: "{{ model.name }}" }
