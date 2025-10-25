@@ -11,6 +11,7 @@ import src.config_explorer.plotting as xplotting
 BENCHMARK_PATH_KEY = "benchmark_path"
 BENCHMARK_DATA_KEY = "benchmark_data"
 SELECTED_SCENARIO_KEY = "selected_scenario"
+CUSTOM_METRICS_COUNT = "custom_metrics_count"
 
 # ------- Scenario presets -------
 
@@ -94,6 +95,8 @@ def init_session_state():
     """
     if BENCHMARK_DATA_KEY not in st.session_state:
         st.session_state[BENCHMARK_DATA_KEY] = xp.make_benchmark_runs_df()
+    if CUSTOM_METRICS_COUNT not in st.session_state:
+        st.session_state[CUSTOM_METRICS_COUNT] = 0
 
 @st.cache_data
 def read_benchmark_path(benchmark_path: str) -> DataFrame:
@@ -146,7 +149,6 @@ def filter_data_on_inputs(data: DataFrame, user_inputs: dict) -> DataFrame:
         (data['Num_GPUs'] <= user_inputs['num_gpus']) &
         (data['ISL'] >= user_inputs['isl']) &
         (data['OSL'] >= user_inputs['osl'])
-        # (data['Max_QPS'] <= user_inputs['max_qps'])
         ]
 
 def inputs(tab: DeltaGenerator):
@@ -158,6 +160,8 @@ def inputs(tab: DeltaGenerator):
     tab.caption("Select initial filters on benchmarking data such as model and workload characteristics.")
 
     benchmark_data = st.session_state[BENCHMARK_DATA_KEY]
+    data_to_return = {}
+    selected_slos = {}
     scenario_to_return = {}
 
     if len(benchmark_data) == 0:
@@ -175,12 +179,6 @@ def inputs(tab: DeltaGenerator):
             options=benchmark_data['GPU'].unique()
         )
 
-        # selected_num_gpus = st.number_input(
-        #     "Select max accelerator count",
-        #     value=16,
-        #     min_value=1
-        #     )
-
     with tab.container(border=True):
         st.write("**Workload Profiles**")
         st.caption("Define the type of workload for the LLM. Based on the model and environment inputs, the available options are shown below.")
@@ -189,14 +187,7 @@ def inputs(tab: DeltaGenerator):
         runs = benchmark_data[
             (benchmark_data["Model"] == scenario_to_return['Model']) &
             (benchmark_data["GPU"] == scenario_to_return['GPU'])
-            # & (benchmark_data["Num_GPUs"] <= selected_num_gpus)
         ]
-        # scenarios = xp.get_scenarios(runs, ['Model', "GPU", "Num_GPUs", "ISL_500", "OSL_500"])
-
-        # with st.expander("Input/output sequence summary"):
-        #     st.write("View the available input and output sequence length pairs in the benchmark data. \
-        #              Sequence length within the same 500 tokens are binned together.")
-        #     st.table(scenarios)
 
         selected_workload = st.radio("Select workload", options=preset_scenarios.keys())
 
@@ -267,30 +258,63 @@ def inputs(tab: DeltaGenerator):
             scenario = preset_scenarios[selected_workload]
 
             col1, col2 = st.columns(2)
-            throughput = col1.number_input("Throughput (total tokens/s)",
-                                         value=scenario['throughput'],
-                                         min_value=1,
-                                         )
-            e2e_latency = col2.number_input("P90 End-to-End latency",
-                                value=scenario['e2e_latency'],
-                                min_value=0,
-                                )
-            ttft = col1.number_input("P90 TTFT (ms)",
+            selected_slos['Total_Token_Throughput'] = col1.number_input("Throughput (total tokens/s)",
+                                                                        value=scenario['throughput'],
+                                                                        min_value=1,
+                                                                        )
+            selected_slos['P90_E2EL_ms'] = col2.number_input("P90 End-to-End latency (ms)",
+                                                                value=scenario['e2e_latency'],
+                                                                min_value=0,
+                                                                )
+            selected_slos['P90_TTFT_ms'] = col1.number_input("P90 TTFT (ms)",
                         value=scenario['ttft'],
                         min_value=0,
                         )
-            itl = col2.number_input("P90 ITL (ms)",
+            selected_slos['P90_ITL_ms'] = col2.number_input("P90 ITL (ms)",
                         value=scenario['itl'],
                         min_value=0,
                         )
 
-    data_to_return = {
-        "scenario": scenario_to_return,
-        "e2e_latency": e2e_latency,
-        "ttft": ttft,
-        "itl": itl,
-        "throughput": throughput,
-    }
+            with st.expander("Advanced options"):
+
+                st.write(":blue[Add custom metrics to further filter for performance.] \
+                    For example, chatbot user may care about TTFT, while a summarization tool may care more about mean throughput. \
+                    For repeated metrics, the value that is defined later on in the list will be used for analysis.")
+
+                col1, col2 = st.columns(2)
+
+                # Make a copy of performance metrics columns
+                performance_metrics_options = dict(xp.PERFORMANCE_METRIC_COLUMNS)
+                del performance_metrics_options['Total_Token_Throughput']
+                del performance_metrics_options['P90_TTFT_ms']
+                del performance_metrics_options['P90_ITL_ms']
+                del performance_metrics_options['P90_E2EL_ms']
+
+                if col1.button("Add a metric", use_container_width=True):
+                    st.session_state[CUSTOM_METRICS_COUNT] += 1
+
+                if col2.button("Delete a metric", use_container_width=True):
+                    st.session_state[CUSTOM_METRICS_COUNT] -= 1
+                    if st.session_state[CUSTOM_METRICS_COUNT] < 0:
+                        st.session_state[CUSTOM_METRICS_COUNT] = 0
+
+                for i in range(st.session_state[CUSTOM_METRICS_COUNT]):
+
+                    custom_metric = col1.selectbox("Select a metric",
+                             options=performance_metrics_options.keys(),
+                             format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                             key=f"custom_metric_{i}"
+                    )
+                    custom_metric_value = col2.number_input("Enter value",
+                                      key=f"custom_metric_value_{i}",
+                                      min_value=0,
+                                      step=1
+                                      )
+
+                    selected_slos[custom_metric] = custom_metric_value
+
+    data_to_return["scenario"] = scenario_to_return
+    data_to_return["slo"] = selected_slos
 
     return data_to_return
 
@@ -307,13 +331,13 @@ def display_optimal_config_overview(container: DeltaGenerator,
 
     container.subheader("Examine optimal configuration")
 
+
     # Define SLOs
-    slos = [
-        xp.SLO('P90_TTFT_ms', user_inputs['ttft']),
-        xp.SLO('P90_ITL_ms', user_inputs['itl']),
-        xp.SLO('Total_Token_Throughput', user_inputs['throughput']),
-        xp.SLO('P90_E2EL_ms', user_inputs['e2e_latency']),
-    ]
+    slos = []
+    for metric, value in user_inputs["slo"].items():
+        slos.append(
+            xp.SLO(metric, value)
+        )
 
     # Columns for metrics of interest to optimize
     col_x = 'Mean_TTFT_ms'
