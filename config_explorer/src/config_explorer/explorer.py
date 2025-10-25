@@ -508,7 +508,7 @@ PERFORMANCE_METRIC_COLUMNS = {
 }
 
 # Dataset columns and properties
-COLUMNS = {
+INPUT_COLUMNS = {
     # Details about particular run
     'Directory': ColumnProperties(
         dtype='str',
@@ -700,9 +700,11 @@ COLUMNS = {
     ),
 }
 
-# Merge performance columns into columns
-COLUMNS.update(PERFORMANCE_METRIC_COLUMNS)
+COLUMNS = {}
 
+# Merge performance columns into columns
+COLUMNS.update(INPUT_COLUMNS)
+COLUMNS.update(PERFORMANCE_METRIC_COLUMNS)
 
 @dataclass
 class SLO:

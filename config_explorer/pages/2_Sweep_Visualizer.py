@@ -304,7 +304,7 @@ def inputs(tab: DeltaGenerator):
                              options=performance_metrics_options.keys(),
                              format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
                              key=f"custom_metric_{i}"
-                    )
+                            )
                     custom_metric_value = col2.number_input("Enter value",
                                       key=f"custom_metric_value_{i}",
                                       min_value=0,
@@ -410,19 +410,32 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
 
         scenario_preset = scenarios_config_keys_mapping[selected_display_preset]
         user_selected_scenario = user_inputs['scenario']
-
-
         if selected_display_preset == PD_DISAGG:
 
             tab1.write("""The prefill/decode disaggregation scenario compares the effects of :blue[aggregate] inference vs. :blue[disaggregated] inference.""")
 
             tab1.subheader("Performance comparison (Throughput/GPU vs. Concurrency)")
+
+            metric_col1, metric_col2 = tab1.columns(2)
+
+            col_y = metric_col1.selectbox("Select y-axis performance metric",
+                            options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
+                            index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(scenario_preset['col_y']),
+                            format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                )
+
+            col_x = metric_col2.selectbox("Select x-axis input metric",
+                            options=xp.INPUT_COLUMNS.keys(),
+                            index=list(xp.INPUT_COLUMNS.keys()).index(scenario_preset['col_x']),
+                            format_func=lambda p: f"{xp.INPUT_COLUMNS[p].label}",
+                )
+
             plot = xplotting.plot_scenario(
                 runs_df=original_benchmark_data,
                 scenario=user_selected_scenario,
                 config_keys=scenario_preset['config_keys'],
-                col_x=scenario_preset['col_x'],
-                col_y=scenario_preset['col_y'],
+                col_x=col_x,
+                col_y=col_y,
                 col_seg_by=scenario_preset['col_seg_by'],
             )
             tab1.pyplot(plot)
@@ -430,12 +443,26 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             tab1.divider()
 
             tab1.subheader("Performance tradeoff comparison")
+            metric_col1, metric_col2 = tab1.columns(2)
+            tradeoff_y = metric_col1.selectbox("Select y-axis performance tradeoff metric",
+                            options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
+                            index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(scenario_preset['pareto']['col_y']),
+                            format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                )
+
+            tradeoff_x = metric_col2.selectbox("Select x-axis performance tradeoff metric",
+                            options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
+                            index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(scenario_preset['pareto']['col_x']),
+                            format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                )
+
+
             tradeoff_plot = xplotting.plot_scenario_tradeoff(
                 runs_df=original_benchmark_data,
                 scenario=user_selected_scenario,
                 config_keys=scenario_preset['config_keys'],
-                col_x=scenario_preset['pareto']['col_x'],
-                col_y=scenario_preset['pareto']['col_y'],
+                col_x=tradeoff_x,
+                col_y=tradeoff_y,
                 col_z=scenario_preset['pareto']['col_z'],
                 col_seg_by=scenario_preset['col_seg_by'],
             )
@@ -447,12 +474,26 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
 
         if selected_display_preset == INFERENCE_SCHEDULING:
             tab1.subheader("Performance comparison (QPS vs. TTFT)")
+
+            metric_col1, metric_col2 = tab1.columns(2)
+
+            col_y = metric_col1.selectbox("Select y-axis performance metric",
+                            options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
+                            index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(scenario_preset['col_y']),
+                            format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                )
+
+            col_x = metric_col2.selectbox("Select x-axis input metric",
+                            options=xp.INPUT_COLUMNS.keys(),
+                            index=list(xp.INPUT_COLUMNS.keys()).index(scenario_preset['col_x']),
+                            format_func=lambda p: f"{xp.INPUT_COLUMNS[p].label}",
+                )
             plot = xplotting.plot_scenario(
                 runs_df=original_benchmark_data,
                 scenario=user_selected_scenario,
                 config_keys=scenario_preset['config_keys'],
-                col_x=scenario_preset['col_x'],
-                col_y=scenario_preset['col_y'],
+                col_x=col_x,
+                col_y=col_y,
                 col_seg_by=scenario_preset['col_seg_by'],
             )
             tab1.pyplot(plot)
@@ -461,12 +502,25 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             tab1.divider()
 
             tab1.subheader("Performance tradeoff comparison")
+            metric_col1, metric_col2 = tab1.columns(2)
+            tradeoff_y = metric_col1.selectbox("Select y-axis performance tradeoff metric",
+                            options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
+                            index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(scenario_preset['pareto']['col_y']),
+                            format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                )
+
+            tradeoff_x = metric_col2.selectbox("Select x-axis performance tradeoff metric",
+                            options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
+                            index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(scenario_preset['pareto']['col_x']),
+                            format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                )
+
             tradeoff_plot = xplotting.plot_scenario_tradeoff(
                 runs_df=original_benchmark_data,
                 scenario=user_selected_scenario,
                 config_keys=scenario_preset['config_keys'],
-                col_x=scenario_preset['pareto']['col_x'],
-                col_y=scenario_preset['pareto']['col_y'],
+                col_x=tradeoff_x,
+                col_y=tradeoff_y,
                 col_z=scenario_preset['pareto']['col_z'],
                 col_seg_by=scenario_preset['col_seg_by'],
             )
