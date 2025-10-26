@@ -490,7 +490,7 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
                             format_func=lambda p: xp.PERFORMANCE_METRIC_COLUMNS[p].label_with_units(),
                 )
 
-            tradeoff_z = metric_col3.selectbox("Select z-axis input metric",
+            tradeoff_z = metric_col3.selectbox("Select z-axis input metric (point label)",
                             options=xp.INPUT_COLUMNS.keys(),
                             index=list(xp.INPUT_COLUMNS.keys()).index(scenario_preset['pareto']['col_z']),
                             format_func=lambda p: xp.INPUT_COLUMNS[p].label,
@@ -554,7 +554,7 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
                             format_func=lambda p: xp.PERFORMANCE_METRIC_COLUMNS[p].label_with_units(),
                 )
 
-            tradeoff_z = metric_col3.selectbox("Select z-axis input metric",
+            tradeoff_z = metric_col3.selectbox("Select z-axis input metric (point label)",
                             options=xp.INPUT_COLUMNS.keys(),
                             index=list(xp.INPUT_COLUMNS.keys()).index(scenario_preset['pareto']['col_z']),
                             format_func=lambda p: xp.INPUT_COLUMNS[p].label,
