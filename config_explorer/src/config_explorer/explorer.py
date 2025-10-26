@@ -106,7 +106,210 @@ class ColumnProperties:
     # Units
     units: str = ''
 
+    def label_with_units(self) -> str:
+        """
+        Pretty print the label of the column with the units
+        """
 
+        if self.units == "":
+            return self.label
+
+        return f"{self.label} ({self.units})"
+
+# Dataset columns and properties
+INPUT_COLUMNS = {
+    # Details about particular run
+    'Directory': ColumnProperties(
+        dtype='str',
+        label='Directory',
+    ),
+    'Directory_Base': ColumnProperties(
+        dtype='str',
+        label='Base Directory'
+    ),
+    'Start': ColumnProperties(
+        dtype='float',
+        label='Start Time'
+    ),
+    'Duration': ColumnProperties(
+        dtype='float',
+        units='s',
+        label='Duration',
+    ),
+    'Platform': ColumnProperties(
+        dtype='str',
+        label='Platform',
+    ),
+    # AI model name
+    'Model': ColumnProperties(
+        dtype='str',
+        label='Model',
+    ),
+    # Accelerator and parallelism
+    'GPU': ColumnProperties(
+        dtype='str',
+        label='Accelerator',
+    ),
+    'Num_GPUs': ColumnProperties(
+        dtype='int',
+        label='Number of GPUs',
+        pref=Pref.LOW,
+    ),
+    'DP': ColumnProperties(
+        dtype='int',
+        label='DP',
+    ),
+    'TP': ColumnProperties(
+        dtype='int',
+        label='TP',
+    ),
+    'PP': ColumnProperties(
+        dtype='int',
+        label='PP',
+    ),
+    'EP': ColumnProperties(
+        dtype='int',
+        label='EP',
+    ),
+    'Replicas': ColumnProperties(
+        dtype='int',
+        label='Replicas',
+    ),
+    'P_DP': ColumnProperties(
+        dtype='int',
+        label='P DP',
+    ),
+    'P_TP': ColumnProperties(
+        dtype='int',
+        label='P TP',
+    ),
+    'P_PP': ColumnProperties(
+        dtype='int',
+        label='P PP',
+    ),
+    'P_EP': ColumnProperties(
+        dtype='int',
+        label='P EP',
+    ),
+    'P_Replicas': ColumnProperties(
+        dtype='int',
+        label='P Replicas',
+    ),
+    'D_DP': ColumnProperties(
+        dtype='int',
+        label='D DP',
+    ),
+    'D_TP': ColumnProperties(
+        dtype='int',
+        label='D TP',
+    ),
+    'D_PP': ColumnProperties(
+        dtype='int',
+        label='D PP',
+    ),
+    'D_EP': ColumnProperties(
+        dtype='int',
+        label='D EP',
+    ),
+    'D_Replicas': ColumnProperties(
+        dtype='int',
+        label='D Replicas',
+    ),
+    'Is_PD': ColumnProperties(
+        dtype='bool',
+        label='Is P/D',
+    ),
+    # Inference scheduler settings
+    'KV_Cache_Scorer_Weight': ColumnProperties(
+        dtype='float',
+        label='KV Cache',
+    ),
+    'Queue_Scorer_Weight': ColumnProperties(
+        dtype='float',
+        label='Queue',
+    ),
+    'Prefix_Cache_Scorer_Weight': ColumnProperties(
+        dtype='float',
+        label='Prefix Cache',
+    ),
+    'Prefix_Cache_Scorer_Block_Size': ColumnProperties(
+        dtype='int',
+        label='Block Size',
+    ),
+    'Prefix_Cache_Scorer_LRU_Capacity_Per_Server': ColumnProperties(
+        dtype='int',
+        label='LRU/Server',
+    ),
+    'Prefix_Cache_Scorer_Max_Blocks_To_Match': ColumnProperties(
+        dtype='int',
+        label='Max Blocks',
+    ),
+    'Prefix_Cache_Scorer_Mode': ColumnProperties(
+        dtype='bool',
+        label='Prefix Mode',
+    ),
+    # Workload
+    'Workload_Generator': ColumnProperties(
+        dtype='str',
+        label='Workload Generator',
+    ),
+    'ISL': ColumnProperties(
+        dtype='int',
+        label='Input Sequence Length',
+    ),
+    'OSL': ColumnProperties(
+        dtype='int',
+        label='Output Sequence Length',
+    ),
+    'ISL_500': ColumnProperties(
+        dtype='int',
+        label='ISL Nearest 500',
+    ),
+    'OSL_500': ColumnProperties(
+        dtype='int',
+        label='OSL Nearest 500',
+    ),
+    'Target_OSL': ColumnProperties(
+        dtype='int',
+        label='Target OSL',
+    ),
+    'Max_Concurrency': ColumnProperties(
+        dtype='int',
+        label='Concurrency',
+    ),
+    'Max_QPS': ColumnProperties(
+        dtype='float',
+        label='Request Rate',
+        units='queries/s',
+    ),
+    'System_Prompt_Length': ColumnProperties(
+        dtype='int',
+        label='System Prompt Length',
+    ),
+    'Question_Length': ColumnProperties(
+        dtype='int',
+        label='Question Length',
+    ),
+    'Groups': ColumnProperties(
+        dtype='int',
+        label='Groups',
+    ),
+    'Prompts_Per_Group': ColumnProperties(
+        dtype='int',
+        label='Prompts per Group',
+    ),
+    # Requests
+    'Total_Requests': ColumnProperties(
+        dtype='int',
+        label='Total Requests',
+    ),
+    'Failures': ColumnProperties(
+        dtype='int',
+        label='Failures',
+    ),
+}
+
+# Dataset columns and properties
 PERFORMANCE_METRIC_COLUMNS = {
     # Performance metrics
     # Throughput
@@ -507,202 +710,9 @@ PERFORMANCE_METRIC_COLUMNS = {
     ),
 }
 
-# Dataset columns and properties
-INPUT_COLUMNS = {
-    # Details about particular run
-    'Directory': ColumnProperties(
-        dtype='str',
-        label='Directory',
-    ),
-    'Directory_Base': ColumnProperties(
-        dtype='str',
-        label='Base Directory'
-    ),
-    'Start': ColumnProperties(
-        dtype='float',
-        label='Start Time'
-    ),
-    'Duration': ColumnProperties(
-        dtype='float',
-        units='s',
-        label='Duration',
-    ),
-    'Platform': ColumnProperties(
-        dtype='str',
-        label='Platform',
-    ),
-    # AI model name
-    'Model': ColumnProperties(
-        dtype='str',
-        label='Model',
-    ),
-    # Accelerator and parallelism
-    'GPU': ColumnProperties(
-        dtype='str',
-        label='Accelerator',
-    ),
-    'Num_GPUs': ColumnProperties(
-        dtype='int',
-        label='Number of GPUs',
-        pref=Pref.LOW,
-    ),
-    'DP': ColumnProperties(
-        dtype='int',
-        label='DP',
-    ),
-    'TP': ColumnProperties(
-        dtype='int',
-        label='TP',
-    ),
-    'PP': ColumnProperties(
-        dtype='int',
-        label='PP',
-    ),
-    'EP': ColumnProperties(
-        dtype='int',
-        label='EP',
-    ),
-    'Replicas': ColumnProperties(
-        dtype='int',
-        label='Replicas',
-    ),
-    'P_DP': ColumnProperties(
-        dtype='int',
-        label='P DP',
-    ),
-    'P_TP': ColumnProperties(
-        dtype='int',
-        label='P TP',
-    ),
-    'P_PP': ColumnProperties(
-        dtype='int',
-        label='P PP',
-    ),
-    'P_EP': ColumnProperties(
-        dtype='int',
-        label='P EP',
-    ),
-    'P_Replicas': ColumnProperties(
-        dtype='int',
-        label='P Replicas',
-    ),
-    'D_DP': ColumnProperties(
-        dtype='int',
-        label='D DP',
-    ),
-    'D_TP': ColumnProperties(
-        dtype='int',
-        label='D TP',
-    ),
-    'D_PP': ColumnProperties(
-        dtype='int',
-        label='D PP',
-    ),
-    'D_EP': ColumnProperties(
-        dtype='int',
-        label='D EP',
-    ),
-    'D_Replicas': ColumnProperties(
-        dtype='int',
-        label='D Replicas',
-    ),
-    'Is_PD': ColumnProperties(
-        dtype='bool',
-        label='Is P/D',
-    ),
-    # Inference scheduler settings
-    'KV_Cache_Scorer_Weight': ColumnProperties(
-        dtype='float',
-        label='KV Cache',
-    ),
-    'Queue_Scorer_Weight': ColumnProperties(
-        dtype='float',
-        label='Queue',
-    ),
-    'Prefix_Cache_Scorer_Weight': ColumnProperties(
-        dtype='float',
-        label='Prefix Cache',
-    ),
-    'Prefix_Cache_Scorer_Block_Size': ColumnProperties(
-        dtype='int',
-        label='Block Size',
-    ),
-    'Prefix_Cache_Scorer_LRU_Capacity_Per_Server': ColumnProperties(
-        dtype='int',
-        label='LRU/Server',
-    ),
-    'Prefix_Cache_Scorer_Max_Blocks_To_Match': ColumnProperties(
-        dtype='int',
-        label='Max Blocks',
-    ),
-    'Prefix_Cache_Scorer_Mode': ColumnProperties(
-        dtype='bool',
-        label='Prefix Mode',
-    ),
-    # Workload
-    'Workload_Generator': ColumnProperties(
-        dtype='str',
-        label='Workload Generator',
-    ),
-    'ISL': ColumnProperties(
-        dtype='int',
-        label='Input Sequence Length',
-    ),
-    'OSL': ColumnProperties(
-        dtype='int',
-        label='Output Sequence Length',
-    ),
-    'ISL_500': ColumnProperties(
-        dtype='int',
-        label='ISL Nearest 500',
-    ),
-    'OSL_500': ColumnProperties(
-        dtype='int',
-        label='OSL Nearest 500',
-    ),
-    'Target_OSL': ColumnProperties(
-        dtype='int',
-        label='Target OSL',
-    ),
-    'Max_Concurrency': ColumnProperties(
-        dtype='int',
-        label='Concurrency',
-    ),
-    'Max_QPS': ColumnProperties(
-        dtype='float',
-        label='Request Rate',
-        units='queries/s',
-    ),
-    'System_Prompt_Length': ColumnProperties(
-        dtype='int',
-        label='System Prompt Length',
-    ),
-    'Question_Length': ColumnProperties(
-        dtype='int',
-        label='Question Length',
-    ),
-    'Groups': ColumnProperties(
-        dtype='int',
-        label='Groups',
-    ),
-    'Prompts_Per_Group': ColumnProperties(
-        dtype='int',
-        label='Prompts per Group',
-    ),
-    # Requests
-    'Total_Requests': ColumnProperties(
-        dtype='int',
-        label='Total Requests',
-    ),
-    'Failures': ColumnProperties(
-        dtype='int',
-        label='Failures',
-    ),
-}
-
 COLUMNS = {}
 
-# Merge performance columns into columns
+# Merge input and performance columns
 COLUMNS.update(INPUT_COLUMNS)
 COLUMNS.update(PERFORMANCE_METRIC_COLUMNS)
 

@@ -11,10 +11,16 @@ import src.config_explorer.plotting as xplotting
 BENCHMARK_PATH_KEY = "benchmark_path"
 BENCHMARK_DATA_KEY = "benchmark_data"
 SELECTED_SCENARIO_KEY = "selected_scenario"
-CUSTOM_METRICS_COUNT = "custom_metrics_count"
+SELECTED_SLO_METRICS_KEY = "selected_slo_metrics"
 
 # ------- Scenario presets -------
 
+DEFAULT_SLOS = [
+    'Total_Token_Throughput',
+    'P90_TTFT_ms',
+    'P90_ITL_ms',
+    'P90_E2EL_ms',
+    ]
 PD_DISAGG = "PD Disaggregation"
 INFERENCE_SCHEDULING = "Inference Scheduling"
 
@@ -63,29 +69,29 @@ preset_scenarios = {
         "output_len": 300,
         "system_prompt_length": 2048,
         "question_length": 100,
-        "e2e_latency": 100,
-        "throughput": 100,
-        "ttft": 2000,
-        "itl": 50,
+        "P90_E2EL_ms": 100.0,
+        "Total_Token_Throughput": 100.0,
+        "P90_TTFT_ms": 2000.0,
+        "P90_ITL_ms": 50.0,
         },
     "Document summarization": {
         "description": "This application maps to workload requests with high input length and short output length.",
         "input_len": 9999,
         "output_len": 1000,
         "max_qps": float64(5),
-        "e2e_latency": 100000,
-        "throughput": 100,
-        "ttft": 10000,
-        "itl": 100,
+        "P90_E2EL_ms": 100000.0,
+        "Total_Token_Throughput": 100.0,
+        "P90_TTFT_ms": 10000.0,
+        "P90_ITL_ms": 100.0,
         },
     "Custom": {
         "description": "Design the workload patterns for your own custom application type.",
         "input_len": 300,
         "output_len": 1000,
-        "e2e_latency": 200,
-        "throughput": 200,
-        "ttft": 1000,
-        "itl": 50,
+        "P90_E2EL_ms": 200.0,
+        "Total_Token_Throughput": 200.0,
+        "P90_TTFT_ms": 1000.0,
+        "P90_ITL_ms": 50.0,
     }
 }
 
@@ -95,8 +101,10 @@ def init_session_state():
     """
     if BENCHMARK_DATA_KEY not in st.session_state:
         st.session_state[BENCHMARK_DATA_KEY] = xp.make_benchmark_runs_df()
-    if CUSTOM_METRICS_COUNT not in st.session_state:
-        st.session_state[CUSTOM_METRICS_COUNT] = 0
+
+    # Default SLOs
+    if SELECTED_SLO_METRICS_KEY not in st.session_state:
+        st.session_state[SELECTED_SLO_METRICS_KEY] = DEFAULT_SLOS
 
 @st.cache_data
 def read_benchmark_path(benchmark_path: str) -> DataFrame:
@@ -137,6 +145,59 @@ def user_benchmark_path():
                 st.toast(f"Successfully imported {len(st.session_state[BENCHMARK_DATA_KEY])} report files. You may view the raw data below.", icon="🎉")
             except Exception:
                 st.toast("File not found, please double check path.", icon='⚠️')
+
+
+@st.dialog("Add SLO metric")
+def add_metric_dialog():
+    """
+    Dialogue to add a SLO metric
+    """
+
+    st.write(":blue[Add custom metrics to further filter for performance.] \
+    For example, chatbot user may care about TTFT, while a summarization tool may care more about mean throughput. \
+    For repeated metrics, the value that is defined later on in the list will be used for analysis.")
+
+    curr_metrics = st.session_state[SELECTED_SLO_METRICS_KEY]
+
+    # Remove curr metrics from all performance metrics
+
+    all_metrics =  dict(xp.PERFORMANCE_METRIC_COLUMNS)
+    for metric in curr_metrics:
+        all_metrics.pop(metric, None)   # None avoids KeyError if key is missing
+
+    to_add = st.selectbox("Select a metric to add",
+                          options=all_metrics.keys(),
+                          format_func=lambda p: xp.PERFORMANCE_METRIC_COLUMNS[p].label_with_units(),
+                          )
+    if st.button("Add", use_container_width=True, type='primary'):
+        st.session_state[SELECTED_SLO_METRICS_KEY].append(to_add)
+        st.rerun()
+
+@st.dialog("Delete SLO metric")
+def delete_metric_dialog():
+    """
+    Dialogue to delete a SLO metric
+    """
+
+    st.write(f"Deleting a metric means that the optimal configuration does not take this metric into account. Any of the non-default (`{", ".join(DEFAULT_SLOS)}`) metrics can be deleted.\n\nIf you'd like to disable the default metrics, set them to an extremely high or low value to disable their effect.")
+
+    curr_metrics = st.session_state[SELECTED_SLO_METRICS_KEY]
+    allow_delete = list(set(curr_metrics) - set(DEFAULT_SLOS))
+
+    to_delete = st.selectbox("Select a metric to delete",
+                          options=allow_delete,
+                          format_func=lambda p: xp.PERFORMANCE_METRIC_COLUMNS[p].label_with_units(),
+                          )
+    if st.button("Delete", use_container_width=True, type='primary'):
+        if to_delete in DEFAULT_SLOS:
+            st.error("This SLO is one of the metrics where default values are suggested for the given application. Are you sure you want to delete this metric?")
+
+            if st.button("Yes, I am sure", type='primary', use_container_width=True):
+                st.session_state[SELECTED_SLO_METRICS_KEY].remove(to_delete)
+                st.rerun()
+        else:
+            st.session_state[SELECTED_SLO_METRICS_KEY].remove(to_delete)
+            st.rerun()
 
 def filter_data_on_inputs(data: DataFrame, user_inputs: dict) -> DataFrame:
     """
@@ -192,10 +253,6 @@ def inputs(tab: DeltaGenerator):
         selected_workload = st.radio("Select workload", options=preset_scenarios.keys())
 
         info = preset_scenarios[selected_workload]
-        e2e_latency = info['e2e_latency']
-        throughput = info['throughput']
-        ttft = info['ttft']
-        itl = info['itl']
 
         st.caption(info['description'])
 
@@ -252,70 +309,34 @@ def inputs(tab: DeltaGenerator):
     # SLOs
     with tab.container(border=True):
         st.write("**Goals / SLOs**")
-        st.caption("Define the desire constraints to reach for your application. Default values are suggested for the given application type. If you'd like to disregard a metric, set it to an extremely high or low value depending on the direction of the metric.")
+        st.caption("Define the desire constraints to reach for your application. Default values for a selective set of SLO metrics are suggested for the given application type.")
 
         if selected_workload:
             scenario = preset_scenarios[selected_workload]
 
-            col1, col2 = st.columns(2)
-            selected_slos['Total_Token_Throughput'] = col1.number_input("Throughput (total tokens/s)",
-                                                                        value=scenario['throughput'],
-                                                                        min_value=1,
-                                                                        )
-            selected_slos['P90_E2EL_ms'] = col2.number_input("P90 End-to-End latency (ms)",
-                                                                value=scenario['e2e_latency'],
-                                                                min_value=0,
-                                                                )
-            selected_slos['P90_TTFT_ms'] = col1.number_input("P90 TTFT (ms)",
-                        value=scenario['ttft'],
-                        min_value=0,
-                        )
-            selected_slos['P90_ITL_ms'] = col2.number_input("P90 ITL (ms)",
-                        value=scenario['itl'],
-                        min_value=0,
-                        )
+            # Display SLO metrics
+            for metric in st.session_state[SELECTED_SLO_METRICS_KEY]:
+                metric_prop = xp.PERFORMANCE_METRIC_COLUMNS[metric]
+                metric_value = 0.0
+                if metric in scenario:
+                    metric_value = scenario[metric]
 
-            with st.expander("Advanced options"):
+                selected_slos[metric] = st.number_input(
+                    metric_prop.label_with_units(),
+                    value=metric_value,
+                    key=metric,
+                    min_value=0.0,
+                    step=0.01,
+            )
 
-                st.write(":blue[Add custom metrics to further filter for performance.] \
-                    For example, chatbot user may care about TTFT, while a summarization tool may care more about mean throughput. \
-                    For repeated metrics, the value that is defined later on in the list will be used for analysis.")
+            if st.button("Add a metric", use_container_width=True):
+                add_metric_dialog()
 
-                col1, col2 = st.columns(2)
-
-                # Make a copy of performance metrics columns
-                performance_metrics_options = dict(xp.PERFORMANCE_METRIC_COLUMNS)
-                del performance_metrics_options['Total_Token_Throughput']
-                del performance_metrics_options['P90_TTFT_ms']
-                del performance_metrics_options['P90_ITL_ms']
-                del performance_metrics_options['P90_E2EL_ms']
-
-                if col1.button("Add a metric", use_container_width=True):
-                    st.session_state[CUSTOM_METRICS_COUNT] += 1
-
-                if col2.button("Delete a metric", use_container_width=True):
-                    st.session_state[CUSTOM_METRICS_COUNT] -= 1
-                    if st.session_state[CUSTOM_METRICS_COUNT] < 0:
-                        st.session_state[CUSTOM_METRICS_COUNT] = 0
-
-                for i in range(st.session_state[CUSTOM_METRICS_COUNT]):
-
-                    custom_metric = col1.selectbox("Select a metric",
-                             options=performance_metrics_options.keys(),
-                             format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
-                             key=f"custom_metric_{i}"
-                            )
-                    custom_metric_value = col2.number_input("Enter value",
-                                      key=f"custom_metric_value_{i}",
-                                      min_value=0,
-                                      step=1
-                                      )
-
-                    selected_slos[custom_metric] = custom_metric_value
+            if st.button("Delete a metric", use_container_width=True):
+                delete_metric_dialog()
 
     data_to_return["scenario"] = scenario_to_return
     data_to_return["slo"] = selected_slos
-
     return data_to_return
 
 def display_optimal_config_overview(container: DeltaGenerator,
@@ -331,7 +352,6 @@ def display_optimal_config_overview(container: DeltaGenerator,
 
     container.subheader("Examine optimal configuration")
 
-
     # Define SLOs
     slos = []
     for metric, value in user_inputs["slo"].items():
@@ -346,6 +366,20 @@ def display_optimal_config_overview(container: DeltaGenerator,
     # Select linear or log scales
     log_x = True
     log_y = False
+
+    metric_col1, metric_col2 = container.columns(2)
+
+    col_y = metric_col1.selectbox("Select y-axis performance metric for Pareto front",
+                    options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
+                    index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(col_y),
+                    format_func=lambda p: xp.PERFORMANCE_METRIC_COLUMNS[p].label_with_units(),
+    )
+
+    col_x = metric_col2.selectbox("Select x-axis input metric for Pareto front",
+                    options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
+                    index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(col_x),
+                    format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label}",
+    )
 
     # Configuration columns of interest
     tradeoff_plot = xplotting.plot_pareto_tradeoff(
@@ -375,7 +409,7 @@ def display_optimal_config_overview(container: DeltaGenerator,
     # Display info
     container.info(f"Out of the {len(runs_meet_slo)} configurations that meet SLO requirements, {len(runs_pareto_front)} are optimal, meaning no metric can be improved without degrading another. Their configuration and performance metrics are shown below.")
 
-    container.dataframe(runs_pareto_front[columns_of_interest], hide_index=True)
+    container.dataframe(runs_pareto_front[columns_of_interest])
 
 def outputs(tab: DeltaGenerator, user_inputs: dict):
     """
@@ -414,14 +448,14 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
 
             tab1.write("""The prefill/decode disaggregation scenario compares the effects of :blue[aggregate] inference vs. :blue[disaggregated] inference.""")
 
-            tab1.subheader("Performance comparison (Throughput/GPU vs. Concurrency)")
+            tab1.subheader("Performance comparison")
 
             metric_col1, metric_col2 = tab1.columns(2)
 
             col_y = metric_col1.selectbox("Select y-axis performance metric",
                             options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
                             index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(scenario_preset['col_y']),
-                            format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                            format_func=lambda p: xp.PERFORMANCE_METRIC_COLUMNS[p].label_with_units(),
                 )
 
             col_x = metric_col2.selectbox("Select x-axis input metric",
@@ -443,19 +477,24 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             tab1.divider()
 
             tab1.subheader("Performance tradeoff comparison")
-            metric_col1, metric_col2 = tab1.columns(2)
+            metric_col1, metric_col2, metric_col3 = tab1.columns(3)
             tradeoff_y = metric_col1.selectbox("Select y-axis performance tradeoff metric",
                             options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
                             index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(scenario_preset['pareto']['col_y']),
-                            format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                            format_func=lambda p: xp.PERFORMANCE_METRIC_COLUMNS[p].label_with_units(),
                 )
 
             tradeoff_x = metric_col2.selectbox("Select x-axis performance tradeoff metric",
                             options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
                             index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(scenario_preset['pareto']['col_x']),
-                            format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                            format_func=lambda p: xp.PERFORMANCE_METRIC_COLUMNS[p].label_with_units(),
                 )
 
+            tradeoff_z = metric_col3.selectbox("Select z-axis input metric",
+                            options=xp.INPUT_COLUMNS.keys(),
+                            index=list(xp.INPUT_COLUMNS.keys()).index(scenario_preset['pareto']['col_z']),
+                            format_func=lambda p: xp.INPUT_COLUMNS[p].label,
+                )
 
             tradeoff_plot = xplotting.plot_scenario_tradeoff(
                 runs_df=original_benchmark_data,
@@ -463,7 +502,7 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
                 config_keys=scenario_preset['config_keys'],
                 col_x=tradeoff_x,
                 col_y=tradeoff_y,
-                col_z=scenario_preset['pareto']['col_z'],
+                col_z=tradeoff_z,
                 col_seg_by=scenario_preset['col_seg_by'],
             )
             tab1.pyplot(tradeoff_plot)
@@ -473,14 +512,14 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             slos_cols = ['Mean_TTFT_ms', 'Thpt_per_GPU', 'Num_GPUs']
 
         if selected_display_preset == INFERENCE_SCHEDULING:
-            tab1.subheader("Performance comparison (QPS vs. TTFT)")
+            tab1.subheader("Performance comparison")
 
             metric_col1, metric_col2 = tab1.columns(2)
 
             col_y = metric_col1.selectbox("Select y-axis performance metric",
                             options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
                             index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(scenario_preset['col_y']),
-                            format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                            format_func=lambda p: xp.PERFORMANCE_METRIC_COLUMNS[p].label_with_units(),
                 )
 
             col_x = metric_col2.selectbox("Select x-axis input metric",
@@ -502,17 +541,23 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             tab1.divider()
 
             tab1.subheader("Performance tradeoff comparison")
-            metric_col1, metric_col2 = tab1.columns(2)
+            metric_col1, metric_col2, metric_col3 = tab1.columns(3)
             tradeoff_y = metric_col1.selectbox("Select y-axis performance tradeoff metric",
                             options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
                             index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(scenario_preset['pareto']['col_y']),
-                            format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                            format_func=lambda p: xp.PERFORMANCE_METRIC_COLUMNS[p].label_with_units(),
                 )
 
             tradeoff_x = metric_col2.selectbox("Select x-axis performance tradeoff metric",
                             options=xp.PERFORMANCE_METRIC_COLUMNS.keys(),
                             index=list(xp.PERFORMANCE_METRIC_COLUMNS.keys()).index(scenario_preset['pareto']['col_x']),
-                            format_func=lambda p: f"{xp.PERFORMANCE_METRIC_COLUMNS[p].label} ({xp.PERFORMANCE_METRIC_COLUMNS[p].units})",
+                            format_func=lambda p: xp.PERFORMANCE_METRIC_COLUMNS[p].label_with_units(),
+                )
+
+            tradeoff_z = metric_col3.selectbox("Select z-axis input metric",
+                            options=xp.INPUT_COLUMNS.keys(),
+                            index=list(xp.INPUT_COLUMNS.keys()).index(scenario_preset['pareto']['col_z']),
+                            format_func=lambda p: xp.INPUT_COLUMNS[p].label,
                 )
 
             tradeoff_plot = xplotting.plot_scenario_tradeoff(
@@ -521,7 +566,7 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
                 config_keys=scenario_preset['config_keys'],
                 col_x=tradeoff_x,
                 col_y=tradeoff_y,
-                col_z=scenario_preset['pareto']['col_z'],
+                col_z=tradeoff_z,
                 col_seg_by=scenario_preset['col_seg_by'],
             )
             tab1.pyplot(tradeoff_plot)
