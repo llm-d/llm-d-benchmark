@@ -18,8 +18,6 @@ SELECTED_SLO_METRICS_KEY = "selected_slo_metrics"
 DEFAULT_SLOS = [
     'Total_Token_Throughput',
     'P90_TTFT_ms',
-    'P90_ITL_ms',
-    'P90_E2EL_ms',
     ]
 PD_DISAGG = "PD Disaggregation"
 INFERENCE_SCHEDULING = "Inference Scheduling"
@@ -182,22 +180,15 @@ def delete_metric_dialog():
     st.write(f"Deleting a metric means that the optimal configuration does not take this metric into account. Any of the non-default (`{", ".join(DEFAULT_SLOS)}`) metrics can be deleted.\n\nIf you'd like to disable the default metrics, set them to an extremely high or low value to disable their effect.")
 
     curr_metrics = st.session_state[SELECTED_SLO_METRICS_KEY]
-    allow_delete = list(set(curr_metrics) - set(DEFAULT_SLOS))
 
     to_delete = st.selectbox("Select a metric to delete",
-                          options=allow_delete,
+                          options=curr_metrics,
                           format_func=lambda p: xp.PERFORMANCE_METRIC_COLUMNS[p].label_with_units(),
                           )
-    if st.button("Delete", use_container_width=True, type='primary'):
-        if to_delete in DEFAULT_SLOS:
-            st.error("This SLO is one of the metrics where default values are suggested for the given application. Are you sure you want to delete this metric?")
 
-            if st.button("Yes, I am sure", type='primary', use_container_width=True):
-                st.session_state[SELECTED_SLO_METRICS_KEY].remove(to_delete)
-                st.rerun()
-        else:
-            st.session_state[SELECTED_SLO_METRICS_KEY].remove(to_delete)
-            st.rerun()
+    if st.button("Delete", use_container_width=True, type='primary'):
+        st.session_state[SELECTED_SLO_METRICS_KEY].remove(to_delete)
+        st.rerun()
 
 def filter_data_on_inputs(data: DataFrame, user_inputs: dict) -> DataFrame:
     """
@@ -318,6 +309,8 @@ def inputs(tab: DeltaGenerator):
             for metric in st.session_state[SELECTED_SLO_METRICS_KEY]:
                 metric_prop = xp.PERFORMANCE_METRIC_COLUMNS[metric]
                 metric_value = 0.0
+
+                # If there is a default, show the default value
                 if metric in scenario:
                     metric_value = scenario[metric]
 
