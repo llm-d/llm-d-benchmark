@@ -65,6 +65,13 @@ pip install -r config_explorer/requirements-streamlit.txt
 .venv/bin/streamlit run config_explorer/Capacity_Planner.py
 ```
 
+The Sweep Visualizer page supports visualizing a collection of `llm-d-benchmark` report files. To get started easily, you may download the data from the [public llm-d-benchmark community Google Drive](https://drive.google.com/drive/u/0/folders/1r2Z2Xp1L0KonUlvQHvEzed8AO9Xj8IPm). Preset options have been selected for each scenario. For example, we recommend viewing
+
+- `qwen-qwen-3-0-6b` using the Chatbot application highlight Inference Scheduling
+- `meta-llama/Llama-3.1-70B-Instruct` using the Document Summarization application highlight PD Disaggregation
+
+Default values have been populated once those options are selected. Advanced users may further conduct their own configuration.
+
 ### Analysis Notebook
 
 See [../analysis/README.md](../analysis/README.md) for notebook usage.
