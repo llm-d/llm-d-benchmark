@@ -27,7 +27,7 @@ else
 fi
 
 # common deps
-tools="sed python3 curl git oc kubectl helm helmfile kustomize rsync make skopeo jq yq openssl podman"
+tools="sed python3 curl git oc kubectl helm helmfile kustomize rsync make skopeo jq yq openssl"
 
 # get package manager
 if [ "$target_os" = "mac" ]; then
