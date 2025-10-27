@@ -70,7 +70,7 @@ The Sweep Visualizer page supports visualizing a collection of `llm-d-benchmark`
 - `qwen-qwen-3-0-6b` using the Chatbot application highlight Inference Scheduling
 - `meta-llama/Llama-3.1-70B-Instruct` using the Document Summarization application highlight PD Disaggregation
 
-Default values have been populated once those options are selected. Advanced users may further conduct their own configuration.
+Default values will be populated once those options are selected. Advanced users may further conduct their own configuration.
 
 ### Analysis Notebook
 
