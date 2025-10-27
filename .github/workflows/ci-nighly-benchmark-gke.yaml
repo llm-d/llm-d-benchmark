@@ -39,6 +39,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Set LD_LIBRARY_PATH
+        run: |
+          echo "LD_LIBRARY_PATH=$(python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent.parent / "lib")'):$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        shell: bash
+
       - name: Display OS used
         run: |
           cat /etc/*os-*
