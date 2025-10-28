@@ -95,10 +95,14 @@ def announce(msgcont: str, logfile : str = None, ignore_if_failed: bool = False)
     if msgcont.count("ERROR:") and not ignore_if_failed:
         sys.exit(1)
 
-def kube_connect(config_path : str = '~/.kube/config'):
+def kube_connect(config_path : str = '~/.kube/config', clientype = "pykube"):
     api = None
     try:
-        api = pykube.HTTPClient(pykube.KubeConfig.from_file(os.path.expanduser(config_path)))
+        if clientype == "pykube" :
+            api = pykube.HTTPClient(pykube.KubeConfig.from_file(os.path.expanduser(config_path)))
+        else :
+            k8s_config.load_kube_config(os.path.expanduser(config_path))
+            api = k8s_client
     except FileNotFoundError:
         print("Kubeconfig file not found. Ensure you are logged into a cluster.")
         sys.exit(1)
@@ -1121,7 +1125,10 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
         envvar = envvar.strip()
         if envvar:
             # Remove LLMDBENCH_VLLM_STANDALONE_ prefix if present
-            clean_name = envvar.replace("LLMDBENCH_VLLM_STANDALONE_", "")
+            clean_name = envvar
+            if envvar[0] == "_" :
+                clean_name = envvar[1:]
+            clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_", "")
             env_value = os.environ.get(envvar, "")
 
             # Process REPLACE_ENV variables in the value (equivalent to bash sed processing)
