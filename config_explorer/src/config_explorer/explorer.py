@@ -35,6 +35,7 @@ We can use get_pareto_front_df() to find optimal configurations against pairs
 of metrics, showing, for example, the tradeoff between throughput and latency.
 """
 
+import builtins
 from dataclasses import dataclass
 from math import floor
 import os
@@ -116,8 +117,9 @@ class ColumnProperties:
 
         return f"{self.label} ({self.units})"
 
-# Dataset columns and properties
-INPUT_COLUMNS = {
+
+# Dataset columns about benchmark run
+RUN_COLUMNS = {
     # Details about particular run
     'Directory': ColumnProperties(
         dtype='str',
@@ -136,6 +138,10 @@ INPUT_COLUMNS = {
         units='s',
         label='Duration',
     ),
+}
+
+# Dataset columns about configuration
+CONFIGURATION_COLUMNS = {
     'Platform': ColumnProperties(
         dtype='str',
         label='Platform',
@@ -261,14 +267,6 @@ INPUT_COLUMNS = {
         dtype='int',
         label='Output Sequence Length',
     ),
-    'ISL_500': ColumnProperties(
-        dtype='int',
-        label='ISL Nearest 500',
-    ),
-    'OSL_500': ColumnProperties(
-        dtype='int',
-        label='OSL Nearest 500',
-    ),
     'Target_OSL': ColumnProperties(
         dtype='int',
         label='Target OSL',
@@ -309,8 +307,8 @@ INPUT_COLUMNS = {
     ),
 }
 
-# Dataset columns and properties
-PERFORMANCE_METRIC_COLUMNS = {
+# Dataset metrics columns
+METRICS_COLUMNS = {
     # Performance metrics
     # Throughput
     'Request_Throughput': ColumnProperties(
@@ -710,11 +708,17 @@ PERFORMANCE_METRIC_COLUMNS = {
     ),
 }
 
-COLUMNS = {}
+# Non-metrics columns, which may be used as an independent input variable
+INPUT_COLUMNS = {}
+INPUT_COLUMNS.update(RUN_COLUMNS)
+INPUT_COLUMNS.update(CONFIGURATION_COLUMNS)
 
-# Merge input and performance columns
-COLUMNS.update(INPUT_COLUMNS)
-COLUMNS.update(PERFORMANCE_METRIC_COLUMNS)
+# All dataset columns
+COLUMNS = {}
+COLUMNS.update(RUN_COLUMNS)
+COLUMNS.update(CONFIGURATION_COLUMNS)
+COLUMNS.update(METRICS_COLUMNS)
+
 
 @dataclass
 class SLO:
@@ -808,7 +812,7 @@ def get_benchmark_report_files(source_dir: str) -> list[str]:
     rb_files = []
     check_dir(source_dir)
     path = Path(source_dir)
-    for file in path.rglob("benchmark_report,_*.yaml"):
+    for file in path.rglob('benchmark_report,_*.yaml', recurse_symlinks=True):
         rb_files.append(str(file))
     return rb_files
 
@@ -1035,8 +1039,6 @@ def add_benchmark_report_to_df(
         'Workload_Generator': report.scenario.load.name,
         'ISL': int(round(report.metrics.requests.input_length.mean)),
         'OSL': int(round(report.metrics.requests.output_length.mean)),
-        'ISL_500': floor(report.metrics.requests.input_length.mean / 500) * 500 + 250,
-        'OSL_500': floor(report.metrics.requests.output_length.mean / 500) * 500 + 250,
         'Target_OSL': int(get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'output_len'], -1)),
         'Max_Concurrency': concurrency,
         'Max_QPS': max_qps,
@@ -1122,8 +1124,8 @@ def add_benchmark_report_to_df(
     }
 
 
-def get_scenarios(runs_df: pd.DataFrame,
-                  scenario_columns: list[str]) -> list[dict[str, Any]]:
+def _get_scenarios(runs_df: pd.DataFrame,
+                   scenario_columns: list[str]) -> list[dict[str, Any]]:
     """Get a list of available scenarios from runs DataFrame.
 
     Args:
@@ -1137,8 +1139,10 @@ def get_scenarios(runs_df: pd.DataFrame,
     for col in scenario_columns:
         if col not in runs_df.columns:
             raise KeyError(f'Invalid column: {col}')
+    # Get unique combinations of values for scenario columns, as tuples
     scenario_tuples = list(
         set(runs_df.set_index(scenario_columns).index.dropna()))
+    # Create list of scenario dicts
     scenarios = []
     for s_tuple in scenario_tuples:
         s_dict = {}
@@ -1149,9 +1153,83 @@ def get_scenarios(runs_df: pd.DataFrame,
     return scenarios
 
 
+def get_scenarios(
+        runs_df: pd.DataFrame,
+        scenario_columns: list[str],
+        bounded: bool = False) -> list[dict[str, Any]]:
+    """Get a list of available scenarios and numeric bounds from runs DataFrame.
+
+    Args:
+        runs_df (DataFrame): Benchmark runs to find the scenarios for.
+        scenario_columns (list[str]): Columns to group into common sets.
+        bounded (bool): For numeric columns, return min/max bounds.
+
+    Returns:
+        list[dict[str, Any]]: List of scenarios, consisting of unique groups of
+            values from scenario_columns. When bounded scenarios are returned,
+            any numeric columns are given as the min/max available with
+            __ge__ and __le__ prefixes, respectively.
+    """
+    # Non-numeric columns
+    cols_nn = []
+    # Numeric columns
+    cols_num = []
+    for col in scenario_columns:
+        if col not in runs_df.columns:
+            raise KeyError(f'Invalid column: {col}')
+        if COLUMNS[col].dtype in ['int', 'float']:
+            cols_num.append(col)
+        else:
+            cols_nn.append(col)
+
+    # Get unique combinations of values for non-numeric scenario columns,
+    # as tuples.
+    if bounded:
+        if not cols_nn:
+            raise Exception(
+                'Scenario must include at least one non-numeric column')
+        scenario_tuples = list(set(runs_df.set_index(cols_nn).index.dropna()))
+    else:
+        scenario_tuples = list(
+            set(runs_df.set_index(scenario_columns).index.dropna()))
+
+    # Create list of scenario dicts
+    scenarios = []
+    # If there is a column that is all NA in a scenario, we will drop that
+    # scenario
+    all_na = False
+    for s_tuple in scenario_tuples:
+        s_dict = {}
+        if bounded:
+            for ii, col_nn in enumerate(cols_nn):
+                s_dict[col_nn] = s_tuple[ii]
+            # Get rows matching this scenario's non-numeric columns
+            df = get_scenario_df(runs_df, s_dict)
+            # Get min/max for numeric columns of this scenario
+            for col_num in cols_num:
+                if df[col_num].isna().all():
+                    # This scenario has a column that is all NA, drop it
+                    all_na = True
+                    break
+                # Format as appropriate data type
+                fmt = getattr(builtins, COLUMNS[col_num].dtype)
+                # Get min/max
+                s_dict['__ge__' + col_num] = fmt(df[col_num].min())
+                s_dict['__le__' + col_num] = fmt(df[col_num].max())
+        else:
+            for ii, col in enumerate(scenario_columns):
+                s_dict[col] = s_tuple[ii]
+        if all_na:
+            # Do not add this scenario
+            all_na = False
+        else:
+            scenarios.append(s_dict)
+    return scenarios
+
+
 def get_scenario_df(
         runs_df: pd.DataFrame,
-        scenario: dict[str, Any]):
+        scenario: dict[str, Any]) -> pd.DataFrame:
     """Get rows from a dataframe matching a scenario.
 
     Args:
@@ -1163,7 +1241,16 @@ def get_scenario_df(
         pandas.DataFrame: Rows matching the scenario.
     """
     for col, val in scenario.items():
-        runs_df = runs_df[(runs_df[col] == val)]
+        if col[0:6] == '__le__':
+            runs_df = runs_df[(runs_df[col[6:]] <= val)]
+        elif col[0:6] == '__lt__':
+            runs_df = runs_df[(runs_df[col[6:]] < val)]
+        elif col[0:6] == '__ge__':
+            runs_df = runs_df[(runs_df[col[6:]] >= val)]
+        elif col[0:6] == '__gt__':
+            runs_df = runs_df[(runs_df[col[6:]] > val)]
+        else:
+            runs_df = runs_df[(runs_df[col] == val)]
     return runs_df
 
 
@@ -1205,8 +1292,32 @@ def print_scenarios(
         print(f'{Text.BOLD}{Text.RED}No scenarios available!{Text.DEFAULT}')
         return
 
+    col_names = []
+    # Length of column headers in printable characters
+    col_names_len = []
+    for col in scenarios[0].keys():
+        if col[0:6] == '__le__':
+            col_names.append(col[6:] + Text.MAGENTA +
+                             '≤' + Text.DEFAULT + Text.BOLD)
+            col_names_len.append(len(col[6:]) + 1)
+        elif col[0:6] == '__lt__':
+            col_names.append(col[6:] + Text.MAGENTA +
+                             '<' + Text.DEFAULT + Text.BOLD)
+            col_names_len.append(len(col[6:]) + 1)
+        elif col[0:6] == '__ge__':
+            col_names.append(col[6:] + Text.MAGENTA +
+                             '≥' + Text.DEFAULT + Text.BOLD)
+            col_names_len.append(len(col[6:]) + 1)
+        elif col[0:6] == '__gt__':
+            col_names.append(col[6:] + Text.MAGENTA +
+                             '>' + Text.DEFAULT + Text.BOLD)
+            col_names_len.append(len(col[6:]) + 1)
+        else:
+            col_names.append(col)
+            col_names_len.append(len(col))
+
     # Get maximum text length for each column, including header
-    spans = list(map(len, scenarios[0].keys()))
+    spans = col_names_len[:]
     for sc in scenarios:
         for ii, value in enumerate(sc.values()):
             if spans[ii] < len(str(value)):
@@ -1225,8 +1336,8 @@ def print_scenarios(
                     Text.BOLD}'
 
     # Add each column name to header
-    for ii, col in enumerate(scenarios[0].keys()):
-        header += col + " " * (spans[ii] - len(col) + 2)
+    for ii, col in enumerate(col_names):
+        header += col + " " * (spans[ii] - col_names_len[ii] + 2)
     header += f'{Text.DEFAULT}'
     print(header)
 
@@ -1261,15 +1372,36 @@ def make_scenarios_summary_df(
     Returns:
         pandas.DataFrame: Details about available scenarios
     """
+
+    # Make a column name utilizing bound prefixes
+    def col_name(col: str) -> str:
+        if col[0:6] == '__le__':
+            return col[6:] + '≤'
+        if col[0:6] == '__lt__':
+            return col[6:] + '<'
+        if col[0:6] == '__ge__':
+            return col[6:] + '≥'
+        if col[0:6] == '__gt__':
+            return col[6:] + '>'
+        return col
+
+    # Get original column name, removing bound prefixes
+    def col_raw(col: str) -> str:
+        if col[0:6] in ['__le__', '__lt__', '__ge__', '__gt__']:
+            return col[6:]
+        return col
+
     # Make DataFrame with matching row counts, and columns values from scenario
     schema = {
         'Count': pd.Series(dtype='int'),
     }
+
     if scenarios:
         # If scenarios is empty, we will end up with a DataFrame having only
         # a 'Count' column and no rows
-        for col in scenarios[0]:
-            schema[col] = pd.Series(dtype=COLUMNS[col].dtype)
+        for col in scenarios[0].keys():
+            schema[col_name(col)] = pd.Series(
+                dtype=COLUMNS[col_raw(col)].dtype)
     df = pd.DataFrame(schema)
 
     # Populate DataFrame
@@ -1279,7 +1411,7 @@ def make_scenarios_summary_df(
             continue
         row = {'Count': counts[ii]}
         for col, val in sc.items():
-            row[col] = val
+            row[col_name(col)] = val
         # Index of DataFrame will have 1:1 correspondance with scenario index
         df.loc[ii] = row
 
