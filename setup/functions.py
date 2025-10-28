@@ -95,7 +95,7 @@ def announce(msgcont: str, logfile : str = None, ignore_if_failed: bool = False)
     if msgcont.count("ERROR:") and not ignore_if_failed:
         sys.exit(1)
 
-def kube_connect(config_path : str = '~/.kube/config', clientype = "pykube"):
+def kube_connect(config_path : str = '~/.kube/config', clientype: str = "pykube"):
     api = None
     try:
         if clientype == "pykube" :
