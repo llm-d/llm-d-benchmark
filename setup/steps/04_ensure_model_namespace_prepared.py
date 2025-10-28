@@ -121,7 +121,7 @@ def main():
             },
         }
         secret = pykube.Secret(api, secret_obj)
-        if ev["control_dry_run"] != "1":
+        if not ev["control_dry_run"] :
             if secret.exists():
                 secret.update()
             else:
@@ -233,7 +233,7 @@ def main():
     }
 
     cm = pykube.ConfigMap(api, cm_obj)
-    if ev["control_dry_run"] != "1":
+    if not ev["control_dry_run"] :
         if cm.exists():
             cm.update()
         else:
