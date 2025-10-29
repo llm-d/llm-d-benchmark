@@ -1173,35 +1173,6 @@ def add_benchmark_report_to_df(
     }
 
 
-def _get_scenarios(runs_df: pd.DataFrame,
-                   scenario_columns: list[str]) -> list[dict[str, Any]]:
-    """Get a list of available scenarios from runs DataFrame.
-
-    Args:
-        runs_df (DataFrame): Benchmark runs to find the scenarios for.
-        scenario_columns (list[str]): Columns to group into common sets.
-
-    Returns:
-        list[dict[str, Any]]: List of scenarios, consisting of unique groups of
-            values from scenario_columns.
-    """
-    for col in scenario_columns:
-        if col not in runs_df.columns:
-            raise KeyError(f'Invalid column: {col}')
-    # Get unique combinations of values for scenario columns, as tuples
-    scenario_tuples = list(
-        set(runs_df.set_index(scenario_columns).index.dropna()))
-    # Create list of scenario dicts
-    scenarios = []
-    for s_tuple in scenario_tuples:
-        s_dict = {}
-        for ii, col in enumerate(scenario_columns):
-            s_dict[col] = s_tuple[ii]
-
-        scenarios.append(s_dict)
-    return scenarios
-
-
 def get_scenarios(
         runs_df: pd.DataFrame,
         scenario_columns: list[str],
