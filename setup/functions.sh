@@ -231,7 +231,7 @@ function add_additional_env_to_yaml {
   else
     local output="REPLACEFIRSTNEWLINE"
     for envvar in ${LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML//,/ }; do
-      output=$output"REPLACE_NEWLINEREPLACE_SPACESN- name: $(echo ${envvar} | $LLMDBENCH_CONTROL_SCMD -e 's^LLMDBENCH_VLLM_STANDALONE_^^g')REPLACE_NEWLINEREPLACE_SPACESVvalue: \"${!envvar}\""
+      output=$output"REPLACE_NEWLINEREPLACE_SPACESN- name: $(echo ${envvar} | $LLMDBENCH_CONTROL_SCMD -e 's/^_//g' -e 's^LLMDBENCH_VLLM_STANDALONE_^^g')REPLACE_NEWLINEREPLACE_SPACESVvalue: \"${!envvar}\""
     done
 
     if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
@@ -270,6 +270,8 @@ function render_string {
   else
     echo "s^____^ ^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
+
+  echo "s^REPLACE_COMMA^,^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
 
   for entry in $(echo ${string} | $LLMDBENCH_CONTROL_SCMD -e 's/____/ /g' -e 's^-^\n^g' -e 's^:^\n^g' -e 's^/^\n^g' -e 's^ ^\n^g' -e 's^]^\n^g' -e 's^ ^^g' | grep -E "REPLACE_ENV" | uniq); do
     parameter_name=$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_ENV_^\n______^g" -e "s^\"^^g" -e "s^'^^g" | grep "______" | $LLMDBENCH_CONTROL_SCMD -e "s^++++default=.*^^" -e "s^______^^g")
@@ -1062,7 +1064,7 @@ function generate_profile_parameter_treatments {
     echo "1i#treatment_${name}.txt" >> $output_dir/treatment_${name}.txt
     local j=1
     for value in $(echo $treatment | $LLMDBENCH_CONTROL_SCMD 's/,/ /g'); do
-      local value=$(echo "$value" | $LLMDBENCH_CONTROL_SCMD 's^"^^g')
+      local value=$(echo "$value" | $LLMDBENCH_CONTROL_SCMD 's^"^^g' | $LLMDBENCH_CONTROL_SCMD -e "s^REPLACE_COMMA^,^g")
       local param=$(cat $run_parameter_file | yq -r ".run.factors[$(($j - 1))]")
       echo "s^$param: .*^$param: $value^g" >> $output_dir/treatment_${name}.txt
       j=$((j+1))

@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-# Add project root to Python path
+# Add project root to path for imports
 current_file = Path(__file__).resolve()
 project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
@@ -728,20 +728,20 @@ def main():
         # Collect prefill logs
         collect_logs(ev, ev["vllm_modelservice_prefill_replicas"], "prefill")
 
+        announce(f"📜 Labelling gateway for model  \"{model}\"")
+        label_gateway_cmd = f"{ev['control_kcmd']} --namespace  {ev['vllm_common_namespace']} label gateway/infra-{release}-inference-gateway stood-up-by={ev['control_username']} stood-up-from=llm-d-benchmark stood-up-via={ev['deploy_methods']}"
+        result = llmdbench_execute_cmd(label_gateway_cmd, ev["control_dry_run"], ev["control_verbose"])
+        if result != 0:
+            announce("Error. Unable to label gateway for model \"{model}\"")
+        else :
+          announce("✅ Service for pods service model ${model} created")
+
         # Handle OpenShift route creation
         if ev["vllm_modelservice_route"] and ev["control_deploy_is_openshift"] == "1":
             # Check if route exists
             route_name = f"{release}-inference-gateway-route"
             check_route_cmd = f"{ev['control_kcmd']} --namespace {ev['vllm_common_namespace']} get route -o name --ignore-not-found | grep -E \"/{route_name}$\""
-
-            result = llmdbench_execute_cmd(
-                check_route_cmd,
-                ev["control_dry_run"],
-                ev["control_verbose"],
-                True,
-                1,
-                False,
-            )
+            result = llmdbench_execute_cmd(check_route_cmd, ev["control_dry_run"], ev["control_verbose"], True, 1, False)
             if result != 0:  # Route doesn't exist
                 announce(f"📜 Exposing pods serving model {model} as service...")
                 inference_port = ev.get("vllm_common_inference_port", "8000")
