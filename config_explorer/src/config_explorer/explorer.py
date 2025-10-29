@@ -68,6 +68,29 @@ COLUMN_BOUND_STR = {
 }
 
 
+# Reverse mapping of possible string descriptors of bounds to internal column
+# prefix representation.
+STR_TO_COLUMN_BOUND = {
+    'ge': '__ge__',
+    '>=': '__ge__',
+    '≥': '__ge__',
+    '__ge__': '__ge__',
+
+    'gt': '__gt__',
+    '>': '__gt__',
+    '__gt__': '__gt__',
+
+    'lt': '__lt__',
+    '<': '__lt__',
+    '__lt__': '__lt__',
+
+    'le': '__le__',
+    '<=': '__le__',
+    '≤': '__le__',
+    '__le__': '__le__',
+}
+
+
 class Text:
     """ANSI SGR control codes for text formatting"""
     DEFAULT = "\x1b[0m"
@@ -1284,6 +1307,52 @@ def get_scenario_df(
         else:
             runs_df = runs_df[(runs_df[col] == val)]
     return runs_df
+
+
+def set_scenario_bounds(
+        scenario: dict[str, Any],
+        bounds: dict[str, dict[str, int | float]]) -> dict[str, Any]:
+    """Create a new scenario with bounds applied.
+
+    Args:
+        scenario (dict[str, Any]): Scenario to apply new bounds to.
+        bounds (dict[str, dict[str, int | float]]): Bounds to apply to
+            scenario.
+
+    Returns:
+        dict[str, Any]: Scenario with updated column bounds.
+    """
+
+    scenario_bounded = {}
+
+    # Get scenario columns, without bound prefixes
+    scenario_cols = []
+    for col in scenario:
+        cb = col_base(col)
+        if cb not in scenario_cols:
+            scenario_cols.append(cb)
+    # Make sure bounds apply only to columns that exist in scenario
+    for col in bounds:
+        if col not in scenario_cols:
+            raise KeyError(f'Invalid column for scenario: {col_base(col)}')
+
+    # Add columns not in bounds to scenario_bounded
+    for col, val in scenario.items():
+        if col_base(col) in bounds:
+            continue
+        scenario_bounded[col] = val
+
+    # Add new bounds to scenario
+    for col, bdict in bounds.items():
+        if not bdict:
+            raise Exception(f'Empty bounds for column: {col}')
+        for bb, val in bdict.items():
+            if bb in STR_TO_COLUMN_BOUND:
+                scenario_bounded[STR_TO_COLUMN_BOUND[bb] + col] = val
+            else:
+                raise Exception(f'Invalid bound type: {bb}')
+
+    return scenario_bounded
 
 
 def rebound_scenario(
