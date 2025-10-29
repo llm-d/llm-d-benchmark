@@ -10,7 +10,6 @@ setup:
     - "inf-sche-queue.yaml"
 run:
   factors:
-    - rate
     - data
   levels:
     data: "prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=100REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048,prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=300REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=300REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048, prompt_tokens=300REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=100REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048, prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048"
