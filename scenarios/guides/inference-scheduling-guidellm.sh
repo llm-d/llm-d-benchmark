@@ -115,5 +115,10 @@ export LLMDBENCH_IMAGE_REPO=jgchen
 export LLMDBENCH_IMAGE_NAME=llm-d-benchmark
 export LLMDBENCH_IMAGE_TAG=0.0.22
 
+export LLMDBENCH_IMAGE_REGISTRY="quay.io"
+export LLMDBENCH_IMAGE_REPO="rh_ee_smonson"
+export LLMDBENCH_IMAGE_NAME="llm-d-benchmark"
+export LLMDBENCH_IMAGE_TAG="0.3.0-amd64"
+
 export LLMDBENCH_VLLM_COMMON_NAMESPACE=jchen
 export LLMDBENCH_HARNESS_NAMESPACE=jchen
