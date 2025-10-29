@@ -1196,7 +1196,7 @@ def add_annotations(varname: str) -> str:
     for entry in annotations.split(","):
         if ":" in entry:
             key, value = entry.split(":", 1)
-            annotation_lines.append(f"{indent}{key.strip()}: {value.strip()}")
+            annotation_lines.append(f"{indent}{key.strip()}: \"{value.strip()}\"")
 
     return "\n".join(annotation_lines)
 

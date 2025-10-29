@@ -207,7 +207,7 @@ function add_annotations {
   local varname=$1
 
   for entry in $(echo ${!varname} | $LLMDBENCH_CONTROL_SCMD -e 's^\,^\n^g'); do
-    output=$output"REPLACE_NEWLINEREPLACE_SPACESN$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e 's^:^: ^g')"
+    output=$output"REPLACE_NEWLINEREPLACE_SPACESN$(echo ${entry} | $LLMDBENCH_CONTROL_SCMD -e 's^:\(.*\)^: "\1"^g')"
   done
 
   if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
