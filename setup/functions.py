@@ -2199,12 +2199,12 @@ securityContext:
         verbose=verbose,
     )
     llmdbench_execute_cmd(
-        f"{os.getenv("LLMDBENCH_CONTROL_HCMD")} repo update",
+        f'{os.getenv("LLMDBENCH_CONTROL_HCMD")} repo update',
         dry_run=dry_run,
         verbose=verbose,
     )
     llmdbench_execute_cmd(
-        f"{os.getenv("LLMDBENCH_CONTROL_HCMD")} upgrade -i prometheus-adapter prometheus-community/prometheus-adapter "
+        f'{os.getenv("LLMDBENCH_CONTROL_HCMD")} upgrade -i prometheus-adapter prometheus-community/prometheus-adapter '
         f"-n {prometheus_monitoring_ns} -f {prometheus_values_path}",
         dry_run=dry_run,
         verbose=verbose,
