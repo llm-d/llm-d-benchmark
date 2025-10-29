@@ -332,7 +332,6 @@ function render_template {
     echo "s^REPLACE_SPACESC^$spacec^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     echo "s^ --^\\n$spacec--^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
     echo "s^\\n^ \\\\\n^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
-    echo "s^REPLACE_COMMA^,^g" >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
   fi
 
   if [[ $env_var_mode -eq 1 ]]; then
@@ -958,96 +957,14 @@ function render_workload_templates {
       workload_template_list=$(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name "${workload}.yaml.in")
     fi
 
-    echo "here1"
-
     rm -f $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
     touch $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
     if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES ]]; then
-
-      echo "here"
-      echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES
-      echo "begin loop"
-
       for entry in $(echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
-          parm=$(echo $entry | cut -d '=' -f 1)
-          val=$(echo $entry | cut -d '=' -f 2-)
-
-          # Check if val is a string that looks like {param=value,param2=value2}
-          if [[ $val == \{*\,*} ]]; then
-            dict_content=$(echo $val | sed 's/^{//;s/}$//')
-            formatted_dict=$(echo $dict_content | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g')
-            kv_pairs=""
-            for pair in $formatted_dict; do
-              kv_pairs+="$pair,"
-            done
-            kv_pairs=${kv_pairs%,}  # Remove trailing comma
-            echo "s^$parm:.*^$parm: $kv_pairs^g" >> $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
-          else
-            echo "s^$parm:.*^$parm: $val^g" >> $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
-          fi
-        done
-
-
-      # for entry in $(echo "$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES" | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
-      #   parm=$(echo "$entry" | cut -d '=' -f 1)
-      #   val=$(echo "$entry" | cut -d '=' -f 2-)
-
-      #   # Check if val is a dictionary (starts with '{' and ends with '}')
-      #   if [[ "$val" =~ ^\{.*\}$ ]]; then
-      #     # Remove braces
-      #     dict_content="${val:1:-1}"
-
-      #     # Convert key:value pairs to key=value
-      #     kv_pairs=""
-      #     IFS=',' read -ra pairs <<< "$dict_content"
-      #     for pair in "${pairs[@]}"; do
-      #       key=$(echo "$pair" | cut -d ':' -f 1)
-      #       value=$(echo "$pair" | cut -d ':' -f 2-)
-      #       kv_pairs+="${key}=${value},"
-      #     done
-      #     kv_pairs="${kv_pairs%,}"  # Remove trailing comma
-
-      #     echo "s^$parm:.*^$parm: $kv_pairs^g" >> $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
-      #   else
-      #     echo "s^$parm:.*^$parm: $val^g" >> $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
-      #   fi
-      # done
-
-
-      # IFS=$'\n'
-      # for entry in $(echo "$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES" | awk '
-      #   BEGIN { FS=","; OFS="\n" }
-      #   {
-      #     str = $0
-      #     in_quote = 0
-      #     token = ""
-      #     for (i = 1; i <= length(str); i++) {
-      #       c = substr(str, i, 1)
-      #       if (c == "'\''") {
-      #         in_quote = !in_quote
-      #         token = token c
-      #       } else if (c == "," && !in_quote) {
-      #         print token
-      #         token = ""
-      #       } else {
-      #         token = token c
-      #       }
-      #     }
-      #     if (token != "") print token
-      #   }
-      # '); do
-      #   parm=$(echo "$entry" | cut -d '=' -f 1)
-      #   val=$(echo "$entry" | cut -d '=' -f 2)
-      #   echo "s^$parm:.*^$parm: $val^g" >> "$LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt"
-      # done
-      # unset IFS
-
-
-      # for entry in $(echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
-      #   parm=$(echo $entry | cut -d '=' -f 1)
-      #   val=$(echo $entry | cut -d '=' -f 2)
-      #   echo "s^$parm:.*^$parm: $val^g" >> $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
-      # done
+        parm=$(echo $entry | cut -d '=' -f 1)
+        val=$(echo $entry | cut -d '=' -f 2)
+        echo "s^$parm:.*^$parm: $val^g" >> $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
+      done
     fi
 
     announce "🛠️ Rendering \"$workload\" workload profile templates under \"$LLMDBENCH_MAIN_DIR/workload/profiles/\"..."
