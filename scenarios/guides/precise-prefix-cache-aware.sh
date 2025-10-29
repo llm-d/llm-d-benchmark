@@ -115,7 +115,7 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_METRICS_PORT \
 --block-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE \
 --max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
---prefix-caching-hash-algo sha256_cbor_64bit \
+--prefix-caching-hash-algo sha256_cbor \
 --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"}' \
 --kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_SERVICE_NAME.REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NAMESPACE.svc.cluster.local:5557\",\"topic\":\"kv@\${POD_IP}@QREPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL\"}" \
 --enforce-eager
