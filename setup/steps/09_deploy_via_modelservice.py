@@ -11,27 +11,31 @@ sys.path.insert(0, str(project_root))
 
 # Import from functions.py
 from functions import (
-    announce, \
-    llmdbench_execute_cmd, \
-    model_attribute, \
-    extract_environment, \
-    check_storage_class, \
-    check_affinity, \
-    environment_variable_to_dict, \
-    wait_for_pods_creation, \
-    wait_for_pods_running, \
-    wait_for_pods_ready, \
-    collect_logs, \
-    get_image, \
-    add_command, \
-    add_command_line_options, \
-    get_accelerator_nr, \
+    announce,
+    llmdbench_execute_cmd,
+    model_attribute,
+    extract_environment,
+    check_storage_class,
+    check_affinity,
+    environment_variable_to_dict,
+    wait_for_pods_creation,
+    wait_for_pods_running,
+    wait_for_pods_ready,
+    collect_logs,
+    get_image,
+    add_command,
+    add_command_line_options,
+    get_accelerator_nr,
     add_annotations,
-    add_additional_env_to_yaml, \
-    add_config
+    add_additional_env_to_yaml,
+    add_config,
+    install_wva_components,
 )
 
-def conditional_volume_config(volume_config: str, field_name: str, indent: int = 4) -> str:
+
+def conditional_volume_config(
+    volume_config: str, field_name: str, indent: int = 4
+) -> str:
     """
     Generate volume configuration only if the config is not empty.
     Skip the field entirely if the volume config is empty or contains only "[]" or "{}".
@@ -41,7 +45,10 @@ def conditional_volume_config(volume_config: str, field_name: str, indent: int =
         return f"{field_name}: {config_result}"
     return ""
 
-def conditional_extra_config(extra_config: str, indent: int = 2, label: str = "extraConfig") -> str:
+
+def conditional_extra_config(
+    extra_config: str, indent: int = 2, label: str = "extraConfig"
+) -> str:
     """
     Generate extraConfig section only if the config is not empty.
     Skip the field entirely if the config is empty or contains only "{}" or "[]".
@@ -55,6 +62,7 @@ def conditional_extra_config(extra_config: str, indent: int = 2, label: str = "e
         spaces = " " * indent
         return f"{spaces}{label}:\n{config_result}"
     return ""
+
 
 def add_config_prep():
     """
@@ -87,7 +95,10 @@ def add_config_prep():
     if not os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES"):
         os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES"] = "[]"
 
-def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path) -> str:
+
+def generate_ms_values_yaml(
+    ev: dict, mount_model_volume: bool, rules_file: Path
+) -> str:
     """
     Generate the ms-values.yaml content for Helm chart.
     Exactly matches the bash script structure from lines 60-239.
@@ -128,7 +139,9 @@ def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path
     proxy_image_repo = ev.get("llmd_routingsidecar_image_repo", "")
     proxy_image_name = ev.get("llmd_routingsidecar_image_name", "")
     proxy_image_tag = ev.get("llmd_routingsidecar_image_tag", "")
-    proxy_image = get_image(proxy_image_registry, proxy_image_repo, proxy_image_name, proxy_image_tag, 0)
+    proxy_image = get_image(
+        proxy_image_registry, proxy_image_repo, proxy_image_name, proxy_image_tag, 0
+    )
     proxy_connector = ev.get("llmd_routingsidecar_connector", "")
     proxy_debug_level = ev.get("llmd_routingsidecar_debug_level", "")
 
@@ -140,25 +153,39 @@ def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path
     decode_replicas = int(ev.get("vllm_modelservice_decode_replicas", "0"))
     decode_create = "true" if decode_replicas > 0 else "false"
     decode_data_parallelism = ev.get("vllm_modelservice_decode_data_parallelism", "1")
-    decode_tensor_parallelism = ev.get("vllm_modelservice_decode_tensor_parallelism", "1")
+    decode_tensor_parallelism = ev.get(
+        "vllm_modelservice_decode_tensor_parallelism", "1"
+    )
     decode_model_command = ev.get("vllm_modelservice_decode_model_command", "")
     decode_extra_args = ev.get("vllm_modelservice_decode_extra_args", "")
-    decode_cpu_mem = ev.get("vllm_modelservice_decode_cpu_mem", "") or ev.get("vllm_common_cpu_mem", "")
-    decode_cpu_nr = ev.get("vllm_modelservice_decode_cpu_nr", "") or ev.get("vllm_common_cpu_nr", "")
+    decode_cpu_mem = ev.get("vllm_modelservice_decode_cpu_mem", "") or ev.get(
+        "vllm_common_cpu_mem", ""
+    )
+    decode_cpu_nr = ev.get("vllm_modelservice_decode_cpu_nr", "") or ev.get(
+        "vllm_common_cpu_nr", ""
+    )
     decode_inference_port = ev.get("vllm_modelservice_decode_inference_port", "8000")
 
     # Prefill configuration
     prefill_replicas = int(ev.get("vllm_modelservice_prefill_replicas", "0"))
     prefill_create = "true" if prefill_replicas > 0 else "false"
     prefill_data_parallelism = ev.get("vllm_modelservice_prefill_data_parallelism", "1")
-    prefill_tensor_parallelism = ev.get("vllm_modelservice_prefill_tensor_parallelism", "1")
+    prefill_tensor_parallelism = ev.get(
+        "vllm_modelservice_prefill_tensor_parallelism", "1"
+    )
     prefill_model_command = ev.get("vllm_modelservice_prefill_model_command", "")
     prefill_extra_args = ev.get("vllm_modelservice_prefill_extra_args", "")
-    prefill_cpu_mem = ev.get("vllm_modelservice_prefill_cpu_mem", "") or ev.get("vllm_common_cpu_mem", "")
-    prefill_cpu_nr = ev.get("vllm_modelservice_prefill_cpu_nr", "") or ev.get("vllm_common_cpu_nr", "")
+    prefill_cpu_mem = ev.get("vllm_modelservice_prefill_cpu_mem", "") or ev.get(
+        "vllm_common_cpu_mem", ""
+    )
+    prefill_cpu_nr = ev.get("vllm_modelservice_prefill_cpu_nr", "") or ev.get(
+        "vllm_common_cpu_nr", ""
+    )
 
     # Resource configuration - handle auto accelerator resource
-    accelerator_resource = os.environ.get("LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE", "")
+    accelerator_resource = os.environ.get(
+        "LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE", ""
+    )
     if accelerator_resource == "auto":
         accelerator_resource = "nvidia.com/gpu"
 
@@ -167,19 +194,19 @@ def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path
 
     # Calculate actual accelerator numbers
     decode_accelerator_count = get_accelerator_nr(
-        decode_accelerator_nr,
-        decode_tensor_parallelism,
-        decode_data_parallelism
+        decode_accelerator_nr, decode_tensor_parallelism, decode_data_parallelism
     )
     prefill_accelerator_count = get_accelerator_nr(
-        prefill_accelerator_nr,
-        prefill_tensor_parallelism,
-        prefill_data_parallelism
+        prefill_accelerator_nr, prefill_tensor_parallelism, prefill_data_parallelism
     )
 
     ephemeral_storage_resource = ev.get("vllm_common_ephemeral_storage_resource", "")
-    decode_ephemeral_storage_nr = ev.get("vllm_modelservice_decode_ephemeral_storage_nr", "")
-    prefill_ephemeral_storage_nr = ev.get("vllm_modelservice_prefill_ephemeral_storage_nr", "")
+    decode_ephemeral_storage_nr = ev.get(
+        "vllm_modelservice_decode_ephemeral_storage_nr", ""
+    )
+    prefill_ephemeral_storage_nr = ev.get(
+        "vllm_modelservice_prefill_ephemeral_storage_nr", ""
+    )
 
     decode_network_resource = ev.get("vllm_modelservice_decode_network_resource", "")
     decode_network_nr = ev.get("vllm_modelservice_decode_network_nr", "")
@@ -199,13 +226,21 @@ def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path
 
     # Extra configurations
     decode_extra_pod_config = ev.get("vllm_modelservice_decode_extra_pod_config", "")
-    decode_extra_container_config = ev.get("vllm_modelservice_decode_extra_container_config", "")
-    decode_extra_volume_mounts = ev.get("vllm_modelservice_decode_extra_volume_mounts", "")
+    decode_extra_container_config = ev.get(
+        "vllm_modelservice_decode_extra_container_config", ""
+    )
+    decode_extra_volume_mounts = ev.get(
+        "vllm_modelservice_decode_extra_volume_mounts", ""
+    )
     decode_extra_volumes = ev.get("vllm_modelservice_decode_extra_volumes", "")
 
     prefill_extra_pod_config = ev.get("vllm_modelservice_prefill_extra_pod_config", "")
-    prefill_extra_container_config = ev.get("vllm_modelservice_prefill_extra_container_config", "")
-    prefill_extra_volume_mounts = ev.get("vllm_modelservice_prefill_extra_volume_mounts", "")
+    prefill_extra_container_config = ev.get(
+        "vllm_modelservice_prefill_extra_container_config", ""
+    )
+    prefill_extra_volume_mounts = ev.get(
+        "vllm_modelservice_prefill_extra_volume_mounts", ""
+    )
     prefill_extra_volumes = ev.get("vllm_modelservice_prefill_extra_volumes", "")
 
     # Environment variables to YAML
@@ -224,17 +259,33 @@ def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path
         decode_limits_resources.append(f"        memory: {decode_cpu_mem}")
         decode_requests_resources.append(f"        memory: {decode_cpu_mem}")
     if decode_cpu_nr:
-        decode_limits_resources.append(f"        cpu: \"{decode_cpu_nr}\"")
-        decode_requests_resources.append(f"        cpu: \"{decode_cpu_nr}\"")
+        decode_limits_resources.append(f'        cpu: "{decode_cpu_nr}"')
+        decode_requests_resources.append(f'        cpu: "{decode_cpu_nr}"')
     if ephemeral_storage_resource and decode_ephemeral_storage_nr:
-        decode_limits_resources.append(f"        {ephemeral_storage_resource}: \"{decode_ephemeral_storage_nr}\"")
-        decode_requests_resources.append(f"        {ephemeral_storage_resource}: \"{decode_ephemeral_storage_nr}\"")
-    if accelerator_resource and decode_accelerator_count and str(decode_accelerator_count) != "0":
-        decode_limits_resources.append(f"        {accelerator_resource}: \"{decode_accelerator_count}\"")
-        decode_requests_resources.append(f"        {accelerator_resource}: \"{decode_accelerator_count}\"")
+        decode_limits_resources.append(
+            f'        {ephemeral_storage_resource}: "{decode_ephemeral_storage_nr}"'
+        )
+        decode_requests_resources.append(
+            f'        {ephemeral_storage_resource}: "{decode_ephemeral_storage_nr}"'
+        )
+    if (
+        accelerator_resource
+        and decode_accelerator_count
+        and str(decode_accelerator_count) != "0"
+    ):
+        decode_limits_resources.append(
+            f'        {accelerator_resource}: "{decode_accelerator_count}"'
+        )
+        decode_requests_resources.append(
+            f'        {accelerator_resource}: "{decode_accelerator_count}"'
+        )
     if decode_network_resource and decode_network_nr:
-        decode_limits_resources.append(f"        {decode_network_resource}: \"{decode_network_nr}\"")
-        decode_requests_resources.append(f"        {decode_network_resource}: \"{decode_network_nr}\"")
+        decode_limits_resources.append(
+            f'        {decode_network_resource}: "{decode_network_nr}"'
+        )
+        decode_requests_resources.append(
+            f'        {decode_network_resource}: "{decode_network_nr}"'
+        )
 
     # Build prefill resources section cleanly
     prefill_limits_resources = []
@@ -244,29 +295,67 @@ def generate_ms_values_yaml(ev: dict, mount_model_volume: bool, rules_file: Path
         prefill_limits_resources.append(f"        memory: {prefill_cpu_mem}")
         prefill_requests_resources.append(f"        memory: {prefill_cpu_mem}")
     if prefill_cpu_nr:
-        prefill_limits_resources.append(f"        cpu: \"{prefill_cpu_nr}\"")
-        prefill_requests_resources.append(f"        cpu: \"{prefill_cpu_nr}\"")
+        prefill_limits_resources.append(f'        cpu: "{prefill_cpu_nr}"')
+        prefill_requests_resources.append(f'        cpu: "{prefill_cpu_nr}"')
     if ephemeral_storage_resource and prefill_ephemeral_storage_nr:
-        prefill_limits_resources.append(f"        {ephemeral_storage_resource}: \"{prefill_ephemeral_storage_nr}\"")
-        prefill_requests_resources.append(f"        {ephemeral_storage_resource}: \"{prefill_ephemeral_storage_nr}\"")
+        prefill_limits_resources.append(
+            f'        {ephemeral_storage_resource}: "{prefill_ephemeral_storage_nr}"'
+        )
+        prefill_requests_resources.append(
+            f'        {ephemeral_storage_resource}: "{prefill_ephemeral_storage_nr}"'
+        )
     if accelerator_resource:
-        prefill_limits_resources.append(f"        {accelerator_resource}: \"{prefill_accelerator_count}\"")
-        prefill_requests_resources.append(f"        {accelerator_resource}: \"{prefill_accelerator_count}\"")
+        prefill_limits_resources.append(
+            f'        {accelerator_resource}: "{prefill_accelerator_count}"'
+        )
+        prefill_requests_resources.append(
+            f'        {accelerator_resource}: "{prefill_accelerator_count}"'
+        )
     if prefill_network_resource and prefill_network_nr:
-        prefill_limits_resources.append(f"        {prefill_network_resource}: \"{prefill_network_nr}\"")
-        prefill_requests_resources.append(f"        {prefill_network_resource}: \"{prefill_network_nr}\"")
+        prefill_limits_resources.append(
+            f'        {prefill_network_resource}: "{prefill_network_nr}"'
+        )
+        prefill_requests_resources.append(
+            f'        {prefill_network_resource}: "{prefill_network_nr}"'
+        )
 
     # Join resources with newlines
-    decode_limits_str = "\n".join(decode_limits_resources) if decode_limits_resources else "        {}"
-    decode_requests_str = "\n".join(decode_requests_resources) if decode_requests_resources else "        {}"
-    prefill_limits_str = "\n".join(prefill_limits_resources) if prefill_limits_resources else "        {}"
-    prefill_requests_str = "\n".join(prefill_requests_resources) if prefill_requests_resources else "        {}"
+    decode_limits_str = (
+        "\n".join(decode_limits_resources) if decode_limits_resources else "        {}"
+    )
+    decode_requests_str = (
+        "\n".join(decode_requests_resources)
+        if decode_requests_resources
+        else "        {}"
+    )
+    prefill_limits_str = (
+        "\n".join(prefill_limits_resources)
+        if prefill_limits_resources
+        else "        {}"
+    )
+    prefill_requests_str = (
+        "\n".join(prefill_requests_resources)
+        if prefill_requests_resources
+        else "        {}"
+    )
 
     # Handle command sections
-    decode_command_section = add_command(decode_model_command) if decode_model_command else ""
-    decode_args_section = add_command_line_options(decode_extra_args).lstrip() if decode_extra_args else ""
-    prefill_command_section = add_command(prefill_model_command) if prefill_model_command else ""
-    prefill_args_section = add_command_line_options(prefill_extra_args).lstrip() if prefill_extra_args else ""
+    decode_command_section = (
+        add_command(decode_model_command) if decode_model_command else ""
+    )
+    decode_args_section = (
+        add_command_line_options(decode_extra_args).lstrip()
+        if decode_extra_args
+        else ""
+    )
+    prefill_command_section = (
+        add_command(prefill_model_command) if prefill_model_command else ""
+    )
+    prefill_args_section = (
+        add_command_line_options(prefill_extra_args).lstrip()
+        if prefill_extra_args
+        else ""
+    )
 
     # Build the complete YAML structure with proper handling of empty values
     yaml_content = f"""fullnameOverride: {fullname_override}
@@ -437,13 +526,16 @@ prefill:
   {conditional_volume_config(prefill_extra_volumes, "volumes", 2)}
 """
 
-    yaml_lines=yaml_content.splitlines()
+    yaml_lines = yaml_content.splitlines()
     non_empty_yaml_lines = [line for line in yaml_lines if line.strip()]
-    no_noconfig_lines =[line for line in non_empty_yaml_lines if not line.count('#noconfig')]
-    stripped_lines =[line.rstrip() for line in no_noconfig_lines]
+    no_noconfig_lines = [
+        line for line in non_empty_yaml_lines if not line.count("#noconfig")
+    ]
+    stripped_lines = [line.rstrip() for line in no_noconfig_lines]
     cleaned_text = "\n".join(stripped_lines)
 
     return cleaned_text
+
 
 def main():
     """Main function for step 09 - Deploy via modelservice"""
@@ -456,8 +548,10 @@ def main():
     environment_variable_to_dict(ev)
 
     # Check if modelservice environment is active
-    if not ev["control_environment_type_modelservice_active"] :
-        announce(f"⏭️ Environment types are \"{ev['deploy_methods']}\". Skipping this step.")
+    if not ev["control_environment_type_modelservice_active"]:
+        announce(
+            f"⏭️ Environment types are \"{ev['deploy_methods']}\". Skipping this step."
+        )
         return 0
 
     # Check storage class
@@ -484,23 +578,35 @@ def main():
         # FIXME add_additional_env_to_yaml is still using os.environ
         # Set current model environment variables
         os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL"] = model_attribute(model, "model")
-        os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID"] = model_attribute(model, "modelid")
-        os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL"] = model_attribute(model, "modelid_label")
-        os.environ["LLMDBENCH_DEPLOY_CURRENT_SERVICE_NAME"] = f'{model_attribute(model, "modelid_label")}-gaie-epp'
+        os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID"] = model_attribute(
+            model, "modelid"
+        )
+        os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL"] = model_attribute(
+            model, "modelid_label"
+        )
+        os.environ["LLMDBENCH_DEPLOY_CURRENT_SERVICE_NAME"] = (
+            f'{model_attribute(model, "modelid_label")}-gaie-epp'
+        )
 
         environment_variable_to_dict(ev)
 
         # Determine model mounting
         mount_model_volume = False
-        if (ev["vllm_modelservice_uri_protocol"] == "pvc" or
-            ev["control_environment_type_standalone_active"]):
+        if (
+            ev["vllm_modelservice_uri_protocol"] == "pvc"
+            or ev["control_environment_type_standalone_active"]
+        ):
             pvc_name = ev["vllm_common_pvc_name"]
             # FIXME add_additional_env_to_yaml is still using os.environ
-            os.environ["LLMDBENCH_VLLM_MODELSERVICE_URI"] = f"pvc://{pvc_name}/models/{ev['deploy_current_model']}"
+            os.environ["LLMDBENCH_VLLM_MODELSERVICE_URI"] = (
+                f"pvc://{pvc_name}/models/{ev['deploy_current_model']}"
+            )
             mount_model_volume = True
         else:
             # FIXME add_additional_env_to_yaml is still using os.environ
-            os.environ["LLMDBENCH_VLLM_MODELSERVICE_URI"] = f"hf://{ev['deploy_current_model']}"
+            os.environ["LLMDBENCH_VLLM_MODELSERVICE_URI"] = (
+                f"hf://{ev['deploy_current_model']}"
+            )
             mount_model_volume = True
 
         # Check for mount override
@@ -510,7 +616,7 @@ def main():
 
         # Update ev with URI
         environment_variable_to_dict(ev)
-#        ev["vllm_modelservice_uri"] = os.environ["LLMDBENCH_VLLM_MODELSERVICE_URI"]
+        #        ev["vllm_modelservice_uri"] = os.environ["LLMDBENCH_VLLM_MODELSERVICE_URI"]
 
         # Create directory structure (Do not use "llmdbench_execute_cmd" for these commands)
         model_num = f"{model_number:02d}"
@@ -543,7 +649,6 @@ def main():
         else:
             rules_file.write_text("")
 
-
         # Generate ms-values.yaml
         values_content = generate_ms_values_yaml(ev, mount_model_volume, rules_file)
         values_file = helm_dir / "ms-values.yaml"
@@ -553,47 +658,67 @@ def main():
         rules_file.unlink()
 
         # Deploy via helmfile
-        announce(f"🚀 Installing helm chart \"ms-{release}\" via helmfile...")
+        announce(f'🚀 Installing helm chart "ms-{release}" via helmfile...')
         context_path = work_dir / "environment" / "context.ctx"
 
-        helmfile_cmd = (f"helmfile --namespace {ev['vllm_common_namespace']} "
-                       f"--kubeconfig {context_path} "
-                       f"--selector name={ev['deploy_current_model_id_label']}-ms "
-                       f"apply -f {work_dir}/setup/helm/{release}/helmfile-{model_num}.yaml --skip-diff-on-install --skip-schema-validation")
+        helmfile_cmd = (
+            f"helmfile --namespace {ev['vllm_common_namespace']} "
+            f"--kubeconfig {context_path} "
+            f"--selector name={ev['deploy_current_model_id_label']}-ms "
+            f"apply -f {work_dir}/setup/helm/{release}/helmfile-{model_num}.yaml --skip-diff-on-install --skip-schema-validation"
+        )
 
-        result = llmdbench_execute_cmd(helmfile_cmd, ev["control_dry_run"], ev["control_verbose"])
+        result = llmdbench_execute_cmd(
+            helmfile_cmd, ev["control_dry_run"], ev["control_verbose"]
+        )
         if result != 0:
-            announce(f"❌ Failed to deploy helm chart for model {ev['deploy_current_model']}")
+            announce(
+                f"❌ Failed to deploy helm chart for model {ev['deploy_current_model']}"
+            )
             return result
 
-        announce(f"✅ {ev['vllm_common_namespace']}-{ev['deploy_current_model_id_label']}-ms helm chart deployed successfully")
+        announce(
+            f"✅ {ev['vllm_common_namespace']}-{ev['deploy_current_model_id_label']}-ms helm chart deployed successfully"
+        )
 
         # Wait for decode pods creation
-        result = wait_for_pods_creation(ev, ev["vllm_modelservice_decode_replicas"], "decode")
+        result = wait_for_pods_creation(
+            ev, ev["vllm_modelservice_decode_replicas"], "decode"
+        )
         if result != 0:
             return result
 
         # Wait for prefill pods creation
-        result = wait_for_pods_creation(ev, ev["vllm_modelservice_prefill_replicas"], "prefill")
+        result = wait_for_pods_creation(
+            ev, ev["vllm_modelservice_prefill_replicas"], "prefill"
+        )
         if result != 0:
             return result
 
         # Wait for decode pods to be running
-        result = wait_for_pods_running(ev, ev["vllm_modelservice_decode_replicas"], "decode")
+        result = wait_for_pods_running(
+            ev, ev["vllm_modelservice_decode_replicas"], "decode"
+        )
         if result != 0:
             return result
 
         # Wait for prefill pods to be running
-        result = wait_for_pods_running(ev, ev["vllm_modelservice_prefill_replicas"], "prefill")
+        result = wait_for_pods_running(
+            ev, ev["vllm_modelservice_prefill_replicas"], "prefill"
+        )
         if result != 0:
             return result
 
         # Wait for decode pods to be ready
-        result = wait_for_pods_ready(ev, ev["vllm_modelservice_decode_replicas"], "decode")
+        result = wait_for_pods_ready(
+            ev, ev["vllm_modelservice_decode_replicas"], "decode"
+        )
         if result != 0:
             return result
 
-        result = wait_for_pods_ready(ev, ev["vllm_modelservice_prefill_replicas"], "prefill")
+        result = wait_for_pods_ready(
+            ev, ev["vllm_modelservice_prefill_replicas"], "prefill"
+        )
         if result != 0:
             return result
 
@@ -604,25 +729,44 @@ def main():
         collect_logs(ev, ev["vllm_modelservice_prefill_replicas"], "prefill")
 
         # Handle OpenShift route creation
-        if (ev["vllm_modelservice_route"] and ev["control_deploy_is_openshift"] == "1"):
+        if ev["vllm_modelservice_route"] and ev["control_deploy_is_openshift"] == "1":
             # Check if route exists
             route_name = f"{release}-inference-gateway-route"
             check_route_cmd = f"{ev['control_kcmd']} --namespace {ev['vllm_common_namespace']} get route -o name --ignore-not-found | grep -E \"/{route_name}$\""
 
-            result = llmdbench_execute_cmd(check_route_cmd, ev["control_dry_run"], ev["control_verbose"], True, 1, False)
+            result = llmdbench_execute_cmd(
+                check_route_cmd,
+                ev["control_dry_run"],
+                ev["control_verbose"],
+                True,
+                1,
+                False,
+            )
             if result != 0:  # Route doesn't exist
                 announce(f"📜 Exposing pods serving model {model} as service...")
                 inference_port = ev.get("vllm_common_inference_port", "8000")
-                expose_cmd = (f"{ev['control_kcmd']} --namespace {ev['vllm_common_namespace']} expose service/infra-{release}-inference-gateway "
-                             f"--target-port={inference_port} --name={route_name}")
+                expose_cmd = (
+                    f"{ev['control_kcmd']} --namespace {ev['vllm_common_namespace']} expose service/infra-{release}-inference-gateway "
+                    f"--target-port={inference_port} --name={route_name}"
+                )
 
-                result = llmdbench_execute_cmd(expose_cmd, ev["control_dry_run"], ev["control_verbose"])
+                result = llmdbench_execute_cmd(
+                    expose_cmd, ev["control_dry_run"], ev["control_verbose"]
+                )
                 if result == 0:
                     announce(f"✅ Service for pods service model {model} created")
 
-            announce(f"✅ Model \"{model}\" and associated service deployed.")
+            announce(f'✅ Model "{model}" and associated service deployed.')
 
-        # Clean up model environment variables
+        if ev["wva_enabled"] and ev["control_deploy_is_openshift"] == "1":
+            #
+            # Right now we have only verified this installation path for OC and not other mediums like kind
+            # so lets not find out until we actually test those paths...it is supported according to WVA
+            # but we have not invested on testing there yet.
+            #
+            install_wva_components(ev)
+            announce(f'✅ WVA has been configured for Model "{model}".')
+
         if "LLMDBENCH_DEPLOY_CURRENT_MODEL" in os.environ:
             del os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL"]
         if "LLMDBENCH_DEPLOY_CURRENT_MODEL_ID" in os.environ:

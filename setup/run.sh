@@ -54,7 +54,8 @@ function show_usage {
              -o/--overrides [comma-separated list of workload profile parameters to be overriden (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES)] \n \
              -z/--skip [skip the execution of the experiment, and only collect data (default=$LLMDBENCH_HARNESS_SKIP_RUN)] \n \
              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE)] \n \
-             -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)]
+             -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)] \n \
+             -u/--wva [deploy model with Workload Variant Autoscaler (default=$LLMDBENCH_WVA_ENABLED)] \n \
              -s/--wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means "do not wait\""] \n \
              -d/--debug [execute harness in \"debug-mode\" (default=$LLMDBENCH_HARNESS_DEBUG)] \n \
              -h/--help (show this help)"
@@ -154,6 +155,9 @@ while [[ $# -gt 0 ]]; do
         -x|--dataset)
         export LLMDBENCH_CLIOVERRIDE_RUN_DATASET_URL="$2"
         shift
+        ;;
+        -u|--wva)
+        export LLMDBENCH_WVA_ENABLED=1
         ;;
         -z|--skip)
         export LLMDBENCH_CLIOVERRIDE_HARNESS_SKIP_RUN=1
