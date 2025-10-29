@@ -148,7 +148,7 @@ def plot_scenario_histogram(
         scenario: dict[str, Any],
         num_bins: int = 50) -> list[plt.Figure]:
     """
-    Plot a value histograms for numeric columns in a scenario having a bound.
+    Plot value histograms for numeric columns in a scenario having a bound.
     Any columns having a single value will be skipped.
 
     Args:
