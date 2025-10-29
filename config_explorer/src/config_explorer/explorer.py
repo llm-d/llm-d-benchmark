@@ -37,7 +37,6 @@ of metrics, showing, for example, the tradeoff between throughput and latency.
 
 import builtins
 from dataclasses import dataclass
-from math import floor
 import os
 from pathlib import Path
 from typing import Any
@@ -54,6 +53,19 @@ try:
 except ImportError:
     from config_explorer import convert
     from config_explorer import schema
+
+
+# Length of column bound prefix
+BOUND_PREFIX_LEN = 6
+
+# Column bound prefixes and printable string representations.
+# Order is from lower bounds to upper bounds.
+COLUMN_BOUND_STR = {
+    '__ge__': '≥',
+    '__gt__': '>',
+    '__lt__': '<',
+    '__le__': '≤',
+}
 
 
 class Text:
@@ -740,6 +752,20 @@ class SLO:
                     self.col}')
 
 
+def col_base(col: str) -> str:
+    """Get original column name, removing bound prefixes if present.
+
+    Args:
+        col (str): Column name, which may include a bound prefix.
+
+    Returns:
+        str: Column name, without any bound prefixes.
+    """
+    if col[:BOUND_PREFIX_LEN] in COLUMN_BOUND_STR:
+        return col[BOUND_PREFIX_LEN:]
+    return col
+
+
 def check_dir(dir: str) -> None:
     """Print an error if directory does not exist.
 
@@ -1214,8 +1240,14 @@ def get_scenarios(
                 # Format as appropriate data type
                 fmt = getattr(builtins, COLUMNS[col_num].dtype)
                 # Get min/max
-                s_dict['__ge__' + col_num] = fmt(df[col_num].min())
-                s_dict['__le__' + col_num] = fmt(df[col_num].max())
+                val_min = fmt(df[col_num].min())
+                val_max = fmt(df[col_num].max())
+                if val_min == val_max:
+                    # Column only has a single value, no need to specify bounds
+                    s_dict[col_num] = val_min
+                else:
+                    s_dict['__ge__' + col_num] = val_min
+                    s_dict['__le__' + col_num] = val_max
         else:
             for ii, col in enumerate(scenario_columns):
                 s_dict[col] = s_tuple[ii]
@@ -1241,17 +1273,70 @@ def get_scenario_df(
         pandas.DataFrame: Rows matching the scenario.
     """
     for col, val in scenario.items():
-        if col[0:6] == '__le__':
-            runs_df = runs_df[(runs_df[col[6:]] <= val)]
-        elif col[0:6] == '__lt__':
-            runs_df = runs_df[(runs_df[col[6:]] < val)]
-        elif col[0:6] == '__ge__':
-            runs_df = runs_df[(runs_df[col[6:]] >= val)]
-        elif col[0:6] == '__gt__':
-            runs_df = runs_df[(runs_df[col[6:]] > val)]
+        if col[:BOUND_PREFIX_LEN] == '__ge__':
+            runs_df = runs_df[(runs_df[col[BOUND_PREFIX_LEN:]] >= val)]
+        elif col[:BOUND_PREFIX_LEN] == '__gt__':
+            runs_df = runs_df[(runs_df[col[BOUND_PREFIX_LEN:]] > val)]
+        elif col[:BOUND_PREFIX_LEN] == '__lt__':
+            runs_df = runs_df[(runs_df[col[BOUND_PREFIX_LEN:]] < val)]
+        elif col[:BOUND_PREFIX_LEN] == '__le__':
+            runs_df = runs_df[(runs_df[col[BOUND_PREFIX_LEN:]] <= val)]
         else:
             runs_df = runs_df[(runs_df[col] == val)]
     return runs_df
+
+
+def rebound_scenario(
+        runs_df: pd.DataFrame,
+        scenario: dict[str, Any]) -> dict[str, Any]:
+    """Update scenario bounds to match available data.
+
+    Tighten any bounds that loosely describe available data.
+
+    For bounds on a column which result in a single value, remove bounds and
+    set this to an inequality.
+
+    If there is no data matching the scenario, return scenario as-is.
+
+    Args:
+        runs_df (pandas.DataFrame): Benchmark runs the scenario applies to.
+        scenario (dict[str, Any]): Columns and values to match.
+
+    Returns:
+        dict[str, Any]: Scenario with updated column bounds.
+    """
+
+    df = get_scenario_df(runs_df, scenario)
+    if len(df) == 0:
+        return scenario
+
+    # Columns that are given as a bound
+    cols_bounded = []
+    # Get columns that are bounded along with their min/max values available
+    scenario_tight = {}
+    for col, val in scenario.items():
+        if col[:BOUND_PREFIX_LEN] in COLUMN_BOUND_STR:
+            bcol = col_base(col)
+            if bcol not in cols_bounded:
+                # Keep record of bounded columns we already covered
+                cols_bounded.append(bcol)
+                # Format as appropriate data type
+                fmt = getattr(builtins, COLUMNS[bcol].dtype)
+                # Get min/max
+                val_min = fmt(df[bcol].min())
+                val_max = fmt(df[bcol].max())
+                if val_min == val_max:
+                    # Column only has a single value, no need to specify bounds
+                    scenario_tight[bcol] = val_min
+                else:
+                    # Apply lower and upper bounds matching available data
+                    scenario_tight['__ge__' + bcol] = val_min
+                    scenario_tight['__le__' + bcol] = val_max
+        else:
+            # Fixed column
+            scenario_tight[col] = val
+
+    return scenario_tight
 
 
 def get_scenario_counts(
@@ -1296,22 +1381,17 @@ def print_scenarios(
     # Length of column headers in printable characters
     col_names_len = []
     for col in scenarios[0].keys():
-        if col[0:6] == '__le__':
-            col_names.append(col[6:] + Text.MAGENTA +
-                             '≤' + Text.DEFAULT + Text.BOLD)
-            col_names_len.append(len(col[6:]) + 1)
-        elif col[0:6] == '__lt__':
-            col_names.append(col[6:] + Text.MAGENTA +
-                             '<' + Text.DEFAULT + Text.BOLD)
-            col_names_len.append(len(col[6:]) + 1)
-        elif col[0:6] == '__ge__':
-            col_names.append(col[6:] + Text.MAGENTA +
-                             '≥' + Text.DEFAULT + Text.BOLD)
-            col_names_len.append(len(col[6:]) + 1)
-        elif col[0:6] == '__gt__':
-            col_names.append(col[6:] + Text.MAGENTA +
-                             '>' + Text.DEFAULT + Text.BOLD)
-            col_names_len.append(len(col[6:]) + 1)
+
+        if col[:BOUND_PREFIX_LEN] in COLUMN_BOUND_STR:
+            col_bound = col[:BOUND_PREFIX_LEN]
+            col_base = col[BOUND_PREFIX_LEN:]
+            col_names.append(
+                col_base +
+                Text.MAGENTA +
+                COLUMN_BOUND_STR[col_bound] +
+                Text.DEFAULT +
+                Text.BOLD)
+            col_names_len.append(len(col[BOUND_PREFIX_LEN:]) + 1)
         else:
             col_names.append(col)
             col_names_len.append(len(col))
@@ -1375,20 +1455,9 @@ def make_scenarios_summary_df(
 
     # Make a column name utilizing bound prefixes
     def col_name(col: str) -> str:
-        if col[0:6] == '__le__':
-            return col[6:] + '≤'
-        if col[0:6] == '__lt__':
-            return col[6:] + '<'
-        if col[0:6] == '__ge__':
-            return col[6:] + '≥'
-        if col[0:6] == '__gt__':
-            return col[6:] + '>'
-        return col
-
-    # Get original column name, removing bound prefixes
-    def col_raw(col: str) -> str:
-        if col[0:6] in ['__le__', '__lt__', '__ge__', '__gt__']:
-            return col[6:]
+        if col[:BOUND_PREFIX_LEN] in COLUMN_BOUND_STR:
+            return col[BOUND_PREFIX_LEN:] + \
+                COLUMN_BOUND_STR[col[:BOUND_PREFIX_LEN]]
         return col
 
     # Make DataFrame with matching row counts, and columns values from scenario
@@ -1401,7 +1470,7 @@ def make_scenarios_summary_df(
         # a 'Count' column and no rows
         for col in scenarios[0].keys():
             schema[col_name(col)] = pd.Series(
-                dtype=COLUMNS[col_raw(col)].dtype)
+                dtype=COLUMNS[col_base(col)].dtype)
     df = pd.DataFrame(schema)
 
     # Populate DataFrame
