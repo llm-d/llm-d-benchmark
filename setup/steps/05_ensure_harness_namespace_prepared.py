@@ -26,7 +26,11 @@ from functions import (
     environment_variable_to_dict,
     is_openshift,
     SecurityContextConstraints,
-    add_scc_to_service_account
+    add_scc_to_service_account,
+    get_image,
+    kube_apply,
+    create_pod,
+    create_service
 )
 
 def main():
@@ -45,13 +49,14 @@ def main():
         exit(result)
 
     api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
+
     if ev["control_dry_run"]:
         announce("DRY RUN enabled. No actual changes will be made.")
 
     announce(f'🔍 Preparing namespace "{ev["vllm_common_namespace"]}"...')
     create_namespace(
         api=api,
-        namespace_spec=ev["vllm_common_namespace"],
+        namespace_spec=ev["harness_namespace"],
         dry_run=ev["control_dry_run"],
     )
 
@@ -64,7 +69,7 @@ def main():
             "kind": "Secret",
             "metadata": {
                 "name": ev["vllm_common_hf_token_name"],
-                "namespace": ev["vllm_common_namespace"],
+                "namespace": ev["harness_namespace"],
             },
             "type": "Opaque",
             "data": {
@@ -81,69 +86,78 @@ def main():
                 secret.create()
             announce("Secret created/updated.")
 
-    models = [
-        model.strip() for model in ev["deploy_model_list"].split(",") if model.strip()
+    volumes = [
+        model.strip() for model in ev["harness_pvc_name"].split(",") if model.strip()
     ]
-    for model_name in models:
-        if (
-            ev["vllm_modelservice_uri_protocol"] == "pvc"
-            or ev["control_environment_type_standalone_active"]
-        ):
-            download_model = model_attribute(model=model_name, attribute="model")
-            model_artifact_uri = (
-                f'pvc://{ev["vllm_common_pvc_name"]}/models/{download_model}'
-            )
-            protocol, pvc_and_model_path = model_artifact_uri.split(
-                "://"
-            )  # protocol var unused but exists in prev script
-            pvc_name, model_path = pvc_and_model_path.split(
-                "/", 1
-            )  # split from first occurence
 
-            validate_and_create_pvc(
-                api=api,
-                client=client,
-                namespace=ev["vllm_common_namespace"],
-                download_model=download_model,
-                pvc_name=ev["vllm_common_pvc_name"],
-                pvc_size=ev["vllm_common_pvc_model_cache_size"],
-                pvc_class=ev["vllm_common_pvc_storage_class"],
-                dry_run=ev["control_dry_run"],
-            )
+    image = get_image(
+        ev["image_registry"],
+        ev["image_repo"],
+        ev["image_name"],
+        ev["image_tag"]
+    )
 
-            validate_and_create_pvc(
-                api=api,
-                client=client,
-                namespace=ev["vllm_common_namespace"],
-                download_model=download_model,
-                pvc_name=ev["vllm_common_extra_pvc_name"],
-                pvc_size=ev["vllm_common_extra_pvc_size"],
-                pvc_class=ev["vllm_common_pvc_storage_class"],
-                dry_run=ev["control_dry_run"],
-            )
+    for volume in volumes:
+          validate_and_create_pvc(
+              api=api,
+              client=client,
+              namespace=ev["harness_namespace"],
+              download_model='',
+              pvc_name=volume,
+              pvc_size=ev["harness_pvc_size"],
+              pvc_class=ev["vllm_common_pvc_storage_class"],
+              dry_run=ev["control_dry_run"],
+          )
 
-            announce(f'🔽 Launching download job for model: "{model_name}"')
-            launch_download_job(
-                namespace=ev["vllm_common_namespace"],
-                secret_name=ev["vllm_common_hf_token_name"],
-                download_model=download_model,
-                model_path=model_path,
-                pvc_name=ev["vllm_common_pvc_name"],
-                dry_run=ev["control_dry_run"],
-                verbose=ev["control_verbose"],
-            )
+          pod_yaml = f"""apiVersion: v1
+kind: Pod
+metadata:
+  name: access-to-harness-data-{volume}
+  labels:
+    app: llm-d-benchmark-harness
+    role: llm-d-benchmark-data-access
+  namespace: {ev["harness_namespace"]}
+spec:
+  containers:
+  - name: rsync
+    image: {image}
+    imagePullPolicy: Always
+    securityContext:
+      runAsUser: 0
+    command: ["rsync", "--daemon", "--no-detach", "--port=20873", "--log-file=/dev/stdout"]
+    volumeMounts:
+    - name: requests
+      mountPath: /requests
+#    - name: cache-volume
+#      mountPath: {ev["vllm_standalone_pvc_mountpoint"]}
+  volumes:
+  - name: requests
+    persistentVolumeClaim:
+      claimName:  {ev["harness_pvc_name"]}
+#  - name: cache-volume
+#    persistentVolumeClaim:
+#      claimName: {ev["vllm_standalone_pvc_mountpoint"]}
+"""
 
-            job_successful = False
-            while not job_successful:
-                job_successful = asyncio.run(
-                    wait_for_job(
-                        job_name="download-model",
-                        namespace=ev["vllm_common_namespace"],
-                        timeout=ev["vllm_common_pvc_download_timeout"],
-                        dry_run=ev["control_dry_run"],
-                    )
-                )
-                time.sleep(10)
+          create_pod(api=api, pod_spec=pod_yaml, dry_run=ev["control_dry_run"])
+
+          service_yaml = f"""apiVersion: v1
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-d-benchmark-harness
+  namespace: {ev["harness_namespace"]}
+spec:
+  ports:
+  - name: rsync
+    protocol: TCP
+    port: 20873
+    targetPort: 20873
+  selector:
+    app: llm-d-benchmark-harness
+  type: ClusterIP
+"""
+          create_service(api=api, service_spec=service_yaml, dry_run=ev["control_dry_run"])
 
     if is_openshift(api) and ev["user_is_admin"]:
         # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid

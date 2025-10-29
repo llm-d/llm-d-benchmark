@@ -210,7 +210,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_
   announce "⚠️ Setting service account to \"$LLMDBENCH_HARNESS_SERVICE_ACCOUNT\"..."
 fi
 
-source ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.sh 2> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log 1> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
+python3 ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.py 2> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log 1> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
 if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
   cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log
@@ -292,11 +292,11 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         exit 1
       fi
 
-      if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-        export LLMDBENCH_HARNESS_STACK_ENDPOINT_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}${LLMDBENCH_VLLM_FQDN}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT}/${LLMDBENCH_DEPLOY_CURRENT_MODELID}"
-      else
+#      if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
+#        export LLMDBENCH_HARNESS_STACK_ENDPOINT_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}${LLMDBENCH_VLLM_FQDN}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT}/${LLMDBENCH_DEPLOY_CURRENT_MODELID}"
+#      else
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}${LLMDBENCH_VLLM_FQDN}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT}"
-      fi
+#      fi
       announce "ℹ️ Stack Endpoint URL detected is \"$LLMDBENCH_HARNESS_STACK_ENDPOINT_URL\""
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then

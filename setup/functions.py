@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import re
 from datetime import datetime
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Any
 import sys
 import os
 import time
@@ -21,11 +21,8 @@ import tempfile
 import yaml
 
 import kubernetes
-from kubernetes import client as k8s_client, config as k8s_config, stream as k8s_stream
-
-from kubernetes_asyncio import client as k8s_async_client
-from kubernetes_asyncio import config as k8s_async_config
-from kubernetes_asyncio import watch as k8s_async_watch
+from kubernetes import client as k8s_client, config as k8s_config, stream as k8s_stream, utils as k8s_utils
+from kubernetes_asyncio import client as k8s_async_client, config as k8s_async_config, watch as k8s_async_watch
 
 import asyncio
 
@@ -119,19 +116,16 @@ def announce(msgcont: str, logfile: str = None, ignore_if_failed: bool = False):
     if msgcont.count("ERROR:") and not ignore_if_failed:
         sys.exit(1)
 
-def kube_connect(config_path : str = '~/.kube/config', clientype: str = "pykube"):
+def kube_connect(config_path : str = '~/.kube/config'):
     api = None
     try:
-        if clientype == "pykube" :
-            api = pykube.HTTPClient(pykube.KubeConfig.from_file(os.path.expanduser(config_path)))
-        else :
-            k8s_config.load_kube_config(os.path.expanduser(config_path))
-            api = k8s_client
+        api = pykube.HTTPClient(pykube.KubeConfig.from_file(os.path.expanduser(config_path)))
+        k8s_config.load_kube_config(os.path.expanduser(config_path))
     except FileNotFoundError:
         print("Kubeconfig file not found. Ensure you are logged into a cluster.")
         sys.exit(1)
 
-    return api
+    return api, k8s_client
 
 
 class SecurityContextConstraints(pykube.objects.APIObject):
@@ -168,6 +162,14 @@ def is_openshift(api: pykube.HTTPClient) -> bool:
         )
         return False
 
+def clear_string(string_to_clear: str) -> str :
+    clear_string_lines=[]
+    for line in string_to_clear.splitlines() :
+        if line.strip() and not line.count('#noconfig') and not line[0] == '#' :
+            clear_string_lines.append(line)
+
+    clear_string = "\n".join(clear_string_lines)
+    return clear_string
 
 def llmdbench_execute_cmd(
     actual_cmd: str,
@@ -321,20 +323,98 @@ def environment_variable_to_dict(ev: dict = {}):
         "vllm_modelservice_gateway_class_name", ""
     ).lower()
 
-
-def create_namespace(
+def kube_apply(
     api: pykube.HTTPClient,
-    namespace_name: str,
+    client: any,
+    manifest_string: str,
     dry_run: bool = False,
-    verbose: bool = False,
+    verbose: bool = False
 ):
+
+    manifest_string=clear_string(manifest_string)
+    manifest_data = yaml.safe_load(manifest_string)
+    if isinstance(manifest_data, list):
+        for item in manifest_data:
+            obj = pykube.objects.APIObject(api=api, obj=item)
+            if obj.exists() :
+                obj.update()
+            else :
+                obj.create()
+    else:
+        try :
+            k8s_utils.create_from_dict(client.ApiClient(), manifest_data)
+        except client.ApiException as e:
+            print(f"Error creating Pod: {e}")
+
+def create_pod(api: pykube.HTTPClient, pod_spec: str, dry_run: bool = False, verbose: bool = False):
+
+    pod_spec = clear_string(pod_spec)
+    pod_spec = yaml.safe_load(pod_spec)
+
+    pod_name = pod_spec["metadata"]["name"]
+
+    if not pod_spec:
+        announce("Error: pod_spec cannot be empty.")
+        return
+
+    p = pykube.Pod(api, pod_spec)
+
+    try:
+        if p.exists():
+            True
+            #p.update()
+        else:
+            if dry_run:
+                announce(f"[DRY RUN] Would have created Pod '{pod_name}'.")
+            else:
+                p.create()
+                announce(f"✅ Pod '{pod_name}' created successfully.")
+    except PyKubeError as e:
+        announce(f"Failed to create or update Pod '{pod_name}': {e}")
+
+def create_service(api: pykube.HTTPClient, service_spec: str, dry_run: bool = False, verbose: bool = False):
+
+    service_spec = clear_string(service_spec)
+    service_spec = yaml.safe_load(service_spec)
+
+    service_name = service_spec["metadata"]["name"]
+
+    if not service_spec:
+        announce("Error: service_spec cannot be empty.")
+        return
+
+    s = pykube.Service(api, service_spec)
+
+    try:
+        if s.exists():
+            True
+            s.update()
+        else:
+            if dry_run:
+                announce(f"[DRY RUN] Would have created Service '{service_name}'.")
+            else:
+                s.create()
+                announce(f"✅ Service '{service_name}' created successfully.")
+    except PyKubeError as e:
+        announce(f"Failed to create or update Pod '{service_name}': {e}")
+
+def create_namespace(api: pykube.HTTPClient, namespace_spec: str, dry_run: bool = False, verbose: bool = False):
+
+    namespace_spec = clear_string(namespace_spec)
+    namespace_spec = yaml.safe_load(namespace_spec)
+
+    if isinstance(namespace_spec, str):
+        namespace_spec = {"metadata": {"name": namespace_spec}}
+
+    namespace_name = namespace_spec["metadata"]["name"]
+
     if not namespace_name:
-        announce("Error: namespace_name cannot be empty.")
+        announce("Error: namespace_spec cannot be empty.")
         return
 
     announce(f"Ensuring namespace '{namespace_name}' exists...")
 
-    ns = pykube.Namespace(api, {"metadata": {"name": namespace_name}})
+    ns = pykube.Namespace(api, namespace_spec)
 
     try:
         if ns.exists():
@@ -351,6 +431,7 @@ def create_namespace(
 
 def validate_and_create_pvc(
     api: pykube.HTTPClient,
+    client: any,
     namespace: str,
     download_model: str,
     pvc_name: str,
@@ -360,9 +441,10 @@ def validate_and_create_pvc(
 ):
     announce("Provisioning model storage…")
 
-    if "/" not in download_model:
-        announce(f"❌ '{download_model}' is not in Hugging Face format <org>/<repo>")
-        sys.exit(1)
+    if download_model :
+        if '/' not in download_model:
+            announce(f"❌ '{download_model}' is not in Hugging Face format <org>/<repo>")
+            sys.exit(1)
 
     if not pvc_name:
         announce(f"ℹ️ Skipping pvc creation")
@@ -370,8 +452,7 @@ def validate_and_create_pvc(
 
     announce(f"🔍 Checking storage class '{pvc_class}'...")
     try:
-        k8s_config.load_kube_config()
-        storage_v1_api = k8s_client.StorageV1Api()
+        storage_v1_api = client.StorageV1Api()
 
         if pvc_class == "default":
             for x in storage_v1_api.list_storage_class().items:
@@ -794,7 +875,7 @@ def get_image(
 
         if ccmd == "podman":
             # Use podman search to get latest tag
-            cmd = f"{ccmd} search --list-tags {image_full_name}"
+            cmd = f"{ccmd} search --list-tags --limit 1000 {image_full_name}"
             try:
                 result = subprocess.run(
                     cmd.split(), capture_output=True, text=True, check=False
@@ -843,10 +924,8 @@ def check_storage_class(ev):
     """
     try:
         # Use pykube to connect to Kubernetes
-        control_work_dir = os.environ.get(
-            "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
-        )
-        api = kube_connect(f"{control_work_dir}/environment/context.ctx")
+        control_work_dir = os.environ.get("LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark")
+        api, client = kube_connect(f'{control_work_dir}/environment/context.ctx')
 
         # Create StorageClass object - try pykube-ng first, fallback to custom class
         try:
@@ -937,10 +1016,8 @@ def check_affinity(ev: dict):
 
     try:
         # Use pykube to connect to Kubernetes
-        control_work_dir = os.environ.get(
-            "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
-        )
-        api = kube_connect(f"{control_work_dir}/environment/context.ctx")
+        control_work_dir = os.environ.get("LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark")
+        api, client = kube_connect(f'{control_work_dir}/environment/context.ctx')
 
         # Handle auto affinity detection
         if affinity == "auto":
@@ -1160,7 +1237,7 @@ def add_command_line_options(args_string):
     In case args_string is a file path, open the file and read the contents first
     Equivalent to the bash add_command_line_options function.
     """
-    current_step = os.environ.get("LLMDBENCH_CURRENT_STEP", "")
+    current_step = os.environ["LLMDBENCH_CURRENT_STEP"].split('_')[0]
 
     if os.access(args_string, os.R_OK):
         with open(args_string, "r") as fp:
@@ -1483,6 +1560,49 @@ def get_model_name_from_pod(namespace: str, image: str, ip: str, port: str):
     )
     return model_name, curl_command
 
+def add_scc_to_service_account(
+    api: pykube.HTTPClient,
+    scc_name: str,
+    service_account_name: str,
+    namespace: str,
+    dry_run: bool,
+):
+    announce(
+        f'Attempting to add SCC "{scc_name}" to Service Account "{service_account_name}" in namespace "{namespace}"...'
+    )
+
+    try:
+        # get the specified SecurityContextConstraints object
+        scc = SecurityContextConstraints.objects(api).get(name=scc_name)
+    except PyKubeError as e:
+        if e.code == 404:
+            announce(f'Warning: SCC "{scc_name}" not found. Skipping.')
+            return
+        else:
+            # re raise other API errors
+            raise e
+
+    # the username for a service account in scc is in the format:
+    # system:serviceaccount:<namespace>:<service_account_name>
+    sa_user_name = f"system:serviceaccount:{namespace}:{service_account_name}"
+
+    # ensure the users field exists in the scc object it might be None or not present
+    if "users" not in scc.obj or scc.obj["users"] is None:
+        scc.obj["users"] = []
+
+    # check if the service account is already in the list
+    if sa_user_name in scc.obj["users"]:
+        announce(
+            f'Service Account "{sa_user_name}" already has SCC "{scc_name}". No changes needed'
+        )
+    else:
+        if dry_run:
+            announce(f'DRY RUN: Would add "{sa_user_name}" to SCC "{scc_name}"')
+        else:
+            announce(f'Adding "{sa_user_name}" to SCC "{scc_name}"...')
+            scc.obj["users"].append(sa_user_name)
+            scc.update()
+            announce(f'Successfully updated SCC "{scc_name}"')
 
 # FIXME (USE PYKUBE)
 def wait_for_pods_creation(ev: dict, component_nr: int, component: str) -> int:

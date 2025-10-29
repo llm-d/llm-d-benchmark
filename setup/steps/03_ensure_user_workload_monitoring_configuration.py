@@ -168,7 +168,7 @@ def main():
 
     environment_variable_to_dict(ev)
 
-    api = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
+    api, client  = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
     if ev["control_dry_run"] :
         announce("DRY RUN enabled. No actual changes will be made.")
 

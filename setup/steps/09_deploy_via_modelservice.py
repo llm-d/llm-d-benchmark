@@ -29,7 +29,8 @@ from functions import (
     add_annotations,
     add_additional_env_to_yaml,
     add_config,
-    install_wva_components,
+    clear_string,
+    install_wva_components
 )
 
 
@@ -526,22 +527,14 @@ prefill:
   {conditional_volume_config(prefill_extra_volumes, "volumes", 2)}
 """
 
-    yaml_lines = yaml_content.splitlines()
-    non_empty_yaml_lines = [line for line in yaml_lines if line.strip()]
-    no_noconfig_lines = [
-        line for line in non_empty_yaml_lines if not line.count("#noconfig")
-    ]
-    stripped_lines = [line.rstrip() for line in no_noconfig_lines]
-    cleaned_text = "\n".join(stripped_lines)
-
-    return cleaned_text
+    return clear_string(yaml_content)
 
 
 def main():
     """Main function for step 09 - Deploy via modelservice"""
 
     # Set current step for functions.py compatibility
-    os.environ["LLMDBENCH_CURRENT_STEP"] = "09"
+    os.environ["LLMDBENCH_CURRENT_STEP"] = os.path.splitext(os.path.basename(__file__))[0]
 
     # Parse environment variables into ev dictionary
     ev = {}
@@ -616,7 +609,6 @@ def main():
 
         # Update ev with URI
         environment_variable_to_dict(ev)
-        #        ev["vllm_modelservice_uri"] = os.environ["LLMDBENCH_VLLM_MODELSERVICE_URI"]
 
         # Create directory structure (Do not use "llmdbench_execute_cmd" for these commands)
         model_num = f"{model_number:02d}"
