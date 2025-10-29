@@ -62,8 +62,8 @@ RUN cd vllm; \
     cd ..; mv -f vllm vllm-benchmark
 
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
-ARG GUIDELLM_BRANCH=fix/synthetic_as_dict
-ARG GUIDELLM_COMMIT=76efd1c122abd9105de75a0521036dd9d6710951
+ARG GUIDELLM_BRANCH=main
+ARG GUIDELLM_COMMIT=ba51acf5b0ba377c5edc35109a78cd3ebb402922
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
