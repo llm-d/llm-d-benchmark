@@ -2156,7 +2156,7 @@ securityContext:
     )
     llmdbench_execute_cmd(cmd, dry_run=dry_run, verbose=verbose)
     llmdbench_execute_cmd(
-        f"{os.getenv("LLMDBENCH_CONTROL_HCMD")} repo add prometheus-community https://prometheus-community.github.io/helm-charts",
+        f'{os.getenv("LLMDBENCH_CONTROL_HCMD")} repo add prometheus-community https://prometheus-community.github.io/helm-charts'
         dry_run=dry_run,
         verbose=verbose,
     )
