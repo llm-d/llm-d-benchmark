@@ -5,5 +5,5 @@ request_type: text_completions
 rate: 2
 max_seconds: 30
 data:
-  - prompt_tokens: 256
-    output_tokens: 128
+  prompt_tokens: 256
+  output_tokens: 128

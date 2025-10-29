@@ -5,7 +5,7 @@ profile: constant
 rate: 1
 max_seconds: 30
 data:
-- prompt_tokens: 50
+  prompt_tokens: 50
   prompt_tokens_stdev: 10
   prompt_tokens_min: 10
   prompt_tokens_max: 100

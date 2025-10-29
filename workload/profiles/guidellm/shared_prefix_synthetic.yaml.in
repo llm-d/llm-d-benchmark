@@ -5,7 +5,7 @@ profile: constant
 rate: [2,5,8,10,12,15,20]
 max_seconds: 50
 data:
-- prefix_tokens: 2048
+  prefix_tokens: 2048
   prefix_count: 32
   prompt_tokens: 256
   output_tokens: 256
