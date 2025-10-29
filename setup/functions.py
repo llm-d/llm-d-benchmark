@@ -1099,7 +1099,7 @@ def add_command_line_options(args_string):
     In case args_string is a file path, open the file and read the contents first
     Equivalent to the bash add_command_line_options function.
     """
-    current_step = os.environ.get("LLMDBENCH_CURRENT_STEP", "")
+    current_step = os.environ["LLMDBENCH_CURRENT_STEP"].split('_')[0]
 
     if os.access(args_string, os.R_OK):
         with open(args_string, 'r') as fp:
