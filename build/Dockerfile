@@ -66,6 +66,7 @@ ARG GUIDELLM_BRANCH=main
 ARG GUIDELLM_COMMIT=ba51acf5b0ba377c5edc35109a78cd3ebb402922
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu; \
     git checkout ${GUIDELLM_COMMIT}; \
     pip install .[recommended]
 
