@@ -24,6 +24,10 @@ try:
         get_pareto_front_df,
         rebound_scenario,
     )
+    from constants import (
+        BOUND_PREFIX_LEN,
+        COLUMN_BOUND_STR,
+    )
 except ImportError:
     from config_explorer.explorer import (
         COLUMNS,
@@ -31,6 +35,10 @@ except ImportError:
         get_scenario_df,
         get_meet_slo_df,
         get_pareto_front_df
+    )
+    from config_explorer.constants import (
+        BOUND_PREFIX_LEN,
+        COLUMN_BOUND_STR,
     )
 
 
@@ -112,8 +120,7 @@ def _make_title(scenario: dict[str, Any]) -> str:
             val_bounds.append(f'{COLUMN_BOUND_STR[bound_type]}{value}')
         title += f'{COLUMNS[col].label}: {' '.join(val_bounds)}  '
 
-    title.strip()
-    return title
+    return title.strip()
 
 
 def plot_col_histogram(

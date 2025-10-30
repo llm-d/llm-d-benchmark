@@ -50,45 +50,19 @@ import pandas as pd
 try:
     import convert
     import schema
+    from constants import (
+        BOUND_PREFIX_LEN,
+        COLUMN_BOUND_STR,
+        STR_TO_COLUMN_BOUND,
+    )
 except ImportError:
     from config_explorer import convert
     from config_explorer import schema
-
-
-# Length of column bound prefix
-BOUND_PREFIX_LEN = 6
-
-# Column bound prefixes and printable string representations.
-# Order is from lower bounds to upper bounds.
-COLUMN_BOUND_STR = {
-    '__ge__': '≥',
-    '__gt__': '>',
-    '__lt__': '<',
-    '__le__': '≤',
-}
-
-
-# Reverse mapping of possible string descriptors of bounds to internal column
-# prefix representation.
-STR_TO_COLUMN_BOUND = {
-    'ge': '__ge__',
-    '>=': '__ge__',
-    '≥': '__ge__',
-    '__ge__': '__ge__',
-
-    'gt': '__gt__',
-    '>': '__gt__',
-    '__gt__': '__gt__',
-
-    'lt': '__lt__',
-    '<': '__lt__',
-    '__lt__': '__lt__',
-
-    'le': '__le__',
-    '<=': '__le__',
-    '≤': '__le__',
-    '__le__': '__le__',
-}
+    from config_explorer.constants import (
+        BOUND_PREFIX_LEN,
+        COLUMN_BOUND_STR,
+        STR_TO_COLUMN_BOUND,
+    )
 
 
 class Text:
@@ -1245,11 +1219,11 @@ def get_scenarios(
         else:
             for ii, col in enumerate(scenario_columns):
                 s_dict[col] = s_tuple[ii]
-        if all_na:
-            # Do not add this scenario
-            all_na = False
-        else:
+        if not all_na:
+            # Add scenario only if there are rows were all columns have data
             scenarios.append(s_dict)
+        all_na = False
+
     return scenarios
 
 
