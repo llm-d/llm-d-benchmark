@@ -54,7 +54,8 @@ function show_usage {
              -o/--overrides [comma-separated list of workload profile parameters to be overriden (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES)] \n \
              -z/--skip [skip the execution of the experiment, and only collect data (default=$LLMDBENCH_HARNESS_SKIP_RUN)] \n \
              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE)] \n \
-             -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)]
+             -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)] \n \
+             -u/--wva [deploy model with Workload Variant Autoscaler (default=$LLMDBENCH_WVA_ENABLED)] \n \
              -s/--wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means "do not wait\""] \n \
              -d/--debug [execute harness in \"debug-mode\" (default=$LLMDBENCH_HARNESS_DEBUG)] \n \
              -h/--help (show this help)"
@@ -155,6 +156,9 @@ while [[ $# -gt 0 ]]; do
         export LLMDBENCH_CLIOVERRIDE_RUN_DATASET_URL="$2"
         shift
         ;;
+        -u|--wva)
+        export LLMDBENCH_WVA_ENABLED=1
+        ;;
         -z|--skip)
         export LLMDBENCH_CLIOVERRIDE_HARNESS_SKIP_RUN=1
         ;;
@@ -206,7 +210,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_
   announce "⚠️ Setting service account to \"$LLMDBENCH_HARNESS_SERVICE_ACCOUNT\"..."
 fi
 
-source ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.sh 2> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log 1> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
+python3 ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.py 2> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log 1> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
 if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
   cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log
@@ -288,11 +292,11 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         exit 1
       fi
 
-      if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-        export LLMDBENCH_HARNESS_STACK_ENDPOINT_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}${LLMDBENCH_VLLM_FQDN}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT}/${LLMDBENCH_DEPLOY_CURRENT_MODELID}"
-      else
+#      if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
+#        export LLMDBENCH_HARNESS_STACK_ENDPOINT_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}${LLMDBENCH_VLLM_FQDN}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT}/${LLMDBENCH_DEPLOY_CURRENT_MODELID}"
+#      else
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}${LLMDBENCH_VLLM_FQDN}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT}"
-      fi
+#      fi
       announce "ℹ️ Stack Endpoint URL detected is \"$LLMDBENCH_HARNESS_STACK_ENDPOINT_URL\""
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then

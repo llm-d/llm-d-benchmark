@@ -56,7 +56,8 @@ scenarios_config_keys_mapping = {
 
     "Custom": {
         "description": "Carve your own scenario",
-        "columns": ['Model']
+        "columns": ['Model'],
+        "config_keys":  ['GPU']
     }
 }
 
@@ -296,6 +297,9 @@ def inputs(tab: DeltaGenerator):
                 "Output sequence length",
                 options=runs['OSL'].unique(),
                 )
+
+        if selected_workload == "Custom":
+            st.warning("This feature is not yet available. To perform you own data exploration, see this [example Jupyter notebook](https://github.com/llm-d/llm-d-benchmark/blob/main/analysis/analysis.ipynb) for analysis using the `config_explorer` library.")
 
     # SLOs
     with tab.container(border=True):

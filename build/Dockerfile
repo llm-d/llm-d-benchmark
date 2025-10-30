@@ -63,11 +63,12 @@ RUN cd vllm; \
 
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
 ARG GUIDELLM_BRANCH=main
-ARG GUIDELLM_COMMIT=72374efdf7d4432173fafec3924dc94ac3b11449
+ARG GUIDELLM_COMMIT=ba51acf5b0ba377c5edc35109a78cd3ebb402922
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu; \
     git checkout ${GUIDELLM_COMMIT}; \
-    pip install .
+    pip install .[recommended]
 
 RUN echo "fmperf: ${FM_PERF_REPO} ${FM_PERF_BRANCH}" > /workspace/repos.txt; \
     echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \
