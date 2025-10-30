@@ -165,6 +165,9 @@ spec:
     - name: extraArgs
       type: string
       default: ""
+    - name: extraValues
+      type: string
+      default: ""
     - name: treatmentAnalysis
       type: string
       default: ""
@@ -226,6 +229,8 @@ spec:
       value: "$(params.valuesYamlUrl)"
     - name: HELM_EXTRA_ARGS
       value: "$(params.extraArgs)"
+    - name: HELM_EXTRA_VALUES
+      value: "$(params.extraValues)"
 
     - name: TREATMENT_ANALYSIS
       value: "$(params.treatmentAnalysis)"
@@ -275,6 +280,14 @@ spec:
       VALUES_FLAG="-f /tmp/${HELM_RELEASE}-values.yaml"
     fi 
 
+    if [ -n "${HELM_EXTRA_VALUES:-}" ]; then
+      echo ">>> HELM_EXTRA_VALUES"
+      printf "%s" "${HELM_EXTRA_VALUES}"
+      printf "%s" "${HELM_EXTRA_VALUES}" > /tmp/${HELM_RELEASE}-extra-values.yaml
+      VALUES_FLAG="${VALUES_FLAG} -f /tmp/${HELM_RELEASE}-extra-values.yaml"
+    fi 
+
+
     # Optional repo add (idempotent via --force-update)
     if [ -n "${HELM_REPO_NAME:-}" ] && [ -n "${HELM_REPO_URL:-}" ]; then
       REPO_ADD_FLAGS="--force-update"
@@ -323,6 +336,11 @@ spec:
     fi
 
     echo "==> helm upgrade --install ${HELM_RELEASE} ${CHART_REF} --namespace ${HELM_NAMESPACE} ${VERSION_FLAG} ${CREATE_NS_FLAG} ${WAIT_FLAG} ${TIMEOUT_FLAG} ${VALUES_FLAG} ${HELM_EXTRA_ARGS}"
+    # shellcheck disable=SC2086
+    helm template \
+      "${HELM_RELEASE}" "${CHART_REF}" \
+      --namespace "${HELM_NAMESPACE}" \
+      ${VERSION_FLAG} ${CREATE_NS_FLAG} ${WAIT_FLAG} ${TIMEOUT_FLAG} ${VALUES_FLAG} ${HELM_EXTRA_ARGS}
     # shellcheck disable=SC2086
     helm template \
       "${HELM_RELEASE}" "${CHART_REF}" \
