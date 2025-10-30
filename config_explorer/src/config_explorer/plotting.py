@@ -14,8 +14,6 @@ import pandas as pd
 # llm-d-benchmark repository is refactored into full Python.
 try:
     from explorer import (
-        BOUND_PREFIX_LEN,
-        COLUMN_BOUND_STR,
         COLUMNS,
         SLO,
         col_base,
@@ -32,9 +30,11 @@ except ImportError:
     from config_explorer.explorer import (
         COLUMNS,
         SLO,
+        col_base,
         get_scenario_df,
         get_meet_slo_df,
-        get_pareto_front_df
+        get_pareto_front_df,
+        rebound_scenario,
     )
     from config_explorer.constants import (
         BOUND_PREFIX_LEN,
