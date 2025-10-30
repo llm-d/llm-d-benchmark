@@ -75,8 +75,9 @@ def import_csv_with_header(file_path: str) -> dict[str, list[Any]]:
                 continue
             row_vals = list(map(str.strip, line.split(',')))
             if len(row_vals) != len(headers):
-                sys.stderr.write('Warning: line %d of "%s" does not match header length, skipping: %d != %d\n' %
-                (ii + 1, file_path, len(row_vals), len(headers)))
+                sys.stderr.write(
+                    'Warning: line %d of "%s" does not match header length, skipping: %d != %d\n' %
+                    (ii + 1, file_path, len(row_vals), len(headers)))
                 continue
             for jj, val in enumerate(row_vals):
                 # Try converting the value to an int or float
@@ -109,7 +110,9 @@ def update_dict(dest: dict[Any, Any], source: dict[Any, Any]) -> None:
                 # Do not "update" with null values
                 continue
             if not isinstance(val, dict):
-                raise Exception("Cannot update dict type with non-dict: %s" % val)
+                raise Exception(
+                    "Cannot update dict type with non-dict: %s" %
+                    val)
             update_dict(dest[key], val)
         else:
             dest[key] = val
@@ -128,7 +131,8 @@ def _get_llmd_benchmark_envars() -> dict:
         return {}
 
     if 'LLMDBENCH_DEPLOY_METHODS' not in os.environ:
-        sys.stderr.write('Warning: LLMDBENCH_DEPLOY_METHODS undefined, cannot determine deployment method.')
+        sys.stderr.write(
+            'Warning: LLMDBENCH_DEPLOY_METHODS undefined, cannot determine deployment method.')
         return {}
 
     if os.environ['LLMDBENCH_DEPLOY_METHODS'] == 'standalone':
@@ -143,8 +147,8 @@ def _get_llmd_benchmark_envars() -> dict:
                     "type": ['replica'] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS']),
                     "accelerator": [{
                         "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
-                        "count": int(os.environ['LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM']) \
-                                 * int(os.environ['LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM']),
+                        "count": int(os.environ['LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM'])
+                        * int(os.environ['LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM']),
                         "parallelism": {
                             "tp": int(os.environ['LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM']),
                             "dp": int(os.environ['LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM']),
@@ -153,10 +157,10 @@ def _get_llmd_benchmark_envars() -> dict:
                 },
                 "platform": {
                     "engine": [{
-                        "name": os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY'] + '/' + \
-                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO'] + '/' + \
-                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME'] + ':' + \
-                                os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG'],
+                        "name": os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY'] + '/' +
+                        os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO'] + '/' +
+                        os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME'] + ':' +
+                        os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG'],
                     }] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS'])
                 },
                 "metadata": {
@@ -174,11 +178,14 @@ def _get_llmd_benchmark_envars() -> dict:
 
         # Get EPP configuration
         epp_config = {}
-        epp_config_content = os.getenv('LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG', '')
+        epp_config_content = os.getenv(
+            'LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG', '')
         if epp_config_content == "":
-            sys.stderr.write('Warning: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG empty.')
+            sys.stderr.write(
+                'Warning: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG empty.')
         else:
-            epp_config_content = base64.b64decode(epp_config_content).decode("utf-8")
+            epp_config_content = base64.b64decode(
+                epp_config_content).decode("utf-8")
             epp_config = yaml.safe_load(epp_config_content)
 
             # Insert default parameter values for scorers if left undefined
@@ -203,21 +210,21 @@ def _get_llmd_benchmark_envars() -> dict:
                     "name": os.environ['LLMDBENCH_DEPLOY_CURRENT_MODEL']
                 },
                 "host": {
-                    "type": ['prefill'] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
+                    "type": ['prefill'] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
                             ['decode'] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
                     "accelerator": [{
                         "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
-                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM']) \
-                                 * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM']),
+                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM'])
+                        * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM']),
                         "parallelism": {
                             "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM']),
                             "dp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM']),
                         },
-                    }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) + \
+                    }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
                     [{
                         "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
-                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM']) \
-                                 * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM']),
+                        "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM'])
+                        * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM']),
                         "parallelism": {
                             "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM']),
                             "dp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM']),
@@ -229,19 +236,20 @@ def _get_llmd_benchmark_envars() -> dict:
                         "inferenceScheduler": epp_config,
                     },
                     "engine": [{
-                            "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + '/' + \
-                                    os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + '/' + \
-                                    os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + ':' + \
-                                    os.environ['LLMDBENCH_LLMD_IMAGE_TAG'],
+                        "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + '/' +
+                        os.environ['LLMDBENCH_LLMD_IMAGE_REPO'] + '/' +
+                        os.environ['LLMDBENCH_LLMD_IMAGE_NAME'] + ':' +
+                        os.environ['LLMDBENCH_LLMD_IMAGE_TAG'],
                     }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
-                         int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
+                          int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
                 },
             },
         }
 
     # Pre-existing deployment, cannot extract details about unknown inference
     # service environment
-    sys.stderr.write('Warning: LLMDBENCH_DEPLOY_METHODS is not "modelservice" or "standalone", cannot extract environmental details.')
+    sys.stderr.write(
+        'Warning: LLMDBENCH_DEPLOY_METHODS is not "modelservice" or "standalone", cannot extract environmental details.')
     return {}
 
 
@@ -282,7 +290,13 @@ def _vllm_timestamp_to_epoch(date_str: str) -> int:
     hour = int(date_str[9:11])
     minute = int(date_str[11:13])
     second = int(date_str[13:15])
-    return datetime.datetime(year, month, day, hour, minute, second).timestamp()
+    return datetime.datetime(
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second).timestamp()
 
 
 def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
@@ -314,7 +328,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
                 "args": {
                     "num_prompts": results['num_prompts'],
                     "request_rate": results['request_rate'],
-                    "burstiness":results['burstiness'],
+                    "burstiness": results['burstiness'],
                     "max_concurrency": results['max_concurrency'],
                 },
             },
@@ -328,11 +342,11 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
                 "total": results['completed'],
                 "input_length": {
                     "units": Units.COUNT,
-                    "mean": results['total_input_tokens']/results['completed'],
+                    "mean": results['total_input_tokens'] / results['completed'],
                 },
                 "output_length": {
                     "units": Units.COUNT,
-                    "mean": results['total_output_tokens']/results['completed'],
+                    "mean": results['total_output_tokens'] / results['completed'],
                 },
             },
             "latency": {
@@ -765,9 +779,9 @@ def import_fmperf(results_file: str) -> BenchmarkReport:
                 },
             },
             "throughput": {
-                "output_tokens_per_sec": results['generation_tokens'].sum()/duration,
-                "total_tokens_per_sec": (results['prompt_tokens'].sum() + results['generation_tokens'].sum())/duration,
-                "requests_per_sec": len(results['prompt_tokens'])/duration,
+                "output_tokens_per_sec": results['generation_tokens'].sum() / duration,
+                "total_tokens_per_sec": (results['prompt_tokens'].sum() + results['generation_tokens'].sum()) / duration,
+                "requests_per_sec": len(results['prompt_tokens']) / duration,
             },
         },
     })
@@ -823,7 +837,9 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
         },
         "metrics": {
             "time": {
-                "duration": results['load_summary']['send_duration'], # TODO this isn't exactly what we need, we may need to pull apart per_request_lifecycle_metrics.json
+                # TODO this isn't exactly what we need, we may need to pull
+                # apart per_request_lifecycle_metrics.json
+                "duration": results['load_summary']['send_duration'],
             },
             "requests": {
                 "total": results['load_summary']['count'],
@@ -974,7 +990,8 @@ def import_nop(results_file: str) -> BenchmarkReport:
 
     results = import_yaml(results_file)
 
-    def _import_categories(cat_list: list[dict[str,Any]]) -> list[dict[str,Any]]:
+    def _import_categories(
+            cat_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
         new_cat_list = []
         for cat in cat_list:
             cat_dict = {}
@@ -983,9 +1000,9 @@ def import_nop(results_file: str) -> BenchmarkReport:
             if process is not None:
                 cat_dict["process"] = process["name"]
             cat_dict["elapsed"] = {
-                        "units": Units.S,
-                        "value": cat["elapsed"],
-                    }
+                "units": Units.S,
+                "value": cat["elapsed"],
+            }
             categories = cat.get("categories")
             if categories is not None:
                 cat_dict["categories"] = _import_categories(categories)
@@ -1003,7 +1020,7 @@ def import_nop(results_file: str) -> BenchmarkReport:
     results_dict = {
         "scenario": {
             "model": {
-                "name" : results["scenario"]["model"]["name"]
+                "name": results["scenario"]["model"]["name"]
             },
             "load": {
                 "name": WorkloadGenerator.NOP,
@@ -1033,45 +1050,45 @@ def import_nop(results_file: str) -> BenchmarkReport:
                     },
                 },
                 "dynamo_bytecode_transform": {
-                        "units": Units.S,
-                        "value": results["metrics"]["dynamo_bytecode_transform"],
-                    },
+                    "units": Units.S,
+                    "value": results["metrics"]["dynamo_bytecode_transform"],
+                },
                 "torch_compile": {
-                        "units": Units.S,
-                        "value": results["metrics"]["torch_compile"],
-                    },
+                    "units": Units.S,
+                    "value": results["metrics"]["torch_compile"],
+                },
                 "memory_profiling": {
-                        "initial_free": {
-                            "units": Units.GIB,
-                            "value": results["metrics"]["memory_profiling"]["initial_free"],
-                        },
-                        "after_free": {
-                            "units": Units.GIB,
-                            "value": results["metrics"]["memory_profiling"]["after_free"],
-                        },
-                        "time": {
-                            "units": Units.S,
-                            "value": results["metrics"]["memory_profiling"]["time"],
-                        },
+                    "initial_free": {
+                        "units": Units.GIB,
+                        "value": results["metrics"]["memory_profiling"]["initial_free"],
+                    },
+                    "after_free": {
+                        "units": Units.GIB,
+                        "value": results["metrics"]["memory_profiling"]["after_free"],
+                    },
+                    "time": {
+                        "units": Units.S,
+                        "value": results["metrics"]["memory_profiling"]["time"],
+                    },
                 },
                 "sleep": {
-                        "time": {
-                            "units": Units.S,
-                            "value": results["metrics"]["sleep"]["time"],
-                        },
-                        "gpu_freed": {
-                            "units": Units.GIB,
-                            "value": results["metrics"]["sleep"]["gpu_freed"],
-                        },
-                        "gpu_in_use": {
-                            "units": Units.GIB,
-                            "value": results["metrics"]["sleep"]["gpu_in_use"],
-                        },
-                    },
-                "wake": {
+                    "time": {
                         "units": Units.S,
-                        "value": results["metrics"]["wake"],
+                        "value": results["metrics"]["sleep"]["time"],
                     },
+                    "gpu_freed": {
+                        "units": Units.GIB,
+                        "value": results["metrics"]["sleep"]["gpu_freed"],
+                    },
+                    "gpu_in_use": {
+                        "units": Units.GIB,
+                        "value": results["metrics"]["sleep"]["gpu_in_use"],
+                    },
+                },
+                "wake": {
+                    "units": Units.S,
+                    "value": results["metrics"]["wake"],
+                },
                 "categories": categories
             },
             "time": {
@@ -1160,9 +1177,9 @@ def import_nop(results_file: str) -> BenchmarkReport:
         value = results["metrics"].get(name)
         if value is not None:
             results_dict["metrics"]["metadata"][name] = {
-                                "units": Units.S,
-                                "value": value,
-                            }
+                "units": Units.S,
+                "value": value,
+            }
 
     update_dict(br_dict, results_dict)
 
@@ -1199,7 +1216,8 @@ if __name__ == "__main__":
         help='Benchmark index to import, for results files containing multiple runs.')
 
     args = parser.parse_args()
-    if args.output_file and os.path.exists(args.output_file) and not args.force:
+    if args.output_file and os.path.exists(
+            args.output_file) and not args.force:
         sys.stderr.write('Output file already exists: %s\n' % args.output_file)
         sys.exit(1)
 
@@ -1213,7 +1231,10 @@ if __name__ == "__main__":
             if args.index:
                 # Generate benchmark report for a specific index
                 if args.output_file:
-                    import_guidellm(args.results_file, args.index).export_yaml(args.output_file)
+                    import_guidellm(
+                        args.results_file,
+                        args.index).export_yaml(
+                        args.output_file)
                 else:
                     import_guidellm(args.results_file, args.index).print_yaml()
             else:
@@ -1225,7 +1246,9 @@ if __name__ == "__main__":
                         fname, ext = os.path.splitext(args.output_file)
                         output_file = f'{fname}_{ii}{ext}'
                         if os.path.exists(output_file) and not args.force:
-                            sys.stderr.write('Output file already exists: %s\n' % output_file)
+                            sys.stderr.write(
+                                'Output file already exists: %s\n' %
+                                output_file)
                             sys.exit(1)
                         br.export_yaml(output_file)
                     else:
@@ -1234,12 +1257,16 @@ if __name__ == "__main__":
                         br.print_yaml()
         case WorkloadGenerator.INFERENCE_PERF:
             if args.output_file:
-                import_inference_perf(args.results_file).export_yaml(args.output_file)
+                import_inference_perf(
+                    args.results_file).export_yaml(
+                    args.output_file)
             else:
                 import_inference_perf(args.results_file).print_yaml()
         case WorkloadGenerator.VLLM_BENCHMARK:
             if args.output_file:
-                import_vllm_benchmark(args.results_file).export_yaml(args.output_file)
+                import_vllm_benchmark(
+                    args.results_file).export_yaml(
+                    args.output_file)
             else:
                 import_vllm_benchmark(args.results_file).print_yaml()
         case WorkloadGenerator.NOP:
@@ -1249,7 +1276,7 @@ if __name__ == "__main__":
                 import_nop(args.results_file).print_yaml()
         case _:
             sys.stderr.write('Unsupported workload generator: %s\n' %
-                args.workload_generator)
+                             args.workload_generator)
             sys.stderr.write('Must be one of: %s\n' %
-                str([wg.value for wg in WorkloadGenerator])[1:-1])
+                             str([wg.value for wg in WorkloadGenerator])[1:-1])
             sys.exit(1)
