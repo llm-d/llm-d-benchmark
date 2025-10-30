@@ -408,11 +408,12 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
     return BenchmarkReport(**br_dict)
 
 
-def import_guidellm(results_file: str) -> BenchmarkReport:
+def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReport:
     """Import data from a GuideLLM run as a BenchmarkReport.
 
     Args:
         results_file (str): Results file to import.
+        index (int): Benchmark index to import.
 
     Returns:
         BenchmarkReport: Imported data.
@@ -421,8 +422,7 @@ def import_guidellm(results_file: str) -> BenchmarkReport:
 
     data = import_yaml(results_file)
 
-    # TODO: Read each benchmark in file
-    results = data["benchmarks"][0]
+    results = data["benchmarks"][index]
 
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
@@ -434,6 +434,9 @@ def import_guidellm(results_file: str) -> BenchmarkReport:
             "load": {
                 "name": WorkloadGenerator.GUIDELLM,
                 "args": data['args'],
+                "metadata": {
+                    "stage": index,
+                },
             },
         },
         "metrics": {
@@ -572,6 +575,36 @@ def import_guidellm(results_file: str) -> BenchmarkReport:
     })
 
     return BenchmarkReport(**br_dict)
+
+
+def _get_num_buidellm_runs(results_file: str) -> int:
+    """Get the number of benchmark runs in a GuideLLM results JSON file.
+
+    Args:
+        results_file (str): Results file to get number of runs from.
+
+    Returns:
+        int: Number of runs.
+    """
+    check_file(results_file)
+
+    results = import_yaml(results_file)
+    return len(results["benchmarks"])
+
+
+def import_guidellm_all(results_file: str) -> list[BenchmarkReport]:
+    """Import all data from a GuideLLM results JSON as BenchmarkReports.
+
+    Args:
+        results_file (str): Results file to import.
+
+    Returns:
+        list[BenchmarkReport]: Imported data.
+    """
+    reports = []
+    for index in range(_get_num_buidellm_runs(results_file)):
+        reports.append(import_guidellm(results_file, index))
+    return reports
 
 
 def import_fmperf(results_file: str) -> BenchmarkReport:
@@ -927,6 +960,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
 
     return BenchmarkReport(**br_dict)
 
+
 def import_nop(results_file: str) -> BenchmarkReport:
     """Import data from a nop run as a BenchmarkReport.
 
@@ -1157,7 +1191,12 @@ if __name__ == "__main__":
         '-w', '--workload-generator',
         type=str,
         default=WorkloadGenerator.VLLM_BENCHMARK,
-        help='Workload generator used.')
+        help=f'Workload generator used, one of: {str([member.value for member in WorkloadGenerator])[1:-1]}')
+    parser.add_argument(
+        '-i', '--index',
+        type=int,
+        default=None,
+        help='Benchmark index to import, for results files containing multiple runs.')
 
     args = parser.parse_args()
     if args.output_file and os.path.exists(args.output_file) and not args.force:
@@ -1171,10 +1210,28 @@ if __name__ == "__main__":
             else:
                 import_fmperf(args.results_file).print_yaml()
         case WorkloadGenerator.GUIDELLM:
-            if args.output_file:
-                import_guidellm(args.results_file).export_yaml(args.output_file)
+            if args.index:
+                # Generate benchmark report for a specific index
+                if args.output_file:
+                    import_guidellm(args.results_file, args.index).export_yaml(args.output_file)
+                else:
+                    import_guidellm(args.results_file, args.index).print_yaml()
             else:
-                import_guidellm(args.results_file).print_yaml()
+                br_list = import_guidellm_all(args.results_file)
+                # Generate reports for all runs
+                for ii, br in enumerate(br_list):
+                    if args.output_file:
+                        # Create a benchmark report file
+                        fname, ext = os.path.splitext(args.output_file)
+                        output_file = f'{fname}_{ii}{ext}'
+                        if os.path.exists(output_file) and not args.force:
+                            sys.stderr.write('Output file already exists: %s\n' % output_file)
+                            sys.exit(1)
+                        br.export_yaml(output_file)
+                    else:
+                        # Don't create a file, just print to stdout
+                        print(f'# Benchmark {ii + 1} of {len(br_list)}')
+                        br.print_yaml()
         case WorkloadGenerator.INFERENCE_PERF:
             if args.output_file:
                 import_inference_perf(args.results_file).export_yaml(args.output_file)
