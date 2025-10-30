@@ -1210,10 +1210,11 @@ if __name__ == "__main__":
         default=WorkloadGenerator.VLLM_BENCHMARK,
         help=f'Workload generator used, one of: {str([member.value for member in WorkloadGenerator])[1:-1]}')
     parser.add_argument(
-        '-i', '--index',
+        '-i',
+        '--index',
         type=int,
         default=None,
-        help='Benchmark index to import, for results files containing multiple runs.')
+        help='Benchmark index to import, for results files containing multiple runs. Default behavior creates benchmark reports for all runs.')
 
     args = parser.parse_args()
     if args.output_file and os.path.exists(
