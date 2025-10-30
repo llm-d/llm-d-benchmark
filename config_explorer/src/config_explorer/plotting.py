@@ -153,7 +153,7 @@ def plot_col_histogram(
 def plot_scenario_histogram(
         runs_df: pd.DataFrame,
         scenario: dict[str, Any],
-        num_bins: int = 50) -> list[plt.Figure]:
+        num_bins: int = 50) -> dict[str, plt.Figure]:
     """
     Plot value histograms for numeric columns in a scenario having a bound.
     Any columns having a single value will be skipped.
@@ -164,9 +164,9 @@ def plot_scenario_histogram(
         num_bins (int): Number of bins to use in histogram.
 
     Returns:
-        list[matplotlib.pyplot.Figure]: List of histogram plots.
+        dict[str, matplotlib.pyplot.Figure]: List of histogram plots.
     """
-    figs = []
+    figs = {}
 
     plot_cols = []
     for col in scenario:
@@ -182,8 +182,8 @@ def plot_scenario_histogram(
         # Keep record of plotted columns
         plot_cols.append(col[BOUND_PREFIX_LEN:])
         # Create histogram figure
-        figs.append(plot_col_histogram(
-            runs_df, col[BOUND_PREFIX_LEN:], num_bins))
+        figs[col[BOUND_PREFIX_LEN:]] = plot_col_histogram(
+            runs_df, col[BOUND_PREFIX_LEN:], num_bins)
 
     return figs
 
