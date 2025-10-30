@@ -981,8 +981,9 @@ def add_benchmark_report_to_df(
         concurrency = report.scenario.load.args.get('max_concurrency')
     elif report.scenario.load.name == schema.WorkloadGenerator.GUIDELLM:
         concurrency = get_nested(
-            report.scenario.load.args, [
-                'profile', 'measured_concurrencies'])[0]
+            report.scenario.load.args, ['profile', 'measured_concurrencies'])
+        if concurrency:
+            concurrency = concurrency[0]
     else:
         concurrency = None
 
