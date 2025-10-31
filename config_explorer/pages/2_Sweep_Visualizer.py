@@ -160,13 +160,13 @@ def add_metric_dialog():
 
     # Remove curr metrics from all performance metrics
 
-    all_metrics =  dict(xp.METRIC_COLUMNS)
+    all_metrics =  dict(xp.METRICS_COLUMNS)
     for metric in curr_metrics:
         all_metrics.pop(metric, None)   # None avoids KeyError if key is missing
 
     to_add = st.selectbox("Select a metric to add",
                           options=all_metrics.keys(),
-                          format_func=lambda p: xp.METRIC_COLUMNS[p].label_with_units(),
+                          format_func=lambda p: xp.METRICS_COLUMNS[p].label_with_units(),
                           )
     if st.button("Add", use_container_width=True, type='primary'):
         st.session_state[SELECTED_SLO_METRICS_KEY].append(to_add)
@@ -184,7 +184,7 @@ def delete_metric_dialog():
 
     to_delete = st.selectbox("Select a metric to delete",
                           options=curr_metrics,
-                          format_func=lambda p: xp.METRIC_COLUMNS[p].label_with_units(),
+                          format_func=lambda p: xp.METRICS_COLUMNS[p].label_with_units(),
                           )
 
     if st.button("Delete", use_container_width=True, type='primary'):
@@ -311,7 +311,7 @@ def inputs(tab: DeltaGenerator):
 
             # Display SLO metrics
             for metric in st.session_state[SELECTED_SLO_METRICS_KEY]:
-                metric_prop = xp.METRIC_COLUMNS[metric]
+                metric_prop = xp.METRICS_COLUMNS[metric]
                 metric_value = 0.0
 
                 # If there is a default, show the default value
@@ -367,15 +367,15 @@ def display_optimal_config_overview(container: DeltaGenerator,
     metric_col1, metric_col2 = container.columns(2)
 
     col_y = metric_col1.selectbox("Select y-axis performance metric for Pareto front",
-                    options=xp.METRIC_COLUMNS.keys(),
-                    index=list(xp.METRIC_COLUMNS.keys()).index(col_y),
-                    format_func=lambda p: xp.METRIC_COLUMNS[p].label_with_units(),
+                    options=xp.METRICS_COLUMNS.keys(),
+                    index=list(xp.METRICS_COLUMNS.keys()).index(col_y),
+                    format_func=lambda p: xp.METRICS_COLUMNS[p].label_with_units(),
     )
 
     col_x = metric_col2.selectbox("Select x-axis input metric for Pareto front",
-                    options=xp.METRIC_COLUMNS.keys(),
-                    index=list(xp.METRIC_COLUMNS.keys()).index(col_x),
-                    format_func=lambda p: f"{xp.METRIC_COLUMNS[p].label}",
+                    options=xp.METRICS_COLUMNS.keys(),
+                    index=list(xp.METRICS_COLUMNS.keys()).index(col_x),
+                    format_func=lambda p: f"{xp.METRICS_COLUMNS[p].label}",
     )
 
     # Configuration columns of interest
@@ -450,9 +450,9 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             metric_col1, metric_col2 = tab1.columns(2)
 
             col_y = metric_col1.selectbox("Select y-axis performance metric",
-                            options=xp.METRIC_COLUMNS.keys(),
-                            index=list(xp.METRIC_COLUMNS.keys()).index(scenario_preset['col_y']),
-                            format_func=lambda p: xp.METRIC_COLUMNS[p].label_with_units(),
+                            options=xp.METRICS_COLUMNS.keys(),
+                            index=list(xp.METRICS_COLUMNS.keys()).index(scenario_preset['col_y']),
+                            format_func=lambda p: xp.METRICS_COLUMNS[p].label_with_units(),
                 )
 
             col_x = metric_col2.selectbox("Select x-axis input metric",
@@ -476,15 +476,15 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             tab1.subheader("Performance tradeoff comparison")
             metric_col1, metric_col2, metric_col3 = tab1.columns(3)
             tradeoff_y = metric_col1.selectbox("Select y-axis performance tradeoff metric",
-                            options=xp.METRIC_COLUMNS.keys(),
-                            index=list(xp.METRIC_COLUMNS.keys()).index(scenario_preset['pareto']['col_y']),
-                            format_func=lambda p: xp.METRIC_COLUMNS[p].label_with_units(),
+                            options=xp.METRICS_COLUMNS.keys(),
+                            index=list(xp.METRICS_COLUMNS.keys()).index(scenario_preset['pareto']['col_y']),
+                            format_func=lambda p: xp.METRICS_COLUMNS[p].label_with_units(),
                 )
 
             tradeoff_x = metric_col2.selectbox("Select x-axis performance tradeoff metric",
-                            options=xp.METRIC_COLUMNS.keys(),
-                            index=list(xp.METRIC_COLUMNS.keys()).index(scenario_preset['pareto']['col_x']),
-                            format_func=lambda p: xp.METRIC_COLUMNS[p].label_with_units(),
+                            options=xp.METRICS_COLUMNS.keys(),
+                            index=list(xp.METRICS_COLUMNS.keys()).index(scenario_preset['pareto']['col_x']),
+                            format_func=lambda p: xp.METRICS_COLUMNS[p].label_with_units(),
                 )
 
             tradeoff_z = metric_col3.selectbox("Select z-axis input metric (point label)",
@@ -514,9 +514,9 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             metric_col1, metric_col2 = tab1.columns(2)
 
             col_y = metric_col1.selectbox("Select y-axis performance metric",
-                            options=xp.METRIC_COLUMNS.keys(),
-                            index=list(xp.METRIC_COLUMNS.keys()).index(scenario_preset['col_y']),
-                            format_func=lambda p: xp.METRIC_COLUMNS[p].label_with_units(),
+                            options=xp.METRICS_COLUMNS.keys(),
+                            index=list(xp.METRICS_COLUMNS.keys()).index(scenario_preset['col_y']),
+                            format_func=lambda p: xp.METRICS_COLUMNS[p].label_with_units(),
                 )
 
             col_x = metric_col2.selectbox("Select x-axis input metric",
@@ -540,15 +540,15 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             tab1.subheader("Performance tradeoff comparison")
             metric_col1, metric_col2, metric_col3 = tab1.columns(3)
             tradeoff_y = metric_col1.selectbox("Select y-axis performance tradeoff metric",
-                            options=xp.METRIC_COLUMNS.keys(),
-                            index=list(xp.METRIC_COLUMNS.keys()).index(scenario_preset['pareto']['col_y']),
-                            format_func=lambda p: xp.METRIC_COLUMNS[p].label_with_units(),
+                            options=xp.METRICS_COLUMNS.keys(),
+                            index=list(xp.METRICS_COLUMNS.keys()).index(scenario_preset['pareto']['col_y']),
+                            format_func=lambda p: xp.METRICS_COLUMNS[p].label_with_units(),
                 )
 
             tradeoff_x = metric_col2.selectbox("Select x-axis performance tradeoff metric",
-                            options=xp.METRIC_COLUMNS.keys(),
-                            index=list(xp.METRIC_COLUMNS.keys()).index(scenario_preset['pareto']['col_x']),
-                            format_func=lambda p: xp.METRIC_COLUMNS[p].label_with_units(),
+                            options=xp.METRICS_COLUMNS.keys(),
+                            index=list(xp.METRICS_COLUMNS.keys()).index(scenario_preset['pareto']['col_x']),
+                            format_func=lambda p: xp.METRICS_COLUMNS[p].label_with_units(),
                 )
 
             tradeoff_z = metric_col3.selectbox("Select z-axis input metric (point label)",
