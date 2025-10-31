@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import yaml
 
 # TODO These packages can be imported in different ways depending on whether
 # these are imported as a notebook, or installed as a config_explorer library
@@ -302,18 +303,22 @@ WORKLOAD_COLUMNS = {
         label='Request Rate',
         units='queries/s',
     ),
+    # Common prefix length
     'System_Prompt_Length': ColumnProperties(
         dtype='int',
         label='System Prompt Length',
     ),
+    # Length after common prefix
     'Question_Length': ColumnProperties(
         dtype='int',
         label='Question Length',
     ),
+    # Number of user groups with distinct prompts
     'Groups': ColumnProperties(
         dtype='int',
         label='Groups',
     ),
+    # Common prefixes within a group
     'Prompts_Per_Group': ColumnProperties(
         dtype='int',
         label='Prompts per Group',
@@ -938,9 +943,24 @@ def add_benchmark_report_to_df(
         runs_df (DataFrame): DataFrame to add a row to for the provided run.
         br_file (str): Benchmark report file to import.
     """
+    # Import benchmark report.
+    # We will parse through this to populate a row in the DataFrame
     report = convert.import_benchmark_report(br_file)
 
-    # Get plugin parameters
+    # Get parallelism and replica details
+    rp = _get_replicas_and_parallelism(report)
+    if rp['is_pd']:
+        num_gpus = 0
+        # We assume that EP = TP, where EP is used on expert layers, so no
+        # need to add EP into the GPU count.
+        if rp['p_replicas']:
+            num_gpus += rp['p_tp'] * rp['p_dp'] * rp['p_pp'] * rp['p_replicas']
+        if rp['d_replicas']:
+            num_gpus += rp['d_tp'] * rp['d_dp'] * rp['d_pp'] * rp['d_replicas']
+    else:
+        num_gpus = rp['tp'] * rp['replicas']
+
+    # Get inference scheduler plugin parameters
     prefix_cache_scorer_block_size = None
     prefix_cache_scorer_lur_capacity_per_server = None
     prefix_cache_scorer_max_blocks_to_match = None
@@ -963,8 +983,7 @@ def add_benchmark_report_to_df(
                 # used
                 prefix_cache_scorer_mode = plugin['parameters'].get(
                     'mode', 'default')
-
-    # Set default weights to zero (disabled)
+    # Set default plugin weights to zero (disabled)
     # TODO: capture other settings for prefix cache scorer
     # https://gateway-api-inference-extension.sigs.k8s.io/guides/epp-configuration/prefix-aware/
     prefix_cache_scorer_weight = 0
@@ -989,41 +1008,55 @@ def add_benchmark_report_to_df(
             if plugin.get('pluginRef') == 'queue-scorer':
                 queue_scorer_weight = plugin.get('weight', 1)
 
-    # TODO getting concurrency is specific to each harness, will need
-    # a way to capture this universally in the report so we don't have to do
-    # specific extractions like this.
-    if report.scenario.load.name == schema.WorkloadGenerator.VLLM_BENCHMARK:
-        concurrency = report.scenario.load.args.get('max_concurrency')
-    elif report.scenario.load.name == schema.WorkloadGenerator.GUIDELLM:
-        concurrency = get_nested(
-            report.scenario.load.args, ['profile', 'measured_concurrencies'])
-        if concurrency:
-            concurrency = concurrency[0]
-    else:
-        concurrency = None
-
+    # Get workload details
     max_qps = None
+    concurrency = None
+    system_prompt_length = None # Common prefix length
+    question_length = None      # Length after common prefix
+    groups = None               # Number of user groups with distinct prompts
+    prompts_per_group = None    # Common prefixes within a group
+    target_osl = None
+    args = report.scenario.load.args
     if report.scenario.load.name == schema.WorkloadGenerator.INFERENCE_PERF:
         # Workload generator stage
+        # If stage metadata is not present in benchmark report, we cannot know
+        # which Inference Perf result this data came from.
         stage = report.scenario.load.metadata.get('stage')
+        # Get rate
         if stage is not None:
-            stage_list = get_nested(
-                report.scenario.load.args, [
-                    'load', 'stages'])
+            stage_list = get_nested(args, ['load', 'stages'])
             max_qps = stage_list[stage].get('rate')
+        # Request characteristics
+        system_prompt_length = get_nested(args, ['data', 'shared_prefix', 'system_prompt_len'])
+        question_length = get_nested(args, ['data', 'shared_prefix', 'question_len'])
+        groups = get_nested(args, ['data', 'shared_prefix', 'num_groups'])
+        prompts_per_group = get_nested(args, ['data', 'shared_prefix', 'num_prompts_per_group'])
 
-    rp = _get_replicas_and_parallelism(report)
-    if rp['is_pd']:
-        num_gpus = 0
-        # We assume that EP = TP, where EP is used on expert layers, so no
-        # need to add EP into the GPU count.
-        if rp['p_replicas']:
-            num_gpus += rp['p_tp'] * rp['p_dp'] * rp['p_pp'] * rp['p_replicas']
-        if rp['d_replicas']:
-            num_gpus += rp['d_tp'] * rp['d_dp'] * rp['d_pp'] * rp['d_replicas']
-    else:
-        num_gpus = rp['tp'] * rp['replicas']
+        target_osl = int(get_nested(args, ['data', 'shared_prefix', 'output_len'], -1))
+    elif report.scenario.load.name == schema.WorkloadGenerator.VLLM_BENCHMARK:
+        concurrency = args.get('max_concurrency')
+    elif report.scenario.load.name == schema.WorkloadGenerator.GUIDELLM:
+        # Workload generator stage
+        # If stage metadata is missing, this benchmark report is from an older
+        # version of convert.py that only took stage 0 results.
+        stage = report.scenario.load.metadata.get('stage', 0)
+        
+        if 'rate' in args:
+            max_qps = args['rate'][stage]
+        concurrenies = get_nested(args, ['profile', 'measured_concurrencies'])
+        if concurrenies:
+            concurrency = concurrenies[stage]
+        data_list = args.get('data')
+        if data_list:
+            data = yaml.safe_load(data_list[0])
+            assert isinstance(data, dict)
+            system_prompt_length = data.get('prefix_tokens')
+            question_length = data.get('prompt_tokens')
+            groups = 1
+            prompts_per_group = data.get('prefix_count')
+            target_osl = data.get('output_tokens')
 
+    # Calculated metrics
     thpt_per_gpu = report.metrics.throughput.output_tokens_per_sec / num_gpus
     if concurrency:
         thpt_per_user = report.metrics.throughput.output_tokens_per_sec / concurrency
@@ -1080,13 +1113,13 @@ def add_benchmark_report_to_df(
         'OSL': int(round(report.metrics.requests.output_length.mean)),
         'ISL_500': floor(report.metrics.requests.input_length.mean / 500) * 500 + 250, # HACK to remove when UI supports bounds
         'OSL_500': floor(report.metrics.requests.output_length.mean / 500) * 500 + 250, # HACK to remove when UI supports bounds
-        'Target_OSL': int(get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'output_len'], -1)),
+        'Target_OSL': target_osl,
         'Max_Concurrency': concurrency,
         'Max_QPS': max_qps,
-        'System_Prompt_Length': get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'system_prompt_len']),
-        'Question_Length': get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'question_len']),
-        'Groups': get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'num_groups']),
-        'Prompts_Per_Group': get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'num_prompts_per_group']),
+        'System_Prompt_Length': system_prompt_length,
+        'Question_Length': question_length,
+        'Groups': groups,
+        'Prompts_Per_Group': prompts_per_group,
         # Requests
         'Total_Requests': report.metrics.requests.total,
         'Failures': report.metrics.requests.failures,
