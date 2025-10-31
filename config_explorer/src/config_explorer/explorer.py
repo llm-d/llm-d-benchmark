@@ -263,6 +263,10 @@ CONFIGURATION_COLUMNS = {
         dtype='bool',
         label='Prefix Mode',
     ),
+}
+
+# Dataset columns about workload
+WORKLOAD_COLUMNS = {
     # Workload
     'Workload_Generator': ColumnProperties(
         dtype='str',
@@ -305,6 +309,10 @@ CONFIGURATION_COLUMNS = {
         dtype='int',
         label='Prompts per Group',
     ),
+}
+
+# Dataset metrics columns
+METRICS_COLUMNS = {
     # Requests
     'Total_Requests': ColumnProperties(
         dtype='int',
@@ -314,10 +322,6 @@ CONFIGURATION_COLUMNS = {
         dtype='int',
         label='Failures',
     ),
-}
-
-# Dataset metrics columns
-METRICS_COLUMNS = {
     # Performance metrics
     # Throughput
     'Request_Throughput': ColumnProperties(
@@ -721,11 +725,13 @@ METRICS_COLUMNS = {
 INPUT_COLUMNS = {}
 INPUT_COLUMNS.update(RUN_COLUMNS)
 INPUT_COLUMNS.update(CONFIGURATION_COLUMNS)
+INPUT_COLUMNS.update(WORKLOAD_COLUMNS)
 
 # All dataset columns
 COLUMNS = {}
 COLUMNS.update(RUN_COLUMNS)
 COLUMNS.update(CONFIGURATION_COLUMNS)
+COLUMNS.update(WORKLOAD_COLUMNS)
 COLUMNS.update(METRICS_COLUMNS)
 
 
