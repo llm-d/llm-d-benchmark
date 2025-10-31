@@ -1196,7 +1196,7 @@ def add_annotations(varname: str) -> str:
     for entry in annotations.split(","):
         if ":" in entry:
             key, value = entry.split(":", 1)
-            annotation_lines.append(f"{indent}{key.strip()}: \"{value.strip()}\"")
+            annotation_lines.append(f'{indent}{key.strip()}: "{value.strip()}"')
 
     return "\n".join(annotation_lines)
 
@@ -2088,7 +2088,11 @@ def get_random_node_port(min_port: int, max_port: int, api=None) -> int:
     Return a random available NodePort in the given range.
     """
     if api is None:
-        api = kube_connect()
+        # Use pykube to connect to Kubernetes
+        control_work_dir = os.environ.get(
+            "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
+        )
+        api, client = kube_connect(f"{control_work_dir}/environment/context.ctx")
 
     existing_ports = set()
     services = pykube.Service.objects(api).all()
@@ -2251,8 +2255,13 @@ def install_wva(wva_config, wva_namespace, dry_run=False, verbose=False):
 
 
 def install_wva_components(ev: dict):
+    # Use pykube to connect to Kubernetes
+    control_work_dir = os.environ.get(
+        "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
+    )
+    api, client = kube_connect(f"{control_work_dir}/environment/context.ctx")
     secret = (
-        pykube.Secret.objects(kube_connect())
+        pykube.Secret.objects(api)
         .filter(namespace="openshift-monitoring")
         .get_by_name("thanos-querier-tls")
     )
