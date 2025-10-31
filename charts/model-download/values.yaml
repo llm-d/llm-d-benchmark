@@ -1,0 +1,8 @@
+# hf_model: # required
+hf_secret: hf-secret
+
+pvc:
+  name: model-pvc
+  create: false
+  size: 5Gi
+  storageClass: default
