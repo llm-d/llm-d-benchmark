@@ -29,7 +29,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true # (default is "false")
 
 #             Affinity to select node with appropriate accelerator (leave uncommented to automatically detect GPU... WILL WORK FOR OpenShift, Kubernetes and GKE)
 export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3        # OpenShift
-export LLMDBENCH_VLLM_COMMON_AFFINITY=kubernetes.io/hostname:pokstg-b64r39s1        # OpenShift
+# export LLMDBENCH_VLLM_COMMON_AFFINITY=kubernetes.io/hostname:pokstg-b64r39s1        # OpenShift
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=gpu.nvidia.com/model:H200                           # Kubernetes
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=cloud.google.com/gke-accelerator:nvidia-tesla-a100  # GKE
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=cloud.google.com/gke-accelerator:nvidia-h100-80gb   # GKE
@@ -114,12 +114,12 @@ export LLMDBENCH_CONTROL_WORK_DIR=~/data/inference-scheduling/guidellm
 export export LLMDBENCH_IMAGE_REGISTRY=quay.io
 export LLMDBENCH_IMAGE_REPO=jgchen
 export LLMDBENCH_IMAGE_NAME=llm-d-benchmark
-export LLMDBENCH_IMAGE_TAG=0.0.22
+export LLMDBENCH_IMAGE_TAG=0.0.23
 
-export LLMDBENCH_IMAGE_REGISTRY="quay.io"
-export LLMDBENCH_IMAGE_REPO="rh_ee_smonson"
-export LLMDBENCH_IMAGE_NAME="llm-d-benchmark"
-export LLMDBENCH_IMAGE_TAG="0.3.0-amd64"
+# export LLMDBENCH_IMAGE_REGISTRY="quay.io"
+# export LLMDBENCH_IMAGE_REPO="rh_ee_smonson"
+# export LLMDBENCH_IMAGE_NAME="llm-d-benchmark"
+# export LLMDBENCH_IMAGE_TAG="0.3.0-amd64"
 
 export LLMDBENCH_VLLM_COMMON_NAMESPACE=jchen
 export LLMDBENCH_HARNESS_NAMESPACE=jchen
