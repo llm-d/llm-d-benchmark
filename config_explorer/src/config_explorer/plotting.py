@@ -118,7 +118,7 @@ def _make_title(scenario: dict[str, Any]) -> str:
                 continue
             value = scenario[col_bound]
             val_bounds.append(f'{COLUMN_BOUND_STR[bound_type]}{value}')
-        title += f'{COLUMNS[col].label}: {' '.join(val_bounds)}  '
+        title += f'{COLUMNS[col].label}: {" ".join(val_bounds)}  '
 
     return title.strip()
 
