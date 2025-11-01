@@ -64,10 +64,15 @@ scenarios_config_keys_mapping = {
 preset_scenarios = {
     "Chatbot": {
         "description": "This application typically has high QPS, concurrency, and prefix hit rate, and favors low latency.",
-        "input_len": 100,
-        "output_len": 300,
+
+        # Default inputs
+        "ISL": 100,
+        "OSL": 300,
         "system_prompt_length": 2048,
         "question_length": 100,
+        "bounded": False,
+
+        # Default SLOs
         "P90_E2EL_ms": 100.0,
         "Total_Token_Throughput": 100.0,
         "P90_TTFT_ms": 2000.0,
@@ -75,9 +80,22 @@ preset_scenarios = {
         },
     "Document summarization": {
         "description": "This application maps to workload requests with high input length and short output length.",
-        "input_len": 9999,
-        "output_len": 1000,
-        "max_qps": float64(5),
+
+        # Default inputs
+        "ISL": (1000, 10000),
+        "OSL": (1000, 5000),
+        "bounded": True,
+        "bounds": {
+            "Question_Length": {
+                '<': 200,
+            },
+            'OSL': {
+                '>=': 200,
+                '<=': 400,
+            }
+        },
+
+        # Default SLOs
         "P90_E2EL_ms": 100000.0,
         "Total_Token_Throughput": 100.0,
         "P90_TTFT_ms": 10000.0,
@@ -85,14 +103,20 @@ preset_scenarios = {
         },
     "Custom": {
         "description": "Design the workload patterns for your own custom application type.",
-        "input_len": 300,
-        "output_len": 1000,
+        "ISL": 300,
+        "OSL": 1000,
         "P90_E2EL_ms": 200.0,
         "Total_Token_Throughput": 200.0,
         "P90_TTFT_ms": 1000.0,
         "P90_ITL_ms": 50.0,
     }
 }
+
+def filter_greater_or_equal(input_list: List[int], threshold: int) -> List[int]:
+    """
+    Returns a list of values greater than or equal to threshold
+    """
+    return [item for item in input_list if item >= threshold]
 
 def init_session_state():
     """
@@ -178,7 +202,7 @@ def delete_metric_dialog():
     Dialogue to delete a SLO metric
     """
 
-    st.write(f"Deleting a metric means that the optimal configuration does not take this metric into account. Any of the non-default (`{", ".join(DEFAULT_SLOS)}`) metrics can be deleted.\n\nIf you'd like to disable the default metrics, set them to an extremely high or low value to disable their effect.")
+    st.write(f"Deleting a metric means that the optimal configuration does not take this metric into account. Any of the non-default (`{', '.join(DEFAULT_SLOS)}`) metrics can be deleted.\n\nIf you'd like to disable the default metrics, set them to an extremely high or low value to disable their effect.")
 
     curr_metrics = st.session_state[SELECTED_SLO_METRICS_KEY]
 
@@ -209,13 +233,14 @@ def inputs(tab: DeltaGenerator):
     Inputs to the Visualizer
     """
 
-    tab.subheader("Sweep input selection")
-    tab.caption("Select initial filters on benchmarking data such as model and workload characteristics.")
+    tab.subheader("Define Scenario")
+    tab.caption("Select initial filters on benchmarking data such as model and workload characteristics. This is your **:blue[scenario]**.")
 
     benchmark_data = st.session_state[BENCHMARK_DATA_KEY]
     data_to_return = {}
     selected_slos = {}
     scenario_to_return = {}
+    scenario_bounds = {}
 
     if len(benchmark_data) == 0:
         tab.info("Import data above.")
@@ -274,29 +299,64 @@ def inputs(tab: DeltaGenerator):
                 help="The number of unique questions per group."
                     )
 
-            scenario_to_return['OSL_500'] = st.selectbox(
-                "Output sequence length",
-                options=runs['OSL_500'].unique(),
-                help="Number of tokens to generate for the output such that the output length is binned by the nearest 500."
-                    )
+            bounds_col_min, bounds_col_max = st.columns(2)
+            min_osl_options = runs['OSL'].unique()
+            min_osl_options.sort()
+            min_osl = bounds_col_min.selectbox("Min output sequence length",
+                                   options=min_osl_options,
+                                   )
+
+            max_osl_options = filter_greater_or_equal(min_osl_options, min_osl)
+            max_osl = bounds_col_max.selectbox("Max output sequence length",
+                        options=max_osl_options,
+                        # Default select the greatest number
+                        index=len(max_osl_options) - 1
+                        )
+            scenario_to_return['__gt__OSL'] = min_osl
+            scenario_to_return['__lt__OSL'] = max_osl
 
         if selected_workload == "Document summarization":
             # Show scenario options for Document summary application
 
             st.caption("Exact matching is required for now. Click below to see the available combinations of ISL and OSL.")
-            with st.expander("ISL to OSL"):
-                temp = xp.get_scenarios(runs, ['ISL', 'OSL'])
-                st.table(temp)
 
-            scenario_to_return['ISL'] = st.selectbox(
-                "Input sequence length",
-                options=runs['ISL'].unique(),
-                )
+            bounds_col_min, bounds_col_max = st.columns(2)
+            # Enable bounds for I/O length in doc summary
+            min_isl_options = runs['ISL'].unique()
+            min_isl_options.sort()
+            min_isl = bounds_col_min.selectbox("Min input sequence length",
+                                   options=min_isl_options,
+                                   )
 
-            scenario_to_return['OSL'] = st.selectbox(
-                "Output sequence length",
-                options=runs['OSL'].unique(),
-                )
+            max_isl_options = filter_greater_or_equal(min_isl_options, min_isl)
+            max_isl = bounds_col_max.selectbox("Max input sequence length",
+                        options=max_isl_options,
+
+                        # Default select the greatest number
+                        index=len(max_isl_options) - 1
+                        )
+
+
+            min_osl_options = runs['OSL'].unique()
+            min_osl_options.sort()
+            min_osl = bounds_col_min.selectbox("Min output sequence length",
+                                   options=min_osl_options,
+                                   )
+
+            max_osl_options = filter_greater_or_equal(min_osl_options, min_osl)
+            max_osl = bounds_col_max.selectbox("Max output sequence length",
+                        options=max_osl_options,
+
+                        # Default select the greatest number
+                        index=len(max_osl_options) - 1
+                        )
+
+            scenario_to_return.update({
+                '__ge__ISL': float(min_isl),
+                '__le__ISL': float(max_isl),
+                '__ge__OSL': float(min_osl),
+                '__le__OSL': float(max_osl),
+            })
 
         if selected_workload == "Custom":
             st.warning("This feature is not yet available. To perform you own data exploration, see this [example Jupyter notebook](https://github.com/llm-d/llm-d-benchmark/blob/main/analysis/analysis.ipynb) for analysis using the `config_explorer` library.")
@@ -413,8 +473,8 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
     Outputs to the Visualizer
     """
 
-    tab.subheader("Sweep exploration")
-    tab.caption("Visualize performance results that meet input selection.")
+    tab.subheader("Configuration Performance for Scenario")
+    tab.caption("Understand the **:blue[configurations]** for  your scenario by examining and comparing performance between configurations.")
     original_benchmark_data = st.session_state[BENCHMARK_DATA_KEY]
 
     with tab.expander("Review raw data"):
@@ -439,13 +499,15 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
         tab1.info("View a summary of the data based on the selected preset. Each preset groups configurations define a specific scenario, helping to highlight its performance characteristics.")
         tab2.info("Given SLO requirements, filter for the best configurations of parallelism and replicas in aggregate and disaggregated setup.")
 
+        # Get the scenario
         scenario_preset = scenarios_config_keys_mapping[selected_display_preset]
         user_selected_scenario = user_inputs['scenario']
+
         if selected_display_preset == PD_DISAGG:
 
             tab1.write("""The prefill/decode disaggregation scenario compares the effects of :blue[aggregate] inference vs. :blue[disaggregated] inference.""")
 
-            tab1.subheader("Performance comparison")
+            tab1.markdown("#### Configuration performance")
 
             metric_col1, metric_col2 = tab1.columns(2)
 
@@ -473,7 +535,7 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
 
             tab1.divider()
 
-            tab1.subheader("Performance tradeoff comparison")
+            tab1.markdown("#### Performance tradeoff comparison")
             metric_col1, metric_col2, metric_col3 = tab1.columns(3)
             tradeoff_y = metric_col1.selectbox("Select y-axis performance tradeoff metric",
                             options=xp.METRICS_COLUMNS.keys(),
@@ -509,7 +571,7 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             slos_cols = ['Mean_TTFT_ms', 'Thpt_per_GPU', 'Num_GPUs']
 
         if selected_display_preset == INFERENCE_SCHEDULING:
-            tab1.subheader("Performance comparison")
+            tab1.markdown("#### Configuration performance")
 
             metric_col1, metric_col2 = tab1.columns(2)
 
@@ -537,7 +599,7 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
             # Plot the tradeoff
             tab1.divider()
 
-            tab1.subheader("Performance tradeoff comparison")
+            tab1.markdown("#### Performance tradeoff comparison")
             metric_col1, metric_col2, metric_col3 = tab1.columns(3)
             tradeoff_y = metric_col1.selectbox("Select y-axis performance tradeoff metric",
                             options=xp.METRICS_COLUMNS.keys(),
@@ -573,6 +635,7 @@ def outputs(tab: DeltaGenerator, user_inputs: dict):
 
         if selected_display_preset == "Custom":
             tab1.warning("This feature is not yet available. To perform you own data exploration, see this [example Jupyter notebook](https://github.com/llm-d/llm-d-benchmark/blob/main/analysis/analysis.ipynb) for analysis using the `config_explorer` library.")
+            config_cols = scenario_preset['config_keys']
 
         display_optimal_config_overview(tab2, config_cols, slos_cols, original_benchmark_data, user_inputs, user_selected_scenario)
 

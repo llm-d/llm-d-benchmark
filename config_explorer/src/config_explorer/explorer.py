@@ -759,10 +759,7 @@ class SLO:
         if COLUMNS[self.col].dtype != 'float':
             raise TypeError(f'Column must have float datatype: {self.col}')
         if COLUMNS[self.col].pref == Pref.NEUTRAL:
-            raise Exception(
-                f'Column must have a preferred direction: {
-                    self.col}')
-
+            raise Exception(f'Column must have a preferred direction: {self.col}')
 
 def col_base(col: str) -> str:
     """Get original column name, removing bound prefixes if present.
@@ -850,7 +847,7 @@ def get_benchmark_report_files(source_dir: str) -> list[str]:
     rb_files = []
     check_dir(source_dir)
     path = Path(source_dir)
-    for file in path.rglob('benchmark_report,_*.yaml', recurse_symlinks=True):
+    for file in path.rglob('benchmark_report,_*.yaml'):
         rb_files.append(str(file))
     return rb_files
 
@@ -1440,12 +1437,12 @@ def print_scenarios(
         header = f'{Text.BOLD}{Text.BLUE}IDX  {Text.DEFAULT}{Text.BOLD}'
     else:
         counts = get_scenario_counts(runs_df, scenarios)
-        header = f'{
+        header = f"""{
             Text.BOLD}{
             Text.BLUE}IDX  {
             Text.RED}Count  {
                 Text.DEFAULT}{
-                    Text.BOLD}'
+                    Text.BOLD}"""
 
     # Add each column name to header
     for ii, col in enumerate(col_names):
