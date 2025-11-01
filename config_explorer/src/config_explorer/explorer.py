@@ -1043,13 +1043,12 @@ def add_benchmark_report_to_df(
         
         if 'rate' in args:
             max_qps = args['rate'][stage]
-        concurrenies = get_nested(args, ['profile', 'measured_concurrencies'])
-        if concurrenies:
-            concurrency = concurrenies[stage]
+        concurrencies = get_nested(args, ['profile', 'measured_concurrencies'])
+        if concurrencies:
+            concurrency = concurrencies[stage]
         data_list = args.get('data')
         if data_list:
             data = yaml.safe_load(data_list[0])
-            assert isinstance(data, dict)
             system_prompt_length = data.get('prefix_tokens')
             question_length = data.get('prompt_tokens')
             groups = 1
