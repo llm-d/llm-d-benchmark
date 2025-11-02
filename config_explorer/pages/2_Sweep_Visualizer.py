@@ -312,8 +312,8 @@ def inputs(tab: DeltaGenerator):
                         # Default select the greatest number
                         index=len(max_osl_options) - 1
                         )
-            scenario_to_return['__gt__OSL'] = min_osl
-            scenario_to_return['__lt__OSL'] = max_osl
+            scenario_to_return['__ge__OSL'] = min_osl
+            scenario_to_return['__le__OSL'] = max_osl
 
         if selected_workload == "Document summarization":
             # Show scenario options for Document summary application
