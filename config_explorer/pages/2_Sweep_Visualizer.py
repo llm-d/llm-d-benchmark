@@ -66,11 +66,6 @@ preset_scenarios = {
         "description": "This application typically has high QPS, concurrency, and prefix hit rate, and favors low latency.",
 
         # Default inputs
-        "ISL": 100,
-        "OSL": 300,
-        "system_prompt_length": 2048,
-        "question_length": 100,
-        "bounded": False,
 
         # Default SLOs
         "P90_E2EL_ms": 100.0,
@@ -82,18 +77,6 @@ preset_scenarios = {
         "description": "This application maps to workload requests with high input length and short output length.",
 
         # Default inputs
-        "ISL": (1000, 10000),
-        "OSL": (1000, 5000),
-        "bounded": True,
-        "bounds": {
-            "Question_Length": {
-                '<': 200,
-            },
-            'OSL': {
-                '>=': 200,
-                '<=': 400,
-            }
-        },
 
         # Default SLOs
         "P90_E2EL_ms": 100000.0,
