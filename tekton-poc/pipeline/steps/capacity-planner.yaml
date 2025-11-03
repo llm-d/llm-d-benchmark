@@ -1,0 +1,439 @@
+# apiVersion: tekton.dev/v1beta1
+# kind: StepAction
+# metadata:
+#   name: compute-value
+# spec:
+#   results:
+#     - name: value
+#   params:
+#     - name: name
+#     - name: value
+#     - name: defaultValue
+#   env:
+#     - name: PARAMETER_NAME
+#       value: "$(params.name)"
+#     - name: PARAMETER_VALUE
+#       value: $(params.value)
+#     - name: DEFAULT_VALUE
+#       value: $(params.defaultValue)
+#     - name: TREATMENT_ANALYSIS
+#       value: "$(steps.analyze-modelservice-factors.results.treatmentAnalysis)"
+#   image: alpine:3.20
+#   script: |
+#     #!/usr/bin/env sh
+
+#     apk add --no-cache jq yq >/dev/null
+
+#     echo "PARAMETER_NAME = ${PARAMETER_NAME}"
+#     echo "PARAMETER_VALUE = ${PARAMETER_VALUE}"
+#     echo "DEFAULT_VALUE = ${DEFAULT_VALUE}"
+
+#     if [ -n "${PARAMETER_VALUE}" ]; then
+#       value="${PARAMETER_VALUE}"
+#       echo ">>> Using value from parameter: ${value}"
+#     else
+#       value=$(
+#         echo ${TREATMENT_ANALYSIS} \
+#         | jq -r ".updates[] | select(.name == \"${PARAMETER_NAME}\") | .value"
+#       )
+#       echo ">>> value from treatment: ${value}"
+#       if [ -z $value ]; then
+#         value=${DEFAULT_VALUE}
+#         echo ">>> Using default value: ${value}"
+#       fi
+#     fi
+    
+#     echo -n "${value}" > "$(step.results.value.path)"
+# ---
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: compute-values
+spec:
+  results:
+    - name: decodeDataParallelism
+    - name: decodeTensorParallelism
+    - name: decodeReplicas
+    - name: prefillDataParallelism
+    - name: prefillTensorParallelism
+    - name: prefillReplicas
+  params:
+    - name: decodeDataParallelism
+    - name: decodeTensorParallelism
+    - name: decodeReplicas
+    - name: prefillDataParallelism
+    - name: prefillTensorParallelism
+    - name: prefillReplicas
+  env:
+    - name: DECODE_DP
+      value: "$(params.decodeDataParallelism)"
+    - name: DECODE_TP
+      value: "$(params.decodeTensorParallelism)"
+    - name: DECODE_REPLICAS
+      value: "$(params.decodeReplicas)"
+    - name: PREFILL_DP
+      value: "$(params.prefillDataParallelism)"
+    - name: PREFILL_TP
+      value: "$(params.prefillTensorParallelism)"
+    - name: PREFILL_REPLICAS
+      value: "$(params.prefillReplicas)"
+    - name: TREATMENT_ANALYSIS
+      value: "$(steps.analyze-modelservice-factors.results.treatmentAnalysis)"
+  image: alpine:3.20
+  script: |
+    #!/usr/bin/env sh
+
+    apk add --no-cache jq yq >/dev/null
+
+    compute_value() {
+      _name="$1"
+      _value="$2"
+      _default="$3"
+
+      if [ -n "${_value}" ]; then
+        _result="${_value}"
+      else
+        _result=$(
+          # echo "from treatment"
+          echo "${TREATMENT_ANALYSIS}" \
+          | jq -r ".updates[] | select(.name == \"${_name}\") | .value"
+        )
+        if [ -z $_result ]; then
+          _result="${_default}"
+        fi
+      fi
+      echo "${_result}"
+    }
+
+    echo "input DECODE_DP = ${DECODE_DP}"
+    value=$(compute_value "decodeDataParallelism" "${DECODE_DP}" 1)
+    echo "output decodeDataParallelism = $value"
+    echo -n "${value}" > "$(step.results.decodeDataParallelism.path)"
+
+    echo "input DECODE_TP = ${DECODE_TP}"
+    value=$(compute_value "decodeTensorParallelism" "${DECODE_TP}" 1)
+    echo "output decodeTensorParallelism = $value"
+    echo -n "${value}" > "$(step.results.decodeTensorParallelism.path)"
+
+    echo "input DECODE_REPLICAS = ${DECODE_REPLICAS}"
+    value=$(compute_value "decodeReplicas" "${DECODE_REPLICAS}" 1)
+    echo "output decodeReplicas = $value"
+    echo -n "${value}" > "$(step.results.decodeReplicas.path)"
+
+    echo "input PREFILL_DP = ${PREFILL_DP}"
+    value=$(compute_value "prefillDataParallelism" "${PREFILL_DP}" 1)
+    echo "output prefillDataParallelism = $value"
+    echo -n "${value}" > "$(step.results.prefillDataParallelism.path)"
+
+    echo "input PREFILL_TP = ${PREFILL_TP}"
+    value=$(compute_value "prefillTensorParallelism" "${PREFILL_TP}" 1)
+    echo "output prefillTensorParallelism = $value"
+    echo -n "${value}" > "$(step.results.prefillTensorParallelism.path)"
+
+    echo "input PREFILL_REPLICAS = ${PREFILL_REPLICAS}"
+    value=$(compute_value "prefillReplicas" "${PREFILL_REPLICAS}" 1)
+    echo "output prefillReplicas = $value"
+    echo -n "${value}" > "$(step.results.prefillReplicas.path)"
+---
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: compute-num-gpus
+spec:
+  results:
+    - name: value
+  params:
+    - name: name
+    - name: value
+    - name: dp
+    - name: tp
+  env:
+    - name: PARAMETER_NAME
+      value: "$(params.name)"
+    - name: PARAMETER_VALUE
+      value: $(params.value)
+    - name: DP
+      value: $(params.dp)
+    - name: TP
+      value: $(params.tp)
+    - name: TREATMENT_ANALYSIS
+      value: "$(steps.analyze-modelservice-factors.results.treatmentAnalysis)"
+  image: alpine:3.20
+  script: |
+    #!/usr/bin/env sh
+
+    apk add --no-cache jq yq >/dev/null
+
+    echo "PARAMETER_NAME = ${PARAMETER_NAME}"
+    echo "PARAMETER_VALUE = ${PARAMETER_VALUE}"
+    echo "DP = ${DP}"
+    echo "TP = ${TP}"
+
+    if [ -n "${PARAMETER_VALUE}" ]; then
+      value=${PARAMETER_VALUE}
+      echo ">>> Using value from parameter: ${value}"
+    else
+      value=$(
+        echo ${TREATMENT_ANALYSIS} \
+        | jq -r ".updates[] | select(.name == \"${PARAMETER_NAME}\") | .value"
+      )
+      echo ">>> value from treatment: ${value}"
+      if [ -z $value ]; then
+        value=$(( $TP * $DP ))
+        echo ">>> Using value from computation: $TP * $DP = ${value}"
+      fi
+    fi
+    
+    echo -n "${value}" > "$(step.results.value.path)"
+---
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: check-capacity
+spec:
+  params:
+    - name: validateCapacity
+      default: "true"
+    - name: behaviorOnValidationFailure
+      default: terminate # ignore
+
+    - name: model
+    - name: max_model_len
+    - name: replicas
+    - name: tp
+    - name: dp
+    - name: gpu_memory
+    - name: user_requested_gpu_count
+    - name: gpu_memory_util
+      default: "0.95"
+
+    - name: py
+      default: |
+        import os
+        import sys
+        from typing import Tuple
+        from config_explorer.capacity_planner import *
+
+        def log_failed(msg: str, ignore_if_failed = True):
+          print(f'❌ {msg}')
+          if not ignore_if_failed:
+            sys.exit(1)
+
+        def log_warning(msg):
+          print(f'⚠️ {msg}')
+
+        def log_info(msg):
+          print(f'ℹ️ {msg}')
+
+        def get_model_info(model_name: str, hf_token: str, ignore_if_failed: bool) -> ModelInfo | None:
+            """
+            Obtains model info from HF
+            """
+
+            try:
+                return get_model_info_from_hf(model_name, hf_token)
+
+            except GatedRepoError:
+                log_failed("Model is gated and provided token does not, work. Please double check.", ignore_if_failed)
+            except HfHubHTTPError as hf_exp:
+                log_failed(f"Error reaching Hugging Face API: {hf_exp}", ignore_if_failed)
+            except Exception as e:
+                log_failed(f"Cannot retrieve ModelInfo: {e}", ignore_if_failed)
+
+            return None
+
+        def get_model_config_and_text_config(model_name: str, hf_token: str, ignore_if_failed: bool) -> Tuple[AutoConfig | None, AutoConfig | None]:
+            """
+            Obtains model config and text config from HF
+            """
+
+            try:
+                config = get_model_config_from_hf(model_name, hf_token)
+                return config, get_text_config(config)
+
+            except GatedRepoError:
+                log_failed("Model is gated and provided token does not, work. Please double check.", ignore_if_failed)
+            except HfHubHTTPError as hf_exp:
+                log_failed(f"Error reaching Hugging Face API: {hf_exp}", ignore_if_failed)
+            except Exception as e:
+                log_failed(f"Cannot retrieve model config: {e}", ignore_if_failed)
+
+            return None, None
+
+        def validate_vllm_params():
+          print ("validate_vllm_params() called")
+
+          replicas = int(os.getenv("REPLICAS"))
+          user_requested_gpu_count = int(os.getenv("USER_REQUESTED_GPU_COUNT"))
+          tp = int(os.getenv("TP"))
+          dp = int(os.getenv("DP"))
+          model = os.getenv("MODEL")
+          gpu_memory = int(os.getenv("GPU_MEMORY"))
+          max_model_len = int(os.getenv("MAX_MODEL_LEN"))
+          gpu_memory_util = float(os.getenv("GPU_MEMORY_UTIL"))
+          hf_token = os.getenv("HF_TOKEN")
+          ignore_if_failed = os.getenv("BEHAVIOR_ON_FAILURE") != 'terminate'
+
+          print(f"model = {model}")
+          print(f"replicas = {replicas}")
+          print(f"user_requested_gpu_count = {user_requested_gpu_count}")
+          print(f"tp = {tp}")
+          print(f"dp = {dp}")
+          print(f"gpu_memory = {gpu_memory}")
+          print(f"max_model_len = {max_model_len}")
+          print(f"gpu_memory_util = {gpu_memory_util}")
+          print(f"ignore_if_failed = {ignore_if_failed}")
+
+          # Sanity check on user inputs. If GPU memory cannot be determined, return False indicating that the sanity check is incomplete
+          skip_gpu_tests = False
+          if gpu_memory is None or gpu_memory == 0:
+            log_failure("Cannot determine accelerator memory. Please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY to enable Capacity Planner. Skipping GPU memory required checks, especially KV cache estimation.", ignore_if_failed)
+            skip_gpu_tests = True
+
+          per_replica_requirement = gpus_required(tp=tp, dp=dp)
+          if replicas == 0:
+            per_replica_requirement = 0
+          total_gpu_requirement = per_replica_requirement
+          
+          if total_gpu_requirement > user_requested_gpu_count:
+            log_failed(f"Requested {user_requested_gpu_count} GPUs but it is too low. It must be greater than TP x DP ({tp} x {dp} = {total_gpu_requirement})")
+
+          if total_gpu_requirement < user_requested_gpu_count:
+            log_warning(f"For each replica, model requires {total_gpu_requirement}, but you requested {user_requested_gpu_count} for the deployment. Some GPUs will be idle.")
+
+          model_info = get_model_info(model, hf_token, ignore_if_failed)
+          model_config, text_config = get_model_config_and_text_config(model, hf_token, ignore_if_failed)
+          if model_config is not None:
+            # Check if parallelism selections are valid
+            try:
+              valid_tp_values = find_possible_tp(text_config)
+              log_info(f"valid tp values are: {valid_tp_values}")
+              if tp not in valid_tp_values:
+                log_failed(f"TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}.", ignore_if_failed)
+              else:
+                log_info(f"TP={tp} is valid.")
+            except AttributeError:
+              # Error: config['num_attention_heads'] not in config
+              log_failed(f"Cannot obtain data on the number of attention heads, cannot find valid tp values: {e}", ignore_if_failed)
+
+            # Check if model context length is valid
+            valid_max_context_len = 0
+            try:
+              # Error: config['max_positional_embeddings'] not in config
+              valid_max_context_len = max_context_len(model_config)
+              log_info(f"The max context length is {valid_max_context_len}")
+            except AttributeError as e:
+              log_failed(f"Cannot obtain data on the max context length for model: {e}", ignore_if_failed)
+
+            if max_model_len > valid_max_context_len:
+                log_failed(f"Max model length = {max_model_len} exceeds the acceptable for {model}. Set LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN to a value below or equal to {valid_max_context_len}", ignore_if_failed)
+          else:
+            log_failed("Model config on parameter shape is not available.", ignore_if_failed)
+
+          # Display memory info
+          if not skip_gpu_tests:
+            log_info("👉 Collecting GPU information....")
+            avail_gpu_memory = available_gpu_memory(gpu_memory, gpu_memory_util)
+            log_info(f"{gpu_memory} GB of memory per GPU, with {gpu_memory} GB x {gpu_memory_util} (gpu_memory_utilization) = {avail_gpu_memory} GB available to use.")
+            log_info(f"Each model replica requires {per_replica_requirement} GPUs, total available GPU memory = {avail_gpu_memory * per_replica_requirement} GB.")
+
+          # Calculate model memory requirement
+          log_info("👉 Collecting model information....")
+          if model_info is not None:
+            try:
+              model_params = model_total_params(model_info)
+              log_info(f"{model} has a total of {model_params} parameters")
+
+              model_mem_req = model_memory_req(model_info, model_config)
+              log_info(f"{model} requires {model_mem_req} GB of memory")
+
+              # Estimate KV cache memory and max number of requests that can be served in worst case scenario
+              if not skip_gpu_tests:
+                log_info("👉 Estimating available KV cache....")
+                available_kv_cache = allocatable_kv_cache_memory(
+                  model_info, model_config,
+                  gpu_memory, gpu_memory_util,
+                  tp=tp, dp=dp,
+                )
+                log_info(f"Allocatable memory for KV cache {available_kv_cache} GB")
+
+                if available_kv_cache < 0:
+                  log_failed(f"There is not enough GPU memory to stand up model. Exceeds by {abs(available_kv_cache)} GB.", ignore_if_failed)
+                else:
+                  kv_details = KVCacheDetail(model_info, model_config, max_model_len, batch_size=1)
+                  log_info(f"KV cache memory for a request taking --max-model-len={max_model_len} requires {kv_details.per_request_kv_cache_gb} GB of memory")
+
+                  total_concurrent_reqs = max_concurrent_requests(
+                    model_info, model_config, max_model_len,
+                    gpu_memory, gpu_memory_util,
+                    tp=tp, dp=dp,
+                  )
+                  log_info(f"The vLLM server can process up to {total_concurrent_reqs} number of requests at the same time, assuming the worst case scenario that each request takes --max-model-len")
+
+            except AttributeError as e:
+              # Model might not have safetensors data on parameters
+              log_failed(f"Does not have enough information about model to estimate model memory or KV cache: {e}", ignore_if_failed)
+          else:
+            log_failed(f"Model info on model's architecture is not available.", ignore_if_failed)
+
+        def main():
+          """Main function"""
+          print("main() called")
+          validate_vllm_params()
+          print("main() exiting")
+        
+        if __name__ == "__main__":
+          sys.exit(main())
+  env:
+    - name: VALIDATE_CAPACITY
+      value: $(params.validateCapacity)
+    - name: BEHAVIOR_ON_FAILURE
+      value: $(params.behaviorOnValidationFailure)
+
+    - name: MODEL
+      value: $(params.model)
+
+    - name: REPLICAS
+      value: $(params.replicas)
+    - name: TP
+      value: $(params.tp)
+    - name: DP
+      value: $(params.dp)
+    - name: GPU_MEMORY
+      value: $(params.gpu_memory)
+    - name: USER_REQUESTED_GPU_COUNT
+      value: $(params.user_requested_gpu_count)
+    - name: MAX_MODEL_LEN
+      value: $(params.max_model_len)
+    - name: GPU_MEMORY_UTIL
+      value: $(params.gpu_memory_util)
+
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-secret
+          key: HF_TOKEN
+
+    - name: PY_BIN
+      value: "$(params.py)"
+
+  # https://github.com/llm-d/llm-d-benchmark/blob/main/build/Dockerfile#L1C6-L1C33
+  image: python:3.12.9-slim-bookworm
+  script: |
+    #!/usr/bin/env bash
+
+    if [ "${VALIDATE_CAPACITY}" != "true" ]; then
+      echo "ℹ️ Skipping capacity validation"
+      exit 0
+    fi
+
+    # Install git so can install capacity explorer
+    apt-get update \
+    && apt-get install -y git \
+    && rm -rf /var/lib/apt/lists/*
+    python -m pip install --no-cache "config_explorer @ git+https://github.com/llm-d/llm-d-benchmark.git/#subdirectory=config_explorer"
+
+    # run capacity explorer
+    printf "%s\n" "${PY_BIN}" | python -
+
+

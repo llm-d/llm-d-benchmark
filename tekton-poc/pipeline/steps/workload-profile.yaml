@@ -1,0 +1,131 @@
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: prepare-workload-profile
+spec:
+  params:
+    - name: harnessName
+    - name: harnessProfile
+    - name: model-id
+    - name: namespace
+    - name: treatmentAnalysis
+    - name: pipelineUID
+  env:
+    - name: HARNESS_NAME
+      value: "$(params.harnessName)"
+    - name: HARNESS_PROFILE
+      value: "$(params.harnessProfile)"
+
+    - name: TREATMENT_ANALYSIS
+      value: "$(params.treatmentAnalysis)"
+
+    - name: LLMDBENCH_DEPLOY_CURRENT_MODEL
+      value: "$(params.model-id)"
+    - name: LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+      value: "http://experiment-gateway-inference-gateway.$(params.namespace).svc.cluster.local:80"
+
+    - name: DATA_ROOT_DIR
+      value: $(workspaces.data.path)
+    - name: MY_TASK_NAME
+      value: $(context.taskRun.name)
+    - name: MY_PIPELINE_UID
+      value: $(params.pipelineUID)
+
+  # https://github.com/llm-d/llm-d-benchmark/blob/main/build/Dockerfile#L1C6-L1C33
+  image: python:3.12.9-slim-bookworm
+  script: |
+    #!/bin/bash
+
+    echo "🔄 Preparing workload profile ${HARNESS_PROFILE} for ${HARNESS_NAME}"
+
+    # TBD is this necessary or is it already there?
+    apt-get update
+    apt-get install -y --no-install-recommends curl ca-certificates jq
+    curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+      -o /usr/local/bin/yq
+    chmod +x /usr/local/bin/yq
+    jq --version
+    yq --version
+
+    # https://github.com/llm-d/llm-d-benchmark/blob/main/setup/run.sh
+    
+    EXPERIMENT_ID="experiment-$(echo -n ${MY_PIPELINE_UID} | cut -c1-8)"
+    RESULTS_DIR="${DATA_ROOT_DIR}/${HARNESS_NAME}_${EXPERIMENT_ID}_${MY_TASK_NAME}"
+    CONTROL_DIR="${DATA_ROOT_DIR}/${HARNESS_NAME}_${EXPERIMENT_ID}_${MY_TASK_NAME}"
+    RUN_DIR=$(pwd)
+
+    echo "🔄 Installing required tools"
+    apt-get update
+    apt-get install -y \
+      wget \
+      && apt-get clean && rm -rf /var/cache/apt
+
+    # Ensure all folders created
+    mkdir -p $RESULTS_DIR
+    mkdir -p $CONTROL_DIR/setup
+    rm -rf $CONTROL_DIR/setup/sed-commands
+    touch $CONTROL_DIR/setup/sed-commands
+    mkdir -p ${CONTROL_DIR}/workload/profiles/${HARNESS_NAME}/templates
+
+    cd ${RUN_DIR}/vllm-benchmark/
+
+    # Define constants: input profile template name and location; final profile name and location
+    workload=$(echo ${HARNESS_PROFILE} | sed 's^\.yaml^^g' )
+    workload_template=${workload}.yaml.in
+    workload_template_path=${CONTROL_DIR}/workload/profiles/${HARNESS_NAME}/templates/${workload_template}
+    workload_profile=${workload}.yaml
+    workload_profile_path=${CONTROL_DIR}/workload/profiles/${HARNESS_NAME}/${workload_profile}
+
+    echo "🔄 Prepare workload profile"
+    # Fetch profile template from llmd-benchmark
+    wget -O ${workload_template_path} \
+    --quiet \
+      https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/workload/profiles/${HARNESS_NAME}/${workload_template}
+
+    # Apply treatment to profile template to produce final profile
+    echo "s^REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL^${LLMDBENCH_DEPLOY_CURRENT_MODEL}^g" >> ${CONTROL_DIR}/setup/sed-commands
+    echo "s^REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL^${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL}^g" >> ${CONTROL_DIR}/setup/sed-commands
+    echo "s^REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER^${LLMDBENCH_DEPLOY_CURRENT_TOKENIZER}^g" >> ${CONTROL_DIR}/setup/sed-commands
+    echo "---------- sed-commands"
+    cat ${CONTROL_DIR}/setup/sed-commands
+    echo "----------"
+    sed -f ${CONTROL_DIR}/setup/sed-commands ${workload_template_path} > ${workload_profile_path}
+
+    # TBD eliminate the TARGET_FILE env variable
+    TARGET_FILE=${workload_profile_path}
+    echo "${TREATMENT_ANALYSIS}" | jq '.updates' > /tmp/updates.json
+    echo ">>> /tmp/updates.json"
+    cat /tmp/updates.json
+
+    if [ ! -f "$TARGET_FILE" ]; then
+      echo "ERROR: File not found: $TARGET_FILE" >&2
+      exit 1
+    fi
+
+    # Apply updates to JSON or YAML
+    if [ "$(jq 'length' /tmp/updates.json)" -gt 0 ]; then
+      ext="${TARGET_FILE##*.}"
+      tmp="${TARGET_FILE}.tmp"
+
+      # TBD eliminate the json path (copilot generated this); profiles are yaml files
+      if [ "$ext" = "json" ]; then
+        jq --slurpfile upds /tmp/updates.json '
+          reduce $upds[0][] as $u (. ; setpath($u.path; $u.value))
+        ' "$TARGET_FILE" > "$tmp"
+        mv "$tmp" "$TARGET_FILE"
+      else
+        # YAML path: YAML → JSON → apply → YAML
+        yq -o=json '.' "$TARGET_FILE" \
+          | jq --slurpfile upds /tmp/updates.json '
+              reduce $upds[0][] as $u (. ; setpath($u.path; $u.value))
+            ' \
+          | yq -P > "$tmp"
+        mv "$tmp" "$TARGET_FILE"
+      fi
+    fi
+
+    echo "---------- workload profile"
+    cat ${workload_profile_path}
+    echo "----------"
+
+    echo "✅ workload profile ready"
