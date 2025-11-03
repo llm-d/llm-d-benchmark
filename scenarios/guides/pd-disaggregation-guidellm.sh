@@ -11,8 +11,8 @@
 # Model parameters
 #export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
-export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
-#export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
+# export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
+export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
 
 # PVC parameters
 #             Storage class (leave uncommented to automatically detect the "default" storage class)
@@ -138,3 +138,13 @@ export LLMDBENCH_HARNESS_NAME=guidellm
 
 # Local directory to copy benchmark runtime files and results
 export LLMDBENCH_CONTROL_WORK_DIR=~/data/pd-disaggregation/guidellm
+
+
+# My stuff
+export export LLMDBENCH_IMAGE_REGISTRY=quay.io
+export LLMDBENCH_IMAGE_REPO=jgchen
+export LLMDBENCH_IMAGE_NAME=llm-d-benchmark
+export LLMDBENCH_IMAGE_TAG=0.0.24
+
+export LLMDBENCH_VLLM_COMMON_NAMESPACE=jchen2
+export LLMDBENCH_HARNESS_NAMESPACE=jchen2
