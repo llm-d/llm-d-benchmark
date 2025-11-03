@@ -120,7 +120,9 @@ def read_benchmark_path(benchmark_path: str) -> DataFrame:
 
     runs = xp.make_benchmark_runs_df()
 
-    report_files = xp.get_benchmark_report_files(benchmark_path)
+    report_files = xp.get_benchmark_report_files(
+        benchmark_path,
+        recurse_symlinks=True)
     for br_file in report_files:
 
         # Update session state data
