@@ -211,6 +211,23 @@ def filter_data_on_inputs(data: DataFrame, user_inputs: dict) -> DataFrame:
         (data['OSL'] >= user_inputs['osl'])
         ]
 
+@st.dialog("Histogram overview of bounds")
+def histogram_dialog(runs: DataFrame, scenario):
+    """
+    Dialog to show histogram
+    """
+    plot = xplotting.plot_scenario_histogram(
+        runs, scenario
+    )
+
+    selected_metric = st.selectbox(
+        "Select a workload metric",
+        options=plot.keys()
+    )
+
+    if selected_metric:
+        st.pyplot(plot[selected_metric])
+
 def inputs(tab: DeltaGenerator):
     """
     Inputs to the Visualizer
@@ -343,6 +360,12 @@ def inputs(tab: DeltaGenerator):
 
         if selected_workload == "Custom":
             st.warning("This feature is not yet available. To perform you own data exploration, see this [example Jupyter notebook](https://github.com/llm-d/llm-d-benchmark/blob/main/analysis/analysis.ipynb) for analysis using the `config_explorer` library.")
+
+        # Show summary stats (histogram)
+        if st.button("Summary statistics", use_container_width=True):
+            histogram_dialog(
+                runs, scenario_to_return
+            )
 
     # SLOs
     with tab.container(border=True):
