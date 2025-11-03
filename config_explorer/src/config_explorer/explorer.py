@@ -37,7 +37,6 @@ of metrics, showing, for example, the tradeoff between throughput and latency.
 
 import builtins
 from dataclasses import dataclass
-from math import floor # only needed for HACK to remove when UI supports bounds
 import os
 from pathlib import Path
 import sys
@@ -283,14 +282,6 @@ WORKLOAD_COLUMNS = {
         dtype='int',
         label='Output Sequence Length',
     ),
-    'ISL_500': ColumnProperties(  # HACK to remove when UI supports bounds
-        dtype='int',              # HACK to remove when UI supports bounds
-        label='ISL Nearest 500',  # HACK to remove when UI supports bounds
-    ),                            # HACK to remove when UI supports bounds
-    'OSL_500': ColumnProperties(  # HACK to remove when UI supports bounds
-        dtype='int',              # HACK to remove when UI supports bounds
-        label='OSL Nearest 500',  # HACK to remove when UI supports bounds
-    ),                            # HACK to remove when UI supports bounds
     'Target_OSL': ColumnProperties(
         dtype='int',
         label='Target OSL',
@@ -1137,8 +1128,6 @@ def add_benchmark_report_to_df(
         'Workload_Generator': report.scenario.load.name,
         'ISL': int(round(report.metrics.requests.input_length.mean)),
         'OSL': int(round(report.metrics.requests.output_length.mean)),
-        'ISL_500': floor(report.metrics.requests.input_length.mean / 500) * 500 + 250, # HACK to remove when UI supports bounds
-        'OSL_500': floor(report.metrics.requests.output_length.mean / 500) * 500 + 250, # HACK to remove when UI supports bounds
         'Target_OSL': target_osl,
         'Max_Concurrency': concurrency,
         'Max_QPS': max_qps,
