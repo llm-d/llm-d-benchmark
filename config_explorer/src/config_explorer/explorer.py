@@ -39,6 +39,7 @@ import builtins
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import sys
 from typing import Any
 
 import pandas as pd
@@ -755,9 +756,7 @@ class SLO:
         if COLUMNS[self.col].dtype != 'float':
             raise TypeError(f'Column must have float datatype: {self.col}')
         if COLUMNS[self.col].pref == Pref.NEUTRAL:
-            raise Exception(
-                f'Column must have a preferred direction: {
-                    self.col}')
+            raise Exception(f'Column must have a preferred direction: {self.col}')
 
 
 def col_base(col: str) -> str:
@@ -834,11 +833,15 @@ def mul(a: int | None, b: int | None) -> int | None:
     return None
 
 
-def get_benchmark_report_files(source_dir: str) -> list[str]:
+def get_benchmark_report_files(
+    source_dir: str,
+    recurse_symlinks: bool = False
+) -> list[str]:
     """Get a list of benchmark report files within provided path (recursive).
 
     Args:
         source_dir (str): Directory to recursively search for results files.
+        recurse_symlinks (bool): Recurse through symbolic links.
 
     Returns:
         list: List of paths to benchmark report files.
@@ -846,8 +849,24 @@ def get_benchmark_report_files(source_dir: str) -> list[str]:
     rb_files = []
     check_dir(source_dir)
     path = Path(source_dir)
-    for file in path.rglob('benchmark_report,_*.yaml'):
-        rb_files.append(str(file))
+
+    symlinks_supported = False
+    if recurse_symlinks:
+        if sys.version_info.major >= 3 and sys.version_info.minor >= 13:
+            symlinks_supported = True
+        else:
+            sys.stderr.write(
+                'Symbolic link recursion not supported below Python 3.13\n')
+
+    if recurse_symlinks and symlinks_supported:
+        for file in path.rglob(
+                'benchmark_report,_*.yaml',
+                recurse_symlinks=True):
+            rb_files.append(str(file))
+    else:
+        for file in path.rglob('benchmark_report,_*.yaml'):
+            rb_files.append(str(file))
+
     return rb_files
 
 
