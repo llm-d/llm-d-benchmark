@@ -2,10 +2,10 @@ setup:
   factors:
     - LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE
   levels:
-    # LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE: "inf-sche-none.yaml, inf-sche-prefix.yaml, inf-sche-kv.yaml, inf-sche-queue.yaml"
-    LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE: "inf-sche-prefix.yaml, inf-sche-kv.yaml, inf-sche-queue.yaml"
+    LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE: "inf-sche-none.yaml, inf-sche-prefix.yaml, inf-sche-kv.yaml, inf-sche-queue.yaml"
+    # LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE: "inf-sche-prefix.yaml, inf-sche-kv.yaml, inf-sche-queue.yaml"
   treatments:
-    # - "inf-sche-none.yaml"
+    - "inf-sche-none.yaml"
     - "inf-sche-prefix.yaml"
     - "inf-sche-kv.yaml"
     - "inf-sche-queue.yaml"
