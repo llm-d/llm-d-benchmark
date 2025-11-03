@@ -756,9 +756,7 @@ class SLO:
         if COLUMNS[self.col].dtype != 'float':
             raise TypeError(f'Column must have float datatype: {self.col}')
         if COLUMNS[self.col].pref == Pref.NEUTRAL:
-            raise Exception(
-                f'Column must have a preferred direction: {
-                    self.col}')
+            raise Exception(f'Column must have a preferred direction: {self.col}')
 
 
 def col_base(col: str) -> str:
