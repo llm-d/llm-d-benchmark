@@ -37,7 +37,7 @@ of metrics, showing, for example, the tradeoff between throughput and latency.
 
 import builtins
 from dataclasses import dataclass
-from math import floor  # only needed for HACK to remove when UI supports bounds
+from math import floor # only needed for HACK to remove when UI supports bounds
 import os
 from pathlib import Path
 import sys
@@ -1137,10 +1137,8 @@ def add_benchmark_report_to_df(
         'Workload_Generator': report.scenario.load.name,
         'ISL': int(round(report.metrics.requests.input_length.mean)),
         'OSL': int(round(report.metrics.requests.output_length.mean)),
-        # HACK to remove when UI supports bounds
-        'ISL_500': floor(report.metrics.requests.input_length.mean / 500) * 500 + 250,
-        # HACK to remove when UI supports bounds
-        'OSL_500': floor(report.metrics.requests.output_length.mean / 500) * 500 + 250,
+        'ISL_500': floor(report.metrics.requests.input_length.mean / 500) * 500 + 250, # HACK to remove when UI supports bounds
+        'OSL_500': floor(report.metrics.requests.output_length.mean / 500) * 500 + 250, # HACK to remove when UI supports bounds
         'Target_OSL': target_osl,
         'Max_Concurrency': concurrency,
         'Max_QPS': max_qps,
