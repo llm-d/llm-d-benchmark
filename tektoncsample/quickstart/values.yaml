@@ -1,0 +1,4 @@
+pipeline_name: demo-pipeline
+models:
+  - llama-7b
+  - qwen-2.5-7b
