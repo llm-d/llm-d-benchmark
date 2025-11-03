@@ -35,7 +35,7 @@ except ImportError as e:
 
 # ---------------- Helpers ----------------
 
-def check_deployment(api: pykube.HTTPClient, ev: dict):
+def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     """
     Checking if current deployment was successful
     """
@@ -50,7 +50,7 @@ def check_deployment(api: pykube.HTTPClient, ev: dict):
     if is_standalone_deployment(ev):
         pod_string = "standalone"
         try:
-            all_services = api.CoreV1Api().list_namespaced_service(namespace=ev["vllm_common_namespace"], watch=False)
+            all_services = client.CoreV1Api().list_namespaced_service(namespace=ev["vllm_common_namespace"], watch=False)
             for service in all_services.items:
                 if pod_string in service.metadata.name:
                     service_name = service.metadata.name
@@ -58,14 +58,14 @@ def check_deployment(api: pykube.HTTPClient, ev: dict):
             service_ip=service.spec.cluster_ip
             service_type = "service"
             route_string = service_name + '-route'
-        except k8s_client.ApiException as e:
+        except client.ApiException as e:
             announce(f"ERROR: unable to find service: {e}")
     else:
         pod_string = "decode"
         route_string=f"{ev.get('vllm_modelservice_release', '')}-inference-gateway-route"
         service_type = "gateway"
         try:
-            gateways = api.CustomObjectsApi().list_namespaced_custom_object(
+            gateways = client.CustomObjectsApi().list_namespaced_custom_object(
                 group="gateway.networking.k8s.io",
                 version="v1",
                 namespace=ev["vllm_common_namespace"],
@@ -79,7 +79,7 @@ def check_deployment(api: pykube.HTTPClient, ev: dict):
                             service_ip = address.get("value")
                             break
                     break
-        except api.ApiException as e:
+        except client.ApiException as e:
             announce(f"ERROR: unable to finding gateway: {e}")
 
     if dry_run:
@@ -107,15 +107,15 @@ def check_deployment(api: pykube.HTTPClient, ev: dict):
     try:
         pod_ip_list = []
         if is_standalone_deployment(ev):
-            pods = api.CoreV1Api().list_namespaced_pod(namespace=ev["vllm_common_namespace"])
+            pods = client.CoreV1Api().list_namespaced_pod(namespace=ev["vllm_common_namespace"])
             for pod in pods.items:
                 if pod_string in pod.metadata.name:
                     pod_ip_list.append(pod.status.pod_ip)
         else:
-            pods = api.CoreV1Api().list_namespaced_pod(namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={current_model_ID_label},llm-d.ai/role={pod_string}")
+            pods = client.CoreV1Api().list_namespaced_pod(namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={current_model_ID_label},llm-d.ai/role={pod_string}")
             for pod in pods.items:
                 pod_ip_list.append(pod.status.pod_ip)
-    except api.ApiException as e:
+    except client.ApiException as e:
         announce(f"ERROR: Unable to find pods in namespace {ev['vllm_common_namespace']}: {e}")
 
     if not pod_ip_list:
@@ -152,7 +152,7 @@ def check_deployment(api: pykube.HTTPClient, ev: dict):
     else:
         if ev['control_deploy_is_openshift'] == "1":
             try:
-                route = api.CustomObjectsApi().get_namespaced_custom_object(
+                route = client.CustomObjectsApi().get_namespaced_custom_object(
                 group="route.openshift.io",
                 version="v1",
                 name=route_string,
@@ -160,7 +160,7 @@ def check_deployment(api: pykube.HTTPClient, ev: dict):
                 plural="routes"
             )
                 route_url = route["spec"]["host"]
-            except api.ApiException as e:
+            except client.ApiException as e:
                 announce(f"ERROR: unable to fetch route: {e}")
 
     if ev['control_deploy_is_openshift'] == "1" and route_url:
@@ -187,10 +187,10 @@ def main():
     if ev["control_dry_run"]:
         announce("DRY RUN enabled. No actual changes will be made.")
 
-    api = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx', "kube")
+    api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
 
     # Execute the main logic
-    return check_deployment(api, ev)
+    return check_deployment(api, client, ev)
 
 
 if __name__ == "__main__":

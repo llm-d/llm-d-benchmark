@@ -35,13 +35,15 @@ We can use get_pareto_front_df() to find optimal configurations against pairs
 of metrics, showing, for example, the tradeoff between throughput and latency.
 """
 
+import builtins
 from dataclasses import dataclass
-from math import floor
+from math import floor # only needed for HACK to remove when UI supports bounds
 import os
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import yaml
 
 # TODO These packages can be imported in different ways depending on whether
 # these are imported as a notebook, or installed as a config_explorer library
@@ -50,9 +52,19 @@ import pandas as pd
 try:
     import convert
     import schema
+    from constants import (
+        BOUND_PREFIX_LEN,
+        COLUMN_BOUND_STR,
+        STR_TO_COLUMN_BOUND,
+    )
 except ImportError:
     from config_explorer import convert
     from config_explorer import schema
+    from config_explorer.constants import (
+        BOUND_PREFIX_LEN,
+        COLUMN_BOUND_STR,
+        STR_TO_COLUMN_BOUND,
+    )
 
 
 class Text:
@@ -116,8 +128,9 @@ class ColumnProperties:
 
         return f"{self.label} ({self.units})"
 
-# Dataset columns and properties
-INPUT_COLUMNS = {
+
+# Dataset columns about benchmark run
+RUN_COLUMNS = {
     # Details about particular run
     'Directory': ColumnProperties(
         dtype='str',
@@ -136,6 +149,10 @@ INPUT_COLUMNS = {
         units='s',
         label='Duration',
     ),
+}
+
+# Dataset columns about configuration
+CONFIGURATION_COLUMNS = {
     'Platform': ColumnProperties(
         dtype='str',
         label='Platform',
@@ -248,6 +265,10 @@ INPUT_COLUMNS = {
         dtype='bool',
         label='Prefix Mode',
     ),
+}
+
+# Dataset columns about workload
+WORKLOAD_COLUMNS = {
     # Workload
     'Workload_Generator': ColumnProperties(
         dtype='str',
@@ -261,14 +282,14 @@ INPUT_COLUMNS = {
         dtype='int',
         label='Output Sequence Length',
     ),
-    'ISL_500': ColumnProperties(
-        dtype='int',
-        label='ISL Nearest 500',
-    ),
-    'OSL_500': ColumnProperties(
-        dtype='int',
-        label='OSL Nearest 500',
-    ),
+    'ISL_500': ColumnProperties(  # HACK to remove when UI supports bounds
+        dtype='int',              # HACK to remove when UI supports bounds
+        label='ISL Nearest 500',  # HACK to remove when UI supports bounds
+    ),                            # HACK to remove when UI supports bounds
+    'OSL_500': ColumnProperties(  # HACK to remove when UI supports bounds
+        dtype='int',              # HACK to remove when UI supports bounds
+        label='OSL Nearest 500',  # HACK to remove when UI supports bounds
+    ),                            # HACK to remove when UI supports bounds
     'Target_OSL': ColumnProperties(
         dtype='int',
         label='Target OSL',
@@ -282,22 +303,30 @@ INPUT_COLUMNS = {
         label='Request Rate',
         units='queries/s',
     ),
+    # Common prefix length
     'System_Prompt_Length': ColumnProperties(
         dtype='int',
         label='System Prompt Length',
     ),
+    # Length after common prefix
     'Question_Length': ColumnProperties(
         dtype='int',
         label='Question Length',
     ),
+    # Number of user groups with distinct prompts
     'Groups': ColumnProperties(
         dtype='int',
         label='Groups',
     ),
+    # Common prefixes within a group
     'Prompts_Per_Group': ColumnProperties(
         dtype='int',
         label='Prompts per Group',
     ),
+}
+
+# Dataset metrics columns
+METRICS_COLUMNS = {
     # Requests
     'Total_Requests': ColumnProperties(
         dtype='int',
@@ -307,10 +336,6 @@ INPUT_COLUMNS = {
         dtype='int',
         label='Failures',
     ),
-}
-
-# Dataset columns and properties
-PERFORMANCE_METRIC_COLUMNS = {
     # Performance metrics
     # Throughput
     'Request_Throughput': ColumnProperties(
@@ -710,11 +735,19 @@ PERFORMANCE_METRIC_COLUMNS = {
     ),
 }
 
-COLUMNS = {}
+# Non-metrics columns, which may be used as an independent input variable
+INPUT_COLUMNS = {}
+INPUT_COLUMNS.update(RUN_COLUMNS)
+INPUT_COLUMNS.update(CONFIGURATION_COLUMNS)
+INPUT_COLUMNS.update(WORKLOAD_COLUMNS)
 
-# Merge input and performance columns
-COLUMNS.update(INPUT_COLUMNS)
-COLUMNS.update(PERFORMANCE_METRIC_COLUMNS)
+# All dataset columns
+COLUMNS = {}
+COLUMNS.update(RUN_COLUMNS)
+COLUMNS.update(CONFIGURATION_COLUMNS)
+COLUMNS.update(WORKLOAD_COLUMNS)
+COLUMNS.update(METRICS_COLUMNS)
+
 
 @dataclass
 class SLO:
@@ -734,6 +767,20 @@ class SLO:
             raise Exception(
                 f'Column must have a preferred direction: {
                     self.col}')
+
+
+def col_base(col: str) -> str:
+    """Get original column name, removing bound prefixes if present.
+
+    Args:
+        col (str): Column name, which may include a bound prefix.
+
+    Returns:
+        str: Column name, without any bound prefixes.
+    """
+    if col[:BOUND_PREFIX_LEN] in COLUMN_BOUND_STR:
+        return col[BOUND_PREFIX_LEN:]
+    return col
 
 
 def check_dir(dir: str) -> None:
@@ -808,7 +855,7 @@ def get_benchmark_report_files(source_dir: str) -> list[str]:
     rb_files = []
     check_dir(source_dir)
     path = Path(source_dir)
-    for file in path.rglob("benchmark_report,_*.yaml"):
+    for file in path.rglob('benchmark_report,_*.yaml', recurse_symlinks=True):
         rb_files.append(str(file))
     return rb_files
 
@@ -896,9 +943,24 @@ def add_benchmark_report_to_df(
         runs_df (DataFrame): DataFrame to add a row to for the provided run.
         br_file (str): Benchmark report file to import.
     """
+    # Import benchmark report.
+    # We will parse through this to populate a row in the DataFrame
     report = convert.import_benchmark_report(br_file)
 
-    # Get plugin parameters
+    # Get parallelism and replica details
+    rp = _get_replicas_and_parallelism(report)
+    if rp['is_pd']:
+        num_gpus = 0
+        # We assume that EP = TP, where EP is used on expert layers, so no
+        # need to add EP into the GPU count.
+        if rp['p_replicas']:
+            num_gpus += rp['p_tp'] * rp['p_dp'] * rp['p_pp'] * rp['p_replicas']
+        if rp['d_replicas']:
+            num_gpus += rp['d_tp'] * rp['d_dp'] * rp['d_pp'] * rp['d_replicas']
+    else:
+        num_gpus = rp['tp'] * rp['replicas']
+
+    # Get inference scheduler plugin parameters
     prefix_cache_scorer_block_size = None
     prefix_cache_scorer_lur_capacity_per_server = None
     prefix_cache_scorer_max_blocks_to_match = None
@@ -921,8 +983,7 @@ def add_benchmark_report_to_df(
                 # used
                 prefix_cache_scorer_mode = plugin['parameters'].get(
                     'mode', 'default')
-
-    # Set default weights to zero (disabled)
+    # Set default plugin weights to zero (disabled)
     # TODO: capture other settings for prefix cache scorer
     # https://gateway-api-inference-extension.sigs.k8s.io/guides/epp-configuration/prefix-aware/
     prefix_cache_scorer_weight = 0
@@ -947,40 +1008,54 @@ def add_benchmark_report_to_df(
             if plugin.get('pluginRef') == 'queue-scorer':
                 queue_scorer_weight = plugin.get('weight', 1)
 
-    # TODO getting concurrency is specific to each harness, will need
-    # a way to capture this universally in the report so we don't have to do
-    # specific extractions like this.
-    if report.scenario.load.name == schema.WorkloadGenerator.VLLM_BENCHMARK:
-        concurrency = report.scenario.load.args.get('max_concurrency')
-    elif report.scenario.load.name == schema.WorkloadGenerator.GUIDELLM:
-        concurrency = get_nested(
-            report.scenario.load.args, [
-                'profile', 'measured_concurrencies'])[0]
-    else:
-        concurrency = None
-
+    # Get workload details
     max_qps = None
+    concurrency = None
+    system_prompt_length = None # Common prefix length
+    question_length = None      # Length after common prefix
+    groups = None               # Number of user groups with distinct prompts
+    prompts_per_group = None    # Common prefixes within a group
+    target_osl = None
+    args = report.scenario.load.args
     if report.scenario.load.name == schema.WorkloadGenerator.INFERENCE_PERF:
         # Workload generator stage
+        # If stage metadata is not present in benchmark report, we cannot know
+        # which Inference Perf result this data came from.
         stage = report.scenario.load.metadata.get('stage')
+        # Get rate
         if stage is not None:
-            stage_list = get_nested(
-                report.scenario.load.args, [
-                    'load', 'stages'])
+            stage_list = get_nested(args, ['load', 'stages'])
             max_qps = stage_list[stage].get('rate')
+        # Request characteristics
+        system_prompt_length = get_nested(args, ['data', 'shared_prefix', 'system_prompt_len'])
+        question_length = get_nested(args, ['data', 'shared_prefix', 'question_len'])
+        groups = get_nested(args, ['data', 'shared_prefix', 'num_groups'])
+        prompts_per_group = get_nested(args, ['data', 'shared_prefix', 'num_prompts_per_group'])
 
-    rp = _get_replicas_and_parallelism(report)
-    if rp['is_pd']:
-        num_gpus = 0
-        # We assume that EP = TP, where EP is used on expert layers, so no
-        # need to add EP into the GPU count.
-        if rp['p_replicas']:
-            num_gpus += rp['p_tp'] * rp['p_dp'] * rp['p_pp'] * rp['p_replicas']
-        if rp['d_replicas']:
-            num_gpus += rp['d_tp'] * rp['d_dp'] * rp['d_pp'] * rp['d_replicas']
-    else:
-        num_gpus = rp['tp'] * rp['replicas']
+        target_osl = int(get_nested(args, ['data', 'shared_prefix', 'output_len'], -1))
+    elif report.scenario.load.name == schema.WorkloadGenerator.VLLM_BENCHMARK:
+        concurrency = args.get('max_concurrency')
+    elif report.scenario.load.name == schema.WorkloadGenerator.GUIDELLM:
+        # Workload generator stage
+        # If stage metadata is missing, this benchmark report is from an older
+        # version of convert.py that only took stage 0 results.
+        stage = report.scenario.load.metadata.get('stage', 0)
+        
+        if 'rate' in args:
+            max_qps = args['rate'][stage]
+        concurrencies = get_nested(args, ['profile', 'measured_concurrencies'])
+        if concurrencies:
+            concurrency = concurrencies[stage]
+        data_list = args.get('data')
+        if data_list:
+            data = yaml.safe_load(data_list[0])
+            system_prompt_length = data.get('prefix_tokens')
+            question_length = data.get('prompt_tokens')
+            groups = 1
+            prompts_per_group = data.get('prefix_count')
+            target_osl = data.get('output_tokens')
 
+    # Calculated metrics
     thpt_per_gpu = report.metrics.throughput.output_tokens_per_sec / num_gpus
     if concurrency:
         thpt_per_user = report.metrics.throughput.output_tokens_per_sec / concurrency
@@ -1035,15 +1110,15 @@ def add_benchmark_report_to_df(
         'Workload_Generator': report.scenario.load.name,
         'ISL': int(round(report.metrics.requests.input_length.mean)),
         'OSL': int(round(report.metrics.requests.output_length.mean)),
-        'ISL_500': floor(report.metrics.requests.input_length.mean / 500) * 500 + 250,
-        'OSL_500': floor(report.metrics.requests.output_length.mean / 500) * 500 + 250,
-        'Target_OSL': int(get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'output_len'], -1)),
+        'ISL_500': floor(report.metrics.requests.input_length.mean / 500) * 500 + 250, # HACK to remove when UI supports bounds
+        'OSL_500': floor(report.metrics.requests.output_length.mean / 500) * 500 + 250, # HACK to remove when UI supports bounds
+        'Target_OSL': target_osl,
         'Max_Concurrency': concurrency,
         'Max_QPS': max_qps,
-        'System_Prompt_Length': get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'system_prompt_len']),
-        'Question_Length': get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'question_len']),
-        'Groups': get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'num_groups']),
-        'Prompts_Per_Group': get_nested(report.scenario.load.args, ['data', 'shared_prefix', 'num_prompts_per_group']),
+        'System_Prompt_Length': system_prompt_length,
+        'Question_Length': question_length,
+        'Groups': groups,
+        'Prompts_Per_Group': prompts_per_group,
         # Requests
         'Total_Requests': report.metrics.requests.total,
         'Failures': report.metrics.requests.failures,
@@ -1122,36 +1197,89 @@ def add_benchmark_report_to_df(
     }
 
 
-def get_scenarios(runs_df: pd.DataFrame,
-                  scenario_columns: list[str]) -> list[dict[str, Any]]:
-    """Get a list of available scenarios from runs DataFrame.
+def get_scenarios(
+        runs_df: pd.DataFrame,
+        scenario_columns: list[str],
+        bounded: bool = False) -> list[dict[str, Any]]:
+    """Get a list of available scenarios and numeric bounds from runs DataFrame.
 
     Args:
         runs_df (DataFrame): Benchmark runs to find the scenarios for.
         scenario_columns (list[str]): Columns to group into common sets.
+        bounded (bool): For numeric columns, return min/max bounds.
 
     Returns:
         list[dict[str, Any]]: List of scenarios, consisting of unique groups of
-            values from scenario_columns.
+            values from scenario_columns. When bounded scenarios are returned,
+            any numeric columns are given as the min/max available with
+            __ge__ and __le__ prefixes, respectively.
     """
+    # Non-numeric columns
+    cols_nn = []
+    # Numeric columns
+    cols_num = []
     for col in scenario_columns:
         if col not in runs_df.columns:
             raise KeyError(f'Invalid column: {col}')
-    scenario_tuples = list(
-        set(runs_df.set_index(scenario_columns).index.dropna()))
+        if COLUMNS[col].dtype in ['int', 'float']:
+            cols_num.append(col)
+        else:
+            cols_nn.append(col)
+
+    # Get unique combinations of values for non-numeric scenario columns,
+    # as tuples.
+    if bounded:
+        if not cols_nn:
+            raise Exception(
+                'Scenario must include at least one non-numeric column')
+        scenario_tuples = list(set(runs_df.set_index(cols_nn).index.dropna()))
+    else:
+        scenario_tuples = list(
+            set(runs_df.set_index(scenario_columns).index.dropna()))
+
+    # Create list of scenario dicts
     scenarios = []
+    # If there is a column that is all NA in a scenario, we will drop that
+    # scenario
+    all_na = False
     for s_tuple in scenario_tuples:
         s_dict = {}
-        for ii, col in enumerate(scenario_columns):
-            s_dict[col] = s_tuple[ii]
+        if bounded:
+            for ii, col_nn in enumerate(cols_nn):
+                s_dict[col_nn] = s_tuple[ii]
+            # Get rows matching this scenario's non-numeric columns
+            df = get_scenario_df(runs_df, s_dict)
+            # Get min/max for numeric columns of this scenario
+            for col_num in cols_num:
+                if df[col_num].isna().all():
+                    # This scenario has a column that is all NA, drop it
+                    all_na = True
+                    break
+                # Format as appropriate data type
+                fmt = getattr(builtins, COLUMNS[col_num].dtype)
+                # Get min/max
+                val_min = fmt(df[col_num].min())
+                val_max = fmt(df[col_num].max())
+                if val_min == val_max:
+                    # Column only has a single value, no need to specify bounds
+                    s_dict[col_num] = val_min
+                else:
+                    s_dict['__ge__' + col_num] = val_min
+                    s_dict['__le__' + col_num] = val_max
+        else:
+            for ii, col in enumerate(scenario_columns):
+                s_dict[col] = s_tuple[ii]
+        if not all_na:
+            # Add scenario only if there are rows were all columns have data
+            scenarios.append(s_dict)
+        all_na = False
 
-        scenarios.append(s_dict)
     return scenarios
 
 
 def get_scenario_df(
         runs_df: pd.DataFrame,
-        scenario: dict[str, Any]):
+        scenario: dict[str, Any]) -> pd.DataFrame:
     """Get rows from a dataframe matching a scenario.
 
     Args:
@@ -1163,8 +1291,116 @@ def get_scenario_df(
         pandas.DataFrame: Rows matching the scenario.
     """
     for col, val in scenario.items():
-        runs_df = runs_df[(runs_df[col] == val)]
+        if col[:BOUND_PREFIX_LEN] == '__ge__':
+            runs_df = runs_df[(runs_df[col[BOUND_PREFIX_LEN:]] >= val)]
+        elif col[:BOUND_PREFIX_LEN] == '__gt__':
+            runs_df = runs_df[(runs_df[col[BOUND_PREFIX_LEN:]] > val)]
+        elif col[:BOUND_PREFIX_LEN] == '__lt__':
+            runs_df = runs_df[(runs_df[col[BOUND_PREFIX_LEN:]] < val)]
+        elif col[:BOUND_PREFIX_LEN] == '__le__':
+            runs_df = runs_df[(runs_df[col[BOUND_PREFIX_LEN:]] <= val)]
+        else:
+            runs_df = runs_df[(runs_df[col] == val)]
     return runs_df
+
+
+def set_scenario_bounds(
+        scenario: dict[str, Any],
+        bounds: dict[str, dict[str, int | float]]) -> dict[str, Any]:
+    """Create a new scenario with bounds applied.
+
+    Args:
+        scenario (dict[str, Any]): Scenario to apply new bounds to.
+        bounds (dict[str, dict[str, int | float]]): Bounds to apply to
+            scenario.
+
+    Returns:
+        dict[str, Any]: Scenario with updated column bounds.
+    """
+
+    scenario_bounded = {}
+
+    # Get scenario columns, without bound prefixes
+    scenario_cols = []
+    for col in scenario:
+        cb = col_base(col)
+        if cb not in scenario_cols:
+            scenario_cols.append(cb)
+    # Make sure bounds apply only to columns that exist in scenario
+    for col in bounds:
+        if col not in scenario_cols:
+            raise KeyError(f'Invalid column for scenario: {col_base(col)}')
+
+    # Add columns not in bounds to scenario_bounded
+    for col, val in scenario.items():
+        if col_base(col) in bounds:
+            continue
+        scenario_bounded[col] = val
+
+    # Add new bounds to scenario
+    for col, bdict in bounds.items():
+        if not bdict:
+            raise Exception(f'Empty bounds for column: {col}')
+        for bb, val in bdict.items():
+            if bb in STR_TO_COLUMN_BOUND:
+                scenario_bounded[STR_TO_COLUMN_BOUND[bb] + col] = val
+            else:
+                raise Exception(f'Invalid bound type: {bb}')
+
+    return scenario_bounded
+
+
+def rebound_scenario(
+        runs_df: pd.DataFrame,
+        scenario: dict[str, Any]) -> dict[str, Any]:
+    """Update scenario bounds to match available data.
+
+    Tighten any bounds that loosely describe available data.
+
+    For bounds on a column which result in a single value, remove bounds and
+    set this to an inequality.
+
+    If there is no data matching the scenario, return scenario as-is.
+
+    Args:
+        runs_df (pandas.DataFrame): Benchmark runs the scenario applies to.
+        scenario (dict[str, Any]): Columns and values to match.
+
+    Returns:
+        dict[str, Any]: Scenario with updated column bounds.
+    """
+
+    df = get_scenario_df(runs_df, scenario)
+    if len(df) == 0:
+        return scenario
+
+    # Columns that are given as a bound
+    cols_bounded = []
+    # Get columns that are bounded along with their min/max values available
+    scenario_tight = {}
+    for col, val in scenario.items():
+        if col[:BOUND_PREFIX_LEN] in COLUMN_BOUND_STR:
+            bcol = col_base(col)
+            if bcol not in cols_bounded:
+                # Keep record of bounded columns we already covered
+                cols_bounded.append(bcol)
+                # Format as appropriate data type
+                fmt = getattr(builtins, COLUMNS[bcol].dtype)
+                # Get min/max
+                val_min = fmt(df[bcol].min())
+                val_max = fmt(df[bcol].max())
+                if val_min == val_max:
+                    # Column only has a single value, no need to specify bounds
+                    scenario_tight[bcol] = val_min
+                else:
+                    # Apply lower and upper bounds matching available data
+                    scenario_tight['__ge__' + bcol] = val_min
+                    scenario_tight['__le__' + bcol] = val_max
+        else:
+            # Fixed column
+            scenario_tight[col] = val
+
+    return scenario_tight
 
 
 def get_scenario_counts(
@@ -1205,8 +1441,27 @@ def print_scenarios(
         print(f'{Text.BOLD}{Text.RED}No scenarios available!{Text.DEFAULT}')
         return
 
+    col_names = []
+    # Length of column headers in printable characters
+    col_names_len = []
+    for col in scenarios[0].keys():
+
+        if col[:BOUND_PREFIX_LEN] in COLUMN_BOUND_STR:
+            col_bound = col[:BOUND_PREFIX_LEN]
+            col_base = col[BOUND_PREFIX_LEN:]
+            col_names.append(
+                col_base +
+                Text.MAGENTA +
+                COLUMN_BOUND_STR[col_bound] +
+                Text.DEFAULT +
+                Text.BOLD)
+            col_names_len.append(len(col[BOUND_PREFIX_LEN:]) + 1)
+        else:
+            col_names.append(col)
+            col_names_len.append(len(col))
+
     # Get maximum text length for each column, including header
-    spans = list(map(len, scenarios[0].keys()))
+    spans = col_names_len[:]
     for sc in scenarios:
         for ii, value in enumerate(sc.values()):
             if spans[ii] < len(str(value)):
@@ -1225,8 +1480,8 @@ def print_scenarios(
                     Text.BOLD}'
 
     # Add each column name to header
-    for ii, col in enumerate(scenarios[0].keys()):
-        header += col + " " * (spans[ii] - len(col) + 2)
+    for ii, col in enumerate(col_names):
+        header += col + " " * (spans[ii] - col_names_len[ii] + 2)
     header += f'{Text.DEFAULT}'
     print(header)
 
@@ -1261,15 +1516,25 @@ def make_scenarios_summary_df(
     Returns:
         pandas.DataFrame: Details about available scenarios
     """
+
+    # Make a column name utilizing bound prefixes
+    def col_name(col: str) -> str:
+        if col[:BOUND_PREFIX_LEN] in COLUMN_BOUND_STR:
+            return col[BOUND_PREFIX_LEN:] + \
+                COLUMN_BOUND_STR[col[:BOUND_PREFIX_LEN]]
+        return col
+
     # Make DataFrame with matching row counts, and columns values from scenario
     schema = {
         'Count': pd.Series(dtype='int'),
     }
+
     if scenarios:
         # If scenarios is empty, we will end up with a DataFrame having only
         # a 'Count' column and no rows
-        for col in scenarios[0]:
-            schema[col] = pd.Series(dtype=COLUMNS[col].dtype)
+        for col in scenarios[0].keys():
+            schema[col_name(col)] = pd.Series(
+                dtype=COLUMNS[col_base(col)].dtype)
     df = pd.DataFrame(schema)
 
     # Populate DataFrame
@@ -1279,7 +1544,7 @@ def make_scenarios_summary_df(
             continue
         row = {'Count': counts[ii]}
         for col, val in sc.items():
-            row[col] = val
+            row[col_name(col)] = val
         # Index of DataFrame will have 1:1 correspondance with scenario index
         df.loc[ii] = row
 

@@ -16,17 +16,29 @@ try:
     from explorer import (
         COLUMNS,
         SLO,
+        col_base,
         get_scenario_df,
         get_meet_slo_df,
-        get_pareto_front_df
+        get_pareto_front_df,
+        rebound_scenario,
+    )
+    from constants import (
+        BOUND_PREFIX_LEN,
+        COLUMN_BOUND_STR,
     )
 except ImportError:
     from config_explorer.explorer import (
         COLUMNS,
         SLO,
+        col_base,
         get_scenario_df,
         get_meet_slo_df,
-        get_pareto_front_df
+        get_pareto_front_df,
+        rebound_scenario,
+    )
+    from config_explorer.constants import (
+        BOUND_PREFIX_LEN,
+        COLUMN_BOUND_STR,
     )
 
 
@@ -68,6 +80,114 @@ def _column_axis_label(col: str) -> str:
     return label
 
 
+def _make_title(scenario: dict[str, Any]) -> str:
+    """Make a plot title that details the scenario.
+
+    Args:
+        scenario (dict[str, Any]): Scenario to describe as a multi-line title.
+
+    Returns:
+        str: Plot title
+    """
+
+    # Columns describing a bound
+    cols_bounded = []
+
+    title = ''
+    for col, value in scenario.items():
+        if col[:BOUND_PREFIX_LEN] in COLUMN_BOUND_STR:
+            if col_base(col) not in cols_bounded:
+                cols_bounded.append(col_base(col))
+            # Handle bounded columns later
+            continue
+        if len(title.rsplit('\n')[-1]) > 30:
+            title += '\n'
+        title += f'{COLUMNS[col].label}: {value}  '
+
+    # Add bounded columns to title
+    for col in cols_bounded:
+        if len(title.rsplit('\n')[-1]) > 30:
+            title += '\n'
+        # Strings describing value bound
+        val_bounds = []
+        for bound_type in COLUMN_BOUND_STR:
+            # Bounded column name, as it will appear in a scenario
+            col_bound = bound_type + col
+            if col_bound not in scenario:
+                # This bound type is not in the scenario
+                continue
+            value = scenario[col_bound]
+            val_bounds.append(f'{COLUMN_BOUND_STR[bound_type]}{value}')
+        title += f'{COLUMNS[col].label}: {" ".join(val_bounds)}  '
+
+    return title.strip()
+
+
+def plot_col_histogram(
+        runs_df: pd.DataFrame,
+        col: str,
+        num_bins: int = 50) -> plt.Figure:
+    """Plot a histogram of values for a column.
+
+    Args:
+        runs_df (pandas.DataFrame): Benchmark run data.
+        col_x (str): Column to histogram.
+        num_bins (int): Number of bins to use in histogram.
+
+    Returns:
+        matplotlib.pyplot.Figure: Plot figure.
+    """
+    if len(runs_df[col].dropna()) < 1:
+        return
+
+    global fignum
+    fignum += 1
+    fig = plt.figure(fignum)
+
+    plt.hist(list(runs_df[col].dropna()), bins=num_bins, color='#0000FF')
+    plt.xlabel(_column_axis_label(col), fontsize='16')
+    plt.ylabel('Counts', fontsize='16')
+    return fig
+
+
+def plot_scenario_histogram(
+        runs_df: pd.DataFrame,
+        scenario: dict[str, Any],
+        num_bins: int = 50) -> dict[str, plt.Figure]:
+    """
+    Plot value histograms for numeric columns in a scenario having a bound.
+    Any columns having a single value will be skipped.
+
+    Args:
+        runs_df (pandas.DataFrame): Benchmark run data.
+        scenario (dict[str, Any]): Scenario from benchmark data to plot.
+        num_bins (int): Number of bins to use in histogram.
+
+    Returns:
+        dict[str, matplotlib.pyplot.Figure]: List of histogram plots.
+    """
+    figs = {}
+
+    plot_cols = []
+    for col in scenario:
+        if col[:BOUND_PREFIX_LEN] not in COLUMN_BOUND_STR:
+            # This is not a bounded column
+            continue
+        if col[BOUND_PREFIX_LEN:] in plot_cols:
+            # This column was already plotted
+            continue
+        if len(runs_df[col[BOUND_PREFIX_LEN:]].dropna().unique()) < 2:
+            # There is only a single value, no need to plot a histogram
+            continue
+        # Keep record of plotted columns
+        plot_cols.append(col[BOUND_PREFIX_LEN:])
+        # Create histogram figure
+        figs[col[BOUND_PREFIX_LEN:]] = plot_col_histogram(
+            runs_df, col[BOUND_PREFIX_LEN:], num_bins)
+
+    return figs
+
+
 def plot_scenario(
         runs_df: pd.DataFrame,
         scenario: dict[str, Any],
@@ -105,8 +225,10 @@ def plot_scenario(
         matplotlib.pyplot.Figure: Plot figure.
     """
     for col in scenario:
-        if col not in runs_df.columns:
-            raise KeyError(f'Invalid column: {col}')
+        if col_base(col) not in runs_df.columns:
+            raise KeyError(f'Invalid column: {col_base(col)}')
+
+    scenario = rebound_scenario(runs_df, scenario)
 
     # Filter runs to specific scenario
     runs_df = get_scenario_df(runs_df, scenario)
@@ -169,13 +291,7 @@ def plot_scenario(
     else:
         plt.axis([0, None, 0, None])
 
-    title = ''
-    for key, value in scenario.items():
-        if len(title.rsplit('\n')[-1]) > 30:
-            title += '\n'
-        title += f'{COLUMNS[key].label}: {value}  '
-    title.strip()
-    plt.title(title)
+    plt.title(_make_title(scenario))
     plt.xlabel(_column_axis_label(col_x), fontsize='16')
     plt.ylabel(_column_axis_label(col_y), fontsize='16')
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
@@ -223,8 +339,10 @@ def plot_scenario_tradeoff(
         matplotlib.pyplot.Figure: Plot figure.
     """
     for col in scenario:
-        if col not in runs_df.columns:
-            raise KeyError(f'Invalid column: {col}')
+        if col_base(col) not in runs_df.columns:
+            raise KeyError(f'Invalid column: {col_base(col)}')
+
+    scenario = rebound_scenario(runs_df, scenario)
 
     # Filter runs to specific scenario
     runs_df = get_scenario_df(runs_df, scenario)
@@ -297,12 +415,7 @@ def plot_scenario_tradeoff(
     else:
         plt.axis([0, None, 0, None])
 
-    title = ''
-    for key, value in scenario.items():
-        if len(title.rsplit('\n')[-1]) > 30:
-            title += '\n'
-        title += f'{COLUMNS[key].label}: {value}  '
-    title.strip()
+    title = _make_title(scenario)
     title += f'\n\nPoint labels: {_column_axis_label(col_z)}'
     plt.title(title)
     plt.xlabel(_column_axis_label(col_x), fontsize='16')
@@ -336,8 +449,10 @@ def plot_pareto_tradeoff(
         matplotlib.pyplot.Figure: Plot figure.
     """
     for col in scenario:
-        if col not in runs_df.columns:
-            raise KeyError(f'Invalid column: {col}')
+        if col_base(col) not in runs_df.columns:
+            raise KeyError(f'Invalid column: {col_base(col)}')
+
+    scenario = rebound_scenario(runs_df, scenario)
 
     # Filter runs to specific scenario
     scenario_df = get_scenario_df(runs_df, scenario)
@@ -396,13 +511,7 @@ def plot_pareto_tradeoff(
     else:
         plt.axis([0, None, 0, None])
 
-    title = ''
-    for key, value in scenario.items():
-        if len(title.rsplit('\n')[-1]) > 30:
-            title += '\n'
-        title += f'{COLUMNS[key].label}: {value}  '
-    title.strip()
-    plt.title(title)
+    plt.title(_make_title(scenario))
     plt.xlabel(_column_axis_label(col_x), fontsize='16')
     plt.ylabel(_column_axis_label(col_y), fontsize='16')
     plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)

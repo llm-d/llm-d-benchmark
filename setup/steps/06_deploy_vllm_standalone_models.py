@@ -197,9 +197,9 @@ metadata:
   name: vllm-standalone-{model_label}
   labels:
     app: vllm-standalone-{model_label}
-    stood-up-by: {ev['control_username']}
+    stood-up-by: "{ev['control_username']}"
     stood-up-from: llm-d-benchmark
-    stood-up-via: {ev['deploy_methods']}
+    stood-up-via: "{ev['deploy_methods']}"
   namespace: {ev['vllm_common_namespace']}
 spec:
   replicas: {ev['vllm_common_replicas']}
@@ -332,9 +332,9 @@ metadata:
   name: vllm-standalone-{model_label}
   namespace: {ev['vllm_common_namespace']}
   labels:
-    stood-up-by: {ev['control_username']}
+    stood-up-by: "{ev['control_username']}"
     stood-up-from: llm-d-benchmark
-    stood-up-via: {ev['deploy_methods']}
+    stood-up-via: "{ev['deploy_methods']}"
 spec:
   ports:
   - name: http

@@ -37,7 +37,8 @@ function show_usage {
             -a/--affinity [kubernetes node affinity] (default=$LLMDBENCH_VLLM_COMMON_AFFINITY) \n \
             -b/--annotations [kubernetes pod annotations] (default=$LLMDBENCH_VLLM_COMMON_ANNOTATIONS) \n \
             -r/--release [modelservice helm chart release name (default=$LLMDBENCH_VLLM_MODELSERVICE_RELEASE)] \n \
-            -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)]
+            -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)] \n \
+            -u/--wva [deploy model with Workload Variant Autoscaler (default=$LLMDBENCH_WVA_ENABLED)] \n \
             -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
             -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
             -h/--help (show this help)\n \
@@ -119,6 +120,9 @@ while [[ $# -gt 0 ]]; do
         -b|--annotations)
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_ANNOTATIONS="$2"
         shift
+        ;;
+        -u|--wva)
+        export LLMDBENCH_WVA_ENABLED=1
         ;;
         -n|--dry-run)
         export LLMDBENCH_CLIOVERRIDE_CONTROL_DRY_RUN=1
