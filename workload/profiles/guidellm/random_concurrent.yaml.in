@@ -3,7 +3,7 @@ model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
 request_type: text_completions
 profile: concurrent
 rate: 1
-max_seconds: 30
+data_samples: 10
 data:
   prompt_tokens: 10000
   output_tokens: 1000
