@@ -1,0 +1,66 @@
+imports:
+  - BASE_DIR/_scenarios/guides/pd-disaggregation.yaml
+standup:
+  - treatments:
+      - factor: modelservice[0].deploy
+        levels:
+          - true
+          - false
+      - factor: standalone[0].deploy
+        levels:
+          - true
+          - false
+      - factor: parameters.parallelism.standalone.tensor
+        levels:
+          - 4
+          - 8
+      - factor: parameters.parallelism.decode.tensor
+        levels:
+          - 2
+          - 4
+          - 8
+      - factor: parameters.parallelism.prefill.tensor
+        levels:
+          - 1
+          - 2
+      - factor: parameters.replicas.standalone
+        levels:
+          - 2
+          - 4
+      - factor: parameters.replicas.decode
+        levels:
+          - 1
+          - 2
+          - 4
+      - factor: parameters.replicas.prefill
+        levels:
+          - 2
+          - 4
+          - 6
+          - 8
+harness:
+  - doe:
+      - factor: max-concurrency
+        levels:
+          - 1
+          - 8
+          - 32
+          - 64
+          - 128
+          - 256
+      - factor: num-prompts
+        levels:
+          - 10
+          - 80
+          - 320
+          - 640
+          - 1280
+          - 2560
+      - treatments:
+        - "1,10"
+        - "8,80"
+        - "32,320"
+        - "64,640"
+        - "128,1280"
+        - "256,2560"
+

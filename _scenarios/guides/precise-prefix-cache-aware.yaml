@@ -1,0 +1,64 @@
+standup:
+  - stack: "stack-1"
+    parameters:
+      model:
+        - name: meta-llama/Llama-3.1-8B-Instruct
+          maxlen: 16000
+      volumes:
+        - name: model-storage
+          size: 1Ti
+      replicas:
+        decode: 2
+        prefill: 0
+      resources:
+        decode:
+          memory: 64Gi
+          cpu: 16
+        prefill:
+          memory: 64Gi
+          cpu: 16
+      env:
+        decode:
+        - name: PYTHONHASHSEED
+          value: "42"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: UCX_TLS
+          value: "rc,sm,cuda_ipc,cuda_copy,tcp"
+        - name: UCX_SOCKADDR_TLS_PRIORITY
+          value: "tcp"
+        ###- name: UCX_NET_DEVICES
+        ###  value: mlx5_1:1
+        ###- name: NCCL_IB_HCA
+        ###  value: mlx5_1
+        - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+          value: ".standup[0].parameters.ports.nixl"
+        - name: VLLM_LOGGING_LEVEL
+          value: DEBUG
+        - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+          value: "1"
+      command:
+        decode:
+          type: custom
+          args:
+            vllm serve /model-cache/models/.standup[0].parameters.model[0].name \
+            --host 0.0.0.0 \
+            --served-model-name .standup[0].parameters.model[0].maxlen \
+            --port .standup[0].parameters.ports.readiness \
+            --block-size .standup[0].parameters.model[0].blocksize \
+            --max-model-len .standup[0].parameters.model[0].maxlen \
+            --prefix-caching-hash-algo sha256_cbor \
+            --kv-transfer-config '{"kv_connector":"NixlConnector", "kv_role":"kv_both"}' \
+            --kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://.standup[0].parameters.model[0].label..standup[0].parameters.namespace.svc.cluster.local:.standup[0].parameters.ports.nixl\",\"topic\":\"kv@\${POD_IP}@.standup[0].parameters.model[0].name\"}" \
+            --enforce-eager
+harness:
+  - runner: "runner-1"
+    parameters:
+      profile: shared_prefix_synthetic.yaml

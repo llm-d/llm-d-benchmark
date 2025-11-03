@@ -1,0 +1,24 @@
+imports:
+  - BASE_DIR/_scenarios/guides/precise-prefix-cache-aware.yaml
+standup:
+  - treatments:
+      - factor: parameters.gaie.plugins
+        levels:
+          - default
+          - prefix-cache-estimate-config
+          - prefix-cache-tracking-config
+harness:
+  - doe:
+      - factor: data.shared_prefix.num_groups
+        levels:
+          - 40
+          - 60
+      - factor: data.shared_prefix.system_prompt_len
+        levels:
+          - 80000
+          - 50000
+          - 1000
+      - treatments:
+        - long: "40,8000"
+        - medium: "60,5000"
+        - short: "60,1000"

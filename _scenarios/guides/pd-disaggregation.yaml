@@ -1,0 +1,55 @@
+standup:
+  - stack: "stack-1"
+    parameters:
+      model:
+        - name: meta-llama/Llama-3.1-8B-Instruct
+          maxlen: 16000
+          blocksize: 128
+      volumes:
+        - name: model-storage
+          size: 1Ti
+      parallelism:
+        decode:
+          tensor: 1
+        prefill:
+          tensor: 1
+      resources:
+        decode:
+          memory: 128Gi
+          cpu: 32
+        prefill:
+          memory: 128Gi
+          cpu: 32
+      replicas:
+        decode: 2
+        prefill: 2
+      command:
+        decode:
+          type: vllmServe
+          args:
+            - "--block-size"
+            - ".standup[0].parameters.model[0].blocksize"
+            - "--kv-transfer-config"
+            - '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'
+            - "--disable-log-requests"
+            - "--disable-uvicorn-access-log"
+            - "--max-model-len"
+            - ".standup[0].parameters.model[0].maxlen"
+        prefill:
+          type: vllmServe
+          args:
+            - "--block-size"
+            - ".standup[0].parameters.model[0].blocksize"
+            - "--kv-transfer-config"
+            - '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'
+            - "--disable-log-requests"
+            - "--disable-uvicorn-access-log"
+            - "--max-model-len"
+            - ".standup[0].parameters.model[0].maxlen"
+harness:
+    - runner: "runner-1"
+      parameters:
+        namespace: harnessns
+        harness:
+          name: vllm-benchmark
+          profile: random_concurrent.yaml

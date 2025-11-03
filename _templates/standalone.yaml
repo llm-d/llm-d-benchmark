@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: .standup[0].parameters.model[0].label
+  labels: .standup[0].parameters.labels
+  namespace: .standup[0].parameters.namespace
+spec:
+  replicas: .standup[0].parameters.replicas.standalone
+  selector:
+    matchLabels:
+      app: .standup[0].parameters.model[0].label
+  template:
+    metadata:
+      labels: .standup[0].parameters.labels
+      annotations: .standup[0].parameters.annotations
+    spec:
+      schedulerName: default-scheduler
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: .standup[0].parameters.accelerators.standalone.key
+                operator: In
+                values:
+                - .standup[0].parameters.accelerators.standalone.value
+      containers:
+      - name: vllm-standalone-.standup[0].parameters.model[0].label
+        image: ".images[]|select(.name==\"vllm\").registry/.images[]|select(.name==\"vllm\").repo/.images[]|select(.name==\"vllm\").image:.images[]|select(.name==\"vllm\").tag"
+        imagePullPolicy: Always
+        command:
+        - /bin/bash
+        - "-c"
+        args: .standup[0].parameters.command.standalone
+        env: .standup[0].parameters.env.standalone
+        ports:
+        - containerPort: .standup[0].parameters.ports.service
+        startupProbe:
+          httpGet:
+            path: /health
+            port: .standup[0].parameters.ports.service
+          failureThreshold: 200
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: .standup[0].parameters.ports.service
+          failureThreshold: 3
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: .standup[0].parameters.ports.service
+          failureThreshold: 3
+          periodSeconds: 5
+        resources:
+          limits: .standup[0].parameters.resources.prefill
+          requests: .standup[0].parameters.resources.prefill
+        volumeMounts:
+        - name: preprocesses
+          mountPath: /setup/preprocess
+        - name: cache-volume
+          mountPath: /.harness[0].parameters.volumes[0].mount
+        - name: .harness[0].parameters.volumes[1].name
+          mountPath: .harness[0].parameters.volumes[1].mount
+      volumes:
+      - name: preprocesses
+        configMap:
+          name: .prepare.dependencies.files[0]
+          defaultMode: 0500
+      - name: cache-volume
+        persistentVolumeClaim:
+          claimName: .harness[0].parameters.volumes[0].name
+#          readOnly: true
+      - name: .harness[0].parameters.volumes[1].name
+        emptyDir:
+          medium: .harness[0].parameters.volumes[1].type
+          sizeLimit: .harness[0].parameters.volumes[1].size
+apiVersion: v1
+kind: Service
+metadata:
+  name: .standup[0].parameters.model[0].name
+  namespace: .standup[0].parameters.namespace
+  labels: .standup[0].parameters.labels
+spec:
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+  selector:
+    app: .standup[0].parameters.model[0].name
+  type: ClusterIP

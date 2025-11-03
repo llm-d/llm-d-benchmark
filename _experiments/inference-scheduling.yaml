@@ -1,0 +1,32 @@
+imports:
+  - BASE_DIR/_scenarios/guides/inference-scheduling.yaml
+standup:
+  - treatments:
+      - factor: parameters.gaie.plugins
+        levels:
+          - inf-sche-none.yaml
+          - inf-sche-prefix.yaml
+          - inf-sche-kv.yaml
+          - inf-sche-queue.yaml
+harness:
+  - treatments:
+      - factor: data.shared_prefix.question_len
+        levels:
+          - 100
+          - 300
+          - 1000
+      - factor: data.shared_prefix.output_len
+        levels:
+          - 100
+          - 300
+          - 1000
+      - treatments:
+        - "100,100"
+        - "100,300"
+        - "100,1000"
+        - "300,100"
+        - "300,300"
+        - "300,1000"
+        - "1000,100"
+        - "1000,300"
+        - "1000,1000"
