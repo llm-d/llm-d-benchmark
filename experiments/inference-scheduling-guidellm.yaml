@@ -11,16 +11,27 @@ setup:
     - "inf-sche-queue.yaml"
 run:
   factors:
-    - data
-  levels:
-    data: "prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=100REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048,prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=300REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=300REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048, prompt_tokens=300REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=100REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048, prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048"
+    - prompt_tokens
+    - output_tokens
   treatments:
-    - "prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048"
-    - "prompt_tokens=100REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048"
-    - "prompt_tokens=100REPLACE_COMMAoutput_tokens=1000REPLACE_COMMAprefix_tokens=2048"
-    - "prompt_tokens=300REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048"
-    - "prompt_tokens=300REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048"
-    - "prompt_tokens=300REPLACE_COMMAoutput_tokens=1000REPLACE_COMMAprefix_tokens=2048"
-    - "prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048"
-    - "prompt_tokens=100REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048"
-    - "prompt_tokens=100REPLACE_COMMAoutput_tokens=1000REPLACE_COMMAprefix_tokens=2048"
+    - "100,100"
+    - "100,300"
+    - "100,1000"
+    - "300,100"
+    - "300,300"
+    - "300,1000"
+    - "1000,100"
+    - "1000,300"
+    - "1000,1000"
+  # levels:
+  #   data: "prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=100REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048,prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=300REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=300REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048, prompt_tokens=300REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048, prompt_tokens=100REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048, prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048"
+  # treatments:
+  #   - "prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048"
+  #   - "prompt_tokens=100REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048"
+  #   - "prompt_tokens=100REPLACE_COMMAoutput_tokens=1000REPLACE_COMMAprefix_tokens=2048"
+  #   - "prompt_tokens=300REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048"
+  #   - "prompt_tokens=300REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048"
+  #   - "prompt_tokens=300REPLACE_COMMAoutput_tokens=1000REPLACE_COMMAprefix_tokens=2048"
+  #   - "prompt_tokens=100REPLACE_COMMAoutput_tokens=100REPLACE_COMMAprefix_tokens=2048"
+  #   - "prompt_tokens=100REPLACE_COMMAoutput_tokens=300REPLACE_COMMAprefix_tokens=2048"
+  #   - "prompt_tokens=100REPLACE_COMMAoutput_tokens=1000REPLACE_COMMAprefix_tokens=2048"

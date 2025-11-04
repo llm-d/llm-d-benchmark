@@ -114,7 +114,7 @@ export LLMDBENCH_CONTROL_WORK_DIR=~/data/inference-scheduling/guidellm
 export export LLMDBENCH_IMAGE_REGISTRY=quay.io
 export LLMDBENCH_IMAGE_REPO=jgchen
 export LLMDBENCH_IMAGE_NAME=llm-d-benchmark
-export LLMDBENCH_IMAGE_TAG=0.0.24
+export LLMDBENCH_IMAGE_TAG=0.0.25
 
 # export LLMDBENCH_IMAGE_REGISTRY="quay.io"
 # export LLMDBENCH_IMAGE_REPO="rh_ee_smonson"
