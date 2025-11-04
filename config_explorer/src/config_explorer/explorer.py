@@ -37,9 +37,9 @@ of metrics, showing, for example, the tradeoff between throughput and latency.
 
 import builtins
 from dataclasses import dataclass
-from math import floor # only needed for HACK to remove when UI supports bounds
 import os
 from pathlib import Path
+import sys
 from typing import Any
 
 import pandas as pd
@@ -282,14 +282,6 @@ WORKLOAD_COLUMNS = {
         dtype='int',
         label='Output Sequence Length',
     ),
-    'ISL_500': ColumnProperties(  # HACK to remove when UI supports bounds
-        dtype='int',              # HACK to remove when UI supports bounds
-        label='ISL Nearest 500',  # HACK to remove when UI supports bounds
-    ),                            # HACK to remove when UI supports bounds
-    'OSL_500': ColumnProperties(  # HACK to remove when UI supports bounds
-        dtype='int',              # HACK to remove when UI supports bounds
-        label='OSL Nearest 500',  # HACK to remove when UI supports bounds
-    ),                            # HACK to remove when UI supports bounds
     'Target_OSL': ColumnProperties(
         dtype='int',
         label='Target OSL',
@@ -764,9 +756,7 @@ class SLO:
         if COLUMNS[self.col].dtype != 'float':
             raise TypeError(f'Column must have float datatype: {self.col}')
         if COLUMNS[self.col].pref == Pref.NEUTRAL:
-            raise Exception(
-                f'Column must have a preferred direction: {
-                    self.col}')
+            raise Exception(f'Column must have a preferred direction: {self.col}')
 
 
 def col_base(col: str) -> str:
@@ -843,11 +833,15 @@ def mul(a: int | None, b: int | None) -> int | None:
     return None
 
 
-def get_benchmark_report_files(source_dir: str) -> list[str]:
+def get_benchmark_report_files(
+    source_dir: str,
+    recurse_symlinks: bool = False
+) -> list[str]:
     """Get a list of benchmark report files within provided path (recursive).
 
     Args:
         source_dir (str): Directory to recursively search for results files.
+        recurse_symlinks (bool): Recurse through symbolic links.
 
     Returns:
         list: List of paths to benchmark report files.
@@ -855,8 +849,24 @@ def get_benchmark_report_files(source_dir: str) -> list[str]:
     rb_files = []
     check_dir(source_dir)
     path = Path(source_dir)
-    for file in path.rglob('benchmark_report,_*.yaml', recurse_symlinks=True):
-        rb_files.append(str(file))
+
+    symlinks_supported = False
+    if recurse_symlinks:
+        if sys.version_info.major >= 3 and sys.version_info.minor >= 13:
+            symlinks_supported = True
+        else:
+            sys.stderr.write(
+                'Symbolic link recursion not supported below Python 3.13\n')
+
+    if recurse_symlinks and symlinks_supported:
+        for file in path.rglob(
+                'benchmark_report,_*.yaml',
+                recurse_symlinks=True):
+            rb_files.append(str(file))
+    else:
+        for file in path.rglob('benchmark_report,_*.yaml'):
+            rb_files.append(str(file))
+
     return rb_files
 
 
@@ -1011,7 +1021,7 @@ def add_benchmark_report_to_df(
     # Get workload details
     max_qps = None
     concurrency = None
-    system_prompt_length = None # Common prefix length
+    system_prompt_length = None  # Common prefix length
     question_length = None      # Length after common prefix
     groups = None               # Number of user groups with distinct prompts
     prompts_per_group = None    # Common prefixes within a group
@@ -1027,12 +1037,18 @@ def add_benchmark_report_to_df(
             stage_list = get_nested(args, ['load', 'stages'])
             max_qps = stage_list[stage].get('rate')
         # Request characteristics
-        system_prompt_length = get_nested(args, ['data', 'shared_prefix', 'system_prompt_len'])
-        question_length = get_nested(args, ['data', 'shared_prefix', 'question_len'])
+        system_prompt_length = get_nested(
+            args, ['data', 'shared_prefix', 'system_prompt_len'])
+        question_length = get_nested(
+            args, ['data', 'shared_prefix', 'question_len'])
         groups = get_nested(args, ['data', 'shared_prefix', 'num_groups'])
-        prompts_per_group = get_nested(args, ['data', 'shared_prefix', 'num_prompts_per_group'])
+        prompts_per_group = get_nested(
+            args, ['data', 'shared_prefix', 'num_prompts_per_group'])
 
-        target_osl = int(get_nested(args, ['data', 'shared_prefix', 'output_len'], -1))
+        target_osl = int(
+            get_nested(
+                args, [
+                    'data', 'shared_prefix', 'output_len'], -1))
     elif report.scenario.load.name == schema.WorkloadGenerator.VLLM_BENCHMARK:
         concurrency = args.get('max_concurrency')
     elif report.scenario.load.name == schema.WorkloadGenerator.GUIDELLM:
@@ -1040,7 +1056,7 @@ def add_benchmark_report_to_df(
         # If stage metadata is missing, this benchmark report is from an older
         # version of convert.py that only took stage 0 results.
         stage = report.scenario.load.metadata.get('stage', 0)
-        
+
         if 'rate' in args:
             max_qps = args['rate'][stage]
         concurrencies = get_nested(args, ['profile', 'measured_concurrencies'])
@@ -1110,8 +1126,6 @@ def add_benchmark_report_to_df(
         'Workload_Generator': report.scenario.load.name,
         'ISL': int(round(report.metrics.requests.input_length.mean)),
         'OSL': int(round(report.metrics.requests.output_length.mean)),
-        'ISL_500': floor(report.metrics.requests.input_length.mean / 500) * 500 + 250, # HACK to remove when UI supports bounds
-        'OSL_500': floor(report.metrics.requests.output_length.mean / 500) * 500 + 250, # HACK to remove when UI supports bounds
         'Target_OSL': target_osl,
         'Max_Concurrency': concurrency,
         'Max_QPS': max_qps,
@@ -1472,12 +1486,12 @@ def print_scenarios(
         header = f'{Text.BOLD}{Text.BLUE}IDX  {Text.DEFAULT}{Text.BOLD}'
     else:
         counts = get_scenario_counts(runs_df, scenarios)
-        header = f'{
+        header = f"""{
             Text.BOLD}{
             Text.BLUE}IDX  {
             Text.RED}Count  {
                 Text.DEFAULT}{
-                    Text.BOLD}'
+                    Text.BOLD}"""
 
     # Add each column name to header
     for ii, col in enumerate(col_names):
