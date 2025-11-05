@@ -9,9 +9,9 @@
 # Many commonly defined values were left blank (default) so that this scenario is applicable to as many environments as possible.
 
 # Model parameters
-#export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
+export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
-export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
+# export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
 
 # PVC parameters
@@ -28,7 +28,7 @@ export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
 export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true # (default is "false")
 
 #             Affinity to select node with appropriate accelerator (leave uncommented to automatically detect GPU... WILL WORK FOR OpenShift, Kubernetes and GKE)
-#export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3        # OpenShift
+export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3        # OpenShift
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=gpu.nvidia.com/model:H200                           # Kubernetes
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=cloud.google.com/gke-accelerator:nvidia-tesla-a100  # GKE
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=cloud.google.com/gke-accelerator:nvidia-h100-80gb   # GKE
@@ -108,3 +108,12 @@ export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic.yaml
 
 # Local directory to copy benchmark runtime files and results
 export LLMDBENCH_CONTROL_WORK_DIR=~/data/inference-scheduling
+
+# My stuff
+export export LLMDBENCH_IMAGE_REGISTRY=quay.io
+export LLMDBENCH_IMAGE_REPO=jgchen
+export LLMDBENCH_IMAGE_NAME=llm-d-benchmark
+export LLMDBENCH_IMAGE_TAG=0.0.25
+
+export LLMDBENCH_VLLM_COMMON_NAMESPACE=jchen
+export LLMDBENCH_HARNESS_NAMESPACE=jchen
