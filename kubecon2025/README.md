@@ -43,7 +43,7 @@ cd llm-d-benchmark
 ## PD Disaggregation
 
 - Scenario: kubecon2025/pd-disaggregation-scenario.sh
-- Experiment: [pd-disaggreation.yaml](../experiments/pd-disaggregation.yaml)
+- Experiment: [pd-disaggregation.yaml](https://github.com/llm-d/llm-d-benchmark/blob/main/experiments/pd-disaggregation.yaml)
 
 Command:
 
