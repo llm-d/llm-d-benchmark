@@ -174,7 +174,6 @@ def is_openshift(api: pykube.HTTPClient) -> bool:
         )
         return False
 
-
 def clear_string(string_to_clear: str) -> str:
     clear_string_lines = []
     for line in string_to_clear.splitlines():
@@ -183,7 +182,6 @@ def clear_string(string_to_clear: str) -> str:
 
     clear_string = "\n".join(clear_string_lines)
     return clear_string
-
 
 def llmdbench_execute_cmd(
     actual_cmd: str,
@@ -421,7 +419,6 @@ def create_service(
                 announce(f"✅ Service '{service_name}' created successfully.")
     except PyKubeError as e:
         announce(f"Failed to create or update Pod '{service_name}': {e}")
-
 
 def create_namespace(
     api: pykube.HTTPClient,
@@ -1595,7 +1592,6 @@ def get_model_name_from_pod(namespace: str, image: str, ip: str, port: str):
         ),
     )
     return model_name, curl_command
-
 
 def add_scc_to_service_account(
     api: pykube.HTTPClient,

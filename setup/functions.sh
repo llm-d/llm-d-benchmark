@@ -55,7 +55,6 @@ function resolve_harness_git_repo {
 
   if [[ $LLMDBENCH_HARNESS_GIT_REPO == "auto" ]]; then
     case "$harness_name" in
-      "fmperf") echo "https://github.com/fmperf-project/fmperf.git" ;;
       "vllm"|"vllm-benchmark") echo "https://github.com/vllm-project/vllm.git";;
       "inference-perf") echo "https://github.com/kubernetes-sigs/inference-perf.git";;
       "guidellm") echo "https://github.com/vllm-project/guidellm.git";;
@@ -835,7 +834,6 @@ metadata:
   labels:
     app: ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}
 spec:
-  serviceAccountName: $LLMDBENCH_HARNESS_SERVICE_ACCOUNT
   containers:
   - name: harness
     image: $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG})

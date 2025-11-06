@@ -112,8 +112,6 @@ class WorkloadGenerator(StrEnum):
     Enumeration of supported workload generators
 
     Attributes
-        FMPERF: str
-            fmperf
         GUIDELLM: str
             GuideLLM
         INFERENCE_PERF: str
@@ -124,7 +122,6 @@ class WorkloadGenerator(StrEnum):
             vLLM Load times
     """
 
-    FMPERF = auto()
     GUIDELLM = auto()
     INFERENCE_PERF = 'inference-perf'
     VLLM_BENCHMARK = 'vllm-benchmark'

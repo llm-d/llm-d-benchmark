@@ -1060,9 +1060,8 @@
       "type": "string"
     },
     "WorkloadGenerator": {
-      "description": "Enumeration of supported workload generators\n\nAttributes\n    FMPERF: str\n        fmperf\n    GUIDELLM: str\n        GuideLLM\n    INFERENCE_PERF: str\n        Inference Perf\n    VLLM_BENCHMARK: str\n        benchmark_serving from vLLM\n    NOP: str\n        vLLM Load times",
+      "description": "Enumeration of supported workload generators\n\nAttributes\n    GUIDELLM: str\n        GuideLLM\n    INFERENCE_PERF: str\n        Inference Perf\n    VLLM_BENCHMARK: str\n        benchmark_serving from vLLM\n    NOP: str\n        vLLM Load times",
       "enum": [
-        "fmperf",
         "guidellm",
         "inference-perf",
         "vllm-benchmark",

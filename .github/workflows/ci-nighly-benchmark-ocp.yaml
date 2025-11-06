@@ -109,13 +109,6 @@ jobs:
           ./setup/run.sh -c ocp_fb -t standalone
         shell: bash
 
-      - name: Run benchmark (standalone, fmperf)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: |
-          ./setup/run.sh -c ocp_fb -t standalone -l fmperf -w sanity_short-input
-        shell: bash
-
       - name: Run benchmark (standalone, guidellm)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
@@ -143,14 +136,6 @@ jobs:
         run: |
           if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
           ./setup/e2e.sh -c ocp_fb -t modelservice --deep
-        shell: bash
-
-      - name: E2E target cloud (modelservice, fmperf)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
-          ./setup/e2e.sh -c ocp_fb -t modelservice --deep -l fmperf -w sanity_short-input.yaml
         shell: bash
 
       - name: E2E target cloud (modelservice, guidellm)

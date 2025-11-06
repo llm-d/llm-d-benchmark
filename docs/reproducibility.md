@@ -16,11 +16,11 @@ A sample output of the content of `${LLMDBENCH_CONTROL_WORK_DIR}` for a very sim
 ./setup/yamls
 ./setup/yamls/05_pvc_workload-pvc.yaml
 ./setup/yamls/pod_benchmark-launcher.yaml
-./setup/yamls/05_b_service_access_to_fmperf_data.yaml
+./setup/yamls/05_b_service_access_to_inference-perf_data.yaml
 ./setup/yamls/07_deployer_values.yaml
 ./setup/yamls/05_namespace_sa_rbac_secret.yaml
 ./setup/yamls/04_prepare_namespace_llama-3b.yaml
-./setup/yamls/05_a_pod_access_to_fmperf_data.yaml
+./setup/yamls/05_a_pod_access_to_inference-perf_data.yaml
 ./setup/yamls/03_cluster-monitoring-config_configmap.yaml
 ./setup/commands
 ./setup/commands/1748350741979704000_command.log
