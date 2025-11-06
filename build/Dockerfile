@@ -33,8 +33,6 @@ WORKDIR /workspace
 
 # Install harnesses
 
-RUN pip install kubernetes_asyncio
-
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
 ARG INFERENCE_PERF_BRANCH=main
 ARG INFERENCE_PERF_COMMIT=e8e0aa99c57f2ffa0912df7ba1fbd2a8a596a041

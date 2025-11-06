@@ -103,7 +103,6 @@ The configuration explorer is a library that helps find the most cost-effective,
 
 - [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git)
 - [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git)
-- [fmperf](https://github.com/fmperf-project/fmperf)
 - [inference-perf](https://github.com/kubernetes-sigs/inference-perf)
 - [guidellm](https://github.com/vllm-project/guidellm.git)
 - [vllm](https://github.com/vllm-project/vllm.git)
