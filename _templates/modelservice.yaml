@@ -1,32 +1,32 @@
-fullnameOverride: .standup[0].parameters.model[0].label
+fullnameOverride: .experiments[0].user-overrides.inference-engine.model[0].label
 multinode: False
 modelArtifacts:
-  uri: .standup[0].parameters.volumes[0].type://.standup[0].parameters.volumes[0].mount/models/.standup[0].parameters.model[0].name
+  uri: .experiments[0].user-overrides.inference-engine.volumes[0].type://.experiments[0].user-overrides.inference-engine.volumes[0].mount/models/.experiments[0].user-overrides.inference-engine.model[0].name
   size: .prepare.dependencies.storage[]|select(name=.standup[0].stack.parameters.volumes[0].name).size
   authSecretName: ".prepare.dependencies.secrets[0].name"
-  name: .standup[0].parameters.model[0].name
+  name: .experiments[0].user-overrides.inference-engine.model[0].name
 routing:
-  servicePort: .standup[0].parameters.ports.service
+  servicePort: .experiments[0].user-overrides.inference-engine.ports.service
   parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
       name: infra-.standup[0].release-inference-gateway
   proxy:
-    image: ".images[]|select(.name==\"llm-d-routing-sidecar\").registry/.images[]|select(.name==\"llm-d-routing-sidecar\").repo/.images[]|select(.name==\"llm-d-routing-sidecar\").image:.images[]|select(.name==\"llm-d-routing-sidecar\").tag"
+    image: ".images.user-overrides[]|select(.name==\"llm-d-routing-sidecar\").registry/.images.user-overrides[]|select(.name==\"llm-d-routing-sidecar\").repo/.images.user-overrides[]|select(.name==\"llm-d-routing-sidecar\").image:.images.user-overrides[]|select(.name==\"llm-d-routing-sidecar\").tag"
     secure: false
     connector: nixlv2
     debugLevel: 3
   inferencePool:
     create: False
-    name: .standup[0].parameters.model[0].label
+    name: .experiments[0].user-overrides.inference-engine.model[0].label
   httpRoute:
     create: True
     rules:
     - backendRefs:
       - group: inference.networking.x-k8s.io
         kind: InferencePool
-        name: .standup[0].parameters.model[0].label
-        port: .standup[0].parameters.ports.service
+        name: .experiments[0].user-overrides.inference-engine.model[0].label
+        port: .experiments[0].user-overrides.inference-engine.ports.service
         weight: 1
       timeouts:
         backendRequest: 0s
@@ -34,7 +34,7 @@ routing:
       matches:
       - path:
           type: PathPrefix
-          value: /.standup[0].parameters.model[0].name/
+          value: /.experiments[0].user-overrides.inference-engine.model[0].name/
       filters:
       - type: URLRewrite
         urlRewrite:
@@ -44,8 +44,8 @@ routing:
     - backendRefs:
       - group: inference.networking.x-k8s.io
         kind: InferencePool
-        name: .standup[0].parameters.model[0].label
-        port: .standup[0].parameters.ports.service
+        name: .experiments[0].user-overrides.inference-engine.model[0].label
+        port: .experiments[0].user-overrides.inference-engine.ports.service
         weight: 1
       timeouts:
         backendRequest: 0s
@@ -53,98 +53,98 @@ routing:
   epp:
     create: False
 decode:
-  create: bool(.standup[0].parameters.replicas.decode)
-  replicas: .standup[0].parameters.replicas.decode
+  create: bool(.experiments[0].user-overrides.inference-engine.replicas.decode)
+  replicas: .experiments[0].user-overrides.inference-engine.replicas.decode
   acceleratorTypes:
-    labelKey: .standup[0].parameters.accelerators.decode.key
+    labelKey: .experiments[0].user-overrides.inference-engine.accelerators.decode.key
     labelValues:
-      - .standup[0].parameters.accelerators.decode.value
+      - .experiments[0].user-overrides.inference-engine.accelerators.decode.value
   parallelism:
-    data: .standup[0].parameters.parallelism.decode.data
-    tensor: .standup[0].parameters.parallelism.decode.tensor
-  annotations: .standup[0].parameters.annotations
-  podAnnotations: .standup[0].parameters.annotations
+    data: .experiments[0].user-overrides.inference-engine.parallelism.decode.data
+    tensor: .experiments[0].user-overrides.inference-engine.parallelism.decode.tensor
+  annotations: .experiments[0].user-overrides.inference-engine.annotations
+  podAnnotations: .experiments[0].user-overrides.inference-engine.annotations
   extraConfig:
   containers:
   - name: "vllm"
     mountModelVolume: true
-    image: ".images[]|select(.name==\"llm-d\").registry/.images[]|select(.name==\"llm-d\").repo/.images[]|select(.name==\"llm-d\").image:.images[]|select(.name==\"llm-d\").tag"
-    modelCommand: .standup[0].parameters.command.decode.type
-    args: .standup[0].parameters.command.decode.args
-    env: .standup[0].parameters.env.decode
+    image: ".images.user-overrides[]|select(.name==\"llm-d\").registry/.images.user-overrides[]|select(.name==\"llm-d\").repo/.images.user-overrides[]|select(.name==\"llm-d\").image:.images.user-overrides[]|select(.name==\"llm-d\").tag"
+    modelCommand: .experiments[0].user-overrides.inference-engine.command.decode.type
+    args: .experiments[0].user-overrides.inference-engine.command.decode.args
+    env: .experiments[0].user-overrides.inference-engine.env.decode
     resources:
-      limits: .standup[0].parameters.resources.decode
-      requests: .standup[0].parameters.resources.decode
+      limits: .experiments[0].user-overrides.inference-engine.resources.decode
+      requests: .experiments[0].user-overrides.inference-engine.resources.decode
     extraConfig:
       startupProbe:
         httpGet:
           path: /health
-          port: .standup[0].parameters.ports.service
+          port: .experiments[0].user-overrides.inference-engine.ports.service
         failureThreshold: 60
         initialDelaySeconds: 30
         periodSeconds: 30
         timeoutSeconds: 5
       livenessProbe:
         tcpSocket:
-          port: .standup[0].parameters.ports.service
+          port: .experiments[0].user-overrides.inference-engine.ports.service
         failureThreshold: 3
         periodSeconds: 5
       readinessProbe:
         httpGet:
           path: /health
-          port: .standup[0].parameters.ports.readiness
+          port: .experiments[0].user-overrides.inference-engine.ports.readiness
         failureThreshold: 3
         periodSeconds: 5
     volumeMounts:
   volumes:
 prefill:
-  create: bool(.standup[0].parameters.replicas.prefill)
-  replicas: .standup[0].parameters.replicas.prefill]
+  create: bool(.experiments[0].user-overrides.inference-engine.replicas.prefill)
+  replicas: .experiments[0].user-overrides.inference-engine.replicas.prefill]
   acceleratorTypes:
-    labelKey: .standup[0].parameters.accelerators.prefill.key
+    labelKey: .experiments[0].user-overrides.inference-engine.accelerators.prefill.key
     labelValues:
-      - .standup[0].parameters.accelerators.prefill.value
+      - .experiments[0].user-overrides.inference-engine.accelerators.prefill.value
   parallelism:
-    data: .standup[0].parameters.parallelism.prefill.data
-    tensor: .standup[0].parameters.parallelism.prefill.tensor
-  annotations: .standup[0].parameters.annotations
-  podAnnotations: .standup[0].parameters.annotations
+    data: .experiments[0].user-overrides.inference-engine.parallelism.prefill.data
+    tensor: .experiments[0].user-overrides.inference-engine.parallelism.prefill.tensor
+  annotations: .experiments[0].user-overrides.inference-engine.annotations
+  podAnnotations: .experiments[0].user-overrides.inference-engine.annotations
   extraConfig:
   containers:
   - name: "vllm"
     mountModelVolume: true
-    image: ".images[]|select(.name==\"llm-d\").registry/.images[]|select(.name==\"llm-d\").repo/.images[]|select(.name==\"llm-d\").image:.images[]|select(.name==\"llm-d\").tag"
-    modelCommand: .standup[0].parameters.command.prefill.type
-    args: .standup[0].parameters.command.prefill.args
-    env: .standup[0].parameters.env.prefill
+    image: ".images.user-overrides[]|select(.name==\"llm-d\").registry/.images.user-overrides[]|select(.name==\"llm-d\").repo/.images.user-overrides[]|select(.name==\"llm-d\").image:.images.user-overrides[]|select(.name==\"llm-d\").tag"
+    modelCommand: .experiments[0].user-overrides.inference-engine.command.prefill.type
+    args: .experiments[0].user-overrides.inference-engine.command.prefill.args
+    env: .experiments[0].user-overrides.inference-engine.env.prefill
     resources:
-      limits: .standup[0].parameters.resources.prefill
-      requests: .standup[0].parameters.resources.prefill
+      limits: .experiments[0].user-overrides.inference-engine.resources.prefill
+      requests: .experiments[0].user-overrides.inference-engine.resources.prefill
     extraConfig:
       startupProbe:
         httpGet:
           path: /health
-          port: .standup[0].parameters.ports.service
+          port: .experiments[0].user-overrides.inference-engine.ports.service
         failureThreshold: 60
         initialDelaySeconds: 30
         periodSeconds: 30
         timeoutSeconds: 5
       livenessProbe:
         tcpSocket:
-          port: .standup[0].parameters.ports.service
+          port: .experiments[0].user-overrides.inference-engine.ports.service
         failureThreshold: 3
         periodSeconds: 5
       readinessProbe:
         httpGet:
           path: /health
-          port: .standup[0].parameters.ports.service
+          port: .experiments[0].user-overrides.inference-engine.ports.service
         failureThreshold: 3
         periodSeconds: 5
     volumeMounts:
-      - name: .harness[0].parameters.volumes[1].name
-        mountPath: .harness[0].parameters.volumes[1].mount
+      - name: .experiments[0].user-overrides.volumes[1].name
+        mountPath: .experiments[0].user-overrides.volumes[1].mount
   volumes:
-      - name: .harness[0].parameters.volumes[1].name
+      - name: .experiments[0].user-overrides.volumes[1].name
         emptyDir:
-          medium: .harness[0].parameters.volumes[1].type
-          sizeLimit: .harness[0].parameters.volumes[1].size
+          medium: .experiments[0].user-overrides.volumes[1].type
+          sizeLimit: .experiments[0].user-overrides.volumes[1].size

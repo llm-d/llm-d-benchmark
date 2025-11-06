@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: .standup[0].parameters.model[0].label
-  labels: .standup[0].parameters.labels
-  namespace: .standup[0].parameters.namespace
+  name: .experiments[0].user-overrides.inference-engine.model[0].label
+  labels: .experiments[0].user-overrides.inference-engine.labels
+  namespace: .experiments[0].user-overrides.inference-engine.namespace
 spec:
-  replicas: .standup[0].parameters.replicas.standalone
+  replicas: .experiments[0].user-overrides.inference-engine.replicas.standalone
   selector:
     matchLabels:
-      app: .standup[0].parameters.model[0].label
+      app: .experiments[0].user-overrides.inference-engine.model[0].label
   template:
     metadata:
-      labels: .standup[0].parameters.labels
-      annotations: .standup[0].parameters.annotations
+      labels: .experiments[0].user-overrides.inference-engine.labels
+      annotations: .experiments[0].user-overrides.inference-engine.annotations
     spec:
       schedulerName: default-scheduler
       affinity:
@@ -20,50 +20,50 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: .standup[0].parameters.accelerators.standalone.key
+              - key: .experiments[0].user-overrides.inference-engine.accelerators.standalone.key
                 operator: In
                 values:
-                - .standup[0].parameters.accelerators.standalone.value
+                - .experiments[0].user-overrides.inference-engine.accelerators.standalone.value
       containers:
-      - name: vllm-standalone-.standup[0].parameters.model[0].label
-        image: ".images[]|select(.name==\"vllm\").registry/.images[]|select(.name==\"vllm\").repo/.images[]|select(.name==\"vllm\").image:.images[]|select(.name==\"vllm\").tag"
+      - name: vllm-standalone-.experiments[0].user-overrides.inference-engine.model[0].label
+        image: ".images.user-overrides[]|select(.name==\"vllm\").registry/.images.user-overrides[]|select(.name==\"vllm\").repo/.images.user-overrides[]|select(.name==\"vllm\").image:.images.user-overrides[]|select(.name==\"vllm\").tag"
         imagePullPolicy: Always
         command:
         - /bin/bash
         - "-c"
-        args: .standup[0].parameters.command.standalone
-        env: .standup[0].parameters.env.standalone
+        args: .experiments[0].user-overrides.inference-engine.command.standalone
+        env: .experiments[0].user-overrides.inference-engine.env.standalone
         ports:
-        - containerPort: .standup[0].parameters.ports.service
+        - containerPort: .experiments[0].user-overrides.inference-engine.ports.service
         startupProbe:
           httpGet:
             path: /health
-            port: .standup[0].parameters.ports.service
+            port: .experiments[0].user-overrides.inference-engine.ports.service
           failureThreshold: 200
           initialDelaySeconds: 30
           periodSeconds: 30
           timeoutSeconds: 5
         livenessProbe:
           tcpSocket:
-            port: .standup[0].parameters.ports.service
+            port: .experiments[0].user-overrides.inference-engine.ports.service
           failureThreshold: 3
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /health
-            port: .standup[0].parameters.ports.service
+            port: .experiments[0].user-overrides.inference-engine.ports.service
           failureThreshold: 3
           periodSeconds: 5
         resources:
-          limits: .standup[0].parameters.resources.prefill
-          requests: .standup[0].parameters.resources.prefill
+          limits: .experiments[0].user-overrides.inference-engine.resources.prefill
+          requests: .experiments[0].user-overrides.inference-engine.resources.prefill
         volumeMounts:
         - name: preprocesses
           mountPath: /setup/preprocess
         - name: cache-volume
-          mountPath: /.harness[0].parameters.volumes[0].mount
-        - name: .harness[0].parameters.volumes[1].name
-          mountPath: .harness[0].parameters.volumes[1].mount
+          mountPath: /.experiments[0].user-overrides.volumes[0].mount
+        - name: .experiments[0].user-overrides.volumes[1].name
+          mountPath: .experiments[0].user-overrides.volumes[1].mount
       volumes:
       - name: preprocesses
         configMap:
@@ -71,23 +71,23 @@ spec:
           defaultMode: 0500
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: .harness[0].parameters.volumes[0].name
+          claimName: .experiments[0].user-overrides.volumes[0].name
 #          readOnly: true
-      - name: .harness[0].parameters.volumes[1].name
+      - name: .experiments[0].user-overrides.volumes[1].name
         emptyDir:
-          medium: .harness[0].parameters.volumes[1].type
-          sizeLimit: .harness[0].parameters.volumes[1].size
+          medium: .experiments[0].user-overrides.volumes[1].type
+          sizeLimit: .experiments[0].user-overrides.volumes[1].size
 apiVersion: v1
 kind: Service
 metadata:
-  name: .standup[0].parameters.model[0].name
-  namespace: .standup[0].parameters.namespace
-  labels: .standup[0].parameters.labels
+  name: .experiments[0].user-overrides.inference-engine.model[0].name
+  namespace: .experiments[0].user-overrides.inference-engine.namespace
+  labels: .experiments[0].user-overrides.inference-engine.labels
 spec:
   ports:
   - name: http
     port: 80
     targetPort: 8000
   selector:
-    app: .standup[0].parameters.model[0].name
+    app: .experiments[0].user-overrides.inference-engine.model[0].name
   type: ClusterIP

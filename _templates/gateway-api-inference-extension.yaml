@@ -1,34 +1,34 @@
 inferenceExtension:
   replicas: 1
   image:
-    name: .images[]|select(.name=="llm-d-inference-scheduler").name
-    hub: .images[]|select(.name=="llm-d-inference-scheduler").registry/.images[]|select(.name=="llm-d-inference-scheduler").repo
+    name: .images.user-overrides[]|select(.name=="llm-d-inference-scheduler").name
+    hub: .images.user-overrides[]|select(.name=="llm-d-inference-scheduler").registry/.images.user-overrides[]|select(.name=="llm-d-inference-scheduler").repo
     tag: .auto # automatically detects latest tag
     pullPolicy: Always
-  extProcPort: .standup[0].parameters.ports.extra
+  extProcPort: .experiments[0].user-overrides.inference-engine.ports.extra
   extraContainerPorts:
     - name: zmq
-      containerPort: .standup[0].parameters.ports.zmq
+      containerPort: .experiments[0].user-overrides.inference-engine.ports.zmq
       protocol: TCP
   extraServicePorts:
     - name: zmq
-      port: .standup[0].parameters.ports.zmq
-      targetPort: .standup[0].parameters.ports.zmq
+      port: .experiments[0].user-overrides.inference-engine.ports.zmq
+      targetPort: .experiments[0].user-overrides.inference-engine.ports.zmq
       protocol: TCP
   env:
-    - name: .prepare.dependencies.secrets[0].secret
+    - name: .prepare.dependencies.user-overrides.secrets[0].secret
       valueFrom:
         secretKeyRef:
-          name: .prepare.dependencies.secrets[0].name
-          key: .prepare.dependencies.secrets[0].secret
-  pluginsConfigFile: ".standup[0].parameters.gaie.plugins"
+          name: .prepare.dependencies.user-overrides.secrets[0].name
+          key: .prepare.dependencies.user-overrides.secrets[0].secret
+  pluginsConfigFile: ".experiments[0].user-overrides.inference-engine.gaie.plugins"
 inferencePool:
-  targetPortNumber: .standup[0].parameters.ports.service
+  targetPortNumber: .experiments[0].user-overrides.inference-engine.ports.service
   modelServerType: vllm
   apiVersion: "inference.networking.x-k8s.io/v1alpha2"
   modelServers:
     matchLabels:
       llm-d.ai/inferenceServing: "true"
-      llm-d.ai/model: .standup[0].parameters.model[0].label
+      llm-d.ai/model: .experiments[0].user-overrides.inference-engine.model[0].label
 provider:
-  name: .auto # logic to decide the provider name based on deploy=true on .prepare.dependencies.gateway.provider
+  name: .auto # logic to decide the provider name based on deploy=true on .prepare.dependencies.user-overrides.gateway.provider
