@@ -33,18 +33,6 @@ WORKDIR /workspace
 
 # Install harnesses
 
-# Required by our fmperf benchmark harness
-RUN pip install kubernetes_asyncio
-
-ARG FM_PERF_REPO=https://github.com/fmperf-project/fmperf.git
-ARG FM_PERF_BRANCH=main
-ARG FM_PERF_COMMIT=0b1f63acdafcc815847a22332c0e478cc41ebed2
-RUN git clone --branch ${FM_PERF_BRANCH} ${FM_PERF_REPO}
-RUN cd fmperf; \
-    git checkout ${FM_PERF_COMMIT}; \
-    pip install --no-cache-dir -r requirements.txt && \
-    python3 setup.py install
-
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
 ARG INFERENCE_PERF_BRANCH=main
 ARG INFERENCE_PERF_COMMIT=e8e0aa99c57f2ffa0912df7ba1fbd2a8a596a041
@@ -70,8 +58,7 @@ RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
     pip install .[recommended]
 
-RUN echo "fmperf: ${FM_PERF_REPO} ${FM_PERF_BRANCH}" > /workspace/repos.txt; \
-    echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \
+RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \
     echo "vllm-benchmark: ${VLLM_BENCHMARK_REPO} ${VLLM_BENCHMARK_COMMIT}" >> /workspace/repos.txt; \
     echo "guidellm: ${GUIDELLM_REPO} ${GUIDELLM_COMMIT}" >> /workspace/repos.txt
 
@@ -79,7 +66,6 @@ RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
 
 ADD workload/harnesses/ /usr/local/bin/
 COPY workload/report/*.py /usr/local/bin/
-COPY analysis/fmperf-analyze_results.py /usr/local/bin/fmperf-analyze_results.py
 COPY analysis/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
 COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
 COPY analysis/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh

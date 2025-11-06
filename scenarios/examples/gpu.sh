@@ -102,7 +102,6 @@
 
 # Workload parameters
 
-#export LLMDBENCH_HARNESS_NAME=fmperf
 #export LLMDBENCH_HARNESS_NAME=guidellm
 export LLMDBENCH_HARNESS_NAME=inference-perf # (default is "inference-perf")
 ######export LLMDBENCH_HARNESS_NAME=nop

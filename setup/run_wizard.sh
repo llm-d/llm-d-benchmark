@@ -14,7 +14,7 @@ function usage() {
 Usage:
   ${BASH_SOURCE[0]} [--clean] [--help]
 
-Output: 
+Output:
   Script to setup environment variables for run.sh
 
 Example:
@@ -130,7 +130,7 @@ if [ ! -f ~/.llmdbench_dependencies_checked ]; then
   error_exit 1 "Please install all dependencies by running setup/install_deps.sh"
 fi
 
-k=$(type -p oc || type -p kubectl || 
+k=$(type -p oc || type -p kubectl ||
   error_exit 1 "Please install at least one of kubectl or oc. You should run setup/install_deps.sh")
 
 if ! $k auth whoami > /dev/null; then
@@ -205,7 +205,7 @@ readarray -t pvcs < <(
 )
 header="   ${pvcs}"
 
-# Persistent Volume Claim where benchmark results will be stored 
+# Persistent Volume Claim where benchmark results will be stored
 workload_pvcs=()
 workload_pattern="^${LLMDBENCH_HARNESS_PVC_NAME:-###}($|\t| )"
 model_pattern="^${LLMDBENCH_VLLM_COMMON_PVC_NAME:-###}($|\t| )"
@@ -261,14 +261,14 @@ export_var LLMDBENCH_HARNESS_PVC_NAME ${reply}
 # HARNESS
 # =======
 harnesses=()
-for harness in "inference-perf" "fmperf" "vllm-benchmark" "guidellm"; do
+for harness in "inference-perf" "vllm-benchmark" "guidellm"; do
   if [[ "${harness}" == "${LLMDBENCH_HARNESS_NAME}" ]]; then
     harnesses+=("${harness} (current value)")
   else
     harnesses+=("${harness}")
   fi
 done
-prompt="The are several supported harness implementations. Each has its own workloads configuration syntax. 
+prompt="The are several supported harness implementations. Each has its own workloads configuration syntax.
 Please choose harness"
 export_var LLMDBENCH_HARNESS_NAME $(choose_var "${prompt}" "${harnesses[@]}")
 

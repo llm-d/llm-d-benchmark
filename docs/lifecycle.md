@@ -17,7 +17,7 @@ A complete list of available variables (and its default values) can be found by 
  `cat setup/env.sh | grep "^export LLMDBENCH_" | sort`
 
 > [!NOTE]
-> The `namespaces` specified by the environment variables `LLMDBENCH_VLLM_COMMON_NAMESPACE` and `LLMDBENCH_FMPERF_SERVICE_ACCOUNT` will be automatically created.
+> The `namespaces` specified by the environment variables `LLMDBENCH_VLLM_COMMON_NAMESPACE` and `LLMDBENCH_HARNESS_NAMESPACE` will be automatically created.
 
 > [!TIP]
 > If you want all generated `yaml` files and all data collected to reside on the same directory, set the environment variable `LLMDBENCH_CONTROL_WORK_DIR` explicitly before starting execution.

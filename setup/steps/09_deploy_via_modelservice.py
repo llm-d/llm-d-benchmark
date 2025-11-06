@@ -529,7 +529,6 @@ prefill:
 
     return clear_string(yaml_content)
 
-
 def main():
     """Main function for step 09 - Deploy via modelservice"""
 

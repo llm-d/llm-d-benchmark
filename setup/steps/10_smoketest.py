@@ -74,10 +74,13 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
             for service in gateways['items']:
                 if service['metadata']['name'] == f"infra-{ev.get('vllm_modelservice_release', '')}-inference-gateway":
                     service_name = service['metadata']['name']
-                    for address in service["status"]["addresses"]:
-                        if address.get("type") == "IPAddress":
-                            service_ip = address.get("value")
-                            break
+                    if "addresses" in service["status"] :
+                        for address in service["status"]["addresses"]:
+                            if address.get("type") == "IPAddress":
+                                service_ip = address.get("value")
+                                break
+                    else:
+                        announce(f"ERROR: unable to finding an address for gateway {service_name}")
                     break
         except client.ApiException as e:
             announce(f"ERROR: unable to finding gateway: {e}")
@@ -147,8 +150,9 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
         else:
             announce(f"ERROR: Service responded to \"{curl_command_used}\" with model name \"{received_model_name}\" (instead of {current_model})!")
 
+    route_url = ""
     if dry_run:
-        route_url = ""
+        True
     else:
         if ev['control_deploy_is_openshift'] == "1":
             try:
