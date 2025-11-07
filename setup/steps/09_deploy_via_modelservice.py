@@ -221,6 +221,9 @@ def generate_ms_values_yaml(
     else:
         affinity_key, affinity_value = "", ""
 
+    if affinity_value.isdigit() :
+        affinity_value = f'"{affinity_value}"'
+
     # Probe configuration
     initial_delay_probe = ev.get("vllm_common_initial_delay_probe", "30")
     common_inference_port = ev.get("vllm_common_inference_port", "8000")

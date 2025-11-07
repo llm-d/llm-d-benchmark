@@ -34,9 +34,10 @@
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu                                      # ANY GPU (useful for Minikube)
 
 #             Uncomment to request specific network devices
-#####export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/roce_gdr
+#########export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/roce_gdr
 #######export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib
-#export LLMDBENCH_VLLM_COMMON_NETWORK_NR=4
+#########export LLMDBENCH_VLLM_COMMON_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:compute-q0v0
+#########export LLMDBENCH_VLLM_COMMON_NETWORK_NR=1
 
 ######export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=LLMDBENCH_VLLM_STANDALONE_VLLM_WORKER_MULTIPROC_METHOD,LLMDBENCH_VLLM_STANDALONE_VLLM_CACHE_ROOT,LLMDBENCH_VLLM_STANDALONE_VLLM_ALLOW_LONG_MAX_MODEL_LEN,LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE
 
@@ -73,6 +74,9 @@
 ######export LLMDBENCH_VLLM_STANDALONE_PREPROCESS="source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
 
 # llm-d Parameters
+#########export LLMDBENCH_VLLM_MODELSERVICE_PREFIIL_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:compute-q0v0
+#########export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/roce_gdr
+#########export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR=1
 #export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=1 # (default is "1")
 #export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1 # (default is "1")
 #export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS=$(mktemp)
@@ -86,6 +90,9 @@
 #  persistentVolumeClaim:
 #    claimName: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME
 #EOF
+#########export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:compute-q0v0
+#########export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
+#########export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=1
 #export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1 # (default is "1")
 #export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1 # (default is "1")
 #export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS=$(mktemp)
