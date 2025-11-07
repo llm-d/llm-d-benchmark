@@ -92,6 +92,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS="[\
 --kv-transfer-config____'{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}'____\
 --disable-log-requests____\
 --disable-uvicorn-access-log____\
+--no-enable-prefix-caching____\
 --max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN\
 ]"
 
@@ -111,6 +112,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS="[\
 --kv-transfer-config____'{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}'____\
 --disable-log-requests____\
 --disable-uvicorn-access-log____\
+--no-enable-prefix-caching____\
 --max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN\
 ]"
 
