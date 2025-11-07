@@ -1,6 +1,8 @@
 # KubeCon NA 2025 Tutorial
 
-[A Cross-Industry Benchmarking Tutorial for Distributed LLM Inference on Kubernetes](https://kccncna2025.sched.com/event/27FXL/tutorial-a-cross-industry-benchmarking-tutorial-for-distributed-llm-inference-on-kubernetes-jing-chen-ibm-research-junchen-jiang-university-of-chicago-ganesh-kudleppanavar-nvidia-samuel-monson-red-hat-jason-kramberger-google?iframe=no&w=100%25&sidebar=yes&bg=no)
+A Cross-Industry Benchmarking Tutorial for Distributed LLM Inference on Kubernetes
+
+<!-- [A Cross-Industry Benchmarking Tutorial for Distributed LLM Inference on Kubernetes](https://kccncna2025.sched.com/event/27FXL/tutorial-a-cross-industry-benchmarking-tutorial-for-distributed-llm-inference-on-kubernetes-jing-chen-ibm-research-junchen-jiang-university-of-chicago-ganesh-kudleppanavar-nvidia-samuel-monson-red-hat-jason-kramberger-google?iframe=no&w=100%25&sidebar=yes&bg=no) -->
 
 This is a step-by-step tutorial accompanying our KubeCon North America 2025 talk on benchmarking distributed LLM inference, taking place on November 11, 2025. In this tutorial, we will walk through example configurations and benchmarking setups used in our talk. These examples are designed to help you replicate and understand the performance evaluation of [`llm-d`](https://github.com/llm-d/llm-d), a distributed LLM inference systems.
 
