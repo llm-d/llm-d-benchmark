@@ -54,11 +54,11 @@ WIP
 
 ## PD Disaggregation with vllm-benchmark
 
-- Scenario: [kubecon2025/pd-disaggregation-scenario.sh](./pd-disaggregation-scenario.sh)
+<!-- - Scenario: [./pd-disaggregation-scenario.sh](./pd-disaggregation-scenario.sh)
 - Experiment: [pd-disaggregation.yaml](https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/experiments/pd-disaggregation.yaml)
 
 Command:
 
 ```
 ./setup/e2e.sh -c $(pwd)/kubecon2025/pd-disaggregation-scenario.sh -e pd-disaggregation.yaml
-```
+``` -->
