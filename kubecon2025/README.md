@@ -36,17 +36,29 @@ kind create cluster
 ```
 git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
+
+# Check out the stable latest commit
+git reset --hard 2ac07a5a10da6d3fad5fd544a3770c38114e6f6d
+python -m venv .venv
+source .venv/bin/activate
 ./setup/install_deps.sh
 ```
 
+## Simple Example with GuideLLM
 
-## PD Disaggregation
+WIP
 
-- Scenario: kubecon2025/pd-disaggregation-scenario.sh
+## Precise Prefix Caching Aware Routing with Inference-Perf
+
+WIP
+
+## PD Disaggregation with vllm-benchmark
+
+- Scenario: [kubecon2025/pd-disaggregation-scenario.sh](./pd-disaggregation-scenario.sh)
 - Experiment: [pd-disaggregation.yaml](https://github.com/llm-d/llm-d-benchmark/blob/main/experiments/pd-disaggregation.yaml)
 
 Command:
 
 ```
-./setup/e2e.sh -c kubecon2025/pd-disaggregation-scenario.sh -e pd-disaggregation.yaml
+./setup/e2e.sh -c $(pwd)/kubecon2025/pd-disaggregation-scenario.sh -e pd-disaggregation.yaml
 ```
