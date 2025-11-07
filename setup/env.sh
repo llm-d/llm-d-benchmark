@@ -265,15 +265,6 @@ else
 fi
 
 export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python3}
-is_podman=$(which podman || true)
-if [[ ! -z ${is_podman} ]]; then
-  export LLMDBENCH_CONTROL_CCMD=podman
-else
-  is_docker=$(which docker || true)
-  if [[ ! -z ${is_docker} ]]; then
-    export LLMDBENCH_CONTROL_CCMD=docker
-  fi
-fi
 
 if [[ $LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED -eq 0 ]]
 then
@@ -293,12 +284,42 @@ then
       echo "done"
     fi
   done
+
   echo
   is_helmdiff=$($LLMDBENCH_CONTROL_HCMD plugin list | grep diff || true)
   if [[ -z $is_helmdiff ]]; then
     helm plugin install https://github.com/databus23/helm-diff
   fi
   export LLMDBENCH_CONTROL_DEPENDENCIES_CHECKED=1
+fi
+
+LLMDBENCH_CONTROL_CCMD=${LLMDBENCH_CONTROL_CCMD:-}
+
+if [[ -z $LLMDBENCH_CONTROL_CCMD ]]; then
+  is_skopeo=$(which skopeo || true)
+  if [[ ! -z ${is_skopeo} ]]; then
+      export LLMDBENCH_CONTROL_CCMD=skopeo
+  fi
+fi
+
+if [[ -z $LLMDBENCH_CONTROL_CCMD ]]; then
+  is_podman=$(which podman || true)
+  if [[ ! -z ${is_podman} ]]; then
+    podman ps -aq >/dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+      export LLMDBENCH_CONTROL_CCMD=podman
+    fi
+  fi
+fi
+
+if [[ -z $LLMDBENCH_CONTROL_CCMD ]]; then
+  is_docker=$(which docker || true)
+  if [[ ! -z ${is_docker} ]]; then
+    docker ps -aq >/dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+      export LLMDBENCH_CONTROL_CCMD=docker
+    fi
+  fi
 fi
 
 if [[ $LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED -eq 0 ]]; then
