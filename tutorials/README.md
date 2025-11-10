@@ -46,7 +46,79 @@ source .venv/bin/activate
 
 ## Simple Example with GuideLLM
 
-WIP
+- Scenario: `scenarios/basic.sh`
+- Experiment: `experiments/smoke.sh`
+- Workload: `workload/profiles/guidellm/concurrent_sweep.yaml.in`
+
+### Run a basic scenario 
+
+Examine the provided [basic scenario](./scenarios/basic.sh); fill in any fields marked TODO.
+Make sure the correct cluster context is set then run the following commands:
+
+```sh
+export BASE_PATH="$(realpath ./tutorials)"
+
+# Standup a simple llm-d deployment with single prefill and decode pods
+./setup/standup.sh -c "${BASE_PATH}/scenarios/basic.sh"
+
+# Run guidellm through `llm-d-benchmark`
+./setup/run.sh -c "${BASE_PATH}/scenarios/basic.sh"
+
+# Teardown the deployment
+./setup/teardown.sh -c "${BASE_PATH}/scenarios/basic.sh"
+```
+
+> **Note** Running the `./setup/e2e.sh` script is equivalent to running the three scripts above in series.
+
+You should now have a directory tree that includes the following:
+
+```
+/tmp/modelserve.none
+├── analysis
+│   └── guidellm_1762460407-none_llm-d-2b-instruct
+│       └── summary.txt
+├── environment
+│   ├── context.ctx
+│   └── variables
+├── logs
+│   ├── 06_deploy_vllm_standalone_models.log
+│   ├── 07_deploy_setup.log
+│   ├── 08_deploy_gaie.log
+│   └── step.log
+└── results
+    └── guidellm_1762460407-none_llm-d-2b-instruct
+        ├── benchmark_report,_results.json_0.yaml
+        ├── benchmark_report,_results.json_1.yaml
+        ├── benchmark_report,_results.json_2.yaml
+        ├── benchmark_report,_results.json_3.yaml
+        ├── benchmark_report,_results.json_4.yaml
+        ├── benchmark_report,_results.json_5.yaml
+        ├── benchmark_report,_results.json_6.yaml
+        ├── results.json
+        ├── stderr.log
+        └── stdout.log
+```
+
+The most interesting files here are:
+
+- `analysis/guidellm_1762460407-none_llm-d-2b-instruct/summary.txt`: A dump of GuideLLM's final console output
+- `results/guidellm_1762460407-none_llm-d-2b-instruct/results.json`: The raw GuideLLM results
+- `results/guidellm_1762460407-none_llm-d-2b-instruct/benchmark_report,_results.json_${step}.yaml`: GuideLLM results processed into llm-d-benchmark's common metrics format.
+
+### Run a simple experiment
+
+A llm-d-benchmark **experiment** takes a **scenario** and augments it by iterating configuration variables through a parameter sweep.
+
+We will run a simple [smoke test scenario](./experiments/smoke.yaml) that iterates the deployment through every 2-GPU combination of prefill and decode pods. For each deployment it then iterates through three synthetic dataset configurations.
+
+``` sh
+export BASE_PATH="$(realpath ./tutorials)"
+
+# Experiments must be run with the full e2e.sh script
+./setup/e2e.sh -c "${BASE_PATH}/scenarios/basic.sh" -e "${BASE_PATH}/experiments/smoke.sh"
+```
+
+Experiment results will be exported to `<LLMDBENCH_CONTROL_WORK_DIR>.setup_<treatment_config>`. For example: `/tmp/modelserve.setup_1_1_1_1`.
 
 ## Precise Prefix Caching Aware Routing with Inference-Perf
 
@@ -59,6 +131,8 @@ WIP
 
 Command (from `llm-d-benchmark` root directory):
 
-```
-./setup/e2e.sh -c $(pwd)/kubecon2025/pd-disaggregation-scenario.sh -e pd-disaggregation.yaml
+```sh
+export BASE_PATH="$(realpath ./tutorials)"
+
+./setup/e2e.sh -c "${BASE_PATH}/scenarios/pd-disaggregation.sh" -e pd-disaggregation.yaml
 ```
