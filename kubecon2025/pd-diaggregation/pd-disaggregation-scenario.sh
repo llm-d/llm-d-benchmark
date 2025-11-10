@@ -1,7 +1,5 @@
 export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
 export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3
-
-# For kind clusters
 export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=300Mi
 
 # Common parameters across standalone and llm-d (prefill and decode) pods
