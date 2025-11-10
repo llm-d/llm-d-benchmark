@@ -27,11 +27,7 @@ Follow along with this tutorial during our talk to get hands-on experience!
 
 ## Prerequisites
 
-1. Start a `kind` cluster
-
-```
-kind create cluster
-```
+1. Connect to a Kubernetes cluster
 
 2. Install dependencies
 
