@@ -437,55 +437,53 @@ backup_work_dir
 
 prepare_work_dir
 
-if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
-  if [[ -f ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME} ]]; then
-    export LLMDBENCH_CONTROL_KCMD="oc --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME}"
-    export LLMDBENCH_CONTROL_HCMD="helm --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME}"
-    cp -f ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME} $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
-    export LLMDBENCH_CONTROL_REMOTE_KUBECONFIG_FILENAME=config-${LLMDBENCH_CONTROL_CLUSTER_NAME}
-  elif [[ -z $LLMDBENCH_CLUSTER_URL || $LLMDBENCH_CLUSTER_URL == "auto" ]]; then
-    export LLMDBENCH_CONTROL_KCMD=$(echo $LLMDBENCH_CONTROL_KCMD | $LLMDBENCH_CONTROL_SCMD "s^--kubeconfig $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx^^g")
-    current_context=$(${LLMDBENCH_CONTROL_KCMD} config view -o json | jq -r '."current-context"' || true)
-    if [[ -z ${current_context} ]]; then
-      echo "ERROR: unable to locate current context (LLMDBENCH_CLUSTER_URL=$LLMDBENCH_CLUSTER_URL)"
-      exit 1
-    else
-      ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
-    fi
-    export LLMDBENCH_CONTROL_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)
-    export LLMDBENCH_CONTROL_CLUSTER_NAMESPACE=$(echo $current_context | cut -d '/' -f 1)
-    if [[ $LLMDBENCH_CONTROL_WARNING_DISPLAYED -eq 0 ]]; then
-      echo ""
-      echo "WARNING: environment variable LLMDBENCH_CLUSTER_URL=$LLMDBENCH_CLUSTER_URL. Will attempt to use current context \"${current_context}\"."
-      echo ""
-      export LLMDBENCH_CONTROL_WARNING_DISPLAYED=1
-      sleep 5
-    fi
-    export LLMDBENCH_CONTROL_REMOTE_KUBECONFIG_FILENAME=config
+if [[ -f ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME} ]]; then
+  export LLMDBENCH_CONTROL_KCMD="oc --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME}"
+  export LLMDBENCH_CONTROL_HCMD="helm --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME}"
+  cp -f ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME} $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
+  export LLMDBENCH_CONTROL_REMOTE_KUBECONFIG_FILENAME=config-${LLMDBENCH_CONTROL_CLUSTER_NAME}
+elif [[ -z $LLMDBENCH_CLUSTER_URL || $LLMDBENCH_CLUSTER_URL == "auto" ]]; then
+  export LLMDBENCH_CONTROL_KCMD=$(echo $LLMDBENCH_CONTROL_KCMD | $LLMDBENCH_CONTROL_SCMD "s^--kubeconfig $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx^^g")
+  current_context=$(${LLMDBENCH_CONTROL_KCMD} config view -o json | jq -r '."current-context"' || true)
+  if [[ -z ${current_context} ]]; then
+    echo "ERROR: unable to locate current context (LLMDBENCH_CLUSTER_URL=$LLMDBENCH_CLUSTER_URL)"
+    exit 1
   else
-    current_context=$(${LLMDBENCH_CONTROL_KCMD} config view -o json | jq -r '."current-context"' || true)
-    if [[ -z ${current_context} ]]; then
-      echo "ERROR: unable to locate current context"
-      exit 1
-    else
-      ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
-    fi
-
-    export LLMDBENCH_CONTROL_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)
-    current_url=$(echo $current_context | cut -d '/' -f 2 | cut -d ':' -f 1 | $LLMDBENCH_CONTROL_SCMD "s^-^.^g")
-    target_url=$(echo $LLMDBENCH_CLUSTER_URL | cut -d '/' -f 3 | $LLMDBENCH_CONTROL_SCMD "s^-^.^g")
-    if [[ $current_url != $target_url ]]; then
-      ${LLMDBENCH_CONTROL_KCMD} login --token="${LLMDBENCH_CLUSTER_TOKEN}" --server="${LLMDBENCH_CLUSTER_URL}:6443"
-    fi
-
-    if [[ $LLMDBENCH_CONTROL_CLUSTER_NAMESPACE != $LLMDBENCH_VLLM_COMMON_NAMESPACE ]]; then
-      namespace_exists=$(${LLMDBENCH_CONTROL_KCMD} get namespaces | grep $LLMDBENCH_VLLM_COMMON_NAMESPACE || true)
-      if [[ ! -z $namespace_exists ]]; then
-        ${LLMDBENCH_CONTROL_KCMD} project $LLMDBENCH_VLLM_COMMON_NAMESPACE
-      fi
-    fi
-    export LLMDBENCH_CONTROL_REMOTE_KUBECONFIG_FILENAME=config
+    ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
   fi
+  export LLMDBENCH_CONTROL_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)
+  export LLMDBENCH_CONTROL_CLUSTER_NAMESPACE=$(echo $current_context | cut -d '/' -f 1)
+  if [[ $LLMDBENCH_CONTROL_WARNING_DISPLAYED -eq 0 ]]; then
+    echo ""
+    echo "WARNING: environment variable LLMDBENCH_CLUSTER_URL=$LLMDBENCH_CLUSTER_URL. Will attempt to use current context \"${current_context}\"."
+    echo ""
+    export LLMDBENCH_CONTROL_WARNING_DISPLAYED=1
+    sleep 5
+  fi
+  export LLMDBENCH_CONTROL_REMOTE_KUBECONFIG_FILENAME=config
+else
+  current_context=$(${LLMDBENCH_CONTROL_KCMD} config view -o json | jq -r '."current-context"' || true)
+  if [[ -z ${current_context} ]]; then
+    echo "ERROR: unable to locate current context"
+    exit 1
+  else
+    ${LLMDBENCH_CONTROL_KCMD} config view --minify --flatten --raw --context=${current_context} > $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
+  fi
+
+  export LLMDBENCH_CONTROL_CLUSTER_NAME=$(echo $current_context | cut -d '/' -f 2 | cut -d '-' -f 2)
+  current_url=$(echo $current_context | cut -d '/' -f 2 | cut -d ':' -f 1 | $LLMDBENCH_CONTROL_SCMD "s^-^.^g")
+  target_url=$(echo $LLMDBENCH_CLUSTER_URL | cut -d '/' -f 3 | $LLMDBENCH_CONTROL_SCMD "s^-^.^g")
+  if [[ $current_url != $target_url ]]; then
+    ${LLMDBENCH_CONTROL_KCMD} login --token="${LLMDBENCH_CLUSTER_TOKEN}" --server="${LLMDBENCH_CLUSTER_URL}:6443"
+  fi
+
+  if [[ $LLMDBENCH_CONTROL_CLUSTER_NAMESPACE != $LLMDBENCH_VLLM_COMMON_NAMESPACE ]]; then
+    namespace_exists=$(${LLMDBENCH_CONTROL_KCMD} get namespaces | grep $LLMDBENCH_VLLM_COMMON_NAMESPACE || true)
+    if [[ ! -z $namespace_exists ]]; then
+      ${LLMDBENCH_CONTROL_KCMD} project $LLMDBENCH_VLLM_COMMON_NAMESPACE
+    fi
+  fi
+  export LLMDBENCH_CONTROL_REMOTE_KUBECONFIG_FILENAME=config
 fi
 if [[ -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
   export LLMDBENCH_CONTROL_KCMD="oc --kubeconfig $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx"
