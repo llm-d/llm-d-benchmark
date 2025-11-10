@@ -437,7 +437,7 @@ backup_work_dir
 
 prepare_work_dir
 
-if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx ]]; then
+if [[ ! -f $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx || ! $($LLMDBENCH_CONTROL_KCMD --kubeconfig $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx get pods > /dev/null 2>&1) ]]; then
   if [[ -f ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME} ]]; then
     export LLMDBENCH_CONTROL_KCMD="oc --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME}"
     export LLMDBENCH_CONTROL_HCMD="helm --kubeconfig ${HOME}/.kube/config-${LLMDBENCH_CONTROL_CLUSTER_NAME}"
