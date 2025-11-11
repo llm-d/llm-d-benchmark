@@ -228,6 +228,3 @@ streamlit run ./config_explorer/Capacity_Planner.py
 ```
 
 The UI should be up and running. You can get a preview of the Config Explorer [here](https://drive.google.com/file/d/1lzdj2P65yhQG3w5gsVxULkTqSYwMH3ec/view?usp=sharing).
-
-####
-./setup/teardown.sh -c /home/jing.chen2_ibm.com/Work/llm-d-benchmark/scenario.sh && ./setup/e2e.sh -c /home/jing.chen2_ibm.com/Work/llm-d-benchmark/scenario.sh -e /home/jing.chen2_ibm.com/Work/llm-d-benchmark/experiments.yaml
