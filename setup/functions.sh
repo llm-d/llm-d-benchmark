@@ -50,6 +50,33 @@ function model_attribute {
 }
 export -f model_attribute
 
+function get_image {
+  local image_registry=$1
+  local image_repo=$2
+  local image_name=$3
+  local image_tag=$4
+  local tag_only=${5:-0}
+
+  is_latest_tag=$image_tag
+  if [[ $image_tag == "auto" ]]; then
+    if [[ $LLMDBENCH_CONTROL_CCMD == "podman" ]]; then
+      is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags --limit 1000 ${image_registry}/${image_repo}/${image_name} | tail -1 | awk '{ print $2 }' || true)
+    else
+      is_latest_tag=$(skopeo list-tags docker://${image_registry}/${image_repo}/${image_name} | jq -r .Tags[] | tail -1)
+    fi
+    if [[ -z ${is_latest_tag} ]]; then
+      announce "❌ Unable to find latest tag for image \"${image_registry}/${image_repo}/${image_name}\"" >&2
+      exit 1
+    fi
+  fi
+  if [[ $tag_only -eq 1 ]]; then
+    echo ${is_latest_tag}
+  else
+    echo $image_registry/$image_repo/${image_name}:${is_latest_tag}
+  fi
+}
+export -f get_image
+
 function prepare_work_dir {
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/scenario
   mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls
