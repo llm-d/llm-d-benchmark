@@ -126,7 +126,7 @@ WIP
 
 ## PD Disaggregation with vllm-benchmark
 
-- Scenario: [pd-disaggregation/pd-disaggregation-scenario.sh](./pd-diaggregation/pd-disaggregation-scenario.sh)
+- Scenario: [pd-disaggregation.sh](./scenarios/pd-disaggregation.sh)
 - Experiment: [pd-disaggregation.yaml](https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/experiments/pd-disaggregation.yaml)
 
 Command (from `llm-d-benchmark` root directory):
