@@ -50,7 +50,7 @@ source .venv/bin/activate
 - Experiment: `experiments/smoke.sh`
 - Workload: `workload/profiles/guidellm/concurrent_sweep.yaml.in`
 
-### Run a basic scenario 
+### Run a basic scenario
 
 Examine the provided [basic scenario](./scenarios/basic.sh); fill in any fields marked TODO.
 Make sure the correct cluster context is set then run the following commands:
@@ -136,3 +136,95 @@ export BASE_PATH="$(realpath ./tutorials)"
 
 ./setup/e2e.sh -c "${BASE_PATH}/scenarios/pd-disaggregation.sh" -e pd-disaggregation.yaml
 ```
+
+You should expect to see the following in your cluster.
+
+```
+==> Tue Nov 11 09:47:50 AM EST 2025 - /home/jing.chen2_ibm.com/Work/llm-d-benchmark/setup/standup.sh - === Running step: 00_ensure_llm-d-infra.py ===
+
+==> Tue Nov 11 09:47:52 AM EST 2025 - /home/jing.chen2_ibm.com/Work/llm-d-benchmark/setup/standup.sh - === Running step: 01_ensure_local_conda.py ===
+2025-11-11 09:47:53,717 - INFO - ⏭️  Environment variable "LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY" is set to 0, skipping local setup of conda environment
+
+==> Tue Nov 11 09:47:53 AM EST 2025 - /home/jing.chen2_ibm.com/Work/llm-d-benchmark/setup/standup.sh - === Running step: 02_ensure_gateway_provider.py ===
+2025-11-11 09:47:55,848 - INFO - 🔍 Ensuring gateway infrastructure (provider kgateway) is setup...
+2025-11-11 09:47:55,848 - INFO - 🚀 Installing Kubernetes Gateway API (v1.3.0) CRDs...
+2025-11-11 09:47:57,186 - INFO - ✅ Kubernetes Gateway API CRDs installed
+2025-11-11 09:47:57,186 - INFO - 🚀 Installing Kubernetes Gateway API inference extension (v1.0.1) CRDs...
+2025-11-11 09:47:58,146 - INFO - ✅ Kubernetes Gateway API inference extension CRDs installed
+2025-11-11 09:47:58,146 - INFO - 🚀 Installing kgateway helm charts from oci://cr.kgateway.dev/kgateway-dev/charts (v2.0.3)
+2025-11-11 09:48:00,879 - INFO - ✅ kgateway installed
+2025-11-11 09:48:00,879 - INFO - ✅ Gateway control plane (provider kgateway) installed.
+2025-11-11 09:48:04,231 - INFO - ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE automatically set to "nvidia.com/gpu"
+2025-11-11 09:48:04,233 - INFO - Validating vLLM configuration against Capacity Planner... deployment will continue even if validation failed.
+2025-11-11 09:48:04,233 - INFO - Deployment method is modelservice, checking for prefill and decode deployments
+2025-11-11 09:48:04,233 - INFO - Validating prefill vLLM arguments for ['meta-llama/Llama-3.1-8B-Instruct'] ...
+2025-11-11 09:48:04,233 - WARNING - ⚠️  Cannot determine accelerator memory. Please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY to enable Capacity Planner. Skipping GPU memory required checks, especially KV cache estimation.
+2025-11-11 09:48:04,390 - INFO - 👉 Collecting model information....
+2025-11-11 09:48:04,390 - INFO - ℹ️ meta-llama/Llama-3.1-8B-Instruct has a total of 8030261248 parameters
+2025-11-11 09:48:04,390 - INFO - ℹ️ meta-llama/Llama-3.1-8B-Instruct requires 14.957527160644531 GB of memory
+2025-11-11 09:48:04,390 - INFO - Validating decode vLLM arguments for ['meta-llama/Llama-3.1-8B-Instruct'] ...
+2025-11-11 09:48:04,390 - WARNING - ⚠️  Cannot determine accelerator memory. Please set LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY to enable Capacity Planner. Skipping GPU memory required checks, especially KV cache estimation.
+2025-11-11 09:48:04,471 - INFO - 👉 Collecting model information....
+2025-11-11 09:48:04,471 - INFO - ℹ️ meta-llama/Llama-3.1-8B-Instruct has a total of 8030261248 parameters
+2025-11-11 09:48:04,471 - INFO - ℹ️ meta-llama/Llama-3.1-8B-Instruct requires 14.957527160644531 GB of memory
+2025-11-11 09:48:04,471 - INFO - 🔍 Checking for OpenShift user workload monitoring enablement...
+/home/jing.chen2_ibm.com/Work/llm-d-benchmark/.venv/lib64/python3.11/site-packages/urllib3/connectionpool.py:1097: InsecureRequestWarning: Unverified HTTPS request is being made to host 'api.fusionv6.ete14.res.ibm.com'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
+  warnings.warn(
+2025-11-11 09:48:04,512 - INFO - OpenShift cluster detected
+2025-11-11 09:48:04,780 - INFO - ✅ OpenShift user workload monitoring enabled
+2025-11-11 09:48:08,228 - INFO - PVC 'model-pvc' already exists in namespace 'ai-workloads'.
+2025-11-11 09:48:08,229 - INFO - Provisioning model storage…
+2025-11-11 09:48:08,229 - INFO - ℹ️ Skipping pvc creation
+2025-11-11 09:48:08,229 - INFO - 🔽 Launching download job for model: "meta-llama/Llama-3.1-8B-Instruct"
+2025-11-11 09:48:08,229 - INFO - Launching model download job...
+2025-11-11 09:48:08,418 - INFO - Generated YAML file at: /home/jing.chen2_ibm.com/data/pd-disaggregation/setup/yamls/04_ensure_model_namespace_prepared_download_pod_job.yaml
+2025-11-11 09:48:08,418 - INFO - --> Deleting previous job 'download-model' (if it exists) to prevent conflicts...
+2025-11-11 09:48:08,832 - INFO - Waiting for job download-model to complete...
+
+```
+
+You should see that prefill and decode pods are up and running
+
+```
+2025-09-23 15:51:26 : 🔄 Processing model 1/1: meta-llama/Llama-3.1-8B-Instruct
+2025-09-23 15:51:26 : 🚀 Installing helm chart "gaie-nam-release" via helmfile...
+2025-09-23 15:51:28 : ✅ ai-workloads-meta-lla-1b4505f6-instruct-gaie helm chart deployed successfully
+2025-09-23 15:51:28 : ℹ️ A snapshot of the relevant (model-specific) resources on namespace "ai-workloads":
+2025-09-23 15:51:29 : ✅ Completed model deployment
+```
+
+The experiment will take some time to run to completion. You may decrease the experiment and harness run treatments list for simplicity. After the experiment finishes running, you should see the following results in `~/data/pd-disaggregation`.
+
+```
+/data/pd-disaggregation/pd-disaggregation.setup_modelservice_NA_NA_1_4_3_4
+├── analysis
+│   └── guidellm_1762460407-none_llm-d-2b-instruct
+│       └── summary.txt
+├── environment
+│   ├── context.ctx
+│   └── variables
+├── logs
+│   ├── 06_deploy_vllm_standalone_models.log
+│   ├── 07_deploy_setup.log
+│   ├── 08_deploy_gaie.log
+│   └── step.log
+└── results
+    └── vllm-benchmark_1758657030-setup_modelservice_NA_NA_1_4_3_4-run_1_10_llm-d-70b-instruct
+        ├── benchmark_report,_vllm-infqps-concurrency1-Llama-3.1-70B-Instruct-20250923-195948.json.yaml
+        ├── random_concurrent_treatment_run_1_10.yaml
+        ├── results.json
+        ├── stderr.log
+        └── stdout.log
+    └── vllm-benchmark_1758657030-setup_modelservice_NA_NA_1_4_3_4-run_8_80_llm-d-70b-instruct
+    └── vllm-benchmark_1758657030-setup_modelservice_NA_NA_1_4_3_4-run_32_320_llm-d-70b-instruct
+    # ... and so on
+```
+
+Feel free to use the [Config Explorer](../config_explorer/) to explore the data.
+
+```
+pip install ./config_explorer
+streamlit run ./config_explorer/Capacity_Planner.py
+```
+
+The UI should be up and running. You can get a preview of the Config Explorer [here](https://drive.google.com/file/d/1lzdj2P65yhQG3w5gsVxULkTqSYwMH3ec/view?usp=sharing).
