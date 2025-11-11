@@ -1,0 +1,41 @@
+setup:
+  factors:
+    - LLMDBENCH_DEPLOY_METHODS
+    - LLMDBENCH_VLLM_COMMON_REPLICAS
+    - LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM
+    - LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS
+    - LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM
+    - LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS
+    - LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM
+  levels:
+    LLMDBENCH_VLLM_COMMON_REPLICAS: "2,4"
+    LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM: "8"
+    LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS: "2,4,6,8"
+    LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM: "1,2"
+    LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS: "1,2,4"
+    LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM: "2,4,8"
+  treatments:
+    - "modelservice,NA,NA,8,1,1,8"
+    - "modelservice,NA,NA,4,2,1,8"
+    - "modelservice,NA,NA,2,4,1,8"
+    - "modelservice,NA,NA,6,2,1,4"
+    - "modelservice,NA,NA,4,2,2,4"
+    - "modelservice,NA,NA,2,2,3,4"
+    - "standalone,1,2,NA,NA,NA,NA"
+    - "standalone,1,4,NA,NA,NA,NA"
+    - "standalone,1,8,NA,NA,NA,NA"
+run:
+  factors:
+    - max-concurrency
+    - num-prompts
+  levels:
+    max-concurrency: "1,8,32,64,128,256"
+    num-prompts: "10,80,320,640,1280,2560"
+  treatments:
+    - "1,10"
+    - "8,80"
+    - "32,320"
+    - "64,640"
+    - "128,1280"
+    - "256,2560"
+
