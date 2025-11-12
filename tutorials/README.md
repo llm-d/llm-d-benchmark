@@ -122,7 +122,83 @@ Experiment results will be exported to `<LLMDBENCH_CONTROL_WORK_DIR>.setup_<trea
 
 ## Precise Prefix Caching Aware Routing with Inference-Perf
 
-WIP
+- Scenario [precise-prefix-cache-aware.sh](./scenarios/precise-prefix-cache-aware.sh)
+
+Command (from `llm-d-benchmark` root directory):
+
+```sh
+export BASE_PATH="$(realpath ./tutorials)"
+
+cp tutorials/workload/profiles/inference-perf/shared_prefix_synthetic_large.yaml.in workload/profiles/inference-perf/
+./setup/e2e.sh -c "${BASE_PATH}/scenarios/precise-prefix-cache-aware.sh"
+```
+
+Model download and ModelService deployment should complete, and the benchmark should run:
+
+```
+==> Tue Nov 11 03:58:26 PM UTC 2025 - ./run.sh - ⏳ Waiting for pod "llmdbench-inference-perf-launcher" for model "Qwen/Qwen3-32B" to be in "Completed" state (timeout=3600s)... 
+```
+
+You can view inference-perf progress from its launcher pod.
+
+```
+kubectl logs pod/llmdbench-inference-perf-launcher -n llmdbench | grep Stage
+2025-11-11 15:58:40,288 - inference_perf.loadgen.load_generator - INFO - Stage 0 - run started
+Stage 0 progress: 100%|██████████| 1.0/1.0 [02:08<00:00, 128.29s/it]
+2025-11-11 16:00:48,594 - inference_perf.loadgen.load_generator - INFO - Stage 0 - run completed
+2025-11-11 16:00:49,598 - inference_perf.loadgen.load_generator - INFO - Stage 1 - run started
+Stage 1 progress: 100%|██████████| 1.0/1.0 [02:01<00:00, 121.24s/it]
+2025-11-11 16:02:50,845 - inference_perf.loadgen.load_generator - INFO - Stage 1 - run completed
+2025-11-11 16:02:51,846 - inference_perf.loadgen.load_generator - INFO - Stage 2 - run started
+```
+
+And see results in the output directory `~/data/shared-prefix-cache-aware`
+
+```
+├── analysis
+│   ├── inference-perf_1762875210_llm-d-32b-base
+│   │   ├── latency_vs_qps.png
+│   │   ├── throughput_vs_latency.png
+│   │   └── throughput_vs_qps.png
+├── environment
+│   ├── context.ctx
+│   └── variables
+├── logs
+│   ├── 06_deploy_vllm_standalone_models.log
+│   ├── 07_deploy_setup.log
+│   ├── 08_deploy_gaie.log
+│   └── step.log
+├── results
+│   ├── inference-perf_1762875210_llm-d-32b-base
+│   │   ├── benchmark_report,_stage_0_lifecycle_metrics.json.yaml
+│   │   ├── benchmark_report,_stage_1_lifecycle_metrics.json.yaml
+│   │   ├── benchmark_report,_stage_2_lifecycle_metrics.json.yaml
+│   │   ├── benchmark_report,_stage_3_lifecycle_metrics.json.yaml
+│   │   ├── benchmark_report,_stage_4_lifecycle_metrics.json.yaml
+│   │   ├── benchmark_report,_stage_5_lifecycle_metrics.json.yaml
+│   │   ├── config.yaml
+│   │   ├── per_request_lifecycle_metrics.json
+│   │   ├── shared_prefix_synthetic_large.yaml
+│   │   ├── stage_0_lifecycle_metrics.json
+│   │   ├── stage_1_lifecycle_metrics.json
+│   │   ├── stage_2_lifecycle_metrics.json
+│   │   ├── stage_3_lifecycle_metrics.json
+│   │   ├── stage_4_lifecycle_metrics.json
+│   │   ├── stage_5_lifecycle_metrics.json
+│   │   ├── stderr.log
+│   │   ├── stdout.log
+│   │   └── summary_lifecycle_metrics.json
+└── workload
+    ├── experiments
+    ├── harnesses
+    └── profiles
+        ├── guidellm
+        │   └── shared_prefix_synthetic.yaml
+        ├── inference-perf
+        │   ├── shared_prefix_synthetic_large.yaml
+        │   └── shared_prefix_synthetic.yaml
+        └── overrides.txt
+```
 
 ## PD Disaggregation with vllm-benchmark
 

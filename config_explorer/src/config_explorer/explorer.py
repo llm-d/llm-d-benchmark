@@ -895,22 +895,31 @@ def _get_replicas_and_parallelism(
             of None.
     """
     rp = {
-        'replicas': report.scenario.host.type.count(schema.HostType.REPLICA),
+        'replicas': None,
         'tp': None,
         'dp': None,
         'pp': None,
         'ep': None,
-        'p_replicas': report.scenario.host.type.count(schema.HostType.PREFILL),
+        'p_replicas': None,
         'p_tp': None,
         'p_dp': None,
         'p_pp': None,
         'p_ep': None,
-        'd_replicas': report.scenario.host.type.count(schema.HostType.DECODE),
+        'd_replicas': None,
         'd_tp': None,
         'd_dp': None,
         'd_pp': None,
         'd_ep': None,
+        'is_pd': None,
     }
+
+    if not report.scenario.host:
+        # Host details are not available
+        return rp
+
+    rp['replicas'] = report.scenario.host.type.count(schema.HostType.REPLICA)
+    rp['p_replicas'] = report.scenario.host.type.count(schema.HostType.PREFILL)
+    rp['d_replicas'] = report.scenario.host.type.count(schema.HostType.DECODE)
     if rp['replicas'] == 0:
         rp['replicas'] = None
     if rp['p_replicas'] == 0:
@@ -967,15 +976,18 @@ def add_benchmark_report_to_df(
             num_gpus += rp['p_tp'] * rp['p_dp'] * rp['p_pp'] * rp['p_replicas']
         if rp['d_replicas']:
             num_gpus += rp['d_tp'] * rp['d_dp'] * rp['d_pp'] * rp['d_replicas']
-    else:
+    elif rp['is_pd'] == False:
         num_gpus = rp['tp'] * rp['replicas']
+    else:
+        # Cannot determine number of GPUs
+        num_gpus = None
 
     # Get inference scheduler plugin parameters
     prefix_cache_scorer_block_size = None
     prefix_cache_scorer_lur_capacity_per_server = None
     prefix_cache_scorer_max_blocks_to_match = None
     prefix_cache_scorer_mode = ''
-    if report.scenario.platform.metadata and isinstance(
+    if report.scenario.platform and report.scenario.platform.metadata and isinstance(
             report.scenario.platform.metadata, dict):
         for plugin in get_nested(
             report.scenario.platform.metadata, [
@@ -1003,7 +1015,7 @@ def add_benchmark_report_to_df(
     # In addition we assume the plugins have not been renamed, and the pluginRef
     # is the same as the plugin type.
     # https://gateway-api-inference-extension.sigs.k8s.io/guides/epp-configuration/config-text/
-    if report.scenario.platform.metadata and isinstance(
+    if report.scenario.platform and report.scenario.platform.metadata and isinstance(
             report.scenario.platform.metadata, dict):
         plugins = get_nested(
             report.scenario.platform.metadata, [
@@ -1078,8 +1090,18 @@ def add_benchmark_report_to_df(
     e2el_mult = 1000 if report.metrics.latency.request_latency.units == schema.Units.S else 1
 
     # Calculated metrics
-    thpt_per_gpu = report.metrics.throughput.output_tokens_per_sec / num_gpus
+    thpt_per_gpu = None
+    if num_gpus:
+        thpt_per_gpu = report.metrics.throughput.output_tokens_per_sec / num_gpus
     thpt_per_user = 1 / (mul(report.metrics.latency.time_per_output_token.mean, tpot_mult) / 1000)
+
+    # Scenario details
+    engine = None
+    gpu_model = None
+    if report.scenario.platform:
+        engine = report.scenario.platform.engine[0].name
+    if report.scenario.host:
+        gpu_model = report.scenario.host.accelerator[0].model
 
     # Add row to DataFrame
     runs_df.loc[len(runs_df)] = {
@@ -1088,12 +1110,12 @@ def add_benchmark_report_to_df(
         'Directory_Base': os.path.abspath(br_file).rsplit(os.sep, 2)[0],
         'Start': report.metrics.time.start,
         'Duration': report.metrics.time.duration,
-        'Platform': report.scenario.platform.engine[0].name,
+        'Platform': engine,
         # AI model name
         'Model': report.scenario.model.name,
         # Accelerator and parallelism
         # Assume only a single GPU type
-        'GPU': report.scenario.host.accelerator[0].model,
+        'GPU': gpu_model,
         'Num_GPUs': num_gpus,
         'DP': rp['dp'],
         'TP': rp['tp'],
