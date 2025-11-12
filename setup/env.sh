@@ -517,6 +517,11 @@ fi
 
 export LLMDBENCH_CONTROL_CLUSTER_NAMESPACE=$(${LLMDBENCH_CONTROL_KCMD} config view --minify --output 'jsonpath={..namespace}')
 
+# If namespace couldn't be detected from kubeconfig but was provided via CLI, use that
+if [[ -z $LLMDBENCH_CONTROL_CLUSTER_NAMESPACE && -n $LLMDBENCH_VLLM_COMMON_NAMESPACE ]]; then
+  export LLMDBENCH_CONTROL_CLUSTER_NAMESPACE=$LLMDBENCH_VLLM_COMMON_NAMESPACE
+fi
+
 export LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT=${LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT:-0}
 is_ocp=$($LLMDBENCH_CONTROL_KCMD api-resources 2>&1 | grep 'route.openshift.io' || true)
 if [[ ! -z ${is_ocp} ]]; then
