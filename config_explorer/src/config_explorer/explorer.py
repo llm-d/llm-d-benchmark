@@ -1083,19 +1083,17 @@ def add_benchmark_report_to_df(
             prompts_per_group = data.get('prefix_count')
             target_osl = data.get('output_tokens')
 
-    # Calculated metrics
-    thpt_per_gpu = None
-    thpt_per_user = None
-    if num_gpus:
-        thpt_per_gpu = report.metrics.throughput.output_tokens_per_sec / num_gpus
-    if concurrency:
-        thpt_per_user = report.metrics.throughput.output_tokens_per_sec / concurrency
-
     # Multipliers to ensure values are in ms
     ttft_mult = 1000 if report.metrics.latency.time_to_first_token.units == schema.Units.S else 1
     tpot_mult = 1000 if report.metrics.latency.time_per_output_token.units == schema.Units.S_PER_TOKEN else 1
     itl_mult = 1000 if report.metrics.latency.inter_token_latency.units == schema.Units.S_PER_TOKEN else 1
     e2el_mult = 1000 if report.metrics.latency.request_latency.units == schema.Units.S else 1
+
+    # Calculated metrics
+    thpt_per_gpu = None
+    if num_gpus:
+        thpt_per_gpu = report.metrics.throughput.output_tokens_per_sec / num_gpus
+    thpt_per_user = 1 / (mul(report.metrics.latency.time_per_output_token.mean, tpot_mult) / 1000)
 
     # Scenario details
     engine = None

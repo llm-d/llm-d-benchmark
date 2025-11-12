@@ -71,7 +71,7 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
     fieldRef:
       fieldPath: status.podIP
 - name: VLLM_LOGGING_LEVEL
-  value: DEBUG
+  value: INFO
 - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
   value: "1"
 EOF
