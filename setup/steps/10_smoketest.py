@@ -47,6 +47,9 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     """
     Checking if service/gateway was successfully deployed
     """
+    service_ip = "N/A"
+    service_name = "N/A"
+
     if is_standalone_deployment(ev):
         pod_string = "standalone"
         try:
