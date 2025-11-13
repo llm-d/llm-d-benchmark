@@ -862,6 +862,7 @@ def import_nop(results_file: str) -> BenchmarkReport:
             "metadata": {
                 "load_format": results["scenario"]["load_format"],
                 "sleep_mode": results["scenario"]["sleep_mode"],
+                "gpus": results["scenario"]["gpus"],
             },
         },
         "metrics": {

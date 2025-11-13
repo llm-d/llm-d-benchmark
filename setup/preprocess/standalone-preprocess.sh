@@ -42,14 +42,13 @@ echo "vllm extra arguments: '${LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONF
 # sets TORCH_CUDA_ARCH_LIST
 gpu_name=$(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 2 | xargs)
 if [[ -n "$gpu_name" ]]; then
-    echo "gpu name: $gpu_name"
+    echo "--- gpu scenario start name: $gpu_name"
     compute_cap_list=""
     declare -A compute_cap_map
     while IFS= read -r line; do
-        echo "nvidia-smi line: $line"
-        name=$(echo $line | cut -d ',' -f 1 | xargs)
+        fullname=$(echo $line | cut -d ',' -f 1 | xargs)
         # Replace blanks with hyphens
-        name=$(echo "${name// /-}")
+        name=$(echo "${fullname// /-}")
         if [[ "$gpu_name" == "$name" ]]; then
             compute_cap=$(echo $line | cut -d ',' -f 2 | xargs)
             # add compute capability if not added already
@@ -57,8 +56,12 @@ if [[ -n "$gpu_name" ]]; then
                 compute_cap_map[$compute_cap]=1
                 compute_cap_list="${compute_cap_list:+${compute_cap_list};}$compute_cap"
             fi
+            uuid=$(echo $line | cut -d ',' -f 3 | xargs)
+            persistence_mode=$(echo $line | cut -d ',' -f 4 | xargs)
+            echo "gpu_uuid='$uuid' gpu_name='$fullname' compute_cap='$compute_cap' persistence_mode='$persistence_mode'"
         fi
-    done < <( nvidia-smi --query-gpu=name,compute_cap --format=csv,noheader,nounits )
+    done < <( nvidia-smi --query-gpu=name,compute_cap,uuid,persistence_mode --format=csv,noheader,nounits )
+    echo "--- gpu scenario end name: $gpu_name"
 
     if [[ -n "$compute_cap_list" ]]; then
         export TORCH_CUDA_ARCH_LIST=$compute_cap_list

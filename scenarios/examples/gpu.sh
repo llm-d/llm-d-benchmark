@@ -42,6 +42,7 @@
 ######export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=LLMDBENCH_VLLM_STANDALONE_VLLM_WORKER_MULTIPROC_METHOD,LLMDBENCH_VLLM_STANDALONE_VLLM_CACHE_ROOT,LLMDBENCH_VLLM_STANDALONE_VLLM_ALLOW_LONG_MAX_MODEL_LEN,LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE
 
 # Standalone Parameters
+#export LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=1 # (default is "1")
 #export LLMDBENCH_VLLM_COMMON_REPLICAS=1 # (default is "1")
 #export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS=$(mktemp)
 #cat << EOF > $LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS
@@ -64,6 +65,7 @@
 # set to debug so that all vllm log lines can be categorized
 ######export LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL=DEBUG
 
+######export LLMDBENCH_VLLM_STANDALONE_ENABLE_SLEEP_MODE=true
 ######export LLMDBENCH_VLLM_STANDALONE_VLLM_WORKER_MULTIPROC_METHOD=fork
 ######export LLMDBENCH_VLLM_STANDALONE_VLLM_CACHE_ROOT=
 ######export LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG="{ \\\"enable_multithread_load\\\": true, \\\"num_threads\\\": 8 }"
@@ -72,6 +74,27 @@
 # run preprocessor python that will change the debug log date format and pre-serialize a model when using
 # tensorizer load format
 ######export LLMDBENCH_VLLM_STANDALONE_PREPROCESS="source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
+########export LLMDBENCH_VLLM_STANDALONE_PREPROCESS="source /setup/preprocess/install_nsys.sh"
+########export LLMDBENCH_VLLM_STANDALONE_ARGS="REPLACE_ENV_LLMDBENCH_VLLM_STANDALONE_PREPROCESS;\
+########nsys profile____--trace cuda,nvtx____--cuda-graph-trace____node____vllm____serve____REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL____\
+########--no-enable-prefix-caching____\
+########--load-format____REPLACE_ENV_LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT____\
+########--port____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_INFERENCE_PORT____\
+########--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN____\
+########--disable-log-requests____\
+########--gpu-memory-utilization____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL____\
+########--tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM____\
+########--model-loader-extra-config____\"\$LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG\""
+
+#export LLMDBENCH_VLLM_STANDALONE_ARGS="[\
+#--block-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE____\
+#--kv-transfer-config____'{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}'____\
+#--disable-log-requests____\
+#--disable-uvicorn-access-log____\
+#--no-enable-prefix-caching____\
+#--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN\
+#]"
+
 
 # llm-d Parameters
 #########export LLMDBENCH_VLLM_MODELSERVICE_PREFIIL_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:compute-q0v0

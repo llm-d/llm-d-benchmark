@@ -21,9 +21,11 @@ from functions import (
     add_annotations, \
     add_command_line_options, \
     add_additional_env_to_yaml, \
+    add_resources, \
+    add_config, \
     get_accelerator_nr, \
     is_standalone_deployment, \
-    add_config, \
+    kubectl_apply, \
     environment_variable_to_dict, \
     wait_for_pods_creation, \
     wait_for_pods_running, \
@@ -94,8 +96,10 @@ def main():
             llmdbench_execute_cmd(actual_cmd=kubectl_service_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], fatal=True)
 
             # Optional HTTPRoute for OpenShift
-            srl = "deployment,service,route,pods,secrets"
-            if int(ev.get("vllm_standalone_httproute", 0)) == 1:
+            srl = "deployment,service,pods,secrets"
+            if ev["control_deploy_is_openshift"] == "1" :
+              srl = "deployment,service,route,pods,secrets"
+            if ev["vllm_standalone_httproute"] == "1" :
                 srl = "deployment,service,httproute,route,pods,secrets"
 
                 # Generate HTTPRoute YAML
@@ -105,8 +109,7 @@ def main():
                     f.write(httproute_yaml)
 
                 # Apply HTTPRoute
-                kubectl_httproute_cmd = f"{ev['control_kcmd']} apply -f {httproute_file}"
-                result = llmdbench_execute_cmd(actual_cmd=kubectl_httproute_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], fatal=True)
+                kubectl_apply(api=api, manifest_data=httproute_yaml, dry_run=ev["control_dry_run"])
 
             announce(f"✅ Model \"{model}\" and associated service deployed.")
 
@@ -135,7 +138,7 @@ def main():
             collect_logs(ev, ev["vllm_common_replicas"], "both")
 
             # Handle OpenShift route exposure
-            if (int(ev["vllm_standalone_route"]) != 0 and int(ev["control_deploy_is_openshift"]) == 1):
+            if ev["vllm_standalone_route"] == "1" and ev["control_deploy_is_openshift"] == "1" :
 
                 # Check if route already exists
                 route_check_cmd = (
@@ -184,6 +187,8 @@ def generate_deployment_yaml(ev, model, model_label):
 
     # Generate additional environment variables
     additional_env = add_additional_env_to_yaml(ev, ev["vllm_common_envvars_to_yaml"])
+
+    limits_str, requests_str = add_resources(ev, "common")
 
     # Generate annotations
     annotations = add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")
@@ -277,27 +282,9 @@ spec:
           periodSeconds: 5
         resources:
           limits:
-            cpu: "{ev.get('vllm_common_cpu_nr', '')}"
-            memory: {ev.get('vllm_common_cpu_mem', '')}
-            {ev.get('vllm_common_accelerator_resource', '')}: "{
-              get_accelerator_nr(
-                ev.get('vllm_common_accelerator_nr', 'auto'),
-                ev.get('vllm_common_tensor_parallelism', 1),
-                ev.get('vllm_common_data_parallelism', 1),
-              )
-            }"
-            ephemeral-storage: {ev.get('vllm_standalone_ephemeral_storage', '')}
+{limits_str}
           requests:
-            cpu: "{ev.get('vllm_common_cpu_nr', '')}"
-            memory: {ev.get('vllm_common_cpu_mem', '')}
-            {ev.get('vllm_common_accelerator_resource', '')}: "{
-              get_accelerator_nr(
-                ev.get('vllm_common_accelerator_nr', 'auto'),
-                ev.get('vllm_common_tensor_parallelism', 1),
-                ev.get('vllm_common_data_parallelism', 1),
-              )
-            }"
-            ephemeral-storage: {ev.get('vllm_standalone_ephemeral_storage', '')}
+{requests_str}
         volumeMounts:
         - name: preprocesses
           mountPath: /setup/preprocess

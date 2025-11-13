@@ -20,11 +20,11 @@ from functions import (
     validate_and_create_pvc,
     launch_download_job,
     model_attribute,
-    create_namespace,
     kube_connect,
     llmdbench_execute_cmd,
     environment_variable_to_dict,
     is_openshift,
+    kubectl_apply,
     SecurityContextConstraints,
     add_scc_to_service_account
 )
@@ -49,37 +49,28 @@ def main():
         announce("DRY RUN enabled. No actual changes will be made.")
 
     announce(f'🔍 Preparing namespace "{ev["vllm_common_namespace"]}"...')
-    create_namespace(
-        api=api,
-        namespace_spec=ev["vllm_common_namespace"],
-        dry_run=ev["control_dry_run"],
-    )
+
+    namespace_yaml = f"""apiVersion: v1
+kind: Namespace
+metadata:
+  name: {ev["vllm_common_namespace"]}
+  namespace: {ev["vllm_common_namespace"]}
+"""
+
+    kubectl_apply(api=api, manifest_data=namespace_yaml, dry_run=ev["control_dry_run"])
 
     if ev["hf_token"]:
-        announce(
-            f'🔑 Creating or updating secret "{ev["vllm_common_hf_token_name"]}"...'
-        )
-        secret_obj = {
-            "apiVersion": "v1",
-            "kind": "Secret",
-            "metadata": {
-                "name": ev["vllm_common_hf_token_name"],
-                "namespace": ev["vllm_common_namespace"],
-            },
-            "type": "Opaque",
-            "data": {
-                ev["vllm_common_hf_token_key"]: base64.b64encode(
-                    ev["hf_token"].encode()
-                ).decode()
-            },
-        }
-        secret = pykube.Secret(api, secret_obj)
-        if not ev["control_dry_run"] :
-            if secret.exists():
-                secret.update()
-            else:
-                secret.create()
-            announce("Secret created/updated.")
+        secret_data = base64.b64encode(ev["hf_token"].encode()).decode()
+        secret_yaml = f"""apiVersion: v1
+kind: Secret
+metadata:
+  name: {ev["vllm_common_hf_token_name"]}
+  namespace: {ev["vllm_common_namespace"]}
+type: Opaque
+data:
+  {ev["vllm_common_hf_token_key"]}: {secret_data}
+"""
+        kubectl_apply(api=api, manifest_data=secret_yaml, dry_run=ev["control_dry_run"])
 
     models = [
         model.strip() for model in ev["deploy_model_list"].split(",") if model.strip()
@@ -124,6 +115,7 @@ def main():
 
             announce(f'🔽 Launching download job for model: "{model_name}"')
             launch_download_job(
+                api=api,
                 namespace=ev["vllm_common_namespace"],
                 secret_name=ev["vllm_common_hf_token_name"],
                 download_model=download_model,
@@ -183,17 +175,11 @@ def main():
     cm_obj = {
         "apiVersion": "v1",
         "kind": "ConfigMap",
-        "metadata": {"name": config_map_name, "namespace": ev["vllm_common_namespace"]},
+        "metadata": {"name": config_map_name, "namespace": ev["harness_namespace"]},
         "data": config_map_data,
     }
 
-    cm = pykube.ConfigMap(api, cm_obj)
-    if not ev["control_dry_run"] :
-        if cm.exists():
-            cm.update()
-        else:
-            cm.create()
-        announce(f'ConfigMap "{config_map_name}" created/updated.')
+    kubectl_apply(api=api, manifest_data=cm_obj, dry_run=ev["control_dry_run"])
 
     announce(f'✅ Namespace "{ev["vllm_common_namespace"]}" prepared successfully.')
     return 0

@@ -258,10 +258,20 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         announce "⚠️ Deployment method - $LLMDBENCH_DEPLOY_METHODS - is neither \"standalone\" nor \"modelservice\". "
 
         announce "🔍 Trying to find a matching endpoint name..."
+
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | awk '{print $1}' | grep ${LLMDBENCH_DEPLOY_METHODS} || true)
         if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
-          export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r '.spec.ports[] | select(.name == "default") | .port')
+          for i in default http; do
+            export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r ".spec.ports[] | select(.name == \"$i\") | .port")
+            if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT ]]; then
+              break
+            fi
+          done
+          if [[ -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT ]]; then
+            announce "❌ ERROR: could not find a port for endpoint name \"$$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME\""
+            exit 1
+          fi
         else
           export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod --no-headers | awk '{print $1}' | grep ${LLMDBENCH_DEPLOY_METHODS} | head -n 1 || true)
           export LLMDBENCH_VLLM_FQDN=
@@ -332,7 +342,10 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         fi
       fi
 
+      rm -rf ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/*
+
       if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
+
         render_workload_templates all
 
         export LLMDBENCH_RUN_EXPERIMENT_HARNESS="sleep infinity"
@@ -362,6 +375,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       done
 
       export LLMDBENCH_RUN_EXPERIMENT_ID_PREFIX=""
+
       for treatment in $(ls ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/*.yaml); do
 
         export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=$(echo $treatment | rev | cut -d '/' -f 1 | rev)

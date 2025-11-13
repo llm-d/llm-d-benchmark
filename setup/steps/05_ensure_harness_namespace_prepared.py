@@ -20,7 +20,6 @@ from functions import (
     validate_and_create_pvc,
     launch_download_job,
     model_attribute,
-    create_namespace,
     kube_connect,
     llmdbench_execute_cmd,
     environment_variable_to_dict,
@@ -28,9 +27,7 @@ from functions import (
     SecurityContextConstraints,
     add_scc_to_service_account,
     get_image,
-    kube_apply,
-    create_pod,
-    create_service
+    kubectl_apply
 )
 
 def main():
@@ -53,38 +50,28 @@ def main():
     if ev["control_dry_run"]:
         announce("DRY RUN enabled. No actual changes will be made.")
 
-    announce(f'🔍 Preparing namespace "{ev["vllm_common_namespace"]}"...')
-    create_namespace(
-        api=api,
-        namespace_spec=ev["harness_namespace"],
-        dry_run=ev["control_dry_run"],
-    )
+    announce(f'🔍 Preparing namespace "{ev["harness_namespace"]}"...')
+    namespace_yaml = f"""apiVersion: v1
+kind: Namespace
+metadata:
+  name: {ev["harness_namespace"]}
+  namespace: {ev["vllm_common_namespace"]}
+"""
+
+    kubectl_apply(api=api, manifest_data=namespace_yaml, dry_run=ev["control_dry_run"])
 
     if ev["hf_token"]:
-        announce(
-            f'🔑 Creating or updating secret "{ev["vllm_common_hf_token_name"]}"...'
-        )
-        secret_obj = {
-            "apiVersion": "v1",
-            "kind": "Secret",
-            "metadata": {
-                "name": ev["vllm_common_hf_token_name"],
-                "namespace": ev["harness_namespace"],
-            },
-            "type": "Opaque",
-            "data": {
-                ev["vllm_common_hf_token_key"]: base64.b64encode(
-                    ev["hf_token"].encode()
-                ).decode()
-            },
-        }
-        secret = pykube.Secret(api, secret_obj)
-        if not ev["control_dry_run"] :
-            if secret.exists():
-                secret.update()
-            else:
-                secret.create()
-            announce("Secret created/updated.")
+        secret_data = base64.b64encode(ev["hf_token"].encode()).decode()
+        secret_yaml = f"""apiVersion: v1
+kind: Secret
+metadata:
+  name: {ev["vllm_common_hf_token_name"]}
+  namespace: {ev["harness_namespace"]}
+type: Opaque
+data:
+  {ev["vllm_common_hf_token_key"]}: {secret_data}
+"""
+        kubectl_apply(api=api, manifest_data=secret_yaml, dry_run=ev["control_dry_run"])
 
     volumes = [
         model.strip() for model in ev["harness_pvc_name"].split(",") if model.strip()
@@ -139,7 +126,7 @@ spec:
 #      claimName: {ev["vllm_standalone_pvc_mountpoint"]}
 """
 
-          create_pod(api=api, pod_spec=pod_yaml, dry_run=ev["control_dry_run"])
+          kubectl_apply(api=api, manifest_data=pod_yaml, dry_run=ev["control_dry_run"])
 
           service_yaml = f"""apiVersion: v1
 apiVersion: v1
@@ -157,7 +144,7 @@ spec:
     app: llm-d-benchmark-harness
   type: ClusterIP
 """
-          create_service(api=api, service_spec=service_yaml, dry_run=ev["control_dry_run"])
+          kubectl_apply(api=api, manifest_data=service_yaml, dry_run=ev["control_dry_run"])
 
     if is_openshift(api) and ev["user_is_admin"]:
         # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid
@@ -197,19 +184,13 @@ spec:
     cm_obj = {
         "apiVersion": "v1",
         "kind": "ConfigMap",
-        "metadata": {"name": config_map_name, "namespace": ev["vllm_common_namespace"]},
+        "metadata": {"name": config_map_name, "namespace": ev["harness_namespace"]},
         "data": config_map_data,
     }
 
-    cm = pykube.ConfigMap(api, cm_obj)
-    if not ev["control_dry_run"] :
-        if cm.exists():
-            cm.update()
-        else:
-            cm.create()
-        announce(f'ConfigMap "{config_map_name}" created/updated.')
+    kubectl_apply(api=api, manifest_data=cm_obj, dry_run=ev["control_dry_run"])
 
-    announce(f'✅ Namespace "{ev["vllm_common_namespace"]}" prepared successfully.')
+    announce(f'✅ Namespace "{ev["harness_namespace"]}" prepared successfully.')
     return 0
 
 

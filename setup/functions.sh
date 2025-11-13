@@ -185,7 +185,12 @@ export -f extract_environment
 
 function render_string {
   set +euo pipefail
-  local string=$1
+
+  local string=${1}
+
+  if [[ -z $string ]]; then
+    return
+  fi
 
   echo $string | grep -q "\["
   if [[ $? -eq 0 ]]; then
@@ -213,7 +218,7 @@ function render_string {
     entry=REPLACE_ENV_${parameter_name}
     value=$(echo ${!parameter_name})
     if [[ -z $value && -z $default_value ]]; then
-      announce "❌ ERROR: variable \"$entry\" not defined!"
+      announce "❌ ERROR: variable \"$parameter_name\" not defined!"
       exit 1
     fi
     if [[ -z $value && ! -z $default_value ]]; then
@@ -563,7 +568,6 @@ function get_model_name_from_pod {
     fi
     echo $has_model
 }
-
 export -f get_model_name_from_pod
 
 function render_workload_templates {
