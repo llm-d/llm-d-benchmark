@@ -164,13 +164,13 @@ def is_openshift(api: pykube.HTTPClient) -> bool:
         # for other errors like 403, we might be on OpenShift but lack permissions
         #  if we cant query sccs we cant modify them either
         announce(
-            f"Could not query SCCs due to an API error (perhaps permissions?): {e}. Assuming not OpenShift for SCC operations"
+            f"WARNING: Could not query SCCs due to an API error (perhaps permissions?): {e}. Assuming not OpenShift for SCC operations"
         )
         return False
     except Exception as e:
         #  other potential non pykube errors
         announce(
-            f"An unexpected error occurred while checking for OpenShift: {e}. Assuming not OpenShift for SCC operations"
+            f"WARNING: An unexpected error occurred while checking for OpenShift: {e}. Assuming not OpenShift for SCC operations"
         )
         return False
 
@@ -205,7 +205,7 @@ def llmdbench_execute_cmd(
         try:
             (log_dir / f"{command_tstamp}_command.log").write_text(msg + "\n")
         except IOError as e:
-            announce(f"Error writing to dry run log: {e}")
+            announce(f"ERROR: unable to write to dry run log: {e}")
         return 0
 
     if verbose:
@@ -213,7 +213,7 @@ def llmdbench_execute_cmd(
         try:
             (log_dir / f"{command_tstamp}_command.log").write_text(msg + "\n")
         except IOError as e:
-            announce(f"Error writing to command log: {e}")
+            announce(f"ERROR: unable to write to command log: {e}")
 
     ecode = -1
     last_stdout_log = None
@@ -270,7 +270,7 @@ def llmdbench_execute_cmd(
 
     if ecode != 0:
         if not silent:
-            announce(f'\nERROR while executing command "{actual_cmd}"')
+            announce(f'\nERROR: while executing command "{actual_cmd}"')
 
         if last_stdout_log and last_stdout_log.exists():
             try:
@@ -290,7 +290,7 @@ def llmdbench_execute_cmd(
             announce("(stderr not captured)")
 
     if fatal and ecode != 0:
-        announce(f"\nFATAL: Exiting with code {ecode}.")
+        announce(f"\ERROR: Exiting with code {ecode}.")
         sys.exit(ecode)
 
     return ecode
@@ -370,7 +370,7 @@ def create_pod(
     pod_name = pod_spec["metadata"]["name"]
 
     if not pod_spec:
-        announce("Error: pod_spec cannot be empty.")
+        announce("ERROR: pod_spec cannot be empty.")
         return
 
     p = pykube.Pod(api, pod_spec)
@@ -386,7 +386,7 @@ def create_pod(
                 p.create()
                 announce(f"✅ Pod '{pod_name}' created successfully.")
     except PyKubeError as e:
-        announce(f"Failed to create or update Pod '{pod_name}': {e}")
+        announce(f"ERROR: Failed to create or update Pod '{pod_name}': {e}")
 
 
 def create_service(
@@ -402,7 +402,7 @@ def create_service(
     service_name = service_spec["metadata"]["name"]
 
     if not service_spec:
-        announce("Error: service_spec cannot be empty.")
+        announce("ERROR: service_spec cannot be empty.")
         return
 
     s = pykube.Service(api, service_spec)
@@ -418,7 +418,7 @@ def create_service(
                 s.create()
                 announce(f"✅ Service '{service_name}' created successfully.")
     except PyKubeError as e:
-        announce(f"Failed to create or update Pod '{service_name}': {e}")
+        announce(f"ERROR: Failed to create or update Pod '{service_name}': {e}")
 
 def create_namespace(
     api: pykube.HTTPClient,
@@ -436,7 +436,7 @@ def create_namespace(
     namespace_name = namespace_spec["metadata"]["name"]
 
     if not namespace_name:
-        announce("Error: namespace_spec cannot be empty.")
+        announce("ERROR: namespace_spec cannot be empty.")
         return
 
     announce(f"Ensuring namespace '{namespace_name}' exists...")
@@ -453,8 +453,7 @@ def create_namespace(
                 ns.create()
                 announce(f"✅ Namespace '{namespace_name}' created successfully.")
     except PyKubeError as e:
-        announce(f"Failed to create or check namespace '{namespace_name}': {e}")
-
+        announce(f"ERROR: Failed to create or check namespace '{namespace_name}': {e}")
 
 def validate_and_create_pvc(
     api: pykube.HTTPClient,
@@ -471,7 +470,7 @@ def validate_and_create_pvc(
     if download_model:
         if "/" not in download_model:
             announce(
-                f"❌ '{download_model}' is not in Hugging Face format <org>/<repo>"
+                f"ERROR: '{download_model}' is not in Hugging Face format <org>/<repo>"
             )
             sys.exit(1)
 
@@ -510,10 +509,10 @@ def validate_and_create_pvc(
             sys.exit(1)
         else:
             # handle other
-            announce(f"❌ Error checking StorageClass: {e}")
+            announce(f"ERROR: unable to find StorageClass: {e}")
             sys.exit(1)
     except FileNotFoundError:
-        announce("❌ Kubeconfig file not found. Cannot check StorageClass.")
+        announce("ERROR: Kubeconfig file not found. Cannot check StorageClass.")
         sys.exit(1)
 
     pvc_obj = {
@@ -545,9 +544,8 @@ def validate_and_create_pvc(
                 pvc.create()
                 announce(f"PVC '{pvc_name}' created successfully.")
     except PyKubeError as e:
-        announce(f"Failed to create or check PVC '{pvc_name}': {e}")
+        announce(f"ERROR: Failed to create or check PVC '{pvc_name}': {e}")
         sys.exit(1)
-
 
 def launch_download_job(
     namespace: str,
@@ -601,7 +599,7 @@ def launch_download_job(
             # without first sourcing env.sh and running the precheck there...
             #
             announce(
-                f"❌ Unauthorized access to gated model {model_path}. Check your HF Token."
+                f"ERROR: Unauthorized access to gated model {model_path}. Check your HF Token."
             )
             sys.exit(1)
     hf_cmds.append('hf download "${HF_MODEL_ID}" --local-dir "/cache/${MODEL_PATH}"')
@@ -656,7 +654,7 @@ spec:
         yaml_file_path.write_text(job_yaml)
         announce(f"Generated YAML file at: {yaml_file_path}")
     except IOError as e:
-        announce(f"Error writing YAML file: {e}")
+        announce(f"ERROR: unable to write to YAML file: {e}")
         sys.exit(1)
 
     # FIXME (USE PYKUBE)
@@ -672,7 +670,6 @@ spec:
     llmdbench_execute_cmd(
         actual_cmd=apply_cmd, dry_run=dry_run, verbose=verbose, silent=True, attempts=1
     )
-
 
 async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False):
     """Wait for the  job to complete"""
@@ -713,11 +710,11 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
 
     except asyncio.TimeoutError:
         announce(
-            f"Timeout waiting for evaluation job {job_name} after {timeout} seconds."
+            f"ERROR: Timeout waiting for evaluation job {job_name} after {timeout} seconds."
         )
         return False
     except Exception as e:
-        announce(f"(RECOVERABLE) Error occured while waiting for job {job_name} : {e}")
+        announce(f"WARNING: (RECOVERABLE) Error occured while waiting for job {job_name} : {e}")
         return False
     finally:
         await api_client.close()
@@ -808,7 +805,6 @@ def model_attribute(model: str, attribute: str) -> str:
     else:
         return result
 
-
 # FIXME (USE PYKUBE)
 def apply_configmap(
     yaml_file: Path, kubectl_cmd: str, dry_run: bool, verbose: bool
@@ -830,7 +826,6 @@ def apply_configmap(
     return llmdbench_execute_cmd(
         actual_cmd=cmd, dry_run=dry_run, verbose=verbose, silent=not verbose
     )
-
 
 def extract_environment(ev):
     """
@@ -873,7 +868,6 @@ def extract_environment(ev):
     with open(env_dir / "variables", "w") as f:
         for var in env_vars:
             f.write(var + "\n")
-
 
 def get_image(
     image_registry: str,
@@ -937,14 +931,13 @@ def get_image(
                 is_latest_tag = ""
 
         if not is_latest_tag:
-            announce(f'❌ Unable to find latest tag for image "{image_full_name}"')
+            announce(f'ERROR: Unable to find latest tag for image "{image_full_name}"')
             sys.exit(1)
 
     if tag_only == "1":
         return is_latest_tag
     else:
         return f"{image_registry}/{image_repo}/{image_name}:{is_latest_tag}"
-
 
 def check_storage_class(ev):
     """
@@ -1006,7 +999,7 @@ def check_storage_class(ev):
                         )
                         return False
                 except Exception as e:
-                    announce(f"Error checking default storage class: {e}")
+                    announce(f"ERROR: unable to find a \"default\" storage class: {e}")
                     return False
 
         # Verify storage class exists using pykube
@@ -1031,7 +1024,6 @@ def check_storage_class(ev):
     except Exception as e:
         announce(f"ERROR: connecting to Kubernetes: {e}")
         return False
-
 
 def check_affinity(ev: dict):
     """
@@ -1104,11 +1096,11 @@ def check_affinity(ev: dict):
                         )
                     else:
                         announce(
-                            "❌ ERROR: environment variable LLMDBENCH_VLLM_COMMON_AFFINITY=auto, but unable to find an accelerator on any node"
+                            "ERROR: environment variable LLMDBENCH_VLLM_COMMON_AFFINITY=auto, but unable to find an accelerator on any node"
                         )
                         return False
                 except Exception as e:
-                    announce(f"❌ Error checking affinity: {e}")
+                    announce(f"ERROR: unable to find nodes with requested affinity: {e}")
                     return False
         else:
             # Validate manually specified affinity using pykube
@@ -1126,11 +1118,11 @@ def check_affinity(ev: dict):
 
                     if not found_matching_node:
                         announce(
-                            f'❌ ERROR. There are no nodes on this cluster with the label "{annotation_key}:{annotation_value}" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)'
+                            f'ERROR: There are no nodes on this cluster with the label "{annotation_key}:{annotation_value}" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)'
                         )
                         return False
                 except Exception as e:
-                    announce(f"❌ Error validating affinity: {e}")
+                    announce(f"ERROR: unable to validate affinity: {e}")
                     return False
 
         # Handle auto accelerator resource detection
@@ -1146,9 +1138,8 @@ def check_affinity(ev: dict):
         return True
 
     except Exception as e:
-        announce(f"❌ Error connecting to Kubernetes: {e}")
+        announce(f"ERROR: unable to connect to cluster: {e}")
         return False
-
 
 def get_accelerator_nr(accelerator_nr, tp, dp) -> int:
     """
@@ -1156,12 +1147,13 @@ def get_accelerator_nr(accelerator_nr, tp, dp) -> int:
     Equivalent to the Bash get_accelerator_nr function.
     """
 
-    if accelerator_nr != "auto":
-        return int(accelerator_nr)
-
     # Calculate number of accelerators needed
-    return int(tp) * int(dp)
+    needed_accelerators = int(tp) * int(dp)
 
+    if accelerator_nr != "auto":
+        return accelerator_nr
+    else :
+        return needed_accelerators
 
 def add_annotations(varname: str) -> str:
     """
@@ -1196,7 +1188,6 @@ def add_annotations(varname: str) -> str:
             annotation_lines.append(f'{indent}{key.strip()}: "{value.strip()}"')
 
     return "\n".join(annotation_lines)
-
 
 def render_string(input_string):
     """
@@ -1252,7 +1243,6 @@ def render_string(input_string):
 
     return processed_string
 
-
 def add_command(model_command: str) -> str:
     """
     Generate command section for container based on model_command type.
@@ -1262,7 +1252,6 @@ def add_command(model_command: str) -> str:
       - /bin/sh
       - '-c'"""
     return ""
-
 
 def add_command_line_options(args_string):
     """
@@ -1346,6 +1335,123 @@ def add_command_line_options(args_string):
         else:
             return ""
 
+def add_resources(ev:dict, identifier: str) -> [str, str]:
+
+    limits_resources = []
+    requests_resources = []
+
+    if ev["control_environment_type_standalone_active"]:
+        identifier = "common"
+        section_ident = " " * 12
+
+    if ev["control_environment_type_modelservice_active"]:
+        identifier = f"modelservice_{identifier}"
+        section_ident = " " * 8
+
+    accelerator_resource = ev[f"vllm_{identifier}_accelerator_resource"]
+
+    if accelerator_resource == "auto":
+        accelerator_resource = "nvidia.com/gpu"
+
+    accelerator_nr = ev[f"vllm_{identifier}_accelerator_nr"]
+
+    data_parallelism = ev[f"vllm_{identifier}_data_parallelism"]
+    tensor_parallelism = ev[f"vllm_{identifier}_tensor_parallelism"]
+
+    accelerator_count = get_accelerator_nr(
+        accelerator_nr, tensor_parallelism, data_parallelism
+    )
+
+    cpu_mem = ev[f"vllm_{identifier}_cpu_mem"]
+    cpu_nr = ev[f"vllm_{identifier}_cpu_nr"]
+
+    ephemeral_storage_resource = ev.get("vllm_common_ephemeral_storage_resource", "")
+    ephemeral_storage_nr = ev[f"vllm_{identifier}_ephemeral_storage_nr"]
+
+    decode_network_resource = ev.get("vllm_modelservice_decode_network_resource", "")
+    decode_network_nr = ev.get("vllm_modelservice_decode_network_nr", "")
+
+    network_resource = ev[f"vllm_{identifier}_network_resource"]
+    network_nr = ev[f"vllm_{identifier}_network_nr"]
+
+    if cpu_mem:
+        limits_resources.append(f"{section_ident}memory: {cpu_mem}")
+        requests_resources.append(f"{section_ident}memory: {cpu_mem}")
+    if cpu_nr:
+        limits_resources.append(f'{section_ident}cpu: "{cpu_nr}"')
+        requests_resources.append(f'{section_ident}cpu: "{cpu_nr}"')
+    if ephemeral_storage_resource and ephemeral_storage_nr:
+        limits_resources.append(
+            f'{section_ident}{ephemeral_storage_resource}: "{ephemeral_storage_nr}"'
+        )
+        requests_resources.append(
+            f'{section_ident}{ephemeral_storage_resource}: "{ephemeral_storage_nr}"'
+        )
+
+    if (
+        accelerator_resource
+        and accelerator_count
+        and str(accelerator_count) != "0"
+    ):
+        limits_resources.append(
+            f'{section_ident}{accelerator_resource}: "{accelerator_count}"'
+        )
+        requests_resources.append(
+            f'{section_ident}{accelerator_resource}: "{accelerator_count}"'
+        )
+
+    if accelerator_resource != "nvidia.com/gpu" :
+        limits_resources.append(
+            f'{section_ident}nvidia.com/gpu: "0"'
+        )
+        requests_resources.append(
+            f'{section_ident}nvidia.com/gpu: "0"'
+        )
+
+    if network_resource and network_nr:
+        limits_resources.append(
+            f'{section_ident}{network_resource}: "{network_nr}"'
+        )
+        requests_resources.append(
+            f'{section_ident}{network_resource}: "{network_nr}"'
+        )
+
+    if limits_resources :
+        limits_resources = "\n".join(limits_resources)
+    else :
+        limits_resources = f"{section_ident}'{''}'"
+
+    if requests_resources :
+        requests_resources = "\n".join(requests_resources)
+    else :
+        requests_resources = f"{section_ident}'{''}'"
+
+    return limits_resources, requests_resources
+
+def add_affinity(ev:dict) -> str:
+
+    if ev["control_environment_type_standalone_active"]:
+        identifier = "common"
+        section_ident = " " * 12
+
+    if ev["control_environment_type_modelservice_active"]:
+
+        affinity = ev["vllm_common_affinity"]
+        if ":" in affinity:
+            affinity_key, affinity_value = affinity.split(":", 1)
+        else:
+            affinity_key, affinity_value = "", ""
+
+        if affinity_value.isdigit() :
+            affinity_value = f'"{affinity_value}"'
+
+        acellerator_type = affinity.split('.')[0]
+        acellerator_product = affinity.split(":")[0]
+
+        if acellerator_type == "nvidia" :
+            return f"  acceleratorTypes:\n    labelKey: {affinity_key}\n    labelValues:\n      - {affinity_value}"
+        else :
+            return f"  accelerator:\n    type: {acellerator_type}\n    resource:\n        {acellerator_type}: \"{acellerator_product}\""
 
 def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
     """
@@ -1406,7 +1512,6 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
 
     return "\n".join(env_lines)
 
-
 def add_config(obj_or_filename, num_spaces=0, label=""):
     spaces = " " * num_spaces
     contents = ""
@@ -1430,13 +1535,11 @@ def add_config(obj_or_filename, num_spaces=0, label=""):
         indented_contents = ""
     return indented_contents
 
-
 def is_standalone_deployment(ev: dict) -> bool:
     """
     Returns true if it is a standalone deployment
     """
-    return int(ev.get("control_environment_type_standalone_active", 0)) == 1
-
+    return int(ev["control_environment_type_standalone_active"]) == 1
 
 def get_accelerator_type(ev: dict) -> str | None:
     """
@@ -1451,7 +1554,6 @@ def get_accelerator_type(ev: dict) -> str | None:
         # LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3
         parsed = common_affinity.split(":")
         return parsed[-1]
-
 
 def is_hf_model_gated(model_id: str) -> bool:
     """
@@ -1483,9 +1585,8 @@ def is_hf_model_gated(model_id: str) -> bool:
         data = response.json()
         return data.get("gated", False) != False
     except requests.RequestException as e:
-        announce("❌ ERROR - Request failed:", e)
+        announce(f"ERROR: HF request failed: {e}")
         return False
-
 
 def user_has_hf_model_access(model_id: str, hf_token: str) -> bool:
     """
@@ -1525,7 +1626,7 @@ def user_has_hf_model_access(model_id: str, hf_token: str) -> bool:
             else:
                 response.raise_for_status()
     except requests.RequestException as e:
-        announce("❌ ERROR - Request failed:", e)
+        announce(f"ERROR: HF request failed: {e}")
         return False
 
 
@@ -1609,7 +1710,7 @@ def add_scc_to_service_account(
         scc = SecurityContextConstraints.objects(api).get(name=scc_name)
     except PyKubeError as e:
         if e.code == 404:
-            announce(f'Warning: SCC "{scc_name}" not found. Skipping.')
+            announce(f'WARNING: SCC "{scc_name}" not found. Skipping.')
             return
         else:
             # re raise other API errors
@@ -1853,7 +1954,7 @@ def validate_vllm_params(
     gpu_memory = param.gpu_memory
     tp = param.tp
     dp = param.dp
-    user_requested_gpu_count = param.requested_accelerator_nr
+    user_requested_gpu_count = int(param.requested_accelerator_nr)
     max_model_len = param.max_model_len
     gpu_memory_util = param.gpu_memory_util
 

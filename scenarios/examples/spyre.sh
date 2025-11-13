@@ -22,7 +22,7 @@ export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-ai-platform/micro-g3.3-8b-instruct-1b
 export LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME=spyre-precompiled-model
 
 # Deploy methods
-export LLMDBENCH_DEPLOY_METHODS=standalone
+#export LLMDBENCH_DEPLOY_METHODS=standalone
 #export LLMDBENCH_DEPLOY_METHODS=modelservice
 
 export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=ibm.com/spyre_pf
@@ -45,12 +45,18 @@ export LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME=vllm
 export LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG=1.0.0-amd64
 #export LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG=0.5.0-amd64
 
+export LLMDBENCH_LLMD_IMAGE_REGISTRY=icr.io
+export LLMDBENCH_LLMD_IMAGE_REPO=ibmaiu_internal
+export LLMDBENCH_LLMD_IMAGE_NAME=vllm
+export LLMDBENCH_LLMD_IMAGE_TAG=1.0.0-amd64
+
 export LLMDBENCH_VLLM_STANDALONE_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_STANDALONE_ARGS
 /home/senuser/container-scripts/simple_vllm_serve.sh REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_INFERENCE_PORT \
 --max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
 --tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM \
+--block-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE \
 --max-num-seqs 32 \
 --enable-auto-tool-choice \
 --tool-call-parser granite
@@ -107,3 +113,44 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES
   persistentVolumeClaim:
     claimName: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME
 EOF
+
+# Prefill parameters: 0 prefill pod
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_RESOURCE=ibm.com/spyre_pf
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR=0
+
+# Decode parameters: 2 decode pods
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=16
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=64Gi
+#              Uncomment (###) the following line to enable multi-nic
+###export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
+#              Uncomment (#####) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
+#####export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
+#####export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=1
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
+
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS=$(mktemp)
+cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
+/home/senuser/container-scripts/simple_vllm_serve.sh REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL;  \
+--port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_INFERENCE_PORT \
+--max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
+--tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM \
+--max-num-seqs 32 \
+--enable-auto-tool-choice \
+--tool-call-parser granite
+EOF
+
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_RESOURCE=ibm.com/spyre_pf
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=1
+
+# Workload parameters
+
+#export LLMDBENCH_HARNESS_NAME=guidellm
+export LLMDBENCH_HARNESS_NAME=inference-perf # (default is "inference-perf")
+######export LLMDBENCH_HARNESS_NAME=nop
+#export LLMDBENCH_HARNESS_NAME=vllm-benchmark
+
+#export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=sanity_random.yaml # (default is "sanity_random.yaml")
+######export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=nop.yaml
