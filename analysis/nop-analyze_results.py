@@ -12,7 +12,7 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from schema import BenchmarkReport
+from schema import BenchmarkReport, Scenario
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -100,10 +100,9 @@ def create_categories_dataframe(
     return pd.concat([df, df_total])
 
 
-def write_benchmark_scenario(file: io.TextIOWrapper, benchmark_report: BenchmarkReport):
+def write_benchmark_scenario(file: io.TextIOWrapper, scenario: Scenario):
     """write benchmark scenario to file"""
 
-    scenario = benchmark_report.scenario
     file.write("Scenario\n")
     file.write(f"  Harness       : {scenario.load.name}\n")
     file.write(f"  Load Format   : {scenario.metadata['load_format']}\n")
@@ -119,7 +118,8 @@ def write_benchmark_scenario(file: io.TextIOWrapper, benchmark_report: Benchmark
 def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkReport):
     """write benchmark reports to file"""
 
-    write_benchmark_scenario(file, benchmark_report)
+    scenario = benchmark_report.scenario
+    write_benchmark_scenario(file, scenario)
     file.write("\n")
 
     time_iso = (
@@ -137,10 +137,6 @@ def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkR
     initial_free = metrics_metadata["memory_profiling"]["initial_free"]["value"]
     after_free = metrics_metadata["memory_profiling"]["after_free"]["value"]
     profiling_time = metrics_metadata["memory_profiling"]["time"]["value"]
-    sleep = metrics_metadata["sleep"]["time"]["value"]
-    freed = metrics_metadata["sleep"]["gpu_freed"]["value"]
-    use = metrics_metadata["sleep"]["gpu_in_use"]["value"]
-    wake = metrics_metadata["wake"]["value"]
     load_cached_compiled_graph = metrics_metadata.get("load_cached_compiled_graph")
     compile_graph = metrics_metadata.get("compile_graph")
 
@@ -169,13 +165,18 @@ def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkR
     file.write("    Free Memory GPU(GiB)\n")
     file.write(f"      Initial                     : {initial_free:7.2f}\n")
     file.write(f"      After                       : {after_free:7.2f}\n")
-    file.write("  Sleep\n")
-    file.write(f"    Elapsed(secs)                 : {sleep:7.3f}\n")
-    file.write("    Memory GPU(GiB)\n")
-    file.write(f"      Freed                       : {freed:7.2f}\n")
-    file.write(f"      in Use                      : {use:7.2f}\n")
-    file.write("  Wake\n")
-    file.write(f"    Elapsed(secs)                 : {wake:7.3f}\n")
+    if scenario.metadata["sleep_mode"]:
+        sleep = metrics_metadata["sleep"]["time"]["value"]
+        freed = metrics_metadata["sleep"]["gpu_freed"]["value"]
+        use = metrics_metadata["sleep"]["gpu_in_use"]["value"]
+        wake = metrics_metadata["wake"]["value"]
+        file.write("  Sleep\n")
+        file.write(f"    Elapsed(secs)                 : {sleep:7.3f}\n")
+        file.write("    Memory GPU(GiB)\n")
+        file.write(f"      Freed                       : {freed:7.2f}\n")
+        file.write(f"      in Use                      : {use:7.2f}\n")
+        file.write("  Wake\n")
+        file.write(f"    Elapsed(secs)                 : {wake:7.3f}\n")
 
     categories = metrics_metadata.get("categories")
     if categories is None:
