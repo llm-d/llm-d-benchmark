@@ -308,7 +308,11 @@ def generate_ms_values_yaml(
         prefill_requests_resources.append(
             f'        {ephemeral_storage_resource}: "{prefill_ephemeral_storage_nr}"'
         )
-    if accelerator_resource:
+    if (
+        accelerator_resource
+        and prefill_accelerator_count
+        and str(prefill_accelerator_count) != "0"
+    ):
         prefill_limits_resources.append(
             f'        {accelerator_resource}: "{prefill_accelerator_count}"'
         )
@@ -364,6 +368,8 @@ def generate_ms_values_yaml(
     # Build the complete YAML structure with proper handling of empty values
     yaml_content = f"""fullnameOverride: {fullname_override}
 multinode: {multinode}
+
+schedulerName: {ev['vllm_common_pod_scheduler']}
 
 modelArtifacts:
   uri: {model_uri}
