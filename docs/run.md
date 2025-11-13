@@ -160,12 +160,15 @@ The additional environment variables to set are:
 | Environment Variable                         | Example Values  |
 | -------------------------------------------- | -------------- |
 | LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT   | `safetensors, tensorizer, runai_streamer, fastsafetensors` |
+| LLMDBENCH_VLLM_STANDALONE_ENABLE_SLEEP_MODE  | `false, true` |
 | LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL | `DEBUG, INFO, WARNING` etc |
 | LLMDBENCH_VLLM_STANDALONE_PREPROCESS         | `source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py` |
 
 The variable `LMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL` must be set to `DEBUG` so that the `nop` categories report finds all categories.
 
-The env. `LLMDBENCH_VLLM_STANDALONE_PREPROCESS` must be set to the above value for the `nop` harness in order to install load format
+The variable `LLMDBENCH_VLLM_STANDALONE_ENABLE_SLEEP_MODE` must be set to `true` in order to run sleep/wake benchmarks.
+
+The variable `LLMDBENCH_VLLM_STANDALONE_PREPROCESS` must be set to the above value for the `nop` harness in order to install load format
 dependencies, export additional environment variables and pre-serialize models when using the `tensorizer` load format.
 
 The preprocess scripts will run in the vLLM standalone pod before the vLLM server starts.

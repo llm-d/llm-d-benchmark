@@ -79,13 +79,14 @@ The scenario parameters can be roughly categorized in four groups:
 | ------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------- |
 | LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG     |                                            |                                                |
 | LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL            |                                            |  e.g., `DEBUG, INFO, WARNING`                                              |
-| LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT                |                                            |  e.g., `source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py`                                              |
-| LLMDBENCH_VLLM_STANDALONE_PREPROCESS                    |                                            |                                                |
+| LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT                |                                            |                                                |
+| LLMDBENCH_VLLM_STANDALONE_PREPROCESS                    |                                            | e.g., `source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py`                                              |
 | LLMDBENCH_VLLM_STANDALONE_ROUTE                         |                                            |                                                |
 | LLMDBENCH_VLLM_STANDALONE_HTTPROUTE                     |                                            |                                                |
 | LLMDBENCH_VLLM_STANDALONE_VLLM_ALLOW_LONG_MAX_MODEL_LEN |                                            |                                                |
-| LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE          |                                            |  e.g., `safetensors, tensorizer, runai_streamer, fastsafetensors` |
-| LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT              |                                            |                                                |
+| LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE          |                                            |  e.g., `0, 1` |
+| LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT              |                                            |  e.g., `safetensors, tensorizer, runai_streamer, fastsafetensors` |
+| LLMDBENCH_VLLM_STANDALONE_ENABLE_SLEEP_MODE             |                                            |  e.g., `true, false` |
 | LLMDBENCH_VLLM_STANDALONE_ARGS                          |                                            |                                                |
 | LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE             |                                            |                                                |
 

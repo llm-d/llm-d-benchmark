@@ -64,6 +64,7 @@
 # set to debug so that all vllm log lines can be categorized
 ######export LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL=DEBUG
 
+######export LLMDBENCH_VLLM_STANDALONE_ENABLE_SLEEP_MODE=true
 ######export LLMDBENCH_VLLM_STANDALONE_VLLM_WORKER_MULTIPROC_METHOD=fork
 ######export LLMDBENCH_VLLM_STANDALONE_VLLM_CACHE_ROOT=
 ######export LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG="{ \\\"enable_multithread_load\\\": true, \\\"num_threads\\\": 8 }"
