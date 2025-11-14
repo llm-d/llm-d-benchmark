@@ -345,6 +345,28 @@ class PlatformScenario:
 
 
 @dataclass
+class GPUScenario:
+    """GPU Scenario"""
+
+    uuid: str = ""
+    name: str = ""
+    compute_cap: str = ""
+    persistence_mode: str = ""
+
+    def dump(self) -> dict[str, Any]:
+        """Convert GPUScenario to dict.
+
+        Returns:
+            dict: Defined fields of GPUScenario.
+        """
+        dump_dict = {}
+        for f in fields(self):
+            dump_dict[f.name] = getattr(self, f.name)
+
+        return dump_dict
+
+
+@dataclass
 class BenchmarkScenario:
     """Benchmark Scenario"""
 
@@ -352,6 +374,7 @@ class BenchmarkScenario:
     sleep_mode: bool = False
     model: ModelScenario = field(default_factory=ModelScenario)
     platform: PlatformScenario = field(default_factory=PlatformScenario)
+    gpus: list[GPUScenario] = field(default_factory=list[GPUScenario])
 
     def dump(self) -> dict[str, Any]:
         """Convert BenchmarkScenario to dict.
@@ -362,6 +385,13 @@ class BenchmarkScenario:
         dump_dict = {}
         for f in fields(self):
             value = getattr(self, f.name)
+            if f.name == "gpus":
+                dump_list = []
+                for gpu in value:
+                    dump_list.append(gpu.dump())
+                dump_dict[f.name] = dump_list
+                continue
+
             dump_dict[f.name] = (
                 value.dump()
                 if hasattr(value, "dump") and callable(value.dump)
@@ -936,6 +966,13 @@ def parse_logs(logs: str) -> BenchmarkResult:
 
     # Strings to be searched on logging ouput in order to extract values
 
+    gpu_start = "--- gpu scenario start name:"
+    gpu_id = "gpu_uuid='"
+    gpu_name = "gpu_name='"
+    compute_cap = "compute_cap='"
+    persistence_mode = "persistence_mode='"
+    gpu_end = "--- gpu scenario end name:"
+
     server_non_default_args = "non-default args:"
     model_sleep_mode = "'enable_sleep_mode':"
     model_load_format = "load_format="
@@ -974,6 +1011,36 @@ def parse_logs(logs: str) -> BenchmarkResult:
     model_gpu_freed = "Sleep mode freed"
 
     benchmark_result = BenchmarkResult()
+
+    # load from start to get gpus scenario
+    gpus_scenario_found = False
+    for line in logs.splitlines():
+        line = line.strip()
+        if gpu_start in line:
+            gpus_scenario_found = True
+            continue
+
+        if gpu_end in line:
+            break
+
+        if not gpus_scenario_found:
+            continue
+
+        gpu_dict = {}
+        for pattern in [gpu_id, gpu_name, compute_cap, persistence_mode]:
+            start_index = line.find(pattern)
+            if start_index >= 0:
+                start_index += len(pattern)
+                end_index = line.find("'", start_index)
+                if end_index >= 0:
+                    gpu_dict[pattern] = line[start_index:end_index].strip()
+
+        gpu_scenario = GPUScenario()
+        gpu_scenario.uuid = gpu_dict.get(gpu_id, "")
+        gpu_scenario.name = gpu_dict.get(gpu_name, "")
+        gpu_scenario.compute_cap = gpu_dict.get(compute_cap, "")
+        gpu_scenario.persistence_mode = gpu_dict.get(persistence_mode, "")
+        benchmark_result.scenario.gpus.append(gpu_scenario)
 
     # loop from the bottom to catch latest statistics before old ones
     sleep_mode = ""

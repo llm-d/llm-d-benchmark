@@ -104,15 +104,21 @@ def write_benchmark_scenario(file: io.TextIOWrapper, scenario: Scenario):
     """write benchmark scenario to file"""
 
     file.write("Scenario\n")
-    file.write(f"  Harness       : {scenario.load.name}\n")
-    file.write(f"  Load Format   : {scenario.metadata['load_format']}\n")
-    file.write(f"  Sleep Mode On : {scenario.metadata['sleep_mode']}\n")
-    file.write(f"  Model         : {scenario.model.name}\n")
+    file.write(f"  Harness              : {scenario.load.name}\n")
+    file.write(f"  Load Format          : {scenario.metadata['load_format']}\n")
+    file.write(f"  Sleep Mode On        : {scenario.metadata['sleep_mode']}\n")
+    file.write(f"  Model                : {scenario.model.name}\n")
     for engine in scenario.platform.engine:
         file.write("  Engine\n")
-        file.write(f"    Name        : {engine.name}\n")
-        file.write(f"    Version     : {engine.version}\n")
-        file.write(f"    Args        : {str(engine.args)}\n")
+        file.write(f"    Name               : {engine.name}\n")
+        file.write(f"    Version            : {engine.version}\n")
+        file.write(f"    Args               : {str(engine.args)}\n")
+    for gpu in scenario.metadata["gpus"]:
+        file.write("  GPU\n")
+        file.write(f"    UUID               : {gpu['uuid']}\n")
+        file.write(f"    Name               : {gpu['name']}\n")
+        file.write(f"    Compute capability : {gpu['compute_cap']}\n")
+        file.write(f"    Persistence Mode   : {gpu['persistence_mode']}\n")
 
 
 def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkReport):
