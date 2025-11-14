@@ -722,6 +722,37 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
     finally:
         await api_client.close()
 
+def create_httproute(
+    api: pykube.HTTPClient, obj_spec: str, dry_run: bool = False, verbose: bool = False
+):
+
+    obj_spec = clear_string(obj_spec)
+    obj_spec = yaml.safe_load(obj_spec)
+
+    obj_type_label = "HTTPRoute"
+    obj_name = obj_spec["metadata"]["name"]
+
+    if not obj_spec:
+        announce(f"Error: {obj_type_label} spec cannot be empty.")
+        return
+
+    HTTPRoute = pykube.object_factory(api, "gateway.networking.k8s.io/v1", "HTTPRoute")
+    p = HTTPRoute(api, obj_spec)
+
+    announce(f"🚀 create_httproute called {p}")
+
+    try:
+        if p.exists():
+            True
+            # p.update()
+        else:
+            if dry_run:
+                announce(f"[DRY RUN] Would have created {obj_type_label} '{obj_name}'.")
+            else:
+                p.create()
+                announce(f"✅ {obj_type_label} '{obj_name}' created successfully.")
+    except PyKubeError as e:
+        announce(f"❌ Failed to create or update {obj_type_label} '{obj_name}': {e}")
 
 def model_attribute(model: str, attribute: str) -> str:
 
