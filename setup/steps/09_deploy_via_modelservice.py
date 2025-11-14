@@ -4,6 +4,8 @@ import os
 import sys
 from pathlib import Path
 
+import pykube
+
 # Add project root to path for imports
 current_file = Path(__file__).resolve()
 project_root = current_file.parents[1]
@@ -30,7 +32,9 @@ from functions import (
     add_additional_env_to_yaml,
     add_config,
     clear_string,
-    install_wva_components
+    install_wva_components,
+    kube_connect,
+    create_httproute
 )
 
 
@@ -123,9 +127,6 @@ def generate_ms_values_yaml(
 
     # Routing section
     service_port = ev.get("vllm_common_inference_port", "8000")
-    release = ev.get("vllm_modelservice_release", "")
-    route_enabled = ev.get("vllm_modelservice_route", "false")
-    model_id = ev.get("deploy_current_model_id", "")
     model_id_label = ev.get("deploy_current_model_id_label", "")
 
     # Image details
@@ -145,10 +146,6 @@ def generate_ms_values_yaml(
     )
     proxy_connector = ev.get("llmd_routingsidecar_connector", "")
     proxy_debug_level = ev.get("llmd_routingsidecar_debug_level", "")
-
-    # EPP and routing configuration
-    inference_pool_create = ev.get("vllm_modelservice_inference_pool", "true")
-    epp_create = ev.get("vllm_modelservice_epp", "true")
 
     # Decode configuration
     decode_replicas = int(ev.get("vllm_modelservice_decode_replicas", "0"))
@@ -249,11 +246,6 @@ def generate_ms_values_yaml(
 
     # Environment variables to YAML
     envvars_to_yaml = ev.get("vllm_common_envvars_to_yaml", "")
-
-    # Read the rules file content
-    rules_content = ""
-    if rules_file.exists():
-        rules_content = rules_file.read_text().rstrip()
 
     # Build decode resources section cleanly
     decode_limits_resources = []
@@ -376,46 +368,17 @@ modelArtifacts:
   size: {model_size}
   authSecretName: "llm-d-hf-token"
   name: {model_name}
+  labels:
+    llm-d.ai/inferenceServing: "true"
+    llm-d.ai/model: {model_id_label}
 
 routing:
   servicePort: {service_port}
-  parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: infra-{release}-inference-gateway
   proxy:
     image: "{proxy_image}"
     secure: false
     connector: {proxy_connector}
     debugLevel: {proxy_debug_level}
-  inferencePool:
-    create: {inference_pool_create}
-    name: {model_id_label}-gaie
-  httpRoute:
-    create: {route_enabled}
-    rules:
-    - backendRefs:
-      - group: inference.networking.x-k8s.io
-        kind: InferencePool
-        name: {model_id_label}-gaie
-        port: 8000
-        weight: 1
-      timeouts:
-        backendRequest: 0s
-        request: 0s
-      matches:
-      - path:
-          type: PathPrefix
-          value: /{model_id}/
-      filters:
-      - type: URLRewrite
-        urlRewrite:
-          path:
-            type: ReplacePrefixMatch
-            replacePrefixMatch: /
-    {rules_content}
-  epp:
-    create: {epp_create}
 
 decode:
   create: {decode_create}
@@ -538,6 +501,72 @@ prefill:
 
     return clear_string(yaml_content)
 
+def define_httproute(
+    ev: dict, 
+    single_model: bool = True
+) -> str:
+    """
+    Generate the ms-values.yaml content for Helm chart.
+    Exactly matches the bash script structure from lines 60-239.
+
+    Args:
+        ev: Environment variables dictionary
+        single_model: indicates only one model will be deployed
+
+    Returns:
+        YAML manifest for HTTPRoute
+"""
+    release = ev["vllm_modelservice_release"]
+    namespace = ev.get("vllm_common_namespace", "")
+    model_id_label = ev.get("deploy_current_model_id_label", "")
+    service_port = ev.get("vllm_common_inference_port", "8000")
+
+    manifest=f"""apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {model_id_label}
+  namespace: {namespace}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: infra-{release}-inference-gateway
+  rules:
+    - backendRefs:
+      - group: inference.networking.x-k8s.io
+        kind: InferencePool
+        name: {model_id_label}-gaie
+        port: {service_port}
+        weight: 1
+      timeouts:
+        backendRequest: 0s
+        request: 0s
+      matches:
+        - path:
+            type: PathPrefix
+            value: /{model_id_label}/
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+"""
+    # For single model case, create simpler rule
+    if single_model:
+      manifest = f"""{manifest}
+    - backendRefs:
+      - group: inference.networking.x-k8s.io
+        kind: InferencePool
+        name: {model_id_label}-gaie
+        port: {service_port}
+        weight: 1
+      timeouts:
+        backendRequest: 0s
+        request: 0s
+"""
+    return manifest
+
 def main():
     """Main function for step 09 - Deploy via modelservice"""
 
@@ -632,22 +661,7 @@ def main():
 
         # Generate ms-rules.yaml content
         rules_file = helm_dir / "ms-rules.yaml"
-
-        # For single model, write routing rule; otherwise empty
-        if len([m for m in model_list if m.strip()]) == 1:
-            rules_content = f"""- backendRefs:
-      - group: inference.networking.x-k8s.io
-        kind: InferencePool
-        name: {ev["deploy_current_model_id_label"]}-gaie
-        port: 8000
-        weight: 1
-      timeouts:
-        backendRequest: 0s
-        request: 0s
-"""
-            rules_file.write_text(rules_content)
-        else:
-            rules_file.write_text("")
+        rules_file.write_text("")
 
         # Generate ms-values.yaml
         values_content = generate_ms_values_yaml(ev, mount_model_volume, rules_file)
@@ -680,6 +694,13 @@ def main():
         announce(
             f"✅ {ev['vllm_common_namespace']}-{ev['deploy_current_model_id_label']}-ms helm chart deployed successfully"
         )
+
+        if ev.get("vllm_modelservice_route", "false"):
+          announce(f"🚀 Creating HTTPRoute")
+          api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
+          httproute_spec = define_httproute(ev, single_model = len([m for m in model_list if m.strip()]) == 1)
+          announce(f"Creating HTTPRoute: \n{httproute_spec}")
+          create_httproute(api, httproute_spec, ev["control_dry_run"], ev["control_verbose"])
 
         # Wait for decode pods creation
         result = wait_for_pods_creation(
