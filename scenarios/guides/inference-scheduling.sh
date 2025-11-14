@@ -79,12 +79,13 @@ EOF
 
 # Prefill parameters: 0 prefill pod
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR=0
+#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM)
 
 # Decode parameters: 2 decode pods
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=16
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=64Gi
+#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM)
 #              Uncomment (###) the following line to enable multi-nic
 ###export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
 #              Uncomment (#####) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
@@ -100,7 +101,6 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS="[\
 --disable-uvicorn-access-log____\
 --max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN\
 ]"
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=1
 
 # Workload parameters
 export LLMDBENCH_HARNESS_NAME=inference-perf

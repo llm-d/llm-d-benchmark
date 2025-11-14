@@ -21,6 +21,7 @@ from functions import (
     add_annotations, \
     add_command_line_options, \
     add_additional_env_to_yaml, \
+    add_resources,
     get_accelerator_nr, \
     is_standalone_deployment, \
     add_config, \
@@ -185,6 +186,8 @@ def generate_deployment_yaml(ev, model, model_label):
     # Generate additional environment variables
     additional_env = add_additional_env_to_yaml(ev, ev["vllm_common_envvars_to_yaml"])
 
+    limits_str, requests_str = add_resources(ev, "common")
+
     # Generate annotations
     annotations = add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")
 
@@ -277,27 +280,9 @@ spec:
           periodSeconds: 5
         resources:
           limits:
-            cpu: "{ev.get('vllm_common_cpu_nr', '')}"
-            memory: {ev.get('vllm_common_cpu_mem', '')}
-            {ev.get('vllm_common_accelerator_resource', '')}: "{
-              get_accelerator_nr(
-                ev.get('vllm_common_accelerator_nr', 'auto'),
-                ev.get('vllm_common_tensor_parallelism', 1),
-                ev.get('vllm_common_data_parallelism', 1),
-              )
-            }"
-            ephemeral-storage: {ev.get('vllm_standalone_ephemeral_storage', '')}
+{limits_str}
           requests:
-            cpu: "{ev.get('vllm_common_cpu_nr', '')}"
-            memory: {ev.get('vllm_common_cpu_mem', '')}
-            {ev.get('vllm_common_accelerator_resource', '')}: "{
-              get_accelerator_nr(
-                ev.get('vllm_common_accelerator_nr', 'auto'),
-                ev.get('vllm_common_tensor_parallelism', 1),
-                ev.get('vllm_common_data_parallelism', 1),
-              )
-            }"
-            ephemeral-storage: {ev.get('vllm_standalone_ephemeral_storage', '')}
+{requests_str}
         volumeMounts:
         - name: preprocesses
           mountPath: /setup/preprocess
