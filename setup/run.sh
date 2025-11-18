@@ -306,7 +306,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
         announce "🔍 Trying to find a matching hugging face token (hf.*token*.)..."
-        export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get secrets --no-headers | grep -E .*hf.*token.* | awk '{print $1}')
+        export LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get secrets --no-headers | grep -E llm-d-hf.*token.* | awk '{print $1}')
         if [[ ! -z $LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME ]]; then
           announce "ℹ️ Hugging face token detected is \"$LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME\""
         else
