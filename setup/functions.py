@@ -1660,7 +1660,7 @@ def wait_for_pods_created_running_ready(ev: dict, component_nr: int, component: 
                                 return 1
                         if pod.metadata.name not in pod_running_list and all(cs.state.running for cs in pod.status.container_statuses):
                             announce(f"🚀 {pod.metadata.name} {component} pod serving model running")
-                            announce(f"⏳ Waiting for it to be Ready (timeout={int(ev["control_wait_timeout"])}s)...")
+                            announce(f"⏳ Waiting for it to be Ready (timeout={int(ev['control_wait_timeout'])}s)...")
                             pod_running_list.append(pod.metadata.name)
                         if pod.metadata.name not in pod_ready_list and all(cs.ready for cs in pod.status.container_statuses):
                             announce(f"🚀 {pod.metadata.name} {component} pod serving model ready")
