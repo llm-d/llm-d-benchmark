@@ -1,0 +1,9 @@
+pipeline_name: object-loop-demo
+
+models:
+  - name: llama-7b
+    port: "8080"
+    quant: "fp16"
+  - name: qwen-2.5-7b
+    port: "9090"
+    quant: "int4"
