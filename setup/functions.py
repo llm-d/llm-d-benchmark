@@ -290,7 +290,7 @@ def llmdbench_execute_cmd(
             announce("(stderr not captured)")
 
     if fatal and ecode != 0:
-        announce(f"\ERROR: Exiting with code {ecode}.")
+        announce(f"ERROR: Exiting with code {ecode}.")
         sys.exit(ecode)
 
     return ecode
@@ -583,6 +583,7 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
     announce(f"Waiting for job {job_name} to complete...")
 
     if dry_run:
+        announce(f"[DRY RUN] Evaluation job {job_name} completed successfully.")
         return True
 
     # use async config loading
