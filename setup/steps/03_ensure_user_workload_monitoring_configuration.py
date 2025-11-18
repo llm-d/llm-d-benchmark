@@ -17,7 +17,7 @@ try:
                            llmdbench_execute_cmd,
                            environment_variable_to_dict,
                            kube_connect,
-                           apply_configmap,
+                           kubectl_apply,
                            is_openshift)
 except ImportError as e:
     # Fallback for when dependencies are not available
@@ -133,15 +133,7 @@ def ensure_user_workload_monitoring(
         yaml_dir = work_path / "setup" / "yamls"
         yaml_file = yaml_dir / f"{current_step}_cluster-monitoring-config_configmap.yaml"
 
-        # Write YAML file using Python yaml library
-        if not write_configmap_yaml(configmap, yaml_file, dry_run, verbose):
-            return 1
-
-        # Apply ConfigMap using kubectl/oc
-        result = apply_configmap(yaml_file, kubectl_cmd, dry_run, verbose)
-        if result != 0:
-            announce(f"❌ Failed to apply ConfigMap (exit code: {result})")
-            return result
+        kubectl_apply(api=api, manifest_data=configmap, dry_run=ev["control_dry_run"])
 
         announce("✅ OpenShift user workload monitoring enabled")
         return 0

@@ -31,12 +31,13 @@ from functions import (
     add_annotations,
     add_additional_env_to_yaml,
     add_config,
+    add_resources,
+    add_affinity,
     clear_string,
     install_wva_components,
     kube_connect,
-    create_httproute
+    kubectl_apply
 )
-
 
 def conditional_volume_config(
     volume_config: str, field_name: str, indent: int = 4
@@ -151,17 +152,9 @@ def generate_ms_values_yaml(
     decode_replicas = int(ev.get("vllm_modelservice_decode_replicas", "0"))
     decode_create = "true" if decode_replicas > 0 else "false"
     decode_data_parallelism = ev.get("vllm_modelservice_decode_data_parallelism", "1")
-    decode_tensor_parallelism = ev.get(
-        "vllm_modelservice_decode_tensor_parallelism", "1"
-    )
+    decode_tensor_parallelism = ev["vllm_modelservice_decode_tensor_parallelism"]
     decode_model_command = ev.get("vllm_modelservice_decode_model_command", "")
     decode_extra_args = ev.get("vllm_modelservice_decode_extra_args", "")
-    decode_cpu_mem = ev.get("vllm_modelservice_decode_cpu_mem", "") or ev.get(
-        "vllm_common_cpu_mem", ""
-    )
-    decode_cpu_nr = ev.get("vllm_modelservice_decode_cpu_nr", "") or ev.get(
-        "vllm_common_cpu_nr", ""
-    )
     decode_inference_port = ev.get("vllm_modelservice_decode_inference_port", "8000")
 
     # Prefill configuration
@@ -173,53 +166,6 @@ def generate_ms_values_yaml(
     )
     prefill_model_command = ev.get("vllm_modelservice_prefill_model_command", "")
     prefill_extra_args = ev.get("vllm_modelservice_prefill_extra_args", "")
-    prefill_cpu_mem = ev.get("vllm_modelservice_prefill_cpu_mem", "") or ev.get(
-        "vllm_common_cpu_mem", ""
-    )
-    prefill_cpu_nr = ev.get("vllm_modelservice_prefill_cpu_nr", "") or ev.get(
-        "vllm_common_cpu_nr", ""
-    )
-
-    # Resource configuration - handle auto accelerator resource
-    accelerator_resource = os.environ.get(
-        "LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE", ""
-    )
-    if accelerator_resource == "auto":
-        accelerator_resource = "nvidia.com/gpu"
-
-    decode_accelerator_nr = ev.get("vllm_modelservice_decode_accelerator_nr", "auto")
-    prefill_accelerator_nr = ev.get("vllm_modelservice_prefill_accelerator_nr", "auto")
-
-    # Calculate actual accelerator numbers
-    decode_accelerator_count = get_accelerator_nr(
-        decode_accelerator_nr, decode_tensor_parallelism, decode_data_parallelism
-    )
-    prefill_accelerator_count = get_accelerator_nr(
-        prefill_accelerator_nr, prefill_tensor_parallelism, prefill_data_parallelism
-    )
-
-    ephemeral_storage_resource = ev.get("vllm_common_ephemeral_storage_resource", "")
-    decode_ephemeral_storage_nr = ev.get(
-        "vllm_modelservice_decode_ephemeral_storage_nr", ""
-    )
-    prefill_ephemeral_storage_nr = ev.get(
-        "vllm_modelservice_prefill_ephemeral_storage_nr", ""
-    )
-
-    decode_network_resource = ev.get("vllm_modelservice_decode_network_resource", "")
-    decode_network_nr = ev.get("vllm_modelservice_decode_network_nr", "")
-    prefill_network_resource = ev.get("vllm_modelservice_prefill_network_resource", "")
-    prefill_network_nr = ev.get("vllm_modelservice_prefill_network_nr", "")
-
-    # Affinity configuration - get fresh value after check_affinity() call
-    affinity = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY", "")
-    if ":" in affinity:
-        affinity_key, affinity_value = affinity.split(":", 1)
-    else:
-        affinity_key, affinity_value = "", ""
-
-    if affinity_value.isdigit() :
-        affinity_value = f'"{affinity_value}"'
 
     # Probe configuration
     initial_delay_probe = ev.get("vllm_common_initial_delay_probe", "30")
@@ -248,96 +194,8 @@ def generate_ms_values_yaml(
     envvars_to_yaml = ev.get("vllm_common_envvars_to_yaml", "")
 
     # Build decode resources section cleanly
-    decode_limits_resources = []
-    decode_requests_resources = []
-
-    if decode_cpu_mem:
-        decode_limits_resources.append(f"        memory: {decode_cpu_mem}")
-        decode_requests_resources.append(f"        memory: {decode_cpu_mem}")
-    if decode_cpu_nr:
-        decode_limits_resources.append(f'        cpu: "{decode_cpu_nr}"')
-        decode_requests_resources.append(f'        cpu: "{decode_cpu_nr}"')
-    if ephemeral_storage_resource and decode_ephemeral_storage_nr:
-        decode_limits_resources.append(
-            f'        {ephemeral_storage_resource}: "{decode_ephemeral_storage_nr}"'
-        )
-        decode_requests_resources.append(
-            f'        {ephemeral_storage_resource}: "{decode_ephemeral_storage_nr}"'
-        )
-    if (
-        accelerator_resource
-        and decode_accelerator_count
-        and str(decode_accelerator_count) != "0"
-    ):
-        decode_limits_resources.append(
-            f'        {accelerator_resource}: "{decode_accelerator_count}"'
-        )
-        decode_requests_resources.append(
-            f'        {accelerator_resource}: "{decode_accelerator_count}"'
-        )
-    if decode_network_resource and decode_network_nr:
-        decode_limits_resources.append(
-            f'        {decode_network_resource}: "{decode_network_nr}"'
-        )
-        decode_requests_resources.append(
-            f'        {decode_network_resource}: "{decode_network_nr}"'
-        )
-
-    # Build prefill resources section cleanly
-    prefill_limits_resources = []
-    prefill_requests_resources = []
-
-    if prefill_cpu_mem:
-        prefill_limits_resources.append(f"        memory: {prefill_cpu_mem}")
-        prefill_requests_resources.append(f"        memory: {prefill_cpu_mem}")
-    if prefill_cpu_nr:
-        prefill_limits_resources.append(f'        cpu: "{prefill_cpu_nr}"')
-        prefill_requests_resources.append(f'        cpu: "{prefill_cpu_nr}"')
-    if ephemeral_storage_resource and prefill_ephemeral_storage_nr:
-        prefill_limits_resources.append(
-            f'        {ephemeral_storage_resource}: "{prefill_ephemeral_storage_nr}"'
-        )
-        prefill_requests_resources.append(
-            f'        {ephemeral_storage_resource}: "{prefill_ephemeral_storage_nr}"'
-        )
-    if (
-        accelerator_resource
-        and prefill_accelerator_count
-        and str(prefill_accelerator_count) != "0"
-    ):
-        prefill_limits_resources.append(
-            f'        {accelerator_resource}: "{prefill_accelerator_count}"'
-        )
-        prefill_requests_resources.append(
-            f'        {accelerator_resource}: "{prefill_accelerator_count}"'
-        )
-    if prefill_network_resource and prefill_network_nr:
-        prefill_limits_resources.append(
-            f'        {prefill_network_resource}: "{prefill_network_nr}"'
-        )
-        prefill_requests_resources.append(
-            f'        {prefill_network_resource}: "{prefill_network_nr}"'
-        )
-
-    # Join resources with newlines
-    decode_limits_str = (
-        "\n".join(decode_limits_resources) if decode_limits_resources else "        {}"
-    )
-    decode_requests_str = (
-        "\n".join(decode_requests_resources)
-        if decode_requests_resources
-        else "        {}"
-    )
-    prefill_limits_str = (
-        "\n".join(prefill_limits_resources)
-        if prefill_limits_resources
-        else "        {}"
-    )
-    prefill_requests_str = (
-        "\n".join(prefill_requests_resources)
-        if prefill_requests_resources
-        else "        {}"
-    )
+    decode_limits_str, decode_requests_str = add_resources(ev, "decode")
+    prefill_limits_str, prefill_requests_str = add_resources(ev, "prefill")
 
     # Handle command sections
     decode_command_section = (
@@ -383,10 +241,7 @@ routing:
 decode:
   create: {decode_create}
   replicas: {decode_replicas}
-  acceleratorTypes:
-      labelKey: {affinity_key}
-      labelValues:
-        - {affinity_value}
+{add_affinity(ev, "  ")}
   parallelism:
     data: {decode_data_parallelism}
     tensor: {decode_tensor_parallelism}
@@ -441,10 +296,7 @@ decode:
 prefill:
   create: {prefill_create}
   replicas: {prefill_replicas}
-  acceleratorTypes:
-      labelKey: {affinity_key}
-      labelValues:
-        - {affinity_value}
+{add_affinity(ev, "  ")}
   parallelism:
     data: {prefill_data_parallelism}
     tensor: {prefill_tensor_parallelism}
@@ -502,7 +354,7 @@ prefill:
     return clear_string(yaml_content)
 
 def define_httproute(
-    ev: dict, 
+    ev: dict,
     single_model: bool = True
 ) -> str:
     """
@@ -695,12 +547,10 @@ def main():
             f"✅ {ev['vllm_common_namespace']}-{ev['deploy_current_model_id_label']}-ms helm chart deployed successfully"
         )
 
-        if ev.get("vllm_modelservice_route", "false"):
-          announce(f"🚀 Creating HTTPRoute")
+        if ev["vllm_modelservice_route"] :
           api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
           httproute_spec = define_httproute(ev, single_model = len([m for m in model_list if m.strip()]) == 1)
-          announce(f"Creating HTTPRoute: \n{httproute_spec}")
-          create_httproute(api, httproute_spec, ev["control_dry_run"], ev["control_verbose"])
+          kubectl_apply(api=api, manifest_data=httproute_spec, dry_run=ev["control_dry_run"])
 
         # Wait for decode pods creation
         result = wait_for_pods_creation(

@@ -20,12 +20,10 @@ from functions import (
     add_config,
 )
 
-
 def provider(provider: str) -> str:
     if provider == "gke":
         return provider
     return "none"
-
 
 def main():
     """Deploy GAIE (Gateway API Inference Extension) components."""
