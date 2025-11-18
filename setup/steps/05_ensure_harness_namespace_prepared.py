@@ -93,7 +93,8 @@ data:
               pvc_name=volume,
               pvc_size=ev["harness_pvc_size"],
               pvc_class=ev["vllm_common_pvc_storage_class"],
-              dry_run=ev["control_dry_run"],
+              pvc_access_mode=ev['vllm_common_pvc_access_mode'],
+              dry_run=ev["control_dry_run"]
           )
 
           pod_yaml = f"""apiVersion: v1

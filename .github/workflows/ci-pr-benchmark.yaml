@@ -48,14 +48,24 @@ jobs:
         run: pip install ./config_explorer
         shell: bash
 
-      - name: Standup a standalone using llm-d-inference-sim
+      - name: Standup (standalone) using llm-d-inference-sim
         run: |
-          ./setup/standup.sh -c kind_sim_fb -t standalone -s 0,1,2,4,7,8
+          ./setup/standup.sh -c kind_sim_fb -t standalone -s 0,1,2,4,5,6,10
         shell: bash
 
-      - name: Standup a modelservice using llm-d-inference-sim
+      - name: Run harness (standalone)
         run: |
-          ./setup/standup.sh -c kind_sim_fb -t modelservice -s 0,1,2,4,7,8
+          ./setup/run.sh -c kind_sim_fb --dry-run
+        shell: bash
+
+      - name: Teardown (standalone)
+        run: |
+          ./setup/teardown.sh -c kind_sim_fb -t standalone
+        shell: bash
+
+      - name: Standup (modelservice) using llm-d-inference-sim
+        run: |
+          ./setup/standup.sh -c kind_sim_fb -t modelservice -s 0,1,2,4,5,7,8
         shell: bash
 
       - name: Run harness (mock)
@@ -65,7 +75,7 @@ jobs:
           ./setup/run.sh -c kind_sim_fb --dry-run
         shell: bash
 
-      - name: Teardown
+      - name: Teardown (modelservice)
         run: |
           ./setup/teardown.sh -c kind_sim_fb
         shell: bash
