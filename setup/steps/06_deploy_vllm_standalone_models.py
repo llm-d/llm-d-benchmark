@@ -27,9 +27,7 @@ from functions import (
     is_standalone_deployment, \
     kubectl_apply, \
     environment_variable_to_dict, \
-    wait_for_pods_creation, \
-    wait_for_pods_running, \
-    wait_for_pods_ready, \
+    wait_for_pods_created_running_ready, \
     collect_logs
 )
 
@@ -119,18 +117,8 @@ def main():
 
             ev["deploy_current_model_id_label"] = model_label
 
-            # Wait for vllm pods creation
-            result = wait_for_pods_creation(ev, ev["vllm_common_replicas"], "both")
-            if result != 0:
-                return result
-
-            # Wait for vllm pods to be running
-            result = wait_for_pods_running(ev, ev["vllm_common_replicas"], "both")
-            if result != 0:
-                return result
-
-            # Wait for vllm pods to be ready
-            result = wait_for_pods_ready(ev, ev["vllm_common_replicas"], "both")
+            # Wait for vllm pods to be created, running and ready
+            result = wait_for_pods_created_running_ready(ev, ev["vllm_common_replicas"], "both")
             if result != 0:
                 return result
 
