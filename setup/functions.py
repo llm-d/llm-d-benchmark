@@ -290,7 +290,7 @@ def llmdbench_execute_cmd(
             announce("(stderr not captured)")
 
     if fatal and ecode != 0:
-        announce(f"\ERROR: Exiting with code {ecode}.")
+        announce(f"ERROR: Exiting with code {ecode}.")
         sys.exit(ecode)
 
     return ecode
@@ -393,6 +393,7 @@ def validate_and_create_pvc(
     pvc_name: str,
     pvc_size: str,
     pvc_class: str,
+    pvc_access_mode: str,
     dry_run: bool = False,
 ):
     announce("Provisioning model storage…")
@@ -453,7 +454,7 @@ def validate_and_create_pvc(
             "namespace": namespace,
         },
         "spec": {
-            "accessModes": ["ReadWriteMany"],
+            "accessModes": [f"{pvc_access_mode}"],
             "resources": {"requests": {"storage": pvc_size}},
             "storageClassName": pvc_class,
             "volumeMode": "Filesystem",
@@ -583,6 +584,7 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
     announce(f"Waiting for job {job_name} to complete...")
 
     if dry_run:
+        announce(f"[DRY RUN] Evaluation job {job_name} completed successfully.")
         return True
 
     # use async config loading
@@ -817,6 +819,8 @@ def get_image(
         if not is_latest_tag:
             announce(f'ERROR: Unable to find latest tag for image "{image_full_name}"')
             sys.exit(1)
+
+        announce(f"INFO: resolved image \"{image_full_name}:{image_tag}\" into \"{image_full_name}:{is_latest_tag}\"")
 
     if tag_only == "1":
         return is_latest_tag

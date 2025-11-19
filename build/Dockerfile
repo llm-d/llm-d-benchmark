@@ -51,7 +51,7 @@ RUN cd vllm; \
 
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
 ARG GUIDELLM_BRANCH=main
-ARG GUIDELLM_COMMIT=ba51acf5b0ba377c5edc35109a78cd3ebb402922
+ARG GUIDELLM_COMMIT=f6175cdd8a88f0931bd46822ed7a71787dcd7cee
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     pip install torch --index-url https://download.pytorch.org/whl/cpu; \

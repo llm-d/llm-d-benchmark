@@ -99,7 +99,8 @@ data:
                 pvc_name=ev["vllm_common_pvc_name"],
                 pvc_size=ev["vllm_common_pvc_model_cache_size"],
                 pvc_class=ev["vllm_common_pvc_storage_class"],
-                dry_run=ev["control_dry_run"],
+                pvc_access_mode=ev['vllm_common_pvc_access_mode'],
+                dry_run=ev["control_dry_run"]
             )
 
             validate_and_create_pvc(
@@ -110,6 +111,7 @@ data:
                 pvc_name=ev["vllm_common_extra_pvc_name"],
                 pvc_size=ev["vllm_common_extra_pvc_size"],
                 pvc_class=ev["vllm_common_pvc_storage_class"],
+                pvc_access_mode=ev['vllm_common_pvc_access_mode'],
                 dry_run=ev["control_dry_run"],
             )
 

@@ -109,20 +109,21 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
         current_model_ID_label = model_attribute(model, "modelid_label")
 
     if dry_run:
-        pod_ip_list = "127.0.0.4"
-    try:
-        pod_ip_list = []
-        if is_standalone_deployment(ev):
-            pods = client.CoreV1Api().list_namespaced_pod(namespace=ev["vllm_common_namespace"])
-            for pod in pods.items:
-                if pod_string in pod.metadata.name:
+        pod_ip_list = ["127.0.0.4"]
+    else :
+        try:
+            pod_ip_list = []
+            if is_standalone_deployment(ev):
+                pods = client.CoreV1Api().list_namespaced_pod(namespace=ev["vllm_common_namespace"])
+                for pod in pods.items:
+                    if pod_string in pod.metadata.name:
+                        pod_ip_list.append(pod.status.pod_ip)
+            else:
+                pods = client.CoreV1Api().list_namespaced_pod(namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={current_model_ID_label},llm-d.ai/role={pod_string}")
+                for pod in pods.items:
                     pod_ip_list.append(pod.status.pod_ip)
-        else:
-            pods = client.CoreV1Api().list_namespaced_pod(namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={current_model_ID_label},llm-d.ai/role={pod_string}")
-            for pod in pods.items:
-                pod_ip_list.append(pod.status.pod_ip)
-    except client.ApiException as e:
-        announce(f"ERROR: Unable to find pods in namespace {ev['vllm_common_namespace']}: {e}")
+        except client.ApiException as e:
+            announce(f"ERROR: Unable to find pods in namespace {ev['vllm_common_namespace']}: {e}")
 
     if not pod_ip_list:
         announce(f"ERROR: Unable to find IPs for pods \"{pod_string}\"!")
@@ -131,7 +132,7 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     for pod_ip in pod_ip_list:
         announce(f"       🚀 Testing pod ip \"{pod_ip}\" ...")
         if dry_run:
-            announce(f"       ✅ Pod ip \"{pod_ip}\" responded successfully ({current_model})")
+            announce(f"       ✅ [DRY RUN] Pod ip \"{pod_ip}\" responded successfully ({current_model})")
         else:
             image_url = get_image(ev['llmd_image_registry'], ev['llmd_image_repo'], ev['llmd_image_name'], ev['llmd_image_tag'])
             received_model_name, curl_command_used = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, pod_ip, ev['vllm_common_inference_port'])
@@ -144,7 +145,7 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     announce(f"🚀 Testing service/gateway \"{service_ip}\" (port 80)...")
 
     if dry_run:
-        announce(f"✅ Service responds successfully ({current_model})")
+        announce(f"✅ [DRY RUN] Service responds successfully ({current_model})")
     else:
         image_url = get_image(ev['llmd_image_registry'], ev['llmd_image_repo'], ev['llmd_image_name'], ev['llmd_image_tag'])
         received_model_name, curl_command_used = get_model_name_from_pod(ev['vllm_common_namespace'], image_url, service_ip, "80")
