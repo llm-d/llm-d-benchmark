@@ -273,6 +273,7 @@ def import_benchmark_report(br_file: str) -> BenchmarkReport:
 def _vllm_timestamp_to_epoch(date_str: str) -> int:
     """Convert timestamp from vLLM benchmark into seconds from Unix epoch.
 
+    This also works with InferenceMAX.
     String format is YYYYMMDD-HHMMSS in UTC.
 
     Args:
@@ -283,7 +284,8 @@ def _vllm_timestamp_to_epoch(date_str: str) -> int:
     """
     date_str = date_str.strip()
     if not re.search('[0-9]{8}-[0-9]{6}', date_str):
-        raise Exception('Invalid date format: %s' % date_str)
+        sys.stderr.write(f'Invalid date format: {date_str}\n')
+        return None
     year = int(date_str[0:4])
     month = int(date_str[4:6])
     day = int(date_str[6:8])
@@ -317,104 +319,101 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
     # schema of BenchmarkReport
     br_dict = _get_llmd_benchmark_envars()
     # Append to that dict the data from vLLM benchmark.
-    # This section assumes metric-percentiles contains at least the values
-    # "0.1,1,5,10,25,75,90,95,99,99.9". If any of these values are missing, we
-    # will crash with a KeyError.
     update_dict(br_dict, {
         "scenario": {
-            "model": {"name": results['model_id']},
+            "model": {"name": results.get('model_id')},
             "load": {
                 "name": WorkloadGenerator.VLLM_BENCHMARK,
                 "args": {
-                    "num_prompts": results['num_prompts'],
-                    "request_rate": results['request_rate'],
-                    "burstiness": results['burstiness'],
-                    "max_concurrency": results['max_concurrency'],
+                    "num_prompts": results.get('num_prompts'),
+                    "request_rate": results.get('request_rate'),
+                    "burstiness": results.get('burstiness'),
+                    "max_concurrency": results.get('max_concurrency'),
                 },
             },
         },
         "metrics": {
             "time": {
-                "duration": results['duration'],
-                "start": _vllm_timestamp_to_epoch(results['date']),
+                "duration": results.get('duration'),
+                "start": _vllm_timestamp_to_epoch(results.get('date', '')),
             },
             "requests": {
-                "total": results['completed'],
+                "total": results.get('completed'),
                 "input_length": {
                     "units": Units.COUNT,
-                    "mean": results['total_input_tokens'] / results['completed'],
+                    "mean": results.get('total_input_tokens', 0) / results.get('completed', -1),
                 },
                 "output_length": {
                     "units": Units.COUNT,
-                    "mean": results['total_output_tokens'] / results['completed'],
+                    "mean": results.get('total_output_tokens', 0) / results.get('completed', -1),
                 },
             },
             "latency": {
                 "time_to_first_token": {
                     "units": Units.MS,
-                    "mean": results['mean_ttft_ms'],
-                    "stddev": results['std_ttft_ms'],
-                    "p0p1": results['p0.1_ttft_ms'],
-                    "p1": results['p1_ttft_ms'],
-                    "p5": results['p5_ttft_ms'],
-                    "p10": results['p10_ttft_ms'],
-                    "P25": results['p25_ttft_ms'],
-                    "p50": results['median_ttft_ms'],
-                    "p75": results['p75_ttft_ms'],
-                    "p90": results['p90_ttft_ms'],
-                    "p95": results['p95_ttft_ms'],
-                    "p99": results['p99_ttft_ms'],
-                    "p99p9": results['p99.9_ttft_ms'],
+                    "mean": results.get('mean_ttft_ms'),
+                    "stddev": results.get('std_ttft_ms'),
+                    "p0p1": results.get('p0.1_ttft_ms'),
+                    "p1": results.get('p1_ttft_ms'),
+                    "p5": results.get('p5_ttft_ms'),
+                    "p10": results.get('p10_ttft_ms'),
+                    "P25": results.get('p25_ttft_ms'),
+                    "p50": results.get('median_ttft_ms'),
+                    "p75": results.get('p75_ttft_ms'),
+                    "p90": results.get('p90_ttft_ms'),
+                    "p95": results.get('p95_ttft_ms'),
+                    "p99": results.get('p99_ttft_ms'),
+                    "p99p9": results.get('p99.9_ttft_ms'),
                 },
                 "time_per_output_token": {
                     "units": Units.MS_PER_TOKEN,
-                    "mean": results['mean_tpot_ms'],
-                    "stddev": results['std_tpot_ms'],
-                    "p0p1": results['p0.1_tpot_ms'],
-                    "p1": results['p1_tpot_ms'],
-                    "p5": results['p5_tpot_ms'],
-                    "p10": results['p10_tpot_ms'],
-                    "P25": results['p25_tpot_ms'],
-                    "p50": results['median_tpot_ms'],
-                    "p75": results['p75_tpot_ms'],
-                    "p90": results['p90_tpot_ms'],
-                    "p95": results['p95_tpot_ms'],
-                    "p99": results['p99_tpot_ms'],
-                    "p99p9": results['p99.9_tpot_ms'],
+                    "mean": results.get('mean_tpot_ms'),
+                    "stddev": results.get('std_tpot_ms'),
+                    "p0p1": results.get('p0.1_tpot_ms'),
+                    "p1": results.get('p1_tpot_ms'),
+                    "p5": results.get('p5_tpot_ms'),
+                    "p10": results.get('p10_tpot_ms'),
+                    "P25": results.get('p25_tpot_ms'),
+                    "p50": results.get('median_tpot_ms'),
+                    "p75": results.get('p75_tpot_ms'),
+                    "p90": results.get('p90_tpot_ms'),
+                    "p95": results.get('p95_tpot_ms'),
+                    "p99": results.get('p99_tpot_ms'),
+                    "p99p9": results.get('p99.9_tpot_ms'),
                 },
                 "inter_token_latency": {
                     "units": Units.MS_PER_TOKEN,
-                    "mean": results['mean_itl_ms'],
-                    "stddev": results['std_itl_ms'],
-                    "p0p1": results['p0.1_itl_ms'],
-                    "p1": results['p1_itl_ms'],
-                    "p5": results['p5_itl_ms'],
-                    "p10": results['p10_itl_ms'],
-                    "P25": results['p25_itl_ms'],
-                    "p90": results['p90_itl_ms'],
-                    "p95": results['p95_itl_ms'],
-                    "p99": results['p99_itl_ms'],
-                    "p99p9": results['p99.9_itl_ms'],
+                    "mean": results.get('mean_itl_ms'),
+                    "stddev": results.get('std_itl_ms'),
+                    "p0p1": results.get('p0.1_itl_ms'),
+                    "p1": results.get('p1_itl_ms'),
+                    "p5": results.get('p5_itl_ms'),
+                    "p10": results.get('p10_itl_ms'),
+                    "P25": results.get('p25_itl_ms'),
+                    "p90": results.get('p90_itl_ms'),
+                    "p95": results.get('p95_itl_ms'),
+                    "p99": results.get('p99_itl_ms'),
+                    "p99p9": results.get('p99.9_itl_ms'),
                 },
                 "request_latency": {
                     "units": Units.MS,
-                    "mean": results['mean_e2el_ms'],
-                    "stddev": results['std_e2el_ms'],
-                    "p0p1": results['p0.1_e2el_ms'],
-                    "p1": results['p1_e2el_ms'],
-                    "p5": results['p5_e2el_ms'],
-                    "p10": results['p10_e2el_ms'],
-                    "P25": results['p25_e2el_ms'],
-                    "p90": results['p90_e2el_ms'],
-                    "p95": results['p95_e2el_ms'],
-                    "p99": results['p99_e2el_ms'],
-                    "p99p9": results['p99.9_e2el_ms'],
+                    "mean": results.get('mean_e2el_ms'),
+                    "stddev": results.get('std_e2el_ms'),
+                    "p0p1": results.get('p0.1_e2el_ms'),
+                    "p1": results.get('p1_e2el_ms'),
+                    "p5": results.get('p5_e2el_ms'),
+                    "p10": results.get('p10_e2el_ms'),
+                    "P25": results.get('p25_e2el_ms'),
+                    "p90": results.get('p90_e2el_ms'),
+                    "p95": results.get('p95_e2el_ms'),
+                    "p99": results.get('p99_e2el_ms'),
+                    "p99p9": results.get('p99.9_e2el_ms'),
                 },
             },
             "throughput": {
-                "output_tokens_per_sec": results['output_throughput'],
-                "total_tokens_per_sec": results['total_token_throughput'],
-                "requests_per_sec": results['request_throughput'],
+                "output_tokens_per_sec": results.get('output_throughput'),
+                "total_tokens_per_sec": results.get('total_token_throughput'),
+                "requests_per_sec": results.get('request_throughput'),
             },
         },
     })
@@ -808,6 +807,126 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
     return BenchmarkReport(**br_dict)
 
 
+def import_inference_max(results_file: str) -> BenchmarkReport:
+    """Import data from an InferenceMAX benchmark run as a BenchmarkReport.
+
+    Args:
+        results_file (str): Results file to import.
+
+    Returns:
+        BenchmarkReport: Imported data.
+    """
+    check_file(results_file)
+
+    # Import results file from InferenceMAX benchmark
+    results = import_yaml(results_file)
+
+    # Get environment variables from llm-d-benchmark run as a dict following the
+    # schema of BenchmarkReport
+    br_dict = _get_llmd_benchmark_envars()
+    # Append to that dict the data from InferenceMAX benchmark.
+    update_dict(br_dict, {
+        "scenario": {
+            "model": {"name": results.get('model_id')},
+            "load": {
+                "name": WorkloadGenerator.INFERENCE_MAX,
+                "args": {
+                    "num_prompts": results.get('num_prompts'),
+                    "request_rate": results.get('request_rate'),
+                    "burstiness": results.get('burstiness'),
+                    "max_concurrency": results.get('max_concurrency'),
+                },
+            },
+        },
+        "metrics": {
+            "time": {
+                "duration": results.get('duration'),
+                "start": _vllm_timestamp_to_epoch(results.get('date', '')),
+            },
+            "requests": {
+                "total": results.get('completed'),
+                "input_length": {
+                    "units": Units.COUNT,
+                    "mean": np.array(results.get('input_lens', [0])).mean(),
+                },
+                "output_length": {
+                    "units": Units.COUNT,
+                    "mean": np.array(results.get('output_lens', [0])).mean(),
+                },
+            },
+            "latency": {
+                "time_to_first_token": {
+                    "units": Units.MS,
+                    "mean": results.get('mean_ttft_ms'),
+                    "stddev": results.get('std_ttft_ms'),
+                    "p0p1": results.get('p0.1_ttft_ms'),
+                    "p1": results.get('p1_ttft_ms'),
+                    "p5": results.get('p5_ttft_ms'),
+                    "p10": results.get('p10_ttft_ms'),
+                    "P25": results.get('p25_ttft_ms'),
+                    "p50": results.get('median_ttft_ms'),
+                    "p75": results.get('p75_ttft_ms'),
+                    "p90": results.get('p90_ttft_ms'),
+                    "p95": results.get('p95_ttft_ms'),
+                    "p99": results.get('p99_ttft_ms'),
+                    "p99p9": results.get('p99.9_ttft_ms'),
+                },
+                "time_per_output_token": {
+                    "units": Units.MS_PER_TOKEN,
+                    "mean": results.get('mean_tpot_ms'),
+                    "stddev": results.get('std_tpot_ms'),
+                    "p0p1": results.get('p0.1_tpot_ms'),
+                    "p1": results.get('p1_tpot_ms'),
+                    "p5": results.get('p5_tpot_ms'),
+                    "p10": results.get('p10_tpot_ms'),
+                    "P25": results.get('p25_tpot_ms'),
+                    "p50": results.get('median_tpot_ms'),
+                    "p75": results.get('p75_tpot_ms'),
+                    "p90": results.get('p90_tpot_ms'),
+                    "p95": results.get('p95_tpot_ms'),
+                    "p99": results.get('p99_tpot_ms'),
+                    "p99p9": results.get('p99.9_tpot_ms'),
+                },
+                "inter_token_latency": {
+                    "units": Units.MS_PER_TOKEN,
+                    "mean": results.get('mean_itl_ms'),
+                    "stddev": results.get('std_itl_ms'),
+                    "p0p1": results.get('p0.1_itl_ms'),
+                    "p1": results.get('p1_itl_ms'),
+                    "p5": results.get('p5_itl_ms'),
+                    "p10": results.get('p10_itl_ms'),
+                    "P25": results.get('p25_itl_ms'),
+                    "p90": results.get('p90_itl_ms'),
+                    "p95": results.get('p95_itl_ms'),
+                    "p99": results.get('p99_itl_ms'),
+                    "p99p9": results.get('p99.9_itl_ms'),
+                },
+                "request_latency": {
+                    "units": Units.MS,
+                    "mean": results.get('mean_e2el_ms'),
+                    "stddev": results.get('std_e2el_ms'),
+                    "p0p1": results.get('p0.1_e2el_ms'),
+                    "p1": results.get('p1_e2el_ms'),
+                    "p5": results.get('p5_e2el_ms'),
+                    "p10": results.get('p10_e2el_ms'),
+                    "P25": results.get('p25_e2el_ms'),
+                    "p90": results.get('p90_e2el_ms'),
+                    "p95": results.get('p95_e2el_ms'),
+                    "p99": results.get('p99_e2el_ms'),
+                    "p99p9": results.get('p99.9_e2el_ms'),
+                },
+            },
+            "throughput": {
+                "output_tokens_per_sec": results.get('output_throughput'),
+                "total_tokens_per_sec": results.get('total_token_throughput'),
+                "requests_per_sec": results.get('request_throughput'),
+            },
+        },
+    })
+
+    return BenchmarkReport(**br_dict)
+
+
 def import_nop(results_file: str) -> BenchmarkReport:
     """Import data from a nop run as a BenchmarkReport.
 
@@ -1086,17 +1205,21 @@ if __name__ == "__main__":
         case WorkloadGenerator.INFERENCE_PERF:
             if args.output_file:
                 import_inference_perf(
-                    args.results_file).export_yaml(
-                    args.output_file)
+                    args.results_file).export_yaml(args.output_file)
             else:
                 import_inference_perf(args.results_file).print_yaml()
         case WorkloadGenerator.VLLM_BENCHMARK:
             if args.output_file:
                 import_vllm_benchmark(
-                    args.results_file).export_yaml(
-                    args.output_file)
+                    args.results_file).export_yaml(args.output_file)
             else:
                 import_vllm_benchmark(args.results_file).print_yaml()
+        case WorkloadGenerator.INFERENCE_MAX:
+            if args.output_file:
+                import_inference_max(
+                    args.results_file).export_yaml(args.output_file)
+            else:
+                import_inference_max(args.results_file).print_yaml()
         case WorkloadGenerator.NOP:
             if args.output_file:
                 import_nop(args.results_file).export_yaml(args.output_file)
