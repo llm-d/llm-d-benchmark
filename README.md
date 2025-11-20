@@ -46,9 +46,22 @@ An illustrative example on is present [here](docs/tutorials/existing_stack_bench
 
 ### News
 
--  KubeCon/NativeCloudCon 2025 North America Talk "[A Cross-Industry Benchmarking Tutorial for Distributed LLMInference on Kubernetes](https://kccncna2025.sched.com/event/27FXL/tutorial-a-cross-industry-benchmarking-tutorial-for-distributed-llm-inference-on-kubernetes-jing-chen-ibm-research-junchen-jiang-university-of-chicago-ganesh-kudleppanavar-nvidia-samuel-monson-red-hat-jason-kramberger-google?iframe=no&w=100%25&sidebar=yes&bg=no)
+-  KubeCon/NativeCloudCon 2025 North America Talk "[A Cross-Industry Benchmarking Tutorial for Distributed LLMInference on Kubernetes](https://kccncna2025.sched.com/event/27FXL/tutorial-a-cross-industry-benchmarking-tutorial-for-distributed-llm-inference-on-kubernetes-jing-chen-ibm-research-junchen-jiang-university-of-chicago-ganesh-kudleppanavar-nvidia-samuel-monson-red-hat-jason-kramberger-google?iframe=no&w=100%25&sidebar=yes&bg=no), with the [accompanying tutorial](docs/tutorials/kubecon/README.md)
 
 - Data from benchmarking experiments is made available on the [main project's Google drive](https://drive.google.com/drive/folders/1sqnibn_mFlciV3-qZIFgZYmk-p9zemzH)
+
+- `llm-d-benchmark` supports all available [Well-Lit Path Guides](https://github.com/llm-d/llm-d/blob/main/guides/README.md)
+```
+scenarios/guides/pd-disaggregation.sh
+scenarios/guides/inference-scheduling.sh
+scenarios/guides/tiered-prefix-cache.sh
+scenarios/guides/simulated-accelerators.sh
+scenarios/guides/wide-ep-lws.sh
+scenarios/guides/precise-prefix-cache-aware.sh
+```
+
+> [!WARNING]
+> scenarios/guides/wide-ep-lws.sh is still a work in progress
 
 ### Architecture
 
