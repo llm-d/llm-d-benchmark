@@ -58,9 +58,17 @@ RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
     pip install .[recommended]
 
+ARG INFERENCEMAX_REPO=https://github.com/kimbochen/bench_serving.git
+ARG INFERENCEMAX_BRANCH=main
+ARG INFERENCEMAX_COMMIT=499c0b171b499b02a1fd546fb2326d2175a5d66e
+RUN git clone --branch ${INFERENCEMAX_BRANCH} ${INFERENCEMAX_REPO}
+RUN cd bench_serving; \
+    git checkout ${INFERENCEMAX_COMMIT}
+
 RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \
     echo "vllm-benchmark: ${VLLM_BENCHMARK_REPO} ${VLLM_BENCHMARK_COMMIT}" >> /workspace/repos.txt; \
-    echo "guidellm: ${GUIDELLM_REPO} ${GUIDELLM_COMMIT}" >> /workspace/repos.txt
+    echo "guidellm: ${GUIDELLM_REPO} ${GUIDELLM_COMMIT}" >> /workspace/repos.txt; \
+    echo "inferencemax: ${INFERENCEMAX_REPO} ${INFERENCEMAX_COMMIT}" >> /workspace/repos.txt; \
 
 RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
 
@@ -70,6 +78,7 @@ COPY analysis/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-an
 COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
 COPY analysis/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
 COPY analysis/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
+COPY analysis/inferencemax-analyze_results.sh /usr/local/bin/inferencemax-analyze_results.sh
 
 # Install requirements for analysis scripts
 COPY build/requirements-analysis.txt .
