@@ -12,6 +12,7 @@ import inspect
 import pykube
 import hashlib
 from pykube.exceptions import PyKubeError
+from urllib3.exceptions import ProtocolError
 
 import base64
 import tempfile
@@ -1638,7 +1639,7 @@ def wait_for_pods_created_running_ready(ev: dict, component_nr: int, component: 
         api_client = k8s_client.CoreV1Api()
         w = k8s_watch.Watch()
         max_retries = 3
-        deply = 2
+        delay = 2
         for attempt in range(max_retries):
             try:
                 pod_create_list = []
@@ -1647,7 +1648,7 @@ def wait_for_pods_created_running_ready(ev: dict, component_nr: int, component: 
                 for event in w.stream(api_client.list_namespaced_pod, namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}", timeout_seconds=int(ev["control_wait_timeout"])):  
                     pod = event['object']
                     event_type = event['type']
-                    if event_type in ("ADDED", "MODIFIED"):
+                    if event_type in ("ADDED", "MODIFIED") and pod.status.container_statuses:
                         if pod.metadata.name not in pod_create_list:
                             announce(f"✅ {pod.metadata.name} ({component}) pod serving model created")
                             pod_create_list.append(pod.metadata.name)
@@ -1667,7 +1668,7 @@ def wait_for_pods_created_running_ready(ev: dict, component_nr: int, component: 
                             pod_ready_list.append(pod.metadata.name)
                             if len(pod_create_list) == len(pod_ready_list):
                                 return 0
-            except Exception as e:
+            except (Exception, ProtocolError) as e:
                 if "Response ended prematurely" in str(e):
                     announce(f"{e}, Retrying in {delay} seconds...")
                     time.sleep(delay)

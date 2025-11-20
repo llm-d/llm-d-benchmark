@@ -577,9 +577,9 @@ def main():
         label_gateway_cmd = f"{ev['control_kcmd']} --namespace  {ev['vllm_common_namespace']} label gateway/infra-{release}-inference-gateway stood-up-by={ev['control_username']} stood-up-from=llm-d-benchmark stood-up-via={ev['deploy_methods']}"
         result = llmdbench_execute_cmd(label_gateway_cmd, ev["control_dry_run"], ev["control_verbose"])
         if result != 0:
-            announce("Error. Unable to label gateway for model \"{model}\"")
+            announce(f"ERROR: Unable to label gateway for model \"{model}\"")
         else :
-          announce("✅ Service for pods service model ${model} created")
+          announce(f"✅ Service for pods service model {model} created")
 
         # Handle OpenShift route creation
         if ev["vllm_modelservice_route"] and ev["control_deploy_is_openshift"] == "1":
