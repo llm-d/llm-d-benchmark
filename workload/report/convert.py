@@ -818,13 +818,13 @@ def import_inference_max(results_file: str) -> BenchmarkReport:
     """
     check_file(results_file)
 
-    # Import results file from vLLM benchmark
+    # Import results file from InferenceMAX benchmark
     results = import_yaml(results_file)
 
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
     br_dict = _get_llmd_benchmark_envars()
-    # Append to that dict the data from vLLM benchmark.
+    # Append to that dict the data from InferenceMAX benchmark.
     update_dict(br_dict, {
         "scenario": {
             "model": {"name": results.get('model_id')},
