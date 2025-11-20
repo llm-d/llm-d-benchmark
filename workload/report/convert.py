@@ -825,9 +825,6 @@ def import_inference_max(results_file: str) -> BenchmarkReport:
     # schema of BenchmarkReport
     br_dict = _get_llmd_benchmark_envars()
     # Append to that dict the data from vLLM benchmark.
-    # This section assumes metric-percentiles contains at least the values
-    # "0.1,1,5,10,25,75,90,95,99,99.9". If any of these values are missing, we
-    # will crash with a KeyError.
     update_dict(br_dict, {
         "scenario": {
             "model": {"name": results.get('model_id')},
