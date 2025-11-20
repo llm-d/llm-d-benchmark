@@ -11,6 +11,7 @@ setup:
     cache_estimate: prefix-cache-estimate-config
     cache_tracking: prefix-cache-tracking-config
 run:
+# Harness and workload profile are defined on scenarios/guides
   constants:
     - streaming: true
   factors:

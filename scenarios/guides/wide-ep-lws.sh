@@ -1,8 +1,8 @@
 # WIDE EP/DP WITH LWS WELL LIT PATH
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/wide-ep-lws
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/wide-ep-lws/README.md
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
 # Removed extra volumes metrics-volume and torch-compile-volume; they are not needed for this model and tested hardware.
-# Use LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES to add them if needed.
+# Use LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS|LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES|LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES to add them if needed.
 
 # IMPORTANT NOTE
 # All parameters not defined here or exported externally will be the default values found in setup/env.sh
@@ -98,84 +98,132 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
   value: "/model-cache/models"
 EOF
 
-# export LLMDBENCH_VLLM_MODELSERVICE_MOUNT_MODEL_VOLUME_OVERRIDE=false
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM=2
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=2
-#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM)
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=16
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=64Gi
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS=$(mktemp)
-cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
-START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE_LOCAL ))
-        source /opt/vllm/bin/activate
-        exec vllm serve /model-cache/models/Qwen/Qwen3-0.6B \
---port $LLMDBENCH_VLLM_COMMON_INFERENCE_PORT \
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM=2
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=2
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=16
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=64Gi
+#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM)
+#              Uncomment (###) the following line to enable multi-nic
+######export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
+#              Uncomment (#####) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
+######export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/roce_gdr
+######export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR=1
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND=custom
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS="python3 /setup/preprocess/set_nixl_environment.py; source /home/vllm/nixl.sh; export START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE_LOCAL ))"
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS=$(mktemp)
+cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS
+REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS;
+source /opt/vllm/bin/activate
+exec vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+--host 0.0.0.0 \
+--served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+--port LLMDBENCH_VLLM_MODELSERVICE_PREFILL_INFERENCE_PORT \
+--block-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE \
+--max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
+--tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM \
+--gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_MEM_UTIL \
 --disable-log-requests \
 --disable-uvicorn-access-log \
 --enable-expert-parallel \
 --data-parallel-hybrid-lb \
---tensor-parallel-size \$TP_SIZE \
 --data-parallel-size \$((LWS_GROUP_SIZE * DP_SIZE_LOCAL)) \
 --data-parallel-size-local \$DP_SIZE_LOCAL \
 --data-parallel-address \${LWS_LEADER_ADDRESS} \
---data-parallel-rpc-port 5555 \
+--data-parallel-rpc-port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT \
 --data-parallel-start-rank \$START_RANK \
 --trust-remote-code \
---kv_transfer_config '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'
+--kv_transfer_config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}"
 EOF
+
 export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_CONTAINER_CONFIG=$(mktemp)
 cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_CONTAINER_CONFIG}
 workingDir: /code
 imagePullPolicy: Always
 EOF
 
-export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS=$(mktemp)
-cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS}
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS}
 - name: dshm
   mountPath: /dev/shm
+- name: preprocesses
+  mountPath: /setup/preprocess
 EOF
 
-export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES=$(mktemp)
-cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES}
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES}
+- name: preprocesses
+  configMap:
+    defaultMode: 320
+    name: llm-d-benchmark-preprocesses
 - name: dshm
   emptyDir:
     medium: Memory
-    sizeLimit: 1Gi
+    sizeLimit: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM
 EOF
 
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1
-# Uncomment the following line to enable multi-nic
-#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
-# Uncomment the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
-#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/roce_gdr
-#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR=4
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM=1
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=1
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=16
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=64Gi
-#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM)
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND=custom
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS=$(mktemp)
-cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS
-START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE_LOCAL ))
-
-        source /opt/vllm/bin/activate
-        exec vllm serve /model-cache/models/Qwen/Qwen3-0.6B \
---port 8000 \
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM=2
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=2
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=16
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=64Gi
+#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM)
+#              Uncomment (###) the following line to enable multi-nic
+######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
+#              Uncomment (#####) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
+######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
+######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=1
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS="python3 /setup/preprocess/set_nixl_environment.py; source /home/vllm/nixl.sh; export START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE_LOCAL ))"
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS=$(mktemp)
+cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
+REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS;
+source /opt/vllm/bin/activate
+exec vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+--host 0.0.0.0 \
+--served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+--port LLMDBENCH_VLLM_MODELSERVICE_DECODE_INFERENCE_PORT \
+--block-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE \
+--max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
+--tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM \
+--gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_MEM_UTIL \
 --disable-log-requests \
 --disable-uvicorn-access-log \
 --enable-expert-parallel \
 --data-parallel-hybrid-lb \
---tensor-parallel-size \$TP_SIZE \
 --data-parallel-size \$((LWS_GROUP_SIZE * DP_SIZE_LOCAL)) \
 --data-parallel-size-local \$DP_SIZE_LOCAL \
 --data-parallel-address \${LWS_LEADER_ADDRESS} \
---data-parallel-rpc-port 5555 \
+--data-parallel-rpc-port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT \
 --data-parallel-start-rank \$START_RANK \
 --trust-remote-code \
---kv_transfer_config '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'
+--kv_transfer_config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}"
+EOF
+
+export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_CONTAINER_CONFIG=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_CONTAINER_CONFIG}
+workingDir: /code
+imagePullPolicy: Always
+EOF
+
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS}
+- name: dshm
+  mountPath: /dev/shm
+- name: preprocesses
+  mountPath: /setup/preprocess
+EOF
+
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES}
+- name: preprocesses
+  configMap:
+    defaultMode: 320
+    name: llm-d-benchmark-preprocesses
+- name: dshm
+  emptyDir:
+    medium: Memory
+    sizeLimit: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM
 EOF
 
 # Workload parameters

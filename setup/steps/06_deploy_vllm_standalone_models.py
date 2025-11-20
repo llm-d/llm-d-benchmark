@@ -176,7 +176,9 @@ def generate_deployment_yaml(ev, model, model_label):
         ev["vllm_standalone_image_registry"],
         ev["vllm_standalone_image_repo"],
         ev["vllm_standalone_image_name"],
-        ev["vllm_standalone_image_tag"]
+        ev["vllm_standalone_image_tag"],
+        False,
+        True
     )
 
     # Parse affinity

@@ -507,6 +507,10 @@ spec:
         secretKeyRef:
           name: ${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}
           key: HF_TOKEN
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
     volumeMounts:
     - name: results
       mountPath: /requests
@@ -626,6 +630,11 @@ function generate_standup_parameter_scenarios {
 
   mkdir -p ${scenario_dir}/setup/experiments/
   cp -f $standup_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/setup/experiments/
+
+  if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
+    touch $output_dir/treatment_run_only.sh
+    return
+  fi
 
   cat $standup_parameter_file | yq -r .setup.treatments | while IFS=: read -r name treatment; do
     if [ -z "$treatment" ]; then  # handle list without keys

@@ -35,9 +35,6 @@ Follow along with this tutorial during our talk to get hands-on experience!
 git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 
-# Check out the stable latest commit
-git reset --hard 2ac07a5a10da6d3fad5fd544a3770c38114e6f6d
-
 # Set up virtual environment
 python -m venv .venv
 source .venv/bin/activate
@@ -56,7 +53,7 @@ Examine the provided [basic scenario](./scenarios/basic.sh); fill in any fields 
 Make sure the correct cluster context is set then run the following commands:
 
 ```sh
-export BASE_PATH="$(realpath ./tutorials)"
+export BASE_PATH="$(realpath ./docs/tutorials/kubecon)"
 
 # Standup a simple llm-d deployment with single prefill and decode pods
 ./setup/standup.sh -c "${BASE_PATH}/scenarios/basic.sh"
@@ -112,7 +109,7 @@ A llm-d-benchmark **experiment** takes a **scenario** and augments it by iterati
 We will run a simple [smoke test scenario](./experiments/smoke.yaml) that iterates the deployment through every 2-GPU combination of prefill and decode pods. For each deployment it then iterates through three synthetic dataset configurations.
 
 ``` sh
-export BASE_PATH="$(realpath ./tutorials)"
+export BASE_PATH="$(realpath ./docs/tutorials/kubecon)"
 
 # Experiments must be run with the full e2e.sh script
 ./setup/e2e.sh -c "${BASE_PATH}/scenarios/basic.sh" -e "${BASE_PATH}/experiments/smoke.sh"
@@ -127,7 +124,7 @@ Experiment results will be exported to `<LLMDBENCH_CONTROL_WORK_DIR>.setup_<trea
 Command (from `llm-d-benchmark` root directory):
 
 ```sh
-export BASE_PATH="$(realpath ./tutorials)"
+export BASE_PATH="$(realpath ./docs/tutorials/kubecon)"
 
 cp tutorials/workload/profiles/inference-perf/shared_prefix_synthetic_large.yaml.in workload/profiles/inference-perf/
 ./setup/e2e.sh -c "${BASE_PATH}/scenarios/precise-prefix-cache-aware.sh"
@@ -136,7 +133,7 @@ cp tutorials/workload/profiles/inference-perf/shared_prefix_synthetic_large.yaml
 Model download and ModelService deployment should complete, and the benchmark should run:
 
 ```
-==> Tue Nov 11 03:58:26 PM UTC 2025 - ./run.sh - ⏳ Waiting for pod "llmdbench-inference-perf-launcher" for model "Qwen/Qwen3-32B" to be in "Completed" state (timeout=3600s)... 
+==> Tue Nov 11 03:58:26 PM UTC 2025 - ./run.sh - ⏳ Waiting for pod "llmdbench-inference-perf-launcher" for model "Qwen/Qwen3-32B" to be in "Completed" state (timeout=3600s)...
 ```
 
 You can view inference-perf progress from its launcher pod.
@@ -208,7 +205,7 @@ And see results in the output directory `~/data/shared-prefix-cache-aware`
 Command (from `llm-d-benchmark` root directory):
 
 ```sh
-export BASE_PATH="$(realpath ./tutorials)"
+export BASE_PATH="$(realpath ./docs/tutorials/kubecon)"
 
 ./setup/e2e.sh -c "${BASE_PATH}/scenarios/pd-disaggregation.sh" -e pd-disaggregation.yaml
 ```
@@ -307,7 +304,7 @@ The experiment will take some time to run to completion. You may decrease the ex
     # ... and so on
 ```
 
-Feel free to use the [Config Explorer](../config_explorer/) to explore the data.
+Feel free to use the [Config Explorer](../../../config_explorer/) to explore the data.
 
 ```
 pip install ./config_explorer
