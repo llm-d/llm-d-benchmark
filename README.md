@@ -12,7 +12,6 @@ Provide a single source of automation for repeatable and reproducible experiment
 git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 ./setup/install_deps.sh
-pip install ./config_explorer
 ```
 
 ## Quickstart
@@ -41,7 +40,15 @@ A user can elect to  **`standup`** an `llm-d` stack once, and then **`run`** the
 ```
 
 > [!TIP]
-> `./run.sh` can be used to run a particular workload against a pre-deployed stack (`llm-d` or otherwise)
+> `./run.sh` can be used to run a particular workload against an already stood up stack (`llm-d` or otherwise)
+
+An illustrative example on is present [here](docs/tutorials/existing_stack_benchmark/run_example.md)
+
+### News
+
+-  KubeCon/NativeCloudCon 2025 North America Talk "[A Cross-Industry Benchmarking Tutorial for Distributed LLMInference on Kubernetes](https://kccncna2025.sched.com/event/27FXL/tutorial-a-cross-industry-benchmarking-tutorial-for-distributed-llm-inference-on-kubernetes-jing-chen-ibm-research-junchen-jiang-university-of-chicago-ganesh-kudleppanavar-nvidia-samuel-monson-red-hat-jason-kramberger-google?iframe=no&w=100%25&sidebar=yes&bg=no)
+
+- Data from benchmarking experiments is made available on the [main project's Google drive](https://drive.google.com/drive/folders/1sqnibn_mFlciV3-qZIFgZYmk-p9zemzH)
 
 ### Architecture
 
