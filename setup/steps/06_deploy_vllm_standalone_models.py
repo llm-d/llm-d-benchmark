@@ -23,6 +23,7 @@ from functions import (
     add_additional_env_to_yaml, \
     add_resources, \
     add_config, \
+    add_affinity, \
     get_accelerator_nr, \
     is_standalone_deployment, \
     kubectl_apply, \
@@ -175,9 +176,6 @@ def generate_deployment_yaml(ev, model, model_label):
         True
     )
 
-    # Parse affinity
-    affinity_key, affinity_value = ev["vllm_common_affinity"].split(":", 1)
-
     # Generate command line options
     args = add_command_line_options(ev["vllm_standalone_args"])
 
@@ -217,16 +215,8 @@ spec:
       annotations:
 {annotations}
     spec:
-      schedulerName: {ev.get('vllm_common_pod_scheduler', 'default-scheduler')}
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: {affinity_key}
-                operator: In
-                values:
-                - {affinity_value}
+      schedulerName: {ev['vllm_common_pod_scheduler']}
+{add_affinity(ev)}
       containers:
       - name: vllm-standalone-{model_label}
         image: {image}

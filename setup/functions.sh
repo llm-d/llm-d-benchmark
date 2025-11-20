@@ -663,9 +663,9 @@ function render_workload_templates {
 
     local workload=$(echo $workload | $LLMDBENCH_CONTROL_SCMD 's^\.yaml^^g' )
     if [[ $workload == "all" ]]; then
-      workload_template_list=$(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name "*.yaml.in")
+      workload_template_list=$(find ${LLMDBENCH_HARNESS_PROFILES_DIR}/ -name "*.yaml.in")
     else
-      workload_template_list=$(find $LLMDBENCH_MAIN_DIR/workload/profiles/ -name "${workload}.yaml.in")
+      workload_template_list=$(find ${LLMDBENCH_HARNESS_PROFILES_DIR}/ -name "${workload}.yaml.in")
     fi
 
     rm -f $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
@@ -678,7 +678,7 @@ function render_workload_templates {
       done
     fi
 
-    announce "🛠️ Rendering \"$workload\" workload profile templates under \"$LLMDBENCH_MAIN_DIR/workload/profiles/\"..."
+    announce "🛠️ Rendering \"$workload\" workload profile templates under \"${LLMDBENCH_HARNESS_PROFILES_DIR}\"..."
     for workload_template_full_path in $workload_template_list; do
       workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
       workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e "s^\.yaml.in$^^g")
