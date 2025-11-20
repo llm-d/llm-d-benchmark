@@ -75,8 +75,8 @@ if nixl_list :
     env_file_contents.append("#!/usr/bin/env bash")
     env_file_contents.append(f"export UCX_NET_DEVICES=\"{nixl_list}\"")
     env_file_contents.append(f"export NCCL_IB_HCA=\"={nccl_list}\"")
-    env_file_contents='\n'.join(env_file_contents)
     print(env_file_contents)
 
-    with open(env_file_name, "w") as file:
-        file.write(env_file_contents)
+env_file_contents='\n'.join(env_file_contents)
+with open(env_file_name, "w") as file:
+    file.write(env_file_contents)
