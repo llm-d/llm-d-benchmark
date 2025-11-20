@@ -22,6 +22,7 @@ echo "Harness completed successfully."
 # We can't easily determine what the result filename will be, so search for and
 # convert all possibilities.
 for result in $(find $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR -maxdepth 1 -name 'vllm*.json'); do
+  echo "Converting $result"
   result_fname=$(echo $result | rev | cut -d '/' -f 1 | rev)
   convert.py $result -w vllm-benchmark $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/benchmark_report,_$result_fname.yaml 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
   # Report errors but don't quit
