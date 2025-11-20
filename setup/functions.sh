@@ -507,6 +507,10 @@ spec:
         secretKeyRef:
           name: ${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}
           key: HF_TOKEN
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
     volumeMounts:
     - name: results
       mountPath: /requests

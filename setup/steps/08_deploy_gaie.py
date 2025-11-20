@@ -114,7 +114,8 @@ def main():
                 ev["llmd_inferencescheduler_image_repo"],
                 ev["llmd_inferencescheduler_image_name"],
                 ev["llmd_inferencescheduler_image_tag"],
-                "1",
+                True,
+                True
             )
             hf_token_env = ""
             if ev["hf_token"]:

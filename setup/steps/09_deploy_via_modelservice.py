@@ -135,7 +135,7 @@ def generate_ms_values_yaml(
     image_repo = ev.get("llmd_image_repo", "")
     image_name = ev.get("llmd_image_name", "")
     image_tag = ev.get("llmd_image_tag", "")
-    main_image = get_image(image_registry, image_repo, image_name, image_tag, 0)
+    main_image = get_image(image_registry, image_repo, image_name, image_tag, False, True)
 
     # Proxy details
     proxy_image_registry = ev.get("llmd_routingsidecar_image_registry", "")
@@ -143,7 +143,7 @@ def generate_ms_values_yaml(
     proxy_image_name = ev.get("llmd_routingsidecar_image_name", "")
     proxy_image_tag = ev.get("llmd_routingsidecar_image_tag", "")
     proxy_image = get_image(
-        proxy_image_registry, proxy_image_repo, proxy_image_name, proxy_image_tag, 0
+        proxy_image_registry, proxy_image_repo, proxy_image_name, proxy_image_tag, False, True
     )
     proxy_connector = ev.get("llmd_routingsidecar_connector", "")
     proxy_debug_level = ev.get("llmd_routingsidecar_debug_level", "")
@@ -605,7 +605,7 @@ def main():
         if result != 0:
             announce("Error. Unable to label gateway for model \"{model}\"")
         else :
-          announce("✅ Service for pods service model ${model} created")
+          announce(f"✅ Service for pods service model {model} created")
 
         # Handle OpenShift route creation
         if ev["vllm_modelservice_route"] and ev["control_deploy_is_openshift"] == "1":
