@@ -1,15 +1,64 @@
 #!/usr/bin/env bash
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC=1
- if [[ ! -z $1 ]]; then
-  export LLMDBENCH_HARNESS_NAME=${1}
-  export LLMDBENCH_RUN_EXPERIMENT_HARNESS=$(find /usr/local/bin | grep ${1}.*-llm-d-benchmark | rev | cut -d '/' -f 1 | rev)
-  export LLMDBENCH_RUN_EXPERIMENT_ANALYZER=$(find /usr/local/bin | grep ${1}.*-analyze_results | rev | cut -d '/' -f 1 | rev)
+export LLMDBENCH_RUN_EXPERIMENT_HARNESS_NAME_AUTO=1
+export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_AUTO=1
+
+function show_usage {
+    echo -e "Usage: $0 -l/--harness [harness used to generate load (default=$LLMDBENCH_HARNESS_NAME, possible values $(ls $LLMDBENCH_RUN_WORKSPACE_DIR/profiles/ | sed -n ':a;N;$!ba;s/\n/,/g;p')] \n \
+                                        -w/--workload [workload to be used by the harness (default=$LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME, possible values (\"ls $LLMDBENCH_RUN_WORKSPACE_DIR/profiles/*/*.yaml\")] \n \
+                                        -h/--help (show this help)"
+}
+
+while [[ $# -gt 0 ]]
+do
+    key="$1"
+
+    case $key in
+        -l=*|--harness=*)
+        export LLMDBENCH_HARNESS_NAME=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_RUN_EXPERIMENT_HARNESS_NAME_AUTO=0
+        ;;
+        -l|--harness)
+        export LLMDBENCH_HARNESS_NAME="$2"
+        export LLMDBENCH_RUN_EXPERIMENT_HARNESS_NAME_AUTO=0
+        shift
+        ;;
+        -w=*|--workload=*)
+        export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_AUTO=0
+        ;;
+        -w|--workload)
+        export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME="$2"
+        export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_AUTO=0
+        shift
+        ;;
+        -h|--help)
+        show_usage
+        if [[ "${BASH_SOURCE[0]}" == "${0}" ]]
+        then
+            exit 0
+        else
+            return 0
+        fi
+        ;;
+        *)
+        echo "ERROR: unknown option \"$key\""
+        show_usage
+        exit 1
+        ;;
+        esac
+        shift
+done
+
+if [[ ${LLMDBENCH_RUN_EXPERIMENT_HARNESS_NAME_AUTO} -eq 0 ]]; then
+  export LLMDBENCH_RUN_EXPERIMENT_HARNESS=$(find /usr/local/bin | grep ${LLMDBENCH_HARNESS_NAME}.*-llm-d-benchmark | rev | cut -d '/' -f 1 | rev)
+  export LLMDBENCH_RUN_EXPERIMENT_ANALYZER=$(find /usr/local/bin | grep ${LLMDBENCH_HARNESS_NAME}.*-analyze_results | rev | cut -d '/' -f 1 | rev)
   export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR=/requests/$(echo $LLMDBENCH_RUN_EXPERIMENT_HARNESS | sed "s^-llm-d-benchmark^^g" | cut -d '.' -f 1)_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}
   export LLMDBENCH_CONTROL_WORK_DIR=$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
 fi
 
-if [[ ! -z $2 ]]; then
-  export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=$2
+if [[ ${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_AUTO} -eq 0 ]]; then
+  true
 else
   if [[ ! -z ${LLMDBENCH_BASE64_HARNESS_WORKLOAD_CONTENTS} ]]; then
     echo ${LLMDBENCH_BASE64_HARNESS_WORKLOAD_CONTENTS} | base64 -d > ${LLMDBENCH_RUN_WORKSPACE_DIR}/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}

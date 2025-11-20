@@ -365,8 +365,8 @@ def kubectl_apply(
                 continue
 
             if object_kind == "HTTPRoute" :
-                HTTPRoute = pykube.object_factory(api, "gateway.networking.k8s.io/v1", "HTTPRoute")
-                obj_instance = HTTPRoute(api, manifest_data)
+                _pci = pykube.object_factory(api, "gateway.networking.k8s.io/v1", "HTTPRoute")
+                obj_instance = _pci(api, manifest_data)
             else :
                 _pci = getattr(_pcc, item["kind"])
                 obj_instance = _pci(api, manifest_data)
@@ -374,6 +374,7 @@ def kubectl_apply(
             if obj_instance.exists():
                 if object_kind != "Namespace" :
                     obj_instance = _pci.objects(api).filter(namespace=object_namespace).get_by_name(object_name)
+
                 obj_instance.update()
                 announce(f"🚀 Updated {object_kind} \"{object_name}\"")
 
@@ -760,7 +761,8 @@ def get_image(
     image_repo: str,
     image_name: str,
     image_tag: str,
-    tag_only: str = "0",
+    tag_only: bool = False,
+    silent: bool = False
 ) -> str:
     """
     Construct container image reference.
@@ -771,7 +773,8 @@ def get_image(
         image_repo: Repository/organization
         image_name: Image name
         image_tag: Image tag
-        tag_only: If "1", return only the tag
+        tag_only: If "True", return only the tag
+        silent: If "True", do not output \"INFO\" message
 
     Returns:
         Full image reference or just tag
@@ -820,9 +823,10 @@ def get_image(
             announce(f'ERROR: Unable to find latest tag for image "{image_full_name}"')
             sys.exit(1)
 
-        announce(f"INFO: resolved image \"{image_full_name}:{image_tag}\" into \"{image_full_name}:{is_latest_tag}\"")
+        if not silent:
+            announce(f"INFO: resolved image \"{image_full_name}:{image_tag}\" into \"{image_full_name}:{is_latest_tag}\"")
 
-    if tag_only == "1":
+    if tag_only :
         return is_latest_tag
     else:
         return f"{image_registry}/{image_repo}/{image_name}:{is_latest_tag}"

@@ -81,7 +81,9 @@ data:
         ev["image_registry"],
         ev["image_repo"],
         ev["image_name"],
-        ev["image_tag"]
+        ev["image_tag"],
+        False,
+        True
     )
 
     for volume in volumes:
