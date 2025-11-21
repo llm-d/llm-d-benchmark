@@ -46,7 +46,7 @@ function show_usage {
             -o/--overrides [comma-separated list of workload profile parameters to be overriden (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES)] \n \
             -z/--skip [skip the execution of the experiment, and only collect data (default=$LLMDBENCH_HARNESS_SKIP_RUN)] \n \
             --wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means "do not wait\""] \n \
-            --debug [execute harness in \"debug-mode\" (default=$LLMDBENCH_HARNESS_DEBUG)] \n \
+            -j/--parallelism [number of harness pods to be created (default=$LLMDBENCH_HARNESS_LOAD_PARALLELISM)] \n \
             -b/--annotations [kubernetes pod annotations] (default=$LLMDBENCH_VLLM_COMMON_ANNOTATIONS) \n \
             -r/--release [modelservice helm chart release name (default=$LLMDBENCH_VLLM_MODELSERVICE_RELEASE)] \n \
             -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)] \n \
@@ -82,6 +82,13 @@ while [[ $# -gt 0 ]]; do
         ;;
         -m|--models)
         export LLMDBENCH_CLIOVERRIDE_DEPLOY_MODEL_LIST="$2"
+        shift
+        ;;
+        -j=*|--parallelism=*)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_LOAD_PARALLELISM=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -j|--parallelism)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_LOAD_PARALLELISM="$2"
         shift
         ;;
         -p=*|--namespace=*)
@@ -181,9 +188,6 @@ while [[ $# -gt 0 ]]; do
         --deep)
         export LLMDBENCH_CLIOVERRIDE_CONTROL_DEEP_CLEANING=1
         ;;
-        --debug)
-        export LLMDBENCH_HARNESS_DEBUG=1
-        ;;
         -v|--verbose)
         export LLMDBENCH_CLIOVERRIDE_CONTROL_VERBOSE=1
         export LLMDBENCH_CONTROL_VERBOSE=1
@@ -211,6 +215,11 @@ export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=1
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
 
 sweeptmpdir=$(mktemp -d -t sweepXXX)
+
+if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]
+then
+  announce "❌ ERROR: LLMDBENCH_HARNESS_DEBUG=1 is NOT supported for end-to-end experiments"
+fi
 
 generate_standup_parameter_scenarios $sweeptmpdir $LLMDBENCH_SCENARIO_FULL_PATH $LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS
 announce "ℹ️ A list of tretaments for standup paramaters was generated at \"${sweeptmpdir}\""
