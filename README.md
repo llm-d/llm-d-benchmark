@@ -6,13 +6,23 @@ This repository provides an automated workflow for benchmarking LLM inference us
 
 Provide a single source of automation for repeatable and reproducible experiments and performance evaluation on `llm-d`.
 
-### 📦 Repository Setup
+## Prerequisites
+Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-d/blob/main/README.md#pre-requisites) for the most up-to-date requirements.
+For the client setup, the provided `install-deps.sh` will download and install the necessary tools.
+
+### Administrative Requirements
+Deploying the llm-d stack requires **cluster-level admin** privileges, as you will be configuring cluster-level resources.
+However, the scripts can be executed by **namespace-level admin** users, as long as the [Kubernetes infrastructure components](https://github.com/llm-d-incubation/llm-d-infra) are configured and the **target namespace already exists**.
+
+
+## 📦 Repository Setup
 
 ```
 git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 ./setup/install_deps.sh
 ```
+
 
 ## Quickstart
 
@@ -42,11 +52,16 @@ A user can elect to  **`standup`** an `llm-d` stack once, and then **`run`** the
 > [!TIP]
 > `./run.sh` can be used to run a particular workload against an already stood up stack (`llm-d` or otherwise)
 
-An illustrative example on is present [here](docs/tutorials/existing_stack_benchmark/run_example.md)
+An illustrative example on is present [here](docs/tutorials/run/run_against_existing_example.md)
+
+> [!TIP]
+> `./run.sh` can also be used in "interactive" (or "debug") mode (option `-d` or `--debug`)
+
+An illustrative example on is present [here](docs/tutorials/run/run_interactively_example.md)
 
 ### News
 
--  KubeCon/NativeCloudCon 2025 North America Talk "[A Cross-Industry Benchmarking Tutorial for Distributed LLMInference on Kubernetes](https://kccncna2025.sched.com/event/27FXL/tutorial-a-cross-industry-benchmarking-tutorial-for-distributed-llm-inference-on-kubernetes-jing-chen-ibm-research-junchen-jiang-university-of-chicago-ganesh-kudleppanavar-nvidia-samuel-monson-red-hat-jason-kramberger-google?iframe=no&w=100%25&sidebar=yes&bg=no), with the [accompanying tutorial](docs/tutorials/kubecon/README.md)
+-  KubeCon/NativeCloudCon 2025 North America Talk "A Cross-Industry Benchmarking Tutorial for Distributed LLMInference on Kubernetes", with the [accompanying tutorial](docs/tutorials/kubecon/README.md)
 
 - Data from benchmarking experiments is made available on the [main project's Google drive](https://drive.google.com/drive/folders/1sqnibn_mFlciV3-qZIFgZYmk-p9zemzH)
 
