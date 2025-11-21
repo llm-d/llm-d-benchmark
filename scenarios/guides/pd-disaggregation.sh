@@ -2,7 +2,7 @@
 # Based on https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
 # Removed extra volumes metrics-volume and torch-compile-volume; they are not needed for this model and tested hardware.
-# Use LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES to add them if needed.
+# Use LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS|LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES|LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES to add them if needed.
 
 # IMPORTANT NOTE
 # All parameters not defined here or exported externally will be the default values found in setup/env.sh
@@ -60,10 +60,6 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
   value: "rc,sm,cuda_ipc,cuda_copy,tcp"
 - name: UCX_SOCKADDR_TLS_PRIORITY
   value: "tcp"
-###- name: UCX_NET_DEVICES
-###  value: mlx5_1:1
-###- name: NCCL_IB_HCA
-###  value: mlx5_1
 - name: VLLM_NIXL_SIDE_CHANNEL_PORT
   value: "REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT"
 - name: VLLM_NIXL_SIDE_CHANNEL_HOST
