@@ -1540,6 +1540,9 @@ def get_model_name_from_pod(namespace: str, image: str, ip: str, port: str):
 
     k8s_config.load_kube_config()
 
+    if not ip :
+        return "empty", "N/A"
+
     pod_name = f"testinference-pod-{get_rand_string()}"
     if "http://" not in ip:
         ip = "http://" + ip
@@ -1638,10 +1641,10 @@ def wait_for_pods_created_running_ready(ev: dict, component_nr: int, component: 
     """
 
     dry_run = int(ev.get("control_dry_run", 0))
-    result = 0   
+    result = 0
     if not dry_run and int(component_nr) > 0:
         announce(
-            f'⏳ Waiting for ({component}) pods serving model to be in "Running" state (timeout={int(ev["control_wait_timeout"])}s)...'
+            f'⏳ Waiting for all ({component}) pods serving model to be in "Running" state (timeout={int(ev["control_wait_timeout"])}s)...'
         )
         k8s_config.load_kube_config()
         api_client = k8s_client.CoreV1Api()
@@ -1653,12 +1656,12 @@ def wait_for_pods_created_running_ready(ev: dict, component_nr: int, component: 
                 pod_create_list = []
                 pod_running_list = []
                 pod_ready_list = []
-                for event in w.stream(api_client.list_namespaced_pod, namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}", timeout_seconds=int(ev["control_wait_timeout"])):  
+                for event in w.stream(api_client.list_namespaced_pod, namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}", timeout_seconds=int(ev["control_wait_timeout"])):
                     pod = event['object']
                     event_type = event['type']
                     if event_type in ("ADDED", "MODIFIED") and pod.status.container_statuses:
                         if pod.metadata.name not in pod_create_list:
-                            announce(f"✅ {pod.metadata.name} ({component}) pod serving model created")
+                            announce(f"✅     \"{pod.metadata.name}\" ({component}) pod serving model created")
                             pod_create_list.append(pod.metadata.name)
                         for container_status in pod.status.container_statuses:
                             if container_status.state.waiting and container_status.state.waiting.reason == "CrashLoopBackOff":
@@ -1668,13 +1671,13 @@ def wait_for_pods_created_running_ready(ev: dict, component_nr: int, component: 
                                 announce(f"ERROR: Crashed container in pod: {pod.metadata.name}, container: {container_status.name}")
                                 return 1
                         if pod.metadata.name not in pod_running_list and all(cs.state.running for cs in pod.status.container_statuses):
-                            announce(f"🚀 {pod.metadata.name} {component} pod serving model running")
-                            announce(f"⏳ Waiting for it to be Ready (timeout={int(ev['control_wait_timeout'])}s)...")
+                            announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model running")
+                            announce(f"⏳ Waiting for all ({component}) pods to be Ready (timeout={int(ev['control_wait_timeout'])}s)...")
                             pod_running_list.append(pod.metadata.name)
                         if pod.metadata.name not in pod_ready_list and all(cs.ready for cs in pod.status.container_statuses):
-                            announce(f"🚀 {pod.metadata.name} {component} pod serving model ready")
+                            announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model ready")
                             pod_ready_list.append(pod.metadata.name)
-                            if len(pod_create_list) == len(pod_ready_list):
+                            if len(pod_create_list) == len(pod_ready_list) and len(pod_ready_list) == int(component_nr):
                                 return 0
             except (Exception, ProtocolError) as e:
                 if "Response ended prematurely" in str(e):

@@ -53,7 +53,8 @@ done
 if [[ ${LLMDBENCH_RUN_EXPERIMENT_HARNESS_NAME_AUTO} -eq 0 ]]; then
   export LLMDBENCH_RUN_EXPERIMENT_HARNESS=$(find /usr/local/bin | grep ${LLMDBENCH_HARNESS_NAME}.*-llm-d-benchmark | rev | cut -d '/' -f 1 | rev)
   export LLMDBENCH_RUN_EXPERIMENT_ANALYZER=$(find /usr/local/bin | grep ${LLMDBENCH_HARNESS_NAME}.*-analyze_results | rev | cut -d '/' -f 1 | rev)
-  export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR=/requests/$(echo $LLMDBENCH_RUN_EXPERIMENT_HARNESS | sed "s^-llm-d-benchmark^^g" | cut -d '.' -f 1)_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}
+  export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX=$(echo $LLMDBENCH_RUN_EXPERIMENT_HARNESS | sed "s^-llm-d-benchmark^^g" | cut -d '.' -f 1)_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}
+  export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR=$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX/$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX
   export LLMDBENCH_CONTROL_WORK_DIR=$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
 fi
 
@@ -80,7 +81,9 @@ if [[ -f ~/.bashrc ]]; then
   mv -f ~/.bashrc ~/fixbashrc
 fi
 
-mkdir -p $LLMDBENCH_RUN_DATASET_DIR
+if [[ ! -z $LLMDBENCH_RUN_DATASET_DIR ]]; then
+  mkdir -p $LLMDBENCH_RUN_DATASET_DIR
+fi
 
 if [[ ! -z $LLMDBENCH_RUN_DATASET_URL ]]; then
   pushd $LLMDBENCH_RUN_DATASET_DIR > /dev/null 2>&1
@@ -118,6 +121,10 @@ if [[ $ec -ne 0 ]]; then
   sleep 120
   set -x
   /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}
+fi
+
+if [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_NAME_AUTO -eq 0 ]]; then
+  echo "Done. Data is available at \"$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR\""
 fi
 # Return with error code of first iteration of experiment analyzer
 exit $ec

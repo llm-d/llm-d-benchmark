@@ -223,7 +223,11 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
     export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
     export LLMDBENCH_DEPLOY_CURRENT_MODELID=$(model_attribute $model modelid)
 
-    export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher
+    if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
+      export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=llmdbench-harness-launcher
+    else
+      export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher
+    fi
 
     validate_model_name ${LLMDBENCH_DEPLOY_CURRENT_MODEL}
 
@@ -433,10 +437,10 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           announce "✅ Pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" started"
 
           announce "⏳ Waiting for pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be Ready (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
-          llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+          llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} wait --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s --for=jsonpath='{.status.phase}'=Running pod -l app=llmdbench-harness-launcher" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
           announce "✅ Benchmark execution for model \"$model\" effectivelly started"
 
-          announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} logs -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -f\"..."
+          announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} logs -l app=llmdbench-harness-launcher -f\"..."
 
           LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pod -l role=llm-d-benchmark-data-access --no-headers -o name | $LLMDBENCH_CONTROL_SCMD 's|^pod/||g')
           llmdbench_execute_cmd "mkdir -p ${local_results_dir}/ && mkdir -p ${local_analysis_dir}/" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
