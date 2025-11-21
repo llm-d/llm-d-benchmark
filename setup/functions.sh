@@ -448,34 +448,34 @@ function deploy_harness_config {
     local local_analysis_dir=$3
     local config=$4
 
-    announce "🚀 Starting ${LLMDBENCH_HARNESS_LOAD_PARALLELISM} pod(s) labeled with \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL)..."
+    announce "🚀 Starting ${LLMDBENCH_HARNESS_LOAD_PARALLELISM} pod(s) labeled with \"${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL)..."
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $config" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    announce "✅ ${LLMDBENCH_HARNESS_LOAD_PARALLELISM} pod(s) \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" started"
+    announce "✅ ${LLMDBENCH_HARNESS_LOAD_PARALLELISM} pod(s) \"${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" started"
     
-    announce "⏳ Waiting for ${LLMDBENCH_HARNESS_LOAD_PARALLELISM} pod(s) \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be Running (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
-    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} wait --for=condition=Ready=True pod -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} -n ${LLMDBENCH_HARNESS_NAMESPACE} --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-    announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} logs ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}_<PARALLEL_NUMBER> -f\"..."
+    announce "⏳ Waiting for ${LLMDBENCH_HARNESS_LOAD_PARALLELISM} pod(s) \"${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" to be Running (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
+    llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} wait --for=condition=Ready=True pod -l app=${LLMDBENCH_HARNESS_POD_LABEL} -n ${LLMDBENCH_HARNESS_NAMESPACE} --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+    announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} logs ${LLMDBENCH_HARNESS_POD_LABEL}_<PARALLEL_NUMBER> -f\"..."
 
     # Identify the shared data-access pod
     LLMDBENCH_HARNESS_ACCESS_RESULTS_POD_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pod -l role=llm-d-benchmark-data-access --no-headers -o name | $LLMDBENCH_CONTROL_SCMD 's|^pod/||g')
 
     # Only perform completion checks if debug mode is off and timeout is non-zero
     if [[ $LLMDBENCH_HARNESS_DEBUG -eq 0 && ${LLMDBENCH_HARNESS_WAIT_TIMEOUT} -ne 0 ]]; then
-        announce "⏳ Waiting for pods with label \"app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" to complete (timeout=${LLMDBENCH_HARNESS_WAIT_TIMEOUT}s)..."
+        announce "⏳ Waiting for pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\" to complete (timeout=${LLMDBENCH_HARNESS_WAIT_TIMEOUT}s)..."
         llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} wait \
-            --timeout=${LLMDBENCH_HARNESS_WAIT_TIMEOUT}s --for=condition=ready=False pod -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" \
+            --timeout=${LLMDBENCH_HARNESS_WAIT_TIMEOUT}s --for=condition=ready=False pod -l app=${LLMDBENCH_HARNESS_POD_LABEL}" \
             ${LLMDBENCH_CONTROL_DRY_RUN} \
             ${LLMDBENCH_CONTROL_VERBOSE}
         if ${LLMDBENCH_CONTROL_KCMD} --namespace "${LLMDBENCH_HARNESS_NAMESPACE}" get pods \
-                -l "app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" \
+                -l "app=${LLMDBENCH_HARNESS_POD_LABEL}" \
                 --no-headers | grep -Eq "CrashLoopBackOff|Error|ImagePullBackOff|ErrImagePull"
         then
-            announce "❌ Found some pods are in an error state. To list pods \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pods -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\""
+            announce "❌ Found some pods are in an error state. To list pods \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pods -l app=${LLMDBENCH_HARNESS_POD_LABEL}\""
             exit 1
         fi
         announce "✅ All benchmark pods completed"
 
-        announce "🏗️ Collecting results for pods with label \"app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\"..."
+        announce "🏗️ Collecting results for pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\"..."
         for i in $(seq 1 "$LLMDBENCH_HARNESS_LOAD_PARALLELISM"); do
             # Per-pod directories
             pod_results_dir="${local_results_dir}_${i}"
@@ -497,19 +497,19 @@ function deploy_harness_config {
                 llmdbench_execute_cmd "$copy_analysis_cmd" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
             fi
         done
-        announce "✅ Results for pods with label \"app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" collected successfully"
+        announce "✅ Results for pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\" collected successfully"
 
-        announce "🗑️ Deleting pods with label \"app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" ..."
-        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}" \
+        announce "🗑️ Deleting pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" ..."
+        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l app=${LLMDBENCH_HARNESS_POD_LABEL}" \
             ${LLMDBENCH_CONTROL_DRY_RUN} \
             ${LLMDBENCH_CONTROL_VERBOSE}
-        announce "✅ Pods with label \"app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" deleted"
+        announce "✅ Pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" deleted"
     elif [[ $LLMDBENCH_HARNESS_WAIT_TIMEOUT -eq 0 ]]; then
-      announce "ℹ️ Harness was started with LLMDBENCH_HARNESS_WAIT_TIMEOUT=0. Will NOT wait for pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" for model \"$model\" to be in \"Completed\" state. The pod can be accessed through \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} exec -it pod/<POD_NAME> -- bash\""
-      announce "ℹ️ To list pod names \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pods -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\""
+      announce "ℹ️ Harness was started with LLMDBENCH_HARNESS_WAIT_TIMEOUT=0. Will NOT wait for pod \"${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" to be in \"Completed\" state. The pod can be accessed through \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} exec -it pod/<POD_NAME> -- bash\""
+      announce "ℹ️ To list pod names \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pods -l app=${LLMDBENCH_HARNESS_POD_LABEL}\""
     else
       announce "ℹ️ Harness was started in \"debug mode\". The pod can be accessed through \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} exec -it pod/<POD_NAME> -- bash\""
-      announce "ℹ️ To list pod names \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pods -l app=${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\""
+      announce "ℹ️ To list pod names \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pods -l app=${LLMDBENCH_HARNESS_POD_LABEL}\""
       announce "ℹ️ In order to execute a given workload profile, run \"llm-d-benchmark.sh <[$(get_harness_list)]> [WORKLOAD FILE NAME]\" (all inside the pod <POD_NAME>)"
     fi
 
