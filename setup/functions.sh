@@ -441,17 +441,17 @@ function add_env_vars_to_pod {
 }
 export -f add_env_vars_to_pod
 
-
 function deploy_harness_config {
     local model=$1
-    local local_results_dir=$2
-    local local_analysis_dir=$3
-    local config=$4
+    local modelid=$2
+    local local_results_dir=$3
+    local local_analysis_dir=$4
+    local config=$5
 
-    announce "🚀 Starting ${LLMDBENCH_HARNESS_LOAD_PARALLELISM} pod(s) labeled with \"${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" ($LLMDBENCH_DEPLOY_CURRENT_MODEL)..."
+    announce "🚀 Starting ${LLMDBENCH_HARNESS_LOAD_PARALLELISM} pod(s) labeled with \"${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" ($modelid)..."
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} apply -f $config" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "✅ ${LLMDBENCH_HARNESS_LOAD_PARALLELISM} pod(s) \"${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" started"
-    
+
     announce "⏳ Waiting for ${LLMDBENCH_HARNESS_LOAD_PARALLELISM} pod(s) \"${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" to be Running (timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s)..."
     llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} wait --for=condition=Ready=True pod -l app=${LLMDBENCH_HARNESS_POD_LABEL} -n ${LLMDBENCH_HARNESS_NAMESPACE} --timeout=${LLMDBENCH_CONTROL_WAIT_TIMEOUT}s" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
     announce "ℹ️ You can follow the execution's output with \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} logs ${LLMDBENCH_HARNESS_POD_LABEL}_<PARALLEL_NUMBER> -f\"..."
@@ -511,7 +511,7 @@ function deploy_harness_config {
     else
       announce "ℹ️ Harness was started in \"debug mode\". The pod can be accessed through \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} exec -it pod/<POD_NAME> -- bash\""
       announce "ℹ️ To list pod names \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pods -l app=${LLMDBENCH_HARNESS_POD_LABEL}\""
-      announce "ℹ️ In order to execute a given workload profile, run \"llm-d-benchmark.sh <[$(get_harness_list)]> [WORKLOAD FILE NAME]\" (all inside the pod <POD_NAME>)"
+      announce "ℹ️ In order to execute a given workload profile, run \"llm-d-benchmark.sh -l <[$(get_harness_list)]> -w [WORKLOAD FILE NAME]\" (all inside the pod <POD_NAME>)"
     fi
 
     return 0
@@ -528,7 +528,7 @@ function create_harness_pod {
       announce "❌ PVC \"${LLMDBENCH_HARNESS_PVC_NAME}\" not created on namespace \"${LLMDBENCH_HARNESS_NAMESPACE}\" unable to continue"
       exit 1
   fi
- 
+
   # Sanitize the stack name to make it a valid k8s/OpenShift resource name
   local LLMDBENCH_HARNESS_SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | $LLMDBENCH_CONTROL_SCMD 's|[/:]|-|g')
   mkdir -p "${_work_dir}/setup/yamls"
@@ -805,13 +805,14 @@ function generate_profile_parameter_treatments {
 export -f generate_profile_parameter_treatments
 
 function cleanup_pre_execution {
-  announce "🗑️ Deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\"..."
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-
+  announce "🗑️ Deleting pods with label \"${LLMDBENCH_HARNESS_POD_LABEL}\"..."
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l app=${LLMDBENCH_HARNESS_POD_LABEL} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  echo "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l ${LLMDBENCH_HARNESS_POD_LABEL} --ignore-not-found"
   # Sanitize the stack name to make it a valid K8s/OpenShift resource name
   local LLMDBENCH_HARNESS_SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | $LLMDBENCH_CONTROL_SCMD 's|[/:]|-|g')
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_HARNESS_SANITIZED_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  announce "ℹ️ Done deleting pod \"${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}\" (it will be now recreated)"
+  announce "ℹ️ Done deleting pods with label \"${LLMDBENCH_HARNESS_POD_LABEL}\" (it will be now recreated)"
+
 }
 
 export -f cleanup_pre_execution
