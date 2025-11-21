@@ -163,6 +163,11 @@ def _get_llmd_benchmark_envars() -> dict:
                         os.environ['LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG'],
                     }] * int(os.environ['LLMDBENCH_VLLM_COMMON_REPLICAS'])
                 },
+                "load": {
+                    "metadata": {
+                        "load_parallel": os.environ['LLMDBENCH_HARNESS_LOAD_PARALLELISM'],
+                    },
+                },
                 "metadata": {
                     "load_format": os.environ['LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT'],
                     "logging_level": os.environ['LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL'],
@@ -234,6 +239,11 @@ def _get_llmd_benchmark_envars() -> dict:
                 "platform": {
                     "metadata": {
                         "inferenceScheduler": epp_config,
+                    },
+                    "load": {
+                        "metadata": {
+                            "load_parallel": os.environ['LLMDBENCH_HARNESS_LOAD_PARALLELISM'],
+                        },
                     },
                     "engine": [{
                         "name": os.environ['LLMDBENCH_LLMD_IMAGE_REGISTRY'] + '/' +
