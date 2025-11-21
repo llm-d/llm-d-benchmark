@@ -12,6 +12,7 @@ import inspect
 import pykube
 import hashlib
 from pykube.exceptions import PyKubeError
+from urllib3.exceptions import ProtocolError
 
 import base64
 import tempfile
@@ -26,6 +27,7 @@ from kubernetes import (
     config as k8s_config,
     stream as k8s_stream,
     utils as k8s_utils,
+    watch as k8s_watch,
 )
 from kubernetes_asyncio import (
     client as k8s_async_client,
@@ -1630,62 +1632,59 @@ def add_scc_to_service_account(
             announce(f'Successfully updated SCC "{scc_name}"')
 
 
-# FIXME (USE PYKUBE)
-def wait_for_pods_creation(ev: dict, component_nr: int, component: str) -> int:
+def wait_for_pods_created_running_ready(ev: dict, component_nr: int, component: str) -> int:
     """
-    Wait for pods to be created.
+    Wait for pods to be created, in Running state and then in Ready state.
     """
-    wait_timeout = int(ev["control_wait_timeout"]) // 2
-    result = 0
-    if int(component_nr) > 0:
-        announce(f"⏳ waiting for ({component}) pods serving model to be created...")
-        wait_cmd = f"kubectl --namespace {ev['vllm_common_namespace']} wait --timeout={wait_timeout}s --for=create pod -l llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}"
-        result = llmdbench_execute_cmd(
-            wait_cmd, ev["control_dry_run"], ev["control_verbose"], 1, 2
-        )
-        if result == 0:
-            announce(f"✅ ({component}) pods serving model created")
-    return result
 
-
-# FIXME (USE PYKUBE)
-def wait_for_pods_running(ev: dict, component_nr: int, component: str) -> int:
-    """
-    Wait for pods to be in Running state.
-    """
-    wait_timeout = int(ev["control_wait_timeout"])
-    result = 0
-    if int(component_nr) > 0:
+    dry_run = int(ev.get("control_dry_run", 0))
+    result = 0   
+    if not dry_run and int(component_nr) > 0:
         announce(
-            f'⏳ Waiting for ({component}) pods serving model to be in "Running" state (timeout={wait_timeout}s)...'
+            f'⏳ Waiting for ({component}) pods serving model to be in "Running" state (timeout={int(ev["control_wait_timeout"])}s)...'
         )
-        wait_cmd = f"kubectl --namespace {ev['vllm_common_namespace']} wait --timeout={wait_timeout}s --for=jsonpath='{{.status.phase}}'=Running pod -l llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}"
-        result = llmdbench_execute_cmd(
-            wait_cmd, ev["control_dry_run"], ev["control_verbose"]
-        )
-        if result == 0:
-            announce(f"🚀 ({component}) pods serving model running")
-    return result
-
-
-# FIXME (USE PYKUBE)
-def wait_for_pods_ready(ev: dict, component_nr: int, component: str) -> int:
-    """
-    Wait for pods to be Ready.
-    """
-    wait_timeout = int(ev["control_wait_timeout"])
-
-    result = 0
-    if int(component_nr) > 0:
-        announce(
-            f"⏳ Waiting for ({component}) pods serving model to be Ready (timeout={wait_timeout}s)..."
-        )
-        wait_cmd = f"kubectl --namespace {ev['vllm_common_namespace']} wait --timeout={wait_timeout}s --for=condition=Ready=True pod -l llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}"
-        result = llmdbench_execute_cmd(
-            wait_cmd, ev["control_dry_run"], ev["control_verbose"]
-        )
-        if result == 0:
-            announce(f"🚀 ({component}) pods serving model ready")
+        k8s_config.load_kube_config()
+        api_client = k8s_client.CoreV1Api()
+        w = k8s_watch.Watch()
+        max_retries = 3
+        delay = 2
+        for attempt in range(max_retries):
+            try:
+                pod_create_list = []
+                pod_running_list = []
+                pod_ready_list = []
+                for event in w.stream(api_client.list_namespaced_pod, namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}", timeout_seconds=int(ev["control_wait_timeout"])):  
+                    pod = event['object']
+                    event_type = event['type']
+                    if event_type in ("ADDED", "MODIFIED") and pod.status.container_statuses:
+                        if pod.metadata.name not in pod_create_list:
+                            announce(f"✅ {pod.metadata.name} ({component}) pod serving model created")
+                            pod_create_list.append(pod.metadata.name)
+                        for container_status in pod.status.container_statuses:
+                            if container_status.state.waiting and container_status.state.waiting.reason == "CrashLoopBackOff":
+                                announce(f"ERROR: CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
+                                return 1
+                            elif container_status.state.terminated and container_status.state.terminated.exit_code not in (0, None):
+                                announce(f"ERROR: Crashed container in pod: {pod.metadata.name}, container: {container_status.name}")
+                                return 1
+                        if pod.metadata.name not in pod_running_list and all(cs.state.running for cs in pod.status.container_statuses):
+                            announce(f"🚀 {pod.metadata.name} {component} pod serving model running")
+                            announce(f"⏳ Waiting for it to be Ready (timeout={int(ev['control_wait_timeout'])}s)...")
+                            pod_running_list.append(pod.metadata.name)
+                        if pod.metadata.name not in pod_ready_list and all(cs.ready for cs in pod.status.container_statuses):
+                            announce(f"🚀 {pod.metadata.name} {component} pod serving model ready")
+                            pod_ready_list.append(pod.metadata.name)
+                            if len(pod_create_list) == len(pod_ready_list):
+                                return 0
+            except (Exception, ProtocolError) as e:
+                if "Response ended prematurely" in str(e):
+                    announce(f"{e}, Retrying in {delay} seconds...")
+                    time.sleep(delay)
+                else:
+                    announce(f"ERROR: Exception occured while waiting for ({component}) pods : {e}")
+                    return 1
+            finally:
+                w.stop()
     return result
 
 

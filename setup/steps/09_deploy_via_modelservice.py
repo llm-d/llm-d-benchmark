@@ -20,9 +20,7 @@ from functions import (
     check_storage_class,
     check_affinity,
     environment_variable_to_dict,
-    wait_for_pods_creation,
-    wait_for_pods_running,
-    wait_for_pods_ready,
+    wait_for_pods_created_running_ready,
     collect_logs,
     get_image,
     add_command,
@@ -552,44 +550,20 @@ def main():
           httproute_spec = define_httproute(ev, single_model = len([m for m in model_list if m.strip()]) == 1)
           kubectl_apply(api=api, manifest_data=httproute_spec, dry_run=ev["control_dry_run"])
 
-        # Wait for decode pods creation
-        result = wait_for_pods_creation(
+        # Wait for decode pods to be created, running, and ready
+        result = wait_for_pods_created_running_ready(
             ev, ev["vllm_modelservice_decode_replicas"], "decode"
         )
         if result != 0:
             return result
 
-        # Wait for prefill pods creation
-        result = wait_for_pods_creation(
+        # Wait for prefill pods to be created, running, and ready
+        result = wait_for_pods_created_running_ready(
             ev, ev["vllm_modelservice_prefill_replicas"], "prefill"
         )
         if result != 0:
             return result
 
-        # Wait for decode pods to be running
-        result = wait_for_pods_running(
-            ev, ev["vllm_modelservice_decode_replicas"], "decode"
-        )
-        if result != 0:
-            return result
-
-        # Wait for prefill pods to be running
-        result = wait_for_pods_running(
-            ev, ev["vllm_modelservice_prefill_replicas"], "prefill"
-        )
-        if result != 0:
-            return result
-
-        # Wait for decode pods to be ready
-        result = wait_for_pods_ready(
-            ev, ev["vllm_modelservice_decode_replicas"], "decode"
-        )
-        if result != 0:
-            return result
-
-        result = wait_for_pods_ready(
-            ev, ev["vllm_modelservice_prefill_replicas"], "prefill"
-        )
         if result != 0:
             return result
 
@@ -603,7 +577,7 @@ def main():
         label_gateway_cmd = f"{ev['control_kcmd']} --namespace  {ev['vllm_common_namespace']} label gateway/infra-{release}-inference-gateway stood-up-by={ev['control_username']} stood-up-from=llm-d-benchmark stood-up-via={ev['deploy_methods']}"
         result = llmdbench_execute_cmd(label_gateway_cmd, ev["control_dry_run"], ev["control_verbose"])
         if result != 0:
-            announce("Error. Unable to label gateway for model \"{model}\"")
+            announce(f"ERROR: Unable to label gateway for model \"{model}\"")
         else :
           announce(f"✅ Service for pods service model {model} created")
 
