@@ -497,7 +497,8 @@ function deploy_harness_config {
                 llmdbench_execute_cmd "$copy_analysis_cmd" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
             fi
         done
-        announce "✅ Results for pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\" collected successfully"
+        announce "✅ Collected results for pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\" at: \"${LLMDBENCH_CONTROL_WORK_DIR}/results/\""
+        announce "✅ Collected analysis for pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\" at: \"${LLMDBENCH_CONTROL_WORK_DIR}/analysis/\""
 
         announce "🗑️ Deleting pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" ..."
         llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l app=${LLMDBENCH_HARNESS_POD_LABEL}" \
