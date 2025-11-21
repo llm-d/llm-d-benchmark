@@ -538,7 +538,7 @@ metadata:
   name: ${_podname}
   namespace: ${LLMDBENCH_HARNESS_NAMESPACE}
   labels:
-    app: llmdbench-harness-launcher
+    app: ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}
 spec:
   containers:
   - name: harness
@@ -622,6 +622,7 @@ EOF
 EOF
 }
 export -f create_harness_pod
+
 
 function get_model_name_from_pod {
     local namespace=$1
