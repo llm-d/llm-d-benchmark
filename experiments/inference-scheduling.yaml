@@ -9,6 +9,7 @@ setup:
     - "inf-sche-kv.yaml"
     - "inf-sche-queue.yaml"
 run:
+# Harness and workload profile are defined on scenarios/guides
   factors:
     - question_len
     - output_len

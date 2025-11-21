@@ -304,7 +304,7 @@ The experiment will take some time to run to completion. You may decrease the ex
     # ... and so on
 ```
 
-Feel free to use the [Config Explorer](../config_explorer/) to explore the data.
+Feel free to use the [Config Explorer](../../../config_explorer/) to explore the data.
 
 ```
 pip install ./config_explorer
