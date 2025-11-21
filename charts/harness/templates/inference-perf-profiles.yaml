@@ -1,0 +1,235 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inference-perf-profiles
+data:
+  chatbot_sharegpt.yaml: "load:\n  type: constant\n  stages:\n  - rate: 1\n    duration:
+    120\n  - rate: 2\n    duration: 120\n  - rate: 4\n    duration: 120\n  - rate:
+    8\n    duration: 120\napi:\n  type: completion\n  streaming: true\nserver:\n  type:
+    vllm\n  model_name: {{ .Values.stack.model }}\n  base_url: {{ .Values.stack.endpointUrl }}\n
+    \ ignore_eos: true\ntokenizer:\n  pretrained_model_name_or_path: {{ .Values.stack.model }}\ndata:\n
+    \ type: shareGPT\n  input_distribution:\n    min: 10             # min length
+    of the synthetic prompts\n    max: 1024           # max length of the synthetic
+    prompts\n  output_distribution:\n    min: 10             # min length of the output
+    to be generated\n    max: 1024           # max length of the output to be generated
+    \nreport:\n  request_lifecycle:\n    summary: true\n    per_stage: true\n    per_request:
+    true\nstorage:\n  local_storage:\n    path: /workspace"
+  chatbot_synthetic.yaml: |-
+    load:
+      type: constant
+      stages:
+      - rate: 1
+        duration: 120
+      - rate: 2
+        duration: 120
+      - rate: 4
+        duration: 120
+      - rate: 8
+        duration: 120
+    api:
+      type: completion
+      streaming: true
+    server:
+      type: vllm
+      model_name: {{ .Values.stack.model }}
+      base_url: {{ .Values.stack.endpointUrl }}
+      ignore_eos: true
+    tokenizer:
+      pretrained_model_name_or_path: {{ .Values.stack.model }}
+    data:
+      type: random
+      input_distribution:
+        min: 10             # min length of the synthetic prompts
+        max: 8192           # max length of the synthetic prompts
+        mean: 4096          # mean length of the synthetic prompts
+        std: 2048           # standard deviation of the length of the synthetic prompts
+        total_count: 1000   # total number of prompts to generate to fit the above mentioned distribution constraints
+      output_distribution:
+        min: 10             # min length of the output to be generated
+        max: 2048           # max length of the output to be generated
+        mean: 1024          # mean length of the output to be generated
+        std: 512            # standard deviation of the length of the output to be generated
+        total_count: 1000   # total number of output lengths to generate to fit the above mentioned distribution constraints
+    report:
+      request_lifecycle:
+        summary: true
+        per_stage: true
+        per_request: true
+    storage:
+      local_storage:
+        path: /workspace
+  code_completion_synthetic.yaml: |-
+    load:
+      type: constant
+      stages:
+      - rate: 1
+        duration: 120
+      - rate: 2
+        duration: 120
+      - rate: 4
+        duration: 120
+      - rate: 8
+        duration: 120
+    api:
+      type: completion
+      streaming: true
+    server:
+      type: vllm
+      model_name: {{ .Values.stack.model }}
+      base_url: {{ .Values.stack.endpointUrl }}
+      ignore_eos: true
+    tokenizer:
+      pretrained_model_name_or_path: {{ .Values.stack.model }}
+    data:
+      type: random
+      input_distribution:
+        min: 10             # min length of the synthetic prompts
+        max: 4096           # max length of the synthetic prompts
+        mean: 2048          # mean length of the synthetic prompts
+        std: 1024           # standard deviation of the length of the synthetic prompts
+        total_count: 1000   # total number of prompts to generate to fit the above mentioned distribution constraints
+      output_distribution:
+        min: 10             # min length of the output to be generated
+        max: 256            # max length of the output to be generated
+        mean: 128           # mean length of the output to be generated
+        std: 64             # standard deviation of the length of the output to be generated
+        total_count: 1000   # total number of output lengths to generate to fit the above mentioned distribution constraints
+    report:
+      request_lifecycle:
+        summary: true
+        per_stage: true
+        per_request: true
+    storage:
+      local_storage:
+        path: /workspace
+  sanity_random.yaml: |-
+    load:
+      type: constant
+      stages:
+      - rate: 1
+        duration: 30
+    api:
+      type: completion
+      streaming: true
+    server:
+      type: vllm
+      model_name: {{ .Values.stack.model }}
+      base_url: {{ .Values.stack.endpointUrl }}
+      ignore_eos: true
+    tokenizer:
+      pretrained_model_name_or_path: {{ .Values.stack.model }}
+    data:
+      type: random
+      input_distribution:
+        min: 10             # min length of the synthetic prompts
+        max: 100            # max length of the synthetic prompts
+        mean: 50            # mean length of the synthetic prompts
+        std: 10             # standard deviation of the length of the synthetic prompts
+        total_count: 100    # total number of prompts to generate to fit the above mentioned distribution constraints
+      output_distribution:
+        min: 10             # min length of the output to be generated
+        max: 100            # max length of the output to be generated
+        mean: 50            # mean length of the output to be generated
+        std: 10             # standard deviation of the length of the output to be generated
+        total_count: 100    # total number of output lengths to generate to fit the above mentioned distribution constraints
+    report:
+      request_lifecycle:
+        summary: true
+        per_stage: true
+        per_request: true
+    storage:
+      local_storage:
+        path: /workspace
+  shared_prefix_synthetic.yaml: |
+    load:
+      type: constant
+      stages:
+      - rate: 2
+        duration: 50
+      - rate: 5
+        duration: 50
+      # - rate: 8
+      #   duration: 50
+      # - rate: 10
+      #   duration: 50
+      # - rate: 12
+      #   duration: 50
+      # - rate: 15
+      #   duration: 50
+      # - rate: 20
+      #   duration: 50
+    api:
+      type: completion
+      streaming: true
+    server:
+      type: vllm
+      model_name: {{ .Values.stack.model }}
+      base_url: {{ .Values.stack.endpointUrl }}
+      ignore_eos: true
+    tokenizer:
+      pretrained_model_name_or_path: {{ .Values.stack.model }}
+    data:
+      type: shared_prefix
+      shared_prefix:
+        # Number of distinct shared prefixes
+        num_groups: {{ .Values.experiment.profile.shared_prefix.num_groups }}
+        # Number of unique questions per shared prefix
+        num_prompts_per_group: {{ .Values.experiment.profile.shared_prefix.num_prompts_per_group }}
+        # Length of the shared prefix (in tokens)
+        system_prompt_len: {{ .Values.experiment.profile.shared_prefix.system_prompt_len }}
+        # Length of the unique question part (in tokens)
+        question_len: {{ .Values.experiment.profile.shared_prefix.question_len }}
+        # Target length for the model's generated output (in tokens)
+        output_len: {{ .Values.experiment.profile.shared_prefix.output_len }}
+    report:
+      request_lifecycle:
+        summary: true
+        per_stage: true
+        per_request: true
+    storage:
+      local_storage:
+        path: /workspace
+  summarization_synthetic.yaml: |-
+    load:
+      type: constant
+      stages:
+      - rate: 1
+        duration: 120
+      - rate: 2
+        duration: 120
+      - rate: 4
+        duration: 120
+      - rate: 8
+        duration: 120
+    api:
+      type: completion
+      streaming: true
+    server:
+      type: vllm
+      model_name: {{ .Values.stack.model }}
+      base_url: {{ .Values.stack.endpointUrl }}
+      ignore_eos: true
+    tokenizer:
+      pretrained_model_name_or_path: {{ .Values.stack.model }}
+    data:
+      type: random
+      input_distribution:
+        min: 10             # min length of the synthetic prompts
+        max: 4096           # max length of the synthetic prompts
+        mean: 2048          # mean length of the synthetic prompts
+        std: 1024           # standard deviation of the length of the synthetic prompts
+        total_count: 1000   # total number of prompts to generate to fit the above mentioned distribution constraints
+      output_distribution:
+        min: 10             # min length of the output to be generated
+        max: 512            # max length of the output to be generated
+        mean: 256           # mean length of the output to be generated
+        std: 128            # standard deviation of the length of the output to be generated
+        total_count: 1000   # total number of output lengths to generate to fit the above mentioned distribution constraints
+    report:
+      request_lifecycle:
+        summary: true
+        per_stage: true
+        per_request: true
+    storage:
+      local_storage:
+        path: /workspace
