@@ -406,6 +406,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         # 
         # Assemble the pod specifications and build the workload
         # 
+        export LLMDBENCH_HARNESS_POD_LABEL="llmdbench-harness-launcher"
         for i in $(seq 1 $LLMDBENCH_HARNESS_LOAD_PARALLELISM); do
           _pod_name="${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}-${i}-of-${LLMDBENCH_HARNESS_LOAD_PARALLELISM}"
           

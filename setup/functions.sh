@@ -538,7 +538,7 @@ metadata:
   name: ${_podname}
   namespace: ${LLMDBENCH_HARNESS_NAMESPACE}
   labels:
-    app: ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}
+    app: ${LLMDBENCH_HARNESS_POD_LABEL}
 spec:
   containers:
   - name: harness
