@@ -12,7 +12,6 @@ Provide a single source of automation for repeatable and reproducible experiment
 git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 ./setup/install_deps.sh
-pip install ./config_explorer
 ```
 
 ## Quickstart
@@ -41,7 +40,33 @@ A user can elect to  **`standup`** an `llm-d` stack once, and then **`run`** the
 ```
 
 > [!TIP]
-> `./run.sh` can be used to run a particular workload against a pre-deployed stack (`llm-d` or otherwise)
+> `./run.sh` can be used to run a particular workload against an already stood up stack (`llm-d` or otherwise)
+
+An illustrative example on is present [here](docs/tutorials/run/run_against_existing_example.md)
+
+> [!TIP]
+> `./run.sh` can also be used in "interactive" (or "debug") mode (option `-d` or `--debug`)
+
+An illustrative example on is present [here](docs/tutorials/run/run_interactively_example.md)
+
+### News
+
+-  KubeCon/NativeCloudCon 2025 North America Talk "A Cross-Industry Benchmarking Tutorial for Distributed LLMInference on Kubernetes", with the [accompanying tutorial](docs/tutorials/kubecon/README.md)
+
+- Data from benchmarking experiments is made available on the [main project's Google drive](https://drive.google.com/drive/folders/1sqnibn_mFlciV3-qZIFgZYmk-p9zemzH)
+
+- `llm-d-benchmark` supports all available [Well-Lit Path Guides](https://github.com/llm-d/llm-d/blob/main/guides/README.md)
+```
+scenarios/guides/pd-disaggregation.sh
+scenarios/guides/inference-scheduling.sh
+scenarios/guides/tiered-prefix-cache.sh
+scenarios/guides/simulated-accelerators.sh
+scenarios/guides/wide-ep-lws.sh
+scenarios/guides/precise-prefix-cache-aware.sh
+```
+
+> [!WARNING]
+> `scenarios/guides/wide-ep-lws.sh` is still a work in progress, not fully functional
 
 ### Architecture
 
@@ -84,7 +109,7 @@ Pieces of information identifying a particular cluster. This information include
 
 #### [Harnesses](docs/run.md#harnesses)
 
-A "harness" is a load generator (Python code) which drives the benchmark load. Today, llm-d-benchmark supports [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git), the benchmarks found on the `benchmarks` folder on [vllm](https://github.com/vllm-project/vllm.git), and "no op" (internally designed "nop") for users interested in benchmarking mostly model load times. There are ongoing efforts to consolidate and provide an easier way to support different load generators.
+A "harness" is a load generator (Python code) which drives the benchmark load. Today, llm-d-benchmark supports [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git), the benchmarks found on the `benchmarks` folder on [vllm](https://github.com/vllm-project/vllm.git), [inferencemax](https://github.com/InferenceMAX/InferenceMAX.git) and "no op" (internally designed "nop") for users interested in benchmarking mostly model load times. There are ongoing efforts to consolidate and provide an easier way to support different load generators.
 
 #### (Workload) [Profiles](docs/run.md#profiles)
 
@@ -106,6 +131,7 @@ The configuration explorer is a library that helps find the most cost-effective,
 - [inference-perf](https://github.com/kubernetes-sigs/inference-perf)
 - [guidellm](https://github.com/vllm-project/guidellm.git)
 - [vllm](https://github.com/vllm-project/vllm.git)
+- [inferencemax](https://github.com/InferenceMAX/InferenceMAX.git)
 
 ## Topics
 
@@ -119,7 +145,7 @@ The configuration explorer is a library that helps find the most cost-effective,
 
 - [Instructions on how to contribute](CONTRIBUTING.md) including details on our development process and governance.
 - We use Slack to discuss development across organizations. Please join: [Slack](https://llm-d.ai/slack). There is a `sig-benchmarking` channel there.
-- We host a weekly standup for contributors on Thursdays at 13:30 ET. Please join: [Meeting Details](https://calendar.google.com/calendar/u/0?cid=NzA4ZWNlZDY0NDBjYjBkYzA3NjdlZTNhZTk2NWQ2ZTc1Y2U5NTZlMzA5MzhmYTAyZmQ3ZmU1MDJjMDBhNTRiNEBncm91cC5jYWxlbmRhci5nb29nbGUuY29t). The meeting notes can be found [here](https://docs.google.com/document/d/1njjeyBJF6o69FlyadVbuXHxQRBGDLcIuT7JHJU3T_og/edit?usp=sharing). Joining the [llm-d google groups](https://groups.google.com/g/llm-d-contributors) will grant you access.
+- We host a bi-weekly standup for contributors on Tuesdays at 13:00 EST. Please join: [Meeting Details](https://calendar.google.com/calendar/u/0?cid=NzA4ZWNlZDY0NDBjYjBkYzA3NjdlZTNhZTk2NWQ2ZTc1Y2U5NTZlMzA5MzhmYTAyZmQ3ZmU1MDJjMDBhNTRiNEBncm91cC5jYWxlbmRhci5nb29nbGUuY29t). The meeting notes can be found [here](https://docs.google.com/document/d/1njjeyBJF6o69FlyadVbuXHxQRBGDLcIuT7JHJU3T_og/edit?usp=sharing). Joining the [llm-d google groups](https://groups.google.com/g/llm-d-contributors) will grant you access.
 
 ## License
 

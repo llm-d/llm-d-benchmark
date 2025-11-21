@@ -25,6 +25,7 @@ setup:
     - "standalone,1,4,NA,NA,NA,NA"
     - "standalone,1,8,NA,NA,NA,NA"
 run:
+# Harness and workload profile are defined on scenarios/guides
   factors:
     - max-concurrency
     - num-prompts

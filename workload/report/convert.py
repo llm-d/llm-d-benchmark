@@ -459,9 +459,9 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReport:
                 "stop": results['end_time'],
             },
             "requests": {
-                "total": results['request_totals']['total'],
-                "failures": results['request_totals']['errored'],
-                "incomplete": results['request_totals']['incomplete'],
+                "total": results['metrics']['request_totals']['total'],
+                "failures": results['metrics']['request_totals']['errored'],
+                "incomplete": results['metrics']['request_totals']['incomplete'],
                 "input_length": {
                     "units": Units.COUNT,
                     "mean": results['metrics']['prompt_token_count']['successful']['mean'],

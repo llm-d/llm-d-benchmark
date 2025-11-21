@@ -125,7 +125,7 @@ class WorkloadGenerator(StrEnum):
     """
 
     GUIDELLM = auto()
-    INFERENCE_MAX = 'inference-max'
+    INFERENCE_MAX = 'inferencemax'
     INFERENCE_PERF = 'inference-perf'
     VLLM_BENCHMARK = 'vllm-benchmark'
     NOP = 'nop'

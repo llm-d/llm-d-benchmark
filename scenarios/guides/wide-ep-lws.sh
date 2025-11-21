@@ -1,8 +1,8 @@
 # WIDE EP/DP WITH LWS WELL LIT PATH
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/wide-ep-lws
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/wide-ep-lws/README.md
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
 # Removed extra volumes metrics-volume and torch-compile-volume; they are not needed for this model and tested hardware.
-# Use LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_EXTRA_VOLUMES to add them if needed.
+# Use LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS|LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS and LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES|LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES to add them if needed.
 
 # IMPORTANT NOTE
 # All parameters not defined here or exported externally will be the default values found in setup/env.sh

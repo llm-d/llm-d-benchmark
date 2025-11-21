@@ -223,7 +223,11 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
     export LLMDBENCH_DEPLOY_CURRENT_MODEL=$(model_attribute $model model)
     export LLMDBENCH_DEPLOY_CURRENT_MODELID=$(model_attribute $model modelid)
 
-    export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher
+    if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
+      export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=llmdbench-harness-launcher
+    else
+      export LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME=llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher
+    fi
 
     validate_model_name ${LLMDBENCH_DEPLOY_CURRENT_MODEL}
 
@@ -418,7 +422,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
             announce "⏭️  This particular workload profile was already executed against this stack. Please remove \"${local_analysis_dir}/summary.txt\" to re-execute".
             continue
           fi
-
+          
           if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
             announce "ℹ️ Skipping \"${_pod_name}\" creation"
           else
@@ -426,6 +430,10 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
               potential_gaie_path=$(echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
             else
               potential_gaie_path=$(echo ${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+            fi
+
+            if [[ -f $potential_gaie_path ]]; then
+              export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG=$potential_gaie_path
             fi
 
             if [[ -f $potential_gaie_path ]]; then

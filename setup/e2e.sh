@@ -224,7 +224,11 @@ for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
 
   backup_work_dir auto 1
 
-  $LLMDBENCH_MAIN_DIR/setup/standup.sh
+  if [[ $scenario != "treatment_run_only.sh" ]]; then
+    $LLMDBENCH_MAIN_DIR/setup/standup.sh
+  else
+    true
+  fi
   ec=$?
   if [[ $ec -ne 0 ]]; then
     backup_work_dir $sid 1
@@ -249,7 +253,12 @@ for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
     announce "⏭️  Option \"--debug\" or environment variable \"LLMDBENCH_HARNESS_DEBUG\" was set to \"1\". Will not execute teardown"
     exit 0
   fi
-  $LLMDBENCH_MAIN_DIR/setup/teardown.sh
+
+  if [[ $scenario != "treatment_run_only.sh" ]]; then
+    $LLMDBENCH_MAIN_DIR/setup/teardown.sh
+  else
+    true
+  fi
   ec=$?
   if [[ $ec -ne 0 ]]; then
     backup_work_dir $sid 1
