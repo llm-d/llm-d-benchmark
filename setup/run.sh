@@ -56,6 +56,7 @@ function show_usage {
              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE)] \n \
              -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)] \n \
              -u/--wva [deploy model with Workload Variant Autoscaler (default=$LLMDBENCH_WVA_ENABLED)] \n \
+             -j/--parallelism [number of harness pods to be created (default=$LLMDBENCH_HARNESS_LOAD_PARALLELISM)] \n \
              -s/--wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means "do not wait\""] \n \
              -d/--debug [execute harness in \"debug-mode\" (default=$LLMDBENCH_HARNESS_DEBUG)] \n \
              -h/--help (show this help)"
@@ -98,6 +99,13 @@ while [[ $# -gt 0 ]]; do
         if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
           export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
         fi
+        shift
+        ;;
+        -j=*|--parallelism=*)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_LOAD_PARALLELISMT=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -j|--parallelism)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_LOAD_PARALLELISMT="$2"
         shift
         ;;
         -s=*|--wait=*)
@@ -336,6 +344,8 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
           export LLMDBENCH_DEPLOY_CURRENT_MODEL=$received_model_name
           export LLMDBENCH_DEPLOY_CURRENT_MODELID=$(model_attribute $LLMDBENCH_DEPLOY_CURRENT_MODEL modelid)
+          export LLMDBENCH_HARNESS_STACK_NAME=$(echo ${method} | $LLMDBENCH_CONTROL_SCMD 's^modelservice^llm-d^g')-$(model_attribute $LLMDBENCH_DEPLOY_CURRENT_MODEL parameters)-$(model_attribute $LLMDBENCH_DEPLOY_CURRENT_MODEL modeltype)
+          export LLMDBENCH_DEPLOY_CURRENT_TOKENIZER=$(model_attribute $LLMDBENCH_DEPLOY_CURRENT_MODEL model)
 
           announce "ℹ️ Stack model detected is \"$received_model_name\""
         elif [[ ${received_model_name} == ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ]]; then
@@ -403,13 +413,11 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           echo
         fi
 
-        # 
         # Assemble the pod specifications and build the workload
-        # 
-        export LLMDBENCH_HARNESS_POD_LABEL="llmdbench-harness-launcher"
+
         for i in $(seq 1 $LLMDBENCH_HARNESS_LOAD_PARALLELISM); do
           _pod_name="${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}-${i}-of-${LLMDBENCH_HARNESS_LOAD_PARALLELISM}"
-          
+
           export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX=${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}
           export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR=${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX}/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}_${i}
 
@@ -419,11 +427,12 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
                 ${LLMDBENCH_CONTROL_DRY_RUN} \
                 ${LLMDBENCH_CONTROL_VERBOSE}
 
-          if [[ -f ${local_analysis_dir}/summary.txt ]]; then
-            announce "⏭️  This particular workload profile was already executed against this stack. Please remove \"${local_analysis_dir}/summary.txt\" to re-execute".
+
+          if [[ -f ${local_analysis_dir}_{i}/summary.txt ]]; then
+            announce "⏭️  This particular workload profile was already executed against this stack. Please remove \"${local_analysis_dir}_{i}/summary.txt\" to re-execute".
             continue
           fi
-          
+
           if [[ $LLMDBENCH_CONTROL_DRY_RUN -eq 1 ]]; then
             announce "ℹ️ Skipping \"${_pod_name}\" creation"
           else
@@ -446,7 +455,8 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         done
 
         _combined_pod_config="${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}.yaml"
-        > "$_combined_pod_config"
+        rm -rf ${_combined_pod_config}
+        touch ${_combined_pod_config}
         for i in $(seq 1 "$LLMDBENCH_HARNESS_LOAD_PARALLELISM"); do
             _pod_name="${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}-${i}-of-${LLMDBENCH_HARNESS_LOAD_PARALLELISM}"
             _yaml_path="${LLMDBENCH_CONTROL_WORK_DIR}/${_pod_name}/setup/yamls/pod_benchmark-launcher.yaml"
@@ -460,7 +470,12 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
             cat "$_yaml_path" >> "$_combined_pod_config"
             echo >> "$_combined_pod_config"
         done
-        deploy_harness_config ${model} ${local_results_dir} ${local_analysis_dir} ${_combined_pod_config}
+
+        deploy_harness_config ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ${LLMDBENCH_DEPLOY_CURRENT_MODELID} ${local_results_dir} ${local_analysis_dir} ${_combined_pod_config}
+
+        if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
+          exit 0
+        fi
       done
     fi
 

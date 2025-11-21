@@ -1,0 +1,27 @@
+setup:
+  constants:
+    - LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN: 12000
+    - LLMDBENCH_VLLM_COMMON_BLOCK_SIZE: 64
+  factors:
+    - LLMDBENCH_VLLM_COMMON_NUM_CPU_BLOCKS
+  levels:
+    LLMDBENCH_VLLM_COMMON_NUM_CPU_BLOCKS: 500,1000,2000,5000
+  treatments:
+    - "500"
+    - "1000"
+    - "2000"
+    - "5000"
+run:
+# Harness and workload profile are defined on scenarios/guides
+  constants:
+    - streaming: true
+  factors:
+    - num_groups
+    - system_prompt_len
+  levels:
+    num_groups: "40,60"
+    system_prompt_len: "80000,5000,1000"
+  treatments:
+    long: "40,8000"
+    medium: "60,5000"
+    short: "60,1000"
