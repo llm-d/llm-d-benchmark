@@ -42,7 +42,12 @@ A user can elect to  **`standup`** an `llm-d` stack once, and then **`run`** the
 > [!TIP]
 > `./run.sh` can be used to run a particular workload against an already stood up stack (`llm-d` or otherwise)
 
-An illustrative example on is present [here](docs/tutorials/existing_stack_benchmark/run_example.md)
+An illustrative example on is present [here](docs/tutorials/run/run_against_existing_example.md)
+
+> [!TIP]
+> `./run.sh` can also be used in "interactive" (or "debug") mode (option `-d` or `--debug`)
+
+An illustrative example on is present [here](docs/tutorials/run/run_interactively_example.md)
 
 ### News
 

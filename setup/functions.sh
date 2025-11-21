@@ -458,7 +458,7 @@ metadata:
   name: ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}
   namespace: ${LLMDBENCH_HARNESS_NAMESPACE}
   labels:
-    app: ${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}
+    app: llmdbench-harness-launcher
 spec:
   containers:
   - name: harness
