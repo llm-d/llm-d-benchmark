@@ -118,13 +118,9 @@ data:
             announce(f'🔽 Launching download job for model: "{model_name}"')
             launch_download_job(
                 api=api,
-                namespace=ev["vllm_common_namespace"],
-                secret_name=ev["vllm_common_hf_token_name"],
+                ev=ev,
                 download_model=download_model,
-                model_path=model_path,
-                pvc_name=ev["vllm_common_pvc_name"],
-                dry_run=ev["control_dry_run"],
-                verbose=ev["control_verbose"],
+                model_path=model_path
             )
 
             job_successful = False

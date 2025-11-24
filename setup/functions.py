@@ -468,18 +468,14 @@ def validate_and_create_pvc(
 
 def launch_download_job(
     api: pykube.HTTPClient,
-    namespace: str,
-    secret_name: str,
+    ev: dict,
     download_model: str,
-    model_path: str,
-    pvc_name: str,
-    dry_run: bool = False,
-    verbose: bool = False,
+    model_path: str
 ):
 
     work_dir_str = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
     current_step = os.getenv("LLMDBENCH_CURRENT_STEP", "step")
-    kcmd = os.getenv("LLMDBENCH_CONTROL_KCMD", "kubectl")
+    kcmd =ev["control_kcmd"]
 
     work_dir = Path(work_dir_str)
     yaml_dir = work_dir / "setup" / "yamls"
@@ -496,9 +492,9 @@ def launch_download_job(
 
     hf_cmds = []
     hf_token_env = ""
-    if is_hf_model_gated(os.getenv("LLMDBENCH_DEPLOY_MODEL_LIST")):
+    if is_hf_model_gated(ev["deploy_model_list"]):
         if user_has_hf_model_access(
-            os.getenv("LLMDBENCH_DEPLOY_MODEL_LIST"), os.getenv("LLMDBENCH_HF_TOKEN")
+            ev["deploy_model_list"], ev["hf_token"]
         ):
             #
             # Login is only required for GATED models.
@@ -508,7 +504,7 @@ def launch_download_job(
             hf_token_env = f"""- name: HF_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {secret_name}
+                  name: {ev["vllm_common_hf_token_name"]}
                   key: HF_TOKEN"""
         else:
             #
@@ -533,18 +529,18 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {job_name}
-  namespace: {namespace}
+  namespace: {ev["vllm_common_namespace"]}
 spec:
   backoffLimit: 3
   template:
     metadata:
-      namespace: {namespace}
+      namespace: {ev["vllm_common_namespace"]}
       labels:
         app: llm-d-benchmark-harness
     spec:
       containers:
         - name: downloader
-          image: python:3.10
+          image: {get_image(ev["image_registry"], ev["image_repo"], ev["image_name"], ev["image_tag"], False, True)}
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -568,19 +564,19 @@ spec:
       volumes:
         - name: model-cache
           persistentVolumeClaim:
-            claimName: {pvc_name}
+            claimName: {ev["vllm_common_pvc_name"]}
 """
 
     # FIXME (USE PYKUBE)
-    delete_cmd = f"{kcmd} delete job {job_name} -n {namespace} --ignore-not-found=true"
+    delete_cmd = f"{kcmd} delete job {job_name} -n {ev['vllm_common_namespace']} --ignore-not-found=true"
     announce(
         f"--> Deleting previous job '{job_name}' (if it exists) to prevent conflicts..."
     )
     llmdbench_execute_cmd(
-        actual_cmd=delete_cmd, dry_run=dry_run, verbose=verbose, silent=True
+        actual_cmd=delete_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], silent=True
     )
 
-    kubectl_apply(api=api, manifest_data=job_yaml, dry_run=dry_run)
+    kubectl_apply(api=api, manifest_data=job_yaml, dry_run=ev["control_dry_run"])
 
 async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False):
     """Wait for the  job to complete"""
