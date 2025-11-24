@@ -102,10 +102,10 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
         -j=*|--parallelism=*)
-        export LLMDBENCH_CLIOVERRIDE_HARNESS_LOAD_PARALLELISMT=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_LOAD_PARALLELISM=$(echo $key | cut -d '=' -f 2)
         ;;
         -j|--parallelism)
-        export LLMDBENCH_CLIOVERRIDE_HARNESS_LOAD_PARALLELISMT="$2"
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_LOAD_PARALLELISM="$2"
         shift
         ;;
         -s=*|--wait=*)
