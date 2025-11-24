@@ -1647,34 +1647,43 @@ def wait_for_pods_created_running_ready(ev: dict, component_nr: int, component: 
         w = k8s_watch.Watch()
         max_retries = 3
         delay = 2
+        pod_create_list = []
         for attempt in range(max_retries):
             try:
-                pod_create_list = []
                 pod_running_list = []
                 pod_ready_list = []
                 for event in w.stream(api_client.list_namespaced_pod, namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}", timeout_seconds=int(ev["control_wait_timeout"])):
                     pod = event['object']
                     event_type = event['type']
-                    if event_type in ("ADDED", "MODIFIED") and pod.status.container_statuses:
-                        if pod.metadata.name not in pod_create_list:
-                            announce(f"✅     \"{pod.metadata.name}\" ({component}) pod serving model created")
-                            pod_create_list.append(pod.metadata.name)
-                        for container_status in pod.status.container_statuses:
-                            if container_status.state.waiting and container_status.state.waiting.reason == "CrashLoopBackOff":
-                                announce(f"ERROR: CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
-                                return 1
-                            elif container_status.state.terminated and container_status.state.terminated.exit_code not in (0, None):
-                                announce(f"ERROR: Crashed container in pod: {pod.metadata.name}, container: {container_status.name}")
-                                return 1
-                        if pod.metadata.name not in pod_running_list and all(cs.state.running for cs in pod.status.container_statuses):
-                            announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model running")
-                            announce(f"⏳ Waiting for all ({component}) pods to be Ready (timeout={int(ev['control_wait_timeout'])}s)...")
-                            pod_running_list.append(pod.metadata.name)
-                        if pod.metadata.name not in pod_ready_list and all(cs.ready for cs in pod.status.container_statuses):
-                            announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model ready")
-                            pod_ready_list.append(pod.metadata.name)
-                            if len(pod_create_list) == len(pod_ready_list) and len(pod_ready_list) == int(component_nr):
-                                return 0
+                    if event_type in ("ADDED", "MODIFIED") and pod.status.init_container_statuses:
+                        if len(pod_running_list) < int(component_nr):
+                            for init_container_status in pod.status.init_container_statuses:
+                                if init_container_status.state and init_container_status.state.waiting and init_container_status.state.waiting.reason == "CrashLoopBackOff":
+                                    announce(f"ERROR: init:CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
+                                    return 1
+                                elif init_container_status.state.terminated and init_container_status.state.terminated.exit_code not in (0, None):
+                                    announce(f"ERROR: Crashed init:container in pod: {pod.metadata.name}, container: {container_status.name}")
+                                    return 1
+                        if pod.status.container_statuses:
+                            if pod.metadata.name not in pod_create_list:
+                                announce(f"✅     \"{pod.metadata.name}\" ({component}) pod serving model created")
+                                pod_create_list.append(pod.metadata.name)
+                            for container_status in pod.status.container_statuses:
+                                if container_status.state.waiting and container_status.state.waiting.reason == "CrashLoopBackOff":
+                                    announce(f"ERROR: CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
+                                    return 1
+                                elif container_status.state.terminated and container_status.state.terminated.exit_code not in (0, None):
+                                    announce(f"ERROR: Crashed container in pod: {pod.metadata.name}, container: {container_status.name}")
+                                    return 1
+                            if pod.metadata.name not in pod_running_list and all(cs.state.running for cs in pod.status.container_statuses):
+                                announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model running")
+                                announce(f"⏳ Waiting for all ({component}) pods to be Ready (timeout={int(ev['control_wait_timeout'])}s)...")
+                                pod_running_list.append(pod.metadata.name)
+                            if pod.metadata.name not in pod_ready_list and all(cs.ready for cs in pod.status.container_statuses):
+                                announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model ready")
+                                pod_ready_list.append(pod.metadata.name)
+                                if len(pod_create_list) == len(pod_ready_list) and len(pod_ready_list) == int(component_nr):
+                                    return 0
             except (Exception, ProtocolError) as e:
                 if "Response ended prematurely" in str(e):
                     announce(f"{e}, Retrying in {delay} seconds...")
