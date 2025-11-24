@@ -60,7 +60,7 @@ class KVCacheDetail:
         """
         self.model = model_info.id
         self.kv_data_type = inference_dtype(model_config)
-        self.precision_in_bytes = precision_to_byte(self.kv_data_type)
+        self.precision_in_bytes = inference_dtype_byte(model_config)
         self.model_architecture = model_config.architectures[0]
 
         # kv_data_type is stored at the model_config level, so need to fetch text_config afterward
@@ -377,6 +377,28 @@ def inference_dtype(model_config: AutoConfig) -> str:
 
     return ""
 
+def inference_dtype_byte(model_config: AutoConfig) -> int:
+    """
+    Returns the precision for the inference KV cache data type used.
+    For most models it can be determined from the inference_dtype like fp32
+    For other models where inference_dtype is compressed-tensors, we need to read from quant_method
+    """
+
+    native_kv_dtype = inference_dtype(model_config)
+    try:
+        return precision_to_byte(native_kv_dtype)
+
+    # Cannot determine the precision because it is something like compressed-tensors
+    # In this case, find the quant method
+    except ValueError:
+        pass
+
+    if is_quantized(model_config):
+        return get_quant_bytes(model_config)
+
+    # Return fp8 for kv-cache-dtype as default
+    return 1
+
 def use_mla(model_architecture: str) -> bool:
     """
     Returns true for models that use MLA attention
@@ -415,7 +437,7 @@ def total_kv_cache_blocks(model_info: ModelInfo,
     Calculate the total number of KV cache blocks that can fit in GPU memory.
     """
 
-    # Compute per-token and per-block memory 
+    # Compute per-token and per-block memory
     kv_cache_detail = KVCacheDetail(model_info, model_config, context_len, batch_size)
     per_token_memory = kv_cache_detail.per_token_memory_bytes / (tp * pp)
     per_block_memory = per_token_memory * block_size

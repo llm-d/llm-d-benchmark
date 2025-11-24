@@ -12,6 +12,7 @@ qwen_model = "Qwen/Qwen3-0.6B"
 deepseek3 = "deepseek-ai/DeepSeek-V3.1"
 gpt_oss = "openai/gpt-oss-20b"
 redhat_qwen = "RedHatAI/Qwen3-8B-FP8-dynamic"
+redhat_nemotron = "redhatai/nvidia-nemotron-nano-9b-v2-fp8-dynamic"
 
 def test_get_model_info_and_config_from_hf():
     """
@@ -212,7 +213,7 @@ def test_total_kv_cache_blocks(monkeypatch):
     """
     Tests that total KV cache blocks are estimated correctly given model and GPU configuration.
     """
-    
+
     known_model = "Qwen/Qwen2.5-0.5B"
     # Load lightweight GQA model for reproducibility
     model_info = get_model_info_from_hf(known_model)
@@ -245,7 +246,7 @@ def test_total_kv_cache_blocks(monkeypatch):
             return 68.89 # observed in experiments
         elif tp == 2:
             return 68.09 # observed in experiments
-        
+
     monkeypatch.setattr(
         "src.config_explorer.capacity_planner.allocatable_kv_cache_memory",
         fake_allocatable_kv_cache_memory
@@ -259,7 +260,7 @@ def test_total_kv_cache_blocks(monkeypatch):
         gpu_mem_util=gpu_util,
     )
 
-    assert actual_blocks == 376231 
+    assert actual_blocks == 376231
 
     ## tp = 2
     actual_blocks = total_kv_cache_blocks(
@@ -272,8 +273,6 @@ def test_total_kv_cache_blocks(monkeypatch):
     )
 
     assert actual_blocks == 743724
-
-
 
 def test_find_possible_tp():
     """
@@ -464,3 +463,22 @@ def test_inference_dtype():
         model_config = get_model_config_from_hf(model)
         assert inference_dtype(model_config) == expceted
 
+def test_inference_dtype_byte():
+    """
+    Tests that inference dtype byte can be determined for quantized and unquantized models
+    """
+
+    model_to_dtype_byte = {
+        # quantized
+        gpt_oss: 4.25 / 8,
+        redhat_qwen: 2,
+        redhat_nemotron: 1,
+
+        # unquantized
+        qwen_model: 2,
+        deepseek3: 2,
+    }
+
+    for model, expceted in model_to_dtype_byte.items():
+        model_config = get_model_config_from_hf(model)
+        assert inference_dtype_byte(model_config) == expceted
