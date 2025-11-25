@@ -173,7 +173,11 @@ def main():
             model_dir.mkdir(parents=True, exist_ok=True)
 
             # Generate helmfile YAML content
-            helmfile_content = f"""repositories:
+            non_admin_defaults = ""
+            if os.environ.get("LLMDBENCH_NON_ADMIN_USER") == "1":
+                non_admin_defaults = "helmDefaults:\n  createNamespace: false\n---\n\n"
+
+            helmfile_content = f"""{non_admin_defaults}repositories:
   - name: {ev['vllm_modelservice_helm_repository']}
     url: {ev['vllm_modelservice_helm_repository_url']}
   - name: {ev['vllm_infra_helm_repository']}

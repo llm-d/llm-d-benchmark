@@ -41,6 +41,7 @@ function show_usage {
             -u/--wva [deploy model with Workload Variant Autoscaler (default=$LLMDBENCH_WVA_ENABLED)] \n \
             -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
             -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
+            -d/--non-admin [run the setup script as a non-admin user]
             -h/--help (show this help)\n \
 
             * [step list] can take of form of comma-separated single/double digits (e.g. \"-s 0,1,5\") or ranges (e.g. \"-s 1-7\")"
@@ -130,6 +131,13 @@ while [[ $# -gt 0 ]]; do
         -v|--verbose)
         export LLMDBENCH_CLIOVERRIDE_CONTROL_VERBOSE=1
         export LLMDBENCH_CONTROL_VERBOSE=1
+        ;;
+        -d|--non-admin)
+        export LLMDBENCH_CLIOVERRIDE_NON_ADMIN_USER=1
+        # Config to avoid blocking permissions
+        export LLMDBENCH_VLLM_GAIE_CHART_VERSION="v0"
+        export LLMDBENCH_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED=false
+        export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL=false
         ;;
         -h|--help)
         show_usage
