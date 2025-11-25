@@ -1238,20 +1238,6 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
         identifier = f"modelservice_{identifier}"
         section_indent = " " * 8
 
-    accelerator_resource = ev[f"vllm_{identifier}_accelerator_resource"]
-
-    if accelerator_resource == "auto":
-        accelerator_resource = "nvidia.com/gpu"
-
-    accelerator_nr = ev[f"vllm_{identifier}_accelerator_nr"]
-
-    data_parallelism = ev[f"vllm_{identifier}_data_parallelism"]
-    tensor_parallelism = ev[f"vllm_{identifier}_tensor_parallelism"]
-
-    accelerator_count = get_accelerator_nr(
-        accelerator_nr, tensor_parallelism, data_parallelism
-    )
-
     cpu_mem = ev[f"vllm_{identifier}_cpu_mem"]
     cpu_nr = ev[f"vllm_{identifier}_cpu_nr"]
 
@@ -1276,26 +1262,6 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
         )
         requests_resources.append(
             f'{section_indent}{ephemeral_storage_resource}: "{ephemeral_storage_nr}"'
-        )
-
-    if (
-        accelerator_resource
-        and accelerator_count
-        and str(accelerator_count) != "0"
-    ):
-        limits_resources.append(
-            f'{section_indent}{accelerator_resource}: "{accelerator_count}"'
-        )
-        requests_resources.append(
-            f'{section_indent}{accelerator_resource}: "{accelerator_count}"'
-        )
-
-    if accelerator_resource != "nvidia.com/gpu" :
-        limits_resources.append(
-            f'{section_indent}nvidia.com/gpu: "0"'
-        )
-        requests_resources.append(
-            f'{section_indent}nvidia.com/gpu: "0"'
         )
 
     if network_resource and network_nr:
