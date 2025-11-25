@@ -551,15 +551,16 @@ def main():
           kubectl_apply(api=api, manifest_data=httproute_spec, dry_run=ev["control_dry_run"])
 
         # Wait for decode pods to be created, running, and ready
+        api_client = client.CoreV1Api()
         result = wait_for_pods_created_running_ready(
-            ev, ev["vllm_modelservice_decode_replicas"], "decode"
+            api_client, ev, ev["vllm_modelservice_decode_replicas"], "decode"
         )
         if result != 0:
             return result
 
         # Wait for prefill pods to be created, running, and ready
         result = wait_for_pods_created_running_ready(
-            ev, ev["vllm_modelservice_prefill_replicas"], "prefill"
+            api_client, ev, ev["vllm_modelservice_prefill_replicas"], "prefill"
         )
         if result != 0:
             return result
