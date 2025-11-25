@@ -1326,7 +1326,8 @@ def add_affinity(ev:dict, section_indent: str = "") -> str:
         identifier = "common"
 
     if ev["control_environment_type_modelservice_active"]:
-
+        # use LLMDBENCH_VLLM_COMMON_AFFINITY to
+        # create acceleratorTypes: {labelKey: , labelValues []}
         affinity = ev["vllm_common_affinity"]
         if ":" in affinity:
             affinity_key, affinity_value = affinity.split(":", 1)
@@ -1343,6 +1344,12 @@ def add_affinity(ev:dict, section_indent: str = "") -> str:
             return f"{section_indent}acceleratorTypes:\n{section_indent}  labelKey: {affinity_key}\n{section_indent}  labelValues:\n      - {affinity_value}"
         else :
             return f"{section_indent}accelerator:\n{section_indent}  type: {acellerator_type}\n{section_indent}  resources:\n{section_indent}      {acellerator_type}: \"{acellerator_product}\""
+
+def add_accelerator():
+    # take LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE and create
+    # accelerator: { type: ..., resources: {} }
+    pass
+
 
 def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
     """
