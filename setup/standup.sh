@@ -132,12 +132,14 @@ while [[ $# -gt 0 ]]; do
         export LLMDBENCH_CLIOVERRIDE_CONTROL_VERBOSE=1
         export LLMDBENCH_CONTROL_VERBOSE=1
         ;;
-        -d|--non-admin)
+        -i|--non-admin)
+        announce "ℹ️  Your are running with non-admin option."
         export LLMDBENCH_CLIOVERRIDE_NON_ADMIN_USER=1
-        # Config to avoid blocking permissions
+        # Config to avoid blocked commands
         export LLMDBENCH_VLLM_GAIE_CHART_VERSION="v0"
-        export LLMDBENCH_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED=false
-        export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL=false
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_PVC_STORAGE_CLASS="ocs-storagecluster-cephfs"
+        export LLMDBENCH_CLIOVERRIDE_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED=false
+        export LLMDBENCH_CLIOVERRIDE_VLLM_MODELSERVICE_INFERENCE_POOL=false
         ;;
         -h|--help)
         show_usage
