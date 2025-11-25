@@ -28,6 +28,7 @@ from functions import (
     kubectl_apply, \
     environment_variable_to_dict, \
     wait_for_pods_created_running_ready, \
+    kube_connect, \
     collect_logs
 )
 
@@ -118,7 +119,12 @@ def main():
             ev["deploy_current_model_id_label"] = model_label
 
             # Wait for vllm pods to be created, running and ready
-            result = wait_for_pods_created_running_ready(ev, ev["vllm_common_replicas"], "both")
+            control_work_dir = os.environ.get(
+                "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
+            )
+            api, client = kube_connect(f"{control_work_dir}/environment/context.ctx")
+            api_client = client.CoreV1Api()
+            result = wait_for_pods_created_running_ready(api_client, ev, ev["vllm_common_replicas"], "both")
             if result != 0:
                 return result
 

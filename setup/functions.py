@@ -1631,7 +1631,7 @@ def add_scc_to_service_account(
             announce(f'Successfully updated SCC "{scc_name}"')
 
 
-def wait_for_pods_created_running_ready(ev: dict, component_nr: int, component: str) -> int:
+def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int, component: str) -> int:
     """
     Wait for pods to be created, in Running state and then in Ready state.
     """
@@ -1642,8 +1642,6 @@ def wait_for_pods_created_running_ready(ev: dict, component_nr: int, component: 
         announce(
             f'⏳ Waiting for all ({component}) pods serving model to be in "Running" state (timeout={int(ev["control_wait_timeout"])}s)...'
         )
-        k8s_config.load_kube_config()
-        api_client = k8s_client.CoreV1Api()
         max_retries = 5
         delay = 2
         pod_create_list = []
