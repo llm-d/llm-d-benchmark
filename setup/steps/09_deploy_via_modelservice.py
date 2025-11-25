@@ -25,7 +25,6 @@ from functions import (
     get_image,
     add_command,
     add_command_line_options,
-    get_accelerator_nr,
     add_annotations,
     add_additional_env_to_yaml,
     add_config,
@@ -236,10 +235,11 @@ routing:
     connector: {proxy_connector}
     debugLevel: {proxy_debug_level}
 
+{add_affinity(ev, "")}
+
 decode:
   create: {decode_create}
   replicas: {decode_replicas}
-{add_affinity(ev, "  ")}
   parallelism:
     data: {decode_data_parallelism}
     tensor: {decode_tensor_parallelism}
@@ -294,7 +294,6 @@ decode:
 prefill:
   create: {prefill_create}
   replicas: {prefill_replicas}
-{add_affinity(ev, "  ")}
   parallelism:
     data: {prefill_data_parallelism}
     tensor: {prefill_tensor_parallelism}

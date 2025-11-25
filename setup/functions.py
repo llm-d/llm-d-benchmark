@@ -1238,19 +1238,20 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
         identifier = f"modelservice_{identifier}"
         section_indent = " " * 8
 
-    accelerator_resource = ev[f"vllm_{identifier}_accelerator_resource"]
+    if ev["control_environment_type_standalone_active"]:
+        accelerator_resource = ev[f"vllm_{identifier}_accelerator_resource"]
 
-    if accelerator_resource == "auto":
-        accelerator_resource = "nvidia.com/gpu"
+        if accelerator_resource == "auto":
+            accelerator_resource = "nvidia.com/gpu"
 
-    accelerator_nr = ev[f"vllm_{identifier}_accelerator_nr"]
+        accelerator_nr = ev[f"vllm_{identifier}_accelerator_nr"]
 
-    data_parallelism = ev[f"vllm_{identifier}_data_parallelism"]
-    tensor_parallelism = ev[f"vllm_{identifier}_tensor_parallelism"]
+        data_parallelism = ev[f"vllm_{identifier}_data_parallelism"]
+        tensor_parallelism = ev[f"vllm_{identifier}_tensor_parallelism"]
 
-    accelerator_count = get_accelerator_nr(
-        accelerator_nr, tensor_parallelism, data_parallelism
-    )
+        accelerator_count = get_accelerator_nr(
+            accelerator_nr, tensor_parallelism, data_parallelism
+        )
 
     cpu_mem = ev[f"vllm_{identifier}_cpu_mem"]
     cpu_nr = ev[f"vllm_{identifier}_cpu_nr"]
@@ -1278,25 +1279,26 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
             f'{section_indent}{ephemeral_storage_resource}: "{ephemeral_storage_nr}"'
         )
 
-    if (
-        accelerator_resource
-        and accelerator_count
-        and str(accelerator_count) != "0"
-    ):
-        limits_resources.append(
-            f'{section_indent}{accelerator_resource}: "{accelerator_count}"'
-        )
-        requests_resources.append(
-            f'{section_indent}{accelerator_resource}: "{accelerator_count}"'
-        )
+    if ev["control_environment_type_standalone_active"]:
+        if (
+            accelerator_resource
+            and accelerator_count
+            and str(accelerator_count) != "0"
+        ):
+            limits_resources.append(
+                f'{section_indent}{accelerator_resource}: "{accelerator_count}"'
+            )
+            requests_resources.append(
+                f'{section_indent}{accelerator_resource}: "{accelerator_count}"'
+            )
 
-    if accelerator_resource != "nvidia.com/gpu" :
-        limits_resources.append(
-            f'{section_indent}nvidia.com/gpu: "0"'
-        )
-        requests_resources.append(
-            f'{section_indent}nvidia.com/gpu: "0"'
-        )
+        if accelerator_resource != "nvidia.com/gpu" :
+            limits_resources.append(
+                f'{section_indent}nvidia.com/gpu: "0"'
+            )
+            requests_resources.append(
+                f'{section_indent}nvidia.com/gpu: "0"'
+            )
 
     if network_resource and network_nr:
         limits_resources.append(
@@ -1324,7 +1326,8 @@ def add_affinity(ev:dict, section_indent: str = "") -> str:
         identifier = "common"
 
     if ev["control_environment_type_modelservice_active"]:
-
+        # use LLMDBENCH_VLLM_COMMON_AFFINITY to
+        # create acceleratorTypes: {labelKey: , labelValues []}
         affinity = ev["vllm_common_affinity"]
         if ":" in affinity:
             affinity_key, affinity_value = affinity.split(":", 1)
@@ -1341,6 +1344,12 @@ def add_affinity(ev:dict, section_indent: str = "") -> str:
             return f"{section_indent}acceleratorTypes:\n{section_indent}  labelKey: {affinity_key}\n{section_indent}  labelValues:\n      - {affinity_value}"
         else :
             return f"{section_indent}accelerator:\n{section_indent}  type: {acellerator_type}\n{section_indent}  resources:\n{section_indent}      {acellerator_type}: \"{acellerator_product}\""
+
+def add_accelerator():
+    # take LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE and create
+    # accelerator: { type: ..., resources: {} }
+    pass
+
 
 def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
     """
