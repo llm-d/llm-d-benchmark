@@ -1644,19 +1644,19 @@ def wait_for_pods_created_running_ready(ev: dict, component_nr: int, component: 
         )
         k8s_config.load_kube_config()
         api_client = k8s_client.CoreV1Api()
-        w = k8s_watch.Watch()
-        max_retries = 3
+        max_retries = 5
         delay = 2
         pod_create_list = []
         for attempt in range(max_retries):
             try:
+                w = k8s_watch.Watch()
                 pod_running_list = []
                 pod_ready_list = []
                 for event in w.stream(api_client.list_namespaced_pod, namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}", timeout_seconds=int(ev["control_wait_timeout"])):
                     pod = event['object']
                     event_type = event['type']
-                    if event_type in ("ADDED", "MODIFIED") and pod.status.init_container_statuses:
-                        if len(pod_running_list) < int(component_nr):
+                    if event_type in ("ADDED", "MODIFIED") and (pod.status.init_container_statuses or pod.status.container_statuses):
+                        if pod.status.init_container_statuses and (len(pod_running_list) < int(component_nr)):
                             for init_container_status in pod.status.init_container_statuses:
                                 if init_container_status.state and init_container_status.state.waiting and init_container_status.state.waiting.reason == "CrashLoopBackOff":
                                     announce(f"ERROR: init:CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
