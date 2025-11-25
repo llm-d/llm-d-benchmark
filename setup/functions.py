@@ -1642,12 +1642,12 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
         announce(
             f'⏳ Waiting for all ({component}) pods serving model to be in "Running" state (timeout={int(ev["control_wait_timeout"])}s)...'
         )
-        w = k8s_watch.Watch()
         max_retries = 5
         delay = 2
         pod_create_list = []
         for attempt in range(max_retries):
             try:
+                w = k8s_watch.Watch()
                 pod_running_list = []
                 pod_ready_list = []
                 for event in w.stream(api_client.list_namespaced_pod, namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}", timeout_seconds=int(ev["control_wait_timeout"])):
