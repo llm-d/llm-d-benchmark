@@ -48,7 +48,7 @@ function show_usage {
              -p/--namespace [comma separated pair of values indicating where a stack was stood up and where to run (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE)] \n \
              -t/--methods [list of standup methods (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\", \"modelservice\" or any other string - pod name or service name - matching a resource on cluster)] \n \
              -l/--harness [harness used to generate load (default=$LLMDBENCH_HARNESS_NAME, possible values $(get_harness_list)] \n \
-             -w/--workload [workload to be used by the harness (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE, possible values (check \"workload/profiles\" dir)] \n \
+             -w/--workload [workload to be used by the harness (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE, possible values (check \"${LLMDBENCH_HARNESS_PROFILES_DIR}\" dir)] \n \
              -k/--pvc [name of the PVC used to store the results (default=$LLMDBENCH_HARNESS_PVC_NAME)] \n \
              -e/--experiments [path of yaml file containing a list of factors and levels for an experiment, useful for parameter sweeping (default=$LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS)] \n \
              -o/--overrides [comma-separated list of workload profile parameters to be overriden (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES)] \n \
@@ -369,9 +369,9 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
         generate_profile_parameter_treatments ${LLMDBENCH_HARNESS_NAME} ${LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS}
 
-        workload_template_full_path=$(find ${LLMDBENCH_MAIN_DIR}/workload/profiles/${LLMDBENCH_HARNESS_NAME}/ | grep ${LLMDBENCH_HARNESS_EXPERIMENT_PROFILE} | head -n 1 || true)
+        workload_template_full_path=$(find ${LLMDBENCH_HARNESS_PROFILES_DIR}/${LLMDBENCH_HARNESS_NAME}/ | grep ${LLMDBENCH_HARNESS_EXPERIMENT_PROFILE} | head -n 1 || true)
         if [[ -z $workload_template_full_path ]]; then
-          announce "❌ Could not find workload template \"$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE\" inside directory \"${LLMDBENCH_MAIN_DIR}/workload/profiles/${LLMDBENCH_HARNESS_NAME}/\" (variable $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE)"
+          announce "❌ Could not find workload template \"$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE\" inside directory \"${LLMDBENCH_HARNESS_PROFILES_DIR}/${LLMDBENCH_HARNESS_NAME}/\" (variable $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE)"
           exit 1
         fi
 

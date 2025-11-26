@@ -1125,7 +1125,7 @@ def render_string(input_string):
         elif default_value:
             final_value = default_value
         else:
-            announce(f'❌ ERROR: variable "REPLACE_ENV_{parameter_name}" not defined!')
+            announce(f'ERROR: variable "REPLACE_ENV_{parameter_name}" not defined!')
             sys.exit(1)
 
         # Replace in the string
@@ -1292,14 +1292,6 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
                 f'{section_indent}{accelerator_resource}: "{accelerator_count}"'
             )
 
-        if accelerator_resource != "nvidia.com/gpu" :
-            limits_resources.append(
-                f'{section_indent}nvidia.com/gpu: "0"'
-            )
-            requests_resources.append(
-                f'{section_indent}nvidia.com/gpu: "0"'
-            )
-
     if network_resource and network_nr:
         limits_resources.append(
             f'{section_indent}{network_resource}: "{network_nr}"'
@@ -1320,30 +1312,47 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
 
     return limits_resources, requests_resources
 
-def add_affinity(ev:dict, section_indent: str = "") -> str:
+def add_affinity(ev:dict) -> str:
+
+    affinity = ev["vllm_common_affinity"]
+    if ":" in affinity:
+        affinity_key, affinity_value = affinity.split(":", 1)
+    else:
+        affinity_key, affinity_value = "", ""
 
     if ev["control_environment_type_standalone_active"]:
-        identifier = "common"
+        affinity_string = f"""      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: {affinity_key}
+                operator: In
+                values:
+                - {affinity_value}"""
 
     if ev["control_environment_type_modelservice_active"]:
-        # use LLMDBENCH_VLLM_COMMON_AFFINITY to
-        # create acceleratorTypes: {labelKey: , labelValues []}
-        affinity = ev["vllm_common_affinity"]
-        if ":" in affinity:
-            affinity_key, affinity_value = affinity.split(":", 1)
-        else:
-            affinity_key, affinity_value = "", ""
 
-        if affinity_value.isdigit() :
-            affinity_value = f'"{affinity_value}"'
+        affinity_string = f"""  acceleratorTypes:
+    labelKey: {affinity_key}
+    labelValues:
+    - {affinity_value}"""
 
-        acellerator_type = affinity.split('.')[0]
-        acellerator_product = affinity.split(":")[0]
+    return affinity_string
 
-        if acellerator_type == "nvidia" :
-            return f"{section_indent}acceleratorTypes:\n{section_indent}  labelKey: {affinity_key}\n{section_indent}  labelValues:\n      - {affinity_value}"
-        else :
-            return f"{section_indent}accelerator:\n{section_indent}  type: {acellerator_type}\n{section_indent}  resources:\n{section_indent}      {acellerator_type}: \"{acellerator_product}\""
+def add_accelerator(ev:dict, identifier: str = "decode") -> str:
+
+    if ev[f"vllm_modelservice_{identifier}_accelerator_resource"] == "auto" :
+        ev[f"vllm_modelservice_{identifier}_accelerator_resource"] = ev[f"vllm_common_affinity"].split(':')[0].replace(".product",'')
+
+    accelerator_type = ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split('.')[0]
+    acellerator_resource = ev[f"vllm_modelservice_{identifier}_accelerator_resource"]
+    accelerator_string=f"""accelerator:
+  type: {accelerator_type}
+  resources:
+    {accelerator_type}: "{acellerator_resource}"
+    """
+    return accelerator_string
 
 def add_accelerator():
     # take LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE and create

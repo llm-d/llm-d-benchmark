@@ -29,6 +29,7 @@ from functions import (
     add_additional_env_to_yaml,
     add_config,
     add_resources,
+    add_accelerator,
     add_affinity,
     clear_string,
     install_wva_components,
@@ -152,7 +153,7 @@ def generate_ms_values_yaml(
     decode_tensor_parallelism = ev["vllm_modelservice_decode_tensor_parallelism"]
     decode_model_command = ev.get("vllm_modelservice_decode_model_command", "")
     decode_extra_args = ev.get("vllm_modelservice_decode_extra_args", "")
-    decode_inference_port = ev.get("vllm_modelservice_decode_inference_port", "8000")
+    decode_inference_port = ev["vllm_modelservice_decode_inference_port"]
 
     # Prefill configuration
     prefill_replicas = int(ev.get("vllm_modelservice_prefill_replicas", "0"))
@@ -163,6 +164,7 @@ def generate_ms_values_yaml(
     )
     prefill_model_command = ev.get("vllm_modelservice_prefill_model_command", "")
     prefill_extra_args = ev.get("vllm_modelservice_prefill_extra_args", "")
+    prefill_inference_port = ev["vllm_modelservice_prefill_inference_port"]
 
     # Probe configuration
     initial_delay_probe = ev.get("vllm_common_initial_delay_probe", "30")
@@ -235,11 +237,12 @@ routing:
     connector: {proxy_connector}
     debugLevel: {proxy_debug_level}
 
-{add_affinity(ev, "")}
+{add_accelerator(ev)}
 
 decode:
   create: {decode_create}
   replicas: {decode_replicas}
+{add_affinity(ev)}
   parallelism:
     data: {decode_data_parallelism}
     tensor: {decode_tensor_parallelism}
@@ -294,6 +297,7 @@ decode:
 prefill:
   create: {prefill_create}
   replicas: {prefill_replicas}
+{add_affinity(ev)}
   parallelism:
     data: {prefill_data_parallelism}
     tensor: {prefill_tensor_parallelism}
@@ -327,20 +331,20 @@ prefill:
       startupProbe:
         httpGet:
           path: /health
-          port: {common_inference_port}
+          port: {prefill_inference_port}
         failureThreshold: 60
         initialDelaySeconds: {initial_delay_probe}
         periodSeconds: 30
         timeoutSeconds: 5
       livenessProbe:
         tcpSocket:
-          port: {common_inference_port}
+          port: {prefill_inference_port}
         failureThreshold: 3
         periodSeconds: 5
       readinessProbe:
         httpGet:
           path: /health
-          port: {common_inference_port}
+          port: {prefill_inference_port}
         failureThreshold: 3
         periodSeconds: 5
     {add_config(prefill_extra_container_config, 6).lstrip()}
