@@ -36,7 +36,7 @@ function show_usage {
               -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
               -t/--methods [list of standup methods (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\") ] \n \
               -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
-              -i/--non-admin [run the setup script as a non-admin user]
+              -i/--non-admin [run as a user without cluster-level admin privileges]
               -h/--help (show this help)"
 }
 
@@ -98,7 +98,7 @@ while [[ $# -gt 0 ]]; do
         export LLMDBENCH_CONTROL_VERBOSE=1
         ;;
         -i|--non-admin)
-        announce "ℹ️  Your are running with non-admin option."
+        announce "ℹ️  You are running as a non-cluster-level admin user."
         export LLMDBENCH_CLIOVERRIDE_NON_ADMIN_USER=1
         ;;
         -h|--help)
