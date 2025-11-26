@@ -136,6 +136,8 @@ The following table displays a comprehensive list of environment variables (and 
 | LLMDBENCH_HARNESS_PVC_SIZE                     | The size of the `pvc` where experimental results will be stored | Default=`20Gi` |
 | LLMDBENCH_HARNESS_CONTAINER_IMAGE              | The container image used to create an additional `pod` which will carry out the load generation. | Default=`lmcache/lmcache-benchmark:main`. **IMPORTANT: This is only applicable to `nop`!**|
 | LLMDBENCH_HARNESS_SKIP_RUN                     | Skip the execution of the experiment, and only collect data already on the `pvc` | Default=(empty) |
+| LLMDBENCH_HARNESS_LOAD_PARALLELISM             | Controls the number harness pods which will be created to generate load (all pods execute the same workload profile) | Default=`1`, can be overriden with ` -j/--parallelism` |
+| LLMDBENCH_HARNESS_ENVVARS_TO_YAML              | List all environment variables to be added to all harness pods | Default=`LLMDBENCH_RUN_EXPERIMENT`, can be overriden with `-g/--envvarspod` |
 | LLMDBENCH_HARNESS_DEBUG                        | Execute harness in "debug-mode" (i.e., `sleep infinity`) | Default=`0`.  Can be overriden with CLI parameter `-d/--debug`|
 
 > [!TIP]

@@ -8,6 +8,7 @@
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-speech-3.3-8b
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-8b-instruct
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-2b-instruct
+#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-ai-platform/micro-g3.3-8b-instruct-1b
 #export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
@@ -74,27 +75,29 @@
 # run preprocessor python that will change the debug log date format and pre-serialize a model when using
 # tensorizer load format
 ######export LLMDBENCH_VLLM_STANDALONE_PREPROCESS="source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
+
+
+# source preprocessor script that will install NVIDIA Nsight Systems (nsys) for vllm execution profiling
+# Remember to replace "vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL" with
+#"nsys profile --trace cuda,nvtx --cuda-graph-trace node vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL"
 ########export LLMDBENCH_VLLM_STANDALONE_PREPROCESS="source /setup/preprocess/install_nsys.sh"
-########export LLMDBENCH_VLLM_STANDALONE_ARGS="REPLACE_ENV_LLMDBENCH_VLLM_STANDALONE_PREPROCESS;\
-########nsys profile____--trace cuda,nvtx____--cuda-graph-trace____node____vllm____serve____REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL____\
-########--no-enable-prefix-caching____\
-########--load-format____REPLACE_ENV_LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT____\
-########--port____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_INFERENCE_PORT____\
-########--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN____\
-########--disable-log-requests____\
-########--gpu-memory-utilization____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL____\
-########--tensor-parallel-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM____\
-########--model-loader-extra-config____\"\$LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG\""
-
-#export LLMDBENCH_VLLM_STANDALONE_ARGS="[\
-#--block-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE____\
-#--kv-transfer-config____'{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}'____\
-#--disable-log-requests____\
-#--disable-uvicorn-access-log____\
-#--no-enable-prefix-caching____\
-#--max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN\
-#]"
-
+export LLMDBENCH_VLLM_STANDALONE_ARGS=$(mktemp)
+cat << EOF > $LLMDBENCH_VLLM_STANDALONE_ARGS
+REPLACE_ENV_LLMDBENCH_VLLM_STANDALONE_PREPROCESS; \
+vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+--host 0.0.0.0 \
+--served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+--port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_INFERENCE_PORT \
+--block-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE \
+--max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
+--load-format REPLACE_ENV_LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT \
+--gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL \
+--max-num-seqs REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_NUM_SEQ \
+--tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM \
+--disable-log-requests \
+--disable-uvicorn-access-log \
+--no-enable-prefix-caching
+EOF
 
 # llm-d Parameters
 #########export LLMDBENCH_VLLM_MODELSERVICE_PREFIIL_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:compute-q0v0

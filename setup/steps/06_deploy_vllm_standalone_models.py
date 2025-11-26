@@ -24,6 +24,7 @@ from functions import (
     add_resources, \
     add_config, \
     add_affinity, \
+    add_pull_secret, \
     get_accelerator_nr, \
     is_standalone_deployment, \
     kubectl_apply, \
@@ -279,6 +280,7 @@ spec:
         - name: shm
           mountPath: /dev/shm
         {extra_volume_mounts}
+{add_pull_secret(ev)}
       volumes:
       - name: preprocesses
         configMap:

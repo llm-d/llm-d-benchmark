@@ -1333,6 +1333,9 @@ def add_affinity(ev:dict) -> str:
 
     if ev["control_environment_type_modelservice_active"]:
 
+        if affinity_key == "kubernetes.io/os" :
+            return ""
+
         affinity_string = f"""  acceleratorTypes:
     labelKey: {affinity_key}
     labelValues:
@@ -1346,6 +1349,10 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
         ev[f"vllm_modelservice_{identifier}_accelerator_resource"] = ev[f"vllm_common_affinity"].split(':')[0].replace(".product",'')
 
     accelerator_type = ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split('.')[0]
+    if accelerator_type == "kubernetes" :
+        accelerator_type = "cpu"
+        acellerator_resource = "cpu"
+
     acellerator_resource = ev[f"vllm_modelservice_{identifier}_accelerator_resource"]
     accelerator_string=f"""accelerator:
   type: {accelerator_type}
@@ -1354,11 +1361,13 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
     """
     return accelerator_string
 
-def add_accelerator():
-    # take LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE and create
-    # accelerator: { type: ..., resources: {} }
-    pass
+def add_pull_secret(ev:dict) -> str:
+    pull_secret_string = "#noconfig"
+    if ev["vllm_common_pull_secret"] :
+        pull_secret_string = f"""      imagePullSecrets:
+      - name: {ev["vllm_common_pull_secret"]}"""
 
+    return pull_secret_string
 
 def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
     """
