@@ -297,7 +297,29 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           export LLMDBENCH_VLLM_FQDN=
           if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
             announce "ℹ️ Stack Endpoint name detected is \"$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME\""
-            export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r ".spec.containers[0].ports[0].containerPort")
+            # try to get port from liveness or readiness probe
+            for probe in livenessProbe readinessProbe; do
+              export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(
+                ${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json |
+                jq -r ".spec.containers[0].${probe}.httpGet.port" || 
+                true
+              )
+              if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT && $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT != "null" ]]; then
+                break
+              fi
+            done
+            if [[ -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT || $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT == "null" ]]; then
+              # try to use metrics port (should work for default vLLM
+              export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(
+                ${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | 
+                jq -r ".spec.containers[0].ports[] | select(.name == \"metrics\") | .containerPort" || 
+                true
+              )
+            fi
+            if [[ -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT || $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT == "null" ]]; then
+              announce "❌ ERROR: could not find a port for endpoint name \"$$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME\""
+              exit 1
+            fi
             export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r ".status.podIP")
           fi
         fi
