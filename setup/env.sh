@@ -578,14 +578,24 @@ if [[ ! -z ${has_kind} ]]; then
   export LLMDBENCH_CONTROL_DEPLOY_IS_KIND=1
 fi
 
-for mt in standalone modelservice; do
-  is_env=$(echo $LLMDBENCH_DEPLOY_METHODS | grep $mt || true)
-  if [[ -z $is_env ]]; then
-    export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_$(echo $mt | tr '[:lower:]' '[:upper:]')_ACTIVE=0
-  else
-    export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_$(echo $mt | tr '[:lower:]' '[:upper:]')_ACTIVE=1
-  fi
-done
+case $LLMDBENCH_DEPLOY_METHODS in
+  "standalone")
+    export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE=1
+    export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE=0
+    ;;
+  "modelservice")
+    export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE=0
+    export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE=1
+    ;;
+  "modelservice,standalone" | "standalone,modelservice")
+    export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE=1
+    export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE=1
+    ;;
+  *)
+    export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE=0
+    export LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE=0
+    ;;
+esac
 
 if [[ $LLMDBENCH_CONTROL_PERMISSIONS_CHECKED -eq 0 && ${LLMDBENCH_CONTROL_CHECK_CLUSTER_AUTHORIZATIONS} -ne 0 ]]; then
   for resource in namespace ${LLMDBENCH_CONTROL_RESOURCE_LIST//,/ }; do
