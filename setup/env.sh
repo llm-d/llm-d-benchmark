@@ -165,7 +165,7 @@ export LLMDBENCH_VLLM_INFRA_HELM_REPOSITORY=${LLMDBENCH_VLLM_INFRA_HELM_REPOSITO
 export LLMDBENCH_VLLM_INFRA_HELM_REPOSITORY_URL=${LLMDBENCH_VLLM_INFRA_HELM_REPOSITORY_URL:-"https://llm-d-incubation.github.io/${LLMDBENCH_VLLM_INFRA_CHART_NAME}/"}
 export LLMDBENCH_VLLM_GAIE_CHART_NAME=${LLMDBENCH_VLLM_GAIE_CHART_NAME:-oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool}
 #FIXME: oci helm repos do not output a list of versions. Use "skopeo list-tags  docker://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool"
-export LLMDBENCH_VLLM_GAIE_CHART_VERSION=${LLMDBENCH_VLLM_GAIE_CHART_VERSION:-v1.0.1}
+export LLMDBENCH_VLLM_GAIE_CHART_VERSION=${LLMDBENCH_VLLM_GAIE_CHART_VERSION:-v1.2.0}
 #export LLMDBENCH_VLLM_GAIE_CHART_VERSION=${LLMDBENCH_VLLM_GAIE_CHART_VERSION:-v0.5.1}
 
 # Gateway API and GAIE CRD versions

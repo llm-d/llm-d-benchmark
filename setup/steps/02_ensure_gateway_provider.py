@@ -5,6 +5,7 @@ import sys
 import subprocess
 import tempfile
 import re
+import pykube
 from pathlib import Path
 
 # Add project root to path for imports
@@ -13,7 +14,7 @@ project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
 try:
-    from functions import announce, llmdbench_execute_cmd, environment_variable_to_dict
+    from functions import announce, llmdbench_execute_cmd, environment_variable_to_dict, kube_connect, kubectl_get
 except ImportError as e:
     # Fallback for when dependencies are not available
     print(f"Warning: Could not import required modules: {e}")
@@ -144,6 +145,7 @@ def install_gateway_api_crds(
         ev : dict,
         dry_run : bool,
         verbose : bool,
+        should_install: bool
     ) -> int:
     """
     Install Gateway API crds.
@@ -156,20 +158,23 @@ def install_gateway_api_crds(
     Returns:
         int: 0 for success, non-zero for failure
     """
-    try:
-        crd_version = ev.get("gateway_api_crd_revision")
-        kubectl_cmd = ev.get("control_kcmd", "kubectl")
-        install_crds_cmd = f"{kubectl_cmd} apply -k https://github.com/kubernetes-sigs/gateway-api/config/crd/?ref={crd_version}"
+    announce(f"🚀 Installing Kubernetes Gateway API ({ev['gateway_api_crd_revision']}) CRDs...")
+    if should_install :
+        try:
+            install_crds_cmd = f"{ev['control_kcmd']} apply -k https://github.com/kubernetes-sigs/gateway-api/config/crd/?ref={ev['gateway_api_crd_revision']}"
+            result = llmdbench_execute_cmd(actual_cmd=install_crds_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
+            if result != 0:
+                announce(f"ERROR: Failed while running \"{install_crds_cmd}\" (exit code: {result})")
+                exit(result)
+            announce(f"✅ Kubernetes Gateway API ({ev['gateway_api_crd_revision']}) CRDs installed")
+            return result
 
-        announce(f"🚀 Installing Kubernetes Gateway API ({crd_version}) CRDs...")
-        llmdbench_execute_cmd(install_crds_cmd, dry_run, verbose)
-        announce("✅ Kubernetes Gateway API CRDs installed")
+        except Exception as e:
+            announce(f"ERROR: Unable to insta Kubernetes Gateway API ({ev['gateway_api_crd_revision']}) CRDs: {e}")
+            return 1
+    else :
+        announce(f"✅ Kubernetes Gateway API ({ev['gateway_api_crd_revision']}) CRDs already installed (*.gateway.networking.k8s.io CRDs found)")
         return 0
-
-    except Exception as e:
-        announce(f"❌ Error installing Kubernetes Gateway API CRDs: {e}")
-        return 1
-
 
 def install_gateway_api_extension_crds(
         ev : dict,
@@ -188,12 +193,13 @@ def install_gateway_api_extension_crds(
         int: 0 for success, non-zero for failure
     """
     try:
-        crd_version = ev.get("gateway_api_inference_extension_crd_revision")
-        kubectl_cmd = ev.get("control_kcmd", "kubectl")
-        install_crds_cmd = f"{kubectl_cmd} apply -k https://github.com/kubernetes-sigs/gateway-api-inference-extension/config/crd/?ref={crd_version}"
+        install_crds_cmd = f"{ev['control_kcmd']} apply -k https://github.com/kubernetes-sigs/gateway-api-inference-extension/config/crd/?ref={ev['gateway_api_inference_extension_crd_revision']}"
 
-        announce(f"🚀 Installing Kubernetes Gateway API inference extension ({crd_version}) CRDs...")
-        llmdbench_execute_cmd(install_crds_cmd, dry_run, verbose)
+        announce(f"🚀 Installing Kubernetes Gateway API inference extension ({ev['gateway_api_inference_extension_crd_revision']}) CRDs...")
+        result = llmdbench_execute_cmd(actual_cmd=install_crds_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
+        if result != 0:
+            announce(f"❌ Failed while running \"{install_crds_cmd}\" (exit code: {result})")
+            exit(result)
         announce("✅ Kubernetes Gateway API inference extension CRDs installed")
         return 0
 
@@ -365,11 +371,12 @@ def install_gateway_control_plane(
     if success == 0:
         announce(f'✅ Gateway control plane (provider {ev["vllm_modelservice_gateway_class_name"]}) installed.')
     else:
-        announce(f'❌ Gateway control plane (provider {ev["vllm_modelservice_gateway_class_name"]}) not installed.')
+        announce(f'ERROR: Gateway control plane (provider {ev["vllm_modelservice_gateway_class_name"]}) not installed.')
     return success
 
 
 def ensure_gateway_provider(
+    api: pykube.HTTPClient,
     ev: dict,
     dry_run: bool,
     verbose: bool
@@ -421,8 +428,19 @@ def ensure_gateway_provider(
         announce(f'🔍 Ensuring gateway infrastructure (provider {ev["vllm_modelservice_gateway_class_name"]}) is setup...')
 
         if ev["user_is_admin"] :
+
+            should_install_gateway_api_crds = False
+            _, object_names = kubectl_get(api, "CustomResourceDefinition", '', '')
+            for i in [ "gatewayclasses.gateway.networking.k8s.io", \
+                    "gateways.gateway.networking.k8s.io", \
+                    "grpcroutes.gateway.networking.k8s.io", \
+                    "httproutes.gateway.networking.k8s.io", \
+                    "referencegrants.gateway.networking.k8s.io" ] :
+                    if i not in object_names :
+                        should_install_gateway_api_crds = True
+
             # Install Kubernetes Gateway API crds
-            result = install_gateway_api_crds(ev, dry_run, verbose)
+            result = install_gateway_api_crds(ev, dry_run, verbose, should_install_gateway_api_crds)
             if result != 0:
                 return result
 
@@ -454,8 +472,12 @@ def main():
     if ev["control_dry_run"]:
         announce("DRY RUN enabled. No actual changes will be made.")
 
+    api, client  = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
+    if ev["control_dry_run"] :
+        announce("DRY RUN enabled. No actual changes will be made.")
+
     # Execute the main logic
-    return ensure_gateway_provider(ev, ev["control_dry_run"], ev["control_verbose"])
+    return ensure_gateway_provider(api, ev, ev["control_dry_run"], ev["control_verbose"])
 
 
 if __name__ == "__main__":

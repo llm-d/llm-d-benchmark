@@ -338,7 +338,7 @@ def environment_variable_to_dict(ev: dict = {}):
 
 def kubectl_apply(
     api: pykube.HTTPClient,
-    manifest_data: Union[str, dict],
+    manifest_data: Union[list, dict],
     dry_run: bool = False,
     verbose: bool = False,
 ):
@@ -387,6 +387,41 @@ def kubectl_apply(
         except PyKubeError as e:
             announce(f"ERROR: Failed to create or update {object_kind} \"{object_name}\": {e}")
             sys.exit(1)
+
+def kubectl_get(
+    api: pykube.HTTPClient,
+    object_kind: str,
+    object_name: str = '',
+    object_namespace: str = 'default',
+    dry_run: bool = False,
+    verbose: bool = False,
+):
+    _pcc = __import__("pykube")
+    _pci = getattr(_pcc, object_kind)
+
+    if object_kind == "HTTPRoute" :
+        _pci = pykube.object_factory(api, "gateway.networking.k8s.io/v1", "HTTPRoute")
+    else :
+        _pci = getattr(_pcc, object_kind)
+
+    object_instances = []
+    object_names = []
+
+    if object_name :
+        if object_namespace :
+            object_instances = _pci.objects(api).filter(namespace=object_namespace).get_by_name(object_name)
+        else :
+            object_instances = _pci.objects(api).get_by_name(object_name)
+    else :
+        if object_namespace :
+            object_instances = _pci.objects(api).filter(namespace=object_namespace).all()
+        else :
+            object_instances = _pci.objects(api).all()
+
+    for i in object_instances :
+        object_names.append(i.name)
+
+    return object_instances, object_names
 
 def validate_and_create_pvc(
     api: pykube.HTTPClient,
