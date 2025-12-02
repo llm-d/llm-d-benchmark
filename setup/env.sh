@@ -7,7 +7,6 @@ export LLMDBENCH_CLUSTER_URL="${LLMDBENCH_CLUSTER_URL:-auto}"
 export LLMDBENCH_CLUSTER_TOKEN="${LLMDBENCH_CLUSTER_TOKEN:-sha256~sVYh-xxx}"
 
 export LLMDBENCH_HF_TOKEN="${LLMDBENCH_HF_TOKEN:-}"
-export LLMDBENCH_NON_ADMIN_USER="${LLMDBENCH_NON_ADMIN_USER:-0}"
 
 # Images
 export LLMDBENCH_IMAGE_REGISTRY=${LLMDBENCH_IMAGE_REGISTRY:-ghcr.io}
@@ -86,7 +85,7 @@ export LLMDBENCH_WVA_VLLM_SERVICE_NODE_PORT_MAX="${LLMDBENCH_WVA_VLLM_SERVICE_NO
 export LLMDBENCH_WVA_VLLM_SERVICE_INTERVAL="${LLMDBENCH_WVA_VLLM_SERVICE_INTERVAL:-15s}"
 
 # LLM-D-Benchmark deployment specific variables
-export LLMDBENCH_DEPLOY_MODEL_LIST=${LLMDBENCH_DEPLOY_MODEL_LIST:-"Qwen/Qwen3-0.6B"}
+export LLMDBENCH_DEPLOY_MODEL_LIST=${LLMDBENCH_DEPLOY_MODEL_LIST:-"facebook/opt-125m"}
 export LLMDBENCH_DEPLOY_METHODS=${LLMDBENCH_DEPLOY_METHODS:-"modelservice"}
 
 # Gateway provider specific variables
@@ -564,6 +563,13 @@ else
       export LLMDBENCH_CONTROL_PROXY_UID=$($LLMDBENCH_CONTROL_KCMD get namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} -o json | jq -e -r '.metadata.annotations["openshift.io/sa.scc.uid-range"]' | perl -F'/' -lane 'print $F[0]+1');
     fi
   fi
+fi
+if [[ $LLMDBENCH_USER_IS_ADMIN -eq 0 ]]; then
+  announce "ℹ️  You are running as a non-cluster-level admin user."
+  # Config to avoid blocked commands
+  export LLMDBENCH_VLLM_GAIE_CHART_VERSION="v0"
+  export LLMDBENCH_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED=false
+  export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL=false
 fi
 
 export LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE=${LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE:-0}

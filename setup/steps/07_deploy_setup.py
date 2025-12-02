@@ -174,7 +174,7 @@ def main():
 
             # Generate helmfile YAML content
             non_admin_defaults = ""
-            if os.environ.get("LLMDBENCH_NON_ADMIN_USER") == "1":
+            if not ev['user_is_admin'] == "0": # Avoid default namespace creation for non cluster-level admin users
                 non_admin_defaults = "helmDefaults:\n  createNamespace: false\n---\n\n"
 
             helmfile_content = f"""{non_admin_defaults}repositories:
