@@ -1,0 +1,4 @@
+template:
+  path: /Users/vezio/IBM/llmd/haul/templates/default_system.yaml
+scenario:
+  path: /Users/vezio/IBM/llmd/haul/scenarios/inference-scheduling.yaml

@@ -1,0 +1,13 @@
+[project]
+name = "llmdbench"
+version = "0.0.0"
+description = "A library for configuration discovery and benchmarking for llm-d."
+dependencies = [
+    "PyYAML",
+    "Jinja2",
+    "requests",
+    "packaging"
+]
+
+[project.scripts]
+llmdbench = "llmdbench.cli:cli"

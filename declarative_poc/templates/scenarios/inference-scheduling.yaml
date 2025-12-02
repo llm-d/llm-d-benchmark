@@ -1,0 +1,40 @@
+scenario:
+  - name: "sut-1"
+    prepare:
+      user-overrides:
+        secrets:
+        - name: llm-d-hf-token
+          secret: HF_TOKEN
+          contents: REPLACE_HF_TOKEN
+        files:
+          - name: llm-d-benchmark-preprocesses
+            path: REPLACE_DIR_PATH
+    system:
+      user-overrides:
+        - name: "default"
+          inference-engine:
+            model:
+              - name: meta-llama/Llama-3.1-8B-Instruct
+                label: .auto
+                maxlen: 16384
+                blocksize: 64
+            replicas:
+              decode: 2
+              prefill: 0
+          volumes:
+            - name: model-storage
+              size: 1Ti
+          command:
+            decode:
+              type: vllmServe
+              args:
+                - "--enforce-eager"
+                - "--block-size"
+                - "64"
+                - "--kv-transfer-config"
+                - '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'
+                - "--disable-log-requests"
+                - "--disable-uvicorn-access-log"
+                - "--max-model-len"
+                - "16374"
+                

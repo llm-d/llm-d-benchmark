@@ -1,0 +1,370 @@
+charts:
+  user-overrides:
+  - name: kgateway-crds
+    url: oci://cr.kgateway.dev/kgateway-dev/charts/kgateway-crds
+    version: 2.0.3
+  - name: kgateway
+    url: oci://cr.kgateway.dev/kgateway-dev/charts/kgateway
+    version: 2.0.3
+  - name: istio
+    url: oci://gcr.io/istio-testing/charts
+    version: 1.28-alpha.89f30b26ba71bf5e538083a4720d0bc2d8c06401
+  - name: llm-d-infra
+    url: https://llm-d-incubation.github.io/llm-d-infra
+    version: 1.3.0
+  - name: gateway-api-inference-extension
+    url: oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
+    version: v1.2.0-rc.1
+  - name: llm-d-modelservice
+    url: https://llm-d-incubation.github.io/llm-d-modelservice/
+    version: v0.3.9
+images:
+  user-overrides:
+  - name: llm-d-benchmark
+    registry: ghcr.io
+    repo: llm-d
+    image: llm-d-benchmark
+    tag: v0.3.7
+  - name: llm-d
+    registry: ghcr.io
+    repo: llm-d
+    image: llm-d-cuda
+    tag: v0.4.0
+  - name: llm-d-model-service
+    registry: ghcr.io
+    repo: llm-d
+    image: llm-d-model-service
+    tag: v0.0.15
+  - name: llm-d-inference-scheduler
+    registry: ghcr.io
+    repo: llm-d
+    image: llm-d-inference-scheduler
+    tag: v0.4.0-rc.1
+  - name: llm-d-routing-sidecar
+    registry: ghcr.io
+    repo: llm-d
+    image: llm-d-routing-sidecar
+    tag: v0.4.0-rc.1
+  - name: llm-d-inference-sim
+    registry: ghcr.io
+    repo: llm-d
+    image: llm-d-inference-sim
+    tag: v0.6.1
+  - name: vllm
+    registry: docker.io
+    repo: vllm
+    image: vllm-openai
+    tag: latest
+system:
+  user-overrides:
+  - name: default
+    namespace: stackbenchns
+    release: stackbenchr
+    gateway:
+      type: kgateway
+    router:
+      plugins: default-plugins.yaml
+    volumes:
+    - name: model-storage
+      type: pvc
+      mount: model-storage
+      size: 1Ti
+    - name: dshm
+      type: Memory
+      mount: /dev/shm
+      size: 16Gi
+    components:
+    - name: infra
+      charts:
+      - name: llm-d-infra
+      contents:
+        gateway:
+          gatewayClassName: modelservice
+          service:
+            type: NodePort
+          gatewayParameters:
+            enabled: true
+    - name: router
+      charts:
+      - name: gateway-api-inference-extension
+      contents:
+        loadfrom:
+        - BASE_DIR/_templates/gateway-api-inference-extension.yaml
+    - name: inference-engine
+      modelservice:
+        charts:
+        - name: llm-d-modelservice
+        contents:
+          loadfrom:
+          - BASE_DIR/_templates/modelservice.yaml
+      standalone:
+        contents:
+          loadfrom:
+          - BASE_DIR/_templates/standalone.yaml
+    inference-engine:
+      type: modelservice
+      model:
+      - name: meta-llama/Llama-3.1-8B-Instruct
+        label: .auto
+        maxlen: 16384
+        blocksize: 64
+      accelerators:
+        standalone:
+          key: nvidia.com/gpu.product
+          value: NVIDIA-H100-80GB-HBM3
+        decode:
+          key: nvidia.com/gpu.product
+          value: NVIDIA-H100-80GB-HBM3
+        prefill:
+          key: nvidia.com/gpu.product
+          value: NVIDIA-H100-80GB-HBM3
+      replicas:
+        standalone: 1
+        decode: 2
+        prefill: 0
+      parallelism:
+        standalone:
+          data: 1
+          tensor: 1
+        decode:
+          data: 1
+          tensor: 1
+        prefill:
+          data: 1
+          tensor: 1
+      resources:
+        standalone:
+          memory: 40Gi
+          cpu: '4'
+          nvidia.com/gpu: '1'
+          ephemeral-storage: 20Gi
+        decode:
+          memory: 40Gi
+          cpu: '4'
+          nvidia.com/gpu: '1'
+          ephemeral-storage: 20Gi
+        prefill:
+          memory: 40Gi
+          cpu: '4'
+          nvidia.com/gpu: '1'
+          ephemeral-storage: 20Gi
+      annotations:
+        deployed-by: .auto
+        modelservice: llm-d-benchmark
+      ports:
+        service: 8000
+        extra: 9002
+        readiness: 8200
+        zmq: 5557
+        nixl: 5557
+      labels:
+        app: .auto
+        stood-up-by: .auto
+        stood-up-from: llm-d-benchmark
+        stood-up-via: .auto
+      env:
+        standalone:
+        - name: LLMDBENCH_VLLM_STANDALONE_MODEL
+          value: TEMPLATE_MODEL_NAME
+        - name: LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT
+          value: auto
+        - name: LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG
+          value: '{}'
+        - name: VLLM_LOGGING_LEVEL
+          value: INFO
+        - name: HF_HOME
+          value: /TEMPLATE_MODEL_STORAGE
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: TEMPLATE_REPLACE_SECRET_NAME
+              key: TEMPLATE_REPLACE_SECRET
+        - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: UCX_TLS
+          value: rc,sm,cuda_ipc,cuda_copy,tcp
+        - name: UCX_SOCKADDR_TLS_PRIORITY
+          value: tcp
+        - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+          value: TEMPLATE_REPLACE_NXL_PORT
+        - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+          value: '1'
+        - name: VLLM_SERVER_DEV_MODE
+          value: '1'
+        decode:
+        - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: UCX_TLS
+          value: rc,sm,cuda_ipc,cuda_copy,tcp
+        - name: UCX_SOCKADDR_TLS_PRIORITY
+          value: tcp
+        - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+          value: TEMPLATE_REPLACE_NXL_PORT
+        - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+          value: '1'
+        - name: VLLM_SERVER_DEV_MODE
+          value: '1'
+        prefill:
+        - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: UCX_TLS
+          value: rc,sm,cuda_ipc,cuda_copy,tcp
+        - name: UCX_SOCKADDR_TLS_PRIORITY
+          value: tcp
+        - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+          value: TEMPLATE_REPLACE_NXL_PORT
+        - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+          value: '1'
+        - name: VLLM_SERVER_DEV_MODE
+          value: '1'
+    command:
+      decode:
+        type: vllmServe
+        args:
+        - --enforce-eager
+        - --block-size
+        - '64'
+        - --kv-transfer-config
+        - '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'
+        - --disable-log-requests
+        - --disable-uvicorn-access-log
+        - --max-model-len
+        - '16374'
+prepare:
+  user-overrides:
+    gateway:
+      provider:
+      - name: kgateway
+        charts:
+        - name: kgateway-crds
+        - name: kgateway
+        deploy: true
+        check: true
+      - name: istio
+        charts:
+        - name: istio
+        deploy: false
+        check: false
+    api:
+      url: https://github.com/kubernetes-sigs/gateway-api-inference-extension/config/crd
+      version: 1.3.0
+      deploy: true
+      check: true
+      inference_extension:
+        url: https://github.com/kubernetes-sigs/gateway-api-inference-extension/config/crd
+        version: 1.0.1
+        deploy: true
+        check: true
+    wva:
+      namespace: workload-variant-autoscaler-system
+      charts:
+      - name: workload-variant-autoscaler
+      images:
+      - name: workload-variant-autoscaler
+      replicas: 1
+      version: 0.1.0
+      autoscaling:
+        enabled: true
+        slo:
+          tpot: 30
+          ttft: 1000
+      hpa:
+        enabled: true
+        max_replicas: 10
+        target_avg_value: 1
+      vllm:
+        enabled: true
+        node_port_min: 30000
+        node_port_max: 32767
+        interval: 15
+      workload_monitoring:
+        namespace: openshift-user-workload-monitoring
+        url: https://thanos-querier.openshift-monitoring.svc.cluster.local
+        port: 9091
+      deploy: true
+      check: true
+    storage:
+    - name: model-storage
+      namespace: stackbenchns
+      class: default
+      size: 300Gi
+      download:
+        url: <model list>
+        enabled: true
+        timeout: 3600
+      deploy: true
+      check: true
+    - name: replay-pvc
+      namespace: harnessns
+      class: default
+      size: 300Gi
+      download:
+        url: https://huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered/blob/main/ShareGPT_V3_unfiltered_cleaned_split.json
+        enabled: false
+        timeout: 3600
+      deploy: true
+      check: true
+    - name: workload-pvc
+      namespace: harnessns
+      class: default
+      size: 300Gi
+      deploy: true
+      check: true
+    secrets:
+    - name: llm-d-hf-token
+      secret: HF_TOKEN
+      contents: TYLERS_TOKEN
+    files:
+    - name: llm-d-benchmark-preprocesses
+      path: REPLACE_BASE_DIR/setup/preprocess
+harness:
+  user-overrides:
+  - name: default
+    namespace: harnessns
+    harness:
+      name: inference-perf
+      profile: sanity_random.yaml
+    executable: llm-d-benchmark.sh
+    timeout: 3600
+    resources:
+      memory: 32Gi
+      cpu: '16'
+    volumes:
+    - name: workload-pvc
+      type: pvc
+      mount: /requests
+    - name: replay-pvc
+      type: pvc
+      mount: /data
+    env:
+    - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
+      value: '1'
+    - name: LLMDBENCH_RUN_DATASET_URL
+      value: .prepare.dependencies.user-overrides.storage[]|select(name=replay-pvc).download.url
+    - name: LLMDBENCH_RUN_WORKSPACE_DIR
+      value: /workspace
+    - name: LLMDBENCH_HARNESS_NAME
+      value: .experiments[0].user-overrides.runners[0].harness.name
+    - name: LLMDBENCH_HARNESS_NAMESPACE
+      value: .experiments[0].user-overrides.runners[0].namespace
+    - name: LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+      value: ${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL}
+    - name: LLMDBENCH_HARNESS_STACK_NAME
+      value: ${LLMDBENCH_HARNESS_SANITIZED_STACK_NAME}
+    - name: LLMDBENCH_DEPLOY_METHODS
+      value: ${LLMDBENCH_DEPLOY_METHODS}
+    - name: LLMDBENCH_MAGIC_ENVAR
+      value: harness_pod
+    - name: HF_TOKEN_SECRET
+      value: ${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}
+    - name: .prepare.dependencies.user-overrides.secrets[0].secret
+      valueFrom:
+        secretKeyRef:
+          name: .prepare.dependencies.user-overrides.secrets[0].name
+          key: .prepare.dependencies.user-overrides.secrets[0].secret
