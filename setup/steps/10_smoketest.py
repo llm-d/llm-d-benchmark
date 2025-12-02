@@ -100,7 +100,7 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
             announce(f"ERROR: Unable to find IP for service/gateway \"{service}\"!")
             return 1
         else :
-            if service_hostname == "N/A" :
+            if service_hostname == "N/A":
                 try :
                     ipaddress.ip_address(service_ip)
                 except ValueError:
