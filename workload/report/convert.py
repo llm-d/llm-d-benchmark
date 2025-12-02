@@ -175,6 +175,9 @@ def _get_llmd_benchmark_envars() -> dict:
                     "preprocess": os.environ['LLMDBENCH_VLLM_STANDALONE_PREPROCESS'],
                 }
             },
+            "metadata" : {
+                "eid": os.environ['LLMDBENCH_RUN_EXPERIMENT_ID'],
+            },
         }
 
     if os.environ['LLMDBENCH_DEPLOY_METHODS'] == 'modelservice':
@@ -253,6 +256,9 @@ def _get_llmd_benchmark_envars() -> dict:
                     }] * (int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
                           int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']))
                 },
+            },
+            "metadata" : {
+                "eid": os.environ['LLMDBENCH_RUN_EXPERIMENT_ID'],
             },
         }
 
