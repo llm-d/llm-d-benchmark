@@ -170,8 +170,6 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     if dry_run:
         True
     else:
-
-        kubectl_get(api, "route.openshift.io/v1", "Route")
         if ev['control_deploy_is_openshift'] == "1":
 
             route_instances, route_names = kubectl_get(api=api, \
