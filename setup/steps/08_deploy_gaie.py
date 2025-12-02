@@ -21,7 +21,7 @@ from functions import (
 )
 
 def provider(provider: str) -> str:
-    if provider == "gke":
+    if provider == "gke" or provider == "openshift-default" :
         return provider
     return "none"
 
@@ -33,12 +33,11 @@ def main():
     ev = {}
     environment_variable_to_dict(ev)
 
-    # Check if modelservice environment is active
-    if int(ev.get("control_environment_type_modelservice_active", 0)) == 1:
+    if ev["control_environment_type_modelservice_active"] :
         extract_environment(ev)
 
         model_number = 0
-        model_list = ev.get("deploy_model_list", "").replace(",", " ").split()
+        model_list = ev["deploy_model_list"].replace(",", " ").split()
 
         for model in model_list:
             announce(
@@ -176,16 +175,16 @@ provider:
                 f"--skip-diff-on-install"
             )
 
-            result = llmdbench_execute_cmd(
+            ecode = llmdbench_execute_cmd(
                 actual_cmd=helmfile_cmd,
-                dry_run=int(ev.get("control_dry_run", 0)),
-                verbose=int(ev.get("control_verbose", 0)),
+                dry_run=ev["control_dry_run"],
+                verbose=ev["control_verbose"]
             )
-            if result != 0:
+            if ecode != 0:
                 announce(
-                    f"❌ Failed installing helm chart \"gaie-{ev['vllm_modelservice_release']}\" via helmfile with \"{helmfile_cmd}\" (exit code: {result})"
+                    f"ERROR: Failed installing helm chart \"gaie-{ev['vllm_modelservice_release']}\" via helmfile with \"{helmfile_cmd}\" (exit code: {result})"
                 )
-                exit(result)
+                exit(ecode)
 
             announce(
                 f"✅ {ev['vllm_common_namespace']}-{model_id_label}-gaie helm chart deployed successfully"
@@ -193,26 +192,25 @@ provider:
 
             # List relevant resources
             resource_list = "deployment,service,pods,secrets,inferencepools"
-            if int(ev.get("control_deploy_is_openshift", 0)) == 1:
+            if ev['control_deploy_is_openshift'] == "1" :
                 resource_list += ",route"
 
             announce(
                 f"ℹ️ A snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\":"
             )
 
-            if int(ev.get("control_dry_run", 0)) == 0:
-                kubectl_cmd = f"{ev['control_kcmd']} get --namespace {ev['vllm_common_namespace']} {resource_list}"
-                result = llmdbench_execute_cmd(
-                    actual_cmd=kubectl_cmd,
-                    dry_run=int(ev.get("control_dry_run", 0)),
-                    verbose=int(ev.get("control_verbose", 0)),
-                    fatal=False,
+            kubectl_cmd = f"{ev['control_kcmd']} get --namespace {ev['vllm_common_namespace']} {resource_list}"
+            ecode = llmdbench_execute_cmd(
+                actual_cmd=kubectl_cmd,
+                dry_run=ev["control_dry_run"],
+                verbose=ev["control_verbose"],
+                fatal=False,
+            )
+            if ecode != 0:
+                announce(
+                    f"ERROR: Failed to get a snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\" with \"{kubectl_cmd}\" (exit code: {result})"
                 )
-                if result != 0:
-                    announce(
-                        f"❌ Failed to get a snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\" with \"{kubectl_cmd}\" (exit code: {result})"
-                    )
-                    exit(result)
+                exit(ecode)
 
             # Clean up environment variable
             if "LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL" in os.environ:
@@ -222,11 +220,9 @@ provider:
 
         announce("✅ Completed model deployment")
     else:
-        deploy_methods = ev.get("deploy_methods", "")
-        announce(f'⏭️ Environment types are "{deploy_methods}". Skipping this step.')
+        announce(f"⏭️ Environment types are \"{ev['deploy_methods']}\". Skipping this step.")
 
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

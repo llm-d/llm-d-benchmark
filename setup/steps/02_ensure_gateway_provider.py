@@ -60,7 +60,7 @@ def ensure_helm_repository(
         silent=not verbose
     )
     if result != 0:
-        announce(f"❌ Failed to add helm repository (exit code: {result})")
+        announce(f"ERROR: Failed to add helm repository (exit code: {result})")
         return result
 
     # Update helm repositories
@@ -72,11 +72,10 @@ def ensure_helm_repository(
         silent=not verbose
     )
     if result != 0:
-        announce(f"❌ Failed to update helm repositories (exit code: {result})")
+        announce(f"ERROR: Failed to update helm repositories (exit code: {result})")
         return result
 
     return 0
-
 
 def get_latest_chart_version(
     helm_cmd: str,
@@ -158,23 +157,19 @@ def install_gateway_api_crds(
     Returns:
         int: 0 for success, non-zero for failure
     """
+    ecode = 0
     announce(f"🚀 Installing Kubernetes Gateway API ({ev['gateway_api_crd_revision']}) CRDs...")
     if should_install :
-        try:
-            install_crds_cmd = f"{ev['control_kcmd']} apply -k https://github.com/kubernetes-sigs/gateway-api/config/crd/?ref={ev['gateway_api_crd_revision']}"
-            result = llmdbench_execute_cmd(actual_cmd=install_crds_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
-            if result != 0:
-                announce(f"ERROR: Failed while running \"{install_crds_cmd}\" (exit code: {result})")
-                exit(result)
+        install_crds_cmd = f"{ev['control_kcmd']} apply -k https://github.com/kubernetes-sigs/gateway-api/config/crd/?ref={ev['gateway_api_crd_revision']}"
+        ecode = llmdbench_execute_cmd(actual_cmd=install_crds_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
+        if ecode != 0:
+            announce(f"ERROR: Failed while running \"{install_crds_cmd}\" (exit code: {ecode})")
+        else :
             announce(f"✅ Kubernetes Gateway API ({ev['gateway_api_crd_revision']}) CRDs installed")
-            return result
-
-        except Exception as e:
-            announce(f"ERROR: Unable to insta Kubernetes Gateway API ({ev['gateway_api_crd_revision']}) CRDs: {e}")
-            return 1
     else :
-        announce(f"✅ Kubernetes Gateway API ({ev['gateway_api_crd_revision']}) CRDs already installed (*.gateway.networking.k8s.io CRDs found)")
-        return 0
+        announce(f"✅ Kubernetes Gateway API (unknown version) CRDs already installed (*.gateway.networking.k8s.io CRDs found)")
+
+    return ecode
 
 def install_gateway_api_extension_crds(
         ev : dict,
@@ -192,26 +187,20 @@ def install_gateway_api_extension_crds(
     Returns:
         int: 0 for success, non-zero for failure
     """
-    try:
-        install_crds_cmd = f"{ev['control_kcmd']} apply -k https://github.com/kubernetes-sigs/gateway-api-inference-extension/config/crd/?ref={ev['gateway_api_inference_extension_crd_revision']}"
-
-        announce(f"🚀 Installing Kubernetes Gateway API inference extension ({ev['gateway_api_inference_extension_crd_revision']}) CRDs...")
-        result = llmdbench_execute_cmd(actual_cmd=install_crds_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
-        if result != 0:
-            announce(f"❌ Failed while running \"{install_crds_cmd}\" (exit code: {result})")
-            exit(result)
-        announce("✅ Kubernetes Gateway API inference extension CRDs installed")
-        return 0
-
-    except Exception as e:
-        announce(f"❌ Error installing Kubernetes Gateway API CRDs: {e}")
-        return 1
-
+    ecode = 0
+    install_crds_cmd = f"{ev['control_kcmd']} apply -k https://github.com/kubernetes-sigs/gateway-api-inference-extension/config/crd/?ref={ev['gateway_api_inference_extension_crd_revision']}"
+    announce(f"🚀 Installing Kubernetes Gateway API inference extension ({ev['gateway_api_inference_extension_crd_revision']}) CRDs...")
+    ecode = llmdbench_execute_cmd(actual_cmd=install_crds_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
+    if ecode != 0:
+        announce(f"ERROR: Failed while running \"{install_crds_cmd}\" (exit code: {ecode})")
+    announce(f"✅ Kubernetes Gateway API inference extension CRDs {ev['gateway_api_inference_extension_crd_revision']} installed")
+    return ecode
 
 def install_kgateway(
         ev : dict,
         dry_run : bool,
         verbose : bool,
+        should_install : bool
     ) -> int:
     """
     Install gateway control plane.
@@ -263,24 +252,30 @@ releases:
       type: gateway-provider
       kind: gateway-control-plane
 """)
-        install_cmd = f"helmfile apply -f {helmfile_path}"
-
-        announce(f"🚀 Installing kgateway helm charts from {ev['gateway_provider_kgateway_helm_repository_url']} ({ev['gateway_provider_kgateway_chart_version']})")
-        llmdbench_execute_cmd(install_cmd, dry_run, verbose)
-        announce("✅ kgateway installed")
-        return 0
 
     except Exception as e:
-        announce(f"❌ Error installing Kubernetes Gateway API CRDs: {e}")
+        announce(f"ERROR: Unable to create helmfile \"{helmfile_path}\"")
         return 1
 
-    finally:
-        True
+    ecode = 0
+
+    announce(f"🚀 Installing kgateway helm charts from {ev['gateway_provider_kgateway_helm_repository_url']} ({ev['gateway_provider_kgateway_chart_version']})")
+    if should_install :
+        install_cmd = f"helmfile apply -f {helmfile_path}"
+        ecode = llmdbench_execute_cmd(actual_cmd=install_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
+        if ecode != 0:
+            announce(f"ERROR: Failed while running \"{install_cmd}\" (exit code: {result})")
+        announce(f"✅ kgateway ({ev['gateway_provider_kgateway_chart_version']}) installed")
+    else :
+        announce(f"✅ kgateway (unknown version) already installed (*.kgateway.dev CRDs found)")
+
+    return ecode
 
 def install_istio(
         ev : dict,
         dry_run : bool,
         verbose : bool,
+        should_install : bool
     ) -> int:
     """
     Install gateway control plane.
@@ -331,22 +326,27 @@ releases:
       kind: gateway-control-plane
 """)
 
+    except Exception as e:
+        announce(f"ERROR: Unable to create helmfile \"{helmfile_path}\"")
+        return 1
+
+    ecode = 0
+    if should_install :
         install_cmd = f"helmfile apply -f {helmfile_path}"
 
         announce(f"🚀 Installing istio helm charts from {ev['gateway_provider_istio_helm_repository_url']} ({ev['gateway_provider_istio_chart_version']})")
-        llmdbench_execute_cmd(install_cmd, dry_run, verbose)
-        announce("✅ istio installed")
-        return 0
+        ecode = llmdbench_execute_cmd(actual_cmd=install_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
+        if ecode != 0:
+            announce(f"ERROR: Failed while running \"{install_cmd}\" (exit code: {result})")
+        announce(f"✅ istio ({ev['gateway_provider_istio_chart_version']}) installed")
+    else :
+        announce(f"✅ isto (unknown version) already installed (*.istio.io CRDs found)")
 
-    except Exception as e:
-        announce(f"❌ Error installing Kubernetes Gateway API CRDs: {e}")
-        return 1
-
-    finally:
-        True
+    return ecode
 
 def install_gateway_control_plane(
         ev : dict,
+        crds: list,
         dry_run : bool,
         verbose : bool,
     ) -> int:
@@ -361,11 +361,40 @@ def install_gateway_control_plane(
     Returns:
         int: 0 for success, non-zero for failure
     """
+    should_install_gateway_control_plane = False
+
     if ev["vllm_modelservice_gateway_class_name"] == 'kgateway':
-        success = install_kgateway(ev, dry_run, verbose)
+
+        for i in [ "backends.gateway.kgateway.dev", \
+                   "directresponses.gateway.kgateway.dev", \
+                   "gatewayextensions.gateway.kgateway.dev", \
+                   "gatewayparameters.gateway.kgateway.dev", \
+                   "httplistenerpolicies.gateway.kgateway.dev", \
+                   "trafficpolicies.gateway.kgateway.dev" ] :
+                if i not in crds :
+                    should_install_gateway_control_plane = True
+
+        success = install_kgateway(ev, dry_run, verbose, should_install_gateway_control_plane)
     elif ev["vllm_modelservice_gateway_class_name"] == 'istio':
-        success = install_istio(ev, dry_run, verbose)
+        for i in [ "authorizationpolicies.security.istio.io", \
+                   "destinationrules.networking.istio.io", \
+                   "envoyfilters.networking.istio.io", \
+                   "gateways.networking.istio.io", \
+                   "peerauthentications.security.istio.io", \
+                   "proxyconfigs.networking.istio.io", \
+                   "requestauthentications.security.istio.io", \
+                   "sidecars.networking.istio.io", \
+                   "telemetries.telemetry.istio.io", \
+                   "virtualservices.networking.istio.io", \
+                   "wasmplugins.extensions.istio.io", \
+                   "workloadgroups.networking.istio.io" ] :
+                if i not in crds :
+                    should_install_gateway_control_plane = True
+
+        success = install_istio(ev, dry_run, verbose, should_install_gateway_control_plane)
     elif ev["vllm_modelservice_gateway_class_name"] == 'gke':
+        success = 0
+    else :
         success = 0
 
     if success == 0:
@@ -400,7 +429,6 @@ def ensure_gateway_provider(
 
     # Extract required environment variables
     #FIXME (we shouldn't have to unpack all these variables here)
-    helm_cmd = ev.get("control_hcmd", "helm")
     chart_name = ev.get("vllm_modelservice_chart_name", "")
     repo_url = ev.get("vllm_modelservice_helm_repository_url", "")
     chart_version = ev.get("vllm_modelservice_chart_version", "")
@@ -409,7 +437,7 @@ def ensure_gateway_provider(
     release_name = ev.get("vllm_modelservice_release", "")
 
     # Step 1: Ensure helm repository
-    result = ensure_helm_repository(helm_cmd, chart_name, repo_url, dry_run, verbose)
+    result = ensure_helm_repository(ev['control_hcmd'], chart_name, repo_url, dry_run, verbose)
     if result != 0:
         return result
 
@@ -417,7 +445,7 @@ def ensure_gateway_provider(
     if not dry_run:
         # Auto-detect chart version if needed
         if chart_version == "auto":
-            detected_version = get_latest_chart_version(helm_cmd, helm_repo, dry_run, verbose)
+            detected_version = get_latest_chart_version(ev['control_hcmd'], helm_repo, dry_run, verbose)
             if not detected_version:
                 announce("❌ Unable to find a version for model service helm chart!")
                 return 1
@@ -430,13 +458,13 @@ def ensure_gateway_provider(
         if ev["user_is_admin"] :
 
             should_install_gateway_api_crds = False
-            _, object_names = kubectl_get(api, "CustomResourceDefinition", '', '')
+            _, crd_names = kubectl_get(api=api, object_api='', object_kind="CustomResourceDefinition", object_name='')
             for i in [ "gatewayclasses.gateway.networking.k8s.io", \
-                    "gateways.gateway.networking.k8s.io", \
-                    "grpcroutes.gateway.networking.k8s.io", \
-                    "httproutes.gateway.networking.k8s.io", \
-                    "referencegrants.gateway.networking.k8s.io" ] :
-                    if i not in object_names :
+                       "gateways.gateway.networking.k8s.io", \
+                       "grpcroutes.gateway.networking.k8s.io", \
+                       "httproutes.gateway.networking.k8s.io", \
+                       "referencegrants.gateway.networking.k8s.io" ] :
+                    if i not in crd_names :
                         should_install_gateway_api_crds = True
 
             # Install Kubernetes Gateway API crds
@@ -450,7 +478,7 @@ def ensure_gateway_provider(
                 return result
 
             # Install Gateway control plane (kgateway, istio or gke)
-            result = install_gateway_control_plane(ev, dry_run, verbose)
+            result = install_gateway_control_plane(ev, crd_names, dry_run, verbose)
             if result != 0:
                 return result
 
@@ -473,12 +501,9 @@ def main():
         announce("DRY RUN enabled. No actual changes will be made.")
 
     api, client  = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
-    if ev["control_dry_run"] :
-        announce("DRY RUN enabled. No actual changes will be made.")
 
     # Execute the main logic
     return ensure_gateway_provider(api, ev, ev["control_dry_run"], ev["control_verbose"])
-
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -15,23 +15,17 @@ sys.path.insert(0, str(project_root))
 
 # ---------------- Import local packages ----------------
 
-try:
-    from functions import announce, \
-         environment_variable_to_dict, \
-         get_accelerator_nr, \
-         is_standalone_deployment, \
-         get_accelerator_type, \
-         llmdbench_execute_cmd, \
-         model_attribute, \
-         get_model_name_from_pod, \
-         get_image, \
-         kube_connect
-except ImportError as e:
-    # Fallback for when dependencies are not available
-    announce(f"ERROR: Could not import required modules: {e}")
-    announce("This script requires the llm-d environment to be properly set up.")
-    announce("Please run: ./setup/install_deps.sh")
-    sys.exit(1)
+from functions import announce, \
+        environment_variable_to_dict, \
+        get_accelerator_nr, \
+        is_standalone_deployment, \
+        get_accelerator_type, \
+        llmdbench_execute_cmd, \
+        model_attribute, \
+        get_model_name_from_pod, \
+        get_image, \
+        kubectl_get, \
+        kube_connect
 
 # ---------------- Helpers ----------------
 
@@ -48,6 +42,7 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     Checking if service/gateway was successfully deployed
     """
     service_ip = "N/A"
+    service_hostname = "N/A"
     service_name = "N/A"
 
     if is_standalone_deployment(ev):
@@ -63,6 +58,7 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
             route_string = service_name + '-route'
         except client.ApiException as e:
             announce(f"ERROR: unable to find service: {e}")
+            return 1
     else:
         pod_string = "decode"
         route_string=f"{ev.get('vllm_modelservice_release', '')}-inference-gateway-route"
@@ -81,12 +77,17 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
                         for address in service["status"]["addresses"]:
                             if address.get("type") == "IPAddress":
                                 service_ip = address.get("value")
+                            if address.get("type") == "Hostname":
+                                service_ip = address.get("value")
+                                service_hostname = address.get("value")
                                 break
                     else:
-                        announce(f"ERROR: unable to finding an address for gateway {service_name}")
+                        announce(f"ERROR: Unable to find an address for gateway {service_name}")
+                        return 1
                     break
         except client.ApiException as e:
-            announce(f"ERROR: unable to finding gateway: {e}")
+            announce(f"ERROR: Unable to find a gateway: {e}")
+            return 1
 
     if dry_run:
         service_name = "localhost"
@@ -94,10 +95,17 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     else:
         if not service_name:
             announce(f"ERROR: No {service_type} found with string \"{pod_string}\"!")
+            return 1
         elif not service_ip:
             announce(f"ERROR: Unable to find IP for service/gateway \"{service}\"!")
-        elif not ipaddress.ip_address(service_ip):
-            announce(f"ERROR: Invalid IP (\"{service_ip}\") for service/gateway \"{service_name}\"!")
+            return 1
+        else :
+            if service_hostname == "N/A" :
+                try :
+                    ipaddress.ip_address(service_ip)
+                except ValueError:
+                    announce(f"ERROR: Invalid IP (\"{service_ip}\") for service/gateway \"{service_name}\"!")
+                    return 1
 
     """
     Checking if pods were successfully deployed
@@ -124,9 +132,11 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
                     pod_ip_list.append(pod.status.pod_ip)
         except client.ApiException as e:
             announce(f"ERROR: Unable to find pods in namespace {ev['vllm_common_namespace']}: {e}")
+            return 1
 
     if not pod_ip_list:
         announce(f"ERROR: Unable to find IPs for pods \"{pod_string}\"!")
+        return 1
 
     announce(f"🚀 Testing all pods \"{pod_string}\" (port {ev['vllm_common_inference_port']})...")
     for pod_ip in pod_ip_list:
@@ -140,6 +150,7 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
                 announce(f"       ✅ Pod ip \"{pod_ip}\" responded successfully ({received_model_name})")
             else:
                 announce(f"       ERROR: Pod ip \"{pod_ip}\" responded to \"{curl_command_used}\" with model name \"{received_model_name}\" (instead of {current_model})!")
+                return 1
 
     announce(f"✅ All pods respond successfully")
     announce(f"🚀 Testing service/gateway \"{service_ip}\" (port 80)...")
@@ -153,23 +164,29 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
             announce(f"✅ Service responds successfully ({received_model_name})")
         else:
             announce(f"ERROR: Service responded to \"{curl_command_used}\" with model name \"{received_model_name}\" (instead of {current_model})!")
+            return 1
 
     route_url = ""
     if dry_run:
         True
     else:
+
+        kubectl_get(api, "route.openshift.io/v1", "Route")
         if ev['control_deploy_is_openshift'] == "1":
-            try:
-                route = client.CustomObjectsApi().get_namespaced_custom_object(
-                group="route.openshift.io",
-                version="v1",
-                name=route_string,
-                namespace=ev['vllm_common_namespace'],
-                plural="routes"
-            )
-                route_url = route["spec"]["host"]
-            except client.ApiException as e:
-                announce(f"ERROR: unable to fetch route: {e}")
+
+            route_instances, route_names = kubectl_get(api=api, \
+                                                       object_api='route.openshift.io/v1', \
+                                                       object_kind="Route", \
+                                                       object_name = '', \
+                                                       object_namespace=ev['vllm_common_namespace'])
+
+            if route_instances :
+                for i in route_instances :
+                    route_url = i.obj["spec"]["host"]
+                    break
+
+            if not route_url :
+                announce(f"WARNING: unable to fetch route")
 
     if ev['control_deploy_is_openshift'] == "1" and route_url:
         announce(f"🚀 Testing external route \"{route_url}\"...")
@@ -181,7 +198,8 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
             announce(f"✅ External route responds successfully ({received_model_name})")
         else:
             announce(f"ERROR: External route responded to \"{curl_command_used}\" with model name \"{received_model_name}\" (instead of {current_model})!")
-
+            return 1
+    return 0
 
 def main():
     """Main function following the pattern from other Python steps"""
