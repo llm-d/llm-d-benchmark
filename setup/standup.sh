@@ -41,6 +41,7 @@ function show_usage {
             -u/--wva [deploy model with Workload Variant Autoscaler (default=$LLMDBENCH_WVA_ENABLED)] \n \
             -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
             -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
+            -i/--non-admin [run the setup script as a non-cluster-level admin user] \n \
             -h/--help (show this help)\n \
 
             * [step list] can take of form of comma-separated single/double digits (e.g. \"-s 0,1,5\") or ranges (e.g. \"-s 1-7\")"
@@ -130,6 +131,10 @@ while [[ $# -gt 0 ]]; do
         -v|--verbose)
         export LLMDBENCH_CLIOVERRIDE_CONTROL_VERBOSE=1
         export LLMDBENCH_CONTROL_VERBOSE=1
+        ;;
+        -i|--non-admin)
+        announce "ℹ️  You are running as a non-cluster-level admin user."
+        export LLMDBENCH_CLIOVERRIDE_USER_IS_ADMIN=0
         ;;
         -h|--help)
         show_usage

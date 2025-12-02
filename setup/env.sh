@@ -548,25 +548,28 @@ else
   export LLMDBENCH_CONTROL_KCMD=$(echo $LLMDBENCH_CONTROL_KCMD | $LLMDBENCH_CONTROL_SCMD 's^oc ^kubectl ^g')
 fi
 
-export LLMDBENCH_USER_IS_ADMIN=0
-if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
-  admin_user=$($LLMDBENCH_CONTROL_KCMD get clusterrolebindings -o json | jq '.items[] | select(.roleRef.name=="cluster-admin")' | jq '.subjects[0].name'  | grep $($LLMDBENCH_CONTROL_KCMD whoami) || true)
-  if [[ ! -z ${admin_user} || $($LLMDBENCH_CONTROL_KCMD whoami) == "system:admin" ]]; then
-    export LLMDBENCH_USER_IS_ADMIN=1
-  fi
-else
-  not_admin=$($LLMDBENCH_CONTROL_KCMD get crds 2>&1 | grep -i Forbidden || true)
-  if [[ -z ${not_admin} ]]; then
-    export LLMDBENCH_USER_IS_ADMIN=1
-    is_ns=$($LLMDBENCH_CONTROL_KCMD get namespace -o name| grep -E "namespace/${LLMDBENCH_VLLM_COMMON_NAMESPACE}$" || true)
-    if [[ ! -z ${is_ns} ]]; then
-      export LLMDBENCH_CONTROL_PROXY_UID=$($LLMDBENCH_CONTROL_KCMD get namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} -o json | jq -e -r '.metadata.annotations["openshift.io/sa.scc.uid-range"]' | perl -F'/' -lane 'print $F[0]+1');
+if [[ -z "${LLMDBENCH_USER_IS_ADMIN:-}" ]]; then # Check if variable was overridden
+  export LLMDBENCH_USER_IS_ADMIN=0
+  if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
+    admin_user=$($LLMDBENCH_CONTROL_KCMD get clusterrolebindings -o json | jq '.items[] | select(.roleRef.name=="cluster-admin")' | jq '.subjects[0].name'  | grep $($LLMDBENCH_CONTROL_KCMD whoami) || true)
+    if [[ ! -z ${admin_user} || $($LLMDBENCH_CONTROL_KCMD whoami) == "system:admin" ]]; then
+      export LLMDBENCH_USER_IS_ADMIN=1
+    fi
+  else
+    not_admin=$($LLMDBENCH_CONTROL_KCMD get crds 2>&1 | grep -i Forbidden || true)
+    if [[ -z ${not_admin} ]]; then
+      export LLMDBENCH_USER_IS_ADMIN=1
+      is_ns=$($LLMDBENCH_CONTROL_KCMD get namespace -o name| grep -E "namespace/${LLMDBENCH_VLLM_COMMON_NAMESPACE}$" || true)
+      if [[ ! -z ${is_ns} ]]; then
+        export LLMDBENCH_CONTROL_PROXY_UID=$($LLMDBENCH_CONTROL_KCMD get namespace ${LLMDBENCH_VLLM_COMMON_NAMESPACE} -o json | jq -e -r '.metadata.annotations["openshift.io/sa.scc.uid-range"]' | perl -F'/' -lane 'print $F[0]+1');
+      fi
     fi
   fi
 fi
+
+# Config to avoid blocked commands for non-admin users
 if [[ $LLMDBENCH_USER_IS_ADMIN -eq 0 ]]; then
-  announce "ℹ️  You are running as a non-cluster-level admin user."
-  # Config to avoid blocked commands
+  announce "ℹ️  Configuring environment for non-admin users."
   export LLMDBENCH_VLLM_GAIE_CHART_VERSION="v0"
   export LLMDBENCH_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED=false
   export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL=false

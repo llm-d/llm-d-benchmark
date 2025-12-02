@@ -36,6 +36,7 @@ function show_usage {
               -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
               -t/--methods [list of standup methods (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\") ] \n \
               -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
+              -i/--non-admin [run the teardown script as a non-cluster-level admin user] \n \
               -h/--help (show this help)"
 }
 
@@ -95,6 +96,10 @@ while [[ $# -gt 0 ]]; do
         -v|--verbose)
         export LLMDBENCH_CLIOVERRIDE_CONTROL_VERBOSE=1
         export LLMDBENCH_CONTROL_VERBOSE=1
+        ;;
+        -i|--non-admin)
+        announce "ℹ️  You are running as a non-cluster-level admin user."
+        export LLMDBENCH_CLIOVERRIDE_USER_IS_ADMIN=0
         ;;
         -h|--help)
         show_usage
