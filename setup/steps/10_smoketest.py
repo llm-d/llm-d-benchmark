@@ -178,12 +178,12 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
                                                        object_name = '', \
                                                        object_namespace=ev['vllm_common_namespace'])
 
-            if route_instances :
-                for i in route_instances :
+            if route_instances:
+                for i in route_instances:
                     route_url = i.obj["spec"]["host"]
                     break
 
-            if not route_url :
+            if not route_url:
                 announce(f"WARNING: unable to fetch route")
 
     if ev['control_deploy_is_openshift'] == "1" and route_url:
