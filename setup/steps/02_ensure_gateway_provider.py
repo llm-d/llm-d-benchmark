@@ -175,6 +175,7 @@ def install_gateway_api_extension_crds(
         ev : dict,
         dry_run : bool,
         verbose : bool,
+        should_install: bool
     ) -> int:
     """
     Install Gateway API inference extension crds.
@@ -188,12 +189,16 @@ def install_gateway_api_extension_crds(
         int: 0 for success, non-zero for failure
     """
     ecode = 0
-    install_crds_cmd = f"{ev['control_kcmd']} apply -k https://github.com/kubernetes-sigs/gateway-api-inference-extension/config/crd/?ref={ev['gateway_api_inference_extension_crd_revision']}"
     announce(f"🚀 Installing Kubernetes Gateway API inference extension ({ev['gateway_api_inference_extension_crd_revision']}) CRDs...")
-    ecode = llmdbench_execute_cmd(actual_cmd=install_crds_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
-    if ecode != 0:
-        announce(f"ERROR: Failed while running \"{install_crds_cmd}\" (exit code: {ecode})")
-    announce(f"✅ Kubernetes Gateway API inference extension CRDs {ev['gateway_api_inference_extension_crd_revision']} installed")
+    if should_install :
+        install_crds_cmd = f"{ev['control_kcmd']} apply -k https://github.com/kubernetes-sigs/gateway-api-inference-extension/config/crd/?ref={ev['gateway_api_inference_extension_crd_revision']}"
+        ecode = llmdbench_execute_cmd(actual_cmd=install_crds_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
+        if ecode != 0:
+            announce(f"ERROR: Failed while running \"{install_crds_cmd}\" (exit code: {ecode})")
+        announce(f"✅ Kubernetes Gateway API inference extension CRDs {ev['gateway_api_inference_extension_crd_revision']} installed")
+    else :
+        announce(f"✅ Kubernetes Gateway API inference extension (unknown version) CRDs already installed (*.inference.networking.x-k8s.io CRDs found)")
+
     return ecode
 
 def install_kgateway(
@@ -457,8 +462,9 @@ def ensure_gateway_provider(
 
         if ev["user_is_admin"] :
 
-            should_install_gateway_api_crds = False
             _, crd_names = kubectl_get(api=api, object_api='', object_kind="CustomResourceDefinition", object_name='')
+
+            should_install_gateway_api_crds = False
             for i in [ "gatewayclasses.gateway.networking.k8s.io", \
                        "gateways.gateway.networking.k8s.io", \
                        "grpcroutes.gateway.networking.k8s.io", \
@@ -472,8 +478,16 @@ def ensure_gateway_provider(
             if result != 0:
                 return result
 
+            should_install_gateway_api_extension_crds = False
+            for i in [ "inferenceobjectives.inference.networking.x-k8s.io", \
+                       "inferencepoolimports.inference.networking.x-k8s.io", \
+                       "inferencepools.inference.networking.k8s.io", \
+                       "inferencepools.inference.networking.x-k8s.io" ] :
+                    if i not in crd_names :
+                        should_install_gateway_api_extension_crds = True
+
             # Install Kubernetes Gateway API inference extension crds
-            result = install_gateway_api_extension_crds(ev, dry_run, verbose)
+            result = install_gateway_api_extension_crds(ev, dry_run, verbose, should_install_gateway_api_extension_crds)
             if result != 0:
                 return result
 
