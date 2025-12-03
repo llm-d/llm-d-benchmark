@@ -1,0 +1,173 @@
+fullnameOverride: {{ system["user-overrides"][0]["inference-engine"].model[0].label }}
+multinode: False
+
+modelArtifacts:
+  uri: {{ system["user-overrides"][0].volumes[0].type }}://{{ system["user-overrides"][0].volumes[0].mount }}/models/{{ system["user-overrides"][0]["inference-engine"].model[0].name }}
+
+  size: {{ prepare["user-overrides"].storage
+            | selectattr("name","equalto", system["user-overrides"][0].volumes[0].name)
+            | map(attribute="size")
+            | first }}
+
+  authSecretName: {{ prepare["user-overrides"].secrets[0].name }}
+
+  name: {{ system["user-overrides"][0]["inference-engine"].model[0].name }}
+
+routing:
+  servicePort: {{ system["user-overrides"][0]["inference-engine"].ports.service }}
+
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: infra-{{ system["user-overrides"][0].release }}-inference-gateway
+
+  proxy:
+    image: "{{ images['user-overrides'] | selectattr('name','equalto','llm-d-routing-sidecar') | map(attribute='registry') | first }}/{{ images['user-overrides'] | selectattr('name','equalto','llm-d-routing-sidecar') | map(attribute='repo') | first }}/{{ images['user-overrides'] | selectattr('name','equalto','llm-d-routing-sidecar') | map(attribute='image') | first }}:{{ images['user-overrides'] | selectattr('name','equalto','llm-d-routing-sidecar') | map(attribute='tag') | first }}"
+    secure: false
+    connector: nixlv2
+    debugLevel: 3
+
+  inferencePool:
+    create: false
+    name: {{ system["user-overrides"][0]["inference-engine"].model[0].label }}
+
+  httpRoute:
+    create: true
+    rules:
+    - backendRefs:
+        - group: inference.networking.x-k8s.io
+          kind: InferencePool
+          name: {{ system["user-overrides"][0]["inference-engine"].model[0].label }}
+          port: {{ system["user-overrides"][0]["inference-engine"].ports.service }}
+          weight: 1
+      timeouts:
+        backendRequest: 0s
+        request: 0s
+
+      matches:
+        - path:
+            type: PathPrefix
+            value: /{{ system["user-overrides"][0]["inference-engine"].model[0].name }}/
+
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+
+    modelCommand: {{ system["user-overrides"][0].get("command", {}).get("prefill", {}).get("type", 0) }}
+    args:{{ system["user-overrides"][0].get("command", {}).get("prefill", {}).get("args", 0) }}
+    env: {{ system["user-overrides"][0]["inference-engine"].env.prefill | default(0) }}
+    {{ system["user-overrides"][0]["inference-engine"].env.get("prefill", {}) }}
+
+
+decode:
+  create: {{ system["user-overrides"][0]["inference-engine"].replicas.get("decode", {}) }}
+  replicas: {{ system["user-overrides"][0]["inference-engine"].replicas.get("decode", {}) }}
+
+  acceleratorTypes:
+    labelKey: {{ system["user-overrides"][0]["inference-engine"].accelerators.decode.key }}
+    labelValues:
+      - {{ system["user-overrides"][0]["inference-engine"].accelerators.decode.value }}
+
+  parallelism:
+    data: {{ system["user-overrides"][0]["inference-engine"].parallelism.decode.data }}
+    tensor: {{ system["user-overrides"][0]["inference-engine"].parallelism.decode.tensor }}
+
+  annotations: {{ system["user-overrides"][0]["inference-engine"].annotations }}
+  podAnnotations: {{ system["user-overrides"][0]["inference-engine"].annotations }}
+
+  containers:
+  - name: "vllm"
+    mountModelVolume: true
+    image: "{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='registry') | first }}/{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='repo') | first }}/{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='image') | first }}:{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='tag') | first }}"
+    modelCommand: {{ system["user-overrides"][0].get("command", {}).get("decode", {}).get("type", 0) }}
+    args:{{ system["user-overrides"][0].get("command", {}).get("decode", {}).get("args", 0) }}
+    {{ system["user-overrides"][0]["inference-engine"].env.get("decode", {}) }}
+
+    resources:
+      limits: {{ system["user-overrides"][0]["inference-engine"].resources.decode }}
+      requests: {{ system["user-overrides"][0]["inference-engine"].resources.decode }}
+
+    extraConfig:
+      startupProbe:
+        httpGet:
+          path: /health
+          port: {{ system["user-overrides"][0]["inference-engine"].ports.service }}
+        failureThreshold: 60
+        initialDelaySeconds: 30
+        periodSeconds: 30
+        timeoutSeconds: 5
+      livenessProbe:
+        tcpSocket:
+          port: {{ system["user-overrides"][0]["inference-engine"].ports.service }}
+        failureThreshold: 3
+        periodSeconds: 5
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: {{ system["user-overrides"][0]["inference-engine"].ports.readiness }}
+        failureThreshold: 3
+        periodSeconds: 5
+
+prefill:
+  create: {{ system["user-overrides"][0]["inference-engine"].replicas.prefill | default(0) }}
+  replicas: {{ system["user-overrides"][0]["inference-engine"].replicas.prefill | default(0) }}
+
+  acceleratorTypes:
+    labelKey: {{ system["user-overrides"][0]["inference-engine"].accelerators.prefill.key }}
+    labelValues:
+      - {{ system["user-overrides"][0]["inference-engine"].accelerators.prefill.value }}
+
+  parallelism:
+    data: {{ system["user-overrides"][0]["inference-engine"].parallelism.prefill.data }}
+    tensor: {{ system["user-overrides"][0]["inference-engine"].parallelism.prefill.tensor }}
+
+  annotations: {{ system["user-overrides"][0]["inference-engine"].annotations }}
+  podAnnotations: {{ system["user-overrides"][0]["inference-engine"].annotations }}
+
+  containers:
+  - name: "vllm"
+    mountModelVolume: true
+    image: "{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='registry') | first }}/{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='repo') | first }}/{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='image') | first }}:{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='tag') | first }}"
+
+    modelCommand: {{ system["user-overrides"][0].get("command", {}).get("prefill", {}).get("type", 0) }}
+    args:{{ system["user-overrides"][0].get("command", {}).get("prefill", {}).get("args", 0) }}
+    env: {{ system["user-overrides"][0]["inference-engine"].env.prefill | default(0) }}
+    {{ system["user-overrides"][0]["inference-engine"].env.get("prefill", {}) }}
+
+    resources:
+      limits: {{ system["user-overrides"][0]["inference-engine"].resources.prefill }}
+      requests: {{ system["user-overrides"][0]["inference-engine"].resources.prefill }}
+
+    extraConfig:
+      startupProbe:
+        httpGet:
+          path: /health
+          port: {{ system["user-overrides"][0]["inference-engine"].ports.service }}
+        failureThreshold: 60
+        initialDelaySeconds: 30
+        periodSeconds: 30
+        timeoutSeconds: 5
+      livenessProbe:
+        tcpSocket:
+          port: {{ system["user-overrides"][0]["inference-engine"].ports.service }}
+        failureThreshold: 3
+        periodSeconds: 5
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: {{ system["user-overrides"][0]["inference-engine"].ports.readiness }}
+        failureThreshold: 3
+        periodSeconds: 5
+
+  volumeMounts:
+    - name: {{ system["user-overrides"][0].volumes[1].name }}
+      mountPath: {{ system["user-overrides"][0].volumes[1].mount }}
+
+volumes:
+  - name: {{ system["user-overrides"][0].volumes[1].name }}
+    emptyDir:
+      medium: {{ system["user-overrides"][0].volumes[1].type }}
+      sizeLimit: {{ system["user-overrides"][0].volumes[1].size }}
