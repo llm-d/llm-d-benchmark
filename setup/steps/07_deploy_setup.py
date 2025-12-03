@@ -13,10 +13,12 @@ sys.path.insert(0, str(project_root))
 # Import from functions.py
 from functions import environment_variable_to_dict, announce, llmdbench_execute_cmd, model_attribute
 
-def gateway_values(provider : str, host: str) -> str:
+def gateway_values(provider : str, host: str, service: str) -> str:
     if provider == "istio":
         return f"""gateway:
   gatewayClassName: istio
+  service:
+    type: {service}
   destinationRule:
     enabled: true
     trafficPolicy:
@@ -24,11 +26,12 @@ def gateway_values(provider : str, host: str) -> str:
         mode: SIMPLE
         insecureSkipVerify: true
     host: {host}"""
+
     elif provider == "kgateway":
         return f"""gateway:
   gatewayClassName: kgateway
   service:
-    type: NodePort
+    type: {service}
 #  destinationRule:
 #    host: {host}
   gatewayParameters:
@@ -107,11 +110,11 @@ def main():
         )
         result = llmdbench_execute_cmd(
             actual_cmd=helm_repo_add_cmd,
-            dry_run=int(ev.get("control_dry_run", 0)),
-            verbose=int(ev.get("control_verbose", 0))
+            dry_run=ev["control_dry_run"],
+            verbose=ev["control_verbose"]
         )
         if result != 0:
-            announce(f"❌ Failed setting up llm-d-modelservice helm repository with \"{helm_repo_add_cmd}\" (exit code: {result})")
+            announce(f"ERROR: Failed setting up llm-d-modelservice helm repository with \"{helm_repo_add_cmd}\" (exit code: {result})")
             exit(result)
 
         # Add llm-d-infra helm repository
@@ -125,7 +128,7 @@ def main():
             verbose=int(ev.get("control_verbose", 0))
         )
         if result != 0:
-            announce(f"❌ Failed setting up llm-d-infra helm repository with \"{helm_repo_add_cmd}\" (exit code: {result})")
+            announce(f"ERROR: Failed setting up llm-d-infra helm repository with \"{helm_repo_add_cmd}\" (exit code: {result})")
             exit(result)
 
         # Update helm repositories
@@ -136,7 +139,7 @@ def main():
             verbose=int(ev.get("control_verbose", 0))
         )
         if result != 0:
-            announce(f"❌ Failed setting up helm repositories with \"{helm_repo_update_cmd}\" (exit code: {result})")
+            announce(f"ERROR: Failed setting up helm repositories with \"{helm_repo_update_cmd}\" (exit code: {result})")
             exit(result)
 
         # Auto-detect chart version if needed
@@ -151,18 +154,19 @@ def main():
         helm_base_dir = Path(ev["control_work_dir"]) / "setup" / "helm" / ev["vllm_modelservice_release"]
         helm_base_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create infra values file
-        infra_value_file = Path(helm_base_dir / "infra.yaml" )
-        with open(infra_value_file, 'w') as f:
-            f.write(gateway_values(ev['vllm_modelservice_gateway_class_name'], f"gaie-inference-scheduling-epp.{ev['vllm_common_namespace']}.svc.cluster.local"))
-
         # Process each model
         model_number = 0
-        model_list = ev.get("deploy_model_list", "").replace(",", " ").split()
+        model_list = ev["deploy_model_list"].split(',')
 
         for model in model_list:
             # Get model attribute
             model_id_label = model_attribute(model, "modelid_label")
+
+            # Create infra values file
+            infra_value_file = Path(helm_base_dir / "infra.yaml" )
+            with open(infra_value_file, 'w') as f:
+                f.write(gateway_values(ev['vllm_modelservice_gateway_class_name'], f"{model_id_label}-gaie-epp.{ev['vllm_common_namespace']}{ev['vllm_common_fqdn']}", ev["vllm_modelservice_gateway_service_type"]))
+
             os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL"] = model_id_label
 
             # Format model number with zero padding
@@ -248,7 +252,7 @@ releases:
 
         announce("✅ Completed gaie deployment")
     else:
-        deploy_methods = ev.get("deploy_methods", "")
+        deploy_methods = ev["deploy_methods"]
         announce(f"⏭️ Environment types are \"{deploy_methods}\". Skipping this step.")
 
     return 0

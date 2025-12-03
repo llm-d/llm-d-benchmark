@@ -548,10 +548,9 @@ def main():
             f"✅ {ev['vllm_common_namespace']}-{ev['deploy_current_model_id_label']}-ms helm chart deployed successfully"
         )
 
-        if ev["vllm_modelservice_route"] :
-          api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
-          httproute_spec = define_httproute(ev, single_model = len([m for m in model_list if m.strip()]) == 1)
-          kubectl_apply(api=api, manifest_data=httproute_spec, dry_run=ev["control_dry_run"])
+        api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
+        httproute_spec = define_httproute(ev, single_model = len([m for m in model_list if m.strip()]) == 1)
+        kubectl_apply(api=api, manifest_data=httproute_spec, dry_run=ev["control_dry_run"])
 
         # Wait for decode pods to be created, running, and ready
         api_client = client.CoreV1Api()
@@ -585,27 +584,36 @@ def main():
         else :
           announce(f"✅ Service for pods service model {model} created")
 
+        service_name = ''
+
+        if ev['vllm_modelservice_gateway_class_name'] == "kgateway" :
+          service_name = f"infra-{release}-inference-gateway"
+
+        if ev['vllm_modelservice_gateway_class_name'] == "istio" :
+          service_name = f"{ev['deploy_current_model_id_label']}-gaie-epp"
+
         # Handle OpenShift route creation
-        if ev["vllm_modelservice_route"] and ev["control_deploy_is_openshift"] == "1":
+        if ev["vllm_modelservice_route"] and ev["control_deploy_is_openshift"] == "1" and service_name:
+
             # Check if route exists
             route_name = f"{release}-inference-gateway-route"
             check_route_cmd = f"{ev['control_kcmd']} --namespace {ev['vllm_common_namespace']} get route -o name --ignore-not-found | grep -E \"/{route_name}$\""
-            result = llmdbench_execute_cmd(check_route_cmd, ev["control_dry_run"], ev["control_verbose"], True, 1, False)
-            if result != 0:  # Route doesn't exist
-                announce(f"📜 Exposing pods serving model {model} as service...")
-                inference_port = ev.get("vllm_common_inference_port", "8000")
+            ecode = llmdbench_execute_cmd(check_route_cmd, ev["control_dry_run"], ev["control_verbose"], True, 1, False)
+            if ecode != 0:  # Route doesn't exist
+                announce(f"📜 Exposing service \"{service_name}\" (serving model {model}) as a route ...")
+                inference_port = ev["vllm_common_inference_port"]
                 expose_cmd = (
-                    f"{ev['control_kcmd']} --namespace {ev['vllm_common_namespace']} expose service/infra-{release}-inference-gateway "
+                    f"{ev['control_kcmd']} --namespace {ev['vllm_common_namespace']} expose service/{service_name} "
                     f"--target-port={inference_port} --name={route_name}"
                 )
 
-                result = llmdbench_execute_cmd(
+                ecode = llmdbench_execute_cmd(
                     expose_cmd, ev["control_dry_run"], ev["control_verbose"]
                 )
-                if result == 0:
-                    announce(f"✅ Service for pods service model {model} created")
+                if ecode == 0:
+                    announce(f"✅ route service \"{service_name}\" (serving model {model})created")
 
-            announce(f'✅ Model "{model}" and associated service deployed.')
+        announce(f'✅ Model "{model}" and associated service deployed.')
 
         if ev["wva_enabled"] and ev["control_deploy_is_openshift"] == "1":
             #

@@ -356,8 +356,10 @@ def kubectl_apply(
         manifest_items.append(manifest_data)
     else :
         manifest_items = manifest_data
+
     for item in manifest_items:
         try :
+            object_api = item["apiVersion"]
             object_kind = item["kind"]
             object_name = item["metadata"]["name"]
             object_namespace = item["metadata"]["namespace"]
@@ -366,12 +368,8 @@ def kubectl_apply(
                 announce(f"[DRY RUN] Would have created/updated {object_kind} \"{object_name}\".")
                 continue
 
-            if object_kind == "HTTPRoute" :
-                _pci = pykube.object_factory(api, "gateway.networking.k8s.io/v1", "HTTPRoute")
-                obj_instance = _pci(api, manifest_data)
-            else :
-                _pci = getattr(_pcc, item["kind"])
-                obj_instance = _pci(api, manifest_data)
+            _pci = pykube.object_factory(api, object_api, object_kind)
+            obj_instance = _pci(api, manifest_data)
 
             if obj_instance.exists():
                 if object_kind != "Namespace" :
@@ -390,17 +388,17 @@ def kubectl_apply(
 
 def kubectl_get(
     api: pykube.HTTPClient,
-    object_kind: str,
+    object_api: str = '',
+    object_kind: str = '',
     object_name: str = '',
-    object_namespace: str = 'default',
+    object_namespace: str = '',
     dry_run: bool = False,
     verbose: bool = False,
 ):
     _pcc = __import__("pykube")
-    _pci = getattr(_pcc, object_kind)
 
-    if object_kind == "HTTPRoute" :
-        _pci = pykube.object_factory(api, "gateway.networking.k8s.io/v1", "HTTPRoute")
+    if object_api :
+        _pci = pykube.object_factory(api, object_api, object_kind)
     else :
         _pci = getattr(_pcc, object_kind)
 
@@ -469,12 +467,12 @@ def validate_and_create_pvc(
                         )
                         pvc_class = x.metadata.name
         storage_v1_api.read_storage_class(name=pvc_class)
-        announce(f"StorageClass '{pvc_class}' found.")
+        announce(f"ℹ️ StorageClass '{pvc_class}' found.")
 
     except k8s_client.ApiException as e:
         # if returns a 404 the storage class doesnt exist
         if e.status == 404:
-            announce(f"StorageClass '{pvc_class}' not found")
+            announce(f"ERROR: StorageClass '{pvc_class}' not found")
             sys.exit(1)
         else:
             # handle other
@@ -1700,12 +1698,13 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
 
     dry_run = int(ev.get("control_dry_run", 0))
     result = 0
+    ev["control_wait_timeout"] = int(ev["control_wait_timeout"])
     if not dry_run and int(component_nr) > 0:
+        delay = 10
+        max_retries = int(ev["control_wait_timeout"]/delay)
         announce(
-            f'⏳ Waiting for all ({component}) pods serving model to be in "Running" state (timeout={int(ev["control_wait_timeout"])}s)...'
+            f'⏳ Waiting for all ({component}) pods serving model to be in "Running" state (timeout={ev["control_wait_timeout"]}s/{max_retries} tries)...'
         )
-        max_retries = 5
-        delay = 2
         pod_create_list = []
         for attempt in range(max_retries):
             try:
@@ -1720,10 +1719,12 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
                             for init_container_status in pod.status.init_container_statuses:
                                 if init_container_status.state and init_container_status.state.waiting and init_container_status.state.waiting.reason == "CrashLoopBackOff":
                                     announce(f"ERROR: init:CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
-                                    return 1
+                                    result = 1
+                                    return result
                                 elif init_container_status.state.terminated and init_container_status.state.terminated.exit_code not in (0, None):
                                     announce(f"ERROR: Crashed init:container in pod: {pod.metadata.name}, container: {container_status.name}")
-                                    return 1
+                                    result = 2
+                                    return result
                         if pod.status.container_statuses:
                             if pod.metadata.name not in pod_create_list:
                                 announce(f"✅     \"{pod.metadata.name}\" ({component}) pod serving model created")
@@ -1731,10 +1732,12 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
                             for container_status in pod.status.container_statuses:
                                 if container_status.state.waiting and container_status.state.waiting.reason == "CrashLoopBackOff":
                                     announce(f"ERROR: CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
-                                    return 1
+                                    result = 3
+                                    return result
                                 elif container_status.state.terminated and container_status.state.terminated.exit_code not in (0, None):
                                     announce(f"ERROR: Crashed container in pod: {pod.metadata.name}, container: {container_status.name}")
-                                    return 1
+                                    result = 4
+                                    return result
                             if pod.metadata.name not in pod_running_list and all(cs.state.running for cs in pod.status.container_statuses):
                                 announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model running")
                                 announce(f"⏳ Waiting for all ({component}) pods to be Ready (timeout={int(ev['control_wait_timeout'])}s)...")
@@ -1743,18 +1746,19 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
                                 announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model ready")
                                 pod_ready_list.append(pod.metadata.name)
                                 if len(pod_create_list) == len(pod_ready_list) and len(pod_ready_list) == int(component_nr):
-                                    return 0
+                                    result = 0
+                                    return result
             except (Exception, ProtocolError) as e:
                 if "Response ended prematurely" in str(e):
-                    announce(f"{e}, Retrying in {delay} seconds...")
+                    announce(f"WARNING: {e}, NOT-FATAL, retrying in {delay} seconds...")
                     time.sleep(delay)
                 else:
                     announce(f"ERROR: Exception occured while waiting for ({component}) pods : {e}")
-                    return 1
+                    result = 5
+                    return result
             finally:
                 w.stop()
     return result
-
 
 # FIXME (USE PYKUBE)
 def collect_logs(ev: dict, component_nr: int, component: str) -> int:
@@ -1773,7 +1777,6 @@ def collect_logs(ev: dict, component_nr: int, component: str) -> int:
     log_file = logs_dir / f"llm-d-{component}.log"
     log_cmd = f"kubectl --namespace {ev['vllm_common_namespace']} logs --tail=-1 --prefix=true -l llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component} > {log_file}"
     return llmdbench_execute_cmd(log_cmd, ev["control_dry_run"], ev["control_verbose"])
-
 
 # ----------------------- Capacity Planner Sanity Check -----------------------
 COMMON = "COMMON"
