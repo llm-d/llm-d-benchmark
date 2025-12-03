@@ -179,6 +179,7 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
                                                        object_namespace=ev['vllm_common_namespace'])
 
             if route_instances:
+                # TODO handle multiple routes, for now grab first
                 for i in route_instances:
                     route_url = i.obj["spec"]["host"]
                     break
