@@ -37,7 +37,7 @@ def main():
         extract_environment(ev)
 
         model_number = 0
-        model_list = ev["deploy_model_list"].replace(",", " ").split()
+        model_list = ev["deploy_model_list"].split(',')
 
         for model in model_list:
             announce(
