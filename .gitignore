@@ -57,6 +57,8 @@ env.bak/
 venv.bak/
 environment/
 
+.idea/
+
 scenarios/none.sh
 
 # Python specifics
