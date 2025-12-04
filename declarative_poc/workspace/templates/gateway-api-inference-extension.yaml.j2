@@ -1,0 +1,32 @@
+inferenceExtension:
+  replicas: 1
+  image:
+    name: llm-d-inference-scheduler
+    pullPolicy: Always
+  extProcPort: {{ system["user-overrides"][0]["inference-engine"].ports.extra }}
+  extraContainerPorts:
+    - name: zmq
+      containerPort: {{ system["user-overrides"][0]["inference-engine"].ports.zmq }}
+      protocol: TCP
+  extraServicePorts:
+    - name: zmq
+      port: {{ system["user-overrides"][0]["inference-engine"].ports.zmq }}
+      targetPort: {{ system["user-overrides"][0]["inference-engine"].ports.zmq }}
+      protocol: TCP
+  env:
+    - name: {{ prepare["user-overrides"].secrets[0].secret }}
+      valueFrom:
+        secretKeyRef:
+          name: {{ prepare["user-overrides"].secrets[0].name }}
+          key: {{ prepare["user-overrides"].secrets[0].secret }}
+  pluginsConfigFile: {{ system["user-overrides"][0]["router"].plugins }}
+inferencePool:
+  targetPortNumber: {{ system["user-overrides"][0]["inference-engine"].ports.service }}
+  modelServerType: vllm
+  apiVersion: "inference.networking.x-k8s.io/v1alpha2"
+  modelServers:
+    matchLabels:
+      llm-d.ai/inferenceServing: "true"
+      llm-d.ai/model: {{ system["user-overrides"][0]["inference-engine"]["model"][0].label }}
+provider:
+  name: {{ prepare["user-overrides"].gateway["provider"][0].name }}
