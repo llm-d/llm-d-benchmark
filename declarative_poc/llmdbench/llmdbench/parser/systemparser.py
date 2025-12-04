@@ -4,6 +4,9 @@ import json
 import subprocess
 import requests
 import re
+import os
+from os.path import abspath
+from jinja2 import Environment, FileSystemLoader
 
 
 class LiteralStr(str):
@@ -11,9 +14,16 @@ class LiteralStr(str):
 
 
 class SystemParser:
-    def __init__(self, defaults_file, output_file, scenario_file=None):
+    def __init__(self, defaults_file, templates_dir, workspace, scenario_file=None):
         self.defaults = self._load_yaml(defaults_file)
-        self.output_file = output_file
+
+        # Directory containing `.j2` (jinja) templates
+        self.templates_dir = templates_dir
+
+        # Output of rendered templates, etc.
+        self.workspace = workspace
+
+        # Overrides the "self.defaults" values file
         self.scenario = self._load_yaml(scenario_file) if scenario_file else {}
 
         self._charts_key = "charts"
@@ -31,8 +41,14 @@ class SystemParser:
         self._system_harness_key = "harness"
         self._system_harness = {}
 
-        self.system_experiments_key = "experiments"
-        self.system_experiments = {}
+        self._system_components_key = "components"
+        self._system_components = {}
+
+        self.modelservice = {}
+
+        self.gateway_api_inference_extension = {}
+
+        self.standalone = {}
 
     def _load_yaml(self, file_path):
         """Load YAML file"""
@@ -105,7 +121,7 @@ class SystemParser:
 
         return current
 
-    def _render_template_attribute(self, key):
+    def _render_values(self, key):
         render = self._get_nested(self.defaults, key)
         scenarios = self.scenario.get("scenario", [])
         for i, _ in enumerate(scenarios):
@@ -220,12 +236,18 @@ class SystemParser:
             self._system_stack_key: self.system_stack,
             self._system_prepare_key: self.system_prepare,
             self._system_harness_key: self.system_harness,
+            self._system_components_key: self.system_components,
         }
 
     def plan_to_yaml(self):
         plan = self.plan_to_dict()
         plan = self._convert_multiline_strings(plan)
-        with open(self.output_file, "w") as f:
+        dir = abspath(self.workspace)
+        out_dir = os.path.join(self.workspace, "sut-plan-1")
+        output_file = os.path.join(out_dir, "sut-plan-1-defaults.yaml")
+        os.makedirs(dir, exist_ok=True)
+        print(output_file)
+        with open(output_file, "w") as f:
             yaml.dump(
                 plan,
                 f,
@@ -234,18 +256,55 @@ class SystemParser:
                 allow_unicode=True,
             )
 
+    def render_components(self):
+        # Setup Jinja env
+        env = Environment(
+            loader=FileSystemLoader(self.templates_dir),
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+
+        plan = self.plan_to_dict()
+
+        # Make sure output directory exists
+        out_dir = os.path.join(self.workspace, "sut-plan-1")
+        os.makedirs(out_dir, exist_ok=True)
+
+        # Walk through template directory
+        for root, _, files in os.walk(self.templates_dir):
+            for filename in files:
+                if filename.endswith(".j2"):
+                    template_path = os.path.relpath(
+                        os.path.join(root, filename), self.templates_dir
+                    )
+
+                    template = env.get_template(template_path)
+
+                    # Render with dict expansion so Jinja sees top-level keys
+                    rendered = template.render(**plan)
+
+                    # Create output filename
+                    output_filename = filename.replace(".yaml.j2", ".yaml")
+                    output_path = os.path.join(out_dir, output_filename)
+
+                    with open(output_path, "w") as outfile:
+                        outfile.write(rendered)
+
     def parse(self):
         """Load defaults and apply overrides"""
         yaml.add_representer(LiteralStr, self._literal_str_representer)
 
-        self.charts = self._render_template_attribute(self._charts_key)
-        self.images = self._render_template_attribute(self._images_key)
-        self.system_stack = self._render_template_attribute(self._system_stack_key)
-        self.system_prepare = self._render_template_attribute(self._system_prepare_key)
-        self.system_harness = self._render_template_attribute(self._system_harness_key)
+        self.charts = self._render_values(self._charts_key)
+        self.images = self._render_values(self._images_key)
+        self.system_stack = self._render_values(self._system_stack_key)
+        self.system_prepare = self._render_values(self._system_prepare_key)
+        self.system_harness = self._render_values(self._system_harness_key)
+        self.system_components = self._render_values(self._system_components_key)
 
         self._resolve_chart_auto_versions()
         self._resolve_image_auto_tags()
         self._build_indexes()
+
+        self.render_components()
 
         return self.plan_to_dict()

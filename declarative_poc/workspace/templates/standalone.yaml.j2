@@ -1,14 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ system["user-overrides"][0].get("inference-engine", {}).get("model", [{}])[0].get("label", "default-model") }}
+  name: {{ system["user-overrides"][0].get("inference-engine", {}).get("model", [{}])[0].get("label", {}) }}
   labels: {{ system["user-overrides"][0].get("inference-engine", {}).get("labels", {}) }}
   namespace: {{ system["user-overrides"][0].get("inference-engine", {}).get("namespace", "default") }}
 spec:
   replicas: {{ system["user-overrides"][0].get("inference-engine", {}).get("replicas", {}).get("standalone", 1) }}
   selector:
     matchLabels:
-      app: {{ system["user-overrides"][0].get("inference-engine", {}).get("model", [{}])[0].get("label", "default-model") }}
+      app: {{ system["user-overrides"][0].get("inference-engine", {}).get("model", [{}])[0].get("label", {}) }}
   template:
     metadata:
       labels: {{ system["user-overrides"][0].get("inference-engine", {}).get("labels", {}) }}
@@ -25,7 +25,7 @@ spec:
                 values:
                 - {{ system["user-overrides"][0].get("inference-engine", {}).get("accelerators", {}).get("standalone", {}).get("value", "") }}
       containers:
-      - name: vllm-standalone-{{ system["user-overrides"][0].get("inference-engine", {}).get("model", [{}])[0].get("label", "default-model") }}
+      - name: vllm-standalone-{{ system["user-overrides"][0].get("inference-engine", {}).get("model", [{}])[0].get("label", {}) }}
         image: {{ (images["user-overrides"] | selectattr("name", "equalto", "vllm") | list)[0].get("registry", "") }}/{{ (images["user-overrides"] | selectattr("name", "equalto", "vllm") | list)[0].get("repo", "") }}/{{ (images["user-overrides"] | selectattr("name", "equalto", "vllm") | list)[0].get("image", "") }}:{{ (images["user-overrides"] | selectattr("name", "equalto", "vllm") | list)[0].get("tag", "latest") }}
         imagePullPolicy: Always
         command:
@@ -34,24 +34,24 @@ spec:
         args: {{ system["user-overrides"][0].get("inference-engine", {}).get("command", {}).get("standalone", []) }}
         env: {{ system["user-overrides"][0].get("inference-engine", {}).get("env", {}).get("standalone", []) }}
         ports:
-        - containerPort: {{ system["user-overrides"][0].get("inference-engine", {}).get("ports", {}).get("service", 8000) }}
+        - containerPort: {{ system["user-overrides"][0].get("inference-engine", {}).get("ports", {}).get("service", {}) }}
         startupProbe:
           httpGet:
             path: /health
-            port: {{ system["user-overrides"][0].get("inference-engine", {}).get("ports", {}).get("service", 8000) }}
+            port: {{ system["user-overrides"][0].get("inference-engine", {}).get("ports", {}).get("service", {}) }}
           failureThreshold: 200
           initialDelaySeconds: 30
           periodSeconds: 30
           timeoutSeconds: 5
         livenessProbe:
           tcpSocket:
-            port: {{ system["user-overrides"][0].get("inference-engine", {}).get("ports", {}).get("service", 8000) }}
+            port: {{ system["user-overrides"][0].get("inference-engine", {}).get("ports", {}).get("service", {}) }}
           failureThreshold: 3
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /health
-            port: {{ system["user-overrides"][0].get("inference-engine", {}).get("ports", {}).get("service", 8000) }}
+            port: {{ system["user-overrides"][0].get("inference-engine", {}).get("ports", {}).get("service", {}) }}
           failureThreshold: 3
           periodSeconds: 5
         resources:
@@ -61,9 +61,9 @@ spec:
         - name: preprocesses
           mountPath: /setup/preprocess
         - name: cache-volume
-          mountPath: {{ system["user-overrides"][0].get("inference-engine", {}).get("volumes", [{}])[0].get("mount", "/cache") }}
-        - name: {{ system["user-overrides"][0].get("volumes", [{}])[1].get("name", "dshm") }}
-          mountPath: {{ system["user-overrides"][0].get("volumes", [{}])[1].get("mount", "/dev/shm") }}
+          mountPath: {{ system["user-overrides"][0].get("inference-engine", {}).get("volumes", [{}])[0].get("mount", {}) }}
+        - name: {{ system["user-overrides"][0].get("volumes", [{}])[1].get("name", {}) }}
+          mountPath: {{ system["user-overrides"][0].get("volumes", [{}])[1].get("mount", {}) }}
       volumes:
       - name: preprocesses
         configMap:
@@ -71,25 +71,25 @@ spec:
           defaultMode: 0500
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: {{ system["user-overrides"][0].get("inference-engine", {}).get("volumes", [{}])[0].get("name", "model-storage") }}
-      - name: {{ system["user-overrides"][0].get("volumes", [{}])[1].get("name", "dshm") }}
+          claimName: {{ system["user-overrides"][0].get("inference-engine", {}).get("volumes", [{}])[0].get("name", {}) }}
+      - name: {{ system["user-overrides"][0].get("volumes", [{}])[1].get("name", {}) }}
         emptyDir:
-          medium: {{ system["user-overrides"][0].get("volumes", [{}])[1].get("type", "Memory") }}
-          sizeLimit: {{ system["user-overrides"][0].get("volumes", [{}])[1].get("size", "16Gi") }}
+          medium: {{ system["user-overrides"][0].get("volumes", [{}])[1].get("type", {}) }}
+          sizeLimit: {{ system["user-overrides"][0].get("volumes", [{}])[1].get("size", {}) }}
 
 ---
 
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ system["user-overrides"][0].get("inference-engine", {}).get("model", [{}])[0].get("name", "default-model") }}
+  name: {{ system["user-overrides"][0].get("inference-engine", {}).get("model", [{}])[0].get("name", {}) }}
   namespace: {{ system["user-overrides"][0].get("inference-engine", {}).get("namespace", "default") }}
   labels: {{ system["user-overrides"][0].get("inference-engine", {}).get("labels", {}) }}
 spec:
   ports:
   - name: http
     port: 80
-    targetPort: 8000
+    targetPort: {}
   selector:
-    app: {{ system["user-overrides"][0].get("inference-engine", {}).get("model", [{}])[0].get("name", "default-model") }}
+    app: {{ system["user-overrides"][0].get("inference-engine", {}).get("model", [{}])[0].get("name", {}) }}
   type: ClusterIP

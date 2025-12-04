@@ -57,7 +57,7 @@ routing:
               replacePrefixMatch: /
 
     modelCommand: {{ system["user-overrides"][0].get("command", {}).get("prefill", {}).get("type", 0) }}
-    args:{{ system["user-overrides"][0].get("command", {}).get("prefill", {}).get("args", 0) }}
+    args: {{ system["user-overrides"][0].get("command", {}).get("prefill", {}).get("args", 0) }}
     env: {{ system["user-overrides"][0]["inference-engine"].env.prefill | default(0) }}
     {{ system["user-overrides"][0]["inference-engine"].env.get("prefill", {}) }}
 
@@ -83,7 +83,7 @@ decode:
     mountModelVolume: true
     image: "{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='registry') | first }}/{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='repo') | first }}/{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='image') | first }}:{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='tag') | first }}"
     modelCommand: {{ system["user-overrides"][0].get("command", {}).get("decode", {}).get("type", 0) }}
-    args:{{ system["user-overrides"][0].get("command", {}).get("decode", {}).get("args", 0) }}
+    args: {{ system["user-overrides"][0].get("command", {}).get("decode", {}).get("args", 0) }}
     {{ system["user-overrides"][0]["inference-engine"].env.get("decode", {}) }}
 
     resources:
@@ -133,7 +133,7 @@ prefill:
     image: "{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='registry') | first }}/{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='repo') | first }}/{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='image') | first }}:{{ images['user-overrides'] | selectattr('name','equalto','llm-d') | map(attribute='tag') | first }}"
 
     modelCommand: {{ system["user-overrides"][0].get("command", {}).get("prefill", {}).get("type", 0) }}
-    args:{{ system["user-overrides"][0].get("command", {}).get("prefill", {}).get("args", 0) }}
+    args: {{ system["user-overrides"][0].get("command", {}).get("prefill", {}).get("args", 0) }}
     env: {{ system["user-overrides"][0]["inference-engine"].env.prefill | default(0) }}
     {{ system["user-overrides"][0]["inference-engine"].env.get("prefill", {}) }}
 

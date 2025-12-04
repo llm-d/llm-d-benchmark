@@ -2,6 +2,7 @@ from llmdbench.parser.systemparser import SystemParser
 from llmdbench.logging.logger import get_logger, set_stage
 
 import json
+import os
 import argparse
 import yaml
 
@@ -24,6 +25,13 @@ def cli():
         description="Manage and benchmark llmd configurations.",
     )
 
+    parser.add_argument(
+        "--workspace",
+        required=True,
+        default=".",
+        help="Workspace directory used as the root for configs, outputs, etc.",
+    )
+
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # --------------------------
@@ -37,11 +45,6 @@ def cli():
         "--experiment",
         required=True,
         help="Path to the experiment file to plan.",
-    )
-    plan_parser.add_argument(
-        "--output",
-        default="system_plan.yaml",
-        help="Path to save the output experiment as a YAML file.",
     )
 
     # --------------------------
@@ -94,19 +97,19 @@ def cli():
 
     with open(args.experiment, "r") as f:
         data = yaml.safe_load(f)
-    template_path = data["template"]["path"]
-    scenario_path = data["scenario"]["path"]
+    default_file = os.path.join(args.workspace, data["values"]["path"].lstrip("/"))
+    template_path = os.path.join(args.workspace, data["templates"]["path"].lstrip("/"))
+    scenario_path = os.path.join(args.workspace, data["scenario"]["path"].lstrip("/"))
 
     # Regardless - we need create a plan - otherwise we won't have context of
     # what to todo - in the future we can "import" a context to "rerun" a plan.
-    system = SystemParser(template_path, args.output, scenario_path)
+    system = SystemParser(default_file, template_path, args.workspace, scenario_path)
     system.parse()
 
     if args.command == "plan":
         set_stage(logger, "🔧 PLAN")
         logger.info("Creating execution and deployment plan...")
-        logger.info(f"Plan saved to {args.output}")
-        # print(json.dumps(system.plan_to_dict(), indent=2))
+        logger.info(f"Plan saved to {args.workspace}")
         system.plan_to_yaml()
     elif args.command == "prepare":
         set_stage(logger, "🔧 PREPARE")

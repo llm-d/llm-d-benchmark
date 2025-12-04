@@ -1,0 +1,6 @@
+values:
+  path: templates/default_system.yaml
+templates:
+  path: templates/
+scenario:
+  path: scenarios/inference-scheduling.yaml
