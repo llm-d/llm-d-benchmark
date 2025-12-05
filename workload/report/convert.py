@@ -223,19 +223,23 @@ def _get_llmd_benchmark_envars() -> dict:
                     "accelerator": [{
                         "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
                         "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM'])
-                        * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM']),
+                        * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM']),
                         "parallelism": {
                             "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM']),
                             "dp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM']),
+                            "dpLocal": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM']),
+                            "workers": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NUM_WORKERS_PARALLELISM']),
                         },
                     }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS']) +
                     [{
                         "model": os.environ['LLMDBENCH_VLLM_COMMON_AFFINITY'].split(':', 1)[-1],
                         "count": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM'])
-                        * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM']),
+                        * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM']),
                         "parallelism": {
                             "tp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM']),
                             "dp": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM']),
+                            "dpLocal": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM']),
+                            "workers": int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_NUM_WORKERS_PARALLELISM']),
                         },
                     }] * int(os.environ['LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS']),
                 },
