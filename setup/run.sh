@@ -283,7 +283,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="LLMDBENCH_RUN_EXPERIMENT|LLMDBENCH_BASE64_CONTEXT_CONTENTS|^LLMDBENCH_VLLM_COMMON_NAMESPACE|^LLMDBENCH_DEPLOY_CURRENT"
         announce "⚠️ Deployment method - $LLMDBENCH_DEPLOY_METHODS - is neither \"standalone\" nor \"modelservice\". "
 
-        announce "🔍 Trying to find a matching endpoint name..."
+        announce "🔍 Trying to find a matching endpoint name on namespace ($LLMDBENCH_VLLM_COMMON_NAMESPACE)..."
 
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | awk '{print $1}' | grep ${LLMDBENCH_DEPLOY_METHODS} || true)
@@ -307,7 +307,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
             for probe in livenessProbe readinessProbe; do
               export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(
                 ${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json |
-                jq -r ".spec.containers[0].${probe}.httpGet.port" || 
+                jq -r ".spec.containers[0].${probe}.httpGet.port" ||
                 true
               )
               if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT && $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT != "null" ]]; then
@@ -317,8 +317,8 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
             if [[ -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT || $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT == "null" ]]; then
               # try to use metrics port (should work for default vLLM
               export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(
-                ${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | 
-                jq -r ".spec.containers[0].ports[] | select(.name == \"metrics\") | .containerPort" || 
+                ${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json |
+                jq -r ".spec.containers[0].ports[] | select(.name == \"metrics\") | .containerPort" ||
                 true
               )
             fi
@@ -340,7 +340,11 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       fi
 
       if [[ -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
-        announce "❌ ERROR: could not find an endpoint name for a stack deployed via method \"$LLMDBENCH_DEPLOY_METHODS\" (i.e., with label \"stood-up-via=$LLMDBENCH_DEPLOY_METHODS\")"
+        if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
+          announce "❌ ERROR: could not find an endpoint name (service or pod) for a stack that matches \"$LLMDBENCH_DEPLOY_METHODS\""
+        else
+          announce "❌ ERROR: could not find an endpoint name for a stack deployed via method \"$LLMDBENCH_DEPLOY_METHODS\" (i.e., with label \"stood-up-via=$LLMDBENCH_DEPLOY_METHODS\")"
+        fi
         announce "📌 Tip: If the llm-d stack you're trying to benchmark was NOT deployed via \"standup.sh\", just use \"run.sh -t <string that matches the service/gateway name>\""
 
         exit 1

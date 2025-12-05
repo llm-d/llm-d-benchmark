@@ -179,6 +179,7 @@ def generate_ms_values_yaml(
         "vllm_modelservice_decode_extra_volume_mounts", ""
     )
     decode_extra_volumes = ev.get("vllm_modelservice_decode_extra_volumes", "")
+    decode_envvars_to_yaml = ev.get("vllm_modelservice_decode_envvars_to_yaml", "")
 
     prefill_extra_pod_config = ev.get("vllm_modelservice_prefill_extra_pod_config", "")
     prefill_extra_container_config = ev.get(
@@ -188,9 +189,7 @@ def generate_ms_values_yaml(
         "vllm_modelservice_prefill_extra_volume_mounts", ""
     )
     prefill_extra_volumes = ev.get("vllm_modelservice_prefill_extra_volumes", "")
-
-    # Environment variables to YAML
-    envvars_to_yaml = ev.get("vllm_common_envvars_to_yaml", "")
+    prefill_envvars_to_yaml = ev.get("vllm_modelservice_prefill_envvars_to_yaml", "")
 
     # Build decode resources section cleanly
     decode_limits_str, decode_requests_str = add_resources(ev, "decode")
@@ -201,7 +200,7 @@ def generate_ms_values_yaml(
         add_command(decode_model_command) if decode_model_command else ""
     )
     decode_args_section = (
-        add_command_line_options(decode_extra_args).lstrip()
+        add_command_line_options(ev, decode_extra_args).lstrip()
         if decode_extra_args
         else ""
     )
@@ -209,7 +208,7 @@ def generate_ms_values_yaml(
         add_command(prefill_model_command) if prefill_model_command else ""
     )
     prefill_args_section = (
-        add_command_line_options(prefill_extra_args).lstrip()
+        add_command_line_options(ev, prefill_extra_args).lstrip()
         if prefill_extra_args
         else ""
     )
@@ -247,9 +246,9 @@ decode:
     data: {decode_data_parallelism}
     tensor: {decode_tensor_parallelism}
   annotations:
-      {add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS").lstrip()}
+      {add_annotations(ev, "LLMDBENCH_VLLM_COMMON_ANNOTATIONS").lstrip()}
   podAnnotations:
-      {add_annotations("LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS").lstrip()}
+      {add_annotations(ev, "LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS").lstrip()}
 {conditional_extra_config(decode_extra_pod_config, 2, "extraConfig")}
   containers:
   - name: "vllm"
@@ -264,7 +263,7 @@ decode:
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      {add_additional_env_to_yaml(ev, envvars_to_yaml).lstrip()}
+      {add_additional_env_to_yaml(ev, decode_envvars_to_yaml).lstrip()}
     resources:
       limits:
 {decode_limits_str}
@@ -302,9 +301,9 @@ prefill:
     data: {prefill_data_parallelism}
     tensor: {prefill_tensor_parallelism}
   annotations:
-      {add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS").lstrip()}
+      {add_annotations(ev, "LLMDBENCH_VLLM_COMMON_ANNOTATIONS").lstrip()}
   podAnnotations:
-      {add_annotations("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS").lstrip()}
+      {add_annotations(ev, "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS").lstrip()}
 {conditional_extra_config(prefill_extra_pod_config, 2, "extraConfig")}
   containers:
   - name: "vllm"
@@ -321,7 +320,7 @@ prefill:
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      {add_additional_env_to_yaml(ev, envvars_to_yaml).lstrip()}
+      {add_additional_env_to_yaml(ev, prefill_envvars_to_yaml).lstrip()}
     resources:
       limits:
 {prefill_limits_str}
