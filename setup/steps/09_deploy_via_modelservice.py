@@ -150,7 +150,9 @@ def generate_ms_values_yaml(
     decode_replicas = int(ev.get("vllm_modelservice_decode_replicas", "0"))
     decode_create = "true" if decode_replicas > 0 else "false"
     decode_data_parallelism = ev.get("vllm_modelservice_decode_data_parallelism", "1")
-    decode_tensor_parallelism = ev["vllm_modelservice_decode_tensor_parallelism"]
+    decode_data_local_parallelism = ev.get("vllm_modelservice_decode_data_local_parallelism", "1")
+    decode_tensor_parallelism = ev.get("vllm_modelservice_decode_tensor_parallelism", "1")
+    decode_num_workers_parallelism = ev.get("vllm_modelservice_decode_num_workers_parallelism", "1")
     decode_model_command = ev.get("vllm_modelservice_decode_model_command", "")
     decode_extra_args = ev.get("vllm_modelservice_decode_extra_args", "")
     decode_inference_port = ev["vllm_modelservice_decode_inference_port"]
@@ -159,9 +161,9 @@ def generate_ms_values_yaml(
     prefill_replicas = int(ev.get("vllm_modelservice_prefill_replicas", "0"))
     prefill_create = "true" if prefill_replicas > 0 else "false"
     prefill_data_parallelism = ev.get("vllm_modelservice_prefill_data_parallelism", "1")
-    prefill_tensor_parallelism = ev.get(
-        "vllm_modelservice_prefill_tensor_parallelism", "1"
-    )
+    prefill_data_local_parallelism = ev.get("vllm_modelservice_prefill_data_local_parallelism", "1")
+    prefill_tensor_parallelism = ev.get("vllm_modelservice_prefill_tensor_parallelism", "1")
+    prefill_num_workers_parallelism = ev.get("vllm_modelservice_prefill_num_workers_parallelism", "1")
     prefill_model_command = ev.get("vllm_modelservice_prefill_model_command", "")
     prefill_extra_args = ev.get("vllm_modelservice_prefill_extra_args", "")
     prefill_inference_port = ev["vllm_modelservice_prefill_inference_port"]
@@ -244,7 +246,9 @@ decode:
 {add_affinity(ev)}
   parallelism:
     data: {decode_data_parallelism}
+    dataLocal: {decode_data_local_parallelism}
     tensor: {decode_tensor_parallelism}
+    workers: {decode_num_workers_parallelism}
   annotations:
       {add_annotations(ev, "LLMDBENCH_VLLM_COMMON_ANNOTATIONS").lstrip()}
   podAnnotations:
@@ -299,7 +303,9 @@ prefill:
 {add_affinity(ev)}
   parallelism:
     data: {prefill_data_parallelism}
+    dataLocal: {prefill_data_local_parallelism}
     tensor: {prefill_tensor_parallelism}
+    workers: {prefill_num_workers_parallelism}
   annotations:
       {add_annotations(ev, "LLMDBENCH_VLLM_COMMON_ANNOTATIONS").lstrip()}
   podAnnotations:
