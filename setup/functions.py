@@ -9,9 +9,10 @@ from pathlib import Path
 import subprocess
 import requests
 import inspect
-import pykube
 import hashlib
-from pykube.exceptions import PyKubeError
+import pykube
+from pykube.query import Query
+from pykube.exceptions import PyKubeError, ObjectDoesNotExist
 from urllib3.exceptions import ProtocolError
 
 import base64
@@ -88,7 +89,6 @@ except ModuleNotFoundError as e:
     print(f"  pip install -r {workspace_root / 'config_explorer' / 'requirements.txt'}")
     sys.exit(1)
 
-
 def announce(msgcont: str, logfile: str = None, ignore_if_failed: bool = False):
     work_dir = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
     log_dir = os.path.join(work_dir, "logs")
@@ -127,7 +127,6 @@ def announce(msgcont: str, logfile: str = None, ignore_if_failed: bool = False):
     if msgcont.count("ERROR:") and not ignore_if_failed:
         sys.exit(1)
 
-
 def kube_connect(config_path: str = "~/.kube/config"):
     api = None
     try:
@@ -141,12 +140,10 @@ def kube_connect(config_path: str = "~/.kube/config"):
 
     return api, k8s_client
 
-
 class SecurityContextConstraints(pykube.objects.APIObject):
     version = "security.openshift.io/v1"
     endpoint = "securitycontextconstraints"
     kind = "SecurityContextConstraints"
-
 
 def is_openshift(api: pykube.HTTPClient) -> bool:
     try:
@@ -392,10 +389,15 @@ def kubectl_get(
     object_kind: str = '',
     object_name: str = '',
     object_namespace: str = '',
+    object_selector: dict = {},
     dry_run: bool = False,
     verbose: bool = False,
 ):
     _pcc = __import__("pykube")
+
+    if dry_run:
+        announce(f"[DRY RUN] Would have returned {object_kind}/{object_name}")
+        return [],[]
 
     if object_api :
         _pci = pykube.object_factory(api, object_api, object_kind)
@@ -410,16 +412,72 @@ def kubectl_get(
             object_instances = _pci.objects(api).filter(namespace=object_namespace).get_by_name(object_name)
         else :
             object_instances = _pci.objects(api).get_by_name(object_name)
+    elif object_selector :
+        if object_namespace :
+            object_instances = _pci.objects(api).filter(namespace=object_namespace, selector=object_selector)
+        else :
+            object_instances = _pci.objects(api).filter(selector=object_selector)
     else :
         if object_namespace :
             object_instances = _pci.objects(api).filter(namespace=object_namespace).all()
         else :
             object_instances = _pci.objects(api).all()
 
-    for i in object_instances :
-        object_names.append(i.name)
+    if isinstance(object_instances, Query) :
+        for i in object_instances :
+            object_names.append(i.name)
+    else :
+        object_names = [ object_instances.name ]
+        object_instances = [ object_instances ]
 
     return object_instances, object_names
+
+def kubectl_delete(
+    api: pykube.HTTPClient,
+    object_api: str = '',
+    object_kind: str = '',
+    object_name: str = '',
+    object_namespace: str = '',
+    object_selector: dict = {},
+    dry_run: bool = False,
+    verbose: bool = False,
+):
+    _pcc = __import__("pykube")
+
+    if dry_run:
+        announce(f"[DRY RUN] Would have deleted {object_kind}/{object_name} on namespace {object_namespace}")
+        return True
+
+    if object_api :
+        _pci = pykube.object_factory(api, object_api, object_kind)
+    else :
+        _pci = getattr(_pcc, object_kind)
+
+    object_instances = []
+    object_names = []
+
+    try :
+        if object_namespace :
+            if object_selector :
+                object_instances = _pci.objects(api).filter(namespace=object_namespace, selector=object_selector)
+            else :
+                object_instances = _pci.objects(api).filter(namespace=object_namespace).get_by_name(object_name)
+        else :
+            if object_selector :
+                object_instances = _pci.objects(api).filter(selector=object_selector)
+            else :
+                object_instances = _pci.objects(api).get_by_name(object_name)
+
+        if isinstance(object_instances, Query) :
+            for i in object_instances :
+                i.delete()
+        else :
+            object_instances.delete()
+
+    except ObjectDoesNotExist as e :
+        return True
+
+    return True
 
 def validate_and_create_pvc(
     api: pykube.HTTPClient,
@@ -599,15 +657,11 @@ spec:
           persistentVolumeClaim:
             claimName: {ev["vllm_common_pvc_name"]}
 """
-
-    # FIXME (USE PYKUBE)
-    delete_cmd = f"{kcmd} delete job {job_name} -n {ev['vllm_common_namespace']} --ignore-not-found=true"
     announce(
         f"--> Deleting previous job '{job_name}' (if it exists) to prevent conflicts..."
     )
-    llmdbench_execute_cmd(
-        actual_cmd=delete_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], silent=True
-    )
+    kubectl_delete(api=api, object_kind='Job', object_name=job_name, object_namespace=ev['vllm_common_namespace'])
+    kubectl_delete(api=api, object_kind='Pod', object_namespace=ev['vllm_common_namespace'], object_selector={'job-name': job_name})
 
     kubectl_apply(api=api, manifest_data=job_yaml, dry_run=ev["control_dry_run"])
 
@@ -620,6 +674,7 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
         return True
 
     # use async config loading
+    #TODO kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
     await k8s_async_config.load_kube_config()
     api_client = k8s_async_client.ApiClient()
     batch_v1_api = k8s_async_client.BatchV1Api(api_client)
@@ -1078,32 +1133,37 @@ def get_accelerator_nr(accelerator_nr, tp, dp) -> int:
     else :
         return needed_accelerators
 
-def add_annotations(varname: str) -> str:
+def add_annotations(ev: dict, varname: str) -> str:
     """
     Generate pod annotations YAML.
     Equivalent to the bash add_annotations function.
     """
-    annotations = os.environ.get(varname, "")
+    varname = varname.replace("LLMDBENCH_",'',1).lower()
+
+    annotations = ev[varname]
+
     if not annotations:
         return ""
 
-    # FIXME (This should be extracted "ev" dictionary)
-    # Determine indentation based on environment type
-    standalone_active = int(
-        os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE", 0)
-    )
-    modelservice_active = int(
-        os.environ.get("LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE", 0)
-    )
+    annotations = ev[varname].replace("auto",'')
 
-    if standalone_active == 1:
+    if ev["control_environment_type_standalone_active"] :
         indent = "        "  # 8 spaces
-    elif modelservice_active == 1:
+    elif ev["control_environment_type_modelservice_active"] :
         indent = "      "  # 6 spaces
     else:
         indent = "        "  # default 8 spaces
 
     # Parse annotations (comma-separated key:value pairs)
+    if not annotations.count("stood-up-by:") :
+        annotations = f"{annotations},stood-up-by:{ev['control_username']}"
+
+    if not annotations.count("stood-up-from:") :
+        annotations = f"{annotations},stood-up-from:llm-d-benchmark"
+
+    if not annotations.count("stood-up-via:") :
+        annotations = f"{annotations},stood-up-via:{ev['deploy_methods']}"
+
     annotation_lines = []
     for entry in annotations.split(","):
         if ":" in entry:
@@ -1138,7 +1198,7 @@ def render_string(input_string):
     matches = re.findall(replace_env_pattern, working_string)
 
     # Process each REPLACE_ENV match
-    processed_string = input_string
+    processed_string = input_string.replace("{\\n}", "\n").replace("{\\s}", " ").replace("____"," ")
     for match in set(matches):  # Use set to get unique matches
         # Extract parameter name and default value
         if "++++default=" in match:
@@ -1164,6 +1224,8 @@ def render_string(input_string):
         # Replace in the string
         processed_string = processed_string.replace(match, final_value)
 
+        processed_string = clear_string(processed_string)
+
     return processed_string
 
 def add_command(model_command: str) -> str:
@@ -1176,7 +1238,7 @@ def add_command(model_command: str) -> str:
       - '-c'"""
     return ""
 
-def add_command_line_options(args_string):
+def add_command_line_options(ev: dict, args_string: str) -> str:
     """
     Generate command line options for container args.
     In case args_string is a file path, open the file and read the contents first
@@ -1209,6 +1271,14 @@ def add_command_line_options(args_string):
                 processed_args = processed_args.replace(";", ";\n          ", 1)
                 processed_args = processed_args.replace(" --", " \\\n            --")
 
+            processed_args = clear_string(processed_args)
+
+            if ev["vllm_common_enable_sleep_mode"] :
+                processed_args = processed_args.split('\n')
+
+                processed_args[-1] = f"{processed_args[-1]} \\\n            --enable-sleep-mode"
+                processed_args = '\n'.join(processed_args)
+
             return f"        - |\n          {processed_args}"
         elif current_step == "09":
             # For step 09 (modelservice), format as proper YAML list
@@ -1236,6 +1306,9 @@ def add_command_line_options(args_string):
                             else:
                                 # Regular argument - wrap in double quotes
                                 yaml_list.append(f'      - "{cleaned_arg}"')
+
+                #TODO             if ev["vllm_common_enable_sleep_mode"] :
+
                 return "\n".join(yaml_list)
             else:
                 processed_args = f"{processed_args.replace('____', ' ')}"
@@ -1246,6 +1319,9 @@ def add_command_line_options(args_string):
 
                 cmd_param_list[-1] = cmd_param_list[-1].replace("\\", "")
                 cmd_string = "\n".join(cmd_param_list).replace("--", "", 1)
+
+                #TODO             if ev["vllm_common_enable_sleep_mode"] :
+
                 return cmd_string
         else:
             # Default case
@@ -1263,15 +1339,15 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
     limits_resources = []
     requests_resources = []
 
-    if ev["control_environment_type_standalone_active"]:
+    if ev["control_environment_type_standalone_active"] :
         identifier = "common"
         section_indent = " " * 12
 
-    if ev["control_environment_type_modelservice_active"]:
+    if ev["control_environment_type_modelservice_active"] :
         identifier = f"modelservice_{identifier}"
         section_indent = " " * 8
 
-    if ev["control_environment_type_standalone_active"]:
+    if ev["control_environment_type_standalone_active"] :
         accelerator_resource = ev[f"vllm_{identifier}_accelerator_resource"]
 
         if accelerator_resource == "auto":
@@ -1312,7 +1388,7 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
             f'{section_indent}{ephemeral_storage_resource}: "{ephemeral_storage_nr}"'
         )
 
-    if ev["control_environment_type_standalone_active"]:
+    if ev["control_environment_type_standalone_active"] :
         if (
             accelerator_resource
             and accelerator_count
@@ -1353,7 +1429,7 @@ def add_affinity(ev:dict) -> str:
     else:
         affinity_key, affinity_value = "", ""
 
-    if ev["control_environment_type_standalone_active"]:
+    if ev["control_environment_type_standalone_active"] :
         affinity_string = f"""      affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -1364,7 +1440,7 @@ def add_affinity(ev:dict) -> str:
                 values:
                 - {affinity_value}"""
 
-    if ev["control_environment_type_modelservice_active"]:
+    if ev["control_environment_type_modelservice_active"] :
 
         if affinity_key == "kubernetes.io/os" :
             return ""
@@ -1400,6 +1476,8 @@ def add_pull_secret(ev:dict) -> str:
         pull_secret_string = f"""      imagePullSecrets:
       - name: {ev["vllm_common_pull_secret"]}"""
 
+    pull_secret_string = clear_string(pull_secret_string)
+
     return pull_secret_string
 
 def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
@@ -1419,10 +1497,10 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
     """
 
     # Determine indentation based on environment type
-    if ev["control_environment_type_standalone_active"]:
+    if ev["control_environment_type_standalone_active"] :
         name_indent = " " * 8
         value_indent = " " * 10
-    elif ev["control_environment_type_modelservice_active"]:
+    elif ev["control_environment_type_modelservice_active"] :
         name_indent = " " * 6
         value_indent = " " * 8
     else:
@@ -1447,6 +1525,10 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
             clean_name = envvar
             if envvar[0] == "_":
                 clean_name = envvar[1:]
+            clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
+            clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_VLLM_", "VLLM_")
+            clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_VLLM_", "VLLM_")
+            clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_DECODE_VLLM_", "VLLM_")
             clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_", "")
             env_value = os.environ.get(envvar, "")
 
@@ -1488,7 +1570,7 @@ def is_standalone_deployment(ev: dict) -> bool:
     """
     Returns true if it is a standalone deployment
     """
-    return int(ev["control_environment_type_standalone_active"]) == 1
+    return ev["control_environment_type_standalone_active"]
 
 def get_accelerator_type(ev: dict) -> str | None:
     """
@@ -1578,7 +1660,6 @@ def user_has_hf_model_access(model_id: str, hf_token: str) -> bool:
         announce(f"ERROR: HF request failed: {e}")
         return False
 
-
 def get_rand_string(length: int = 8):
     """
     Generate a random string with lower case characters and digits
@@ -1588,13 +1669,15 @@ def get_rand_string(length: int = 8):
     random_string = "".join(random.choices(characters, k=length))
     return random_string
 
-
-def get_model_name_from_pod(namespace: str, image: str, ip: str, port: str):
+def get_model_name_from_pod(api: pykube.HTTPClient,
+                            client: any,
+                            namespace: str,
+                            image: str,
+                            ip: str,
+                            port: str):
     """
     Get model name by starting/running a pod
     """
-
-    k8s_config.load_kube_config()
 
     if not ip :
         return "empty", "N/A"
@@ -1607,17 +1690,17 @@ def get_model_name_from_pod(namespace: str, image: str, ip: str, port: str):
     ip = ip + "/v1/models"
     curl_command = f"curl --no-progress-meter {ip}"
     full_command = ["/bin/bash", "-c", f"curl --no-progress-meter {ip}"]
-    pod_manifest = k8s_client.V1Pod(
-        metadata=k8s_client.V1ObjectMeta(name=pod_name, namespace=namespace),
-        spec=k8s_client.V1PodSpec(
+    pod_manifest = client.V1Pod(
+        metadata=client.V1ObjectMeta(name=pod_name, namespace=namespace),
+        spec=client.V1PodSpec(
             restart_policy="Never",
             containers=[
-                k8s_client.V1Container(name="model", image=image, command=full_command)
+                client.V1Container(name="model", image=image, command=full_command)
             ],
         ),
     )
 
-    api_instance = k8s_client.CoreV1Api()
+    api_instance = client.CoreV1Api()
     api_instance.create_namespaced_pod(namespace=namespace, body=pod_manifest)
 
     while True:

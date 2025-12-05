@@ -178,18 +178,18 @@ def generate_deployment_yaml(ev, model, model_label):
     )
 
     # Generate command line options
-    args = add_command_line_options(ev["vllm_standalone_args"])
+    args = add_command_line_options(ev, ev["vllm_standalone_args"])
 
     # Generate additional environment variables
-    additional_env = add_additional_env_to_yaml(ev, ev["vllm_common_envvars_to_yaml"])
+    additional_env = add_additional_env_to_yaml(ev, ev["vllm_standalone_envvars_to_yaml"])
 
     limits_str, requests_str = add_resources(ev, "common")
 
     # Generate annotations
-    annotations = add_annotations("LLMDBENCH_VLLM_COMMON_ANNOTATIONS")
+    annotations = add_annotations(ev, "LLMDBENCH_VLLM_COMMON_ANNOTATIONS")
 
-    extra_volume_mounts = add_config(ev['vllm_common_extra_volume_mounts'],8)
-    extra_volumes = add_config(ev['vllm_common_extra_volumes'],6)
+    extra_volume_mounts = add_config(ev['vllm_standalone_extra_volume_mounts'],8)
+    extra_volumes = add_config(ev['vllm_standalone_extra_volumes'],6)
 
     deployment_yaml = f"""apiVersion: apps/v1
 kind: Deployment
@@ -230,12 +230,10 @@ spec:
         env:
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL
           value: "{os.environ.get('LLMDBENCH_DEPLOY_CURRENT_MODEL', '')}"
-        - name: LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT
+        - name: LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT
           value: "{ev.get('vllm_standalone_vllm_load_format', '')}"
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG
           value: "{os.environ.get('LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG', '{}')}"
-        - name: VLLM_LOGGING_LEVEL
-          value: "{ev.get('vllm_standalone_vllm_logging_level', '')}"
         - name: HF_HOME
           value: {ev.get('vllm_standalone_pvc_mountpoint', '')}
         - name: LLMDBENCH_VLLM_COMMON_AFFINITY
@@ -276,7 +274,8 @@ spec:
         - name: preprocesses
           mountPath: /setup/preprocess
         - name: cache-volume
-          mountPath: {ev.get('vllm_standalone_pvc_mountpoint', '')}
+          mountPath: {ev['vllm_standalone_pvc_mountpoint']}
+          readOnly: true
         - name: shm
           mountPath: /dev/shm
         {extra_volume_mounts}
@@ -288,13 +287,12 @@ spec:
           defaultMode: 0500
       - name: cache-volume
         persistentVolumeClaim:
-          claimName: {ev.get('vllm_common_pvc_name', '')}
-#          readOnly: true
+          claimName: {ev['vllm_common_pvc_name']}
       {extra_volumes}
       - name: shm
         emptyDir:
           medium: Memory
-          sizeLimit: {ev.get('vllm_common_shm_mem')}
+          sizeLimit: {ev['vllm_common_shm_mem']}
 """
     return deployment_yaml
 

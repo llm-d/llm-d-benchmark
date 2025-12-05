@@ -93,7 +93,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=48
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=400Gi
 #export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM)
 #              Uncomment (###) the following line to enable multi-nic
-######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
+######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:multi-nic-compute
 #              Uncomment (#####) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
 ######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
 ######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=16
