@@ -1355,11 +1355,11 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
 
         accelerator_nr = ev[f"vllm_{identifier}_accelerator_nr"]
 
-        data_parallelism = ev[f"vllm_{identifier}_data_parallelism"]
+        data_local_parallelism = ev[f"vllm_{identifier}_data_local_parallelism"]
         tensor_parallelism = ev[f"vllm_{identifier}_tensor_parallelism"]
 
         accelerator_count = get_accelerator_nr(
-            accelerator_nr, tensor_parallelism, data_parallelism
+            accelerator_nr, tensor_parallelism, data_local_parallelism
         )
 
     cpu_mem = ev[f"vllm_{identifier}_cpu_mem"]
@@ -1454,15 +1454,18 @@ def add_affinity(ev:dict) -> str:
 
 def add_accelerator(ev:dict, identifier: str = "decode") -> str:
 
+    ar = ev[f"vllm_modelservice_{identifier}_accelerator_resource"]
     if ev[f"vllm_modelservice_{identifier}_accelerator_resource"] == "auto" :
         ev[f"vllm_modelservice_{identifier}_accelerator_resource"] = ev[f"vllm_common_affinity"].split(':')[0].replace(".product",'')
+        v = ev[f"vllm_modelservice_{identifier}_accelerator_resource"]
 
-    accelerator_type = ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split('.')[0]
+    accelerator_type = (ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split(':')[0]).strip()
     if accelerator_type == "kubernetes" :
         accelerator_type = "cpu"
         acellerator_resource = "cpu"
+    else:
+        acellerator_resource = (ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split(':')[1]).strip()
 
-    acellerator_resource = ev[f"vllm_modelservice_{identifier}_accelerator_resource"]
     accelerator_string=f"""accelerator:
   type: {accelerator_type}
   resources:

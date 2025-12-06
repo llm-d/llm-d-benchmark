@@ -253,6 +253,7 @@ decode:
       {add_annotations(ev, "LLMDBENCH_VLLM_COMMON_ANNOTATIONS").lstrip()}
   podAnnotations:
       {add_annotations(ev, "LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS").lstrip()}
+  schedulerName: {ev['vllm_common_pod_scheduler']}
 {conditional_extra_config(decode_extra_pod_config, 2, "extraConfig")}
   containers:
   - name: "vllm"
@@ -293,7 +294,7 @@ decode:
           port: 8200
         failureThreshold: 3
         periodSeconds: 5
-    {add_config(decode_extra_container_config, 6).lstrip()}
+      {add_config(decode_extra_container_config, 6).lstrip()}
     {conditional_volume_config(decode_extra_volume_mounts, "volumeMounts", 4)}
   {conditional_volume_config(decode_extra_volumes, "volumes", 2)}
 
@@ -310,6 +311,7 @@ prefill:
       {add_annotations(ev, "LLMDBENCH_VLLM_COMMON_ANNOTATIONS").lstrip()}
   podAnnotations:
       {add_annotations(ev, "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS").lstrip()}
+  schedulerName: {ev['vllm_common_pod_scheduler']}
 {conditional_extra_config(prefill_extra_pod_config, 2, "extraConfig")}
   containers:
   - name: "vllm"
@@ -352,7 +354,7 @@ prefill:
           port: {prefill_inference_port}
         failureThreshold: 3
         periodSeconds: 5
-    {add_config(prefill_extra_container_config, 6).lstrip()}
+      {add_config(prefill_extra_container_config, 6).lstrip()}
     {conditional_volume_config(prefill_extra_volume_mounts, "volumeMounts", 4)}
   {conditional_volume_config(prefill_extra_volumes, "volumes", 2)}
 """
