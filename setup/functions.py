@@ -583,32 +583,32 @@ def launch_download_job(
 
     hf_cmds = []
     hf_token_env = ""
-    if is_hf_model_gated(ev["deploy_model_list"]):
-        if user_has_hf_model_access(
-            ev["deploy_model_list"], ev["hf_token"]
-        ):
-            #
-            # Login is only required for GATED models.
-            # https://huggingface.co/docs/hub/models-gated
-            #
-            hf_cmds.append('hf auth login --token "${HF_TOKEN}"')
-            hf_token_env = f"""- name: HF_TOKEN
-              valueFrom:
+    models = ev["deploy_model_list"]
+    for model_id in models.split(","):
+        if is_hf_model_gated(model_id):
+            if user_has_hf_model_access(model_id, ev["hf_token"]):
+                #
+                # Login is only required for GATED models.
+                # https://huggingface.co/docs/hub/models-gated
+                #
+                hf_cmds.append('hf auth login --token "${HF_TOKEN}"')
+                hf_token_env = f"""- name: HF_TOKEN
+                valueFrom:
                 secretKeyRef:
-                  name: {ev["vllm_common_hf_token_name"]}
-                  key: HF_TOKEN"""
-        else:
-            #
-            # In theory - since we already check this in `env.sh` we shoudn't need to error
-            # out here, we should really just be organizing the command for the yaml creation
-            # but we haven't fully converted to python yet and for extra carefulness, lets just
-            # check this here again since there may be some code path that some how gets here
-            # without first sourcing env.sh and running the precheck there...
-            #
-            announce(
-                f"ERROR: Unauthorized access to gated model {model_path}. Check your HF Token."
-            )
-            sys.exit(1)
+                name: {ev["vllm_common_hf_token_name"]}
+                key: HF_TOKEN"""
+            else:
+                #
+                # In theory - since we already check this in `env.sh` we shoudn't need to error
+                # out here, we should really just be organizing the command for the yaml creation
+                # but we haven't fully converted to python yet and for extra carefulness, lets just
+                # check this here again since there may be some code path that some how gets here
+                # without first sourcing env.sh and running the precheck there...
+                #
+                announce(
+                    f"ERROR: Unauthorized access to gated model {model_path}. Check your HF Token."
+                )
+                sys.exit(1)
     hf_cmds.append('hf download "${HF_MODEL_ID}" --local-dir "/cache/${MODEL_PATH}"')
     base_cmds.extend(hf_cmds)
     command_args = " && ".join(base_cmds)
@@ -1592,7 +1592,8 @@ def get_accelerator_type(ev: dict) -> str | None:
 
 def is_hf_model_gated(model_id: str) -> bool:
     """
-    Check if a Hugging Face model is gated, meaning it requires manual approval
+    Check if a HF model is gated,
+    meaning it requires manual approval
     before a user can access it.
 
     Gated models require the user to authenticate with a valid Hugging Face token
