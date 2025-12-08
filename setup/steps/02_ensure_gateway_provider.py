@@ -432,25 +432,16 @@ def ensure_gateway_provider(
         announce(f"⏭️ Environment types are \"{deploy_methods}\". Skipping this step.")
         return 0
 
-    # Extract required environment variables
-    #FIXME (we shouldn't have to unpack all these variables here)
-    chart_name = ev.get("vllm_modelservice_chart_name", "")
-    repo_url = ev.get("vllm_modelservice_helm_repository_url", "")
-    chart_version = ev.get("vllm_modelservice_chart_version", "")
-    helm_repo = ev.get("vllm_modelservice_helm_repository", "")
-    gateway_class = ev.get("vllm_modelservice_gateway_class_name", "")
-    release_name = ev.get("vllm_modelservice_release", "")
-
     # Step 1: Ensure helm repository
-    result = ensure_helm_repository(ev['control_hcmd'], chart_name, repo_url, dry_run, verbose)
+    result = ensure_helm_repository(ev['control_hcmd'], ev['vllm_modelservice_chart_name'], ev['vllm_modelservice_helm_repository_url'], dry_run, verbose)
     if result != 0:
         return result
 
     # Step 2: Handle chart version and infrastructure (only if not dry run)
     if not dry_run:
         # Auto-detect chart version if needed
-        if chart_version == "auto":
-            detected_version = get_latest_chart_version(ev['control_hcmd'], helm_repo, dry_run, verbose)
+        if ev["vllm_modelservice_chart_version"] == "auto":
+            detected_version = get_latest_chart_version(ev['control_hcmd'], ev['vllm_modelservice_helm_repository'], dry_run, verbose)
             if not detected_version:
                 announce("❌ Unable to find a version for model service helm chart!")
                 return 1

@@ -134,7 +134,6 @@ The following table displays a comprehensive list of environment variables (and 
 | LLMDBENCH_HARNESS_CPU_MEM                      | How many CPUs should be requested for `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` | Default=`32Gi` |
 | LLMDBENCH_HARNESS_PVC_NAME                     | The `pvc` where experimental results will be stored | Default=`workload-pvc`. Can be overriden with CLI parameter `-k/--pvc`      |
 | LLMDBENCH_HARNESS_PVC_SIZE                     | The size of the `pvc` where experimental results will be stored | Default=`20Gi` |
-| LLMDBENCH_HARNESS_CONTAINER_IMAGE              | The container image used to create an additional `pod` which will carry out the load generation. | Default=`lmcache/lmcache-benchmark:main`. **IMPORTANT: This is only applicable to `nop`!**|
 | LLMDBENCH_HARNESS_SKIP_RUN                     | Skip the execution of the experiment, and only collect data already on the `pvc` | Default=(empty) |
 | LLMDBENCH_HARNESS_LOAD_PARALLELISM             | Controls the number harness pods which will be created to generate load (all pods execute the same workload profile) | Default=`1`, can be overriden with ` -j/--parallelism` |
 | LLMDBENCH_HARNESS_ENVVARS_TO_YAML              | List all environment variables to be added to all harness pods | Default=`LLMDBENCH_RUN_EXPERIMENT`, can be overriden with `-g/--envvarspod` |
@@ -161,14 +160,14 @@ The additional environment variables to set are:
 
 | Environment Variable                         | Example Values  |
 | -------------------------------------------- | -------------- |
-| LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT   | `safetensors, tensorizer, runai_streamer, fastsafetensors` |
-| LLMDBENCH_VLLM_STANDALONE_ENABLE_SLEEP_MODE  | `false, true` |
-| LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL | `DEBUG, INFO, WARNING` etc |
+| LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT   | `safetensors, tensorizer, runai_streamer, fastsafetensors` |
+| LLMDBENCH_VLLM_COMMON_ENABLE_SLEEP_MODE  | `false, true` |
+| LLMDBENCH_VLLM_COMMON_VLLM_LOGGING_LEVEL | `DEBUG, INFO, WARNING` etc |
 | LLMDBENCH_VLLM_STANDALONE_PREPROCESS         | `source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py` |
 
-The variable `LMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL` must be set to `DEBUG` so that the `nop` categories report finds all categories.
+The variable `LMDBENCH_VLLM_COMMON_VLLM_LOGGING_LEVEL` must be set to `DEBUG` so that the `nop` categories report finds all categories.
 
-The variable `LLMDBENCH_VLLM_STANDALONE_ENABLE_SLEEP_MODE` must be set to `true` in order to run sleep/wake benchmarks.
+The variable `LLMDBENCH_VLLM_COMMON_ENABLE_SLEEP_MODE` must be set to `true` in order to run sleep/wake benchmarks.
 
 The variable `LLMDBENCH_VLLM_STANDALONE_PREPROCESS` must be set to the above value for the `nop` harness in order to install load format
 dependencies, export additional environment variables and pre-serialize models when using the `tensorizer` load format.

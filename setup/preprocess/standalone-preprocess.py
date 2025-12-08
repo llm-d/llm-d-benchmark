@@ -219,7 +219,7 @@ def preprocess_run() -> str:
 
     envs = get_env_variables(
         [
-            {"name": "LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT", "required": True},
+            {"name": "LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT", "required": True},
             {"name": "LLMDBENCH_VLLM_STANDALONE_MODEL", "required": True},
             {"name": "LLMDBENCH_VLLM_TENSORIZER_URI", "required": True},
             {"name": "VLLM_LOGGING_CONFIG_PATH", "required": False},

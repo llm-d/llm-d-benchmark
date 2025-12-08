@@ -37,10 +37,8 @@
 #             Uncomment to request specific network devices
 #########export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/roce_gdr
 #######export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib
-#########export LLMDBENCH_VLLM_COMMON_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:compute-q0v0
+#########export LLMDBENCH_VLLM_COMMON_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:compute-q0v0
 #########export LLMDBENCH_VLLM_COMMON_NETWORK_NR=1
-
-######export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=LLMDBENCH_VLLM_STANDALONE_VLLM_WORKER_MULTIPROC_METHOD,LLMDBENCH_VLLM_STANDALONE_VLLM_CACHE_ROOT,LLMDBENCH_VLLM_STANDALONE_VLLM_ALLOW_LONG_MAX_MODEL_LEN,LLMDBENCH_VLLM_STANDALONE_VLLM_SERVER_DEV_MODE
 
 # Standalone Parameters
 #export LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=1 # (default is "1")
@@ -57,18 +55,17 @@
 #    claimName: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME
 #EOF
 
-#export LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT=auto # (default is "auto")
-#export LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT=safetensors
-#export LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT=tensorizer
-#export LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT=runai_streamer
-#export LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT=fastsafetensors
+#export LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT=auto # (default is "auto")
+#export LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT=safetensors
+#export LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT=tensorizer
+#export LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT=runai_streamer
+#export LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT=fastsafetensors
 
 # set to debug so that all vllm log lines can be categorized
-######export LLMDBENCH_VLLM_STANDALONE_VLLM_LOGGING_LEVEL=DEBUG
-
-######export LLMDBENCH_VLLM_STANDALONE_ENABLE_SLEEP_MODE=true
-######export LLMDBENCH_VLLM_STANDALONE_VLLM_WORKER_MULTIPROC_METHOD=fork
-######export LLMDBENCH_VLLM_STANDALONE_VLLM_CACHE_ROOT=
+######export LLMDBENCH_VLLM_COMMON_VLLM_LOGGING_LEVEL=DEBUG
+######export LLMDBENCH_VLLM_COMMON_VLLM_CACHE_ROOT=
+######export LLMDBENCH_VLLM_COMMON_ENABLE_SLEEP_MODE=true
+######export LLMDBENCH_VLLM_COMMON_VLLM_WORKER_MULTIPROC_METHOD=fork
 ######export LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG="{ \\\"enable_multithread_load\\\": true, \\\"num_threads\\\": 8 }"
 
 # source preprocessor script that will install libraries for some load formats and set env. variables
@@ -76,6 +73,10 @@
 # tensorizer load format
 ######export LLMDBENCH_VLLM_STANDALONE_PREPROCESS="source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
 
+######export LLMDBENCH_VLLM_COMMON_VLLM_CACHE_ROOT=/mnt/extravol
+######export LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME=extra-vol
+######export LLMDBENCH_VLLM_STANDALONE_EXTRA_VOLUME_MOUNTS="-{\\s}name:{\\s}extra-vol{\\n}{\\s}{\\s}mountPath:{\\s}/mnt/extravol"
+######export LLMDBENCH_VLLM_STANDALONE_EXTRA_VOLUMES="-{\\s}name:{\\s}extra-vol{\\n}{\\s}{\\s}persistentVolumeClaim:{\\n}{\\s}{\\s}{\\s}claimName:{\\s}REPLACE_ENV_LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME"
 
 # source preprocessor script that will install NVIDIA Nsight Systems (nsys) for vllm execution profiling
 # Remember to replace "vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL" with
@@ -90,7 +91,7 @@ vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_INFERENCE_PORT \
 --block-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE \
 --max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
---load-format REPLACE_ENV_LLMDBENCH_VLLM_STANDALONE_VLLM_LOAD_FORMAT \
+--load-format REPLACE_ENV_LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT \
 --gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL \
 --max-num-seqs REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_NUM_SEQ \
 --tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM \
@@ -100,7 +101,7 @@ vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 EOF
 
 # llm-d Parameters
-#########export LLMDBENCH_VLLM_MODELSERVICE_PREFIIL_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:compute-q0v0
+#########export LLMDBENCH_VLLM_MODELSERVICE_PREFIIL_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:compute-q0v0
 #########export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/roce_gdr
 #########export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR=1
 #export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=1 # (default is "1")
@@ -116,7 +117,7 @@ EOF
 #  persistentVolumeClaim:
 #    claimName: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME
 #EOF
-#########export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:compute-q0v0
+#########export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:compute-q0v0
 #########export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
 #########export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=1
 #export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1 # (default is "1")
