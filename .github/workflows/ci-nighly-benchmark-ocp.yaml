@@ -67,7 +67,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt install bc
-          ./setup/install_deps.sh
+          ./setup/install_deps.sh -y
         shell: bash
 
       - name: Install config explorer dependencies
