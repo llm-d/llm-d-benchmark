@@ -15,7 +15,7 @@ fi
 shopt -u nocasematch # Disable case-insensitive matching
 
 # unescape double quotes if existent
-export LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG=$(echo "$LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG" | sed 's/\\"/"/g')
+export LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG=$(echo "$LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG" | sed 's/\\"/"/g')
 
 # installs dependencies for load formats
 if [[ ${LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT} == "fastsafetensors" ]]; then
@@ -23,10 +23,10 @@ if [[ ${LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT} == "fastsafetensors" ]]; then
 elif [[ ${LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT} == "tensorizer" ]]; then
     sudo apt update
     sudo apt install -y jq
-    pip install --root-user-action=ignore tensorizer==2.10.1
+    pip install --root-user-action=ignore tensorizer==2.12.0
     # path to save serialized file
-    export LLMDBENCH_VLLM_TENSORIZER_URI="${HF_HOME}/${LLMDBENCH_VLLM_STANDALONE_MODEL}/v1/model.tensors"
-    export LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG=$(echo "$LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG" | jq '.tensorizer_uri = env.LLMDBENCH_VLLM_TENSORIZER_URI' | tr -d '\n')
+    export LLMDBENCH_VLLM_TENSORIZER_URI="/tmp/${LLMDBENCH_VLLM_STANDALONE_MODEL}/v1/model.tensors"
+    export LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG=$(echo "$LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG" | jq '.tensorizer_uri = env.LLMDBENCH_VLLM_TENSORIZER_URI' | tr -d '\n')
 elif [[ ${LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT} == "runai_streamer" ]]; then
     sudo apt update
     sudo apt install -y jq
@@ -34,10 +34,10 @@ elif [[ ${LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT} == "runai_streamer" ]]; then
     # controls the level of concurrency and number of OS threads
     # reading tensors from the file to the CPU buffer
     # https://github.com/run-ai/runai-model-streamer/blob/master/docs/src/env-vars.md
-    export LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG=$(echo "$LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG" | jq '.concurrency = 32' | tr -d '\n')
+    export LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG=$(echo "$LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG" | jq '.concurrency = 32' | tr -d '\n')
 fi
 
-echo "vllm extra arguments: '${LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG}'"
+echo "vllm extra arguments: '${LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG}'"
 
 # sets TORCH_CUDA_ARCH_LIST
 gpu_name=$(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 2 | xargs)

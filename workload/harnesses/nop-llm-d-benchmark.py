@@ -94,6 +94,22 @@ DEFINED_CATEGORIES = [
 ]
 
 
+@dataclass
+class PodContainerInfo:
+    """Pod container info"""
+
+    name: str = ""
+    image: str = ""
+
+
+@dataclass
+class PodInfo:
+    """Pod info"""
+
+    name: str = ""
+    containers: list[PodContainerInfo] = field(default_factory=list[PodContainerInfo])
+
+
 @dataclass(frozen=True)
 class BenchmarkProcess:
     """Process details"""
@@ -211,26 +227,25 @@ class BenchmarkCategory:
         while category is not None:
             if category.defined or include_not_defined:
                 dump_dict = {"title": category.title}
-                procs = [
-                    ""
-                    if category.start.log_line is None
-                    else category.start.log_line.process_desc(),
-                    ""
-                    if category.end.log_line is None
-                    else category.end.log_line.process_desc(),
-                ]
-                if procs[0] != procs[1]:
-                    raise ValueError(
-                        f"Category '{category.title}': "
-                        f"start process '{procs[0]}' must be "
-                        f"the same as end process '{procs[1]}'"
-                    )
-
                 if (
                     category.start.log_line is not None
-                    and category.start.log_line.process is not None
+                    and category.end.log_line is not None
                 ):
-                    dump_dict["process"] = category.start.log_line.process.dump()
+                    procs = [
+                        category.start.log_line.process_desc(),
+                        category.end.log_line.process_desc(),
+                    ]
+                    if procs[0] != procs[1]:
+                        raise ValueError(
+                            f"Category '{category.title}': "
+                            f"start process '{procs[0]}' must be "
+                            f"the same as end process '{procs[1]}'"
+                        )
+                    if category.start.log_line.process is not None:
+                        dump_dict["process"] = category.start.log_line.process.dump()
+                    elif category.end.log_line.process is not None:
+                        dump_dict["process"] = category.end.log_line.process.dump()
+
                 dump_dict["elapsed"] = 0.0
                 if (
                     category.start.log_line is not None
@@ -333,7 +348,9 @@ class PlatformEngineScenario:
 class PlatformScenario:
     """Platform Scenario"""
 
-    engine: PlatformEngineScenario = field(default_factory=PlatformEngineScenario)
+    engines: list[PlatformEngineScenario] = field(
+        default_factory=list[PlatformEngineScenario]
+    )
 
     def dump(self) -> dict[str, Any]:
         """Convert PlatformScenario to dict.
@@ -341,7 +358,23 @@ class PlatformScenario:
         Returns:
             dict: Defined fields of PlatformScenario.
         """
-        return {"engine": self.engine.dump()}
+        dump_dict = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if f.name == "engines":
+                dump_list = []
+                for engine in value:
+                    dump_list.append(engine.dump())
+                dump_dict[f.name] = dump_list
+                continue
+
+            dump_dict[f.name] = (
+                value.dump()
+                if hasattr(value, "dump") and callable(value.dump)
+                else value
+            )
+
+        return dump_dict
 
 
 @dataclass
@@ -402,7 +435,7 @@ class BenchmarkScenario:
 
 
 @dataclass
-class MetricsTime:
+class BenchmarkTime:
     """Timing details of benchmark run."""
 
     start: float = 0.0
@@ -411,10 +444,10 @@ class MetricsTime:
     """End time of benchmark run, in seconds from Unix epoch."""
 
     def dump(self) -> dict[str, Any]:
-        """Convert MetricsTime to dict.
+        """Convert BenchmarkTime to dict.
 
         Returns:
-            dict: Defined fields of MetricsTime.
+            dict: Defined fields of BenchmarkTime.
         """
         dump_dict = {}
         for f in fields(self):
@@ -502,7 +535,7 @@ class MetricsLoad:
 class BenchmarkMetrics:
     """Benchmark Metrics"""
 
-    time: MetricsTime = field(default_factory=MetricsTime)
+    name: str = ""
     load: MetricsLoad = field(default_factory=MetricsLoad)
     size: float = 0.0
     dynamo_bytecode_transform: float = 0.0
@@ -549,7 +582,8 @@ class BenchmarkResult:
 
     version: str = "0.1"
     scenario: BenchmarkScenario = field(default_factory=BenchmarkScenario)
-    metrics: BenchmarkMetrics = field(default_factory=BenchmarkMetrics)
+    metrics: list[BenchmarkMetrics] = field(default_factory=list[BenchmarkMetrics])
+    time: BenchmarkTime = field(default_factory=BenchmarkTime)
 
     def dump(self) -> dict[str, Any]:
         """Convert BenchmarkResult to dict.
@@ -560,6 +594,13 @@ class BenchmarkResult:
         dump_dict = {}
         for f in fields(self):
             value = getattr(self, f.name)
+            if f.name == "metrics":
+                dump_list = []
+                for metrics in value:
+                    dump_list.append(metrics.dump())
+                dump_dict[f.name] = dump_list
+                continue
+
             dump_dict[f.name] = (
                 value.dump()
                 if hasattr(value, "dump") and callable(value.dump)
@@ -600,8 +641,9 @@ def get_vllm_version(base_url: str, timeout: float) -> str:
     if response.status_code != 200:
         raise RuntimeError(f"server {url} error code {response.status_code}.")
 
-    logger.info("vLLM server version: %s", response.json().get(path))
-    return response.json().get(path)
+    response_json = response.json()
+    logger.info("vLLM server version: %s", response_json.get(path))
+    return response_json.get(path)
 
 
 def get_vllm_model(base_url: str, timeout: float) -> str:
@@ -636,8 +678,9 @@ def get_server_status_sleep(base_url: str, timeout: float) -> bool:
     if response.status_code != 200:
         raise RuntimeError(f"server {url} error code {response.status_code}.")
 
-    logger.info("sleep status: %s", response.json().get(path))
-    return response.json().get(path)
+    response_json = response.json()
+    logger.info("sleep status: %s", response_json.get(path))
+    return response_json.get(path)
 
 
 def sleep(base_url: str, level: int, timeout: float):
@@ -696,7 +739,7 @@ def wake(base_url: str, timeout: float):
 
 def get_vllm_pod_info(
     v1: client.CoreV1Api, namespace: str, deployment_name: str
-) -> dict[str, str]:
+) -> PodInfo:
     """get vllm pod name"""
 
     selectors = get_deployment_selectors(namespace, deployment_name)
@@ -710,6 +753,12 @@ def get_vllm_pod_info(
     if len(pod_infos) == 0:
         raise RuntimeError(
             f"No pods found on namespace {namespace} with selector 'app={selector}'."
+        )
+
+    # return first pod info
+    if len(pod_infos[0].containers) == 0:
+        raise RuntimeError(
+            f"No pod container found on namespace {namespace} with pod name '{pod_infos[0].name}'."
         )
 
     return pod_infos[0]
@@ -734,9 +783,7 @@ def get_deployment_selectors(namespace: str, name: str) -> list[str]:
     return selectors
 
 
-def get_pod_infos(
-    v1: client.CoreV1Api, namespace: str, selector: str
-) -> list[dict[str, str]]:
+def get_pod_infos(v1: client.CoreV1Api, namespace: str, selector: str) -> list[PodInfo]:
     """get pods by selector"""
 
     pod_list = v1.list_namespaced_pod(
@@ -744,18 +791,29 @@ def get_pod_infos(
     )
     pod_infos = []
     for pod in pod_list.items:
-        image = pod.spec.containers[0].image
-        name = pod.metadata.name
-        pod_infos.append({"name": name, "image": image})
+        pod_info = PodInfo()
+        pod_info.name = pod.metadata.name
+        for container in pod.spec.containers:
+            pod_container_info = PodContainerInfo()
+            pod_container_info.name = container.name
+            pod_container_info.image = container.image
+            pod_info.containers.append(pod_container_info)
+        pod_infos.append(pod_info)
 
     return pod_infos
 
 
-def get_pod_logs(v1: client.CoreV1Api, namespace: str, pod_name: str) -> bytes:
+def get_pod_logs(
+    v1: client.CoreV1Api, namespace: str, pod_name: str, container_name: str
+) -> bytes:
     """get pod logs"""
 
     response = v1.read_namespaced_pod_log(
-        name=pod_name, namespace=namespace, pretty=False, _preload_content=False
+        name=pod_name,
+        container=container_name,
+        namespace=namespace,
+        pretty=False,
+        _preload_content=False,
     )
     return response.data
 
@@ -838,12 +896,16 @@ def get_log_list_per_process(
     """get log list divided by Process"""
 
     tensorizer_serialization_end = f"End model {vllm_model} serialization"
+    uvicorn_running = "Uvicorn running"
 
-    # look for possible tensorizer serialization end
+    # look for possible tensorizer serialization or uvicorn
     idx = 0
     for log_line in log_list:
-        if tensorizer_serialization_end in log_line.line:
-            # skips tensorizer serialization lines
+        if (
+            tensorizer_serialization_end in log_line.line
+            or uvicorn_running in log_line.line
+        ):
+            # skip lines
             idx = log_line.line_number
             break
 
@@ -853,7 +915,7 @@ def get_log_list_per_process(
             return log_list_per_process
         log_line = log_list[idx]
         logger.info(
-            "Skip tensorizer serialization. Start from log line %d: %s",
+            "Skip tensorizer serialization or uvicorn. Start from log line %d: %s",
             log_line.line_number,
             log_line.line,
         )
@@ -961,10 +1023,8 @@ def populate_benchmark_category(
     return index
 
 
-def parse_logs(logs: str) -> BenchmarkResult:
-    """parse vllm logs"""
-
-    # Strings to be searched on logging ouput in order to extract values
+def parse_gpu_logs(scenario: BenchmarkScenario, logs: str) -> None:
+    """parse gpu logs"""
 
     gpu_start = "--- gpu scenario start name:"
     gpu_id = "gpu_uuid='"
@@ -972,6 +1032,47 @@ def parse_logs(logs: str) -> BenchmarkResult:
     compute_cap = "compute_cap='"
     persistence_mode = "persistence_mode='"
     gpu_end = "--- gpu scenario end name:"
+
+    # load from start to get gpus scenario
+    gpus_scenario_found = False
+    for line in logs.splitlines():
+        line = line.strip()
+        if gpu_start in line:
+            gpus_scenario_found = True
+            continue
+
+        if gpu_end in line:
+            break
+
+        if not gpus_scenario_found:
+            continue
+
+        gpu_dict = {}
+        for pattern in [gpu_id, gpu_name, compute_cap, persistence_mode]:
+            start_index = line.find(pattern)
+            if start_index >= 0:
+                start_index += len(pattern)
+                end_index = line.find("'", start_index)
+                if end_index >= 0:
+                    gpu_dict[pattern] = line[start_index:end_index].strip()
+
+        gpu_scenario = GPUScenario()
+        gpu_scenario.uuid = gpu_dict.get(gpu_id, "")
+        gpu_scenario.name = gpu_dict.get(gpu_name, "")
+        gpu_scenario.compute_cap = gpu_dict.get(compute_cap, "")
+        gpu_scenario.persistence_mode = gpu_dict.get(persistence_mode, "")
+        scenario.gpus.append(gpu_scenario)
+
+
+def parse_logs(
+    scenario: BenchmarkScenario,
+    engine: PlatformEngineScenario,
+    metrics: BenchmarkMetrics,
+    logs: str,
+) -> None:
+    """parse vllm logs"""
+
+    # Strings to be searched on logging ouput in order to extract values
 
     server_non_default_args = "non-default args:"
     model_sleep_mode = "'enable_sleep_mode':"
@@ -1010,38 +1111,6 @@ def parse_logs(logs: str) -> BenchmarkResult:
     # Sleep mode freed 69.50 GiB memory, 0.75 GiB memory is still in use.
     model_gpu_freed = "Sleep mode freed"
 
-    benchmark_result = BenchmarkResult()
-
-    # load from start to get gpus scenario
-    gpus_scenario_found = False
-    for line in logs.splitlines():
-        line = line.strip()
-        if gpu_start in line:
-            gpus_scenario_found = True
-            continue
-
-        if gpu_end in line:
-            break
-
-        if not gpus_scenario_found:
-            continue
-
-        gpu_dict = {}
-        for pattern in [gpu_id, gpu_name, compute_cap, persistence_mode]:
-            start_index = line.find(pattern)
-            if start_index >= 0:
-                start_index += len(pattern)
-                end_index = line.find("'", start_index)
-                if end_index >= 0:
-                    gpu_dict[pattern] = line[start_index:end_index].strip()
-
-        gpu_scenario = GPUScenario()
-        gpu_scenario.uuid = gpu_dict.get(gpu_id, "")
-        gpu_scenario.name = gpu_dict.get(gpu_name, "")
-        gpu_scenario.compute_cap = gpu_dict.get(compute_cap, "")
-        gpu_scenario.persistence_mode = gpu_dict.get(persistence_mode, "")
-        benchmark_result.scenario.gpus.append(gpu_scenario)
-
     # loop from the bottom to catch latest statistics before old ones
     sleep_mode = ""
     args = None
@@ -1049,21 +1118,18 @@ def parse_logs(logs: str) -> BenchmarkResult:
         if (
             args is not None
             and sleep_mode != ""
-            and benchmark_result.scenario.load_format != LoadFormat.UNKNOWN
-            and benchmark_result.metrics.load.time != 0
-            and benchmark_result.metrics.dynamo_bytecode_transform != 0
-            and (
-                benchmark_result.metrics.load_cached_compiled_graph != 0
-                or benchmark_result.metrics.compile_graph != 0
-            )
-            and benchmark_result.metrics.memory_profiling.initial_free != 0
-            and benchmark_result.metrics.memory_profiling.after_free != 0
-            and benchmark_result.metrics.memory_profiling.time != 0
-            and benchmark_result.metrics.torch_compile != 0
-            and benchmark_result.metrics.sleep.time != 0
-            and benchmark_result.metrics.sleep.gpu_freed != 0
-            and benchmark_result.metrics.sleep.gpu_in_use != 0
-            and benchmark_result.metrics.wake != 0
+            and scenario.load_format != LoadFormat.UNKNOWN
+            and metrics.load.time != 0
+            and metrics.dynamo_bytecode_transform != 0
+            and (metrics.load_cached_compiled_graph != 0 or metrics.compile_graph != 0)
+            and metrics.memory_profiling.initial_free != 0
+            and metrics.memory_profiling.after_free != 0
+            and metrics.memory_profiling.time != 0
+            and metrics.torch_compile != 0
+            and metrics.sleep.time != 0
+            and metrics.sleep.gpu_freed != 0
+            and metrics.sleep.gpu_in_use != 0
+            and metrics.wake != 0
         ):
             break
 
@@ -1075,9 +1141,7 @@ def parse_logs(logs: str) -> BenchmarkResult:
                 start_index += len(server_non_default_args)
                 args = line[start_index:].strip()
                 try:
-                    benchmark_result.scenario.platform.engine.args = ast.literal_eval(
-                        args
-                    )
+                    engine.args = ast.literal_eval(args)
                 except Exception:
                     logger.exception(
                         "log args dict parsing returned error converting: %s",
@@ -1093,89 +1157,84 @@ def parse_logs(logs: str) -> BenchmarkResult:
                     end_index = line.find("}", start_index)
                 if end_index >= 0:
                     sleep_mode = line[start_index:end_index].strip().lower()
-                    benchmark_result.scenario.sleep_mode = "true" == sleep_mode
+                    scenario.sleep_mode = "true" == sleep_mode
 
-        if benchmark_result.scenario.load_format == LoadFormat.UNKNOWN:
+        if scenario.load_format == LoadFormat.UNKNOWN:
             start_index = line.find(model_load_format)
             if start_index >= 0:
                 start_index += len(model_load_format)
                 end_index = line.find(",", start_index)
                 if end_index >= 0:
                     format_value = line[start_index:end_index].strip()
-                    benchmark_result.scenario.load_format = (
-                        LoadFormat.loadformat_from_value(format_value)
+                    scenario.load_format = LoadFormat.loadformat_from_value(
+                        format_value
                     )
 
-        if benchmark_result.metrics.load.time == 0:
+        if metrics.load.time == 0:
             floats = find_floats_in_line(model_load_string, line)
             if len(floats) > 1:
-                benchmark_result.metrics.load.size = floats[0]
-                benchmark_result.metrics.load.time = floats[1]
+                metrics.load.size = floats[0]
+                metrics.load.time = floats[1]
                 continue
 
-        if benchmark_result.metrics.dynamo_bytecode_transform == 0:
+        if metrics.dynamo_bytecode_transform == 0:
             floats = find_floats_in_line(dynamo_bytecode_transform, line)
             if len(floats) > 0:
-                benchmark_result.metrics.dynamo_bytecode_transform = floats[0]
+                metrics.dynamo_bytecode_transform = floats[0]
                 continue
 
-        if (
-            benchmark_result.metrics.load_cached_compiled_graph == 0
-            and benchmark_result.metrics.compile_graph == 0
-        ):
+        if metrics.load_cached_compiled_graph == 0 and metrics.compile_graph == 0:
             floats = find_floats_in_line(cached_compiled_graph, line)
             if len(floats) > 0:
-                benchmark_result.metrics.load_cached_compiled_graph = floats[0]
+                metrics.load_cached_compiled_graph = floats[0]
                 continue
             floats = find_floats_in_line(compiled_graph, line)
             if len(floats) > 0:
-                benchmark_result.metrics.compile_graph = floats[0]
+                metrics.compile_graph = floats[0]
                 continue
 
-        if benchmark_result.metrics.torch_compile == 0:
+        if metrics.torch_compile == 0:
             floats = find_floats_in_line(torch_compile, line)
             if len(floats) > 0:
-                benchmark_result.metrics.torch_compile = floats[0]
+                metrics.torch_compile = floats[0]
                 continue
 
-        if benchmark_result.metrics.memory_profiling.initial_free == 0:
+        if metrics.memory_profiling.initial_free == 0:
             floats = find_floats_in_line(initial_free_memory, line)
             if len(floats) > 0:
-                benchmark_result.metrics.memory_profiling.initial_free = floats[0]
+                metrics.memory_profiling.initial_free = floats[0]
                 continue
 
-        if benchmark_result.metrics.memory_profiling.after_free == 0:
+        if metrics.memory_profiling.after_free == 0:
             floats = find_floats_in_line(free_memory_after_profiling, line)
             if len(floats) > 0:
-                benchmark_result.metrics.memory_profiling.after_free = floats[0]
+                metrics.memory_profiling.after_free = floats[0]
                 continue
 
-        if benchmark_result.metrics.memory_profiling.time == 0:
+        if metrics.memory_profiling.time == 0:
             floats = find_floats_in_line(memory_profiling, line)
             if len(floats) > 0:
-                benchmark_result.metrics.memory_profiling.time = floats[0]
+                metrics.memory_profiling.time = floats[0]
                 continue
 
-        if benchmark_result.metrics.sleep.time == 0 and model_sleep_string in line:
+        if metrics.sleep.time == 0 and model_sleep_string in line:
             floats = find_floats_in_line(model_took_string, line)
             if len(floats) > 0:
-                benchmark_result.metrics.sleep.time = floats[0]
+                metrics.sleep.time = floats[0]
                 continue
 
-        if benchmark_result.metrics.sleep.gpu_freed == 0:
+        if metrics.sleep.gpu_freed == 0:
             floats = find_floats_in_line(model_gpu_freed, line)
             if len(floats) > 1:
-                benchmark_result.metrics.sleep.gpu_freed = floats[0]
-                benchmark_result.metrics.sleep.gpu_in_use = floats[1]
+                metrics.sleep.gpu_freed = floats[0]
+                metrics.sleep.gpu_in_use = floats[1]
                 continue
 
-        if benchmark_result.metrics.wake == 0 and model_wake_string in line:
+        if metrics.wake == 0 and model_wake_string in line:
             floats = find_floats_in_line(model_took_string, line)
             if len(floats) > 0:
-                benchmark_result.metrics.wake = floats[0]
+                metrics.wake = floats[0]
                 continue
-
-    return benchmark_result
 
 
 def find_floats_in_line(key: str, line: str) -> list[float]:
@@ -1282,29 +1341,281 @@ def write_benchmark_categories_to_log(
         category = category.next
 
 
+def convert_vllm_args(args: dict[str, Any], vllm_port: str) -> list[str]:
+    """convert vLLM args to launcher options"""
+
+    # --no-enable-prefix-caching \
+    # --load-format auto \
+    # --port 8000 \
+    # --max-model-len 16384 \
+    # --disable-log-requests \
+    # --gpu-memory-utilization 0.95 \
+    # --tensor-parallel-size 1 \
+    # --model-loader-extra-config "$LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG" \
+    # --enable-sleep-mode
+
+    # {'enable_prefix_caching': False, 'enable_sleep_mode': True,
+    # 'gpu_memory_utilization': 0.95, 'max_model_len': 16384,
+    # 'model': 'Qwen/Qwen2.5-0.5B-Instruct',
+    # 'model_loader_extra_config':
+    # {'enable_multithread_load': True, 'num_threads': 8},
+    # 'model_tag': 'Qwen/Qwen2.5-0.5B-Instruct'}
+
+    vllm_args = ["--port", vllm_port]
+    for key, value in args.items():
+        if key in ("model_tag", "port"):
+            continue
+        name = key.replace("_", "-")
+        if isinstance(value, bool):
+            name = "--" + name if value else "--no-" + name
+            vllm_args.append(name)
+            continue
+        if isinstance(value, (list, dict)):
+            value = json.dumps(value, separators=(",", ":"))
+        elif not isinstance(value, str):
+            value = str(value)
+
+        name = "--" + name
+        vllm_args.append(name)
+        vllm_args.append(value)
+
+    return vllm_args
+
+
+def start_vllm_server(base_launcher_url: str, args: list[str], timeout: float) -> str:
+    """start vllm server"""
+
+    launcher_args = {
+        "options": " ".join(args),
+    }
+
+    url = urljoin(base_launcher_url, "v2/vllm/instances")
+    response = requests.post(url, json=launcher_args, timeout=timeout)
+    if response.status_code not in (200, 201):
+        raise RuntimeError(
+            f"launcher url '{url}' "
+            f"options '{launcher_args}' error code {response.status_code}: '{response.text}'."
+        )
+
+    response_json = response.json()
+    status = response_json.get("status")
+    if status != "started":
+        raise RuntimeError(
+            f"launcher url '{url}' options '{launcher_args}' status {status}."
+        )
+    instance_id = response_json.get("instance_id")
+    logger.info(
+        "launcher vLLM started instance_id %s with options %s",
+        instance_id,
+        launcher_args,
+    )
+    return instance_id
+
+
+def stop_vllm_server(base_url: str, instance_id, timeout: float) -> None:
+    """stop vllm server"""
+
+    url = urljoin(base_url, f"v2/vllm/instances/{instance_id}")
+    response = requests.delete(url, timeout=timeout)
+    if response.status_code != 200:
+        raise RuntimeError(f"launcher url '{url}' error code {response.status_code}.")
+
+    response_json = response.json()
+    status = response_json.get("status")
+    if status != "terminated":
+        raise RuntimeError(f"launcher url '{url}' status {status}.")
+    response_instance_id = response_json.get("instance_id")
+    if response_instance_id != instance_id:
+        raise RuntimeError(
+            f"launcher url '{url}' stopped '{response_instance_id}' instead of '{instance_id}'."
+        )
+
+
+def get_vllm_server_status(base_url: str, timeout: float) -> bool:
+    """stop vllm server"""
+
+    url = urljoin(base_url, "v2/vllm/instances")
+    response = requests.get(url, timeout=timeout)
+    if response.status_code != 200:
+        raise RuntimeError(f"launcher url '{url}' error code {response.status_code}.")
+
+    response_json = response.json()
+    total_instances = response_json.get("total_instances")
+    running_instances = response_json.get("running_instances")
+    instances = response_json.get("instances")
+
+    logger.info(
+        "launcher vllm server instances: total: %d running: %d",
+        total_instances,
+        running_instances,
+    )
+
+    for instance_status in instances:
+        status = instance_status.get("status")
+        instance_id = instance_status.get("instance_id")
+        logger.info("launcher vllm server instance: %s status: %s", instance_id, status)
+
+    return running_instances > 0
+
+
+def wait_for_launcher(base_url: str, timeout: float) -> None:
+    """wait for launcher to be ready"""
+    url = urljoin(base_url, "health")
+    start = time.perf_counter()
+    while True:
+        try:
+            response = requests.get(url, timeout=timeout)
+            if response.status_code == 200:
+                status = response.json().get("status").strip()
+                logger.info("launcher health status: %s", status)
+                if status.lower() == "ok":
+                    break
+            logger.info(
+                "launcher health check http code '%s' . Trying again ...",
+                response.status_code,
+            )
+        except requests.Timeout:
+            logger.info(
+                "launcher health check timed out after '%d' secs. Trying again ...",
+                timeout,
+            )
+        except Exception as e:
+            logger.info(
+                "launcher health check exception '%s'. Trying again ...", str(e)
+            )
+
+        time.sleep(0.5)
+        elapsed = time.perf_counter() - start
+        if elapsed > MAX_VLLM_WAIT:
+            raise RuntimeError(f"launcher server failed to start after {elapsed} secs.")
+
+
+def wait_for_vllm(base_url: str, timeout: float) -> None:
+    """wait for vllm to be ready"""
+
+    url = urljoin(base_url, "health")
+    start = time.perf_counter()
+    while True:
+        try:
+            response = requests.get(url, timeout=timeout)
+            if response.status_code == 200:
+                break
+            logger.info(
+                "vLLM health check http code '%s' . Trying again ...",
+                response.status_code,
+            )
+        except requests.Timeout:
+            logger.info(
+                "vLLM health check timed out after '%d' secs. Trying again ...", timeout
+            )
+        except Exception as e:
+            logger.info("vLLM health check exception '%s'. Trying again ...", str(e))
+
+        time.sleep(0.5)
+        elapsed = time.perf_counter() - start
+        if elapsed > MAX_VLLM_WAIT:
+            raise RuntimeError(f"vLLM server failed to start after {elapsed} secs.")
+
+
+def populate_benchmark(
+    name: str,
+    v1: client.CoreV1Api,
+    namespace: str,
+    pod_name: str,
+    container_name: str,
+    load_format: LoadFormat,
+    base_url: str,
+    benchmark_result: BenchmarkResult,
+    engine: PlatformEngineScenario,
+    requests_dir: str,
+    parse_gpus: bool,
+    write_log_per_process: bool,
+):
+    """populate benchmark result"""
+
+    engine.version = get_vllm_version(base_url, REQUEST_TIMEOUT)
+    benchmark_result.scenario.model.name = get_vllm_model(base_url, REQUEST_TIMEOUT)
+
+    metrics = BenchmarkMetrics()
+    metrics.name = name
+    benchmark_result.metrics.append(metrics)
+
+    pod_logs = get_pod_logs(v1, namespace, pod_name, container_name)
+    pod_logs_str = pod_logs.decode("utf-8")
+    if parse_gpus:
+        parse_gpu_logs(benchmark_result.scenario, pod_logs_str)
+
+    parse_logs(
+        benchmark_result.scenario,
+        engine,
+        metrics,
+        pod_logs_str,
+    )
+    if benchmark_result.scenario.sleep_mode:
+        logger.info("%s: request sleep/wake", name)
+        sleep(base_url, 1, REQUEST_TIMEOUT)
+        wake(base_url, REQUEST_TIMEOUT)
+        # get logs again with latest sleep/wake statistics
+        pod_logs = get_pod_logs(v1, namespace, pod_name, container_name)
+        pod_logs_str = pod_logs.decode("utf-8")
+        parse_logs(
+            benchmark_result.scenario,
+            engine,
+            metrics,
+            pod_logs_str,
+        )
+
+    # if failed to extract from logs
+    if benchmark_result.scenario.load_format == LoadFormat.UNKNOWN:
+        logger.info("%s: using load format from env. variable", name)
+        benchmark_result.scenario.load_format = load_format
+
+    # categorize logs
+    log_list = get_log_list(pod_logs_str)
+    log_list_per_process = get_log_list_per_process(
+        benchmark_result.scenario.model.name, log_list
+    )
+    metrics.root_category = categorize_logs(log_list_per_process)
+
+    output_dir = os.path.join(requests_dir, metrics.name.replace(" ", "_"))
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    # write vllm log file
+    logs_filepath = os.path.join(output_dir, "vllm.log")
+    with open(logs_filepath, "wb") as file:
+        file.write(pod_logs)
+        logger.info("%s: vllm log file saved to path: %s", metrics.name, logs_filepath)
+
+    if write_log_per_process:
+        # write vllm logs per process
+        for idx, (_, log_list_process) in enumerate(log_list_per_process.items()):
+            logs_filepath = os.path.join(output_dir, f"vllm_{idx}.log")
+            with open(logs_filepath, "w", encoding="utf-8") as file:
+                for log_line in log_list_process:
+                    file.write(f"{log_line.line_number:5d} {log_line.line}\n")
+                logger.info(
+                    "%s: vllm log file saved to path: %s", metrics.name, logs_filepath
+                )
+
+    # write log categories log file
+    log_categories_filepath = os.path.join(output_dir, "categories.log")
+    with open(log_categories_filepath, "w", encoding="utf-8", newline="") as file:
+        write_benchmark_categories_to_log(0, metrics.root_category, file)
+        logger.info(
+            "%s: benchmark categories log file saved to path: %s",
+            metrics.name,
+            log_categories_filepath,
+        )
+
+
 def main():
     """main entry point"""
 
     start_time = datetime.now().timestamp()
 
-    envs = get_env_variables(
-        [
-            "LLMDBENCH_HARNESS_NAMESPACE",
-            "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL",
-            "LLMDBENCH_CONTROL_WORK_DIR",
-            "LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT",
-        ]
-    )
-
-    namespace = envs[0]
-    endpoint_url = envs[1]
-    control_work_dir = envs[2]
-    load_format = LoadFormat.loadformat_from_value(envs[3])
-    requests_dir = control_work_dir
-    write_log_per_process = False
-
+    envs = get_env_variables(["LLMDBENCH_CONTROL_WORK_DIR"])
+    requests_dir = envs[0]
     Path(requests_dir).mkdir(parents=True, exist_ok=True)
-
     file_handler = logging.FileHandler(f"{requests_dir}/stdout.log")
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
@@ -1315,6 +1626,28 @@ def main():
 
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
+
+    envs = get_env_variables(
+        [
+            "LLMDBENCH_HARNESS_NAMESPACE",
+            "LLMDBENCH_HARNESS_STACK_ENDPOINT_URL",
+            "LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT",
+            "LLMDBENCH_VLLM_STANDALONE_LAUNCHER",
+            "LLMDBENCH_HARNESS_STACK_ENDPOINT_LAUNCHER_URL",
+            "LLMDBENCH_HARNESS_STACK_ENDPOINT_LAUNCHER_VLLM_URL",
+            "LLMDBENCH_VLLM_STANDALONE_LAUNCHER_VLLM_PORT",
+        ]
+    )
+
+    namespace = envs[0]
+    endpoint_url = envs[1]
+    load_format = LoadFormat.loadformat_from_value(envs[2])
+    launcher = envs[3].strip().lower() == "true"
+    endpoint_launcher_url = envs[4]
+    endpoint_launcher_vllm_url = envs[5]
+    launcher_vllm_port = envs[6]
+
+    write_log_per_process = False
 
     domain = urlparse(endpoint_url).netloc
     arr = domain.split(".")
@@ -1329,72 +1662,85 @@ def main():
     pod_info = None
     try:
         pod_info = get_vllm_pod_info(v1, namespace, arr[0])
-        logger.info(
-            "vLLM standalone pod name: %s image: %s",
-            pod_info["name"],
-            pod_info["image"],
-        )
+        for container in pod_info.containers:
+            logger.info(
+                "vLLM standalone pod name: %s container: %s image: %s",
+                pod_info.name,
+                container.name,
+                container.image,
+            )
+
     except Exception as e:
         logger.info(
             "Skipping harness because vLLM standalone pod not found: %s", str(e)
         )
         return
 
-    vllm_version = get_vllm_version(endpoint_url, REQUEST_TIMEOUT)
-    vllm_model = get_vllm_model(endpoint_url, REQUEST_TIMEOUT)
+    benchmark_result = BenchmarkResult()
+    for container in pod_info.containers:
+        engine = PlatformEngineScenario()
+        engine.name = container.image
+        benchmark_result.scenario.platform.engines.append(engine)
 
-    pod_logs = get_pod_logs(v1, namespace, pod_info["name"])
-    benchmark_result = parse_logs(pod_logs.decode("utf-8"))
-    if benchmark_result.scenario.sleep_mode:
-        logger.info("Request sleep/wake")
-        sleep(endpoint_url, 1, REQUEST_TIMEOUT)
-        wake(endpoint_url, REQUEST_TIMEOUT)
-        # get logs again with latest sleep/wake statistics
-        pod_logs = get_pod_logs(v1, namespace, pod_info["name"])
-        benchmark_result = parse_logs(pod_logs.decode("utf-8"))
-
-    benchmark_result.scenario.model.name = vllm_model
-    benchmark_result.scenario.platform.engine.name = pod_info["image"]
-    benchmark_result.scenario.platform.engine.version = vllm_version
-    # if failed to extract from logs
-    if benchmark_result.scenario.load_format == LoadFormat.UNKNOWN:
-        logger.info("Using load format from env. variable")
-        benchmark_result.scenario.load_format = load_format
-
-    # categorize logs
-    log_list = get_log_list(pod_logs.decode("utf-8"))
-    log_list_per_process = get_log_list_per_process(vllm_model, log_list)
-    benchmark_result.metrics.root_category = categorize_logs(log_list_per_process)
-
-    os.makedirs(requests_dir, exist_ok=True)
-
-    # write vllm log file
-    logs_filepath = os.path.join(requests_dir, "vllm.log")
-    with open(logs_filepath, "wb") as file:
-        file.write(pod_logs)
-        logger.info("vllm log file saved to path: %s", logs_filepath)
-
-    if write_log_per_process:
-        # write vllm logs per process
-        for idx, (_, log_list_process) in enumerate(log_list_per_process.items()):
-            logs_filepath = os.path.join(requests_dir, f"vllm-{idx}.log")
-            with open(logs_filepath, "w", encoding="utf-8") as file:
-                for log_line in log_list_process:
-                    file.write(f"{log_line.line_number:5d} {log_line.line}\n")
-                logger.info("vllm log file saved to path: %s", logs_filepath)
-
-    # write log categories log file
-    log_categories_filepath = os.path.join(requests_dir, "categories.log")
-    with open(log_categories_filepath, "w", encoding="utf-8", newline="") as file:
-        write_benchmark_categories_to_log(
-            0, benchmark_result.metrics.root_category, file
+    benchmark_name = "vLLM Standalone"
+    try:
+        populate_benchmark(
+            benchmark_name,
+            v1,
+            namespace,
+            pod_info.name,
+            pod_info.containers[0].name,
+            load_format,
+            endpoint_url,
+            benchmark_result,
+            benchmark_result.scenario.platform.engines[0],
+            requests_dir,
+            True,
+            write_log_per_process,
         )
-        logger.info(
-            "benchmark categories log file saved to path: %s", log_categories_filepath
-        )
+    except Exception:
+        logger.exception("error on benchmark %s", benchmark_name)
 
-    benchmark_result.metrics.time.start = start_time
-    benchmark_result.metrics.time.stop = datetime.now().timestamp()
+    # Benchmark launcher if requested
+    if launcher:
+        benchmark_name = "vLLM Launcher"
+        try:
+            logger.info("Benchmark launcher start...")
+            wait_for_launcher(endpoint_launcher_url, REQUEST_TIMEOUT)
+            if not get_vllm_server_status(endpoint_launcher_url, REQUEST_TIMEOUT):
+                # grab vLLM arguments from standalone
+                args = convert_vllm_args(
+                    benchmark_result.scenario.platform.engines[0].args,
+                    launcher_vllm_port,
+                )
+                # start vLLM server
+                _ = start_vllm_server(
+                    endpoint_launcher_url,
+                    args,
+                    REQUEST_TIMEOUT,
+                )
+                wait_for_vllm(endpoint_launcher_vllm_url, REQUEST_TIMEOUT)
+            populate_benchmark(
+                benchmark_name,
+                v1,
+                namespace,
+                pod_info.name,
+                pod_info.containers[1].name,
+                load_format,
+                endpoint_launcher_vllm_url,
+                benchmark_result,
+                benchmark_result.scenario.platform.engines[1],
+                requests_dir,
+                False,
+                write_log_per_process,
+            )
+        except Exception:
+            logger.exception("error on benchmark %s", benchmark_name)
+        finally:
+            logger.info("Benchmark launcher end")
+
+    benchmark_result.time.start = start_time
+    benchmark_result.time.stop = datetime.now().timestamp()
 
     # write results yaml file
     result_filepath = os.path.join(requests_dir, "result.yaml")

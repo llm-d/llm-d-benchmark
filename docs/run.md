@@ -173,3 +173,18 @@ The variable `LLMDBENCH_VLLM_STANDALONE_PREPROCESS` must be set to the above val
 dependencies, export additional environment variables and pre-serialize models when using the `tensorizer` load format.
 
 The preprocess scripts will run in the vLLM standalone pod before the vLLM server starts.
+
+An additional container can be added to `standalone` mode that starts the inference launcher from https://github.com/llm-d-incubation/llm-d-fast-model-actuation/blob/main/inference_server/launcher/launcher.py
+
+This launcher is contained in an image that also contains vLLM.
+
+The environment variables to set are:
+
+| Environment Variable                         | Example Values | |
+| -------------------------------------------- | -------------- | -------------------------------------------------------------------------------- |
+| LLMDBENCH_VLLM_STANDALONE_LAUNCHER           | `true, false`  | default is `false`, it will enable the launcher container |
+| LLMDBENCH_VLLM_STANDALONE_LAUNCHER_PORT      |  8001 etc | default is 8001, the launcher will listen on this port |
+| LLMDBENCH_VLLM_STANDALONE_LAUNCHER_VLLM_PORT |  8002 etc | default is 8002, the vLLM server started byt the launcher will wait on this port |
+
+When using the launcher, the `nop` harness will create a report with both the standalone vLLM server and the launched vLLM server metrics.
+The launcher image with vLLM will be used in both cases as well as all the env. variables to ensure they run under the same scenario.

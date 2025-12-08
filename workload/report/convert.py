@@ -15,13 +15,12 @@ from typing import Any
 import yaml
 
 import numpy as np
-from scipy import stats
 
 # TODO fix this during refactor after repository has been converted into
 # full Python.
 # Hack to ensure schema can be imported from harness pod or config explorer.
 try:
-    from schema import BenchmarkReport, Units, WorkloadGenerator
+    from schema import BenchmarkReport, Units, WorkloadGenerator, HostType
 except ImportError:
     from config_explorer.schema import BenchmarkReport, Units, WorkloadGenerator
 
@@ -981,8 +980,6 @@ def import_nop(results_file: str) -> BenchmarkReport:
 
         return new_cat_list
 
-    categories = _import_categories(results["metrics"]["categories"])
-
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReport
     br_dict = _get_llmd_benchmark_envars()
@@ -996,7 +993,11 @@ def import_nop(results_file: str) -> BenchmarkReport:
                 "name": WorkloadGenerator.NOP,
             },
             "platform": {
-                "engine": [results["scenario"]["platform"]["engine"]]
+                "engine": results["scenario"]["platform"]["engines"]
+            },
+            "host": {
+                "accelerator": [],
+                "type" : [],
             },
             "metadata": {
                 "load_format": results["scenario"]["load_format"],
@@ -1005,68 +1006,12 @@ def import_nop(results_file: str) -> BenchmarkReport:
             },
         },
         "metrics": {
-            "metadata": {
-                "load": {
-                    "time": {
-                        "units": Units.S,
-                        "value": results["metrics"]["load"]["time"],
-                    },
-                    "size": {
-                        "units": Units.GIB,
-                        "value": results["metrics"]["load"]["size"],
-                    },
-                    "transfer_rate": {
-                        "units": Units.GIB_PER_S,
-                        "value": results["metrics"]["load"]["transfer_rate"],
-                    },
-                },
-                "dynamo_bytecode_transform": {
-                    "units": Units.S,
-                    "value": results["metrics"]["dynamo_bytecode_transform"],
-                },
-                "torch_compile": {
-                    "units": Units.S,
-                    "value": results["metrics"]["torch_compile"],
-                },
-                "memory_profiling": {
-                    "initial_free": {
-                        "units": Units.GIB,
-                        "value": results["metrics"]["memory_profiling"]["initial_free"],
-                    },
-                    "after_free": {
-                        "units": Units.GIB,
-                        "value": results["metrics"]["memory_profiling"]["after_free"],
-                    },
-                    "time": {
-                        "units": Units.S,
-                        "value": results["metrics"]["memory_profiling"]["time"],
-                    },
-                },
-                "sleep": {
-                    "time": {
-                        "units": Units.S,
-                        "value": results["metrics"]["sleep"]["time"],
-                    },
-                    "gpu_freed": {
-                        "units": Units.GIB,
-                        "value": results["metrics"]["sleep"]["gpu_freed"],
-                    },
-                    "gpu_in_use": {
-                        "units": Units.GIB,
-                        "value": results["metrics"]["sleep"]["gpu_in_use"],
-                    },
-                },
-                "wake": {
-                    "units": Units.S,
-                    "value": results["metrics"]["wake"],
-                },
-                "categories": categories
-            },
             "time": {
-                "duration": results["metrics"]["time"]["duration"],
-                "start": results["metrics"]["time"]["start"],
-                "stop": results["metrics"]["time"]["stop"],
+                "duration": results["time"]["duration"],
+                "start": results["time"]["start"],
+                "stop": results["time"]["stop"],
             },
+            "metadata": [],
             "requests": {
                 "total": 0,
                 "failures": 0,
@@ -1144,13 +1089,83 @@ def import_nop(results_file: str) -> BenchmarkReport:
         },
     }
 
-    for name in ["load_cached_compiled_graph", "compile_graph"]:
-        value = results["metrics"].get(name)
-        if value is not None:
-            results_dict["metrics"]["metadata"][name] = {
-                "units": Units.S,
-                "value": value,
+    for _ in range(len(results["scenario"]["platform"]["engines"])):
+        results_dict["scenario"]["host"]["accelerator"].append(
+            {
+                "count": 1,
+                "model": "auto",
             }
+        )
+        results_dict["scenario"]["host"]["type"].append(HostType.REPLICA)
+
+    for metrics in results["metrics"]:
+        categories = _import_categories(metrics["categories"])
+        metadata_dict =  {
+            "name": metrics["name"],
+            "load": {
+                "time": {
+                    "units": Units.S,
+                    "value": metrics["load"]["time"],
+                },
+                "size": {
+                    "units": Units.GIB,
+                    "value": metrics["load"]["size"],
+                },
+                "transfer_rate": {
+                    "units": Units.GIB_PER_S,
+                    "value": metrics["load"]["transfer_rate"],
+                },
+            },
+            "dynamo_bytecode_transform": {
+                "units": Units.S,
+                "value": metrics["dynamo_bytecode_transform"],
+            },
+            "torch_compile": {
+                "units": Units.S,
+                "value": metrics["torch_compile"],
+            },
+            "memory_profiling": {
+                "initial_free": {
+                    "units": Units.GIB,
+                    "value": metrics["memory_profiling"]["initial_free"],
+                },
+                "after_free": {
+                    "units": Units.GIB,
+                    "value": metrics["memory_profiling"]["after_free"],
+                },
+                "time": {
+                    "units": Units.S,
+                    "value": metrics["memory_profiling"]["time"],
+                },
+            },
+            "sleep": {
+                "time": {
+                    "units": Units.S,
+                    "value": metrics["sleep"]["time"],
+                },
+                "gpu_freed": {
+                    "units": Units.GIB,
+                    "value": metrics["sleep"]["gpu_freed"],
+                },
+                "gpu_in_use": {
+                    "units": Units.GIB,
+                    "value": metrics["sleep"]["gpu_in_use"],
+                },
+            },
+            "wake": {
+                "units": Units.S,
+                "value": metrics["wake"],
+            },
+            "categories": categories
+        }
+        for name in ["load_cached_compiled_graph", "compile_graph"]:
+            value = metrics.get(name)
+            if value is not None:
+                metadata_dict[name] = {
+                    "units": Units.S,
+                    "value": value,
+                }
+        results_dict["metrics"]["metadata"].append(metadata_dict)
 
     update_dict(br_dict, results_dict)
 

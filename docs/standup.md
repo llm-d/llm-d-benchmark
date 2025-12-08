@@ -82,7 +82,7 @@ The scenario parameters can be roughly categorized in four groups:
 
 | Variable                                                | Meaning                                    | Note                                           |
 | ------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------- |
-| LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG     |                                            |                                                |
+| LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG     |                                            |                                                |
 | LLMDBENCH_VLLM_STANDALONE_PVC_MOUNTPOINT                |                                            |                                                |
 | LLMDBENCH_VLLM_STANDALONE_PREPROCESS                    |                                            | e.g., `source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py`                                              |
 | LLMDBENCH_VLLM_STANDALONE_ROUTE                         |                                            |                                                |
