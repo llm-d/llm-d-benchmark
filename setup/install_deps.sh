@@ -60,6 +60,54 @@ else
     exit 1
 fi
 
+# Determine Python/pip commands and validate setup
+if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+    PYTHON_CMD="python"
+    PIP_CMD="python -m pip"
+    echo "Virtual environment detected: $VIRTUAL_ENV"
+elif [[ "$allow_system_python" == "true" ]]; then
+    PYTHON_CMD="python3"
+    PIP_CMD="python3 -m pip"
+    echo "Using system python3 (forced with -y flag)"
+else
+    echo "WARNING: No virtual environment detected!"
+    echo "Installing packages system-wide can cause conflicts."
+    echo ""
+    read -p "Continue with system Python anyway? [y/N]: " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        PYTHON_CMD="python3"
+        PIP_CMD="python3 -m pip"
+    else
+        echo "Installation aborted. Please set up a virtual environment first."
+        exit 1
+    fi
+fi
+
+# Validate Python version and pip
+if ! command -v ${PYTHON_CMD} &>/dev/null; then
+    echo "ERROR: ${PYTHON_CMD} not found"
+    exit 1
+fi
+
+ver=$(${PYTHON_CMD} -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+major=$(echo ${ver} | cut -d. -f1)
+minor=$(echo ${ver} | cut -d. -f2)
+if ! (( major > 3 || (major == 3 && minor >= 11) )); then
+    echo "ERROR: Python 3.11+ required, but ${PYTHON_CMD} is version ${ver}"
+    exit 1
+fi
+
+if [[ -z "${VIRTUAL_ENV:-}" ]] && ! $PYTHON_CMD -m pip --version &> /dev/null; then
+    echo "Installing pip..."
+    if [ "$target_os" = "linux" ]; then
+        $PKG_MGR python3-pip
+    else
+        echo "ERROR: pip not found. Please install it manually."
+        exit 1
+    fi
+fi
+
 function install_yq_linux {
     set -euo pipefail
     local version=v4.45.4
