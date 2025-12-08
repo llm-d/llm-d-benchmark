@@ -1355,11 +1355,11 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
 
         accelerator_nr = ev[f"vllm_{identifier}_accelerator_nr"]
 
-        data_parallelism = ev[f"vllm_{identifier}_data_parallelism"]
+        data_local_parallelism = ev[f"vllm_{identifier}_data_local_parallelism"]
         tensor_parallelism = ev[f"vllm_{identifier}_tensor_parallelism"]
 
         accelerator_count = get_accelerator_nr(
-            accelerator_nr, tensor_parallelism, data_parallelism
+            accelerator_nr, tensor_parallelism, data_local_parallelism
         )
 
     cpu_mem = ev[f"vllm_{identifier}_cpu_mem"]
@@ -1465,6 +1465,10 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
     acellerator_resource = ev[f"vllm_modelservice_{identifier}_accelerator_resource"]
     accelerator_string=f"""accelerator:
   type: {accelerator_type}
+    """
+    # rely on hardcoded list (in modelservice) for these resources
+    if accelerator_type not in ['nvidia', 'intel-i915', 'intel-xe', 'intel-gaudi', 'amd', 'google']:
+        accelerator_string = f"""{accelerator_string}
   resources:
     {accelerator_type}: "{acellerator_resource}"
     """
