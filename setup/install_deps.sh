@@ -260,11 +260,11 @@ for dep in $python_deps; do
     grep -q "$(echo $dep) is already installed." $dependencies_checked_file
     if [[ $? -ne 0 ]]; then
         importdep="import $(echo $dep | cut -d '=' -f 1 | tr '[:upper:]' '[:lower:]' | sed -e 's/-ng//g' -e 's/gitpython/git/g' -e 's/pyyaml/yaml/g' -e 's/-/_/g')"
-        if pip3 show "${pkg_name}" &>/dev/null; then
+        if $PIP_CMD show "${pkg_name}" &>/dev/null; then
             # check if a version was specified
             if [[ "${dep}" == *"=="* ]]; then
                 required_version=$(echo "${dep}" | cut -d= -f3)
-                installed_version=$(pip3 show "${pkg_name}" | awk '/Version:/{print $2}')
+                installed_version=$($PIP_CMD show "${pkg_name}" | awk '/Version:/{print $2}')
                 if [[ "${installed_version}" == "${required_version}" ]]; then
                     echo "${pkg_name}==${installed_version} is already installed." >> $dependencies_checked_file
                     continue
@@ -277,8 +277,8 @@ for dep in $python_deps; do
             fi
         fi
 
-        echo "Installing ${dep} (python3 -c \"$importdep\")..."
-        if ! pip3 install "${dep}"; then
+        echo "Installing ${dep} ($PYTHON_CMD -c \"$importdep\")..."
+        if ! $PIP_CMD install "${dep}"; then
             echo "ERROR: Failed to install Python package ${dep}!"
             if [[ $ID == "ubuntu" ]]; then
                 echo "###### Try to install everything on python virtual environment (e.g. \"python3 -m venv llm-d-benchmark && source llm-d-benchmark/bin/activate\")"
@@ -290,9 +290,9 @@ done
 
 grep -q "$(echo config_explorer) is already installed." $dependencies_checked_file &> /dev/null
 if [[ $? -ne 0 ]]; then
-    if ! pip3 show "config_explorer" &>/dev/null; then
+    if ! $PIP_CMD show "config_explorer" &>/dev/null; then
         pushd $LLMDBENCH_INSTALLDEPS_DIR/../config_explorer/ &> /dev/null
-        pip install .
+        $PIP_CMD install .
         if [[ $? -ne 0 ]]; then
             echo "ERROR: Failed to install Python package config_explorer!"
             exit 1
