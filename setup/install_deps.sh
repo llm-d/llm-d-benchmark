@@ -20,10 +20,23 @@ fi
 
 dependencies_checked_file=~/.llmdbench_dependencies_checked
 
-if [[ $1 == "noreset" ]]; then
-  true
-else
-  rm -f $dependencies_checked_file
+# Parse command line arguments
+allow_system_python=false
+reset_cache=true
+
+for arg in "$@"; do
+    case $arg in
+        -y)
+            allow_system_python=true
+            ;;
+        noreset)
+            reset_cache=false
+            ;;
+    esac
+done
+
+if [[ "$reset_cache" == "true" ]]; then
+    rm -f $dependencies_checked_file
 fi
 
 # common deps
