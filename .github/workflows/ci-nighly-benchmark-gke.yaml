@@ -87,7 +87,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt install -y libpython3.11-stdlib python3.11-dev
-          ./setup/install_deps.sh
+          ./setup/install_deps.sh -y
         shell: bash
 
       - name: Cleanup target cloud (standalone)

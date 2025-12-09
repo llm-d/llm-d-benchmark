@@ -41,7 +41,7 @@ jobs:
       - name: Run install_deps
         run: |
           sudo apt-get update
-          ./setup/install_deps.sh
+          ./setup/install_deps.sh -y
         shell: bash
 
       - name: Install config explorer dependencies

@@ -20,10 +20,23 @@ fi
 
 dependencies_checked_file=~/.llmdbench_dependencies_checked
 
-if [[ $1 == "noreset" ]]; then
-  true
-else
-  rm -f $dependencies_checked_file
+# Parse command line arguments
+allow_system_python=false
+reset_cache=true
+
+for arg in "$@"; do
+    case $arg in
+        -y)
+            allow_system_python=true
+            ;;
+        noreset)
+            reset_cache=false
+            ;;
+    esac
+done
+
+if [[ "$reset_cache" == "true" ]]; then
+    rm -f $dependencies_checked_file
 fi
 
 # common deps
@@ -45,6 +58,54 @@ elif command -v dnf &> /dev/null; then
 else
     echo "No supported package manager found (apt, apt-get, brew, yum, dnf)"
     exit 1
+fi
+
+# Determine Python/pip commands and validate setup
+if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+    PYTHON_CMD="python"
+    PIP_CMD="python -m pip"
+    echo "Virtual environment detected: $VIRTUAL_ENV"
+elif [[ "$allow_system_python" == "true" ]]; then
+    PYTHON_CMD="python3"
+    PIP_CMD="python3 -m pip"
+    echo "Using system python3 (forced with -y flag)"
+else
+    echo "WARNING: No virtual environment detected!"
+    echo "Installing packages system-wide can cause conflicts."
+    echo ""
+    read -p "Continue with system Python anyway? [y/N]: " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        PYTHON_CMD="python3"
+        PIP_CMD="python3 -m pip"
+    else
+        echo "Installation aborted. Please set up a virtual environment first."
+        exit 1
+    fi
+fi
+
+# Validate Python version and pip
+if ! command -v ${PYTHON_CMD} &>/dev/null; then
+    echo "ERROR: ${PYTHON_CMD} not found"
+    exit 1
+fi
+
+ver=$(${PYTHON_CMD} -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+major=$(echo ${ver} | cut -d. -f1)
+minor=$(echo ${ver} | cut -d. -f2)
+if ! (( major > 3 || (major == 3 && minor >= 11) )); then
+    echo "ERROR: Python 3.11+ required, but ${PYTHON_CMD} is version ${ver}"
+    exit 1
+fi
+
+if [[ -z "${VIRTUAL_ENV:-}" ]] && ! $PYTHON_CMD -m pip --version &> /dev/null; then
+    echo "Installing pip..."
+    if [ "$target_os" = "linux" ]; then
+        $PKG_MGR python3-pip
+    else
+        echo "ERROR: pip not found. Please install it manually."
+        exit 1
+    fi
 fi
 
 function install_yq_linux {
@@ -199,11 +260,11 @@ for dep in $python_deps; do
     grep -q "$(echo $dep) is already installed." $dependencies_checked_file
     if [[ $? -ne 0 ]]; then
         importdep="import $(echo $dep | cut -d '=' -f 1 | tr '[:upper:]' '[:lower:]' | sed -e 's/-ng//g' -e 's/gitpython/git/g' -e 's/pyyaml/yaml/g' -e 's/-/_/g')"
-        if pip3 show "${pkg_name}" &>/dev/null; then
+        if $PIP_CMD show "${pkg_name}" &>/dev/null; then
             # check if a version was specified
             if [[ "${dep}" == *"=="* ]]; then
                 required_version=$(echo "${dep}" | cut -d= -f3)
-                installed_version=$(pip3 show "${pkg_name}" | awk '/Version:/{print $2}')
+                installed_version=$($PIP_CMD show "${pkg_name}" | awk '/Version:/{print $2}')
                 if [[ "${installed_version}" == "${required_version}" ]]; then
                     echo "${pkg_name}==${installed_version} is already installed." >> $dependencies_checked_file
                     continue
@@ -216,8 +277,8 @@ for dep in $python_deps; do
             fi
         fi
 
-        echo "Installing ${dep} (python3 -c \"$importdep\")..."
-        if ! pip3 install "${dep}"; then
+        echo "Installing ${dep} ($PYTHON_CMD -c \"$importdep\")..."
+        if ! $PIP_CMD install "${dep}"; then
             echo "ERROR: Failed to install Python package ${dep}!"
             if [[ $ID == "ubuntu" ]]; then
                 echo "###### Try to install everything on python virtual environment (e.g. \"python3 -m venv llm-d-benchmark && source llm-d-benchmark/bin/activate\")"
@@ -229,9 +290,9 @@ done
 
 grep -q "$(echo config_explorer) is already installed." $dependencies_checked_file &> /dev/null
 if [[ $? -ne 0 ]]; then
-    if ! pip3 show "config_explorer" &>/dev/null; then
+    if ! $PIP_CMD show "config_explorer" &>/dev/null; then
         pushd $LLMDBENCH_INSTALLDEPS_DIR/../config_explorer/ &> /dev/null
-        pip install .
+        $PIP_CMD install .
         if [[ $? -ne 0 ]]; then
             echo "ERROR: Failed to install Python package config_explorer!"
             exit 1
