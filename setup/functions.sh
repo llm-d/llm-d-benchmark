@@ -422,7 +422,7 @@ export -f get_harness_list
 
 function add_env_vars_to_pod {
     local varpattern=$1
-    varlist=$(env | grep -E "$varpattern" | cut -d "=" -f 1 | sort)
+    varlist=$(env | grep -E "$varpattern" | grep -Ev "LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD|LLMDBENCH_HARNESS_STACK_ENDPOINT_INFO" | cut -d "=" -f 1 | sort | uniq)
     echo "#    "
     for envvar in $varlist; do
       envvalue=${!envvar}
@@ -432,6 +432,10 @@ function add_env_vars_to_pod {
       fi
       if [[ -f $envvalue ]]; then
         envvalue=$(cat $envvalue | base64 $LLMDBENCH_BASE64_ARGS)
+      fi
+      is_formatted=$(printf '%s' "$envvalue" | grep "{\\\\s}" || true)
+      if [[ ! -z $is_formatted ]]; then
+        envvalue=$(printf '%s' "$envvalue" | base64 $LLMDBENCH_BASE64_ARGS)
       fi
       if [[ ! -z ${envvalue} ]]; then
         echo "    - name: ${envvar}"
@@ -560,26 +564,10 @@ spec:
     env:
     - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
       value: "1"
-    - name: LLMDBENCH_RUN_DATASET_URL
-      value: "$LLMDBENCH_RUN_DATASET_URL"
     - name: LLMDBENCH_RUN_WORKSPACE_DIR
       value: "$LLMDBENCH_RUN_WORKSPACE_DIR"
-    - name: LLMDBENCH_HARNESS_NAME
-      value: "${LLMDBENCH_HARNESS_NAME}"
     - name: LLMDBENCH_CONTROL_WORK_DIR
       value: "${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}"
-    - name: LLMDBENCH_HARNESS_NAMESPACE
-      value: "${LLMDBENCH_HARNESS_NAMESPACE}"
-    - name: LLMDBENCH_HARNESS_STACK_TYPE
-      value: "${LLMDBENCH_HARNESS_STACK_TYPE}"
-    - name: LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
-      value: "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL}"
-    - name: LLMDBENCH_HARNESS_STACK_NAME
-      value: "${LLMDBENCH_HARNESS_SANITIZED_STACK_NAME}"
-    - name: LLMDBENCH_HARNESS_LOAD_PARALLELISM
-      value: "${LLMDBENCH_HARNESS_LOAD_PARALLELISM}"
-    - name: LLMDBENCH_DEPLOY_METHODS
-      value: "${LLMDBENCH_DEPLOY_METHODS}"
     - name: LLMDBENCH_MAGIC_ENVAR
       value: "harness_pod"
     $(add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD)
@@ -643,7 +631,6 @@ function get_model_name_from_pod {
     # --- END: Corrected Port Logic ---
 
     local url=$url/v1/models
-
     local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2 0)
     is_jq=$(echo $response | jq -r . || true)
 

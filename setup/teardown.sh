@@ -187,14 +187,14 @@ if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
     fi
 
     allres=$(${LLMDBENCH_CONTROL_KCMD} --namespace $tgtns get ${LLMDBENCH_CONTROL_RESOURCE_LIST} -o name)
-    tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt|secret/${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}" || true)
+    tgtres=$(echo "$allres" | grep -Ev "configmap/kube-root-ca.crt|configmap/odh-trusted-ca-bundle|configmap/openshift-service-ca.crt,secret/${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}" || true)
 
     if [[ ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 1 && ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE} -eq 0 ]]; then
       tgtres=$(echo "$tgtres" | grep -E "standalone|download-model|testinference|lmbenchmark" || true)
     fi
 
     if [[ ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 0 && ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE} -eq 1 ]]; then
-      tgtres=$(echo "$tgtres" | grep -E "p2p|inference-gateway|inferencepool|inferencepools.inference.networking.x-k8s.io|llm-route|base-model|endpoint-picker|inference-route|inference-gateway-secret|inference-gateway-params|inference-gateway|lmbenchmark" || true)
+      tgtres=$(echo "$tgtres" | grep -E "llm-d-benchmark-preprocesses|p2p|inference-gateway|inferencepool|inferencepools.inference.networking.x-k8s.io|llm-route|base-model|endpoint-picker|inference-route|inference-gateway-secret|inference-gateway-params|inference-gateway|lmbenchmark" || true)
     fi
 
     for delres in $tgtres; do

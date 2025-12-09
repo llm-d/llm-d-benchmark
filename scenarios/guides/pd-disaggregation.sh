@@ -37,11 +37,6 @@ export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true # (default is "false")
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-A100-SXM4-80GB        # OpenShift
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu                                      # ANY GPU (useful for Minikube)
 
-#             Uncomment to request specific network devices
-#####export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/roce_gdr
-#######export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib
-#export LLMDBENCH_VLLM_COMMON_NETWORK_NR=4
-
 #             Uncomment to use hostNetwork (only ONE PODE PER NODE)
 #export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG=$(mktemp)
 #cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG}
@@ -53,7 +48,6 @@ export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true # (default is "false")
 export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
 export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=128
 
-#             Uncomment (###) to select additional network devices (e.g., when multi-nic is enabled)
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 - name: UCX_TLS
@@ -78,13 +72,13 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=2
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=32
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=128Gi
 #export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM)
-#              Uncomment (###) the following line to enable multi-nic
+#              Uncomment (######) the following line to enable multi-nic
 ######export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:multi-nic-compute
-#              Uncomment (#####) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
+#              Uncomment (######) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
 ######export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/roce_gdr
 ######export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR=1
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND=custom
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS="python3 /setup/preprocess/set_nixl_environment.py; source /home/vllm/nixl.sh"
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS
 REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS; \
@@ -128,14 +122,14 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=32
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=128Gi
 #export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM)
-#              Uncomment (###) the following line to enable multi-nic
+#              Uncomment (######) the following line to enable multi-nic
 ######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:multi-nic-compute
-#              Uncomment (#####) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
+#              Uncomment (######) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
 ######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
 ######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=1
 
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS="python3 /setup/preprocess/set_nixl_environment.py; source /home/vllm/nixl.sh"
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
 REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS; \

@@ -333,6 +333,8 @@ def environment_variable_to_dict(ev: dict = {}):
         "vllm_modelservice_gateway_class_name", ""
     ).lower()
 
+    ev["current_step_nr"] = ev["current_step"].split('_')[0]
+
 def kubectl_apply(
     api: pykube.HTTPClient,
     manifest_data: Union[list, dict],
@@ -593,10 +595,10 @@ def launch_download_job(
                 #
                 hf_cmds.append('hf auth login --token "${HF_TOKEN}"')
                 hf_token_env = f"""- name: HF_TOKEN
-                valueFrom:
+              valueFrom:
                 secretKeyRef:
-                name: {ev["vllm_common_hf_token_name"]}
-                key: HF_TOKEN"""
+                  name: {ev["vllm_common_hf_token_name"]}
+                  key: HF_TOKEN"""
             else:
                 #
                 # In theory - since we already check this in `env.sh` we shoudn't need to error
@@ -657,6 +659,10 @@ spec:
           persistentVolumeClaim:
             claimName: {ev["vllm_common_pvc_name"]}
 """
+
+    with open(f'{ev["control_work_dir"]}/setup/yamls/{ev["current_step_nr"]}_download_job.yaml', "w") as f:
+        f.write(job_yaml)
+
     announce(
         f"--> Deleting previous job '{job_name}' (if it exists) to prevent conflicts..."
     )
@@ -1139,9 +1145,7 @@ def add_annotations(ev: dict, varname: str) -> str:
     Equivalent to the bash add_annotations function.
     """
     varname = varname.replace("LLMDBENCH_",'',1).lower()
-
-    annotations = ev[varname]
-
+    annotations = ev[varname].replace("auto",'')
     if not annotations:
         return ""
 
@@ -1286,10 +1290,15 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
                 # Handle array format with potential complex arguments
                 processed_args = processed_args.replace("[", "").replace("]", "")
 
-                # Split on ____  to preserve arguments with spaces/quotes
-                args_list = [
-                    arg.strip() for arg in processed_args.split("____") if arg.strip()
-                ]
+                args_list = []
+                for arg in processed_args.split("--") :
+                    if arg :
+                        if arg.count(' ') :
+                            args_list.append(f"--{arg.split(' ')[0]}")
+                            args_list.append(f"{arg.split(' ')[1]}")
+                        else :
+                            args_list.append(f"--{arg}")
+
                 # Create proper YAML list items with escaped quotes
                 yaml_list = []
                 for arg in args_list:
@@ -1534,6 +1543,7 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
             clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_VLLM_", "VLLM_")
             clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_DECODE_VLLM_", "VLLM_")
             clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_", "")
+            clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
             env_value = os.environ.get(envvar, "")
 
             # Process REPLACE_ENV variables in the value (equivalent to bash sed processing)
