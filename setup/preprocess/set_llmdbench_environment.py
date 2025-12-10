@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# Copyright 2024-2025 IBM Corporation | IBM Confidential
 
 import subprocess
 import ipaddress
