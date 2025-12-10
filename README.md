@@ -6,6 +6,16 @@ This repository provides an automated workflow for benchmarking LLM inference us
 
 Provide a single source of automation for repeatable and reproducible experiments and performance evaluation on `llm-d`.
 
+
+## Prerequisites 
+Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-d?tab=readme-ov-file#pre-requisites) for the most up-to-date requirements.
+For the client setup, the provided `install-deps.sh` (described in the next section) will download and install the necessary tools.
+
+### Administrative Requirements
+Deploying the llm-d stack requires **cluster-level admin** privileges, as you will be configuring cluster-level resources.
+However, the scripts can be executed by **namespace-level admin** users, as long as the [Kubernetes infrastructure components](https://github.com/llm-d-incubation/llm-d-infra) are configured and the **target namespace already exists**.
+
+
 ### 📦 Repository Setup
 
 ```
@@ -13,6 +23,7 @@ git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 ./setup/install_deps.sh
 ```
+
 
 ## Quickstart
 
