@@ -115,20 +115,18 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=32
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=512Gi
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_RESOURCE=nvidia
 #export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM)
-#              Uncomment (###) the following line to enable multi-nic
-######export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
-#              Uncomment (#####) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
+#              Uncomment (######) the following line to enable multi-nic
+######export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:multi-nic-compute
+#              Uncomment (######) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
 ######export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/roce_gdr
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/ib
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR=1
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EPHEMERAL_STORAGE_NR=1Ti
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_INFERENCE_PORT=8000
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND=custom
-######export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS="python3 /setup/preprocess/set_nixl_environment.py; source /home/vllm/nixl.sh; export START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE_LOCAL ))"
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS
-find /dev/shm -type f -delete; \
-START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE_LOCAL )); \
 exec vllm serve \
   REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
   --port 8000 \
@@ -227,22 +225,21 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=32
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=512Gi
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_RESOURCE=nvidia
 #export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM)
-#              Uncomment (###) the following line to enable multi-nic
-######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=deployed-by:$LLMDBENCH_CONTROL_USERNAME,modelservice:llm-d-benchmark,k8s.v1.cni.cncf.io/networks:multi-nic-compute
-#              Uncomment (#####) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
+#              Uncomment (######) the following line to enable multi-nic
+######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:multi-nic-compute
+#              Uncomment (######) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
 ######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/ib
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=1
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EPHEMERAL_STORAGE_NR=1Ti
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_INFERENCE_PORT=8200
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
-######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS="python3 /setup/preprocess/set_nixl_environment.py; source /home/vllm/nixl.sh; export START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE_LOCAL ))"
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
 # Clear /dev/shm on start to prevent running out of space when crashes occur
 # https://github.com/llm-d/llm-d/issues/352
 find /dev/shm -type f -delete; \
-START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE_LOCAL )); \
 exec vllm serve \
   REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
   --port 8200 \
