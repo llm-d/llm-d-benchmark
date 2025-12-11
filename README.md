@@ -7,8 +7,8 @@ This repository provides an automated workflow for benchmarking LLM inference us
 Provide a single source of automation for repeatable and reproducible experiments and performance evaluation on `llm-d`.
 
 
-## Prerequisites 
-Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-d?tab=readme-ov-file#pre-requisites) for the most up-to-date requirements.
+## Prerequisites
+Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-d/blob/main/README.md#pre-requisites) for the most up-to-date requirements.
 For the client setup, the provided `install-deps.sh` will download and install the necessary tools.
 
 ### Administrative Requirements

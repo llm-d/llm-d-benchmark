@@ -393,7 +393,7 @@ spec:
       name: infra-{release}-inference-gateway
   rules:
     - backendRefs:
-      - group: inference.networking.x-k8s.io
+      - group: inference.networking.k8s.io
         kind: InferencePool
         name: {model_id_label}-gaie
         port: {service_port}
@@ -416,7 +416,7 @@ spec:
     if single_model:
       manifest = f"""{manifest}
     - backendRefs:
-      - group: inference.networking.x-k8s.io
+      - group: inference.networking.k8s.io
         kind: InferencePool
         name: {model_id_label}-gaie
         port: {service_port}
