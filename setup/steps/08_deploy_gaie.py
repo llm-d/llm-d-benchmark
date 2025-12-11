@@ -182,7 +182,7 @@ provider:
             )
             if ecode != 0:
                 announce(
-                    f"ERROR: Failed installing helm chart \"gaie-{ev['vllm_modelservice_release']}\" via helmfile with \"{helmfile_cmd}\" (exit code: {result})"
+                    f"ERROR: Failed installing helm chart \"gaie-{ev['vllm_modelservice_release']}\" via helmfile with \"{helmfile_cmd}\" (exit code: {ecode})"
                 )
                 exit(ecode)
 
@@ -208,7 +208,7 @@ provider:
             )
             if ecode != 0:
                 announce(
-                    f"ERROR: Failed to get a snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\" with \"{kubectl_cmd}\" (exit code: {result})"
+                    f"ERROR: Failed to get a snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\" with \"{kubectl_cmd}\" (exit code: {ecode})"
                 )
                 exit(ecode)
 
