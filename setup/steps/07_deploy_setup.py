@@ -74,17 +74,17 @@ def auto_detect_version(ev, chart, version_key, repo_key) -> int:
                         announce(f"📦 Auto-detected chart version: {version}")
                         return 0
                     else:
-                        announce("❌ Unable to parse version from helm search output")
+                        announce("ERROR: Unable to parse version from helm search output")
                         return 1
                 else:
-                    announce("❌ No charts found in helm search output")
+                    announce("ERROR: No charts found in helm search output")
                     return 1
             else:
-                announce("❌ Unable to find a version for model service helm chart!")
+                announce("ERROR: Unable to find a version for model service helm chart!")
                 return 1
 
         except Exception as e:
-            announce(f"❌ Error auto-detecting {chart} chart version: {e}")
+            announce(f"ERROR: Error auto-detecting {chart} chart version: {e}")
             return 1
     return 0
 

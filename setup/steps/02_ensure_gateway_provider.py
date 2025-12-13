@@ -113,7 +113,7 @@ def get_latest_chart_version(
 
         if result.returncode != 0:
             if verbose:
-                announce(f"❌ Helm search failed: {result.stderr}")
+                announce(f"ERROR: Helm search failed: {result.stderr}")
             return ""
 
         # Parse output to get version (equivalent to: tail -1 | awk '{print $2}')
@@ -269,7 +269,7 @@ releases:
         install_cmd = f"helmfile apply -f {helmfile_path}"
         ecode = llmdbench_execute_cmd(actual_cmd=install_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
         if ecode != 0:
-            announce(f"ERROR: Failed while running \"{install_cmd}\" (exit code: {result})")
+            announce(f"ERROR: Failed while running \"{install_cmd}\" (exit code: {ecode})")
         announce(f"✅ kgateway ({ev['gateway_provider_kgateway_chart_version']}) installed")
     else :
         announce(f"✅ kgateway (unknown version) already installed (*.kgateway.dev CRDs found)")
@@ -299,9 +299,12 @@ def install_istio(
         helmfile_path = helm_base_dir / f'helmfile-{ev["current_step"]}.yaml'
         with open(helmfile_path, 'w') as f:
             f.write(f"""
+repositories:
+  - name: istio
+    url: {ev["gateway_provider_istio_helm_repository_url"]}
 releases:
   - name: istio-base
-    chart: {ev["gateway_provider_istio_helm_repository_url"]}/base
+    chart: istio/base
     version: {ev["gateway_provider_istio_chart_version"]}
     namespace: istio-system
     installed: true
@@ -310,7 +313,7 @@ releases:
       kind: gateway-crds
 
   - name: istiod
-    chart: {ev["gateway_provider_istio_helm_repository_url"]}/istiod
+    chart: istio/istiod
     version: {ev["gateway_provider_istio_chart_version"]}
     namespace: istio-system
     installed: true
@@ -320,12 +323,12 @@ releases:
       - meshConfig:
           defaultConfig:
             proxyMetadata:
-              SUPPORT_GATEWAY_API_INFERENCE_EXTENSION: true
+              ENABLE_GATEWAY_API_INFERENCE_EXTENSION: true
         pilot:
           env:
-            SUPPORT_GATEWAY_API_INFERENCE_EXTENSION: true
+            ENABLE_GATEWAY_API_INFERENCE_EXTENSION: true
         tag: {ev["gateway_provider_istio_chart_version"]}
-        hub: "gcr.io/istio-testing"
+        hub: "docker.io/istio"
     labels:
       type: gateway-provider
       kind: gateway-control-plane
@@ -342,7 +345,7 @@ releases:
         announce(f"🚀 Installing istio helm charts from {ev['gateway_provider_istio_helm_repository_url']} ({ev['gateway_provider_istio_chart_version']})")
         ecode = llmdbench_execute_cmd(actual_cmd=install_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
         if ecode != 0:
-            announce(f"ERROR: Failed while running \"{install_cmd}\" (exit code: {result})")
+            announce(f"ERROR: Failed while running \"{install_cmd}\" (exit code: {ecode})")
         announce(f"✅ istio ({ev['gateway_provider_istio_chart_version']}) installed")
     else :
         announce(f"✅ isto (unknown version) already installed (*.istio.io CRDs found)")
@@ -392,7 +395,8 @@ def install_gateway_control_plane(
                    "telemetries.telemetry.istio.io", \
                    "virtualservices.networking.istio.io", \
                    "wasmplugins.extensions.istio.io", \
-                   "workloadgroups.networking.istio.io" ] :
+                   "workloadgroups.networking.istio.io", \
+                   "telemetry.istio.io/v1" ] :
                 if i not in crds :
                     should_install_gateway_control_plane = True
 
@@ -470,10 +474,10 @@ def ensure_gateway_provider(
                 return result
 
             should_install_gateway_api_extension_crds = False
-            for i in [ "inferenceobjectives.inference.networking.x-k8s.io", \
-                       "inferencepoolimports.inference.networking.x-k8s.io", \
+            for i in [ "inferenceobjectives.inference.networking.k8s.io", \
+                       "inferencepoolimports.inference.networking.k8s.io", \
                        "inferencepools.inference.networking.k8s.io", \
-                       "inferencepools.inference.networking.x-k8s.io" ] :
+                       "inferencepools.inference.networking.k8s.io" ] :
                     if i not in crd_names :
                         should_install_gateway_api_extension_crds = True
 
