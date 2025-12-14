@@ -34,7 +34,7 @@ export -f announce
 # Sanitize pod name to conform to Kubernetes naming conventions
 # @TODO Check for additional k8s naming restrictions
 function sanitize_pod_name {
-  sed -e 's/[^0-9A-Za-z-][^0-9A-Za-z-]*/./g' <<<"$1"
+  tr [:upper:] [:lower:] <<<"$1" | sed -e 's/[^0-9a-z-][^0-9a-z-]*/-/g' | sed -e 's/^-*//' | sed -e 's/-*$//'
 }
 export -f sanitize_pod_name
 

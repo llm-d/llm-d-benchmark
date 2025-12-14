@@ -24,11 +24,8 @@ harness:
                                   # Set to 0 to disable timeout.
                                   # Note: workload launcher pod will continue running in cluster if timeout occurs.
   image: ghcr.io/llm-d/llm-d-benchmark:v0.3.7
-#  image: ghcr.io/llm-d/llm-d-benchmark:latest # llm-d-benchmark harness image
-#  image: quay.io/dpikus/llm-d-benchmark:v0.2.2_fix
-                                  # @TODO do not use latest in production, use specific version tag.
-  dataset_url: &dataset_url none
-  dataset_path: &dataset_path none                                
+  # dataset_url: &dataset_url none
+  # dataset_path: &dataset_path none
 
 env:
   - name: RAYON_NUM_THREADS

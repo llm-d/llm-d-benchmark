@@ -42,7 +42,7 @@ fi
 set -euo pipefail
 cd "$(dirname "$(realpath -- $0)")" > /dev/null 2>&1
 _script_name="${0##*/}"
-_control_dir=$(realpath $(pwd)/) #@TODO check if needed
+_control_dir=$(realpath $(pwd)/)
 _root_dir=$(realpath "${_control_dir}/../")
 source ${_control_dir}/functions.sh
 
@@ -90,8 +90,6 @@ while [[ $# -gt 0 ]]; do
         shift
 done
 
-#source ${_control_dir}/env.sh #@TODO WE NEED THIS????
-
 # Read configuration file
 # ========================================================
 announce "📄 Reading configuration file $_config_file"
@@ -104,31 +102,16 @@ _uid=$(date +%s)  # @TODO consider calling this _experiment_uid
 read_config "$_config_file"
 compgen -v
 
-_inference_url="${endpoint_base_url}/v1/chat/completions"
-_model_url="${endpoint_base_url}/v1/models" # @TODO check if needed
-_harness_pod_name=$(sanitize_pod_name "llmdbench-${harness_name}-launcher")  # @TODO if debug use "harness"
+_harness_pod_name=$(sanitize_pod_name "llmdbench-${harness_name}-launcher")
 
 announce "ℹ️ Using endpoint_stack_name=$endpoint_stack_name on endpoint_namespace=$endpoint_namespace running model=${endpoint_model} at endpoint_base_url=$endpoint_base_url"
 announce "ℹ️ Using harness_name=$harness_name, with _harness_pod_name=$_harness_pod_name on harness_namespace=$harness_namespace"
 
 
-mkdir -p ${control_work_dir}/setup/commands #@TODO do we need this?
-
-
 # Ensure harness namespace is prepared @TODO enable python script
 # ========================================================
 announce "🔧 Ensuring harness namespace is prepared"
-_control_dir=$(realpath $(pwd)/) #@TODO check if needed
-_steps_dir="$_control_dir/steps"
-#python3 ${_steps_dir}/05_ensureharness_namespace_prepared.py 2> ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stderr.log 1> ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stdout.log
-if [[ $? -ne 0 ]]; then
-  announce "❌ Error while attempting to setup the harness namespace"
-  echo "---stderr----------------------"
-  cat ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stderr.log
-  echo "---stdout----------------------"
-  cat ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stdout.log
-  exit 1
-fi
+_control_dir=$(realpath $(pwd)/)
 
 # Verify HF token secret exists
 # ========================================================
