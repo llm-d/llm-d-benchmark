@@ -2,7 +2,7 @@ endpoint:
   stack_name: &stack_name inference-scheduling-Qwen3-0.6B  # user defined name for the stack (results prefix)
   model: &model Qwen/Qwen3-0.6B                      # Exact HuggingFace model name. Must match stack deployed.
   namespace: &namespace $NAMESPACE
-  base_url: &url http://${ENDPOINT}.${NAMESPACE}.svc.cluster.local:80  # Base URL of inference endpoint
+  base_url: &url http://${GATEWAY_SVC}.${NAMESPACE}.svc.cluster.local:80  # Base URL of inference endpoint
   hf_token_secret: llm-d-hf-token   # The name of secret that contains the HF token of the stack
   model_pvc: model-cache-pvc              # PVC where model files are cached
 
