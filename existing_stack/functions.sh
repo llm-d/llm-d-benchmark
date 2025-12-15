@@ -9,6 +9,7 @@ HARNESS_CPU_NR=16
 HARNESS_CPU_MEM=32Gi
 RESULTS_DIR_PREFIX=/requests
 CONTROL_WAIT_TIMEOUT=180
+DATASET_DIR=/workspace
 
 # Log announcement function
 function announce {
@@ -64,10 +65,15 @@ export -f get_harness_list
 function start_harness_pod {
 
   local pod_name=$1
-  local harness_dataset_file=${harness_dataset_path##*/}
-  local harness_dataset_dir=${harness_dataset_path%/$harness_dataset_file}
   # run_experiment_results_dir=$(results_dir_name "${endpoint_stack_name}" "${harness_name}" "${_uid}")
-  experiment_analyzer=$(find ${_root_dir}/analysis/ -name ${harness_name}* | rev | cut -d '/' -f1 | rev)
+  # experiment_analyzer=$(find ${_root_dir}/analysis/ -name ${harness_name}* | rev | cut -d '/' -f1 | rev)  #@TODO fix
+  : ${harness_dataset_url:="none"}
+  if [ "${harness_dataset_url}" == "none" ]; then 
+    harness_dataset_url=""
+    local is_dataset_url="# "   # used to comment out the dataset_url env var
+  else
+    local is_dataset_url=""
+  fi  
 
   ${control_kubectl} --namespace ${harness_namespace} delete pod ${pod_name} --ignore-not-found
 
@@ -121,10 +127,10 @@ spec:
       value: "${RESULTS_DIR_PREFIX}"
     # - name: LLMDBENCH_BASE64_CONTEXT_CONTENTS
     #   value: "DO NOT TRANSFER FOR NOW"
-    # - name: LLMDBENCH_RUN_DATASET_DIR
-    #   value: "DO NOT TRANSFER FOR NOW"
-    # - name: LLMDBENCH_RUN_DATASET_URL
-    #   value: "DO NOT TRANSFER FOR NOW"
+    - name: LLMDBENCH_RUN_DATASET_DIR
+      value: "${DATASET_DIR}"
+    ${is_dataset_url}- name: LLMDBENCH_RUN_DATASET_URL
+    ${is_dataset_url}  value: "${harness_dataset_url}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
       value: "${endpoint_stack_name}"  
     # - name: HF_TOKEN_SECRET

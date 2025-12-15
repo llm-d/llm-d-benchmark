@@ -127,10 +127,9 @@ fi
 _verbose_curl=""
 # _verbose_curl=" -v "
 # _verbose_curl=" --trace-ascii - "
-_pod_name=$(sanitize_pod_name llmdbench-verify-model-${_uid})
-announce "🔍 Verifying model ${endpoint_model} on endpoint ${endpoint_base_url}/v1/completions using pod $_pod_name"
-
 _verify_model_pod_name=$(sanitize_pod_name "verify-model-${_uid}")
+announce "🔍 Verifying model ${endpoint_model} on endpoint ${endpoint_base_url}/v1/completions using pod $_verify_model_pod_name"
+
 
 $control_kubectl -n $endpoint_namespace run ${_verify_model_pod_name} \
     -q --rm -i --image=alpine/curl --restart=Never --command -- \
