@@ -21,7 +21,12 @@ function announce {
 
     case ${logfile} in
         none|""|"1")
-            echo -e "==> $(date) - ${0} - $message"
+            echo
+            echo "===> $(date) - ${0}:${LINENO}"
+            echo -e "$message"
+            echo -ne "\033[01;33m";   # br yellow
+            echo "------------------------------------------------------------"
+            echo -ne "\033[0m"
             ;;
         silent|"0")
             ;;
