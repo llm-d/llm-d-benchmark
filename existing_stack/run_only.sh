@@ -100,7 +100,6 @@ fi
 
 _uid=$(date +%s)  # @TODO consider calling this _experiment_uid
 read_config "$_config_file"
-compgen -v
 
 _harness_pod_name=$(sanitize_pod_name "llmdbench-${harness_name}-launcher")
 
