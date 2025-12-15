@@ -89,6 +89,15 @@ except ModuleNotFoundError as e:
     print(f"  pip install -r {workspace_root / 'config_explorer' / 'requirements.txt'}")
     sys.exit(1)
 
+
+# Allows to properly have blocks in YAMLs
+class LiteralStr(str):
+    pass
+def literal_str_representer(dumper, data):
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+yaml.add_representer(LiteralStr, literal_str_representer)
+
+
 def announce(msgcont: str, logfile: str = None, ignore_if_failed: bool = False):
     work_dir = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
     log_dir = os.path.join(work_dir, "logs")
@@ -2290,6 +2299,9 @@ def install_prometheus_adapters(
     prometheus_values_path = os.path.join(
         tmp_out_dir, "prometheus-adapter-values-ocp.yaml"
     )
+    prometheus_rbac_values_path = os.path.join(
+        tmp_out_dir, "prometheus-rbac-values-ocp.yaml"
+    )
 
     prometheus_values_content = f"""
 prometheus:
@@ -2345,6 +2357,25 @@ securityContext:
     with open(prometheus_values_path, "w") as f:
         f.write(prometheus_values_content)
 
+    prometheus_rbac_values_content = f"""
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: allow-thanos-querier-api-access
+rules:
+- nonResourceURLs: [/api/v1/query, /api/v1/query_range, /api/v1/labels, /api/v1/label/*/values, /api/v1/series, /api/v1/metadata, /api/v1/rules, /api/v1/alerts]
+  verbs: [get]
+- apiGroups: [monitoring.coreos.com]
+  resourceNames: [k8s]
+  resources: [prometheuses/api]
+  verbs: [get, create, update]
+- apiGroups: [""]
+  resources: [namespaces]
+  verbs: [get]
+""".lstrip()
+    with open(prometheus_rbac_values_path, "w") as f:
+        f.write(prometheus_rbac_values_content)
+
     cmd = (
         f"{os.getenv('LLMDBENCH_CONTROL_KCMD')} create configmap prometheus-ca "
         f"--from-file=ca.crt={prometheus_ca_cert_path} "
@@ -2369,6 +2400,11 @@ securityContext:
         dry_run=dry_run,
         verbose=verbose,
     )
+    llmdbench_execute_cmd(
+        f'{os.getenv("LLMDBENCH_CONTROL_HCMD")} apply -f {prometheus_rbac_values_path}',
+        dry_run=dry_run,
+        verbose=verbose,
+    )
 
 
 def install_wva(wva_config, wva_namespace, dry_run=False, verbose=False):
@@ -2385,11 +2421,11 @@ def install_wva(wva_config, wva_namespace, dry_run=False, verbose=False):
         "metadata": {
             "name": wva_namespace,
             "labels": {
-                "app.kubernetes.io/name": "workload-variant-autoscaler",
-                "control-plane": "controller-manager",
+                "openshift.io/user-monitoring": "true",
             },
         },
     }
+
     with open(namespace_manifest_file, "w") as f:
         yaml.dump(namespace_manifest, f, sort_keys=False)
 
@@ -2423,42 +2459,51 @@ def install_wva_components(ev: dict):
     )
     prom_ca_cert_path = Path(tempfile.mkdtemp()) / "prometheus-ca.crt"
     prom_ca_cert_path.write_bytes(base64.b64decode(secret.obj["data"]["tls.crt"]))
+    formatted_cert = prom_ca_cert_path.read_text()
+    if not formatted_cert.endswith("\n"):
+        formatted_cert += "\n"
+    formatted_cert = LiteralStr(formatted_cert)
 
     wva_config = {
         "wva": {
-            "enabled": ev["wva_enabled"],
-            "baseName": f"{ev['wva_well_lit_path']}",
+            "enabled": ev["wva_controller_enabled"],
             "image": {
                 "repository": f"{ev['wva_image_repository']}",
                 "tag": f"{ev['wva_image_tag']}",
             },
-            "replicaCount": ev["wva_replica_count"],
             "metrics": {
                 "enabled": ev["wva_metrics_enabled"],
-                "port": ev["wva_metrics_port"],
+                "port": int(ev["wva_metrics_port"]),
                 "secure": ev["wva_metrics_secure"],
             },
             "prometheus": {
-                "monitoringNamespace": f"{ev['openshift_user_workload_monitoring_ns']}",
                 "baseURL": f"{ev['wva_prom_base_url']}:{ev['wva_prom_base_url_port']}",
-                "caCert": str(prom_ca_cert_path),
+                "caCert": formatted_cert,
+                "monitoringNamespace": f"{ev['openshift_user_workload_monitoring_ns']}",
+                "serviceAccountName": "prometheus-k8s",
+                "tls": {
+                    "insecureSkipVerify": "true",
+                    "caCertPath": "/etc/ssl/certs/prometheus-ca.crt",
+                },
             },
+            "reconcileInterval": "60s",
+            "scaleToZero": "false",
         },
         "llmd": {
             "namespace": f"{ev['vllm_common_namespace']}",
             "modelName": f"{ev['deploy_current_model_id_label']}",
             "modelID": f"{ev['deploy_current_model']}",
         },
-        "variantAutoscaling": {
+        "va": {
             "enabled": ev["wva_variant_autoscaling_enabled"],
             "accelerator": f"{find_accelerator_prefix(['G2', 'A100', 'H100', 'L40S', 'MI300X'], ev['vllm_common_affinity'])}",
-            "sloTpot": ev["wva_variant_autoscaling_slo_tpot"],
-            "sloTtft": ev["wva_variant_autoscaling_slo_ttft"],
+            "sloTpot": int(ev["wva_variant_autoscaling_slo_tpot"]),
+            "sloTtft": int(ev["wva_variant_autoscaling_slo_ttft"]),
         },
         "hpa": {
             "enabled": ev["wva_hpa_enabled"],
-            "maxReplicas": ev["wva_hpa_max_replicas"],
-            "targetAverageValue": f"{ev['wva_hpa_target_avg_value']}",
+            "maxReplicas": int(ev["wva_hpa_max_replicas"]),
+            "targetAverageValue": int(f"{ev['wva_hpa_target_avg_value']}"),
         },
         "vllmService": {
             "enabled": ev["wva_vllm_service_enabled"],
@@ -2469,12 +2514,18 @@ def install_wva_components(ev: dict):
                 )
             ),
             "interval": f"{ev['wva_vllm_service_interval']}",
+            "scheme": f"{ev['wva_vllm_service_scheme']}",
         },
     }
 
+    #
+    # NOTE: Due to inconsistent installation - we will need to use the SAME
+    #       namespace as the model - seperating these will OFTEN
+    #       result in VA never getting populated
+    #
     install_wva(
         wva_config,
-        ev["wva_namespace"],
+        ev["vllm_common_namespace"],
         dry_run=ev["control_dry_run"],
         verbose=ev["control_verbose"],
     )
@@ -2487,3 +2538,5 @@ def install_wva_components(ev: dict):
         dry_run=ev["control_dry_run"],
         verbose=ev["control_verbose"],
     )
+
+
