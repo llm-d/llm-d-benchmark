@@ -106,7 +106,6 @@ _harness_pod_name=$(sanitize_pod_name "llmdbench-${harness_name}-launcher")
 announce "ℹ️ Using endpoint_stack_name=$endpoint_stack_name on endpoint_namespace=$endpoint_namespace running model=${endpoint_model} at endpoint_base_url=$endpoint_base_url"
 announce "ℹ️ Using harness_name=$harness_name, with _harness_pod_name=$_harness_pod_name on harness_namespace=$harness_namespace"
 
-
 # Ensure harness namespace is prepared @TODO enable python script
 # ========================================================
 announce "🔧 Ensuring harness namespace is prepared"
@@ -194,6 +193,17 @@ export LLMDBENCH_RUN_EXPERIMENT_ID="${_uid}_${workload}"
 ${HARNESS_EXECUTABLE} --harness="${harness_name}" --workload="${workload}"
 RUN_WORKLOAD
   done
+
+
+# Finalization
+# ========================================================
+announce '✅ 
+   Experiment ID is '"${_uid}"'.
+   All workloads completed. 
+   Results should be available in PVC ${harness_results_pvc}.
+   Please use analyze.sh to fetch and analyze results.
+'
+
 
 # @TODO Collect results
 # @TODO Clean up harness pod
