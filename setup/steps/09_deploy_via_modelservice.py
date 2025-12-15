@@ -291,7 +291,7 @@ decode:
       readinessProbe:
         httpGet:
           path: /health
-          port: 8200
+          port: {decode_inference_port}
         failureThreshold: 3
         periodSeconds: 5
       {add_config(decode_extra_container_config, 6).lstrip()}
