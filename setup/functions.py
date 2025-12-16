@@ -2401,7 +2401,7 @@ rules:
         verbose=verbose,
     )
     llmdbench_execute_cmd(
-        f'{os.getenv("LLMDBENCH_CONTROL_KCMD)} apply -f {prometheus_rbac_values_path}',
+        f'{os.getenv("LLMDBENCH_CONTROL_KCMD")} apply -f {prometheus_rbac_values_path}',
         dry_run=dry_run,
         verbose=verbose,
     )
