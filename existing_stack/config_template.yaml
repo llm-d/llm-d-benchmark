@@ -4,7 +4,7 @@ endpoint:
   namespace: &namespace $NAMESPACE
   base_url: &url http://${GATEWAY_SVC}.${NAMESPACE}.svc.cluster.local:80  # Base URL of inference endpoint
   hf_token_secret: llm-d-hf-token   # The name of secret that contains the HF token of the stack
-  model_pvc: model-cache-pvc              # PVC where model files are cached
+  #model_pvc: model-cache-pvc              # PVC where model files are cached
 
 
 control:
