@@ -17,26 +17,25 @@ def gateway_values(provider : str, host: str, service: str) -> str:
     if provider == "istio":
         return f"""gateway:
   gatewayClassName: istio
-  service:
-    type: {service}
-  destinationRule:
+  gatewayParameters:
     enabled: true
-    trafficPolicy:
-      tls:
-        mode: SIMPLE
-        insecureSkipVerify: true
-    host: {host}"""
+  service:
+    type: {service}"""
 
     elif provider == "kgateway":
         return f"""gateway:
   gatewayClassName: kgateway
+  """
+    
+    elif provider == "kgateway-openshift":
+        return f"""gateway:
+  gatewayClassName: kgateway
   service:
     type: {service}
-#  destinationRule:
-#    host: {host}
   gatewayParameters:
     enabled: true
   """
+        
     elif provider == "gke":
         return f"""gateway:
   gatewayClassName: gke-l7-regional-external-managed
@@ -165,7 +164,10 @@ def main():
             # Create infra values file
             infra_value_file = Path(helm_base_dir / "infra.yaml" )
             with open(infra_value_file, 'w') as f:
-                f.write(gateway_values(ev['vllm_modelservice_gateway_class_name'], f"{model_id_label}-gaie-epp.{ev['vllm_common_namespace']}{ev['vllm_common_fqdn']}", ev["vllm_modelservice_gateway_service_type"]))
+                gw_class = ev['vllm_modelservice_gateway_class_name']
+                if gw_class == 'kgateway' and ev['control_deploy_is_openshift']:
+                    gw_class = f"{gw_class}-openshift"
+                f.write(gateway_values(gw_class, f"{model_id_label}-gaie-epp.{ev['vllm_common_namespace']}{ev['vllm_common_fqdn']}", ev["vllm_modelservice_gateway_service_type"]))
 
             os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL"] = model_id_label
 
@@ -250,7 +252,7 @@ releases:
             exit(result)
         announce(f"✅ chart \"infra-{ev['vllm_modelservice_release']}\" deployed successfully")
 
-        announce("✅ Completed gaie deployment")
+        announce("✅ Completed gateway deployment")
     else:
         deploy_methods = ev["deploy_methods"]
         announce(f"⏭️ Environment types are \"{deploy_methods}\". Skipping this step.")

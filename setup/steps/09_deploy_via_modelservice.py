@@ -291,7 +291,7 @@ decode:
       readinessProbe:
         httpGet:
           path: /health
-          port: {decode_inference_port}
+          port: {common_inference_port}
         failureThreshold: 3
         periodSeconds: 5
       {add_config(decode_extra_container_config, 6).lstrip()}
@@ -351,7 +351,7 @@ prefill:
       readinessProbe:
         httpGet:
           path: /health
-          port: {prefill_inference_port}
+          port: {common_inference_port}
         failureThreshold: 3
         periodSeconds: 5
       {add_config(prefill_extra_container_config, 6).lstrip()}
@@ -561,15 +561,21 @@ def main():
 
         # Wait for decode pods to be created, running, and ready
         api_client = client.CoreV1Api()
+        expected_num_decode_pods = ev["vllm_modelservice_decode_replicas"]
+        if ev.get("vllm_modelservice_multinode", "false"):
+            expected_num_decode_pods = int(ev.get("vllm_modelservice_decode_num_workers_parallelism", "1")) * int(expected_num_decode_pods)
         result = wait_for_pods_created_running_ready(
-            api_client, ev, ev["vllm_modelservice_decode_replicas"], "decode"
+            api_client, ev, expected_num_decode_pods, "decode"
         )
         if result != 0:
             return result
 
         # Wait for prefill pods to be created, running, and ready
+        expected_num_prefill_pods = ev["vllm_modelservice_prefill_replicas"]
+        if ev.get("vllm_modelservice_multinode", "false"):
+            expected_num_prefill_pods = int(ev.get("vllm_modelservice_prefill_num_workers_parallelism", "1")) * int(expected_num_prefill_pods)
         result = wait_for_pods_created_running_ready(
-            api_client, ev, ev["vllm_modelservice_prefill_replicas"], "prefill"
+            api_client, ev, expected_num_prefill_pods, "prefill"
         )
         if result != 0:
             return result

@@ -1,5 +1,3 @@
-export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=kgateway
-
 # WIDE EP/DP WITH LWS WELL LIT PATH
 # Based on https://github.com/llm-d/llm-d/tree/main/guides/wide-ep-lws/README.md
 # Removed pod monitoring; can be added using LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG
@@ -20,6 +18,14 @@ export LLMDBENCH_DEPLOY_MODEL_LIST="deepseek-ai/DeepSeek-R1-0528"
 #export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=shared-vast
 #export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=ocs-storagecluster-cephfs
 export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
+
+# gateway configuration
+###### default is istio and NodePort
+# export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=kgateway
+###### on openshift as alternative to (default) NodePort
+# export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_SERVICE_TYPE=ClusterIP
+###### if support LoadBalancer
+# export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_SERVICE_TYPE=LoadBalancer
 
 # Routing configuration (via gaie)
 export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="custom-plugins.yaml"
@@ -48,6 +54,25 @@ custom-plugins.yaml: |
     plugins:
     - pluginRef: decode-filter
     - pluginRef: random-picker
+EOF
+export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG=$(mktemp)
+cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG
+destinationRule:
+  host: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL-gaie-epp
+  trafficPolicy:
+    tls:
+      mode: SIMPLE
+      insecureSkipVerify: true
+    connectionPool:
+      http:
+        http1MaxPendingRequests: 256000
+        maxRequestsPerConnection: 256000
+        http2MaxRequests: 256000
+        idleTimeout: "900s"
+      tcp:
+        maxConnections: 256000
+        maxConnectionDuration: "1800s"
+        connectTimeout: "900s"
 EOF
 
 # Routing configuration (via modelservice)
