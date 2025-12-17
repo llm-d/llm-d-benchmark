@@ -194,7 +194,6 @@ cd "$(dirname "$(realpath -- $0)")" > /dev/null 2>&1
 _script_name="${0##*/}"
 _control_dir=$(realpath $(pwd)/)
 _root_dir=$(realpath "${_control_dir}/../")
-source ${_control_dir}/functions.sh
 
 function read_config {
   # $1 - configuration yaml file
