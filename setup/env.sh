@@ -45,10 +45,6 @@ export LLMDBENCH_HARNESS_GIT_BRANCH="${LLMDBENCH_HARNESS_GIT_BRANCH:-main}"
 
 # WVA and Monioring Service
 export LLMDBENCH_WVA_WELL_LIT_PATH="${LLMDBENCH_WVA_WELL_LIT_PATH:-inference-scheduling}"
-# 
-# NOTE: "LLMDBENCH_WVA_NAMESPACE" is unused currently and will be installed in the namespace of the model
-#       this will be reactivated as soon as the WVA software can reliable install in seperate namespaces
-# 
 export LLMDBENCH_WVA_NAMESPACE="${LLMDBENCH_WVA_NAMESPACE:-llm-d-autoscaler}"
 export LLMDBENCH_WVA_ENABLED="${LLMDBENCH_WVA_ENABLED:-0}"
 export LLMDBENCH_WVA_HELM_REPOSITORY_URL=${LLMDBENCH_WVA_HELM_REPOSITORY_URL:-"oci://ghcr.io/llm-d-incubation/workload-variant-autoscaler/workload-variant-autoscaler"}
