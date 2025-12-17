@@ -111,7 +111,7 @@ function start_harness_pod {
 
   local pod_name=$1
   # run_experiment_results_dir=$(results_dir_name "${endpoint_stack_name}" "${harness_name}" "${_uid}")
-  # experiment_analyzer=$(find ${_root_dir}/analysis/ -name ${harness_name}* | rev | cut -d '/' -f1 | rev)  #@TODO fix
+  # experiment_analyzer=$(find ${_root_dir}/analysis/ -name ${harness_name}* | rev | cut -d '/' -f1 | rev)
   : ${harness_dataset_url:="none"}
   if [ "${harness_dataset_url}" == "none" ]; then 
     harness_dataset_url=""
@@ -148,47 +148,20 @@ spec:
         cpu: "${HARNESS_CPU_NR}"
         memory: ${HARNESS_CPU_MEM}
     env:
-    # - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
-    #   value: "NOT USING AUTO"
-    # - name: RAYON_NUM_THREADS
-    #   value: "4"
     - name: LLMDBENCH_RUN_WORKSPACE_DIR
       value: "/workspace"
-    # - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME
-    #   value: "NOT USING AUTO"
-    # - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS
-    #   value: "NOT USING AUTO"
-    # - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
-    #   value: "NOT USING AUTO"
     - name: LLMDBENCH_MAGIC_ENVAR
       value: "harness_pod"
-    # - name: LLMDBENCH_DEPLOY_METHODS
-    #   value: ""
     - name: LLMDBENCH_HARNESS_NAME
       value: "${harness_name}"
-    # - name: LLMDBENCH_RUN_EXPERIMENT_ID
-    #   value: "${_uid}"
     - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX
       value: "${RESULTS_DIR_PREFIX}"
-    # - name: LLMDBENCH_BASE64_CONTEXT_CONTENTS
-    #   value: "DO NOT TRANSFER FOR NOW"
     - name: LLMDBENCH_RUN_DATASET_DIR
       value: "${DATASET_DIR}"
     ${is_dataset_url}- name: LLMDBENCH_RUN_DATASET_URL
     ${is_dataset_url}  value: "${harness_dataset_url}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
       value: "${endpoint_stack_name}"  
-    # - name: HF_TOKEN_SECRET
-    #   value: "${endpoint_hf_token_secret}"
-    # - name: HUGGING_FACE_HUB_TOKEN
-    #   valueFrom:
-    #     secretKeyRef:
-    #       name: ${endpoint_hf_token_secret}
-    #       key: HF_TOKEN
-    # - name: POD_NAME
-    #   valueFrom:
-    #     fieldRef:
-    #       fieldPath: metadata.name
     volumeMounts:
     - name: results
       mountPath: ${RESULTS_DIR_PREFIX}
@@ -275,7 +248,7 @@ if ! [[ -f $_config_file  ]]; then
   exit 1
 fi
 
-_uid=$(date +%s)  # @TODO consider calling this _experiment_uid
+_uid=$(date +%s)
 read_config "$_config_file"
 
 _harness_pod_name=$(sanitize_pod_name "llmdbench-${harness_name}-launcher")
@@ -283,7 +256,7 @@ _harness_pod_name=$(sanitize_pod_name "llmdbench-${harness_name}-launcher")
 announce "ℹ️ Using endpoint_stack_name=$endpoint_stack_name on endpoint_namespace=$endpoint_namespace running model=${endpoint_model} at endpoint_base_url=$endpoint_base_url"
 announce "ℹ️ Using harness_name=$harness_name, with _harness_pod_name=$_harness_pod_name on harness_namespace=$harness_namespace"
 
-# Ensure harness namespace is prepared @TODO enable python script
+# Ensure harness namespace is prepared
 # ========================================================
 announce "🔧 Ensuring harness namespace is prepared"
 _control_dir=$(realpath $(pwd)/)
@@ -338,7 +311,7 @@ announce "ℹ️ ConfigMap '${harness_name}-profiles' created"
 # Check results PVC
 # ========================================================
 announce "ℹ️ Checking results PVC"
-if ! $control_kubectl --namespace=${harness_namespace} describe pvc ${harness_results_pvc}; then # @TODO Verify status and RWX 
+if ! $control_kubectl --namespace=${harness_namespace} describe pvc ${harness_results_pvc}; then
   announce "❌ Error checking PVC ${harness_results_pvc}"
 fi
 
@@ -351,10 +324,6 @@ start_harness_pod ${_pod_name}
 
 # Execute workloads
 # ========================================================
-#
-# @TODO Allow user to follow experiment progress in real time, but also allow client disconnect.
-# k8s logs do not provide the same experience
-# We do not want to delete harness pod between iterations
 #
 yq '.workload | keys | .[]' "${_config_file}" |
   while IFS= read -r workload; do
@@ -380,8 +349,3 @@ announce '✅
    Results should be available in PVC ${harness_results_pvc}.
    Please use analyze.sh to fetch and analyze results.
 '
-
-
-# @TODO Collect results
-# @TODO Clean up harness pod
-# @TODO handle parallelism
