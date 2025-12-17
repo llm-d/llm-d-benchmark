@@ -19,8 +19,18 @@ def gateway_values(provider : str, host: str, service: str) -> str:
   gatewayClassName: istio
   gatewayParameters:
     enabled: true
+    accessLogging: false
+    logLevel: error
+    resources:
+      limits:
+        cpu: "16"
+        memory: 16Gi
+      requests:
+        cpu: "4"
+        memory: 4Gi
   service:
-    type: {service}"""
+    type: {service}
+"""
 
     elif provider == "kgateway":
         return f"""gateway:

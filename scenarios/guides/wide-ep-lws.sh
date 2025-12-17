@@ -60,9 +60,6 @@ cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG
 destinationRule:
   host: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL-gaie-epp
   trafficPolicy:
-    tls:
-      mode: SIMPLE
-      insecureSkipVerify: true
     connectionPool:
       http:
         http1MaxPendingRequests: 256000
