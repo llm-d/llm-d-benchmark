@@ -2525,7 +2525,7 @@ def install_wva_components(ev: dict):
     #
     install_wva(
         wva_config,
-        ev["vllm_common_namespace"],
+        ev["wva_namespace"],
         dry_run=ev["control_dry_run"],
         verbose=ev["control_verbose"],
     )
