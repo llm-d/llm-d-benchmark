@@ -557,7 +557,14 @@ def main():
 
         api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
         httproute_spec = define_httproute(ev, single_model = len([m for m in model_list if m.strip()]) == 1)
+        with open(f'{ev["control_work_dir"]}/setup/yamls/{ev["current_step_nr"]}_httproute.yaml', "w") as f:
+            f.write(httproute_spec)
+
         kubectl_apply(api=api, manifest_data=httproute_spec, dry_run=ev["control_dry_run"])
+
+        expected_num_decode_pods = ev["vllm_modelservice_decode_replicas"]
+        if ev["vllm_modelservice_multinode"] :
+            expected_num_decode_pods = int(ev["vllm_modelservice_decode_num_workers_parallelism"]) * int(expected_num_decode_pods)
 
         # Wait for decode pods to be created, running, and ready
         api_client = client.CoreV1Api()
@@ -570,6 +577,10 @@ def main():
         if result != 0:
             return result
 
+        expected_num_prefill_pods = ev["vllm_modelservice_prefill_replicas"]
+        if ev["vllm_modelservice_multinode"] :
+            expected_num_prefill_pods = int(ev["vllm_modelservice_prefill_num_workers_parallelism"]) * int(expected_num_prefill_pods)
+
         # Wait for prefill pods to be created, running, and ready
         expected_num_prefill_pods = ev["vllm_modelservice_prefill_replicas"]
         if ev.get("vllm_modelservice_multinode", "false"):
@@ -580,16 +591,13 @@ def main():
         if result != 0:
             return result
 
-        if result != 0:
-            return result
-
         # Collect decode logs
         collect_logs(ev, ev["vllm_modelservice_decode_replicas"], "decode")
 
         # Collect prefill logs
         collect_logs(ev, ev["vllm_modelservice_prefill_replicas"], "prefill")
 
-        announce(f"📜 Labelling gateway for model  \"{model}\"")
+        announce(f"📜 Labelling gateway for model \"{model}\"")
         label_gateway_cmd = f"{ev['control_kcmd']} --namespace  {ev['vllm_common_namespace']} label gateway/infra-{release}-inference-gateway stood-up-by={ev['control_username']} stood-up-from=llm-d-benchmark stood-up-via={ev['deploy_methods']}"
         result = llmdbench_execute_cmd(label_gateway_cmd, ev["control_dry_run"], ev["control_verbose"])
         if result != 0:

@@ -218,6 +218,7 @@ else
   serviceaccount
   hpa
   va
+  servicemonitor
   pod
   pvc
 )
