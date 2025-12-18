@@ -1,28 +1,29 @@
-from dataclasses import dataclass
+import base64
+import hashlib
+import random
+import json
+import string
+import tempfile
 import re
-from datetime import datetime
-from typing import List, Tuple, Union, Any
 import sys
 import os
 import time
-from pathlib import Path
 import subprocess
+import asyncio
+import logging
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import List, Tuple, Union, Any
+from pathlib import Path
+
+import yaml
 import requests
-import inspect
-import hashlib
 import pykube
 from pykube.query import Query
 from pykube.exceptions import PyKubeError, ObjectDoesNotExist
 from urllib3.exceptions import ProtocolError
 
-import base64
-import tempfile
-import random
-import string
-import tempfile
-import yaml
-
-import kubernetes
 from kubernetes import (
     client as k8s_client,
     config as k8s_config,
@@ -36,9 +37,6 @@ from kubernetes_asyncio import (
     watch as k8s_async_watch,
 )
 
-import asyncio
-
-import logging
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -61,7 +59,6 @@ try:
         model_total_params,
         model_memory_req,
         allocatable_kv_cache_memory,
-        kv_cache_req,
         max_concurrent_requests,
     )
 except ModuleNotFoundError as e:
@@ -99,6 +96,9 @@ yaml.add_representer(LiteralStr, literal_str_representer)
 
 
 def announce(msgcont: str, logfile: str = None, ignore_if_failed: bool = False):
+    """
+    TBD
+    """
     work_dir = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
     log_dir = os.path.join(work_dir, "logs")
 
@@ -117,26 +117,30 @@ def announce(msgcont: str, logfile: str = None, ignore_if_failed: bool = False):
 
     elif msgcont.count("WARNING:"):
         msgcont = f"⚠️  {msgcont.replace('WARNING: ','')}"
-        logger.warn(msgcont)
+        logger.warning(msgcont)
     else:
         logger.info(msgcont)
 
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_line = f"{timestamp} : {msgcont}"
-        with open(logpath, "a", encoding="utf-8") as f:
+        with open(logpath, mode="a", encoding="utf-8") as f:
             f.write(log_line + "\n")
     except IOError as e:
-        logger.error(f"Could not write to log file '{logpath}'. Reason: {e}")
+        logger.error("Could not write to log file %s. Reason: %s", {logpath}, {e})
     except Exception as e:
         logger.error(
-            f"An unexpected error occurred with logfile '{logpath}'. Reason: {e}"
+            f"An unexpected error occurred with logfile %s. Reason: %s", {logpath}, {e}
         )
 
     if msgcont.count("ERROR:") and not ignore_if_failed:
         sys.exit(1)
 
+
 def kube_connect(config_path: str = "~/.kube/config"):
+    """
+    TBD
+    """
     api = None
     try:
         api = pykube.HTTPClient(
@@ -149,12 +153,17 @@ def kube_connect(config_path: str = "~/.kube/config"):
 
     return api, k8s_client
 
+
 class SecurityContextConstraints(pykube.objects.APIObject):
     version = "security.openshift.io/v1"
     endpoint = "securitycontextconstraints"
     kind = "SecurityContextConstraints"
 
+
 def is_openshift(api: pykube.HTTPClient) -> bool:
+    """
+    TBD
+    """
     try:
         # the priviledged scc is a standard built in component for oc
         # if we get we are on oc
@@ -172,17 +181,23 @@ def is_openshift(api: pykube.HTTPClient) -> bool:
         # for other errors like 403, we might be on OpenShift but lack permissions
         #  if we cant query sccs we cant modify them either
         announce(
-            f"WARNING: Could not query SCCs due to an API error (perhaps permissions?): {e}. Assuming not OpenShift for SCC operations"
+            f"WARNING: Could not query SCCs due to an API error (perhaps permissions?):\
+            {e}. Assuming not OpenShift for SCC operations"
         )
         return False
     except Exception as e:
         #  other potential non pykube errors
         announce(
-            f"WARNING: An unexpected error occurred while checking for OpenShift: {e}. Assuming not OpenShift for SCC operations"
+            f"WARNING: An unexpected error occurred while checking for OpenShift:\
+            {e}. Assuming not OpenShift for SCC operations"
         )
         return False
 
+
 def clear_string(string_to_clear: str) -> str:
+    """
+    TBD
+    """
     clear_string_lines = []
     for line in string_to_clear.splitlines():
         if line.strip() and not line.count("#noconfig") and not line[0] == "#":
@@ -190,6 +205,7 @@ def clear_string(string_to_clear: str) -> str:
 
     clear_string = "\n".join(clear_string_lines)
     return clear_string
+
 
 def llmdbench_execute_cmd(
     actual_cmd: str,
@@ -200,6 +216,9 @@ def llmdbench_execute_cmd(
     fatal: bool = False,
     delay: int = 10,
 ) -> int:
+    """
+    TBD
+    """
     work_dir_str = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
     log_dir = Path(work_dir_str) / "setup" / "commands"
 
@@ -240,7 +259,8 @@ def llmdbench_execute_cmd(
             # mimics the if/elif/else for verbose/silent
             if not verbose and silent:
                 # correspon to eval with writing log
-                with open(stdout_log, "w") as f_out, open(stderr_log, "w") as f_err:
+                with open(stdout_log, mode="w", encoding="utf-8") as f_out, \
+                     open(stderr_log, mode="w", encoding="utf-8") as f_err:
                     result = subprocess.run(
                         actual_cmd,
                         shell=True,
@@ -272,7 +292,8 @@ def llmdbench_execute_cmd(
 
         if counter < attempts:
             announce(
-                f"Command failed with exit code {ecode}. Retrying in {delay} seconds... ({counter}/{attempts})"
+                f"Command failed with exit code {ecode}. \
+                    Retrying in {delay} seconds... ({counter}/{attempts})"
             )
             time.sleep(delay)
 
@@ -303,7 +324,11 @@ def llmdbench_execute_cmd(
 
     return ecode
 
+
 def environment_variable_to_dict(ev: dict = {}):
+    """
+    TBD
+    """
     for key in dict(os.environ).keys():
         if "LLMDBENCH_" in key:
             ev.update({key.split("LLMDBENCH_")[1].lower(): os.environ.get(key)})
@@ -342,7 +367,8 @@ def environment_variable_to_dict(ev: dict = {}):
         "vllm_modelservice_gateway_class_name", ""
     ).lower()
 
-    ev["current_step_nr"] = ev["current_step"].split('_')[0]
+    ev["current_step_nr"] = ev["current_step"].split("_")[0]
+
 
 def kubectl_apply(
     api: pykube.HTTPClient,
@@ -350,7 +376,9 @@ def kubectl_apply(
     dry_run: bool = False,
     verbose: bool = False,
 ):
-
+    """
+    TBD
+    """
     if not isinstance(manifest_data, dict):
         manifest_data = clear_string(manifest_data)
         manifest_data = yaml.safe_load(manifest_data)
@@ -362,44 +390,53 @@ def kubectl_apply(
     if not isinstance(manifest_data, list):
         manifest_items = []
         manifest_items.append(manifest_data)
-    else :
+    else:
         manifest_items = manifest_data
 
     for item in manifest_items:
-        try :
+        try:
             object_api = item["apiVersion"]
             object_kind = item["kind"]
             object_name = item["metadata"]["name"]
             object_namespace = item["metadata"]["namespace"]
 
             if dry_run:
-                announce(f"[DRY RUN] Would have created/updated {object_kind} \"{object_name}\".")
+                announce(
+                    f'[DRY RUN] Would have created/updated {object_kind} "{object_name}".'
+                )
                 continue
 
             _pci = pykube.object_factory(api, object_api, object_kind)
             obj_instance = _pci(api, manifest_data)
 
             if obj_instance.exists():
-                if object_kind != "Namespace" :
-                    obj_instance = _pci.objects(api).filter(namespace=object_namespace).get_by_name(object_name)
+                if object_kind != "Namespace":
+                    obj_instance = (
+                        _pci.objects(api)
+                        .filter(namespace=object_namespace)
+                        .get_by_name(object_name)
+                    )
 
                 obj_instance.update()
-                announce(f"🚀 Updated {object_kind} \"{object_name}\"")
+                announce(f'🚀 Updated {object_kind} "{object_name}"')
 
             else:
                 obj_instance.create()
-                announce(f"🚀 Created {object_kind} \"{object_name}\"")
+                announce(f'🚀 Created {object_kind} "{object_name}"')
 
         except PyKubeError as e:
-            announce(f"ERROR: Failed to create or update {object_kind} \"{object_name}\": {e}")
+            announce(
+                f'ERROR: Failed to create or update {object_kind} "{object_name}": {e}'
+            )
             sys.exit(1)
+
 
 def kubectl_get(
     api: pykube.HTTPClient,
-    object_api: str = '',
-    object_kind: str = '',
-    object_name: str = '',
-    object_namespace: str = '',
+    object_api: str = "",
+    object_kind: str = "",
+    object_name: str = "",
+    object_namespace: str = "",
     object_selector: dict = {},
     dry_run: bool = False,
     verbose: bool = False,
@@ -408,47 +445,56 @@ def kubectl_get(
 
     if dry_run:
         announce(f"[DRY RUN] Would have returned {object_kind}/{object_name}")
-        return [],[]
+        return [], []
 
-    if object_api :
+    if object_api:
         _pci = pykube.object_factory(api, object_api, object_kind)
-    else :
+    else:
         _pci = getattr(_pcc, object_kind)
 
     object_instances = []
     object_names = []
 
-    if object_name :
-        if object_namespace :
-            object_instances = _pci.objects(api).filter(namespace=object_namespace).get_by_name(object_name)
-        else :
+    if object_name:
+        if object_namespace:
+            object_instances = (
+                _pci.objects(api)
+                .filter(namespace=object_namespace)
+                .get_by_name(object_name)
+            )
+        else:
             object_instances = _pci.objects(api).get_by_name(object_name)
-    elif object_selector :
-        if object_namespace :
-            object_instances = _pci.objects(api).filter(namespace=object_namespace, selector=object_selector)
-        else :
+    elif object_selector:
+        if object_namespace:
+            object_instances = _pci.objects(api).filter(
+                namespace=object_namespace, selector=object_selector
+            )
+        else:
             object_instances = _pci.objects(api).filter(selector=object_selector)
-    else :
-        if object_namespace :
-            object_instances = _pci.objects(api).filter(namespace=object_namespace).all()
-        else :
+    else:
+        if object_namespace:
+            object_instances = (
+                _pci.objects(api).filter(namespace=object_namespace).all()
+            )
+        else:
             object_instances = _pci.objects(api).all()
 
-    if isinstance(object_instances, Query) :
-        for i in object_instances :
+    if isinstance(object_instances, Query):
+        for i in object_instances:
             object_names.append(i.name)
-    else :
-        object_names = [ object_instances.name ]
-        object_instances = [ object_instances ]
+    else:
+        object_names = [object_instances.name]
+        object_instances = [object_instances]
 
     return object_instances, object_names
 
+
 def kubectl_delete(
     api: pykube.HTTPClient,
-    object_api: str = '',
-    object_kind: str = '',
-    object_name: str = '',
-    object_namespace: str = '',
+    object_api: str = "",
+    object_kind: str = "",
+    object_name: str = "",
+    object_namespace: str = "",
     object_selector: dict = {},
     dry_run: bool = False,
     verbose: bool = False,
@@ -456,39 +502,48 @@ def kubectl_delete(
     _pcc = __import__("pykube")
 
     if dry_run:
-        announce(f"[DRY RUN] Would have deleted {object_kind}/{object_name} on namespace {object_namespace}")
+        announce(
+            f"[DRY RUN] Would have deleted {object_kind}/{object_name} (namespace {object_namespace})"
+        )
         return True
 
-    if object_api :
+    if object_api:
         _pci = pykube.object_factory(api, object_api, object_kind)
-    else :
+    else:
         _pci = getattr(_pcc, object_kind)
 
     object_instances = []
     object_names = []
 
-    try :
-        if object_namespace :
-            if object_selector :
-                object_instances = _pci.objects(api).filter(namespace=object_namespace, selector=object_selector)
-            else :
-                object_instances = _pci.objects(api).filter(namespace=object_namespace).get_by_name(object_name)
-        else :
-            if object_selector :
+    try:
+        if object_namespace:
+            if object_selector:
+                object_instances = _pci.objects(api).filter(
+                    namespace=object_namespace, selector=object_selector
+                )
+            else:
+                object_instances = (
+                    _pci.objects(api)
+                    .filter(namespace=object_namespace)
+                    .get_by_name(object_name)
+                )
+        else:
+            if object_selector:
                 object_instances = _pci.objects(api).filter(selector=object_selector)
-            else :
+            else:
                 object_instances = _pci.objects(api).get_by_name(object_name)
 
-        if isinstance(object_instances, Query) :
-            for i in object_instances :
+        if isinstance(object_instances, Query):
+            for i in object_instances:
                 i.delete()
-        else :
+        else:
             object_instances.delete()
 
-    except ObjectDoesNotExist as e :
+    except ObjectDoesNotExist as e:
         return True
 
     return True
+
 
 def validate_and_create_pvc(
     api: pykube.HTTPClient,
@@ -568,16 +623,13 @@ def validate_and_create_pvc(
 
     kubectl_apply(api=api, manifest_data=pvc_obj, dry_run=dry_run)
 
+
 def launch_download_job(
-    api: pykube.HTTPClient,
-    ev: dict,
-    download_model: str,
-    model_path: str
+    api: pykube.HTTPClient, ev: dict, download_model: str, model_path: str
 ):
 
-    work_dir_str = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
-    current_step = os.getenv("LLMDBENCH_CURRENT_STEP", "step")
-    kcmd =ev["control_kcmd"]
+    work_dir_str = ev["control_work_dir"]
+    current_step = ev["current_step"]
 
     work_dir = Path(work_dir_str)
     yaml_dir = work_dir / "setup" / "yamls"
@@ -669,16 +721,31 @@ spec:
             claimName: {ev["vllm_common_pvc_name"]}
 """
 
-    with open(f'{ev["control_work_dir"]}/setup/yamls/{ev["current_step_nr"]}_download_job.yaml', "w") as f:
+    with open(
+        f'{ev["control_work_dir"]}/setup/yamls/{ev["current_step_nr"]}_download_job.yaml',
+        mode="w",
+        encoding="utf-8"
+    ) as f:
         f.write(job_yaml)
 
     announce(
         f"--> Deleting previous job '{job_name}' (if it exists) to prevent conflicts..."
     )
-    kubectl_delete(api=api, object_kind='Job', object_name=job_name, object_namespace=ev['vllm_common_namespace'])
-    kubectl_delete(api=api, object_kind='Pod', object_namespace=ev['vllm_common_namespace'], object_selector={'job-name': job_name})
+    kubectl_delete(
+        api=api,
+        object_kind="Job",
+        object_name=job_name,
+        object_namespace=ev["vllm_common_namespace"],
+    )
+    kubectl_delete(
+        api=api,
+        object_kind="Pod",
+        object_namespace=ev["vllm_common_namespace"],
+        object_selector={"job-name": job_name},
+    )
 
     kubectl_apply(api=api, manifest_data=job_yaml, dry_run=ev["control_dry_run"])
+
 
 async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False):
     """Wait for the  job to complete"""
@@ -689,7 +756,7 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
         return True
 
     # use async config loading
-    #TODO kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
+    # TODO kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
     await k8s_async_config.load_kube_config()
     api_client = k8s_async_client.ApiClient()
     batch_v1_api = k8s_async_client.BatchV1Api(api_client)
@@ -725,10 +792,13 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
         )
         return False
     except Exception as e:
-        announce(f"WARNING: (RECOVERABLE) Error occured while waiting for job {job_name} : {e}")
+        announce(
+            f"WARNING: (RECOVERABLE) Error occured while waiting for job {job_name} : {e}"
+        )
         return False
     finally:
         await api_client.close()
+
 
 def model_attribute(model: str, attribute: str) -> str:
 
@@ -815,6 +885,7 @@ def model_attribute(model: str, attribute: str) -> str:
     else:
         return result
 
+
 def extract_environment(ev):
     """
     Extract and display environment variables for debugging.
@@ -853,9 +924,10 @@ def extract_environment(ev):
     env_dir = Path(work_dir) / "environment"
     env_dir.mkdir(parents=True, exist_ok=True)
 
-    with open(env_dir / "variables", "w") as f:
+    with open(env_dir / "variables", mode="w", encoding="utf-8") as f:
         for var in env_vars:
             f.write(var + "\n")
+
 
 def get_image(
     image_registry: str,
@@ -863,7 +935,7 @@ def get_image(
     image_name: str,
     image_tag: str,
     tag_only: bool = False,
-    silent: bool = False
+    silent: bool = False,
 ) -> str:
     """
     Construct container image reference.
@@ -911,8 +983,6 @@ def get_image(
                 result = subprocess.run(
                     cmd.split(), capture_output=True, text=True, check=True
                 )
-                import json
-
                 tags_data = json.loads(result.stdout)
                 if tags_data.get("Tags"):
                     # Use jq -r .Tags[] | tail -1 equivalent
@@ -925,12 +995,15 @@ def get_image(
             sys.exit(1)
 
         if not silent:
-            announce(f"INFO: resolved image \"{image_full_name}:{image_tag}\" into \"{image_full_name}:{is_latest_tag}\"")
+            announce(
+                f'INFO: resolved image "{image_full_name}:{image_tag}" into "{image_full_name}:{is_latest_tag}"'
+            )
 
-    if tag_only :
+    if tag_only:
         return is_latest_tag
     else:
         return f"{image_registry}/{image_repo}/{image_name}:{is_latest_tag}"
+
 
 def check_storage_class(ev):
     """
@@ -942,7 +1015,7 @@ def check_storage_class(ev):
         control_work_dir = os.environ.get(
             "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
         )
-        api, client = kube_connect(f"{control_work_dir}/environment/context.ctx")
+        api, _ = kube_connect(f"{control_work_dir}/environment/context.ctx")
 
         # Create StorageClass object - try pykube-ng first, fallback to custom class
         try:
@@ -992,7 +1065,7 @@ def check_storage_class(ev):
                         )
                         return False
                 except Exception as e:
-                    announce(f"ERROR: unable to find a \"default\" storage class: {e}")
+                    announce(f'ERROR: unable to find a "default" storage class: {e}')
                     return False
 
         # Verify storage class exists using pykube
@@ -1018,6 +1091,7 @@ def check_storage_class(ev):
         announce(f"ERROR: connecting to Kubernetes: {e}")
         return False
 
+
 def check_affinity(ev: dict):
     """
     Check and validate affinity configuration.
@@ -1035,7 +1109,7 @@ def check_affinity(ev: dict):
         control_work_dir = os.environ.get(
             "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
         )
-        api, client = kube_connect(f"{control_work_dir}/environment/context.ctx")
+        api, _ = kube_connect(f"{control_work_dir}/environment/context.ctx")
 
         # Handle auto affinity detection
         if affinity == "auto":
@@ -1093,7 +1167,9 @@ def check_affinity(ev: dict):
                         )
                         return False
                 except Exception as e:
-                    announce(f"ERROR: unable to find nodes with requested affinity: {e}")
+                    announce(
+                        f"ERROR: unable to find nodes with requested affinity: {e}"
+                    )
                     return False
         else:
             # Validate manually specified affinity using pykube
@@ -1125,7 +1201,7 @@ def check_affinity(ev: dict):
         if accelerator_resource == "auto":
             os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"] = "nvidia.com/gpu"
             announce(
-                f'ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE automatically set to "nvidia.com/gpu"'
+                'ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE automatically set to "nvidia.com/gpu"'
             )
 
         return True
@@ -1133,6 +1209,7 @@ def check_affinity(ev: dict):
     except Exception as e:
         announce(f"ERROR: unable to connect to cluster: {e}")
         return False
+
 
 def get_accelerator_nr(accelerator_nr, tp, dp) -> int:
     """
@@ -1145,36 +1222,37 @@ def get_accelerator_nr(accelerator_nr, tp, dp) -> int:
 
     if accelerator_nr != "auto":
         return accelerator_nr
-    else :
+    else:
         return needed_accelerators
+
 
 def add_annotations(ev: dict, varname: str) -> str:
     """
     Generate pod annotations YAML.
     Equivalent to the bash add_annotations function.
     """
-    varname = varname.replace("LLMDBENCH_",'',1).lower()
-    annotations = ev[varname].replace("auto",'')
+    varname = varname.replace("LLMDBENCH_", "", 1).lower()
+    annotations = ev[varname].replace("auto", "")
     if not annotations:
         return ""
 
-    annotations = ev[varname].replace("auto",'')
+    annotations = ev[varname].replace("auto", "")
 
-    if ev["control_environment_type_standalone_active"] :
+    if ev["control_environment_type_standalone_active"]:
         indent = "        "  # 8 spaces
-    elif ev["control_environment_type_modelservice_active"] :
+    elif ev["control_environment_type_modelservice_active"]:
         indent = "      "  # 6 spaces
     else:
         indent = "        "  # default 8 spaces
 
     # Parse annotations (comma-separated key:value pairs)
-    if not annotations.count("stood-up-by:") :
+    if not annotations.count("stood-up-by:"):
         annotations = f"{annotations},stood-up-by:{ev['control_username']}"
 
-    if not annotations.count("stood-up-from:") :
+    if not annotations.count("stood-up-from:"):
         annotations = f"{annotations},stood-up-from:llm-d-benchmark"
 
-    if not annotations.count("stood-up-via:") :
+    if not annotations.count("stood-up-via:"):
         annotations = f"{annotations},stood-up-via:{ev['deploy_methods']}"
 
     annotation_lines = []
@@ -1184,6 +1262,7 @@ def add_annotations(ev: dict, varname: str) -> str:
             annotation_lines.append(f'{indent}{key.strip()}: "{value.strip()}"')
 
     return "\n".join(annotation_lines)
+
 
 def render_string(input_string):
     """
@@ -1211,7 +1290,9 @@ def render_string(input_string):
     matches = re.findall(replace_env_pattern, working_string)
 
     # Process each REPLACE_ENV match
-    processed_string = input_string.replace("{\\n}", "\n").replace("{\\s}", " ").replace("____"," ")
+    processed_string = (
+        input_string.replace("{\\n}", "\n").replace("{\\s}", " ").replace("____", " ")
+    )
     for match in set(matches):  # Use set to get unique matches
         # Extract parameter name and default value
         if "++++default=" in match:
@@ -1241,6 +1322,7 @@ def render_string(input_string):
 
     return processed_string
 
+
 def add_command(model_command: str) -> str:
     """
     Generate command section for container based on model_command type.
@@ -1251,6 +1333,7 @@ def add_command(model_command: str) -> str:
       - '-c'"""
     return ""
 
+
 def add_command_line_options(ev: dict, args_string: str) -> str:
     """
     Generate command line options for container args.
@@ -1260,7 +1343,7 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
     current_step = os.environ["LLMDBENCH_CURRENT_STEP"].split("_")[0]
 
     if os.access(args_string, os.R_OK):
-        with open(args_string, "r") as fp:
+        with open(args_string, mode="r", encoding="utf-8") as fp:
             fc = fp.read()
         args_string = fc
 
@@ -1286,26 +1369,28 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
 
             processed_args = clear_string(processed_args)
 
-            if ev["vllm_common_enable_sleep_mode"] :
-                processed_args = processed_args.split('\n')
+            if ev["vllm_common_enable_sleep_mode"]:
+                processed_args = processed_args.split("\n")
 
-                processed_args[-1] = f"{processed_args[-1]} \\\n            --enable-sleep-mode"
-                processed_args = '\n'.join(processed_args)
+                processed_args[-1] = (
+                    f"{processed_args[-1]} \\\n            --enable-sleep-mode"
+                )
+                processed_args = "\n".join(processed_args)
 
             return f"        - |\n          {processed_args}"
-        elif current_step == "09":
+        if current_step == "09":
             # For step 09 (modelservice), format as proper YAML list
             if "[" in processed_args and "]" in processed_args:
                 # Handle array format with potential complex arguments
                 processed_args = processed_args.replace("[", "").replace("]", "")
 
                 args_list = []
-                for arg in processed_args.split("--") :
-                    if arg :
-                        if arg.count(' ') :
+                for arg in processed_args.split("--"):
+                    if arg:
+                        if arg.count(" "):
                             args_list.append(f"--{arg.split(' ')[0]}")
                             args_list.append(f"{arg.split(' ')[1]}")
-                        else :
+                        else:
                             args_list.append(f"--{arg}")
 
                 # Create proper YAML list items with escaped quotes
@@ -1325,7 +1410,7 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
                                 # Regular argument - wrap in double quotes
                                 yaml_list.append(f'      - "{cleaned_arg}"')
 
-                #TODO             if ev["vllm_common_enable_sleep_mode"] :
+                # TODO             if ev["vllm_common_enable_sleep_mode"] :
 
                 return "\n".join(yaml_list)
             else:
@@ -1338,7 +1423,7 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
                 cmd_param_list[-1] = cmd_param_list[-1].replace("\\", "")
                 cmd_string = "\n".join(cmd_param_list).replace("--", "", 1)
 
-                #TODO             if ev["vllm_common_enable_sleep_mode"] :
+                # TODO             if ev["vllm_common_enable_sleep_mode"] :
 
                 return cmd_string
         else:
@@ -1352,20 +1437,23 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
         else:
             return ""
 
-def add_resources(ev:dict, identifier: str) -> [str, str]:
 
+def add_resources(ev: dict, identifier: str) -> [str, str]:
+    """
+    TBD
+    """
     limits_resources = []
     requests_resources = []
 
-    if ev["control_environment_type_standalone_active"] :
+    if ev["control_environment_type_standalone_active"]:
         identifier = "common"
         section_indent = " " * 12
 
-    if ev["control_environment_type_modelservice_active"] :
+    if ev["control_environment_type_modelservice_active"]:
         identifier = f"modelservice_{identifier}"
         section_indent = " " * 8
 
-    if ev["control_environment_type_standalone_active"] :
+    if ev["control_environment_type_standalone_active"]:
         accelerator_resource = ev[f"vllm_{identifier}_accelerator_resource"]
 
         if accelerator_resource == "auto":
@@ -1406,12 +1494,8 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
             f'{section_indent}{ephemeral_storage_resource}: "{ephemeral_storage_nr}"'
         )
 
-    if ev["control_environment_type_standalone_active"] :
-        if (
-            accelerator_resource
-            and accelerator_count
-            and str(accelerator_count) != "0"
-        ):
+    if ev["control_environment_type_standalone_active"]:
+        if accelerator_resource and accelerator_count and str(accelerator_count) != "0":
             limits_resources.append(
                 f'{section_indent}{accelerator_resource}: "{accelerator_count}"'
             )
@@ -1420,34 +1504,33 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
             )
 
     if network_resource and network_nr:
-        limits_resources.append(
-            f'{section_indent}{network_resource}: "{network_nr}"'
-        )
-        requests_resources.append(
-            f'{section_indent}{network_resource}: "{network_nr}"'
-        )
+        limits_resources.append(f'{section_indent}{network_resource}: "{network_nr}"')
+        requests_resources.append(f'{section_indent}{network_resource}: "{network_nr}"')
 
-    if limits_resources :
+    if limits_resources:
         limits_resources = "\n".join(limits_resources)
-    else :
+    else:
         limits_resources = f"{section_indent}'{''}'"
 
-    if requests_resources :
+    if requests_resources:
         requests_resources = "\n".join(requests_resources)
-    else :
+    else:
         requests_resources = f"{section_indent}'{''}'"
 
     return limits_resources, requests_resources
 
-def add_affinity(ev:dict) -> str:
 
+def add_affinity(ev: dict) -> str:
+    """
+    TBD
+    """
     affinity = ev["vllm_common_affinity"]
     if ":" in affinity:
         affinity_key, affinity_value = affinity.split(":", 1)
     else:
         affinity_key, affinity_value = "", ""
 
-    if ev["control_environment_type_standalone_active"] :
+    if ev["control_environment_type_standalone_active"]:
         affinity_string = f"""      affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -1458,9 +1541,9 @@ def add_affinity(ev:dict) -> str:
                 values:
                 - {affinity_value}"""
 
-    if ev["control_environment_type_modelservice_active"] :
+    if ev["control_environment_type_modelservice_active"]:
 
-        if affinity_key == "kubernetes.io/os" :
+        if affinity_key == "kubernetes.io/os":
             return ""
 
         affinity_string = f"""  acceleratorTypes:
@@ -1470,37 +1553,56 @@ def add_affinity(ev:dict) -> str:
 
     return affinity_string
 
-def add_accelerator(ev:dict, identifier: str = "decode") -> str:
 
-    if ev[f"vllm_modelservice_{identifier}_accelerator_resource"] == "auto" :
-        ev[f"vllm_modelservice_{identifier}_accelerator_resource"] = ev[f"vllm_common_affinity"].split(':')[0].replace(".product",'')
+def add_accelerator(ev: dict, identifier: str = "decode") -> str:
+    """
+    TBD
+    """
+    if ev[f"vllm_modelservice_{identifier}_accelerator_resource"] == "auto":
+        ev[f"vllm_modelservice_{identifier}_accelerator_resource"] = (
+            ev[f"vllm_common_affinity"].split(":")[0].replace(".product", "")
+        )
 
-    accelerator_type = ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split('.')[0]
-    if accelerator_type == "kubernetes" :
+    accelerator_type = ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split(
+        "."
+    )[0]
+    if accelerator_type == "kubernetes":
         accelerator_type = "cpu"
         acellerator_resource = "cpu"
 
     acellerator_resource = ev[f"vllm_modelservice_{identifier}_accelerator_resource"]
-    accelerator_string=f"""accelerator:
+    accelerator_string = f"""accelerator:
   type: {accelerator_type}
     """
     # rely on hardcoded list (in modelservice) for these resources
-    if accelerator_type not in ['nvidia', 'intel-i915', 'intel-xe', 'intel-gaudi', 'amd', 'google']:
+    if accelerator_type not in [
+        "nvidia",
+        "intel-i915",
+        "intel-xe",
+        "intel-gaudi",
+        "amd",
+        "google",
+    ]:
         accelerator_string = f"""{accelerator_string}
   resources:
     {accelerator_type}: "{acellerator_resource}"
     """
     return accelerator_string
 
-def add_pull_secret(ev:dict) -> str:
+
+def add_pull_secret(ev: dict) -> str:
+    """
+    TBD
+    """
     pull_secret_string = "#noconfig"
-    if ev["vllm_common_pull_secret"] :
+    if ev["vllm_common_pull_secret"]:
         pull_secret_string = f"""      imagePullSecrets:
       - name: {ev["vllm_common_pull_secret"]}"""
 
     pull_secret_string = clear_string(pull_secret_string)
 
     return pull_secret_string
+
 
 def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
     """
@@ -1519,10 +1621,10 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
     """
 
     # Determine indentation based on environment type
-    if ev["control_environment_type_standalone_active"] :
+    if ev["control_environment_type_standalone_active"]:
         name_indent = " " * 8
         value_indent = " " * 10
-    elif ev["control_environment_type_modelservice_active"] :
+    elif ev["control_environment_type_modelservice_active"]:
         name_indent = " " * 6
         value_indent = " " * 8
     else:
@@ -1531,7 +1633,7 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
 
     if os.access(env_vars_string, os.R_OK):
         lines = []
-        with open(env_vars_string, "r") as fp:
+        with open(env_vars_string, mode="r", encoding="utf-8") as fp:
             for line in fp:
                 if line[0] != "#":
                     line = render_string(line)
@@ -1549,8 +1651,12 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
                 clean_name = envvar[1:]
             clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
             clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_VLLM_", "VLLM_")
-            clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_VLLM_", "VLLM_")
-            clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_DECODE_VLLM_", "VLLM_")
+            clean_name = clean_name.replace(
+                "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_VLLM_", "VLLM_"
+            )
+            clean_name = clean_name.replace(
+                "LLMDBENCH_VLLM_MODELSERVICE_DECODE_VLLM_", "VLLM_"
+            )
             clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_", "")
             clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
             env_value = os.environ.get(envvar, "")
@@ -1566,7 +1672,11 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
 
     return "\n".join(env_lines)
 
+
 def add_config(obj_or_filename, num_spaces=0, label=""):
+    """
+    TBD
+    """
     spaces = " " * num_spaces
     contents = ""
     indented_contents = ""
@@ -1575,7 +1685,7 @@ def add_config(obj_or_filename, num_spaces=0, label=""):
 
     if len(obj_or_filename.split("\n")) == 1:
         try:
-            with open(obj_or_filename, "r") as f:
+            with open(obj_or_filename, mode="r", encoding="utf-8") as f:
                 contents = f.read()
         except FileNotFoundError:
             pass
@@ -1589,17 +1699,18 @@ def add_config(obj_or_filename, num_spaces=0, label=""):
         indented_contents = ""
     return indented_contents
 
+
 def is_standalone_deployment(ev: dict) -> bool:
     """
     Returns true if it is a standalone deployment
     """
     return ev["control_environment_type_standalone_active"]
 
+
 def get_accelerator_type(ev: dict) -> str | None:
     """
     Attempts to get the GPU type
     """
-
     common_affinity = ev["vllm_common_affinity"]
     if common_affinity == "auto":
         return common_affinity
@@ -1608,6 +1719,7 @@ def get_accelerator_type(ev: dict) -> str | None:
         # LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3
         parsed = common_affinity.split(":")
         return parsed[-1]
+
 
 def is_hf_model_gated(model_id: str) -> bool:
     """
@@ -1642,6 +1754,7 @@ def is_hf_model_gated(model_id: str) -> bool:
     except requests.RequestException as e:
         announce(f"ERROR: HF request failed: {e}")
         return False
+
 
 def user_has_hf_model_access(model_id: str, hf_token: str) -> bool:
     """
@@ -1684,6 +1797,7 @@ def user_has_hf_model_access(model_id: str, hf_token: str) -> bool:
         announce(f"ERROR: HF request failed: {e}")
         return False
 
+
 def get_rand_string(length: int = 8):
     """
     Generate a random string with lower case characters and digits
@@ -1693,17 +1807,15 @@ def get_rand_string(length: int = 8):
     random_string = "".join(random.choices(characters, k=length))
     return random_string
 
-def get_model_name_from_pod(api: pykube.HTTPClient,
-                            client: any,
-                            namespace: str,
-                            image: str,
-                            ip: str,
-                            port: str):
+
+def get_model_name_from_pod(
+    api: pykube.HTTPClient, client: any, namespace: str, image: str, ip: str, port: str
+):
     """
     Get model name by starting/running a pod
     """
 
-    if not ip :
+    if not ip:
         return "empty", "N/A"
 
     pod_name = f"testinference-pod-{get_rand_string()}"
@@ -1753,6 +1865,7 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
     )
     return model_name, curl_command
 
+
 def add_scc_to_service_account(
     api: pykube.HTTPClient,
     scc_name: str,
@@ -1798,7 +1911,9 @@ def add_scc_to_service_account(
             announce(f'Successfully updated SCC "{scc_name}"')
 
 
-def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int, component: str) -> int:
+def wait_for_pods_created_running_ready(
+    api_client, ev: dict, component_nr: int, component: str
+) -> int:
     """
     Wait for pods to be created, in Running state and then in Ready state.
     """
@@ -1808,7 +1923,7 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
     ev["control_wait_timeout"] = int(ev["control_wait_timeout"])
     if not dry_run and int(component_nr) > 0:
         delay = 10
-        max_retries = int(ev["control_wait_timeout"]/delay)
+        max_retries = int(ev["control_wait_timeout"] / delay)
         announce(
             f'⏳ Waiting for all ({component}) pods serving model to be in "Running" state (timeout={ev["control_wait_timeout"]}s/{max_retries} tries)...'
         )
@@ -1818,41 +1933,92 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
                 w = k8s_watch.Watch()
                 pod_running_list = []
                 pod_ready_list = []
-                for event in w.stream(api_client.list_namespaced_pod, namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}", timeout_seconds=int(ev["control_wait_timeout"])):
-                    pod = event['object']
-                    event_type = event['type']
-                    if event_type in ("ADDED", "MODIFIED") and (pod.status.init_container_statuses or pod.status.container_statuses):
-                        if pod.status.init_container_statuses and (len(pod_running_list) < int(component_nr)):
-                            for init_container_status in pod.status.init_container_statuses:
-                                if init_container_status.state and init_container_status.state.waiting and init_container_status.state.waiting.reason == "CrashLoopBackOff":
-                                    announce(f"ERROR: init:CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
+                for event in w.stream(
+                    api_client.list_namespaced_pod,
+                    namespace=ev["vllm_common_namespace"],
+                    label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}",
+                    timeout_seconds=int(ev["control_wait_timeout"]),
+                ):
+                    pod = event["object"]
+                    event_type = event["type"]
+                    if event_type in ("ADDED", "MODIFIED") and (
+                        pod.status.init_container_statuses
+                        or pod.status.container_statuses
+                    ):
+                        if pod.status.init_container_statuses and (
+                            len(pod_running_list) < int(component_nr)
+                        ):
+                            for (
+                                init_container_status
+                            ) in pod.status.init_container_statuses:
+                                if (
+                                    init_container_status.state
+                                    and init_container_status.state.waiting
+                                    and init_container_status.state.waiting.reason
+                                    == "CrashLoopBackOff"
+                                ):
+                                    announce(
+                                        f"ERROR: init:CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}"
+                                    )
                                     result = 1
                                     return result
-                                elif init_container_status.state.terminated and init_container_status.state.terminated.exit_code not in (0, None):
-                                    announce(f"ERROR: Crashed init:container in pod: {pod.metadata.name}, container: {container_status.name}")
+                                elif (
+                                    init_container_status.state.terminated
+                                    and init_container_status.state.terminated.exit_code
+                                    not in (0, None)
+                                ):
+                                    announce(
+                                        f"ERROR: Crashed init:container in pod: {pod.metadata.name}, container: {container_status.name}"
+                                    )
                                     result = 2
                                     return result
                         if pod.status.container_statuses:
                             if pod.metadata.name not in pod_create_list:
-                                announce(f"✅     \"{pod.metadata.name}\" ({component}) pod serving model created")
+                                announce(
+                                    f'✅     "{pod.metadata.name}" ({component}) pod serving model created'
+                                )
                                 pod_create_list.append(pod.metadata.name)
                             for container_status in pod.status.container_statuses:
-                                if container_status.state.waiting and container_status.state.waiting.reason == "CrashLoopBackOff":
-                                    announce(f"ERROR: CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
+                                if (
+                                    container_status.state.waiting
+                                    and container_status.state.waiting.reason
+                                    == "CrashLoopBackOff"
+                                ):
+                                    announce(
+                                        f"ERROR: CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}"
+                                    )
                                     result = 3
                                     return result
-                                elif container_status.state.terminated and container_status.state.terminated.exit_code not in (0, None):
-                                    announce(f"ERROR: Crashed container in pod: {pod.metadata.name}, container: {container_status.name}")
+                                elif (
+                                    container_status.state.terminated
+                                    and container_status.state.terminated.exit_code
+                                    not in (0, None)
+                                ):
+                                    announce(
+                                        f"ERROR: Crashed container in pod: {pod.metadata.name}, container: {container_status.name}"
+                                    )
                                     result = 4
                                     return result
-                            if pod.metadata.name not in pod_running_list and all(cs.state.running for cs in pod.status.container_statuses):
-                                announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model running")
-                                announce(f"⏳ Waiting for all ({component}) pods to be Ready (timeout={int(ev['control_wait_timeout'])}s)...")
+                            if pod.metadata.name not in pod_running_list and all(
+                                cs.state.running for cs in pod.status.container_statuses
+                            ):
+                                announce(
+                                    f'🚀     "{pod.metadata.name}" ({component}) pod serving model running'
+                                )
+                                announce(
+                                    f"⏳ Waiting for all ({component}) pods to be Ready (timeout={int(ev['control_wait_timeout'])}s)..."
+                                )
                                 pod_running_list.append(pod.metadata.name)
-                            if pod.metadata.name not in pod_ready_list and all(cs.ready for cs in pod.status.container_statuses):
-                                announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model ready")
+                            if pod.metadata.name not in pod_ready_list and all(
+                                cs.ready for cs in pod.status.container_statuses
+                            ):
+                                announce(
+                                    f'🚀     "{pod.metadata.name}" ({component}) pod serving model ready'
+                                )
                                 pod_ready_list.append(pod.metadata.name)
-                                if len(pod_create_list) == len(pod_ready_list) and len(pod_ready_list) == int(component_nr):
+                                if len(pod_create_list) == len(pod_ready_list) and len(
+                                    pod_ready_list
+                                ) == int(component_nr):
                                     result = 0
                                     return result
             except (Exception, ProtocolError) as e:
@@ -1860,12 +2026,15 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
                     announce(f"WARNING: {e}, NOT-FATAL, retrying in {delay} seconds...")
                     time.sleep(delay)
                 else:
-                    announce(f"ERROR: Exception occured while waiting for ({component}) pods : {e}")
+                    announce(
+                        f"ERROR: Exception occured while waiting for ({component}) pods : {e}"
+                    )
                     result = 5
                     return result
             finally:
                 w.stop()
     return result
+
 
 # FIXME (USE PYKUBE)
 def collect_logs(ev: dict, component_nr: int, component: str) -> int:
@@ -1884,6 +2053,7 @@ def collect_logs(ev: dict, component_nr: int, component: str) -> int:
     log_file = logs_dir / f"llm-d-{component}.log"
     log_cmd = f"kubectl --namespace {ev['vllm_common_namespace']} logs --tail=-1 --prefix=true -l llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component} > {log_file}"
     return llmdbench_execute_cmd(log_cmd, ev["control_dry_run"], ev["control_verbose"])
+
 
 # ----------------------- Capacity Planner Sanity Check -----------------------
 COMMON = "COMMON"
@@ -2001,7 +2171,7 @@ def get_model_config_and_text_config(
 
 
 def validate_vllm_params(
-    param: ValidationParam, ignore_if_failed: bool, type: str = COMMON
+    param: ValidationParam, ignore_if_failed: bool, podtype: str = COMMON
 ):
     """
     Given a list of vLLM parameters, validate using capacity planner
@@ -2013,8 +2183,8 @@ def validate_vllm_params(
         msgtag = "ERROR:"
 
     env_var_prefix = COMMON
-    if type != COMMON:
-        env_var_prefix = f"MODELSERVICE_{type}"
+    if podtype != COMMON:
+        env_var_prefix = f"MODELSERVICE_{podtype}"
 
     models_list = param.models
     hf_token = param.hf_token
@@ -2064,7 +2234,7 @@ def validate_vllm_params(
                     announce(
                         f"{msgtag} TP={tp} is invalid. Please select from these options ({valid_tp_values}) for {model}."
                     )
-            except AttributeError:
+            except AttributeError as e:
                 # Error: config['num_attention_heads'] not in config
                 announce(
                     f"{msgtag} Cannot obtain data on the number of attention heads, cannot find valid tp values: {e}"
@@ -2158,14 +2328,14 @@ def validate_vllm_params(
             announce(f"{msgtag} Model info on model's architecture not available.")
 
 
-def get_validation_param(ev: dict, type: str = COMMON) -> ValidationParam:
+def get_validation_param(ev: dict, podtype: str = COMMON) -> ValidationParam:
     """
     Returns validation param from type: one of prefill, decode, or None (default=common)
     """
 
     prefix = f"vllm_{COMMON}"
-    if type == PREFILL or type == DECODE:
-        prefix = f"vllm_modelservice_{type}"
+    if podtype == PREFILL or podtype == DECODE:
+        prefix = f"vllm_modelservice_{podtype}"
     prefix = prefix.lower()
 
     models_list = ev["deploy_model_list"]
@@ -2214,14 +2384,14 @@ def validate_modelservice_vllm_params(ev: dict, ignore_if_failed: bool):
     """
     Validates vllm modelservice configuration. Returns True if validation is complete.
     """
-    prefill_params = get_validation_param(ev, type=PREFILL)
-    decode_params = get_validation_param(ev, type=DECODE)
+    prefill_params = get_validation_param(ev, podtype=PREFILL)
+    decode_params = get_validation_param(ev, podtype=DECODE)
 
     announce(f"Validating prefill vLLM arguments for {prefill_params.models} ...")
-    validate_vllm_params(prefill_params, ignore_if_failed, type=PREFILL)
+    validate_vllm_params(prefill_params, ignore_if_failed, podtype=PREFILL)
 
     announce(f"Validating decode vLLM arguments for {decode_params.models} ...")
-    validate_vllm_params(decode_params, ignore_if_failed, type=DECODE)
+    validate_vllm_params(decode_params, ignore_if_failed, podtype=DECODE)
 
 
 def capacity_planner_sanity_check(ev: dict):
@@ -2257,7 +2427,7 @@ def get_random_node_port(min_port: int, max_port: int, api=None) -> int:
         control_work_dir = os.environ.get(
             "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
         )
-        api, client = kube_connect(f"{control_work_dir}/environment/context.ctx")
+        api, _ = kube_connect(f"{control_work_dir}/environment/context.ctx")
 
     existing_ports = set()
     services = pykube.Service.objects(api).all()
@@ -2354,7 +2524,7 @@ securityContext:
     type: RuntimeDefault
 """.lstrip()
 
-    with open(prometheus_values_path, "w") as f:
+    with open(prometheus_values_path, mode="w", encoding="utf-8") as f:
         f.write(prometheus_values_content)
 
     prometheus_rbac_values_content = f"""
@@ -2412,7 +2582,7 @@ def install_wva(wva_config, wva_namespace, dry_run=False, verbose=False):
     wva_values_file = os.path.join(tmp_out_dir, "wva_config.yaml")
     namespace_manifest_file = os.path.join(tmp_out_dir, "wva_namespace.yaml")
 
-    with open(wva_values_file, "w") as f:
+    with open(wva_values_file, mode="w", encoding="utf-8") as f:
         yaml.dump(wva_config, f, sort_keys=False)
 
     namespace_manifest = {
@@ -2426,7 +2596,7 @@ def install_wva(wva_config, wva_namespace, dry_run=False, verbose=False):
         },
     }
 
-    with open(namespace_manifest_file, "w") as f:
+    with open(namespace_manifest_file, mode="w", encoding="utf-8") as f:
         yaml.dump(namespace_manifest, f, sort_keys=False)
 
     llmdbench_execute_cmd(
@@ -2451,7 +2621,7 @@ def install_wva_components(ev: dict):
     control_work_dir = os.environ.get(
         "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
     )
-    api, client = kube_connect(f"{control_work_dir}/environment/context.ctx")
+    api, _ = kube_connect(f"{control_work_dir}/environment/context.ctx")
     secret = (
         pykube.Secret.objects(api)
         .filter(namespace="openshift-monitoring")
