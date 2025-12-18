@@ -194,7 +194,7 @@ if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
     fi
 
     if [[ ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE} -eq 0 && ${LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE} -eq 1 ]]; then
-      tgtres=$(echo "$tgtres" | grep -E "llm-d-benchmark-preprocesses|p2p|inference-gateway|inferencepool|inferencepools.inference.networking.x-k8s.io|llm-route|base-model|endpoint-picker|inference-route|inference-gateway-secret|inference-gateway-params|inference-gateway|lmbenchmark" || true)
+      tgtres=$(echo "$tgtres" | grep -E "llm-d-benchmark-preprocesses|p2p|inference-gateway|inferencepool|httproute|inferencepools.inference.networking.k8s.io|llm-route|base-model|endpoint-picker|inference-route|inference-gateway-secret|inference-gateway-params|inference-gateway|lmbenchmark" || true)
     fi
 
     for delres in $tgtres; do
