@@ -210,6 +210,7 @@ else
   gateway
   inferencemodel
   inferencepool
+  httproute
   configmap
   job
   role
@@ -221,7 +222,7 @@ else
   pvc
 )
 
-  OC_RESOURCE_KINDS=(httproute route)
+  OC_RESOURCE_KINDS=(route)
 
   if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
     RESOURCE_KINDS=( "${KUBERNETES_RESOURCE_KINDS[@]}" "${OC_RESOURCE_KINDS[@]}" )

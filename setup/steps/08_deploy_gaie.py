@@ -21,7 +21,7 @@ from functions import (
 )
 
 def provider(provider: str) -> str:
-    if provider == "gke" or provider == "openshift-default" :
+    if provider == "gke" or provider == "openshift-default" or provider == "istio":
         return provider
     return "none"
 
@@ -159,16 +159,15 @@ inferencePool:
       llm-d.ai/inferenceServing: "true"
       llm-d.ai/model: {model_id_label}
 """
-            if gaie_provider != "none" or ip_provider_config != "":
-                gaie_values_content = f"""{gaie_values_content}
-provider:"""
-            if gaie_provider != "none":
-                gaie_values_content = f"""{gaie_values_content}
-  name: {gaie_provider}
-"""
             if ip_provider_config != "":
                 gaie_values_content = f"""{gaie_values_content}
-  {add_config(ip_provider_config, 4, f"{ev['vllm_modelservice_gateway_class_name']}:").lstrip()}
+  provider:
+    {add_config(ip_provider_config, 6, f"{ev['vllm_modelservice_gateway_class_name']}:").lstrip()}
+"""
+            if gaie_provider != "none":
+                gaie_values_content = f"""{gaie_values_content}
+provider:
+  name: {gaie_provider}
 """
             # Write GAIE values file
             gaie_values_file = helm_dir / "gaie-values.yaml"
