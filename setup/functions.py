@@ -325,6 +325,7 @@ def environment_variable_to_dict(ev: dict = {}):
         "control_environment_type_standalone_active",
         "control_environment_type_modelservice_active",
         "wva_enabled",
+        "vllm_modelservice_multinode"
     ]:
         if mandatory_key not in ev:
             ev[mandatory_key] = 0
@@ -1810,7 +1811,7 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
         delay = 10
         max_retries = int(ev["control_wait_timeout"]/delay)
         announce(
-            f'⏳ Waiting for all ({component}) pods serving model to be in "Running" state (timeout={ev["control_wait_timeout"]}s/{max_retries} tries)...'
+            f'⏳ Waiting for all ({component_nr}) "{component}" pods serving model to be in "Running" state (timeout={ev["control_wait_timeout"]}s/{max_retries} tries)...'
         )
         pod_create_list = []
         for attempt in range(max_retries):
@@ -1847,7 +1848,7 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
                                     return result
                             if pod.metadata.name not in pod_running_list and all(cs.state.running for cs in pod.status.container_statuses):
                                 announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model running")
-                                announce(f"⏳ Waiting for all ({component}) pods to be Ready (timeout={int(ev['control_wait_timeout'])}s)...")
+                                announce(f'⏳ Waiting for all ({component_nr}) "{component}" pods to be Ready (timeout={int(ev["control_wait_timeout"])}s)...')
                                 pod_running_list.append(pod.metadata.name)
                             if pod.metadata.name not in pod_ready_list and all(cs.ready for cs in pod.status.container_statuses):
                                 announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model ready")
