@@ -66,7 +66,7 @@
 ######export LLMDBENCH_VLLM_COMMON_VLLM_CACHE_ROOT=
 ######export LLMDBENCH_VLLM_COMMON_ENABLE_SLEEP_MODE=true
 ######export LLMDBENCH_VLLM_COMMON_VLLM_WORKER_MULTIPROC_METHOD=fork
-######export LLMDBENCH_VLLM_STANDALONE_MODEL_LOADER_EXTRA_CONFIG="{ \\\"enable_multithread_load\\\": true, \\\"num_threads\\\": 8 }"
+######export LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG="{ \\\"enable_multithread_load\\\": true, \\\"num_threads\\\": 8 }"
 
 # source preprocessor script that will install libraries for some load formats and set env. variables
 # run preprocessor python that will change the debug log date format and pre-serialize a model when using
