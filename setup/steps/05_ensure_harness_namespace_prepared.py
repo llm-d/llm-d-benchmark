@@ -42,7 +42,7 @@ def main():
         actual_cmd=env_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"]
     )
     if result != 0:
-        announce(f'❌ Failed while running "{env_cmd}" (exit code: {result})')
+        announce(f'ERROR: Failed while running "{env_cmd}" (exit code: {result})')
         exit(result)
 
     api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')

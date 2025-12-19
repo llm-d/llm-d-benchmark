@@ -36,7 +36,7 @@ def gateway_values(provider : str, host: str, service: str) -> str:
         return f"""gateway:
   gatewayClassName: kgateway
   """
-    
+
     elif provider == "kgateway-openshift":
         return f"""gateway:
   gatewayClassName: kgateway
@@ -45,7 +45,7 @@ def gateway_values(provider : str, host: str, service: str) -> str:
   gatewayParameters:
     enabled: true
   """
-        
+
     elif provider == "gke":
         return f"""gateway:
   gatewayClassName: gke-l7-regional-external-managed
@@ -258,7 +258,7 @@ releases:
             verbose=int(ev.get("control_verbose", 0))
         )
         if result != 0:
-            announce(f"❌ Failed Failed installing chart \"infra-{ev['vllm_modelservice_release']}\" (exit code: {result})")
+            announce(f"ERROR: Failed Failed installing chart \"infra-{ev['vllm_modelservice_release']}\" (exit code: {result})")
             exit(result)
         announce(f"✅ chart \"infra-{ev['vllm_modelservice_release']}\" deployed successfully")
 

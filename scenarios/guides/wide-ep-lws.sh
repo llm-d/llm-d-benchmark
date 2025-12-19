@@ -9,8 +9,11 @@
 # Many commonly defined values were left blank (default) so that this scenario is applicable to as many environments as possible.
 
 # Model parameters
+#export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
 export LLMDBENCH_DEPLOY_MODEL_LIST="deepseek-ai/DeepSeek-R1-0528"
-
 
 # PVC parameters
 #             Storage class (leave uncommented to automatically detect the "default" storage class)
@@ -18,14 +21,6 @@ export LLMDBENCH_DEPLOY_MODEL_LIST="deepseek-ai/DeepSeek-R1-0528"
 #export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=shared-vast
 #export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=ocs-storagecluster-cephfs
 export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
-
-# gateway configuration
-###### default is istio and NodePort
-# export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=kgateway
-###### on openshift as alternative to (default) NodePort
-# export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_SERVICE_TYPE=ClusterIP
-###### if support LoadBalancer
-# export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_SERVICE_TYPE=LoadBalancer
 
 # Routing configuration (via gaie)
 export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="custom-plugins.yaml"
@@ -74,26 +69,15 @@ EOF
 
 # Routing configuration (via modelservice)
 # export LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR=nixlv2 # already the default
-export LLMDBENCH_LLMD_ROUTINGSIDECAR_DEBUG_LEVEL=1
-export LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG=v0.4.0
-
-export LLMDBENCH_LLMD_IMAGE_TAG=v0.4.0
 
 #             Affinity to select node with appropriate accelerator (leave uncommented to automatically detect GPU... WILL WORK FOR OpenShift, Kubernetes and GKE)
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3        # OpenShift
-export LLMDBENCH_VLLM_COMMON_AFFINITY=gpu.nvidia.com/model:H200                           # Kubernetes
+#export LLMDBENCH_VLLM_COMMON_AFFINITY=gpu.nvidia.com/model:H200                           # Kubernetes
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=cloud.google.com/gke-accelerator:nvidia-tesla-a100  # GKE
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=cloud.google.com/gke-accelerator:nvidia-h100-80gb   # GKE
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-L40S                  # OpenShift
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-A100-SXM4-80GB        # OpenShift
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu                                      # ANY GPU (useful for Minikube)
-
-#             Uncomment to request specific network devices
-#####export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/roce_gdr
-#######export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib
-#export LLMDBENCH_VLLM_COMMON_NETWORK_NR=4
-export LLMDBENCH_VLLM_COMMON_EPHEMERAL_STORAGE_RESOURCE=ephemeral-storage
-export LLMDBENCH_VLLM_COMMON_EPHEMERAL_STORAGE_NR=1Ti
 
 export LLMDBENCH_VLLM_COMMON_POD_SCHEDULER=custom-binpack-scheduler
 
@@ -109,8 +93,6 @@ export LLMDBENCH_VLLM_COMMON_POD_SCHEDULER=custom-binpack-scheduler
 export LLMDBENCH_VLLM_MODELSERVICE_MULTINODE=true
 
 # Common parameters across standalone and llm-d (prefill and decode) pods
-#export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
-#export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
 
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ENVVARS_TO_YAML
@@ -171,15 +153,17 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_RESOURCE=nvidia
 ######export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/roce_gdr
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/ib
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR=1
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EPHEMERAL_STORAGE_NR=1Ti
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_INFERENCE_PORT=8000
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_MEM_UTIL=0.75
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EPHEMERAL_STORAGE=1Ti
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND=custom
-# export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS
-find /dev/shm -type f -delete; START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE_LOCAL )); exec vllm serve \
+REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS; \
+exec vllm serve \
   REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
-  --port 8000 \
+  --served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+  --port REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_INFERENCE_PORT \
   --trust-remote-code \
   --disable-uvicorn-access-log \
   --data-parallel-hybrid-lb \
@@ -201,7 +185,7 @@ find /dev/shm -type f -delete; START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE
                   "step_interval":"3000",
                   "num_redundant_experts":"32",
                   "log_balancedness":"False"}' \
-  --gpu-memory-utilization 0.75
+  --gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_MEM_UTIL
 EOF
 
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG=$(mktemp)
@@ -213,28 +197,6 @@ securityContext:
     - SYS_RAWIO
   runAsGroup: 0
   runAsUser: 0
-# startupProbe:
-#   httpGet:
-#     path: /health
-#     port: 8000
-#   initialDelaySeconds: 0
-#   periodSeconds: 1
-#   timeoutSeconds: 5
-#   failureThreshold: 2700
-# livenessProbe:
-#   httpGet:
-#     path: /health
-#     port: 8000
-#   periodSeconds: 30
-#   timeoutSeconds: 5
-#   failureThreshold: 3
-# readinessProbe:
-#   httpGet:
-#     path: /v1/models
-#     port: 8000
-#   periodSeconds: 10
-#   timeoutSeconds: 5
-#   failureThreshold: 3
 imagePullPolicy: Always
 EOF
 
@@ -244,10 +206,12 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS=$(mktemp)
 cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS}
 - name: dshm
   mountPath: /dev/shm
-- mountPath: /var/cache/huggingface
-  name: hf-cache
-- mountPath: /var/cache/vllm
-  name: jit-cache
+- name: preprocesses
+  mountPath: /setup/preprocess
+- name: hf-cache
+  mountPath: /var/cache/huggingface
+- name: jit-cache
+  mountPath: /var/cache/vllm
 EOF
 
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES=$(mktemp)
@@ -255,7 +219,11 @@ cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES}
 - name: dshm
   emptyDir:
     medium: Memory
-    sizeLimit: 2Gi # roughly 32MB per local DP plus scratch space
+    sizeLimit: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM # roughly 32MB per local DP plus scratch space
+- name: preprocesses
+  configMap:
+    defaultMode: 320
+    name: llm-d-benchmark-preprocesses
 - hostPath:
     path: /mnt/local/hf-cache
     type: DirectoryOrCreate
@@ -281,17 +249,16 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_RESOURCE=nvidia
 ######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/ib
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=1
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EPHEMERAL_STORAGE_NR=1Ti
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_INFERENCE_PORT=8200
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EPHEMERAL_STORAGE=1Ti
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
-# export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS=$(mktemp)
-# Clear /dev/shm on start to prevent running out of space when crashes occur
-# https://github.com/llm-d/llm-d/issues/352
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
-find /dev/shm -type f -delete; START_RANK=\$(( \${LWS_WORKER_INDEX:-0} * DP_SIZE_LOCAL )); exec vllm serve \
+REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS; \
+exec vllm serve \
   REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
-  --port 8200 \
+  --served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+  --port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_METRICS_PORT \
   --trust-remote-code \
   --disable-uvicorn-access-log \
   --data-parallel-hybrid-lb \
@@ -372,28 +339,6 @@ securityContext:
     - SYS_RAWIO
   runAsGroup: 0
   runAsUser: 0
-# startupProbe:
-#   httpGet:
-#     path: /health
-#     port: 8200
-#   initialDelaySeconds: 0
-#   periodSeconds: 1
-#   timeoutSeconds: 5
-#   failureThreshold: 2700
-# livenessProbe:
-#   httpGet:
-#     path: /health
-#     port: 8200
-#   periodSeconds: 30
-#   timeoutSeconds: 5
-#   failureThreshold: 3
-# readinessProbe:
-#   httpGet:
-#     path: /v1/models
-#     port: 8200
-#   periodSeconds: 10
-#   timeoutSeconds: 5
-#   failureThreshold: 3
 imagePullPolicy: Always
 EOF
 
@@ -401,10 +346,12 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS=$(mktemp)
 cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS}
 - name: dshm
   mountPath: /dev/shm
-- mountPath: /var/cache/huggingface
-  name: hf-cache
-- mountPath: /var/cache/vllm
-  name: jit-cache
+- name: preprocesses
+  mountPath: /setup/preprocess
+- name: hf-cache
+  mountPath: /var/cache/huggingface
+- name: jit-cache
+  mountPath: /var/cache/vllm
 EOF
 
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES=$(mktemp)
@@ -412,7 +359,11 @@ cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES}
 - name: dshm
   emptyDir:
     medium: Memory
-    sizeLimit: 2Gi # roughly 32MB per local DP plus scratch space
+    sizeLimit: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM # roughly 32MB per local DP plus scratch space
+- name: preprocesses
+  configMap:
+    defaultMode: 320
+    name: llm-d-benchmark-preprocesses
 - hostPath:
     path: /mnt/local/hf-cache
     type: DirectoryOrCreate

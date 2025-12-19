@@ -928,6 +928,9 @@ def get_image(
         if not silent:
             announce(f"INFO: resolved image \"{image_full_name}:{image_tag}\" into \"{image_full_name}:{is_latest_tag}\"")
 
+    with open(f'/tmp/tags.txt', "a") as f:
+        f.write(f"{image_registry}/{image_repo}/{image_name}:{is_latest_tag}\n")
+
     if tag_only :
         return is_latest_tag
     else:
@@ -1385,7 +1388,7 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
     cpu_nr = ev[f"vllm_{identifier}_cpu_nr"]
 
     ephemeral_storage_resource = ev.get("vllm_common_ephemeral_storage_resource", "")
-    ephemeral_storage_nr = ev[f"vllm_{identifier}_ephemeral_storage_nr"]
+    ephemeral_storage = ev[f"vllm_{identifier}_ephemeral_storage"]
 
     decode_network_resource = ev.get("vllm_modelservice_decode_network_resource", "")
     decode_network_nr = ev.get("vllm_modelservice_decode_network_nr", "")
@@ -1399,12 +1402,12 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
     if cpu_nr:
         limits_resources.append(f'{section_indent}cpu: "{cpu_nr}"')
         requests_resources.append(f'{section_indent}cpu: "{cpu_nr}"')
-    if ephemeral_storage_resource and ephemeral_storage_nr:
+    if ephemeral_storage_resource and ephemeral_storage:
         limits_resources.append(
-            f'{section_indent}{ephemeral_storage_resource}: "{ephemeral_storage_nr}"'
+            f'{section_indent}{ephemeral_storage_resource}: "{ephemeral_storage}"'
         )
         requests_resources.append(
-            f'{section_indent}{ephemeral_storage_resource}: "{ephemeral_storage_nr}"'
+            f'{section_indent}{ephemeral_storage_resource}: "{ephemeral_storage}"'
         )
 
     if ev["control_environment_type_standalone_active"] :

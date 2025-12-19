@@ -35,7 +35,7 @@ WORKDIR /workspace
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
 ARG INFERENCE_PERF_BRANCH=main
-ARG INFERENCE_PERF_COMMIT=e8e0aa99c57f2ffa0912df7ba1fbd2a8a596a041
+ARG INFERENCE_PERF_COMMIT=a85b31b5de9fde12b5a0ebaaabb2aee1ccb76657
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
@@ -51,7 +51,7 @@ RUN cd vllm; \
 
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
 ARG GUIDELLM_BRANCH=main
-ARG GUIDELLM_COMMIT=f6175cdd8a88f0931bd46822ed7a71787dcd7cee
+ARG GUIDELLM_COMMIT=adfa108ab1df6f2a1452d1037a71817a493303a8
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     pip install torch --index-url https://download.pytorch.org/whl/cpu; \

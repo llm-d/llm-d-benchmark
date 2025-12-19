@@ -291,7 +291,7 @@ decode:
       readinessProbe:
         httpGet:
           path: /health
-          port: {common_inference_port}
+          port: {decode_inference_port}
         failureThreshold: 3
         periodSeconds: 5
       {add_config(decode_extra_container_config, 6).lstrip()}
@@ -351,7 +351,7 @@ prefill:
       readinessProbe:
         httpGet:
           path: /health
-          port: {common_inference_port}
+          port: {prefill_inference_port}
         failureThreshold: 3
         periodSeconds: 5
       {add_config(prefill_extra_container_config, 6).lstrip()}
@@ -547,7 +547,7 @@ def main():
         )
         if result != 0:
             announce(
-                f"❌ Failed to deploy helm chart for model {ev['deploy_current_model']}"
+                f"ERROR: Failed to deploy helm chart for model {ev['deploy_current_model']}"
             )
             return result
 
@@ -568,9 +568,6 @@ def main():
 
         # Wait for decode pods to be created, running, and ready
         api_client = client.CoreV1Api()
-        expected_num_decode_pods = ev["vllm_modelservice_decode_replicas"]
-        if ev.get("vllm_modelservice_multinode", "false"):
-            expected_num_decode_pods = int(ev.get("vllm_modelservice_decode_num_workers_parallelism", "1")) * int(expected_num_decode_pods)
         result = wait_for_pods_created_running_ready(
             api_client, ev, expected_num_decode_pods, "decode"
         )
@@ -582,9 +579,6 @@ def main():
             expected_num_prefill_pods = int(ev["vllm_modelservice_prefill_num_workers_parallelism"]) * int(expected_num_prefill_pods)
 
         # Wait for prefill pods to be created, running, and ready
-        expected_num_prefill_pods = ev["vllm_modelservice_prefill_replicas"]
-        if ev.get("vllm_modelservice_multinode", "false"):
-            expected_num_prefill_pods = int(ev.get("vllm_modelservice_prefill_num_workers_parallelism", "1")) * int(expected_num_prefill_pods)
         result = wait_for_pods_created_running_ready(
             api_client, ev, expected_num_prefill_pods, "prefill"
         )

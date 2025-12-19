@@ -127,7 +127,7 @@ def main():
           key: {ev["vllm_common_hf_token_key"]}"""
                 
             gaie_provider = provider(ev['vllm_modelservice_gateway_class_name'])
-            ip_provider_config = ev.get("vllm_modelservice_inference_pool_provider_config", "")
+            ip_provider_config = ev["vllm_modelservice_inference_pool_provider_config"]
 
             # Generate GAIE values YAML content
             gaie_values_content = f"""inferenceExtension:

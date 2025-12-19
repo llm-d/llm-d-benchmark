@@ -13,6 +13,7 @@
 #export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="deepseek-ai/DeepSeek-R1-0528"
 
 # PVC parameters
 #             Storage class (leave uncommented to automatically detect the "default" storage class)

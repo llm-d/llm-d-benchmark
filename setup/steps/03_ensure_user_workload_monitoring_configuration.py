@@ -158,7 +158,7 @@ def main():
 
     # Check affinity
     if not check_affinity(ev):
-        announce("❌ Failed to check affinity")
+        announce("ERROR: Failed to check affinity")
         return 1
     capacity_planner_sanity_check(ev)
 
