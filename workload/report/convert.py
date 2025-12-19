@@ -169,9 +169,9 @@ def _get_llmd_benchmark_envars() -> dict:
                     },
                 },
                 "metadata": {
-                    "load_format": os.environ['VLLM_LOAD_FORMAT'],
-                    "logging_level": os.environ['VLLM_LOGGING_LEVEL'],
-                    "vllm_server_dev_mode": os.environ['VLLM_SERVER_DEV_MODE'],
+                    "load_format": os.environ['LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT'],
+                    "logging_level": os.environ['LLMDBENCH_VLLM_COMMON_VLLM_LOGGING_LEVEL'],
+                    "vllm_server_dev_mode": os.environ['LLMDBENCH_VLLM_COMMON_VLLM_SERVER_DEV_MODE'],
                     "preprocess": os.environ['LLMDBENCH_VLLM_STANDALONE_PREPROCESS'],
                 }
             },
