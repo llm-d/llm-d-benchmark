@@ -928,9 +928,6 @@ def get_image(
         if not silent:
             announce(f"INFO: resolved image \"{image_full_name}:{image_tag}\" into \"{image_full_name}:{is_latest_tag}\"")
 
-    with open(f'/tmp/tags.txt', "a") as f:
-        f.write(f"{image_registry}/{image_repo}/{image_name}:{is_latest_tag}\n")
-
     if tag_only :
         return is_latest_tag
     else:
