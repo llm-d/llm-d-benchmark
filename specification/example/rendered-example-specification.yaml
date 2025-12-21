@@ -1,6 +1,7 @@
 # -------------------
 # Required Parameters
 # -------------------
+
 # [REQUIRED]
 # The base directory to use when finding the subdirectories and files below.
 # 
@@ -28,6 +29,7 @@ template_dir:
 # -------------------
 # Optional Parameters
 # -------------------
+
 # [OPTIONAL] 
 # Specific file containing a scenario that will have values that will override the default
 # values supplied in the values_dir. 
