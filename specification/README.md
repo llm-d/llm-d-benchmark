@@ -35,7 +35,8 @@ The specification directory contains a grouping of YAML documents that will deta
 # repository.
 # 
 # Note. You can provide absolute paths, or different paths, if you have custom configurations.
-# Please do note you will need to adjust the subsequent directories to accomodate your changes.
+# Please do note you will need to adjust the subsequent directories to accomodate your changes if
+# those directory locations have also been changed such that it breaks the existing template.
 # 
 
 {% set base_dir = '../' -%}
