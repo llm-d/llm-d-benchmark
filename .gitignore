@@ -65,3 +65,22 @@ scenarios/none.sh
 **/*.egg-info
 config_explorer/build/
 .pytest
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment (if inside repo)
+.env/
+.venv/
+.llmd/
+
+# Build artifacts from pip install
+build/
+dist/
+*.egg-info/
+
+# Optional: cache files
+pip-log.txt
+
