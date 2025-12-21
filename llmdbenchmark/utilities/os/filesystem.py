@@ -11,7 +11,6 @@ and operate only on the paths provided by the caller.
 Functions included:
 - create_tmp_directory: Create a temporary directory and return its path
 - create_directory: Create a directory (mkdir -p semantics by default)
-- check_directory_exists: Test whether a directory exists
 - copy_directory: Recursively copy a directory tree
 - remove_directory: Recursively delete a directory tree
 
@@ -30,15 +29,19 @@ Thread safety:
 import os
 import shutil
 import tempfile
-from typing import Optional
+from typing import Optional, Union
+from pathlib import Path
 
 
-def create_tmp_directory(prefix: str = "tmp_", base_dir: Optional[str] = None) -> str:
+def create_tmp_directory(
+    prefix: str = None, suffix: str = None, base_dir: Optional[Path] = None
+) -> Path:
     """
     Create a temporary directory.
 
     Args:
         prefix: Prefix for the temporary directory name.
+        suffix: Suffix for the temporary directory name.
         base_dir: Optional base directory in which to create the temp directory.
 
     Returns:
@@ -48,12 +51,12 @@ def create_tmp_directory(prefix: str = "tmp_", base_dir: Optional[str] = None) -
         OSError: If the temporary directory cannot be created.
     """
     try:
-        return tempfile.mkdtemp(prefix=prefix, dir=base_dir)
+        return Path(tempfile.mkdtemp(prefix=prefix, suffix=suffix, dir=base_dir))
     except OSError as exc:
         raise OSError(f"Failed to create temporary directory: {exc}") from exc
 
 
-def create_directory(path: str, exist_ok: bool = True) -> None:
+def create_directory(path: Path, exist_ok: bool = True) -> None:
     """
     Create a directory at the given path.
 
@@ -70,19 +73,6 @@ def create_directory(path: str, exist_ok: bool = True) -> None:
         raise OSError(f"Failed to create directory '{path}': {exc}") from exc
 
 
-def check_directory_exists(path: str) -> bool:
-    """
-    Check whether a directory exists at the given path.
-
-    Args:
-        path: Path to check.
-
-    Returns:
-        True if the directory exists, False otherwise.
-    """
-    return os.path.isdir(path)
-
-
 def copy_directory(source: str, destination: str, overwrite: bool = False) -> None:
     """
     Copy a directory from source to destination.
@@ -93,12 +83,8 @@ def copy_directory(source: str, destination: str, overwrite: bool = False) -> No
         overwrite: If True, allows copying into an existing destination.
 
     Raises:
-        FileNotFoundError: If the source directory does not exist.
         OSError: If the directory cannot be copied.
     """
-    if not os.path.isdir(source):
-        raise FileNotFoundError(f"Source directory '{source}' does not exist")
-
     try:
         shutil.copytree(source, destination, dirs_exist_ok=overwrite)
     except OSError as exc:
@@ -107,22 +93,39 @@ def copy_directory(source: str, destination: str, overwrite: bool = False) -> No
         ) from exc
 
 
-def remove_directory(path: str, ignore_missing: bool = True) -> None:
+def get_absolute_path(path: Union[str, Path]) -> Path:
+    """
+    Convert a relative or absolute path to an absolute Path object.
+
+    Args:
+        path: A string or Path representing the file/directory path.
+
+    Returns:
+        A Path object representing the absolute path.
+
+    Raises:
+        ValueError: If the path cannot be resolved.
+    """
+    try:
+        p = Path(path)
+        abs_path = p.resolve(strict=True)
+        return abs_path
+    except Exception as exc:
+        raise ValueError(
+            f"Failed to resolve absolute path for '{path}': {exc}"
+        ) from exc
+
+
+def remove_directory(path: str) -> None:
     """
     Remove a directory and all of its contents.
 
     Args:
         path: Path of the directory to remove.
-        ignore_missing: If True, no exception is raised if the directory does not exist.
 
     Raises:
         OSError: If the directory cannot be removed.
     """
-    if not os.path.exists(path):
-        if ignore_missing:
-            return
-        raise FileNotFoundError(f"Directory '{path}' does not exist")
-
     try:
         shutil.rmtree(path)
     except OSError as exc:

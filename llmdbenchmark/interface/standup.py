@@ -38,18 +38,3 @@ def add_subcommands(parser: argparse._SubParsersAction):
     standup_parser.add_argument(
         "-u", "--wva", help="Enable Workload Variant Autoscaler"
     )
-    standup_parser.add_argument(
-        "-n",
-        "--dry-run",
-        action="store_true",
-        help="Print the command without executing it",
-    )
-    standup_parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Verbose output"
-    )
-    standup_parser.add_argument(
-        "-i",
-        "--non-admin",
-        action="store_true",
-        help="Run as non-cluster-level admin user",
-    )

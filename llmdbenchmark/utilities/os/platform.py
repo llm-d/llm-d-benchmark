@@ -24,6 +24,7 @@ Functions:
 
 from dataclasses import dataclass, fields
 import platform
+import getpass
 
 
 @dataclass(frozen=True)
@@ -87,3 +88,8 @@ def get_platform_dict() -> dict[str, object]:
                            and convenience OS flags ('is_mac', 'is_linux').
     """
     return get_platform_info().to_dict()
+
+
+def get_user_id() -> str:
+    """:return: String identifying the currently active system user as ``name``"""
+    return getpass.getuser()
