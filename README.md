@@ -1,4 +1,4 @@
-# In-Progress Refacto
+# In-Progress Refactor
 
 **This readme will eventually be completely refactored**
 
