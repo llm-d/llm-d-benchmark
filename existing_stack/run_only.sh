@@ -110,11 +110,7 @@ export -f get_harness_list
 function start_harness_pod {
 
   local pod_name=$1
-  # run_experiment_results_dir=$(results_dir_name "${endpoint_stack_name}" "${harness_name}" "${_uid}")
-  # experiment_analyzer=$(find ${_root_dir}/analysis/ -name ${harness_name}* | rev | cut -d '/' -f1 | rev)
-  : ${harness_dataset_url:="none"}
-  if [ "${harness_dataset_url}" == "none" ]; then 
-    harness_dataset_url=""
+  if [ "${harness_dataset_url:=none}" == "none" ]; then # make sure the variable is defined
     local is_dataset_url="# "   # used to comment out the dataset_url env var
   else
     local is_dataset_url=""
