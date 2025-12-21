@@ -1,5 +1,24 @@
 # Specification Guidelines
 
+The specification directory contains a number of Jinja files that will be rendered into YAML documents.
+Each Jinja file pertains to a specific stack that `llmdbenchmark` will provision that pertains to an optional scenario, and optional
+experiment(s) to be run. The below sections will elaborate on this further.
+
+## Jinja Usage
+
+As seen in the templates found in this repository, we make strong use of Jinja, and we will do that here as well with
+the intention to push the the rendering to the Jinja library, rather than making that logic hard coded into our tooling.
+
+The specification files here will have a simple templated value `base_dir` - the reason we do this is to allow the user to 
+override these files in a structured way - not all users have the same `base_dir` - we want to accomodate those that may
+have completely rearranged their structure.
+
+The default value for `base_dir` in these documents is `../` - pertaining to the default structure of this repository (root of the repository).
+
+To override the `base_dir` value, we recommend the user to utilize the `cli flag` provided through `llmdbenchmark --base_dir <directory> <...other cmds...>`
+
+## Specification Structure
+
 The specification directory contains a grouping of YAML documents that will detail the following content
 
 ```yaml
