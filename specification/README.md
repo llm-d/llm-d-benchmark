@@ -21,7 +21,28 @@ For an example of what the rendered template looks like, albeit simple, the `exa
 
 ## Specification Structure
 
-The specification directory contains a grouping of YAML documents that will detail the following content
+### Content Expectations
+
+The specification directory contains a grouping of YAML documents that will detail the following content per specification:
+
+```yaml
+#
+# Required
+#
+base_dir
+values_dir
+template_dir
+
+#
+# Optional
+#
+scenario_file
+experiments
+```
+
+### Example of a Template Specification
+
+An annotated example of the template specification template can be observed below for an `inference-scheduling` scenario and experiment:
 
 ```yaml
 
@@ -74,9 +95,9 @@ scenario_file:
 # section. These values will be used as the final override values in generating the complete set
 # of YAML documents to be used during provision and runtime. 
 # 
-# If the attribute "experiment" is not provided, then it is assumed the user ONLY wants to 
+# If the attribute "experiments" is not provided, then it is assumed the user ONLY wants to 
 # provision (standup) a stack.
-experiment:
+experiments:
   - name: "experiment-1"
     attributes:
       - name: "harness"
