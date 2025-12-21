@@ -1,6 +1,17 @@
 import argparse
 
-from llmdbenchmark.logging.logger import get_logger, set_stage
+import os
+
+from llmdbenchmark.logging import (
+    log_info,
+    log_warning,
+    log_error,
+    log_debug,
+    log_blank,
+    setup_logger,
+    ConfigurationError,
+)
+
 from llmdbenchmark.utilities.os.filesystem import create_tmp_directory
 from llmdbenchmark.interface import standup
 
@@ -15,7 +26,6 @@ def parse_cli(args):
 
 
 def cli():
-
     parser = argparse.ArgumentParser(
         prog="llmdbenchmark",
         description="Provision and Drive Experiments for LLM workloads focused on analyzing"
@@ -40,20 +50,51 @@ def cli():
         "running experiments, and other actions for this library.",
     )
 
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Enable debug logging to console"
+    )
+
     subparsers = parser.add_subparsers(dest="command")
     standup.add_subcommands(subparsers)
 
     args = parser.parse_args()
     parse_cli(args)
 
-    log = get_logger("llmdbenchmark")
+    logger = setup_logger(verbose=args.verbose)
 
     if args.command == "standup":
-        set_stage(log, "🔧 standup")
-        log.info("Preparing environment...")
+        log_info(
+            "Running 🔧 standup",
+            logger=logger,
+        )
+        log_debug(
+            "Preparing environment...",
+            extra={"emoji": "🚀"},
+            logger=logger,
+        )
+        log_blank(
+            logger=logger,
+        )
+        log_info(
+            "Preparing environment...",
+            extra={"emoji": "⏳"},
+            logger=logger,
+        )
+        log_warning(
+            "Preparing environment...",
+            extra={"emoji": "📜"},
+            logger=logger,
+        )
 
-        print(args)
+        # log_error(
+        #     "Preparing environment...",
+        #     extra={"emoji": "📜"},
+        #     logger=logger,
+        # )
 
 
 if __name__ == "__main__":
     cli()
+
+
+# Need to specify the WORKSPACE for logging directory

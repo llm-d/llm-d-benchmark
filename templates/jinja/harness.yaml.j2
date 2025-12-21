@@ -1,0 +1,79 @@
+harnesses:
+- runner: "default"
+  contents:
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: {{ harness["user-overrides"][0].harness.name }}-launcher
+      namespace: {{ harness["user-overrides"][0].namespace }}
+      labels:
+        app: {{ harness["user-overrides"][0].harness.name }}-launcher
+
+    spec:
+      containers:
+      - name: harness
+        image: "{{ images['user-overrides']
+                  | selectattr('name','equalto','llm-d')
+                  | map(attribute='registry')
+                  | first }}/{{ images['user-overrides']
+                  | selectattr('name','equalto','llm-d')
+                  | map(attribute='repo')
+                  | first }}/{{ images['user-overrides']
+                  | selectattr('name','equalto','llm-d')
+                  | map(attribute='image')
+                  | first }}:{{ images['user-overrides']
+                  | selectattr('name','equalto','llm-d')
+                  | map(attribute='tag')
+                  | first }}"
+
+        imagePullPolicy: Always
+
+        securityContext:
+          runAsUser: 0
+
+        command: ["sh", "-c"]
+        args:
+          - "{{ harness['user-overrides'][0].executable }}"
+
+{% if harness["user-overrides"][0].resources is defined %}
+        resources:
+{% if harness["user-overrides"][0].resources.cpu is defined %}
+          limits:
+            cpu: {{ harness["user-overrides"][0].resources.cpu }}
+{% endif %}
+{% if harness["user-overrides"][0].resources.memory is defined %}
+            memory: {{ harness["user-overrides"][0].resources.memory }}
+{% endif %}
+          requests:
+{% if harness["user-overrides"][0].resources.cpu is defined %}
+            cpu: {{ harness["user-overrides"][0].resources.cpu }}
+{% endif %}
+{% if harness["user-overrides"][0].resources.memory is defined %}
+            memory: {{ harness["user-overrides"][0].resources.memory }}
+{% endif %}
+{% endif %}
+
+{% if harness["user-overrides"][0].env is defined %}
+        env:
+{% for env in harness["user-overrides"][0].env %}
+          - name: {{ env.name }}
+            value: "{{ env.value }}"
+{% endfor %}
+{% endif %}
+
+{% if harness["user-overrides"][0].volumes is defined %}
+        volumeMounts:
+{% for vol in harness["user-overrides"][0].volumes %}
+          - name: {{ vol.name }}
+            mountPath: {{ vol.mount }}
+{% endfor %}
+{% endif %}
+
+{% if harness["user-overrides"][0].volumes is defined %}
+      volumes:
+{% for vol in harness["user-overrides"][0].volumes %}
+        - name: {{ vol.name }}
+          persistentVolumeClaim:
+            claimName: {{ vol.name }}
+{% endfor %}
+{% endif %}
