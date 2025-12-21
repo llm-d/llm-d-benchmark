@@ -19,7 +19,6 @@ harness:
   parallelism: 1                  # Number of parallel workload launcher pods to create.  
   wait_timeout: 600               # Time (in seconds) to wait for workload launcher pod to complete before terminating.
                                   # Set to 0 to disable timeout.
-                                  # Note: workload launcher pod will continue running in cluster if timeout occurs.
   image: ghcr.io/llm-d/llm-d-benchmark:v0.3.7
   # dataset_url: &dataset_url none
                          
@@ -60,7 +59,6 @@ workload:                         # yaml configuration for harness workload(s)
         mean: 50            # mean length of the output to be generated
         std: 10             # standard deviation of the length of the output to be generated
         total_count: 100    # total number of output lengths to generate to fit the above mentioned distribution constraints
-      # dataset_url: https://huggingface.co/datasets/deanli/llm-d-benchmark-datasets/resolve/main/small_instruction_following_dataset.jsonl
     report:
       request_lifecycle:
         summary: true

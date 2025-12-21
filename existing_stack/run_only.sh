@@ -20,14 +20,14 @@ fi
 
 # Constants
 HARNESS_EXECUTABLE=llm-d-benchmark.sh
-VERIFY_MODEL_TIMEOUT=10
+CURL_TIMEOUT=10
 
 HARNESS_POD_LABEL="llmdbench-harness-launcher"
 HARNESS_EXECUTABLE="llm-d-benchmark.sh"
 HARNESS_CPU_NR=16
 HARNESS_CPU_MEM=32Gi
 RESULTS_DIR_PREFIX=/requests
-CONTROL_WAIT_TIMEOUT=180
+KUBECTL_TIMEOUT=180
 DATASET_DIR=/workspace
 
 
@@ -54,10 +54,7 @@ fi
 
 # Log announcement function
 function announce {
-    # 1 - MESSAGE
-    # 2 - LOGFILE
-
-    local message=$(echo ${1})
+    local message="${1}"
     local logfile=${2:-none}
 
     case ${logfile} in
@@ -76,19 +73,16 @@ function announce {
             ;;  
     esac
 }
-export -f announce
 
 # Sanitize pod name to conform to Kubernetes naming conventions
 function sanitize_pod_name {
   tr [:upper:] [:lower:] <<<"$1" | sed -e 's/[^0-9a-z-][^0-9a-z-]*/-/g' | sed -e 's/^-*//' | sed -e 's/-*$//'
 }
-export -f sanitize_pod_name
 
 # Sanitize directory name to conform to filesystem naming conventions
 function sanitize_dir_name {
   sed -e 's/[^0-9A-Za-z_-][^0-9A-Za-z_-]*/_/g' <<<"$1"
 }
-export -f sanitize_dir_name
 
 # Generate results directory name
 function results_dir_name {
@@ -99,16 +93,13 @@ function results_dir_name {
 
   sanitize_dir_name "${RESULTS_DIR_PREFIX}/${harness_name}_${experiment_id}${workload_name}_${stack_name}"
 } 
-export -f results_dir_name  
 
 # Retrieve list of available harnesses
 function get_harness_list {
   ls ${LLMDBENCH_MAIN_DIR}/workload/harnesses | $LLMDBENCH_CONTROL_SCMD -e 's^inference-perf^inference_perf^' -e 's^vllm-benchmark^vllm_benchmark^' | cut -d '-' -f 1 | $LLMDBENCH_CONTROL_SCMD -n -e 's^inference_perf^inference-perf^' -e 's^vllm_benchmark^vllm-benchmark^' -e 'H;${x;s/\n/,/g;s/^,//;p;}'
 }
-export -f get_harness_list
 
 function start_harness_pod {
-
   local pod_name=$1
   if [ "${harness_dataset_url:=none}" == "none" ]; then # make sure the variable is defined
     local is_dataset_url="# "   # used to comment out the dataset_url env var
@@ -172,10 +163,7 @@ spec:
       name: ${harness_name}-profiles
   restartPolicy: Never    
 EOF
-
-  echo ${control_kubectl} wait --for=condition=Ready=True pod ${pod_name} -n ${harness_namespace} --timeout="${CONTROL_WAIT_TIMEOUT}s"
-
-  ${control_kubectl} wait --for=condition=Ready=True pod ${pod_name} -n ${harness_namespace} --timeout="${CONTROL_WAIT_TIMEOUT}s"
+  ${control_kubectl} wait --for=condition=Ready=True pod ${pod_name} -n ${harness_namespace} --timeout="${KUBECTL_TIMEOUT}s"
   if [[ $? != 0 ]]; then
     announce "❌ Timeout waiting for pod ${pod_name} to get ready"
     exit 1
@@ -183,25 +171,16 @@ EOF
   announce "ℹ️ Harness pod ${pod_name} started"
   ${control_kubectl} describe pod ${pod_name} -n ${harness_namespace}
 }
-export -f start_harness_pod
 
 set -euo pipefail
 cd "$(dirname "$(realpath -- $0)")" > /dev/null 2>&1
 _script_name="${0##*/}"
 _control_dir=$(realpath $(pwd)/)
 _root_dir=$(realpath "${_control_dir}/../")
+_uid=$(date +%s)
 
-function read_config {
-  # $1 - configuration yaml file
-  eval $( yq -o shell '. | del(.workload)| del (.env)' "$1")
-
-  if [[ "$harness_parallelism" != "1" ]]; then
-      echo "ERROR: harness_parallelism is set to '$harness_parallelism'. Only parallelism=1 is supported." >&2
-      exit 1
-  fi  
-  #@TODO harness_parallelism=1 only is supported for now!!!
-}
-
+#Parse command line arguments
+# ========================================================
 while [[ $# -gt 0 ]]; do
     key="$1"
 
@@ -227,7 +206,7 @@ while [[ $# -gt 0 ]]; do
         exit 0
         ;;
         *)
-        echo "ERROR: unknown option \"$key\""
+        announce "❌ ERROR: unknown option \"$key\""
         show_usage
         exit 1
         ;;
@@ -239,12 +218,18 @@ done
 # ========================================================
 announce "📄 Reading configuration file $_config_file"
 if ! [[ -f $_config_file  ]]; then
-  echo "❌ ERROR: could not find config file \"$_config_file\""
+  announce "❌ ERROR: could not find config file \"$_config_file\""
   exit 1
 fi
+eval $( yq -o shell '. | del(.workload)| del (.env)' "$_config_file")
 
-_uid=$(date +%s)
-read_config "$_config_file"
+if [[ "$harness_parallelism" != "1" ]]; then
+    announce "❌ ERROR: harness_parallelism is set to '$harness_parallelism'. Only parallelism=1 is supported."
+    exit 1
+fi  
+#@TODO harness_parallelism=1 only is supported for now!!!
+
+
 
 _harness_pod_name=$(sanitize_pod_name "llmdbench-${harness_name}-launcher")
 
@@ -268,26 +253,24 @@ fi
 
 # Verify model is deployed and endpoint is reachable
 # ========================================================
-_verbose_curl=""
-# _verbose_curl=" -v "
-# _verbose_curl=" --trace-ascii - "
 _verify_model_pod_name=$(sanitize_pod_name "verify-model-${_uid}")
 announce "🔍 Verifying model ${endpoint_model} on endpoint ${endpoint_base_url}/v1/completions using pod $_verify_model_pod_name"
 
-
+set +e
 $control_kubectl -n $endpoint_namespace run ${_verify_model_pod_name} \
+    --request-timeout=${KUBECTL_TIMEOUT}s --pod-running-timeout=${KUBECTL_TIMEOUT}s \
     -q --rm -i --image=alpine/curl --restart=Never --command -- \
-    curl -sS -m $VERIFY_MODEL_TIMEOUT -i --fail-with-body $_verbose_curl "${endpoint_base_url}/v1/completions" \
+    curl -sS -m $CURL_TIMEOUT -i --fail-with-body "${endpoint_base_url}/v1/completions" \
     -H "Content-Type: application/json" \
     -d '{
         "model": "'${endpoint_model}'",
         "prompt": "Hello"
     }'
-
 if [[ $? != 0 ]]; then
   announce "❌ Error while verifying model"
   exit 1
 fi
+set -e
 
 # Prepare ConfigMap with workload profiles
 # ========================================================
@@ -314,17 +297,23 @@ fi
 # ========================================================  
 _pod_name="${_harness_pod_name}"    # place holder for parallelism support
 announce "ℹ️ Creating harness pod ${_pod_name}"
-start_harness_pod ${_pod_name}
 
+set +e
+start_harness_pod ${_pod_name}
+set -e
 
 # Execute workloads
 # ========================================================
-#
+set +e
+if [ "${harness_wait_timeout}" -eq 0 ]; then
+  _timeout=""
+else
+  _timeout="timeout ${harness_wait_timeout}s"
+fi
 yq '.workload | keys | .[]' "${_config_file}" |
   while IFS= read -r workload; do
     announce "ℹ️ Running benchmark with workload ${workload}"
-
-    $control_kubectl exec -i ${_pod_name} -- bash <<RUN_WORKLOAD
+    ${_timeout} $control_kubectl exec -i ${_pod_name} -- bash <<RUN_WORKLOAD
 # redirect to root fds so that kubectl logs can capture output
 exec 1> >(tee /proc/1/fd/1 >&1)
 exec 2> >(tee /proc/1/fd/2 >&2)
@@ -333,8 +322,16 @@ export LLMDBENCH_RUN_EXPERIMENT_ID="${_uid}_${workload}"
 
 ${HARNESS_EXECUTABLE} --harness="${harness_name}" --workload="${workload}"
 RUN_WORKLOAD
+    res=$?
+    if [ $res -eq 0 ]; then
+      announce "ℹ️ Benchmark workload ${workload} complete."
+    elif [ $res -eq 124 ]; then
+      announce "⚠️ Warning: workload ${workload} timed out after ${harness_wait_timeout}s."
+    else 
+      announce "❌ ERROR: error happened while running workload ${workload}."
+    fi  
   done
-
+set -e
 
 # Finalization
 # ========================================================
