@@ -35,7 +35,7 @@ from llmdbenchmark.utilities.os.filesystem import (
 from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface import plan, standup
 
-from llmdbenchmark.parser.render import Renderer
+from llmdbenchmark.parser.precheck import RenderPreCheck
 
 
 def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
@@ -56,7 +56,7 @@ def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
             emoji="🔧",
         )
 
-        Renderer.render(
+        RenderPreCheck.check(
             base_dir=args.base_dir, specification_file=args.specification_file
         )
 
