@@ -100,27 +100,6 @@ def cli():
         emoji="✅",
     )
 
-    logger.log_debug(
-        f'Cannot Create Workspace: "{absolute_workspace_path}"',
-    )
-
-    try:
-        raise ValueError("Something broke")
-    except ValueError as e:
-        logger.log_error(f"Operation failed: {e}", exc_info=True)
-
-    logger.log_warning(
-        f'Cannot Create Workspace: "{absolute_workspace_path}"',
-    )
-
-    logger.log_error(
-        f'Cannot Create Workspace: "{absolute_workspace_path}"',
-    )
-
-    logger.line_break()
-
-    test_gateway()
-
 
 if __name__ == "__main__":
     cli()
