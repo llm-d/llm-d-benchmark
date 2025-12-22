@@ -35,7 +35,7 @@ from llmdbenchmark.utilities.os.filesystem import (
 from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface import plan, standup
 
-from llmdbenchmark.parser.render import render
+from llmdbenchmark.parser.render import Renderer
 
 
 def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
@@ -56,7 +56,9 @@ def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
             emoji="🔧",
         )
 
-        render(args.base_dir, args.specification_file)
+        Renderer.render(
+            base_dir=args.base_dir, specification_file=args.specification_file
+        )
 
     if (
         args.command == Command.STANDUP.value
