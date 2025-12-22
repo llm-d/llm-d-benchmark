@@ -43,10 +43,26 @@ def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
         args (Namespace): Parsed command-line arguments from argparse.
     """
 
-    if args.command == Command.PLAN.value:
-        logger.log_info("PLAN")
-    elif args.command == Command.STANDUP.value:
+    logger.log_info(f'Will use specification file found at "{args.specification}"')
+
+    if (
+        args.command == Command.PLAN.value
+        or args.command == Command.STANDUP.value
+        or args.command == Command.END_TO_END.value
+    ):
+        logger.log_info(
+            "Generating model infrastructure plan for provided specification.",
+            emoji="🔧",
+        )
+
+    if (
+        args.command == Command.STANDUP.value
+        or args.command == Command.END_TO_END.value
+    ):
         logger.log_info("STANDUP")
+
+    if args.command == Command.RUN.value:
+        logger.log_info("RUN")
 
 
 def cli() -> None:
@@ -140,6 +156,8 @@ def cli() -> None:
     current_workspace = create_sub_dir_workload(workspace)
     absolute_workspace_path = get_absolute_path(current_workspace)
 
+    args.specification = get_absolute_path(args.specification)
+
     absolute_workspace_log_dir = create_sub_dir_workload(
         absolute_workspace_path, "logs"
     )
@@ -160,6 +178,8 @@ def cli() -> None:
         f'Created Workspace: "{absolute_workspace_path}"',
         emoji="✅",
     )
+
+    logger.line_break()
 
     drive_cli_args(args, logger)
 

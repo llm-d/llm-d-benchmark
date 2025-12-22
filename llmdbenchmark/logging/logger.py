@@ -4,8 +4,8 @@ logger.py - Custom logging utilities for llmdbenchmark with emoji support and Un
 This module provides a flexible logging system tailored for llmdbenchmark, designed to:
 
 - Separate console output by stream:
-    - DEBUG and INFO messages → `stdout`
-    - WARNING, ERROR, and CRITICAL messages → `stderr`
+    - DEBUG and INFO messages: `stdout`
+    - WARNING, ERROR, and CRITICAL messages: `stderr`
 - Provide optional emoji prefixes for log levels to improve readability
 - Include millisecond-precision timestamps in all messages
 - Log to files with full tracebacks for later inspection:
@@ -210,8 +210,8 @@ def get_logger(
         - Log files will be created under `log_dir` with names based on `log_name`:
             `{log_name}-stdout.log` and `{log_name}-stderr.log`.
         - Console output adheres to Unix conventions:
-            - DEBUG/INFO → stdout
-            - WARNING/ERROR/CRITICAL → stderr
+            - DEBUG/INFO: stdout
+            - WARNING/ERROR/CRITICAL: stderr
     """
     if not log_name:
         prefix = get_user_id()
