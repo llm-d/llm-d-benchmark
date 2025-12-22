@@ -1,0 +1,26 @@
+apiVersion: inference.networking.x-k8s.io/v1alpha1
+kind: EndpointPickerConfig
+plugins:
+  - type: single-profile-handler
+  - type: precise-prefix-cache-scorer
+    parameters:
+      indexerConfig:
+        tokenProcessorConfig:
+          blockSize: 64
+          hashSeed: "42"
+        tokenizersPoolConfig:
+          hf:
+            tokenizersCacheDir: "/tmp/tokenizers"
+  - type: kv-cache-utilization-scorer
+  - type: queue-scorer
+  - type: max-score-picker
+schedulingProfiles:
+  - name: default
+    plugins:
+      - pluginRef: precise-prefix-cache-scorer
+        weight: 3.0
+      - pluginRef: kv-cache-utilization-scorer
+        weight: 2.0
+      - pluginRef: queue-scorer
+        weight: 2.0
+      - pluginRef: max-score-picker
