@@ -111,6 +111,15 @@ class RenderPreCheck:
         """
         logger = RenderPreCheck._get_logger()
 
+        logger.log_info(
+            "Generating model infrastructure plan for provided specification.",
+            emoji="🔧",
+        )
+
+        logger.log_debug(
+            "Validating input paths for base_dir and specification.",
+        )
+
         try:
             templates_dir, scenarios_dir = RenderPreCheck._validate_all_paths(
                 base_dir, specification_file, logger

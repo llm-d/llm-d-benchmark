@@ -50,10 +50,6 @@ def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
         or args.command == Command.STANDUP.value
         or args.command == Command.END_TO_END.value
     ):
-        logger.log_info(
-            "Generating model infrastructure plan for provided specification.",
-            emoji="🔧",
-        )
 
         RenderPreCheck.eval(
             base_dir=args.base_dir, specification_file=args.specification_file
