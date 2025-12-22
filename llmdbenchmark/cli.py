@@ -34,7 +34,6 @@ from llmdbenchmark.utilities.os.filesystem import (
 )
 from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface import plan, standup
-
 from llmdbenchmark.parser.precheck import RenderPreCheck
 
 
@@ -205,8 +204,6 @@ def cli() -> None:
         f'Created Workspace: "{absolute_workspace_path}"',
         emoji="✅",
     )
-
-    logger.line_break()
 
     drive_cli_args(args, logger)
 
