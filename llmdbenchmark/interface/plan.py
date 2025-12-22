@@ -29,4 +29,5 @@ def add_subcommands(parser: argparse._SubParsersAction):
             "This is useful for reviewing and validating the plan before deployment. "
             "There are no additional arguments for this command."
         ),
+        help="Generate only the plan for the model infrastructure.",
     )

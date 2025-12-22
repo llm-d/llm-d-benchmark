@@ -91,10 +91,13 @@ class LLMDBenchmarkLogger:
 
         # Console handlers
         sh_out = StreamHandler(sys.stdout)
-        sh_out.setLevel(logging.DEBUG)
+        if verbose:
+            sh_out.setLevel(logging.DEBUG)
+        else:
+            sh_out.setLevel(logging.INFO)
+
         sh_out.addFilter(lambda r: r.levelno <= logging.INFO)
         sh_out.setFormatter(console_formatter)
-
         sh_err = StreamHandler(sys.stderr)
         sh_err.setLevel(logging.WARNING)
         sh_err.setFormatter(console_formatter)

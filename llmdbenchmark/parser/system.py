@@ -1,11 +1,11 @@
-import yaml
 import copy
 import json
 import subprocess
-import requests
-import re
 import os
 from os.path import abspath
+import re
+import requests
+import yaml
 from jinja2 import Environment, FileSystemLoader
 
 

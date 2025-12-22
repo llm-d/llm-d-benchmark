@@ -41,6 +41,34 @@ from llmdbenchmark.utilities.os.platform import get_user_id
 from llmdbenchmark.config import AUTO_TMP_DIR, PACKAGE_NAME
 
 
+def directory_exists_and_nonempty(path: Union[str, Path]) -> bool:
+    """
+    Check if a directory exists and contains at least one file or subdirectory.
+
+    Args:
+        path (Union[str, Path]): Path to the directory.
+
+    Returns:
+        bool: True if the directory exists and is non-empty, False otherwise.
+    """
+    p = Path(path)
+    return p.is_dir() and any(p.iterdir())
+
+
+def file_exists_and_nonzero(path: Union[str, Path]) -> bool:
+    """
+    Check if a file exists and has a non-zero size.
+
+    Args:
+        path (Union[str, Path]): Path to the file.
+
+    Returns:
+        bool: True if the file exists and is non-empty, False otherwise.
+    """
+    p = Path(path)
+    return p.is_file() and p.stat().st_size > 0
+
+
 def create_tmp_directory(
     prefix: str = None, suffix: str = None, base_dir: Optional[Union[str, Path]] = None
 ) -> Path:

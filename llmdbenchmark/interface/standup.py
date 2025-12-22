@@ -27,6 +27,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
             "The `standup` command provisions the model infrastructure for a given specification. "
             "It implicitly generates a plan (YAMLs) and then executes the provisioning steps."
         ),
+        help="Standup model infrastructure based on given specification.",
     )
     standup_parser.add_argument(
         "-s",

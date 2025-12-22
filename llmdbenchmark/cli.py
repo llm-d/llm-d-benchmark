@@ -20,6 +20,7 @@ Functions:
 
 import argparse
 import logging
+import sys
 
 from pathlib import Path
 
@@ -34,6 +35,8 @@ from llmdbenchmark.utilities.os.filesystem import (
 from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface import plan, standup
 
+from llmdbenchmark.parser.render import render
+
 
 def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
     """
@@ -42,8 +45,6 @@ def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
     Args:
         args (Namespace): Parsed command-line arguments from argparse.
     """
-
-    logger.log_info(f'Will use specification file found at "{args.specification}"')
 
     if (
         args.command == Command.PLAN.value
@@ -54,6 +55,8 @@ def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
             "Generating model infrastructure plan for provided specification.",
             emoji="🔧",
         )
+
+        render(args.base_dir, args.specification_file)
 
     if (
         args.command == Command.STANDUP.value
@@ -88,10 +91,15 @@ def cli() -> None:
     Returns:
         None
     """
+
     parser = argparse.ArgumentParser(
         prog="llmdbenchmark",
         description="Provision and Drive Experiments for LLM workloads focused on analyzing"
-        "performance of llm-d and vllm inference platforms.",
+        "performance of llm-d and vllm inference platforms",
+        epilog=(
+            "A command must be supplied. Commands correspond to high-level actions "
+            "such as generating plans, provisioning infrastructure, or running experiments and workloads."
+        ),
     )
 
     parser.add_argument(
@@ -104,7 +112,16 @@ def cli() -> None:
     )
 
     parser.add_argument(
-        "--specification",
+        "--base-dir",
+        "--bd",
+        required=True,
+        help="Base directory containing templates and scenarios. "
+        "This directory is used when rendering the model infrastructure plan. "
+        "Example: BASE_DIR/templates",
+    )
+
+    parser.add_argument(
+        "--specification_file",
         "--spec",
         required=True,
         help="File specifying the experiment (if any), template location, and scenario location. "
@@ -131,7 +148,13 @@ def cli() -> None:
         "--verbose", "-v", action="store_true", help="Enable debug logging to console."
     )
 
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(
+        dest="command",
+        required=True,
+        title="Commands",
+        description="Available commands:",
+    )
+
     plan.add_subcommands(subparsers)
     standup.add_subcommands(subparsers)
 
@@ -156,11 +179,13 @@ def cli() -> None:
     current_workspace = create_sub_dir_workload(workspace)
     absolute_workspace_path = get_absolute_path(current_workspace)
 
-    args.specification = get_absolute_path(args.specification)
-
     absolute_workspace_log_dir = create_sub_dir_workload(
         absolute_workspace_path, "logs"
     )
+
+    # Sanitize directories
+    args.specification_file = get_absolute_path(args.specification_file)
+    args.base_dir = get_absolute_path(args.base_dir)
 
     config.set_config(
         workspace=absolute_workspace_path,
