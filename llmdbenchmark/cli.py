@@ -205,6 +205,8 @@ def cli() -> None:
         emoji="✅",
     )
 
+    logger.line_break()
+
     drive_cli_args(args, logger)
 
 
