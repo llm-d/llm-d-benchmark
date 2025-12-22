@@ -13,7 +13,7 @@ from llmdbenchmark.utilities.os.filesystem import (
     get_absolute_path,
 )
 from llmdbenchmark.interface import standup
-from llmdbenchmark.provision.gateway import test_gateway
+from llmdbenchmark.provision.gateway.gateway import test_gateway
 
 
 def cli():

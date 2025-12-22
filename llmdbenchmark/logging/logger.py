@@ -25,6 +25,8 @@ Features:
 
 import logging
 import sys
+import uuid
+
 from logging import StreamHandler, FileHandler
 from pathlib import Path
 from datetime import datetime
@@ -72,14 +74,16 @@ class LLMDBenchmarkLogger:
     """Logger with emoji support and separate stdout/stderr files."""
 
     def __init__(self, log_dir: Path, log_name: str, verbose: bool = False):
-        self.logger = logging.getLogger(f"LLMDBenchmarkLogger_{log_name}")
+        short_uuid = uuid.uuid4().hex[:4]
+        log_name_with_uuid = f"{log_name}-{short_uuid}"
+        self.logger = logging.getLogger(f"LLMDBenchmarkLogger_{log_name_with_uuid}")
         if self.logger.hasHandlers():
             self.logger.handlers.clear()
         self.logger.setLevel(logging.DEBUG)
         self.logger.propagate = False
 
-        log_path = log_dir / f"{log_name}-stdout.log"
-        error_path = log_dir / f"{log_name}-stderr.log"
+        log_path = log_dir / f"{log_name_with_uuid}-stdout.log"
+        error_path = log_dir / f"{log_name_with_uuid}-stderr.log"
 
         # Formatters
         console_formatter = EmojiFormatter(include_exc_info=verbose)
