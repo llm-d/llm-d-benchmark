@@ -56,7 +56,7 @@ def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
             emoji="🔧",
         )
 
-        RenderPreCheck.check(
+        RenderPreCheck.eval(
             base_dir=args.base_dir, specification_file=args.specification_file
         )
 
