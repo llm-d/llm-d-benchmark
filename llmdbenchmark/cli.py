@@ -43,6 +43,7 @@ def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
 
     Args:
         args (Namespace): Parsed command-line arguments from argparse.
+        logger (logger): Current logging instance
     """
 
     if (
@@ -55,14 +56,18 @@ def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
             base_dir=args.base_dir, specification_file=args.specification_file
         )
 
+        # RenderSpecification.eval(
+        #     base_dir=args.base_dir, specification_file=args.specification_file
+        # )
+
     if (
         args.command == Command.STANDUP.value
         or args.command == Command.END_TO_END.value
     ):
-        logger.log_info("STANDUP")
+        logger.log_info("STANDUP TODO")
 
     if args.command == Command.RUN.value:
-        logger.log_info("RUN")
+        logger.log_info("RUN TODO")
 
 
 def cli() -> None:
@@ -76,14 +81,6 @@ def cli() -> None:
           verbosity, and dry-run settings.
         - Initializes a logger for console and file output.
         - Dispatches execution to subcommands defined in `plan` and `standup`.
-
-    CLI Arguments:
-        --workspace / --ws (str): Base workspace directory. Defaults to AUTO_TMP_DIR.
-        --specification / --spec (str, required): Path to specification file.
-        --non-admin / -i (flag): Run as non-cluster-level admin user.
-        --dry-run / -n (flag): Generate YAMLs and log commands without execution.
-        --verbose / -v (flag): Enable verbose debug logging.
-        command (str): Subcommand to execute ('plan', 'standup').
 
     Returns:
         None
@@ -102,7 +99,6 @@ def cli() -> None:
     parser.add_argument(
         "--workspace",
         "--ws",
-        default=f"{AUTO_TMP_DIR}",
         help="Supply a workspace directory for placing "
         "generated items and logs, otherwise the default action is to create a "
         "temporary directory on your system.",
@@ -172,7 +168,7 @@ def cli() -> None:
     #
     # This structure allows us to have workspace reusability, if so desired.
     #
-    workspace = create_workspace(Path(args.workspace))
+    workspace = create_workspace(args.workspace)
     current_workspace = create_sub_dir_workload(workspace)
     absolute_workspace_path = get_absolute_path(current_workspace)
 
@@ -180,7 +176,8 @@ def cli() -> None:
         absolute_workspace_path, "logs"
     )
 
-    # Sanitize directories
+    # Sanitize directories and convert all relative (or ~) paths to
+    # absolutes
     args.specification_file = get_absolute_path(args.specification_file)
     args.base_dir = get_absolute_path(args.base_dir)
 

@@ -16,10 +16,10 @@ This module provides a flexible logging system tailored for llmdbenchmark, desig
 
 Features:
 
-- **Multi-stream console logging**: Uses separate `StreamHandler`s for stdout and stderr with level filters.
-- **File logging**: Uses `FileHandler`s to persist logs per severity level with full traceback support.
-- **Emoji support**: Prepend emojis to messages by default or via optional overrides.
-- **Thread-safety note**: Handlers themselves are thread-safe, but the logger does not synchronize access across
+- Multi-stream console logging**: Uses separate `StreamHandler`s for stdout and stderr with level filters.
+- File logging: Uses `FileHandler`s to persist logs per severity level with full traceback support.
+- Emoji support: Prepend emojis to messages by default or via optional overrides.
+- Thread-safety note: Handlers themselves are thread-safe, but the logger does not synchronize access across
     multiple threads writing to the same files. Use with care in concurrent scenarios.
 """
 
@@ -30,9 +30,12 @@ import uuid
 from logging import StreamHandler, FileHandler
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 
+
+from llmdbenchmark import __package_name__
 from llmdbenchmark.utilities.os.platform import get_user_id
+from llmdbenchmark.exceptions.exceptions import ConfigurationError
 
 
 class EmojiFormatter(logging.Formatter):
@@ -74,11 +77,14 @@ class LLMDBenchmarkLogger:
     """Logger with emoji support and separate stdout/stderr files."""
 
     def __init__(self, log_dir: Path, log_name: str, verbose: bool = False):
+
         short_uuid = uuid.uuid4().hex[:4]
         log_name_with_uuid = f"{log_name}-{short_uuid}"
-        self.logger = logging.getLogger(f"LLMDBenchmarkLogger_{log_name_with_uuid}")
+        self.logger = logging.getLogger(f"{__package_name__}-{log_name_with_uuid}")
+
         if self.logger.hasHandlers():
             self.logger.handlers.clear()
+
         self.logger.setLevel(logging.DEBUG)
         self.logger.propagate = False
 
@@ -102,13 +108,21 @@ class LLMDBenchmarkLogger:
         sh_err.setLevel(logging.WARNING)
         sh_err.setFormatter(console_formatter)
 
+        try:
+            fh = FileHandler(log_path, mode="a", encoding="utf-8")
+            eh = FileHandler(error_path, mode="a", encoding="utf-8")
+        except Exception as e:
+            raise ConfigurationError(
+                message="Failed to initialize file logging.",
+                step="logging",
+                context={"log_dir": str(log_dir), "error": str(e)},
+            ) from e
+
         # File handlers
-        fh = FileHandler(log_path, mode="a", encoding="utf-8")
         fh.setLevel(logging.DEBUG)
         fh.addFilter(lambda r: r.levelno < logging.WARNING)
         fh.setFormatter(file_formatter)
 
-        eh = FileHandler(error_path, mode="a", encoding="utf-8")
         eh.setLevel(logging.WARNING)
         eh.setFormatter(file_formatter)
 
@@ -170,7 +184,9 @@ class LLMDBenchmarkLogger:
 
 
 def get_logger(
-    log_dir: Path, verbose: bool, log_name: Optional[str] = None
+    log_dir: Union[str, Path],
+    verbose: Optional[bool] = False,
+    log_name: Optional[str] = None,
 ) -> LLMDBenchmarkLogger:
     """
     Create or retrieve a configured LLMDBenchmarkLogger instance.
@@ -179,10 +195,12 @@ def get_logger(
     `log_name` if none is provided, ensuring that multiple logger instances
     remain isolated and do not conflict.
 
+    Note: log_dir MUST exist and be provided from the caller.
+
     Args:
-        log_dir (Path): Directory where log files will be stored. Must exist or be
+        log_dir (str,Path): Directory where log files will be stored. Must exist and be
             creatable by the caller.
-        verbose (bool): If True, console output will include full tracebacks for
+        verbose Optional[bool] : If True, console output will include full tracebacks for
             warnings and errors; otherwise, console output remains clean.
         log_name (Optional[str]): Optional name for the logger and its log files.
             If not provided, a unique name is generated using the current user ID
@@ -194,30 +212,18 @@ def get_logger(
             - File logging split by severity (stdout/stderr log files)
             - Emoji-prefixed messages
             - Millisecond-precision timestamps
-
-    Example:
-        ```python
-        from llmdbenchmark.utilities.logging import get_logger
-        from pathlib import Path
-
-        log_dir = Path("/tmp/llmd_logs")
-        logger = get_logger(log_dir, verbose=True)
-
-        logger.log_info("Benchmark started")
-        logger.log_warning("Potential performance issue")
-        logger.log_error("Benchmark failed", exc_info=True)
-        ```
-
-    Notes:
-        - Each call with a unique `log_name` creates an independent logger instance.
-        - Log files will be created under `log_dir` with names based on `log_name`:
-            `{log_name}-stdout.log` and `{log_name}-stderr.log`.
-        - Console output adheres to Unix conventions:
-            - DEBUG/INFO: stdout
-            - WARNING/ERROR/CRITICAL: stderr
     """
     if not log_name:
         prefix = get_user_id()
         suffix = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
         log_name = f"{prefix}-{suffix}"
-    return LLMDBenchmarkLogger(log_dir, log_name, verbose)
+
+    if log_dir is None:
+        raise ConfigurationError(
+            message="log_dir is required and cannot be None",
+            step="logging",
+            invalid_key="log_dir",
+        )
+
+    p = Path(log_dir)
+    return LLMDBenchmarkLogger(p, log_name, verbose)

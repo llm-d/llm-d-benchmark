@@ -26,10 +26,7 @@ class RenderPreCheck:
     def _get_logger() -> LLMDBenchmarkLogger:
         """
         Returns the logger for rendering operations.
-        Must be called after config.set_paths() in CLI.
         """
-        if config.log_dir is None:
-            raise RuntimeError("Workspace log_dir is not set yet. Run CLI first.")
         return get_logger(config.log_dir, verbose=config.verbose, log_name=__name__)
 
     @staticmethod

@@ -38,7 +38,7 @@ from datetime import datetime
 
 
 from llmdbenchmark.utilities.os.platform import get_user_id
-from llmdbenchmark.config import AUTO_TMP_DIR, PACKAGE_NAME
+from llmdbenchmark.config import PACKAGE_NAME
 
 
 def directory_exists_and_nonempty(path: Union[str, Path]) -> bool:
@@ -87,13 +87,13 @@ def create_tmp_directory(
         OSError: If the temporary directory cannot be created.
     """
     try:
-        dir = Path(base_dir) if base_dir is not None else None
-        return Path(tempfile.mkdtemp(prefix=prefix, suffix=suffix, dir=dir))
+        p = Path(base_dir) if base_dir is not None else None
+        return Path(tempfile.mkdtemp(prefix=prefix, suffix=suffix, dir=p))
     except OSError as exc:
         raise OSError(f"Failed to create temporary directory: {exc}") from exc
 
 
-def create_directory(path: Union[str, Path], exist_ok: bool = True) -> None:
+def create_directory(path: Union[str, Path], exist_ok: bool = True) -> Path:
     """
     Create a directory at the given path.
 
@@ -101,12 +101,16 @@ def create_directory(path: Union[str, Path], exist_ok: bool = True) -> None:
         path: Path of the directory to create.
         exist_ok: If True, no exception is raised if the directory already exists.
 
+    Returns:
+        The path to the created directory.
+
     Raises:
         OSError: If the directory cannot be created.
     """
     try:
         p = Path(path)
         os.makedirs(p, exist_ok=exist_ok)
+        return p
     except OSError as exc:
         raise OSError(f"Failed to create directory '{path}': {exc}") from exc
 
@@ -178,18 +182,18 @@ def remove_directory(path: Union[str, Path]) -> None:
         raise OSError(f"Failed to remove directory '{path}': {exc}") from exc
 
 
-def create_workspace(workspace_dir: Union[str, Path]) -> Path:
+def create_workspace(workspace_dir: Optional[Union[str, Path]]) -> Path:
     """
     Create a workspace directory.
-    If `workspace_dir` matches AUTO_TMP_DIR, a temporary directory is created.
+    If `workspace_dir`is None then a temporary directory is created.
     Otherwise, ensures the directory exists. We'll need to do this since we allow
     the user to NOT specify a workspace, and we need to actually create one, somewhere.
     """
-    p = Path(workspace_dir)
-    if p == Path(AUTO_TMP_DIR):
+
+    if not workspace_dir:
         return create_tmp_directory(suffix=PACKAGE_NAME)
-    create_directory(p)
-    return p
+    p = Path(workspace_dir)
+    return create_directory(p)
 
 
 def create_sub_dir_workload(
@@ -206,9 +210,8 @@ def create_sub_dir_workload(
     if not sub_dir:
         prefix = get_user_id()
         suffix = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
-        current_workspace = p / f"{prefix}-{suffix}"
+        sub_workspace = p / f"{prefix}-{suffix}"
     else:
-        current_workspace = p / sub_dir
+        sub_workspace = p / sub_dir
 
-    create_directory(current_workspace)
-    return current_workspace
+    return create_directory(sub_workspace)
