@@ -66,6 +66,8 @@ class Renderer:
         Returns:
             Tuple of (templates_dir, scenarios_dir)
         """
+
+        # TODO: Place these someplace else...but pull them into this...
         templates_dir = base_dir / "templates"
         scenarios_dir = base_dir / "scenarios"
 
