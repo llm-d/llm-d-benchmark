@@ -5,68 +5,15 @@ from pathlib import Path
 from typing import Optional
 
 from llmdbenchmark import __version__, __package_name__, __package_home__
-
-from llmdbenchmark.logging.logger import LLMDBenchmarkLogger
-
+from llmdbenchmark.config import config, AUTO_TMP_DIR
+from llmdbenchmark.logging.logger import get_logger
 from llmdbenchmark.utilities.os.filesystem import (
-    create_tmp_directory,
-    create_directory,
+    create_workspace,
+    create_sub_dir_workload,
     get_absolute_path,
 )
-from llmdbenchmark.utilities.os.platform import get_user_id
 from llmdbenchmark.interface import standup
-
-#############################################################
-# Default Internal Globals Scopes to CLI Parser
-#############################################################
-
-# TODO: Move these to a constants module
-
-AUTO_TMP_DIR = Path("AUTO_TMP")
-PACKAGE_NAME = "llmdbenchmark"
-
-
-#############################################################
-# Workspace Helpers
-#############################################################
-
-
-def create_workspace(workspace_dir: Path) -> Path:
-    """
-    Create a workspace directory.
-    If `workspace_dir` matches AUTO_TMP_DIR, a temporary directory is created.
-    Otherwise, ensures the directory exists. We'll need to do this since we allow
-    the user to NOT specify a workspace, and we need to actually create one, somewhere.
-    """
-    if workspace_dir == AUTO_TMP_DIR:
-        return create_tmp_directory(suffix=PACKAGE_NAME)
-    else:
-        create_directory(workspace_dir)
-        return workspace_dir
-
-
-def create_sub_dir_workload(workspace_dir: Path, sub_dir: Optional[str] = None) -> Path:
-    """
-    Create a subdirectory within the workspace.
-    If `sub_dir` is not provided, generates a unique name using user ID and package name.
-
-    This sub_dir within the overall workspace is where the "current" run of llmdbenchmark
-    will place materials generated, such as logs and generated values, and reports.
-    """
-    if not sub_dir:
-        prefix = get_user_id()
-        suffix = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
-        current_workspace = workspace_dir / f"{prefix}-{suffix}"
-    else:
-        current_workspace = workspace_dir / sub_dir
-
-    create_directory(current_workspace)
-    return current_workspace
-
-
-#############################################################
-# CLI Parsing
-#############################################################
+from llmdbenchmark.provision.gateway import test_gateway
 
 
 def cli():
@@ -137,9 +84,12 @@ def cli():
         absolute_workspace_path, "logs"
     )
 
-    step = "cli"
-
-    logger = LLMDBenchmarkLogger(absolute_workspace_log_dir, step, args.verbose)
+    config.set_paths(
+        workspace=absolute_workspace_path,
+        log_dir=absolute_workspace_log_dir,
+        verbose=args.verbose,
+    )
+    logger = get_logger(config.log_dir, config.verbose, __name__)
 
     logger.log_info(
         f'Using Package: "{__package_name__}:{__version__}" found at {__package_home__}'
@@ -149,6 +99,27 @@ def cli():
         f'Created Workspace: "{absolute_workspace_path}"',
         emoji="✅",
     )
+
+    logger.log_debug(
+        f'Cannot Create Workspace: "{absolute_workspace_path}"',
+    )
+
+    try:
+        raise ValueError("Something broke")
+    except ValueError as e:
+        logger.log_error(f"Operation failed: {e}", exc_info=True)
+
+    logger.log_warning(
+        f'Cannot Create Workspace: "{absolute_workspace_path}"',
+    )
+
+    logger.log_error(
+        f'Cannot Create Workspace: "{absolute_workspace_path}"',
+    )
+
+    logger.line_break()
+
+    test_gateway()
 
 
 if __name__ == "__main__":

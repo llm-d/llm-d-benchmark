@@ -1,18 +1,36 @@
 """
-Custom logging utilities for llmdbenchmark with emoji support.
+logger.py - Custom logging utilities for llmdbenchmark with emoji support and Unix-style stream separation.
 
-This module provides a logging system that creates multiple log files per logger instance:
-- `{region_name}-stdout.log`: Contains DEBUG and INFO level messages
-- `{region_name}-stderr.log`: Contains WARNING and ERROR level messages
-- Console output: Clean messages without tracebacks (verbosity controlled by verbose flag)
+This module provides a flexible logging system tailored for llmdbenchmark, designed to:
 
-Each logger instance is isolated by region name, allowing multiple independent loggers
-to write to different sets of files simultaneously.
+- Separate console output by stream:
+    - DEBUG and INFO messages → `stdout`
+    - WARNING, ERROR, and CRITICAL messages → `stderr`
+- Provide optional emoji prefixes for log levels to improve readability
+- Include millisecond-precision timestamps in all messages
+- Log to files with full tracebacks for later inspection:
+    - `{log_name}-stdout.log`: DEBUG and INFO messages
+    - `{log_name}-stderr.log`: WARNING, ERROR, and CRITICAL messages
+- Keep console output clean by suppressing tracebacks unless verbose mode is enabled
+- Isolate logger instances by `log_name` to avoid conflicts in multi-region or multi-run scenarios
+
+Features:
+
+- **Multi-stream console logging**: Uses separate `StreamHandler`s for stdout and stderr with level filters.
+- **File logging**: Uses `FileHandler`s to persist logs per severity level with full traceback support.
+- **Emoji support**: Prepend emojis to messages by default or via optional overrides.
+- **Thread-safety note**: Handlers themselves are thread-safe, but the logger does not synchronize access across
+    multiple threads writing to the same files. Use with care in concurrent scenarios.
 """
 
 import logging
+import sys
 from logging import StreamHandler, FileHandler
 from pathlib import Path
+from datetime import datetime
+from typing import Optional
+
+from llmdbenchmark.utilities.os.platform import get_user_id
 
 
 class EmojiFormatter(logging.Formatter):
@@ -37,7 +55,6 @@ class EmojiFormatter(logging.Formatter):
         )
 
     def format(self, record):
-        # Emoji: custom or default
         emoji = getattr(record, "emoji", None)
         if emoji is None:
             emoji = self.EMOJI_MAP.get(record.levelno, "")
@@ -45,8 +62,6 @@ class EmojiFormatter(logging.Formatter):
         msg = record.getMessage()
 
         formatted = f"{self.formatTime(record)} - {level} - {emoji} {msg}"
-
-        # Only include exception info if configured to do so
         if self.include_exc_info and record.exc_info:
             formatted += "\n" + self.formatException(record.exc_info)
 
@@ -56,41 +71,43 @@ class EmojiFormatter(logging.Formatter):
 class LLMDBenchmarkLogger:
     """Logger with emoji support and separate stdout/stderr files."""
 
-    def __init__(self, log_dir: Path, region_name: str, verbose: bool = False):
-        self.logger = logging.getLogger(f"LLMDBenchmarkLogger_{region_name}")
-
+    def __init__(self, log_dir: Path, log_name: str, verbose: bool = False):
+        self.logger = logging.getLogger(f"LLMDBenchmarkLogger_{log_name}")
         if self.logger.hasHandlers():
             self.logger.handlers.clear()
-
         self.logger.setLevel(logging.DEBUG)
         self.logger.propagate = False
 
-        log_path = log_dir / f"{region_name}-stdout.log"
-        error_path = log_dir / f"{region_name}-stderr.log"
+        log_path = log_dir / f"{log_name}-stdout.log"
+        error_path = log_dir / f"{log_name}-stderr.log"
 
-        # Console: we will ONLY log tracebacks in console if verbose is True
+        # Formatters
         console_formatter = EmojiFormatter(include_exc_info=verbose)
-
-        # Files: full messages with tracebacks
         file_formatter = EmojiFormatter(include_exc_info=True)
 
-        # Stream handler - clean output, no tracebacks
-        sh = StreamHandler()
-        sh.setLevel(logging.DEBUG if verbose else logging.INFO)
-        sh.setFormatter(console_formatter)
+        # Console handlers
+        sh_out = StreamHandler(sys.stdout)
+        sh_out.setLevel(logging.DEBUG)
+        sh_out.addFilter(lambda r: r.levelno <= logging.INFO)
+        sh_out.setFormatter(console_formatter)
 
-        # General log file - full details
+        sh_err = StreamHandler(sys.stderr)
+        sh_err.setLevel(logging.WARNING)
+        sh_err.setFormatter(console_formatter)
+
+        # File handlers
         fh = FileHandler(log_path, mode="a", encoding="utf-8")
         fh.setLevel(logging.DEBUG)
-        fh.addFilter(lambda record: record.levelno < logging.WARNING)
+        fh.addFilter(lambda r: r.levelno < logging.WARNING)
         fh.setFormatter(file_formatter)
 
-        # Error log file - full details with tracebacks
         eh = FileHandler(error_path, mode="a", encoding="utf-8")
         eh.setLevel(logging.WARNING)
         eh.setFormatter(file_formatter)
 
-        self.logger.addHandler(sh)
+        # Attach handlers
+        self.logger.addHandler(sh_out)
+        self.logger.addHandler(sh_err)
         self.logger.addHandler(fh)
         self.logger.addHandler(eh)
 
@@ -137,3 +154,63 @@ class LLMDBenchmarkLogger:
         self.logger.error(
             msg, extra={"emoji": emoji} if emoji else {}, exc_info=exc_info
         )
+
+    def line_break(self) -> None:
+        """Insert a completely blank line in the log (no timestamp or level)."""
+        for handler in self.logger.handlers:
+            handler.stream.write("\n")
+            handler.flush()
+
+
+def get_logger(
+    log_dir: Path, verbose: bool, log_name: Optional[str] = None
+) -> LLMDBenchmarkLogger:
+    """
+    Create or retrieve a configured LLMDBenchmarkLogger instance.
+
+    This function simplifies logger creation by automatically generating a unique
+    `log_name` if none is provided, ensuring that multiple logger instances
+    remain isolated and do not conflict.
+
+    Args:
+        log_dir (Path): Directory where log files will be stored. Must exist or be
+            creatable by the caller.
+        verbose (bool): If True, console output will include full tracebacks for
+            warnings and errors; otherwise, console output remains clean.
+        log_name (Optional[str]): Optional name for the logger and its log files.
+            If not provided, a unique name is generated using the current user ID
+            and timestamp (format: YYYYMMDD-HHMMSS-fff).
+
+    Returns:
+        LLMDBenchmarkLogger: A fully configured logger instance with:
+            - Console logging split by stream (stdout/stderr)
+            - File logging split by severity (stdout/stderr log files)
+            - Emoji-prefixed messages
+            - Millisecond-precision timestamps
+
+    Example:
+        ```python
+        from llmdbenchmark.utilities.logging import get_logger
+        from pathlib import Path
+
+        log_dir = Path("/tmp/llmd_logs")
+        logger = get_logger(log_dir, verbose=True)
+
+        logger.log_info("Benchmark started")
+        logger.log_warning("Potential performance issue")
+        logger.log_error("Benchmark failed", exc_info=True)
+        ```
+
+    Notes:
+        - Each call with a unique `log_name` creates an independent logger instance.
+        - Log files will be created under `log_dir` with names based on `log_name`:
+            `{log_name}-stdout.log` and `{log_name}-stderr.log`.
+        - Console output adheres to Unix conventions:
+            - DEBUG/INFO → stdout
+            - WARNING/ERROR/CRITICAL → stderr
+    """
+    if not log_name:
+        prefix = get_user_id()
+        suffix = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
+        log_name = f"{prefix}-{suffix}"
+    return LLMDBenchmarkLogger(log_dir, log_name, verbose)

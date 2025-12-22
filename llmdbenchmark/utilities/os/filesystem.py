@@ -1,40 +1,48 @@
 """
-filesystem.py - Filesystem utility helpers.
+filesystem.py — Filesystem utility helpers.
 
-This module provides a small, focused set of helper functions for common
-filesystem operations involving directories. The functions are thin,
-Pythonic wrappers around the standard library.
+This module provides a small, focused collection of helper functions for
+common filesystem operations involving directories. The functions are thin,
+Pythonic wrappers around the standard library and are designed to work
+consistently with both string paths and ``pathlib.Path`` objects.
 
-The utilities in this module intentionally avoid maintaining global state
-and operate only on the paths provided by the caller.
+The utilities in this module:
+- Avoid maintaining global state
+- Operate only on paths explicitly provided by the caller
+- Normalize inputs internally to ``Path`` objects
+- Return ``Path`` objects where applicable
 
-Functions included:
-- create_tmp_directory: Create a temporary directory and return its path
-- create_directory: Create a directory (mkdir -p semantics by default)
-- copy_directory: Recursively copy a directory tree
-- remove_directory: Recursively delete a directory tree
+In addition to generic filesystem helpers, this module includes lightweight
+project-specific helpers for creating and managing llmdbenchmark workspace
+directories.
 
 Error handling:
-- Errors from the underlying filesystem are surfaced as standard Python
-  exceptions (``OSError`` or ``FileNotFoundError``) with additional context.
-- No exceptions are silently swallowed unless explicitly requested via
-  function parameters (e.g., ``ignore_missing=True``).
+- Filesystem errors are surfaced as standard Python exceptions (primarily
+  ``OSError``) with additional contextual information.
+- Exceptions are not silently swallowed.
 
 Thread safety:
 - These utilities do not provide synchronization and are not safe for
-  concurrent mutation of the same filesystem paths. Although much of our
-  options are not concurrent regarding filesystems in llmdbenchmark.
+  concurrent mutation of the same filesystem paths.
+- The llmdbenchmark runtime does not currently perform concurrent filesystem
+  mutations using these helpers.
 """
 
 import os
 import shutil
 import tempfile
+
 from typing import Optional, Union
 from pathlib import Path
+from datetime import datetime
+
+
+from llmdbenchmark.utilities.os.platform import get_user_id
+from llmdbenchmark.config import AUTO_TMP_DIR, PACKAGE_NAME
 
 
 def create_tmp_directory(
-    prefix: str = None, suffix: str = None, base_dir: Optional[Path] = None
+    prefix: str = None, suffix: str = None, base_dir: Optional[Union[str, Path]] = None
 ) -> Path:
     """
     Create a temporary directory.
@@ -51,12 +59,13 @@ def create_tmp_directory(
         OSError: If the temporary directory cannot be created.
     """
     try:
-        return Path(tempfile.mkdtemp(prefix=prefix, suffix=suffix, dir=base_dir))
+        dir = Path(base_dir) if base_dir is not None else None
+        return Path(tempfile.mkdtemp(prefix=prefix, suffix=suffix, dir=dir))
     except OSError as exc:
         raise OSError(f"Failed to create temporary directory: {exc}") from exc
 
 
-def create_directory(path: Path, exist_ok: bool = True) -> None:
+def create_directory(path: Union[str, Path], exist_ok: bool = True) -> None:
     """
     Create a directory at the given path.
 
@@ -68,12 +77,15 @@ def create_directory(path: Path, exist_ok: bool = True) -> None:
         OSError: If the directory cannot be created.
     """
     try:
-        os.makedirs(path, exist_ok=exist_ok)
+        p = Path(path)
+        os.makedirs(p, exist_ok=exist_ok)
     except OSError as exc:
         raise OSError(f"Failed to create directory '{path}': {exc}") from exc
 
 
-def copy_directory(source: str, destination: str, overwrite: bool = False) -> None:
+def copy_directory(
+    source: Union[str, Path], destination: Union[str, Path], overwrite: bool = False
+) -> None:
     """
     Copy a directory from source to destination.
 
@@ -86,7 +98,9 @@ def copy_directory(source: str, destination: str, overwrite: bool = False) -> No
         OSError: If the directory cannot be copied.
     """
     try:
-        shutil.copytree(source, destination, dirs_exist_ok=overwrite)
+        src = Path(source)
+        dst = Path(destination)
+        shutil.copytree(src, dst, dirs_exist_ok=overwrite)
     except OSError as exc:
         raise OSError(
             f"Failed to copy directory from '{source}' to '{destination}': {exc}"
@@ -96,6 +110,9 @@ def copy_directory(source: str, destination: str, overwrite: bool = False) -> No
 def get_absolute_path(path: Union[str, Path]) -> Path:
     """
     Convert a relative or absolute path to an absolute Path object.
+
+    This will NOT care if the path exists or not, this is merely to construct
+    the actual absolute path.
 
     Args:
         path: A string or Path representing the file/directory path.
@@ -107,8 +124,8 @@ def get_absolute_path(path: Union[str, Path]) -> Path:
         ValueError: If the path cannot be resolved.
     """
     try:
-        p = Path(path)
-        abs_path = p.resolve(strict=True)
+        p = Path(path).expanduser()
+        abs_path = p.resolve(strict=False)
         return abs_path
     except Exception as exc:
         raise ValueError(
@@ -116,7 +133,7 @@ def get_absolute_path(path: Union[str, Path]) -> Path:
         ) from exc
 
 
-def remove_directory(path: str) -> None:
+def remove_directory(path: Union[str, Path]) -> None:
     """
     Remove a directory and all of its contents.
 
@@ -127,6 +144,43 @@ def remove_directory(path: str) -> None:
         OSError: If the directory cannot be removed.
     """
     try:
-        shutil.rmtree(path)
+        p = Path(path)
+        shutil.rmtree(p)
     except OSError as exc:
         raise OSError(f"Failed to remove directory '{path}': {exc}") from exc
+
+
+def create_workspace(workspace_dir: Union[str, Path]) -> Path:
+    """
+    Create a workspace directory.
+    If `workspace_dir` matches AUTO_TMP_DIR, a temporary directory is created.
+    Otherwise, ensures the directory exists. We'll need to do this since we allow
+    the user to NOT specify a workspace, and we need to actually create one, somewhere.
+    """
+    p = Path(workspace_dir)
+    if p == Path(AUTO_TMP_DIR):
+        return create_tmp_directory(suffix=PACKAGE_NAME)
+    create_directory(p)
+    return p
+
+
+def create_sub_dir_workload(
+    workspace_dir: Union[str, Path], sub_dir: Optional[str] = None
+) -> Path:
+    """
+    Create a subdirectory within the workspace.
+    If `sub_dir` is not provided, generates a unique name using user ID and package name.
+
+    This sub_dir within the overall workspace is where the "current" run of llmdbenchmark
+    will place materials generated, such as logs and generated values, and reports.
+    """
+    p = Path(workspace_dir)
+    if not sub_dir:
+        prefix = get_user_id()
+        suffix = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
+        current_workspace = p / f"{prefix}-{suffix}"
+    else:
+        current_workspace = p / sub_dir
+
+    create_directory(current_workspace)
+    return current_workspace
