@@ -42,6 +42,10 @@ class GPURecommender:
         self.max_itl = max_itl
         self.max_latency = max_latency
 
+        # Store results after recommendation
+        self.gpu_results: Optional[Dict[str, PerformanceEstimationResult]] = None
+        self.failed_gpus: Optional[Dict[str, str]] = None
+
     def recommend_gpu(self, gpu_list: Optional[list] = None) -> Tuple[Dict[str, PerformanceEstimationResult], Dict[str, str]]:
         """
         Runs bento's recommendation engine
@@ -88,4 +92,108 @@ class GPURecommender:
                 msg = f"Error estimating performance for GPU {gpu_name}: {e}"
                 failed_gpus[gpu_name] = msg
 
+        # Store results in instance variables
+        self.gpu_results = gpu_results
+        self.failed_gpus = failed_gpus
+
         return gpu_results, failed_gpus
+
+    def get_gpu_with_highest_throughput(self) -> Optional[Tuple[str, float]]:
+        """
+        Get the GPU with the highest throughput from results.
+
+        Returns:
+            Tuple of (gpu_name, throughput_value) or None if no valid data
+        """
+        if not self.gpu_results:
+            return None
+
+        best_gpu = None
+        best_throughput = -float('inf')
+
+        for gpu_name, result in self.gpu_results.items():
+            if hasattr(result, 'best_configs') and result.best_configs:
+                best_latency_result = result.best_configs.get('best_latency') if isinstance(result.best_configs, dict) else None
+
+                if best_latency_result and hasattr(best_latency_result, 'output_throughput_tps') and best_latency_result.output_throughput_tps is not None:
+                    throughput = best_latency_result.output_throughput_tps
+                    if throughput > best_throughput:
+                        best_throughput = throughput
+                        best_gpu = gpu_name
+
+        return (best_gpu, best_throughput) if best_gpu else None
+
+    def get_gpu_with_lowest_ttft(self) -> Optional[Tuple[str, float]]:
+        """
+        Get the GPU with the lowest Time to First Token (TTFT) from results.
+
+        Returns:
+            Tuple of (gpu_name, ttft_value) or None if no valid data
+        """
+        if not self.gpu_results:
+            return None
+
+        best_gpu = None
+        best_ttft = float('inf')
+
+        for gpu_name, result in self.gpu_results.items():
+            if hasattr(result, 'best_configs') and result.best_configs:
+                best_latency_result = result.best_configs.get('best_latency') if isinstance(result.best_configs, dict) else None
+
+                if best_latency_result and hasattr(best_latency_result, 'ttft_ms') and best_latency_result.ttft_ms is not None:
+                    ttft = best_latency_result.ttft_ms
+                    if ttft < best_ttft:
+                        best_ttft = ttft
+                        best_gpu = gpu_name
+
+        return (best_gpu, best_ttft) if best_gpu else None
+
+    def get_gpu_with_lowest_itl(self) -> Optional[Tuple[str, float]]:
+        """
+        Get the GPU with the lowest Inter-Token Latency (ITL) from results.
+
+        Returns:
+            Tuple of (gpu_name, itl_value) or None if no valid data
+        """
+        if not self.gpu_results:
+            return None
+
+        best_gpu = None
+        best_itl = float('inf')
+
+        for gpu_name, result in self.gpu_results.items():
+            if hasattr(result, 'best_configs') and result.best_configs:
+                best_latency_result = result.best_configs.get('best_latency') if isinstance(result.best_configs, dict) else None
+
+                if best_latency_result and hasattr(best_latency_result, 'itl_ms') and best_latency_result.itl_ms is not None:
+                    itl = best_latency_result.itl_ms
+                    if itl < best_itl:
+                        best_itl = itl
+                        best_gpu = gpu_name
+
+        return (best_gpu, best_itl) if best_gpu else None
+
+    def get_gpu_with_lowest_e2e_latency(self) -> Optional[Tuple[str, float]]:
+        """
+        Get the GPU with the lowest End-to-End (E2E) latency from results.
+
+        Returns:
+            Tuple of (gpu_name, e2e_latency_value) or None if no valid data
+        """
+        if not self.gpu_results:
+            return None
+
+        best_gpu = None
+        best_e2e = float('inf')
+
+        for gpu_name, result in self.gpu_results.items():
+            if hasattr(result, 'best_configs') and result.best_configs:
+                best_latency_result = result.best_configs.get('best_latency') if isinstance(result.best_configs, dict) else None
+
+                if best_latency_result and hasattr(best_latency_result, 'e2e_latency_s') and best_latency_result.e2e_latency_s is not None:
+                    e2e = best_latency_result.e2e_latency_s
+                    if e2e < best_e2e:
+                        best_e2e = e2e
+                        best_gpu = gpu_name
+
+        return (best_gpu, best_e2e) if best_gpu else None

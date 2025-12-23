@@ -62,6 +62,8 @@ if 'failed_gpus' not in st.session_state:
     st.session_state.failed_gpus = None
 if 'recommender_params' not in st.session_state:
     st.session_state.recommender_params = None
+if 'recommender_instance' not in st.session_state:
+    st.session_state.recommender_instance = None
 
 # Title and description
 st.title("GPU Recommendation Engine")
@@ -178,6 +180,7 @@ if run_analysis:
             # Store in session state
             st.session_state.recommendation_results = gpu_results
             st.session_state.failed_gpus = failed_gpus
+            st.session_state.recommender_instance = recommender
             st.session_state.recommender_params = {
                 'model_id': model_id,
                 'input_len': input_len,
@@ -390,48 +393,47 @@ if st.session_state.recommendation_results is not None:
             # Create metric cards for best GPUs
             col1, col2, col3, col4 = st.columns(4)
 
+            # Get recommender instance from session state
+            recommender = st.session_state.recommender_instance
+
             with col1:
-                if 'Throughput (tokens/s)' in df.columns:
-                    best_throughput_idx = df['Throughput (tokens/s)'].idxmax()
-                    best_throughput_gpu = df.loc[best_throughput_idx, 'GPU']
-                    best_throughput_val = df.loc[best_throughput_idx, 'Throughput (tokens/s)']
+                best_throughput = recommender.get_gpu_with_highest_throughput()
+                if best_throughput:
+                    best_gpu, best_val = best_throughput
                     st.metric(
                         "🚀 Highest Throughput",
-                        f"{best_throughput_gpu}",
-                        f"{best_throughput_val:.2f} tokens/s"
+                        f"{best_gpu}",
+                        f"{best_val:.2f} tokens/s"
                     )
 
             with col2:
-                if 'TTFT (ms)' in df.columns:
-                    best_ttft_idx = df['TTFT (ms)'].idxmin()
-                    best_ttft_gpu = df.loc[best_ttft_idx, 'GPU']
-                    best_ttft_val = df.loc[best_ttft_idx, 'TTFT (ms)']
+                best_ttft = recommender.get_gpu_with_lowest_ttft()
+                if best_ttft:
+                    best_gpu, best_val = best_ttft
                     st.metric(
                         "⚡ Lowest TTFT",
-                        f"{best_ttft_gpu}",
-                        f"{best_ttft_val:.2f} ms"
+                        f"{best_gpu}",
+                        f"{best_val:.2f} ms"
                     )
 
             with col3:
-                if 'ITL (ms)' in df.columns:
-                    best_itl_idx = df['ITL (ms)'].idxmin()
-                    best_itl_gpu = df.loc[best_itl_idx, 'GPU']
-                    best_itl_val = df.loc[best_itl_idx, 'ITL (ms)']
+                best_itl = recommender.get_gpu_with_lowest_itl()
+                if best_itl:
+                    best_gpu, best_val = best_itl
                     st.metric(
                         "⏱️ Lowest ITL",
-                        f"{best_itl_gpu}",
-                        f"{best_itl_val:.2f} ms"
+                        f"{best_gpu}",
+                        f"{best_val:.2f} ms"
                     )
 
             with col4:
-                if 'E2E Latency (s)' in df.columns:
-                    best_e2e_idx = df['E2E Latency (s)'].idxmin()
-                    best_e2e_gpu = df.loc[best_e2e_idx, 'GPU']
-                    best_e2e_val = df.loc[best_e2e_idx, 'E2E Latency (s)']
+                best_e2e = recommender.get_gpu_with_lowest_e2e_latency()
+                if best_e2e:
+                    best_gpu, best_val = best_e2e
                     st.metric(
                         "🎯 Lowest E2E Latency",
-                        f"{best_e2e_gpu}",
-                        f"{best_e2e_val:.2f} s"
+                        f"{best_gpu}",
+                        f"{best_val:.2f} s"
                     )
 
             # Show summary of excluded GPUs if any
