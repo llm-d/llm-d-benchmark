@@ -10,9 +10,6 @@ verbosity flag.
 from pathlib import Path
 from typing import Optional
 
-AUTO_TMP_DIR = Path("AUTO_TMP")
-PACKAGE_NAME = "llmdbenchmark"
-
 
 class WorkspaceConfig:
     """
@@ -30,6 +27,7 @@ class WorkspaceConfig:
         Initialize a WorkspaceConfig instance with no paths set and verbose disabled.
         """
         self.workspace: Optional[Path] = None
+        self.plan_dir: Optional[Path] = None
         self.log_dir: Optional[Path] = None
         self.verbose: bool = False
         self.dry_run: bool = False
@@ -37,6 +35,7 @@ class WorkspaceConfig:
     def set_config(
         self,
         workspace: Path,
+        plan_dir: Path,
         log_dir: Path,
         verbose: bool = False,
         dry_run: bool = False,
@@ -46,11 +45,13 @@ class WorkspaceConfig:
 
         Args:
             workspace (Path): The path to the main workspace directory.
+            plan_dir (Path): The path to the generated plan for model infra.
             log_dir (Path): The path to the logs directory within the workspace.
             verbose (bool, optional): Enable verbose logging. Defaults to False.
             dry_run (bool, optional): Enable dry_run only. Defaults to False.
         """
         self.workspace = workspace
+        self.plan_dir = plan_dir
         self.log_dir = log_dir
         self.verbose = verbose
         self.dry_run = dry_run

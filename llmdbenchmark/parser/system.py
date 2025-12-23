@@ -8,20 +8,22 @@ import requests
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
+from llmdbenchmark.config import config
+
 
 class LiteralStr(str):
     pass
 
 
 class System:
-    def __init__(self, defaults_file, templates_dir, workspace, scenario_file=None):
+    def __init__(self, defaults_file, templates_dir, scenario_file=None):
         self.defaults = self._load_yaml(defaults_file)
 
         # Directory containing `.j2` (jinja) templates
         self.templates_dir = templates_dir
 
         # Output of rendered templates, etc.
-        self.workspace = workspace
+        self.workspace = config.plan_dir
 
         # Overrides the "self.defaults" values file
         self.scenario = self._load_yaml(scenario_file) if scenario_file else {}

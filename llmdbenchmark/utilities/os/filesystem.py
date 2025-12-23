@@ -38,7 +38,7 @@ from datetime import datetime
 
 
 from llmdbenchmark.utilities.os.platform import get_user_id
-from llmdbenchmark.config import PACKAGE_NAME
+from llmdbenchmark import __package_name__
 
 
 def directory_exists_and_nonempty(path: Union[str, Path]) -> bool:
@@ -191,7 +191,7 @@ def create_workspace(workspace_dir: Optional[Union[str, Path]]) -> Path:
     """
 
     if not workspace_dir:
-        return create_tmp_directory(suffix=PACKAGE_NAME)
+        return create_tmp_directory(suffix=__package_name__)
     p = Path(workspace_dir)
     return create_directory(p)
 

@@ -20,12 +20,9 @@ Functions:
 
 import argparse
 import logging
-import sys
-
-from pathlib import Path
 
 from llmdbenchmark import __version__, __package_name__, __package_home__
-from llmdbenchmark.config import config, AUTO_TMP_DIR
+from llmdbenchmark.config import config
 from llmdbenchmark.logging.logger import get_logger
 from llmdbenchmark.utilities.os.filesystem import (
     create_workspace,
@@ -34,7 +31,8 @@ from llmdbenchmark.utilities.os.filesystem import (
 )
 from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface import plan, standup
-from llmdbenchmark.parser.precheck import RenderPreCheck
+from llmdbenchmark.parser.render_specification import RenderSpecification
+from llmdbenchmark.parser.system import System
 
 
 def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
@@ -46,24 +44,33 @@ def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
         logger (logger): Current logging instance
     """
 
-    if (
-        args.command == Command.PLAN.value
-        or args.command == Command.STANDUP.value
-        or args.command == Command.END_TO_END.value
+    if args.command in (
+        Command.PLAN.value,
+        Command.STANDUP.value,
+        Command.END_TO_END.value,
     ):
 
-        RenderPreCheck.eval(
-            base_dir=args.base_dir, specification_file=args.specification_file
+        #
+        # This is the source of where all templates, scenarios, and values
+        # should be found to be rendered into workspace.
+        #
+        specification_as_dict = RenderSpecification(
+            specification_file=args.specification_file,
+            base_dir=args.base_dir,
+        ).eval()
+
+        logger.log_info(
+            "Specification file rendered and validated successfully.",
+            emoji="✅",
         )
+        system = System(
+            specification_as_dict["values_file"]["path"],
+            specification_as_dict["template_dir"]["path"],
+            specification_as_dict["scenario_file"]["path"],
+        )
+        system.parse()
 
-        # RenderSpecification.eval(
-        #     base_dir=args.base_dir, specification_file=args.specification_file
-        # )
-
-    if (
-        args.command == Command.STANDUP.value
-        or args.command == Command.END_TO_END.value
-    ):
+    if args.command in (Command.STANDUP.value, Command.END_TO_END.value):
         logger.log_info("STANDUP TODO")
 
     if args.command == Command.RUN.value:
@@ -92,7 +99,8 @@ def cli() -> None:
         "performance of llm-d and vllm inference platforms",
         epilog=(
             "A command must be supplied. Commands correspond to high-level actions "
-            "such as generating plans, provisioning infrastructure, or running experiments and workloads."
+            "such as generating plans, provisioning infrastructure, or running experiments "
+            "and workloads."
         ),
     )
 
@@ -176,6 +184,10 @@ def cli() -> None:
         absolute_workspace_path, "logs"
     )
 
+    absolute_workspace_plan_dir = create_sub_dir_workload(
+        absolute_workspace_path, "plan"
+    )
+
     # Sanitize directories and convert all relative (or ~) paths to
     # absolutes
     args.specification_file = get_absolute_path(args.specification_file)
@@ -183,10 +195,12 @@ def cli() -> None:
 
     config.set_config(
         workspace=absolute_workspace_path,
+        plan_dir=absolute_workspace_plan_dir,
         log_dir=absolute_workspace_log_dir,
         verbose=args.verbose,
         dry_run=args.dry_run,
     )
+
     logger = get_logger(config.log_dir, config.verbose, __name__)
 
     logger.log_info(

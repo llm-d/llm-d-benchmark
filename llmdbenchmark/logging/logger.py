@@ -74,10 +74,13 @@ class EmojiFormatter(logging.Formatter):
 
 
 class LLMDBenchmarkLogger:
-    """Logger with emoji support and separate stdout/stderr files."""
+    """Logger with emoji support, per-instance files, console streams, and combined stdout/stderr logs."""
+
+    _shared_stdout_handler: FileHandler | None = None
+    _shared_stderr_handler: FileHandler | None = None
+    _shared_log_dir: Path | None = None
 
     def __init__(self, log_dir: Path, log_name: str, verbose: bool = False):
-
         short_uuid = uuid.uuid4().hex[:4]
         log_name_with_uuid = f"{log_name}-{short_uuid}"
         self.logger = logging.getLogger(f"{__package_name__}-{log_name_with_uuid}")
@@ -86,51 +89,80 @@ class LLMDBenchmarkLogger:
             self.logger.handlers.clear()
 
         self.logger.setLevel(logging.DEBUG)
-        self.logger.propagate = False
+        self.logger.propagate = False  # prevent duplication to root
 
-        log_path = log_dir / f"{log_name_with_uuid}-stdout.log"
-        error_path = log_dir / f"{log_name_with_uuid}-stderr.log"
-
-        # Formatters
         console_formatter = EmojiFormatter(include_exc_info=verbose)
-        file_formatter = EmojiFormatter(include_exc_info=True)
 
-        # Console handlers
         sh_out = StreamHandler(sys.stdout)
-        if verbose:
-            sh_out.setLevel(logging.DEBUG)
-        else:
-            sh_out.setLevel(logging.INFO)
-
+        sh_out.setLevel(logging.DEBUG if verbose else logging.INFO)
         sh_out.addFilter(lambda r: r.levelno <= logging.INFO)
         sh_out.setFormatter(console_formatter)
+
         sh_err = StreamHandler(sys.stderr)
         sh_err.setLevel(logging.WARNING)
         sh_err.setFormatter(console_formatter)
 
+        self.logger.addHandler(sh_out)
+        self.logger.addHandler(sh_err)
+
+        log_path = log_dir / f"{log_name_with_uuid}-stdout.log"
+        error_path = log_dir / f"{log_name_with_uuid}-stderr.log"
+
+        file_formatter = EmojiFormatter(include_exc_info=True)
+
         try:
             fh = FileHandler(log_path, mode="a", encoding="utf-8")
+            fh.setLevel(logging.DEBUG)
+            fh.addFilter(lambda r: r.levelno <= logging.INFO)
+            fh.setFormatter(file_formatter)
+
             eh = FileHandler(error_path, mode="a", encoding="utf-8")
+            eh.setLevel(logging.WARNING)
+            eh.setFormatter(file_formatter)
+
         except Exception as e:
             raise ConfigurationError(
-                message="Failed to initialize file logging.",
+                message="Failed to initialize per-instance file logging.",
                 step="logging",
                 context={"log_dir": str(log_dir), "error": str(e)},
             ) from e
 
-        # File handlers
-        fh.setLevel(logging.DEBUG)
-        fh.addFilter(lambda r: r.levelno < logging.WARNING)
-        fh.setFormatter(file_formatter)
-
-        eh.setLevel(logging.WARNING)
-        eh.setFormatter(file_formatter)
-
-        # Attach handlers
-        self.logger.addHandler(sh_out)
-        self.logger.addHandler(sh_err)
         self.logger.addHandler(fh)
         self.logger.addHandler(eh)
+
+        try:
+            if self.__class__._shared_log_dir != log_dir:
+                combined_stdout = FileHandler(
+                    log_dir / f"{__package_name__}-stdout.log",
+                    mode="a",
+                    encoding="utf-8",
+                )
+                combined_stdout.setLevel(logging.DEBUG)
+                combined_stdout.addFilter(lambda r: r.levelno <= logging.INFO)
+                combined_stdout.setFormatter(file_formatter)
+
+                # Shared combined stderr
+                combined_stderr = FileHandler(
+                    log_dir / f"{__package_name__}-stderr.log",
+                    mode="a",
+                    encoding="utf-8",
+                )
+                combined_stderr.setLevel(logging.WARNING)
+                combined_stderr.setFormatter(file_formatter)
+
+                self.__class__._shared_stdout_handler = combined_stdout
+                self.__class__._shared_stderr_handler = combined_stderr
+                self.__class__._shared_log_dir = log_dir
+
+            self.logger.addHandler(self.__class__._shared_stdout_handler)
+            self.logger.addHandler(self.__class__._shared_stderr_handler)
+
+        except Exception as e:
+            raise ConfigurationError(
+                message=f"Failed to initialize shared combined {__package_name__} stdout/stderr logs.",
+                step="logging",
+                context={"log_dir": str(log_dir), "error": str(e)},
+            ) from e
 
     def log_debug(self, msg, emoji=None):
         """
