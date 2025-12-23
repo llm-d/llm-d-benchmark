@@ -16,7 +16,8 @@ dependencies = [
     "pydantic==2.11.7",
     "PyYAML==6.0.2",
     "scipy==1.16.1",
-    "transformers==4.55.4"
+    "transformers==4.55.4",
+    "llm-optimizer @ git+https://github.com/bentoml/llm-optimizer.git",
 ]
 
 [tool.setuptools]
