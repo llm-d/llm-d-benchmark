@@ -6,6 +6,10 @@ This library provides the tooling for LLM serving such as
 - Capacity planning:
   - for any LLM on Hugging Face, determine the per-GPU memory requirement for loading the model and serving requests, taking into account parallelism strategies
   - from workload characteristics in terms of max model length and concurrency, determine the KV cache memory requirement
+- GPU Recommendation:
+  - given model specifications and performance requirements, recommend optimal GPU configurations using BentoML's llm-optimizer roofline algorithm
+  - analyze throughput, latency (TTFT, ITL, E2E), and concurrency trade-offs across different GPU types
+  - export recommendations in JSON format for integration with other tools
 - 🚧 Configuration sweep and recommendation
   - given SLO requirements in terms of TTFT, TPOT, and throughput, visualize the optimal `llm-d` configuration, including Inference Scheduler and vLLM, for achieving the SLO
   - For unseen configurations, predict latency and throughput from a inference performance estimator
@@ -65,12 +69,46 @@ pip install -r config_explorer/requirements-streamlit.txt
 .venv/bin/streamlit run config_explorer/Capacity_Planner.py
 ```
 
+#### Pages
+
+The Streamlit frontend includes the following pages:
+
+1. **Capacity Planner** - Analyze GPU memory requirements and capacity planning for LLM models
+2. **Sweep Visualizer** - Visualize benchmark results and configuration sweeps
+3. **GPU Recommender** - Get optimal GPU recommendations based on model and workload requirements
+
+#### Using the Sweep Visualizer
+
 The Sweep Visualizer page supports visualizing a collection of `llm-d-benchmark` report files. To get started easily, you may download the data from the [public llm-d-benchmark community Google Drive](https://drive.google.com/drive/u/0/folders/1r2Z2Xp1L0KonUlvQHvEzed8AO9Xj8IPm). Preset options have been selected for each scenario. For example, we recommend viewing
 
 - `qwen-qwen-3-0-6b` using the Chatbot application highlight Inference Scheduling
 - `meta-llama/Llama-3.1-70B-Instruct` using the Document Summarization application highlight PD Disaggregation
 
 Default values will be populated once those options are selected. Advanced users may further conduct their own configuration.
+
+#### Using the GPU Recommender
+
+The GPU Recommender page helps you find the optimal GPU for running LLM inference. To use it:
+
+1. **Configure Model**: Enter a HuggingFace model ID (e.g., `meta-llama/Llama-2-7b-hf`)
+2. **Set Workload Parameters**:
+   - Input sequence length (tokens)
+   - Output sequence length (tokens)
+   - Maximum number of GPUs
+3. **Define Constraints (Optional)**:
+   - Maximum Time to First Token (TTFT) in milliseconds
+   - Maximum Inter-Token Latency (ITL) in milliseconds
+   - Maximum End-to-End Latency in milliseconds
+4. **Run Analysis**: Click the "Run Analysis" button to evaluate all available GPUs
+5. **Review Results**:
+   - Compare GPUs through interactive visualizations
+   - Examine throughput, latency metrics, and optimal concurrency
+   - View detailed analysis for each GPU
+6. **Export**: Download results as JSON or CSV for further analysis
+
+The GPU Recommender uses BentoML's llm-optimizer roofline algorithm to provide synthetic performance estimates across different GPU types, helping you make informed decisions about hardware selection.
+
+**Note**: You'll need a HuggingFace token set as the `HF_TOKEN` environment variable to access gated models.
 
 ### Analysis Notebook
 
