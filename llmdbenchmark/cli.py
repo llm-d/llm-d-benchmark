@@ -32,10 +32,11 @@ from llmdbenchmark.utilities.os.filesystem import (
 from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface import plan, standup
 from llmdbenchmark.parser.render_specification import RenderSpecification
+from llmdbenchmark.parser.render_plan import RenderPlans
 from llmdbenchmark.parser.system import System
 
 
-def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
+def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
     """
     Process CLI arguments and dispatch execution of commands.
 
@@ -63,12 +64,22 @@ def drive_cli_args(args: argparse.Namespace, logger: logging.Logger) -> None:
             "Specification file rendered and validated successfully.",
             emoji="✅",
         )
-        system = System(
-            specification_as_dict["values_file"]["path"],
-            specification_as_dict["template_dir"]["path"],
-            specification_as_dict["scenario_file"]["path"],
+
+        logger.log_debug(
+            "Using specification file to fully render templates into complete system stack plans."
         )
-        system.parse()
+
+        RenderPlans(
+            template_file=specification_as_dict["template_dir"]["path"],
+            defaults_file=specification_as_dict["values_file"]["path"],
+            scenarios_file=specification_as_dict["scenario_file"]["path"],
+            output_dir=config.plan_dir,
+        ).eval()
+
+        logger.log_info(
+            "Templates have been rendered into plans based on the provided specification file.",
+            emoji="✅",
+        )
 
     if args.command in (Command.STANDUP.value, Command.END_TO_END.value):
         logger.log_info("STANDUP TODO")
@@ -95,8 +106,9 @@ def cli() -> None:
 
     parser = argparse.ArgumentParser(
         prog="llmdbenchmark",
-        description="Provision and Drive Experiments for LLM workloads focused on analyzing"
-        "performance of llm-d and vllm inference platforms",
+        description="Provision and drive experiments for LLM workloads focused on analyzing "
+        "the performance of llm-d and vllm inference platform stacks. "
+        f"Visit {__package_home__} for more information.",
         epilog=(
             "A command must be supplied. Commands correspond to high-level actions "
             "such as generating plans, provisioning infrastructure, or running experiments "
@@ -115,10 +127,10 @@ def cli() -> None:
     parser.add_argument(
         "--base-dir",
         "--bd",
-        required=True,
+        default=".",
         help="Base directory containing templates and scenarios. "
-        "This directory is used when rendering the model infrastructure plan. "
-        "Example: BASE_DIR/templates",
+        'The default base directory is the cwd "." - we highly suggest enforcing a '
+        'base_dir explicitly. For example: "BASE_DIR/templates", "BASE_DIR/scenarios".',
     )
 
     parser.add_argument(
@@ -142,11 +154,19 @@ def cli() -> None:
         "-n",
         action="store_true",
         help="Log all commands without executing against compute cluster, while still "
-        "generating YAML and Helm documents",
+        "generating YAML and Helm documents.",
     )
 
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable debug logging to console."
+    )
+
+    parser.add_argument(
+        "--version",
+        "--ver",
+        action="version",
+        version=f"{__package_name__}:{__version__}",
+        help="Show program's version number and exit.",
     )
 
     subparsers = parser.add_subparsers(
@@ -214,7 +234,7 @@ def cli() -> None:
 
     logger.line_break()
 
-    drive_cli_args(args, logger)
+    dispatch_cli(args, logger)
 
 
 if __name__ == "__main__":
