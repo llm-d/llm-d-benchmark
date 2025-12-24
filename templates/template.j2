@@ -130,7 +130,7 @@ vllm serve {{ model.cacheBase }}/{{ model.path }} \
 {% endfor -%}
 {%- endmacro %}
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # 01_pvc_workload-pvc.yaml.j2
 # ============================================================================
@@ -149,7 +149,7 @@ spec:
       storage: {{ storage.workloadPvc.size }}
   storageClassName: {{ storage.workloadPvc.storageClassName }}
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # 02_pvc_model-pvc.yaml.j2
 # ============================================================================
@@ -168,7 +168,7 @@ spec:
       storage: {{ storage.modelPvc.size }}
   storageClassName: {{ storage.modelPvc.storageClassName }}
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # 03_cluster-monitoring-config.yaml.j2
 # ============================================================================
@@ -182,7 +182,7 @@ metadata:
   namespace: openshift-monitoring
 {% endif %}
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # 04_download_job.yaml.j2
 # ============================================================================
@@ -231,7 +231,7 @@ spec:
           persistentVolumeClaim:
             claimName: {{ storage.modelPvc.name }}
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # 05_namespace_sa_rbac_secret.yaml.j2
 # ============================================================================
@@ -310,7 +310,7 @@ metadata:
 data:
   {{ huggingface.tokenKey }}: "{{ huggingface.tokenBase64 }}"
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # 06_pod_access_to_harness_data.yaml.j2
 # ============================================================================
@@ -343,7 +343,7 @@ spec:
     persistentVolumeClaim:
       claimName: {{ storage.modelPvc.name }}
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # 07_service_access_to_harness_data.yaml.j2
 # ============================================================================
@@ -362,7 +362,7 @@ spec:
     app: {{ labels.app }}
   type: ClusterIP
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # 08_httproute.yaml.j2
 # ============================================================================
@@ -407,7 +407,7 @@ spec:
         backendRequest: 0s
         request: 0s
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # helmfile-gateway-provider.yaml.j2
 # ============================================================================
@@ -446,7 +446,7 @@ releases:
       type: gateway-provider
       kind: gateway-control-plane
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # helmfile-main.yaml.j2
 # ============================================================================
@@ -497,7 +497,7 @@ releases:
     labels:
       kind: inference-stack
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # infra.yaml.j2
 # ============================================================================
@@ -517,7 +517,7 @@ gateway:
   service:
     type: {{ gateway.service.type }}
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # gaie-values.yaml.j2
 # ============================================================================
@@ -559,7 +559,7 @@ inferencePool:
 provider:
   name: {{ gateway.provider }}
 
----SPLIT---
+***START_NEW_YAML_TEMPLATE***
 # ============================================================================
 # ms-values.yaml.j2
 # ============================================================================

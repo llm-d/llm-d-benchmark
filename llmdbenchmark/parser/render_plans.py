@@ -73,7 +73,7 @@ class RenderPlans:
 
     """
 
-    SPLIT_MARKER = "\n---SPLIT---\n"
+    SPLIT_MARKER = "\n***START_NEW_YAML_TEMPLATE***\n"
 
     def __init__(
         self,
