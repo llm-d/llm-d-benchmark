@@ -297,14 +297,10 @@ class RenderPlans:
             return self._template_cache
 
         if not self.template_dir.exists():
-            raise FileNotFoundError(
-                f"Template directory not found: {self.template_dir}"
-            )
+            raise FileNotFoundError(f"Template directory not found: {self.template_dir}")
 
         if not self.template_dir.is_dir():
-            raise NotADirectoryError(
-                f"Template path is not a directory: {self.template_dir}"
-            )
+            raise NotADirectoryError(f"Template path is not a directory: {self.template_dir}")
 
         # Load shared macros if they exist
         macros_file = self.template_dir / "_macros.j2"
@@ -319,19 +315,17 @@ class RenderPlans:
                 continue
 
             content = template_file.read_text(encoding="utf-8")
-
+            
             # Output filename: remove .j2 extension
             # e.g., "01_pvc_workload-pvc.yaml.j2" -> "01_pvc_workload-pvc.yaml"
             output_filename = template_file.stem
             if not output_filename.endswith(".yaml"):
                 output_filename += ".yaml"
 
-            templates.append(
-                {
-                    "filename": output_filename,
-                    "content": macros + content,
-                }
-            )
+            templates.append({
+                "filename": output_filename,
+                "content": macros + content,
+            })
 
         if not templates:
             raise ValueError(f"No template files found in: {self.template_dir}")
@@ -540,9 +534,7 @@ class RenderPlans:
             result.global_errors.append(msg)
             return result
 
-        self.logger.log_info(
-            f"Loaded {len(templates)} template(s) from {self.template_dir}"
-        )
+        self.logger.log_info(f"Loaded {len(templates)} template(s) from {self.template_dir}")
 
         # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)

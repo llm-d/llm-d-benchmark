@@ -1,46 +1,222 @@
+{# ============================================================================
+   ms-values.yaml.j2
+   
+   Comprehensive modelservice values template matching the official helm chart.
+   See: https://github.com/llm-d/llm-d-modelservice
+   ============================================================================ #}
+
 {# Define create flags once at the top for reuse #}
 {% set decode_create = (decode.enabled if decode.enabled is defined else (decode.replicas | default(0) | int > 0)) %}
 {% set prefill_create = (prefill.enabled if prefill.enabled is defined else (prefill.replicas | default(0) | int > 0)) %}
+
+{# -------------------------------------------------------------------------- #}
+{# COMMON / TOP-LEVEL CONFIGURATION                                           #}
+{# -------------------------------------------------------------------------- #}
+{% if common is defined and common %}
+common:
+{{ common | toyaml | indent(2) }}
+{% endif %}
+
+{% if modelservice is defined and modelservice.enabled is defined %}
+enabled: {{ modelservice.enabled | lower }}
+{% endif %}
+
 fullnameOverride: {{ model.shortName }}
+
+{% if serviceAccountOverride is defined and serviceAccountOverride %}
+serviceAccountOverride: {{ serviceAccountOverride }}
+{% endif %}
+
+{% if schedulerName is defined %}
+schedulerName: {{ schedulerName }}
+{% else %}
+schedulerName: default-scheduler
+{% endif %}
+
+{# -------------------------------------------------------------------------- #}
+{# MODEL ARTIFACTS                                                            #}
+{# -------------------------------------------------------------------------- #}
+modelArtifacts:
+  name: {{ model.name }}
+  uri: pvc://{{ storage.modelPvc.name }}/{{ model.path }}
+  size: {{ model.size }}
+{% if huggingface.secretName is defined and huggingface.secretName %}
+  authSecretName: "{{ huggingface.secretName }}"
+{% endif %}
+{% if modelArtifacts is defined and modelArtifacts.mountPath is defined %}
+  mountPath: {{ modelArtifacts.mountPath }}
+{% else %}
+  mountPath: /model-cache
+{% endif %}
+  labels:
+    llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
+    llm-d.ai/model: {{ model.shortName }}
+{% if modelArtifacts is defined and modelArtifacts.extraLabels is defined %}
+{% for key, value in modelArtifacts.extraLabels.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+
+{# -------------------------------------------------------------------------- #}
+{# MULTINODE (LeaderWorkerSet)                                                #}
+{# -------------------------------------------------------------------------- #}
 {% if multinode is defined and multinode.enabled is defined %}
 multinode: {{ multinode.enabled | lower }}
 {% else %}
 multinode: false
 {% endif %}
-schedulerName: default-scheduler
-modelArtifacts:
-  uri: pvc://{{ storage.modelPvc.name }}/{{ model.path }}
-  size: {{ model.size }}
-  authSecretName: "{{ huggingface.secretName }}"
-  name: {{ model.name }}
-  labels:
-    llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
-    llm-d.ai/model: {{ model.shortName }}
-routing:
-  servicePort: {{ decode.vllm.servicePort }}
-  proxy:
-    image: "{{ images.routingSidecar.repository }}:{{ images.routingSidecar.tag }}"
-    secure: {{ routing.secure | lower }}
-    connector: {{ routing.connector }}
-    debugLevel: {{ routing.debugLevel }}
+
+{# -------------------------------------------------------------------------- #}
+{# ACCELERATOR CONFIGURATION                                                  #}
+{# -------------------------------------------------------------------------- #}
 accelerator:
   type: {{ accelerator.type | default('nvidia') }}
+{% if accelerator.resources is defined %}
+  resources:
+{{ accelerator.resources | toyaml | indent(4) }}
+{% endif %}
+{% if accelerator.env is defined %}
+  env:
+{{ accelerator.env | toyaml | indent(4) }}
+{% endif %}
+
+{# -------------------------------------------------------------------------- #}
+{# DYNAMIC RESOURCE ALLOCATION (DRA)                                          #}
+{# -------------------------------------------------------------------------- #}
+{% if dra is defined and dra.enabled is defined %}
+dra:
+  enabled: {{ dra.enabled | lower }}
+{% if dra.type is defined %}
+  type: {{ dra.type }}
+{% endif %}
+{% if dra.claimTemplates is defined %}
+  claimTemplates:
+{{ dra.claimTemplates | toyaml | indent(4) }}
+{% endif %}
+{% endif %}
+
+{# -------------------------------------------------------------------------- #}
+{# ROUTING / PROXY CONFIGURATION                                              #}
+{# -------------------------------------------------------------------------- #}
+routing:
+  servicePort: {{ routing.servicePort | default(decode.vllm.servicePort) | default(8000) }}
+  proxy:
+{% if routing.proxy is defined and routing.proxy.enabled is defined %}
+    enabled: {{ routing.proxy.enabled | lower }}
+{% else %}
+    enabled: true
+{% endif %}
+    image: "{{ images.routingSidecar.repository }}:{{ images.routingSidecar.tag }}"
+{% if routing.proxy is defined and routing.proxy.imagePullPolicy is defined %}
+    imagePullPolicy: {{ routing.proxy.imagePullPolicy }}
+{% else %}
+    imagePullPolicy: Always
+{% endif %}
+{% if routing.proxy is defined and routing.proxy.targetPort is defined %}
+    targetPort: {{ routing.proxy.targetPort }}
+{% else %}
+    targetPort: {{ decode.vllm.port | default(8200) }}
+{% endif %}
+    connector: {{ routing.connector | default('nixlv2') }}
+    secure: {{ routing.secure | default(false) | lower }}
+{% if routing.proxy is defined %}
+{% if routing.proxy.prefillerUseTLS is defined %}
+    prefillerUseTLS: {{ routing.proxy.prefillerUseTLS | lower }}
+{% endif %}
+{% if routing.proxy.certPath is defined %}
+    certPath: "{{ routing.proxy.certPath }}"
+{% endif %}
+{% if routing.proxy.zapDevel is defined %}
+    zapDevel: {{ routing.proxy.zapDevel | lower }}
+{% endif %}
+{% if routing.proxy.zapEncoder is defined %}
+    zapEncoder: {{ routing.proxy.zapEncoder }}
+{% endif %}
+{% if routing.proxy.zapLogLevel is defined %}
+    zapLogLevel: {{ routing.proxy.zapLogLevel }}
+{% endif %}
+{% if routing.proxy.zapStacktraceLevel is defined %}
+    zapStacktraceLevel: {{ routing.proxy.zapStacktraceLevel }}
+{% endif %}
+{% if routing.proxy.zapTimeEncoding is defined %}
+    zapTimeEncoding: {{ routing.proxy.zapTimeEncoding }}
+{% endif %}
+{% endif %}
+{% if routing.debugLevel is defined %}
+    debugLevel: {{ routing.debugLevel }}
+{% endif %}
+
+{# -------------------------------------------------------------------------- #}
+{# REQUESTER (FMA - Fast Model Actuation)                                     #}
+{# -------------------------------------------------------------------------- #}
+{% if requester is defined and requester.enable is defined %}
+requester:
+  enable: {{ requester.enable | lower }}
+{% if requester.enable %}
+  image: "{{ requester.image }}"
+{% if requester.adminPort is defined %}
+  adminPort: {{ requester.adminPort }}
+{% endif %}
+{% if requester.port is defined %}
+  port:
+{{ requester.port | toyaml | indent(4) }}
+{% endif %}
+{% if requester.readinessProbe is defined %}
+  readinessProbe:
+{{ requester.readinessProbe | toyaml | indent(4) }}
+{% endif %}
+{% if requester.resources is defined %}
+  resources:
+{{ requester.resources | toyaml | indent(4) }}
+{% endif %}
+{% endif %}
+{% endif %}
+
 {# ========================================================================== #}
-{# DECODE SECTION - Only render full config if create is true                 #}
+{# DECODE SECTION                                                             #}
 {# ========================================================================== #}
 decode:
   create: {{ decode_create | lower }}
 {% if decode_create %}
   replicas: {{ decode.replicas }}
+
+{% if decode.autoscaling is defined %}
+  autoscaling:
+    enabled: {{ decode.autoscaling.enabled | default(false) | lower }}
+{% if decode.autoscaling.minReplicas is defined %}
+    minReplicas: {{ decode.autoscaling.minReplicas }}
+{% endif %}
+{% if decode.autoscaling.maxReplicas is defined %}
+    maxReplicas: {{ decode.autoscaling.maxReplicas }}
+{% endif %}
+{% endif %}
+
+{% if decode.nodeSelector is defined and decode.nodeSelector %}
+  nodeSelector:
+{{ decode.nodeSelector | toyaml | indent(4) }}
+{% endif %}
+
+{% if decode.schedulerName is defined %}
+  schedulerName: {{ decode.schedulerName }}
+{% endif %}
+
   acceleratorTypes:
     labelKey: {{ decode.acceleratorType.labelKey }}
     labelValues:
+{% if decode.acceleratorType.labelValues is defined %}
+{% for value in decode.acceleratorType.labelValues %}
+    - {{ value }}
+{% endfor %}
+{% elif decode.acceleratorType.labelValue is defined %}
     - {{ decode.acceleratorType.labelValue }}
+{% endif %}
+
   parallelism:
+    tensor: {{ decode.parallelism.tensor }}
     data: {{ decode.parallelism.data }}
     dataLocal: {{ decode.parallelism.dataLocal }}
-    tensor: {{ decode.parallelism.tensor }}
     workers: {{ decode.parallelism.workers }}
+
 {% if affinity is defined and affinity.enabled %}
   affinity:
 {% if affinity.nodeSelector is defined and affinity.nodeSelector %}
@@ -57,42 +233,63 @@ decode:
 {% endif %}
 {% if affinity.podAffinity is defined and affinity.podAffinity %}
     podAffinity:
-{% for key, value in affinity.podAffinity.items() %}
-      {{ key }}: {{ value }}
-{% endfor %}
+{{ affinity.podAffinity | toyaml | indent(6) }}
 {% endif %}
 {% if affinity.podAntiAffinity is defined and affinity.podAntiAffinity %}
     podAntiAffinity:
-{% for key, value in affinity.podAntiAffinity.items() %}
-      {{ key }}: {{ value }}
-{% endfor %}
+{{ affinity.podAntiAffinity | toyaml | indent(6) }}
 {% endif %}
 {% endif %}
-  annotations:
+
 {% if annotations is defined and annotations.common is defined and annotations.common %}
+  annotations:
 {% for key, value in annotations.common.items() %}
     {{ key }}: "{{ value }}"
 {% endfor %}
 {% endif %}
-  podAnnotations:
+
 {% if annotations is defined and annotations.decode is defined and annotations.decode.pod is defined and annotations.decode.pod %}
+  podAnnotations:
 {% for key, value in annotations.decode.pod.items() %}
     {{ key }}: "{{ value }}"
 {% endfor %}
 {% endif %}
-  schedulerName: default-scheduler
-{% if decode.extraPodConfig is defined and decode.extraPodConfig %}
-  extraConfig:
-{% for key, value in decode.extraPodConfig.items() %}
-    {{ key }}: {{ value }}
-{% endfor %}
-{% else %}
-  extraConfig:
+
+{# LWS / Multinode specific options #}
+{% if decode.hostIPC is defined %}
+  hostIPC: {{ decode.hostIPC | lower }}
 {% endif %}
+{% if decode.hostPID is defined %}
+  hostPID: {{ decode.hostPID | lower }}
+{% endif %}
+{% if decode.enableServiceLinks is defined %}
+  enableServiceLinks: {{ decode.enableServiceLinks | lower }}
+{% endif %}
+{% if decode.terminationGracePeriodSeconds is defined %}
+  terminationGracePeriodSeconds: {{ decode.terminationGracePeriodSeconds }}
+{% endif %}
+{% if decode.subGroupPolicy is defined %}
+  subGroupPolicy:
+{{ decode.subGroupPolicy | toyaml | indent(4) }}
+{% endif %}
+{% if decode.subGroupExclusiveTopology is defined %}
+  subGroupExclusiveTopology: {{ decode.subGroupExclusiveTopology | lower }}
+{% endif %}
+
+{# Init containers #}
+{% if decode.initContainers is defined and decode.initContainers %}
+  initContainers:
+{{ decode.initContainers | toyaml | indent(4) }}
+{% endif %}
+
+{# Main containers #}
   containers:
   - name: "vllm"
-    mountModelVolume: {{ decode.mountModelVolume | default(true) | lower }}
     image: "{{ images.vllm.repository }}:{{ images.vllm.tag }}"
+{% if decode.vllm.imagePullPolicy is defined %}
+    imagePullPolicy: {{ decode.vllm.imagePullPolicy }}
+{% endif %}
+    mountModelVolume: {{ decode.mountModelVolume | default(true) | lower }}
     modelCommand: custom
     command:
       - /bin/sh
@@ -106,15 +303,15 @@ decode:
           fieldRef:
             fieldPath: status.podIP
       - name: VLLM_WORKER_MULTIPROC_METHOD
-        value: "{{ decode.vllm.workerMultiprocMethod }}"
+        value: "{{ decode.vllm.workerMultiprocMethod | default('spawn') }}"
       - name: VLLM_LOGGING_LEVEL
-        value: "{{ decode.vllm.loggingLevel }}"
+        value: "{{ decode.vllm.loggingLevel | default('INFO') }}"
       - name: VLLM_CACHE_ROOT
-        value: "{{ decode.vllm.cacheRoot }}"
+        value: "{{ decode.vllm.cacheRoot | default('/tmp/vllm') }}"
       - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
-        value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
+        value: "{{ vllmCommon.flags.allowLongMaxModelLen | default('1') }}"
       - name: VLLM_SERVER_DEV_MODE
-        value: "{{ vllmCommon.flags.serverDevMode }}"
+        value: "{{ vllmCommon.flags.serverDevMode | default('1') }}"
 {% if decode.extraEnvVars is defined and decode.extraEnvVars %}
 {% for env in decode.extraEnvVars %}
       - name: {{ env.name }}
@@ -133,8 +330,25 @@ decode:
 {% elif env.valueFrom.fieldRef is defined %}
           fieldRef:
             fieldPath: {{ env.valueFrom.fieldRef.fieldPath }}
+{% elif env.valueFrom.resourceFieldRef is defined %}
+          resourceFieldRef:
+            containerName: {{ env.valueFrom.resourceFieldRef.containerName | default('') }}
+            resource: {{ env.valueFrom.resourceFieldRef.resource }}
 {% endif %}
 {% endif %}
+{% endfor %}
+{% endif %}
+{% if decode.ports is defined and decode.ports %}
+    ports:
+{{ decode.ports | toyaml | indent(6) }}
+{% elif decode.extraContainerConfig is defined and decode.extraContainerConfig.ports is defined %}
+    ports:
+{% for port in decode.extraContainerConfig.ports %}
+      - containerPort: {{ port.containerPort }}
+{% if port.name is defined %}
+        name: {{ port.name }}
+{% endif %}
+        protocol: {{ port.protocol | default('TCP') }}
 {% endfor %}
 {% endif %}
     resources:
@@ -143,6 +357,10 @@ decode:
         cpu: "{{ decode.resources.limits.cpu }}"
 {% if decode.resources.limits is defined and decode.resources.limits['nvidia.com/gpu'] is defined %}
         nvidia.com/gpu: "{{ decode.resources.limits['nvidia.com/gpu'] }}"
+{% endif %}
+{% if decode.resources.limits is defined and decode.resources.limits.claims is defined %}
+      claims:
+{{ decode.resources.limits.claims | toyaml | indent(8) }}
 {% endif %}
       requests:
         memory: {{ decode.resources.requests.memory }}
@@ -154,51 +372,43 @@ decode:
       startupProbe:
         httpGet:
           path: /health
-          port: {{ decode.vllm.servicePort }}
-        failureThreshold: {{ decode.probes.startup.failureThreshold }}
-        initialDelaySeconds: {{ decode.probes.startup.initialDelaySeconds }}
-        periodSeconds: {{ decode.probes.startup.periodSeconds }}
-        timeoutSeconds: {{ decode.probes.startup.timeoutSeconds }}
+          port: {{ decode.vllm.servicePort | default(8000) }}
+        failureThreshold: {{ decode.probes.startup.failureThreshold | default(60) }}
+        initialDelaySeconds: {{ decode.probes.startup.initialDelaySeconds | default(30) }}
+        periodSeconds: {{ decode.probes.startup.periodSeconds | default(30) }}
+        timeoutSeconds: {{ decode.probes.startup.timeoutSeconds | default(5) }}
       livenessProbe:
         tcpSocket:
-          port: {{ decode.vllm.servicePort }}
-        failureThreshold: {{ decode.probes.liveness.failureThreshold }}
-        periodSeconds: {{ decode.probes.liveness.periodSeconds }}
+          port: {{ decode.vllm.servicePort | default(8000) }}
+        failureThreshold: {{ decode.probes.liveness.failureThreshold | default(3) }}
+        periodSeconds: {{ decode.probes.liveness.periodSeconds | default(5) }}
       readinessProbe:
         httpGet:
           path: /health
-          port: {{ decode.vllm.servicePort }}
-        failureThreshold: {{ decode.probes.readiness.failureThreshold }}
-        periodSeconds: {{ decode.probes.readiness.periodSeconds }}
+          port: {{ decode.vllm.servicePort | default(8000) }}
+        failureThreshold: {{ decode.probes.readiness.failureThreshold | default(3) }}
+        periodSeconds: {{ decode.probes.readiness.periodSeconds | default(5) }}
 {% if decode.extraContainerConfig is defined and decode.extraContainerConfig %}
-{% for key, value in decode.extraContainerConfig.items() %}
-{% if value is mapping %}
-      {{ key }}:
-{% for subkey, subvalue in value.items() %}
-{% if subvalue is mapping %}
-        {{ subkey }}:
-{% for subsubkey, subsubvalue in subvalue.items() %}
-          {{ subsubkey }}: {{ subsubvalue }}
+{% set extra_config_without_ports = {} %}
+{% for k, v in decode.extraContainerConfig.items() if k != 'ports' %}
+{% set _ = extra_config_without_ports.update({k: v}) %}
 {% endfor %}
-{% elif subvalue is iterable and subvalue is not string %}
-        {{ subkey }}:
-{% for item in subvalue %}
-          - {{ item }}
-{% endfor %}
-{% else %}
-        {{ subkey }}: {{ subvalue }}
+{% if extra_config_without_ports %}
+{{ extra_config_without_ports | toyaml | indent(6) }}
 {% endif %}
-{% endfor %}
-{% else %}
-      {{ key }}: {{ value }}
-{% endif %}
-{% endfor %}
 {% endif %}
     volumeMounts:
 {% for mount in vllmCommon.volumeMounts %}
       - name: {{ mount.name }}
         mountPath: {{ mount.mountPath }}
+{% if mount.subPath is defined %}
+        subPath: {{ mount.subPath }}
+{% endif %}
+{% if mount.readOnly is defined %}
+        readOnly: {{ mount.readOnly | lower }}
+{% endif %}
 {% endfor %}
+{% if decode.additionalVolumeMounts is defined %}
 {% for mount in decode.additionalVolumeMounts %}
       - name: {{ mount.name }}
         mountPath: {{ mount.mountPath }}
@@ -209,14 +419,14 @@ decode:
         readOnly: {{ mount.readOnly | lower }}
 {% endif %}
 {% endfor %}
+{% endif %}
+
   volumes:
 {% for volume in vllmCommon.volumes %}
     - name: {{ volume.name }}
 {% if volume.type == 'configMap' %}
       configMap:
-{% if volume.configMap.name is defined %}
         name: {{ volume.configMap.name }}
-{% endif %}
 {% if volume.configMap.defaultMode is defined %}
         defaultMode: {{ volume.configMap.defaultMode }}
 {% endif %}
@@ -237,15 +447,20 @@ decode:
 {% if volume.secret.defaultMode is defined %}
         defaultMode: {{ volume.secret.defaultMode }}
 {% endif %}
+{% elif volume.type == 'hostPath' %}
+      hostPath:
+        path: {{ volume.hostPath.path }}
+{% if volume.hostPath.type is defined %}
+        type: {{ volume.hostPath.type }}
+{% endif %}
 {% endif %}
 {% endfor %}
+{% if decode.additionalVolumes is defined %}
 {% for volume in decode.additionalVolumes %}
     - name: {{ volume.name }}
 {% if volume.type == 'configMap' %}
       configMap:
-{% if volume.configMap.name is defined %}
         name: {{ volume.configMap.name }}
-{% endif %}
 {% if volume.configMap.defaultMode is defined %}
         defaultMode: {{ volume.configMap.defaultMode }}
 {% endif %}
@@ -266,25 +481,93 @@ decode:
 {% if volume.secret.defaultMode is defined %}
         defaultMode: {{ volume.secret.defaultMode }}
 {% endif %}
+{% elif volume.type == 'hostPath' %}
+      hostPath:
+        path: {{ volume.hostPath.path }}
+{% if volume.hostPath.type is defined %}
+        type: {{ volume.hostPath.type }}
+{% endif %}
 {% endif %}
 {% endfor %}
 {% endif %}
+
+{# Monitoring / PodMonitor #}
+{% if decode.monitoring is defined and decode.monitoring.podmonitor is defined %}
+  monitoring:
+    podmonitor:
+      enabled: {{ decode.monitoring.podmonitor.enabled | default(false) | lower }}
+{% if decode.monitoring.podmonitor.enabled %}
+      portName: "{{ decode.monitoring.podmonitor.portName | default('metrics') }}"
+      path: "{{ decode.monitoring.podmonitor.path | default('/metrics') }}"
+      interval: "{{ decode.monitoring.podmonitor.interval | default('30s') }}"
+{% if decode.monitoring.podmonitor.scrapeTimeout is defined %}
+      scrapeTimeout: "{{ decode.monitoring.podmonitor.scrapeTimeout }}"
+{% endif %}
+{% if decode.monitoring.podmonitor.labels is defined %}
+      labels:
+{{ decode.monitoring.podmonitor.labels | toyaml | indent(8) }}
+{% endif %}
+{% if decode.monitoring.podmonitor.annotations is defined %}
+      annotations:
+{{ decode.monitoring.podmonitor.annotations | toyaml | indent(8) }}
+{% endif %}
+{% if decode.monitoring.podmonitor.relabelings is defined %}
+      relabelings:
+{{ decode.monitoring.podmonitor.relabelings | toyaml | indent(8) }}
+{% endif %}
+{% if decode.monitoring.podmonitor.metricRelabelings is defined %}
+      metricRelabelings:
+{{ decode.monitoring.podmonitor.metricRelabelings | toyaml | indent(8) }}
+{% endif %}
+{% endif %}
+{% endif %}
+{% endif %}
+
 {# ========================================================================== #}
-{# PREFILL SECTION - Only render full config if create is true                #}
+{# PREFILL SECTION                                                            #}
 {# ========================================================================== #}
 prefill:
   create: {{ prefill_create | lower }}
 {% if prefill_create %}
   replicas: {{ prefill.replicas }}
+
+{% if prefill.autoscaling is defined %}
+  autoscaling:
+    enabled: {{ prefill.autoscaling.enabled | default(false) | lower }}
+{% if prefill.autoscaling.minReplicas is defined %}
+    minReplicas: {{ prefill.autoscaling.minReplicas }}
+{% endif %}
+{% if prefill.autoscaling.maxReplicas is defined %}
+    maxReplicas: {{ prefill.autoscaling.maxReplicas }}
+{% endif %}
+{% endif %}
+
+{% if prefill.nodeSelector is defined and prefill.nodeSelector %}
+  nodeSelector:
+{{ prefill.nodeSelector | toyaml | indent(4) }}
+{% endif %}
+
+{% if prefill.schedulerName is defined %}
+  schedulerName: {{ prefill.schedulerName }}
+{% endif %}
+
   acceleratorTypes:
     labelKey: {{ prefill.acceleratorType.labelKey }}
     labelValues:
+{% if prefill.acceleratorType.labelValues is defined %}
+{% for value in prefill.acceleratorType.labelValues %}
+    - {{ value }}
+{% endfor %}
+{% elif prefill.acceleratorType.labelValue is defined %}
     - {{ prefill.acceleratorType.labelValue }}
+{% endif %}
+
   parallelism:
+    tensor: {{ prefill.parallelism.tensor }}
     data: {{ prefill.parallelism.data }}
     dataLocal: {{ prefill.parallelism.dataLocal }}
-    tensor: {{ prefill.parallelism.tensor }}
     workers: {{ prefill.parallelism.workers }}
+
 {% if affinity is defined and affinity.enabled %}
   affinity:
 {% if affinity.nodeSelector is defined and affinity.nodeSelector %}
@@ -301,42 +584,63 @@ prefill:
 {% endif %}
 {% if affinity.podAffinity is defined and affinity.podAffinity %}
     podAffinity:
-{% for key, value in affinity.podAffinity.items() %}
-      {{ key }}: {{ value }}
-{% endfor %}
+{{ affinity.podAffinity | toyaml | indent(6) }}
 {% endif %}
 {% if affinity.podAntiAffinity is defined and affinity.podAntiAffinity %}
     podAntiAffinity:
-{% for key, value in affinity.podAntiAffinity.items() %}
-      {{ key }}: {{ value }}
-{% endfor %}
+{{ affinity.podAntiAffinity | toyaml | indent(6) }}
 {% endif %}
 {% endif %}
-  annotations:
+
 {% if annotations is defined and annotations.common is defined and annotations.common %}
+  annotations:
 {% for key, value in annotations.common.items() %}
     {{ key }}: "{{ value }}"
 {% endfor %}
 {% endif %}
-  podAnnotations:
+
 {% if annotations is defined and annotations.prefill is defined and annotations.prefill.pod is defined and annotations.prefill.pod %}
+  podAnnotations:
 {% for key, value in annotations.prefill.pod.items() %}
     {{ key }}: "{{ value }}"
 {% endfor %}
 {% endif %}
-  schedulerName: default-scheduler
-{% if prefill.extraPodConfig is defined and prefill.extraPodConfig %}
-  extraConfig:
-{% for key, value in prefill.extraPodConfig.items() %}
-    {{ key }}: {{ value }}
-{% endfor %}
-{% else %}
-  extraConfig:
+
+{# LWS / Multinode specific options #}
+{% if prefill.hostIPC is defined %}
+  hostIPC: {{ prefill.hostIPC | lower }}
 {% endif %}
+{% if prefill.hostPID is defined %}
+  hostPID: {{ prefill.hostPID | lower }}
+{% endif %}
+{% if prefill.enableServiceLinks is defined %}
+  enableServiceLinks: {{ prefill.enableServiceLinks | lower }}
+{% endif %}
+{% if prefill.terminationGracePeriodSeconds is defined %}
+  terminationGracePeriodSeconds: {{ prefill.terminationGracePeriodSeconds }}
+{% endif %}
+{% if prefill.subGroupPolicy is defined %}
+  subGroupPolicy:
+{{ prefill.subGroupPolicy | toyaml | indent(4) }}
+{% endif %}
+{% if prefill.subGroupExclusiveTopology is defined %}
+  subGroupExclusiveTopology: {{ prefill.subGroupExclusiveTopology | lower }}
+{% endif %}
+
+{# Init containers #}
+{% if prefill.initContainers is defined and prefill.initContainers %}
+  initContainers:
+{{ prefill.initContainers | toyaml | indent(4) }}
+{% endif %}
+
+{# Main containers #}
   containers:
   - name: "vllm"
-    mountModelVolume: {{ prefill.mountModelVolume | default(true) | lower }}
     image: "{{ images.vllm.repository }}:{{ images.vllm.tag }}"
+{% if prefill.vllm is defined and prefill.vllm.imagePullPolicy is defined %}
+    imagePullPolicy: {{ prefill.vllm.imagePullPolicy }}
+{% endif %}
+    mountModelVolume: {{ prefill.mountModelVolume | default(true) | lower }}
     modelCommand: vllmServe
     args:
       - |
@@ -349,15 +653,15 @@ prefill:
           fieldRef:
             fieldPath: status.podIP
       - name: VLLM_WORKER_MULTIPROC_METHOD
-        value: "{{ decode.vllm.workerMultiprocMethod }}"
+        value: "{{ (prefill.vllm.workerMultiprocMethod if prefill.vllm is defined and prefill.vllm.workerMultiprocMethod is defined else decode.vllm.workerMultiprocMethod) | default('spawn') }}"
       - name: VLLM_LOGGING_LEVEL
-        value: "{{ decode.vllm.loggingLevel }}"
+        value: "{{ (prefill.vllm.loggingLevel if prefill.vllm is defined and prefill.vllm.loggingLevel is defined else decode.vllm.loggingLevel) | default('INFO') }}"
       - name: VLLM_CACHE_ROOT
-        value: "{{ decode.vllm.cacheRoot }}"
+        value: "{{ (prefill.vllm.cacheRoot if prefill.vllm is defined and prefill.vllm.cacheRoot is defined else decode.vllm.cacheRoot) | default('/tmp/vllm') }}"
       - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
-        value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
+        value: "{{ vllmCommon.flags.allowLongMaxModelLen | default('1') }}"
       - name: VLLM_SERVER_DEV_MODE
-        value: "{{ vllmCommon.flags.serverDevMode }}"
+        value: "{{ vllmCommon.flags.serverDevMode | default('1') }}"
 {% if prefill.extraEnvVars is defined and prefill.extraEnvVars %}
 {% for env in prefill.extraEnvVars %}
       - name: {{ env.name }}
@@ -376,8 +680,25 @@ prefill:
 {% elif env.valueFrom.fieldRef is defined %}
           fieldRef:
             fieldPath: {{ env.valueFrom.fieldRef.fieldPath }}
+{% elif env.valueFrom.resourceFieldRef is defined %}
+          resourceFieldRef:
+            containerName: {{ env.valueFrom.resourceFieldRef.containerName | default('') }}
+            resource: {{ env.valueFrom.resourceFieldRef.resource }}
 {% endif %}
 {% endif %}
+{% endfor %}
+{% endif %}
+{% if prefill.ports is defined and prefill.ports %}
+    ports:
+{{ prefill.ports | toyaml | indent(6) }}
+{% elif prefill.extraContainerConfig is defined and prefill.extraContainerConfig.ports is defined %}
+    ports:
+{% for port in prefill.extraContainerConfig.ports %}
+      - containerPort: {{ port.containerPort }}
+{% if port.name is defined %}
+        name: {{ port.name }}
+{% endif %}
+        protocol: {{ port.protocol | default('TCP') }}
 {% endfor %}
 {% endif %}
     resources:
@@ -386,6 +707,10 @@ prefill:
         cpu: "{{ prefill.resources.limits.cpu }}"
 {% if prefill.resources.limits is defined and prefill.resources.limits['nvidia.com/gpu'] is defined %}
         nvidia.com/gpu: "{{ prefill.resources.limits['nvidia.com/gpu'] }}"
+{% endif %}
+{% if prefill.resources.limits is defined and prefill.resources.limits.claims is defined %}
+      claims:
+{{ prefill.resources.limits.claims | toyaml | indent(8) }}
 {% endif %}
       requests:
         memory: {{ prefill.resources.requests.memory }}
@@ -397,51 +722,43 @@ prefill:
       startupProbe:
         httpGet:
           path: /health
-          port: {{ decode.vllm.servicePort }}
-        failureThreshold: {{ prefill.probes.startup.failureThreshold }}
-        initialDelaySeconds: {{ prefill.probes.startup.initialDelaySeconds }}
-        periodSeconds: {{ prefill.probes.startup.periodSeconds }}
-        timeoutSeconds: {{ prefill.probes.startup.timeoutSeconds }}
+          port: {{ (prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort) | default(8000) }}
+        failureThreshold: {{ prefill.probes.startup.failureThreshold | default(60) }}
+        initialDelaySeconds: {{ prefill.probes.startup.initialDelaySeconds | default(30) }}
+        periodSeconds: {{ prefill.probes.startup.periodSeconds | default(30) }}
+        timeoutSeconds: {{ prefill.probes.startup.timeoutSeconds | default(5) }}
       livenessProbe:
         tcpSocket:
-          port: {{ decode.vllm.servicePort }}
-        failureThreshold: {{ prefill.probes.liveness.failureThreshold }}
-        periodSeconds: {{ prefill.probes.liveness.periodSeconds }}
+          port: {{ (prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort) | default(8000) }}
+        failureThreshold: {{ prefill.probes.liveness.failureThreshold | default(3) }}
+        periodSeconds: {{ prefill.probes.liveness.periodSeconds | default(5) }}
       readinessProbe:
         httpGet:
           path: /health
-          port: {{ decode.vllm.servicePort }}
-        failureThreshold: {{ prefill.probes.readiness.failureThreshold }}
-        periodSeconds: {{ prefill.probes.readiness.periodSeconds }}
+          port: {{ (prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort) | default(8000) }}
+        failureThreshold: {{ prefill.probes.readiness.failureThreshold | default(3) }}
+        periodSeconds: {{ prefill.probes.readiness.periodSeconds | default(5) }}
 {% if prefill.extraContainerConfig is defined and prefill.extraContainerConfig %}
-{% for key, value in prefill.extraContainerConfig.items() %}
-{% if value is mapping %}
-      {{ key }}:
-{% for subkey, subvalue in value.items() %}
-{% if subvalue is mapping %}
-        {{ subkey }}:
-{% for subsubkey, subsubvalue in subvalue.items() %}
-          {{ subsubkey }}: {{ subsubvalue }}
+{% set extra_config_without_ports = {} %}
+{% for k, v in prefill.extraContainerConfig.items() if k != 'ports' %}
+{% set _ = extra_config_without_ports.update({k: v}) %}
 {% endfor %}
-{% elif subvalue is iterable and subvalue is not string %}
-        {{ subkey }}:
-{% for item in subvalue %}
-          - {{ item }}
-{% endfor %}
-{% else %}
-        {{ subkey }}: {{ subvalue }}
+{% if extra_config_without_ports %}
+{{ extra_config_without_ports | toyaml | indent(6) }}
 {% endif %}
-{% endfor %}
-{% else %}
-      {{ key }}: {{ value }}
-{% endif %}
-{% endfor %}
 {% endif %}
     volumeMounts:
 {% for mount in vllmCommon.volumeMounts %}
       - name: {{ mount.name }}
         mountPath: {{ mount.mountPath }}
+{% if mount.subPath is defined %}
+        subPath: {{ mount.subPath }}
+{% endif %}
+{% if mount.readOnly is defined %}
+        readOnly: {{ mount.readOnly | lower }}
+{% endif %}
 {% endfor %}
+{% if prefill.additionalVolumeMounts is defined %}
 {% for mount in prefill.additionalVolumeMounts %}
       - name: {{ mount.name }}
         mountPath: {{ mount.mountPath }}
@@ -452,14 +769,14 @@ prefill:
         readOnly: {{ mount.readOnly | lower }}
 {% endif %}
 {% endfor %}
+{% endif %}
+
   volumes:
 {% for volume in vllmCommon.volumes %}
     - name: {{ volume.name }}
 {% if volume.type == 'configMap' %}
       configMap:
-{% if volume.configMap.name is defined %}
         name: {{ volume.configMap.name }}
-{% endif %}
 {% if volume.configMap.defaultMode is defined %}
         defaultMode: {{ volume.configMap.defaultMode }}
 {% endif %}
@@ -480,15 +797,20 @@ prefill:
 {% if volume.secret.defaultMode is defined %}
         defaultMode: {{ volume.secret.defaultMode }}
 {% endif %}
+{% elif volume.type == 'hostPath' %}
+      hostPath:
+        path: {{ volume.hostPath.path }}
+{% if volume.hostPath.type is defined %}
+        type: {{ volume.hostPath.type }}
+{% endif %}
 {% endif %}
 {% endfor %}
+{% if prefill.additionalVolumes is defined %}
 {% for volume in prefill.additionalVolumes %}
     - name: {{ volume.name }}
 {% if volume.type == 'configMap' %}
       configMap:
-{% if volume.configMap.name is defined %}
         name: {{ volume.configMap.name }}
-{% endif %}
 {% if volume.configMap.defaultMode is defined %}
         defaultMode: {{ volume.configMap.defaultMode }}
 {% endif %}
@@ -509,6 +831,52 @@ prefill:
 {% if volume.secret.defaultMode is defined %}
         defaultMode: {{ volume.secret.defaultMode }}
 {% endif %}
+{% elif volume.type == 'hostPath' %}
+      hostPath:
+        path: {{ volume.hostPath.path }}
+{% if volume.hostPath.type is defined %}
+        type: {{ volume.hostPath.type }}
+{% endif %}
 {% endif %}
 {% endfor %}
+{% endif %}
+
+{# Monitoring / PodMonitor #}
+{% if prefill.monitoring is defined and prefill.monitoring.podmonitor is defined %}
+  monitoring:
+    podmonitor:
+      enabled: {{ prefill.monitoring.podmonitor.enabled | default(false) | lower }}
+{% if prefill.monitoring.podmonitor.enabled %}
+      portName: "{{ prefill.monitoring.podmonitor.portName | default('metrics') }}"
+      path: "{{ prefill.monitoring.podmonitor.path | default('/metrics') }}"
+      interval: "{{ prefill.monitoring.podmonitor.interval | default('30s') }}"
+{% if prefill.monitoring.podmonitor.scrapeTimeout is defined %}
+      scrapeTimeout: "{{ prefill.monitoring.podmonitor.scrapeTimeout }}"
+{% endif %}
+{% if prefill.monitoring.podmonitor.labels is defined %}
+      labels:
+{{ prefill.monitoring.podmonitor.labels | toyaml | indent(8) }}
+{% endif %}
+{% if prefill.monitoring.podmonitor.annotations is defined %}
+      annotations:
+{{ prefill.monitoring.podmonitor.annotations | toyaml | indent(8) }}
+{% endif %}
+{% if prefill.monitoring.podmonitor.relabelings is defined %}
+      relabelings:
+{{ prefill.monitoring.podmonitor.relabelings | toyaml | indent(8) }}
+{% endif %}
+{% if prefill.monitoring.podmonitor.metricRelabelings is defined %}
+      metricRelabelings:
+{{ prefill.monitoring.podmonitor.metricRelabelings | toyaml | indent(8) }}
+{% endif %}
+{% endif %}
+{% endif %}
+{% endif %}
+
+{# -------------------------------------------------------------------------- #}
+{# EXTRA OBJECTS                                                              #}
+{# -------------------------------------------------------------------------- #}
+{% if extraObjects is defined and extraObjects %}
+extraObjects:
+{{ extraObjects | toyaml | indent(2) }}
 {% endif %}
