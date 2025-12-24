@@ -1,7 +1,6 @@
 # ============================================================================
 # Common Default Values for LLM-D Deployment
-# This file uses YAML anchors and aliases to avoid repetition (DRY principle)
-# Compatible with llm-d-modelservice helm chart v0.3.x+
+# These can be completely overridden via scenarios file.
 # ============================================================================
 
 # ============================================================================
