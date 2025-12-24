@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: access-to-harness-data-workload-pvc
+  labels:
+    app: {{ labels.app }}
+    role: llm-d-benchmark-data-access
+  namespace: {{ namespace.name }}
+spec:
+  containers:
+  - name: rsync
+    image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
+    imagePullPolicy: {{ images.benchmark.pullPolicy }}
+    securityContext:
+      runAsUser: {{ dataAccess.runAsUser }}
+    command: ["rsync", "--daemon", "--no-detach", "--port={{ dataAccess.rsyncPort }}", "--log-file=/dev/stdout"]
+    volumeMounts:
+    - name: requests
+      mountPath: /requests
+    - name: cache-volume
+      mountPath: /model-storage
+  volumes:
+  - name: requests
+    persistentVolumeClaim:
+      claimName: {{ storage.workloadPvc.name }}
+  - name: cache-volume
+    persistentVolumeClaim:
+      claimName: {{ storage.modelPvc.name }}

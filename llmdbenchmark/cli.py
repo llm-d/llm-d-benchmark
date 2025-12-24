@@ -98,7 +98,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         )
 
         render_plan_errors = RenderPlans(
-            template_file=specification_as_dict["template_dir"]["path"],
+            template_dir=specification_as_dict["template_dir"]["path"],
             defaults_file=specification_as_dict["values_file"]["path"],
             scenarios_file=specification_as_dict["scenario_file"]["path"],
             output_dir=config.plan_dir,

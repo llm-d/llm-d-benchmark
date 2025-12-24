@@ -1,0 +1,37 @@
+inferenceExtension:
+  replicas: {{ inferenceExtension.replicas }}
+  image:
+    name: llm-d-inference-scheduler
+    hub: {{ images.inferenceScheduler.repository | replace('/llm-d-inference-scheduler', '') }}
+    tag: {{ images.inferenceScheduler.tag }}
+    pullPolicy: {{ images.inferenceScheduler.pullPolicy }}
+  extProcPort: {{ inferenceExtension.extProcPort }}
+  extraContainerPorts:
+    - name: zmq
+      containerPort: {{ inferenceExtension.zmqPort }}
+      protocol: TCP
+  extraServicePorts:
+    - name: zmq
+      port: {{ inferenceExtension.zmqPort }}
+      targetPort: {{ inferenceExtension.zmqPort }}
+      protocol: TCP
+  
+  env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: {{ huggingface.secretName }}
+          key: {{ huggingface.tokenKey }}
+  pluginsConfigFile: "{{ inferenceExtension.pluginsConfigFile }}"
+
+inferencePool:
+  targetPortNumber: {{ decode.vllm.servicePort }}
+  modelServerType: vllm
+  apiVersion: "inference.networking.k8s.io/v1"
+  modelServers:
+    matchLabels:
+      llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
+      llm-d.ai/model: {{ model.shortName }}
+
+provider:
+  name: {{ gateway.provider }}

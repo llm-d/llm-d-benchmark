@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-model
+  namespace: {{ gateway.namespace }}
+spec:
+  backoffLimit: {{ downloadJob.backoffLimit }}
+  template:
+    metadata:
+      namespace: {{ gateway.namespace }}
+      labels:
+        app: {{ labels.app }}
+    spec:
+      containers:
+        - name: downloader
+          image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              mkdir -p "${MOUNT_PATH}/${MODEL_PATH}" && pip install huggingface_hub && export PATH="${PATH}:${HOME}/.local/bin" && hf auth login --token "${HF_TOKEN}" && hf download "${HF_MODEL_ID}" --local-dir "{{ downloadJob.mountPath }}/${MODEL_PATH}"
+          env:
+            - name: MODEL_PATH
+              value: {{ model.path }}
+            - name: HF_MODEL_ID
+              value: {{ model.huggingfaceId }}
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ huggingface.secretName }}
+                  key: {{ huggingface.tokenKey }}
+            - name: HF_HOME
+              value: /tmp/huggingface
+            - name: HOME
+              value: /tmp
+            - name: MOUNT_PATH
+              value: {{ downloadJob.mountPath }}
+          volumeMounts:
+            - name: model-cache
+              mountPath: {{ downloadJob.mountPath }}
+      restartPolicy: OnFailure
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: {{ storage.modelPvc.name }}

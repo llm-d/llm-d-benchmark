@@ -1,0 +1,46 @@
+helmDefaults:
+  createNamespace: false
+---
+
+repositories:
+  - name: llm-d-modelservice
+    url: {{ helmRepositories.llmDModelservice.url }}
+  - name: llm-d-infra
+    url: {{ helmRepositories.llmDInfra.url }}
+
+releases:
+  - name: infra-llmdbench
+    namespace: {{ gateway.namespace }}
+    chart: llm-d-infra/llm-d-infra
+    version: {{ chartVersions.llmDInfra }}
+    installed: true
+    labels:
+      type: infrastructure
+      kind: inference-stack
+    values:
+      - infra.yaml
+
+  - name: {{ model.shortName }}-ms
+    namespace: {{ gateway.namespace }}
+    chart: llm-d-modelservice/llm-d-modelservice
+    version: {{ chartVersions.llmDModelservice }}
+    installed: true
+    needs:
+      - {{ gateway.namespace }}/infra-llmdbench
+      - {{ gateway.namespace }}/{{ model.shortName }}-gaie
+    values:
+      - ms-values.yaml
+    labels:
+      kind: inference-stack
+
+  - name: {{ model.shortName }}-gaie
+    namespace: {{ gateway.namespace }}
+    chart: oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
+    version: {{ chartVersions.inferencePool }}
+    installed: true
+    needs:
+      - {{ gateway.namespace }}/infra-llmdbench
+    values:
+      - gaie-values.yaml
+    labels:
+      kind: inference-stack

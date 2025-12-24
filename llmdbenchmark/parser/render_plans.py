@@ -4,7 +4,7 @@ llmdbenchmark.parser.render_plans
 Provides the RenderPlans class for rendering and validating llmdbenchmark stack plans.
 
 This module handles:
-- Parsing Jinja2 templates into individual stack documents.
+- Loading Jinja2 templates from a directory of .j2 files.
 - Rendering templates to YAML with defaults, stack overrides, and optional resource presets.
 - Writing rendered YAML files to an output directory.
 - Validating YAML content and filesystem paths.
@@ -28,13 +28,22 @@ class RenderPlans:
     Render and validate llmdbenchmark stack plans from Jinja2 templates.
 
     This class orchestrates the end-to-end rendering pipeline for benchmark stack plans,
-    including template parsing, YAML rendering, and validation. It tracks errors at both
+    including template loading, YAML rendering, and validation. It tracks errors at both
     the global level (e.g., file loading issues) and per-stack level (rendering or YAML issues).
+
+    Template Directory Structure:
+        templates/
+        ├── _macros.j2                      # Shared macros (optional, prepended to all)
+        ├── 01_pvc_workload-pvc.yaml.j2
+        ├── 02_pvc_model-pvc.yaml.j2
+        └── ...
+
+        Files starting with '_' are treated as partials/macros and not rendered directly.
 
     Workflow:
         1. Load defaults and scenario configuration YAML files.
         2. Validate that the scenario file contains a list of stack configurations.
-        3. Parse the Jinja2 template file into individual template documents.
+        3. Load all .j2 template files from the template directory.
         4. For each stack:
             a. Merge stack overrides with defaults.
             b. Apply optional resource presets.
@@ -45,7 +54,7 @@ class RenderPlans:
         5. Return a RenderResult object containing structured error information and rendered paths.
 
     Attributes:
-        template_file (Path): Path to the Jinja2 template file.
+        template_dir (Path): Path to directory containing .j2 template files.
         defaults_file (Path): Path to the defaults YAML file.
         scenarios_file (Path): Path to the scenario YAML file.
         output_dir (Path): Base output directory for rendered stack plans.
@@ -53,37 +62,31 @@ class RenderPlans:
         _template_cache (Optional[list[dict]]): Cached parsed templates to avoid re-parsing.
         _jinja_env (Optional[Environment]): Cached Jinja2 environment with custom filters.
 
-    Methods:
-        eval() -> RenderResult:
-            Execute the full rendering pipeline and return structured results including errors.
-        _process_stack(...):
-            Internal method to process an individual stack configuration.
-        deep_merge(base: dict, override: dict) -> dict:
-            Deep merge two dictionaries, with override values taking precedence.
-        _apply_resource_preset(values: dict) -> dict:
-            Apply resource preset values if specified in the stack configuration.
-        _split_templates() -> list[dict]:
-            Split the multi-document Jinja2 template into individual template documents.
-        _render_template(template_content: str, values: dict) -> str:
-            Render a single Jinja2 template with provided values.
-        _validate_yaml_files(directory: Path) -> list[str]:
-            Validate all YAML files in a directory and return error messages.
-        _get_jinja_env() -> Environment:
-            Create or return a cached Jinja2 environment with custom filters.
+    Example:
+        result = RenderPlans(
+            template_dir=Path("templates/"),
+            defaults_file=Path("defaults.yaml"),
+            scenarios_file=Path("scenarios.yaml"),
+            output_dir=Path("rendered/"),
+        ).eval()
 
+        if result.has_errors:
+            print(json.dumps(result.to_dict(), indent=2))
+            sys.exit(1)
     """
 
-    SPLIT_MARKER = "\n***START_NEW_YAML_TEMPLATE***\n"
+    # Prefix for partial/macro files (not rendered directly)
+    PARTIAL_PREFIX = "_"
 
     def __init__(
         self,
-        template_file: Path,
+        template_dir: Path,
         defaults_file: Path,
         scenarios_file: Path,
         output_dir: Path,
         logger=None,
     ):
-        self.template_file = Path(template_file)
+        self.template_dir = Path(template_dir)
         self.defaults_file = Path(defaults_file)
         self.scenarios_file = Path(scenarios_file)
         self.output_dir = Path(output_dir)
@@ -118,6 +121,10 @@ class RenderPlans:
 
         self._jinja_env = env
         return env
+
+    # -------------------------------------------------------------------------
+    # Jinja2 Custom Filters
+    # -------------------------------------------------------------------------
 
     @staticmethod
     def _indent_filter(text: str, width: int = 4, first: bool = False) -> str:
@@ -176,6 +183,10 @@ class RenderPlans:
             return default_value
         return value
 
+    # -------------------------------------------------------------------------
+    # YAML Loading
+    # -------------------------------------------------------------------------
+
     def _load_yaml(self, yaml_file: Path) -> dict:
         """
         Load values from YAML file with full YAML support.
@@ -195,6 +206,10 @@ class RenderPlans:
 
         with open(yaml_file, "r", encoding="utf-8") as f:
             return yaml.full_load(f)
+
+    # -------------------------------------------------------------------------
+    # Deep Merge
+    # -------------------------------------------------------------------------
 
     def deep_merge(self, base: dict, override: dict) -> dict:
         """
@@ -220,6 +235,10 @@ class RenderPlans:
                 result[key] = deepcopy(value)
 
         return result
+
+    # -------------------------------------------------------------------------
+    # Resource Presets
+    # -------------------------------------------------------------------------
 
     def _apply_resource_preset(self, values: dict) -> dict:
         """
@@ -258,58 +277,18 @@ class RenderPlans:
         self.logger.log_info(f"Applied resource preset: {preset_name}")
         return result
 
-    def _extract_filename_from_line(self, line: str) -> Optional[str]:
+    # -------------------------------------------------------------------------
+    # Template Loading
+    # -------------------------------------------------------------------------
+
+    def _load_templates(self) -> list[dict]:
         """
-        Extract YAML filename from a comment line.
+        Load all .j2 template files from the template directory.
 
-        Args:
-            line: A line that may contain a filename like "# 01_foo.yaml.j2"
-
-        Returns:
-            Filename without .j2 extension, or None if not found
-        """
-        if ".yaml" not in line:
-            return None
-
-        for part in line.split():
-            if ".yaml" in part:
-                return part.replace(".j2", "")
-
-        return None
-
-    def _parse_template_document(self, doc: str) -> Optional[tuple[str, list[str]]]:
-        """
-        Parse a single template document to extract filename and content lines.
-
-        Args:
-            doc: Raw template document string
-
-        Returns:
-            Tuple of (filename, content_lines) or None if invalid
-        """
-        doc = doc.strip()
-        if not doc:
-            return None
-
-        filename = None
-        content_lines = []
-
-        for line in doc.split("\n"):
-            if line.strip().startswith("#"):
-                # Try to extract filename from comment
-                if filename is None:
-                    filename = self._extract_filename_from_line(line)
-            else:
-                content_lines.append(line)
-
-        if filename and content_lines:
-            return filename, content_lines
-
-        return None
-
-    def _split_templates(self) -> list[dict]:
-        """
-        Split multi-document template file into individual templates.
+        Structure:
+            - Files starting with '_' (e.g., _macros.j2) are partials/macros
+            - _macros.j2 content is prepended to all other templates
+            - All other .j2 files are rendered as individual templates
 
         Returns:
             List of dicts with 'filename' and 'content' keys
@@ -317,28 +296,52 @@ class RenderPlans:
         if self._template_cache is not None:
             return self._template_cache
 
-        with open(self.template_file, "r", encoding="utf-8") as f:
-            content = f.read()
+        if not self.template_dir.exists():
+            raise FileNotFoundError(
+                f"Template directory not found: {self.template_dir}"
+            )
 
-        # Extract macros (everything before first ---SPLIT---)
-        parts = content.split(self.SPLIT_MARKER, 1)
-        macros = parts[0] if len(parts) > 1 else ""
-        documents = parts[1].split(self.SPLIT_MARKER) if len(parts) > 1 else [content]
+        if not self.template_dir.is_dir():
+            raise NotADirectoryError(
+                f"Template path is not a directory: {self.template_dir}"
+            )
 
+        # Load shared macros if they exist
+        macros_file = self.template_dir / "_macros.j2"
+        macros = ""
+        if macros_file.exists():
+            macros = macros_file.read_text(encoding="utf-8") + "\n"
+
+        # Load all template files (exclude partials starting with _)
         templates = []
-        for doc in documents:
-            parsed = self._parse_template_document(doc)
-            if parsed:
-                filename, content_lines = parsed
-                templates.append(
-                    {
-                        "filename": filename,
-                        "content": macros + "\n" + "\n".join(content_lines),
-                    }
-                )
+        for template_file in sorted(self.template_dir.glob("*.j2")):
+            if template_file.name.startswith(self.PARTIAL_PREFIX):
+                continue
+
+            content = template_file.read_text(encoding="utf-8")
+
+            # Output filename: remove .j2 extension
+            # e.g., "01_pvc_workload-pvc.yaml.j2" -> "01_pvc_workload-pvc.yaml"
+            output_filename = template_file.stem
+            if not output_filename.endswith(".yaml"):
+                output_filename += ".yaml"
+
+            templates.append(
+                {
+                    "filename": output_filename,
+                    "content": macros + content,
+                }
+            )
+
+        if not templates:
+            raise ValueError(f"No template files found in: {self.template_dir}")
 
         self._template_cache = templates
         return templates
+
+    # -------------------------------------------------------------------------
+    # Template Rendering
+    # -------------------------------------------------------------------------
 
     def _render_template(self, template_content: str, values: dict) -> str:
         """
@@ -359,6 +362,10 @@ class RenderPlans:
         template = env.from_string(template_content)
         return template.render(**values)
 
+    # -------------------------------------------------------------------------
+    # YAML Validation
+    # -------------------------------------------------------------------------
+
     def _validate_yaml_files(self, directory: Path) -> list[str]:
         """
         Validate all YAML files in a directory.
@@ -377,6 +384,10 @@ class RenderPlans:
             except yaml.YAMLError as e:
                 errors.append(f"{yaml_file.name}: {str(e)[:100]}")
         return errors
+
+    # -------------------------------------------------------------------------
+    # Stack Processing
+    # -------------------------------------------------------------------------
 
     def _process_stack(
         self,
@@ -472,6 +483,10 @@ class RenderPlans:
         self.logger.log_info(f"Success: {success_count}, Errors: {error_count}")
         self.logger.line_break()
 
+    # -------------------------------------------------------------------------
+    # Main Entry Point
+    # -------------------------------------------------------------------------
+
     def eval(self) -> RenderResult:
         """
         Execute the rendering pipeline.
@@ -516,14 +531,18 @@ class RenderPlans:
         self.logger.log_info(f"Processing scenario with {len(stacks)} stack(s)...")
         self.logger.line_break()
 
-        # Parse templates once
+        # Load templates from directory
         try:
-            templates = self._split_templates()
+            templates = self._load_templates()
         except Exception as e:
-            msg = f"Failed to parse template file: {e}"
+            msg = f"Failed to load templates: {e}"
             self.logger.log_error(msg)
             result.global_errors.append(msg)
             return result
+
+        self.logger.log_info(
+            f"Loaded {len(templates)} template(s) from {self.template_dir}"
+        )
 
         # Create output directory
         self.output_dir.mkdir(parents=True, exist_ok=True)

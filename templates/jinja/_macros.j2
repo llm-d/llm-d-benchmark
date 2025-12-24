@@ -1,0 +1,131 @@
+{# ============================================================================
+   MACROS - Reusable template functions
+   ============================================================================ #}
+
+{# Macro to build vLLM serve command with templated arguments #}
+{% macro build_vllm_command(mode='decode') -%}
+{% if mode == 'decode' -%}
+{% set config = decode -%}
+{% else -%}
+{% set config = prefill -%}
+{% endif -%}
+{# Check if custom command is provided #}
+{% if config.vllm.customCommand is not none -%}
+{{ config.vllm.customCommand }}
+{%- else -%}
+{# Use custom preprocess command if provided, otherwise use common one #}
+{% if config.vllm.customPreprocessCommand is not none -%}
+{{ config.vllm.customPreprocessCommand }}
+{% else -%}
+{{ vllmCommon.preprocessScript }};
+{% endif -%}
+vllm serve {{ model.cacheBase }}/{{ model.path }} \
+--host {{ vllmCommon.host }} \
+--served-model-name {{ model.name }} \
+--port {{ config.vllm.port }} \
+--block-size {{ model.blockSize }} \
+--max-model-len {{ model.maxModelLen }} \
+--tensor-parallel-size {{ config.parallelism.tensor }} \
+--gpu-memory-utilization {{ model.gpuMemoryUtilization }} \
+--kv-transfer-config "{\"kv_connector\":\"{{ vllmCommon.kvTransfer.connector }}\",\"kv_role\":\"{{ vllmCommon.kvTransfer.role }}\"}"
+{%- if vllmCommon.flags.enforceEager %} \
+--enforce-eager
+{%- endif %}
+{%- if vllmCommon.flags.disableLogRequests %} \
+--disable-log-requests
+{%- endif %}
+{%- if vllmCommon.flags.disableUvicornAccessLog %} \
+--disable-uvicorn-access-log
+{%- endif %}
+{%- endif %}
+{%- endmacro %}
+
+{# Macro to render volume mounts #}
+{% macro render_volume_mounts(mode='decode') -%}
+{% if mode == 'decode' -%}
+{% set config = decode -%}
+{% else -%}
+{% set config = prefill -%}
+{% endif -%}
+{% for mount in vllmCommon.volumeMounts -%}
+    - name: {{ mount.name }}
+      mountPath: {{ mount.mountPath }}
+{% endfor -%}
+{% for mount in config.additionalVolumeMounts -%}
+    - name: {{ mount.name }}
+      mountPath: {{ mount.mountPath }}
+{% if mount.subPath is defined -%}
+      subPath: {{ mount.subPath }}
+{% endif -%}
+{% if mount.readOnly is defined -%}
+      readOnly: {{ mount.readOnly | lower }}
+{% endif -%}
+{% endfor -%}
+{%- endmacro %}
+
+{# Macro to render volumes #}
+{% macro render_volumes(mode='decode') -%}
+{% if mode == 'decode' -%}
+{% set config = decode -%}
+{% else -%}
+{% set config = prefill -%}
+{% endif -%}
+{% for volume in vllmCommon.volumes -%}
+  - name: {{ volume.name }}
+{% if volume.type == 'configMap' -%}
+    configMap:
+{% if volume.configMap.name is defined -%}
+      name: {{ volume.configMap.name }}
+{% endif -%}
+{% if volume.configMap.defaultMode is defined -%}
+      defaultMode: {{ volume.configMap.defaultMode }}
+{% endif -%}
+{% elif volume.type == 'emptyDir' -%}
+    emptyDir:
+{% if volume.emptyDir.medium is defined -%}
+      medium: {{ volume.emptyDir.medium }}
+{% endif -%}
+{% if volume.emptyDir.sizeLimit is defined -%}
+      sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif -%}
+{% elif volume.type == 'persistentVolumeClaim' -%}
+    persistentVolumeClaim:
+      claimName: {{ volume.persistentVolumeClaim.claimName }}
+{% elif volume.type == 'secret' -%}
+    secret:
+      secretName: {{ volume.secret.secretName }}
+{% if volume.secret.defaultMode is defined -%}
+      defaultMode: {{ volume.secret.defaultMode }}
+{% endif -%}
+{% endif -%}
+{% endfor -%}
+{% for volume in config.additionalVolumes -%}
+  - name: {{ volume.name }}
+{% if volume.type == 'configMap' -%}
+    configMap:
+{% if volume.configMap.name is defined -%}
+      name: {{ volume.configMap.name }}
+{% endif -%}
+{% if volume.configMap.defaultMode is defined -%}
+      defaultMode: {{ volume.configMap.defaultMode }}
+{% endif -%}
+{% elif volume.type == 'emptyDir' -%}
+    emptyDir:
+{% if volume.emptyDir.medium is defined -%}
+      medium: {{ volume.emptyDir.medium }}
+{% endif -%}
+{% if volume.emptyDir.sizeLimit is defined -%}
+      sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif -%}
+{% elif volume.type == 'persistentVolumeClaim' -%}
+    persistentVolumeClaim:
+      claimName: {{ volume.persistentVolumeClaim.claimName }}
+{% elif volume.type == 'secret' -%}
+    secret:
+      secretName: {{ volume.secret.secretName }}
+{% if volume.secret.defaultMode is defined -%}
+      defaultMode: {{ volume.secret.defaultMode }}
+{% endif -%}
+{% endif -%}
+{% endfor -%}
+{%- endmacro %}

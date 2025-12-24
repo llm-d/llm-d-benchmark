@@ -1,0 +1,514 @@
+{# Define create flags once at the top for reuse #}
+{% set decode_create = (decode.enabled if decode.enabled is defined else (decode.replicas | default(0) | int > 0)) %}
+{% set prefill_create = (prefill.enabled if prefill.enabled is defined else (prefill.replicas | default(0) | int > 0)) %}
+fullnameOverride: {{ model.shortName }}
+{% if multinode is defined and multinode.enabled is defined %}
+multinode: {{ multinode.enabled | lower }}
+{% else %}
+multinode: false
+{% endif %}
+schedulerName: default-scheduler
+modelArtifacts:
+  uri: pvc://{{ storage.modelPvc.name }}/{{ model.path }}
+  size: {{ model.size }}
+  authSecretName: "{{ huggingface.secretName }}"
+  name: {{ model.name }}
+  labels:
+    llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
+    llm-d.ai/model: {{ model.shortName }}
+routing:
+  servicePort: {{ decode.vllm.servicePort }}
+  proxy:
+    image: "{{ images.routingSidecar.repository }}:{{ images.routingSidecar.tag }}"
+    secure: {{ routing.secure | lower }}
+    connector: {{ routing.connector }}
+    debugLevel: {{ routing.debugLevel }}
+accelerator:
+  type: {{ accelerator.type | default('nvidia') }}
+{# ========================================================================== #}
+{# DECODE SECTION - Only render full config if create is true                 #}
+{# ========================================================================== #}
+decode:
+  create: {{ decode_create | lower }}
+{% if decode_create %}
+  replicas: {{ decode.replicas }}
+  acceleratorTypes:
+    labelKey: {{ decode.acceleratorType.labelKey }}
+    labelValues:
+    - {{ decode.acceleratorType.labelValue }}
+  parallelism:
+    data: {{ decode.parallelism.data }}
+    dataLocal: {{ decode.parallelism.dataLocal }}
+    tensor: {{ decode.parallelism.tensor }}
+    workers: {{ decode.parallelism.workers }}
+{% if affinity is defined and affinity.enabled %}
+  affinity:
+{% if affinity.nodeSelector is defined and affinity.nodeSelector %}
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+{% for key, value in affinity.nodeSelector.items() %}
+          - key: {{ key }}
+            operator: In
+            values:
+            - "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if affinity.podAffinity is defined and affinity.podAffinity %}
+    podAffinity:
+{% for key, value in affinity.podAffinity.items() %}
+      {{ key }}: {{ value }}
+{% endfor %}
+{% endif %}
+{% if affinity.podAntiAffinity is defined and affinity.podAntiAffinity %}
+    podAntiAffinity:
+{% for key, value in affinity.podAntiAffinity.items() %}
+      {{ key }}: {{ value }}
+{% endfor %}
+{% endif %}
+{% endif %}
+  annotations:
+{% if annotations is defined and annotations.common is defined and annotations.common %}
+{% for key, value in annotations.common.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+  podAnnotations:
+{% if annotations is defined and annotations.decode is defined and annotations.decode.pod is defined and annotations.decode.pod %}
+{% for key, value in annotations.decode.pod.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+  schedulerName: default-scheduler
+{% if decode.extraPodConfig is defined and decode.extraPodConfig %}
+  extraConfig:
+{% for key, value in decode.extraPodConfig.items() %}
+    {{ key }}: {{ value }}
+{% endfor %}
+{% else %}
+  extraConfig:
+{% endif %}
+  containers:
+  - name: "vllm"
+    mountModelVolume: {{ decode.mountModelVolume | default(true) | lower }}
+    image: "{{ images.vllm.repository }}:{{ images.vllm.tag }}"
+    modelCommand: custom
+    command:
+      - /bin/sh
+      - '-c'
+    args:
+      - |
+{{ build_vllm_command('decode') | indent(8, first=True) }}
+    env:
+      - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+        valueFrom:
+          fieldRef:
+            fieldPath: status.podIP
+      - name: VLLM_WORKER_MULTIPROC_METHOD
+        value: "{{ decode.vllm.workerMultiprocMethod }}"
+      - name: VLLM_LOGGING_LEVEL
+        value: "{{ decode.vllm.loggingLevel }}"
+      - name: VLLM_CACHE_ROOT
+        value: "{{ decode.vllm.cacheRoot }}"
+      - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+        value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
+      - name: VLLM_SERVER_DEV_MODE
+        value: "{{ vllmCommon.flags.serverDevMode }}"
+{% if decode.extraEnvVars is defined and decode.extraEnvVars %}
+{% for env in decode.extraEnvVars %}
+      - name: {{ env.name }}
+{% if env.value is defined %}
+        value: "{{ env.value }}"
+{% elif env.valueFrom is defined %}
+        valueFrom:
+{% if env.valueFrom.secretKeyRef is defined %}
+          secretKeyRef:
+            name: {{ env.valueFrom.secretKeyRef.name }}
+            key: {{ env.valueFrom.secretKeyRef.key }}
+{% elif env.valueFrom.configMapKeyRef is defined %}
+          configMapKeyRef:
+            name: {{ env.valueFrom.configMapKeyRef.name }}
+            key: {{ env.valueFrom.configMapKeyRef.key }}
+{% elif env.valueFrom.fieldRef is defined %}
+          fieldRef:
+            fieldPath: {{ env.valueFrom.fieldRef.fieldPath }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+    resources:
+      limits:
+        memory: {{ decode.resources.limits.memory }}
+        cpu: "{{ decode.resources.limits.cpu }}"
+{% if decode.resources.limits is defined and decode.resources.limits['nvidia.com/gpu'] is defined %}
+        nvidia.com/gpu: "{{ decode.resources.limits['nvidia.com/gpu'] }}"
+{% endif %}
+      requests:
+        memory: {{ decode.resources.requests.memory }}
+        cpu: "{{ decode.resources.requests.cpu }}"
+{% if decode.resources.requests is defined and decode.resources.requests['nvidia.com/gpu'] is defined %}
+        nvidia.com/gpu: "{{ decode.resources.requests['nvidia.com/gpu'] }}"
+{% endif %}
+    extraConfig:
+      startupProbe:
+        httpGet:
+          path: /health
+          port: {{ decode.vllm.servicePort }}
+        failureThreshold: {{ decode.probes.startup.failureThreshold }}
+        initialDelaySeconds: {{ decode.probes.startup.initialDelaySeconds }}
+        periodSeconds: {{ decode.probes.startup.periodSeconds }}
+        timeoutSeconds: {{ decode.probes.startup.timeoutSeconds }}
+      livenessProbe:
+        tcpSocket:
+          port: {{ decode.vllm.servicePort }}
+        failureThreshold: {{ decode.probes.liveness.failureThreshold }}
+        periodSeconds: {{ decode.probes.liveness.periodSeconds }}
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: {{ decode.vllm.servicePort }}
+        failureThreshold: {{ decode.probes.readiness.failureThreshold }}
+        periodSeconds: {{ decode.probes.readiness.periodSeconds }}
+{% if decode.extraContainerConfig is defined and decode.extraContainerConfig %}
+{% for key, value in decode.extraContainerConfig.items() %}
+{% if value is mapping %}
+      {{ key }}:
+{% for subkey, subvalue in value.items() %}
+{% if subvalue is mapping %}
+        {{ subkey }}:
+{% for subsubkey, subsubvalue in subvalue.items() %}
+          {{ subsubkey }}: {{ subsubvalue }}
+{% endfor %}
+{% elif subvalue is iterable and subvalue is not string %}
+        {{ subkey }}:
+{% for item in subvalue %}
+          - {{ item }}
+{% endfor %}
+{% else %}
+        {{ subkey }}: {{ subvalue }}
+{% endif %}
+{% endfor %}
+{% else %}
+      {{ key }}: {{ value }}
+{% endif %}
+{% endfor %}
+{% endif %}
+    volumeMounts:
+{% for mount in vllmCommon.volumeMounts %}
+      - name: {{ mount.name }}
+        mountPath: {{ mount.mountPath }}
+{% endfor %}
+{% for mount in decode.additionalVolumeMounts %}
+      - name: {{ mount.name }}
+        mountPath: {{ mount.mountPath }}
+{% if mount.subPath is defined %}
+        subPath: {{ mount.subPath }}
+{% endif %}
+{% if mount.readOnly is defined %}
+        readOnly: {{ mount.readOnly | lower }}
+{% endif %}
+{% endfor %}
+  volumes:
+{% for volume in vllmCommon.volumes %}
+    - name: {{ volume.name }}
+{% if volume.type == 'configMap' %}
+      configMap:
+{% if volume.configMap.name is defined %}
+        name: {{ volume.configMap.name }}
+{% endif %}
+{% if volume.configMap.defaultMode is defined %}
+        defaultMode: {{ volume.configMap.defaultMode }}
+{% endif %}
+{% elif volume.type == 'emptyDir' %}
+      emptyDir:
+{% if volume.emptyDir.medium is defined %}
+        medium: {{ volume.emptyDir.medium }}
+{% endif %}
+{% if volume.emptyDir.sizeLimit is defined %}
+        sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif %}
+{% elif volume.type == 'persistentVolumeClaim' %}
+      persistentVolumeClaim:
+        claimName: {{ volume.persistentVolumeClaim.claimName }}
+{% elif volume.type == 'secret' %}
+      secret:
+        secretName: {{ volume.secret.secretName }}
+{% if volume.secret.defaultMode is defined %}
+        defaultMode: {{ volume.secret.defaultMode }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% for volume in decode.additionalVolumes %}
+    - name: {{ volume.name }}
+{% if volume.type == 'configMap' %}
+      configMap:
+{% if volume.configMap.name is defined %}
+        name: {{ volume.configMap.name }}
+{% endif %}
+{% if volume.configMap.defaultMode is defined %}
+        defaultMode: {{ volume.configMap.defaultMode }}
+{% endif %}
+{% elif volume.type == 'emptyDir' %}
+      emptyDir:
+{% if volume.emptyDir.medium is defined %}
+        medium: {{ volume.emptyDir.medium }}
+{% endif %}
+{% if volume.emptyDir.sizeLimit is defined %}
+        sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif %}
+{% elif volume.type == 'persistentVolumeClaim' %}
+      persistentVolumeClaim:
+        claimName: {{ volume.persistentVolumeClaim.claimName }}
+{% elif volume.type == 'secret' %}
+      secret:
+        secretName: {{ volume.secret.secretName }}
+{% if volume.secret.defaultMode is defined %}
+        defaultMode: {{ volume.secret.defaultMode }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+{# ========================================================================== #}
+{# PREFILL SECTION - Only render full config if create is true                #}
+{# ========================================================================== #}
+prefill:
+  create: {{ prefill_create | lower }}
+{% if prefill_create %}
+  replicas: {{ prefill.replicas }}
+  acceleratorTypes:
+    labelKey: {{ prefill.acceleratorType.labelKey }}
+    labelValues:
+    - {{ prefill.acceleratorType.labelValue }}
+  parallelism:
+    data: {{ prefill.parallelism.data }}
+    dataLocal: {{ prefill.parallelism.dataLocal }}
+    tensor: {{ prefill.parallelism.tensor }}
+    workers: {{ prefill.parallelism.workers }}
+{% if affinity is defined and affinity.enabled %}
+  affinity:
+{% if affinity.nodeSelector is defined and affinity.nodeSelector %}
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+{% for key, value in affinity.nodeSelector.items() %}
+          - key: {{ key }}
+            operator: In
+            values:
+            - "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if affinity.podAffinity is defined and affinity.podAffinity %}
+    podAffinity:
+{% for key, value in affinity.podAffinity.items() %}
+      {{ key }}: {{ value }}
+{% endfor %}
+{% endif %}
+{% if affinity.podAntiAffinity is defined and affinity.podAntiAffinity %}
+    podAntiAffinity:
+{% for key, value in affinity.podAntiAffinity.items() %}
+      {{ key }}: {{ value }}
+{% endfor %}
+{% endif %}
+{% endif %}
+  annotations:
+{% if annotations is defined and annotations.common is defined and annotations.common %}
+{% for key, value in annotations.common.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+  podAnnotations:
+{% if annotations is defined and annotations.prefill is defined and annotations.prefill.pod is defined and annotations.prefill.pod %}
+{% for key, value in annotations.prefill.pod.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+  schedulerName: default-scheduler
+{% if prefill.extraPodConfig is defined and prefill.extraPodConfig %}
+  extraConfig:
+{% for key, value in prefill.extraPodConfig.items() %}
+    {{ key }}: {{ value }}
+{% endfor %}
+{% else %}
+  extraConfig:
+{% endif %}
+  containers:
+  - name: "vllm"
+    mountModelVolume: {{ prefill.mountModelVolume | default(true) | lower }}
+    image: "{{ images.vllm.repository }}:{{ images.vllm.tag }}"
+    modelCommand: vllmServe
+    args:
+      - |
+{{ build_vllm_command('prefill') | indent(8, first=True) }}
+    env:
+      - name: VLLM_IS_PREFILL
+        value: "1"
+      - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+        valueFrom:
+          fieldRef:
+            fieldPath: status.podIP
+      - name: VLLM_WORKER_MULTIPROC_METHOD
+        value: "{{ decode.vllm.workerMultiprocMethod }}"
+      - name: VLLM_LOGGING_LEVEL
+        value: "{{ decode.vllm.loggingLevel }}"
+      - name: VLLM_CACHE_ROOT
+        value: "{{ decode.vllm.cacheRoot }}"
+      - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+        value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
+      - name: VLLM_SERVER_DEV_MODE
+        value: "{{ vllmCommon.flags.serverDevMode }}"
+{% if prefill.extraEnvVars is defined and prefill.extraEnvVars %}
+{% for env in prefill.extraEnvVars %}
+      - name: {{ env.name }}
+{% if env.value is defined %}
+        value: "{{ env.value }}"
+{% elif env.valueFrom is defined %}
+        valueFrom:
+{% if env.valueFrom.secretKeyRef is defined %}
+          secretKeyRef:
+            name: {{ env.valueFrom.secretKeyRef.name }}
+            key: {{ env.valueFrom.secretKeyRef.key }}
+{% elif env.valueFrom.configMapKeyRef is defined %}
+          configMapKeyRef:
+            name: {{ env.valueFrom.configMapKeyRef.name }}
+            key: {{ env.valueFrom.configMapKeyRef.key }}
+{% elif env.valueFrom.fieldRef is defined %}
+          fieldRef:
+            fieldPath: {{ env.valueFrom.fieldRef.fieldPath }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+    resources:
+      limits:
+        memory: {{ prefill.resources.limits.memory }}
+        cpu: "{{ prefill.resources.limits.cpu }}"
+{% if prefill.resources.limits is defined and prefill.resources.limits['nvidia.com/gpu'] is defined %}
+        nvidia.com/gpu: "{{ prefill.resources.limits['nvidia.com/gpu'] }}"
+{% endif %}
+      requests:
+        memory: {{ prefill.resources.requests.memory }}
+        cpu: "{{ prefill.resources.requests.cpu }}"
+{% if prefill.resources.requests is defined and prefill.resources.requests['nvidia.com/gpu'] is defined %}
+        nvidia.com/gpu: "{{ prefill.resources.requests['nvidia.com/gpu'] }}"
+{% endif %}
+    extraConfig:
+      startupProbe:
+        httpGet:
+          path: /health
+          port: {{ decode.vllm.servicePort }}
+        failureThreshold: {{ prefill.probes.startup.failureThreshold }}
+        initialDelaySeconds: {{ prefill.probes.startup.initialDelaySeconds }}
+        periodSeconds: {{ prefill.probes.startup.periodSeconds }}
+        timeoutSeconds: {{ prefill.probes.startup.timeoutSeconds }}
+      livenessProbe:
+        tcpSocket:
+          port: {{ decode.vllm.servicePort }}
+        failureThreshold: {{ prefill.probes.liveness.failureThreshold }}
+        periodSeconds: {{ prefill.probes.liveness.periodSeconds }}
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: {{ decode.vllm.servicePort }}
+        failureThreshold: {{ prefill.probes.readiness.failureThreshold }}
+        periodSeconds: {{ prefill.probes.readiness.periodSeconds }}
+{% if prefill.extraContainerConfig is defined and prefill.extraContainerConfig %}
+{% for key, value in prefill.extraContainerConfig.items() %}
+{% if value is mapping %}
+      {{ key }}:
+{% for subkey, subvalue in value.items() %}
+{% if subvalue is mapping %}
+        {{ subkey }}:
+{% for subsubkey, subsubvalue in subvalue.items() %}
+          {{ subsubkey }}: {{ subsubvalue }}
+{% endfor %}
+{% elif subvalue is iterable and subvalue is not string %}
+        {{ subkey }}:
+{% for item in subvalue %}
+          - {{ item }}
+{% endfor %}
+{% else %}
+        {{ subkey }}: {{ subvalue }}
+{% endif %}
+{% endfor %}
+{% else %}
+      {{ key }}: {{ value }}
+{% endif %}
+{% endfor %}
+{% endif %}
+    volumeMounts:
+{% for mount in vllmCommon.volumeMounts %}
+      - name: {{ mount.name }}
+        mountPath: {{ mount.mountPath }}
+{% endfor %}
+{% for mount in prefill.additionalVolumeMounts %}
+      - name: {{ mount.name }}
+        mountPath: {{ mount.mountPath }}
+{% if mount.subPath is defined %}
+        subPath: {{ mount.subPath }}
+{% endif %}
+{% if mount.readOnly is defined %}
+        readOnly: {{ mount.readOnly | lower }}
+{% endif %}
+{% endfor %}
+  volumes:
+{% for volume in vllmCommon.volumes %}
+    - name: {{ volume.name }}
+{% if volume.type == 'configMap' %}
+      configMap:
+{% if volume.configMap.name is defined %}
+        name: {{ volume.configMap.name }}
+{% endif %}
+{% if volume.configMap.defaultMode is defined %}
+        defaultMode: {{ volume.configMap.defaultMode }}
+{% endif %}
+{% elif volume.type == 'emptyDir' %}
+      emptyDir:
+{% if volume.emptyDir.medium is defined %}
+        medium: {{ volume.emptyDir.medium }}
+{% endif %}
+{% if volume.emptyDir.sizeLimit is defined %}
+        sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif %}
+{% elif volume.type == 'persistentVolumeClaim' %}
+      persistentVolumeClaim:
+        claimName: {{ volume.persistentVolumeClaim.claimName }}
+{% elif volume.type == 'secret' %}
+      secret:
+        secretName: {{ volume.secret.secretName }}
+{% if volume.secret.defaultMode is defined %}
+        defaultMode: {{ volume.secret.defaultMode }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% for volume in prefill.additionalVolumes %}
+    - name: {{ volume.name }}
+{% if volume.type == 'configMap' %}
+      configMap:
+{% if volume.configMap.name is defined %}
+        name: {{ volume.configMap.name }}
+{% endif %}
+{% if volume.configMap.defaultMode is defined %}
+        defaultMode: {{ volume.configMap.defaultMode }}
+{% endif %}
+{% elif volume.type == 'emptyDir' %}
+      emptyDir:
+{% if volume.emptyDir.medium is defined %}
+        medium: {{ volume.emptyDir.medium }}
+{% endif %}
+{% if volume.emptyDir.sizeLimit is defined %}
+        sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif %}
+{% elif volume.type == 'persistentVolumeClaim' %}
+      persistentVolumeClaim:
+        claimName: {{ volume.persistentVolumeClaim.claimName }}
+{% elif volume.type == 'secret' %}
+      secret:
+        secretName: {{ volume.secret.secretName }}
+{% if volume.secret.defaultMode is defined %}
+        defaultMode: {{ volume.secret.defaultMode }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
