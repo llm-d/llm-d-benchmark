@@ -1,61 +1,39 @@
 """
-Configuration module for managing workspace and log directory paths
-and verbosity across the llmdbenchmark package.
+workspace_config.py
 
-This module provides a singleton WorkspaceConfig instance that can be imported
-and used by submodules to access the current workspace, log directory, and
-verbosity flag.
+Singleton-style workspace configuration using only a dataclass.
+Provides a single package-wide instance that can be imported and used
+across all modules to access the current workspace, plan, and log directories,
+as well as verbose and dry_run flags.
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 
+@dataclass
 class WorkspaceConfig:
     """
-    Stores workspace and log directory paths, and verbosity and dry_run flag, for the current run.
+    Stores workspace, plan, and log directory paths with verbose and dry_run flags.
 
     Attributes:
-        workspace (Optional[Path]): Path to the main workspace directory.
-        log_dir (Optional[Path]): Path to the logs subdirectory within the workspace.
-        verbose (bool): Whether verbose logging is enabled.
-        dry_run (bool): Whether dry_run is enabled.
+        workspace (Optional[Path]): Main workspace directory.
+        plan_dir (Optional[Path]): Directory for generated plans.
+        log_dir (Optional[Path]): Logs directory within the workspace.
+        verbose (bool): Enable verbose logging.
+        dry_run (bool): Enable dry_run mode.
     """
 
-    def __init__(self) -> None:
-        """
-        Initialize a WorkspaceConfig instance with no paths set and verbose disabled.
-        """
-        self.workspace: Optional[Path] = None
-        self.plan_dir: Optional[Path] = None
-        self.log_dir: Optional[Path] = None
-        self.verbose: bool = False
-        self.dry_run: bool = False
-
-    def set_config(
-        self,
-        workspace: Path,
-        plan_dir: Path,
-        log_dir: Path,
-        verbose: bool = False,
-        dry_run: bool = False,
-    ) -> None:
-        """
-        Set the workspace, log directory paths, verbosity flag, and dry_run flag.
-
-        Args:
-            workspace (Path): The path to the main workspace directory.
-            plan_dir (Path): The path to the generated plan for model infra.
-            log_dir (Path): The path to the logs directory within the workspace.
-            verbose (bool, optional): Enable verbose logging. Defaults to False.
-            dry_run (bool, optional): Enable dry_run only. Defaults to False.
-        """
-        self.workspace = workspace
-        self.plan_dir = plan_dir
-        self.log_dir = log_dir
-        self.verbose = verbose
-        self.dry_run = dry_run
+    workspace: Optional[Path] = None
+    plan_dir: Optional[Path] = None
+    log_dir: Optional[Path] = None
+    verbose: bool = False
+    dry_run: bool = False
 
 
-# Singleton instance for package-wide use
+# Create a SINGLE package-wide instance.
+# This instance is configured in llmdbenchmark.cli via setup_workspace().
+# Once set, it acts as the single source of truth for the current running instance
+# of llmdbenchmark and can be imported throughout the package.
 config = WorkspaceConfig()

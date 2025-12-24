@@ -20,6 +20,9 @@ Functions:
 
 import argparse
 import logging
+import sys
+import json
+from pathlib import Path
 
 from llmdbenchmark import __version__, __package_name__, __package_home__
 from llmdbenchmark.config import config
@@ -32,8 +35,33 @@ from llmdbenchmark.utilities.os.filesystem import (
 from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface import plan, standup
 from llmdbenchmark.parser.render_specification import RenderSpecification
-from llmdbenchmark.parser.render_plan import RenderPlans
-from llmdbenchmark.parser.system import System
+from llmdbenchmark.exceptions.exceptions import TemplateError
+from llmdbenchmark.parser.render_plans import RenderPlans
+
+
+def setup_workspace(
+    workspace_path: Path,
+    plan_dir: Path,
+    log_dir: Path,
+    verbose: bool = False,
+    dry_run: bool = False,
+) -> None:
+    """
+    Configure the llmdbenchmark workspace, plan directory, log directory,
+    and flags for verbose logging and dry run mode.
+
+    Args:
+        workspace_path (Path): Path to the main workspace directory.
+        plan_dir (Path): Path to the generated plan directory.
+        log_dir (Path): Path to the logs directory.
+        verbose (bool, optional): Enable verbose logging. Defaults to False.
+        dry_run (bool, optional): Enable dry run mode. Defaults to False.
+    """
+    config.workspace = workspace_path
+    config.plan_dir = plan_dir
+    config.log_dir = log_dir
+    config.verbose = verbose
+    config.dry_run = dry_run
 
 
 def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
@@ -69,17 +97,23 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             "Using specification file to fully render templates into complete system stack plans."
         )
 
-        RenderPlans(
+        render_plan_errors = RenderPlans(
             template_file=specification_as_dict["template_dir"]["path"],
             defaults_file=specification_as_dict["values_file"]["path"],
             scenarios_file=specification_as_dict["scenario_file"]["path"],
             output_dir=config.plan_dir,
         ).eval()
 
-        logger.log_info(
-            "Templates have been rendered into plans based on the provided specification file.",
-            emoji="✅",
-        )
+        try:
+            if render_plan_errors.has_errors:
+                error_dump = json.dumps(render_plan_errors.to_dict(), indent=2)
+                raise TemplateError(
+                    message="Errors occurred while rendering the specification.",
+                    context={"\nrender_plan_errors": error_dump},
+                )
+        except TemplateError as e:
+            logger.log_error(f"Rendering failed: {e}")
+            sys.exit(1)
 
     if args.command in (Command.STANDUP.value, Command.END_TO_END.value):
         logger.log_info("STANDUP TODO")
@@ -182,22 +216,35 @@ def cli() -> None:
     args = parser.parse_args()
 
     #
-    # TODO: This could be wrapped even further, but leaving here for development
+    # NOTE: This section could be refactored or wrapped further in the future.
     #
-    # Create the "overall" workspace where we will store individual runs
-    # so we can consolidate to one directory containing many runs.
+    # We IMPLICITLY append "workspace" if it has not already been done so so that
+    # we don't EVER accidentally commit or store in Git. I've added workspace*/ to
+    # .gitignore. We can probably handle this better maybe? This is really for those
+    # users that are using the repo root - or for developers actively making changes
+    # to the library.
     #
-    # - workspace
-    #   - sub_dir_run_1
-    #   - sub_dir_run_1
+    # Create an "overall" workspace to store individual runs, allowing consolidation
+    # into a single directory containing multiple runs:
     #
-    # Naturally if a random workspace is assigned, we will consistently create
-    # temporary directories containing 1 run per workspace.
+    #   workspace/
+    #       sub_dir_run_1/
+    #       sub_dir_run_2/
     #
-    # This structure allows us to have workspace reusability, if so desired.
+    # If a random workspace is assigned, temporary directories will be created,
+    # each containing a single run. This structure allows optional workspace
+    # reusability and easier organization of multiple runs.
     #
-    workspace = create_workspace(args.workspace)
-    current_workspace = create_sub_dir_workload(workspace)
+
+    overall_workspace = Path(args.workspace)
+    if "workspace" not in overall_workspace.name.lower():
+        overall_workspace = overall_workspace.with_name(
+            f"workspace_{overall_workspace.name}"
+        )
+    overall_workspace = create_workspace(overall_workspace)
+    absolute_overall_workspace_path = get_absolute_path(overall_workspace)
+
+    current_workspace = create_sub_dir_workload(absolute_overall_workspace_path)
     absolute_workspace_path = get_absolute_path(current_workspace)
 
     absolute_workspace_log_dir = create_sub_dir_workload(
@@ -213,8 +260,8 @@ def cli() -> None:
     args.specification_file = get_absolute_path(args.specification_file)
     args.base_dir = get_absolute_path(args.base_dir)
 
-    config.set_config(
-        workspace=absolute_workspace_path,
+    setup_workspace(
+        workspace_path=absolute_workspace_path,
         plan_dir=absolute_workspace_plan_dir,
         log_dir=absolute_workspace_log_dir,
         verbose=args.verbose,
@@ -228,7 +275,12 @@ def cli() -> None:
     )
 
     logger.log_info(
-        f'Created Workspace: "{absolute_workspace_path}"',
+        f'Created Workspace: "{absolute_overall_workspace_path}"',
+        emoji="✅",
+    )
+
+    logger.log_info(
+        f'Created {__package_name__} instance in workspace: "{absolute_workspace_path}"',
         emoji="✅",
     )
 

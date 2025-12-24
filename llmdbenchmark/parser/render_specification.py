@@ -1,9 +1,28 @@
+"""
+llmdbenchmark.parser.render_specification
+
+Provides the RenderSpecification class for llmdbenchmark.
+
+This module handles the complete rendering and validation workflow for Jinja2-based
+specification templates, including:
+
+- Rendering Jinja2 templates to YAML, optionally using a base directory as context.
+- Writing rendered YAML files to the configured plan directory.
+- Parsing the rendered YAML into Python dictionaries.
+- Recursively validating filesystem paths specified in the configuration.
+- Raising structured TemplateError or ConfigurationError exceptions when issues occur.
+
+The eval() method will return the parsed configuration dictionary or raise exceptions
+if rendering, parsing, or validation fails.
+"""
+
 from pathlib import Path
 from typing import Any, Dict, List, Union
-from jinja2 import Environment, TemplateError as JinjaTemplateError
 
 import json
 import yaml
+
+from jinja2 import Environment, TemplateError as JinjaTemplateError
 
 from llmdbenchmark.config import config
 from llmdbenchmark.utilities.os.filesystem import (
@@ -15,7 +34,7 @@ from llmdbenchmark.logging.logger import get_logger
 from llmdbenchmark.exceptions.exceptions import TemplateError, ConfigurationError
 
 
-class RenderSpecification:
+class RenderSpecification:  # pylint: disable=too-few-public-methods
     """
     Render a Jinja specification file, write the resulting YAML,
     parse it into a dictionary, and validate filesystem paths.
@@ -38,19 +57,11 @@ class RenderSpecification:
 
         self.errors: List[str] = []
 
-    def eval(self) -> Dict[str, Any]:
-        rendered_yaml = self._render()
-        config_dict = self._parse(rendered_yaml)
-        self._precheck(config_dict)
-
-        _json_dump = json.dumps(config_dict, indent=2)
-        self.logger.log_debug(
-            f"Rendered Specification File\n {_json_dump}",
-        )
-
-        return config_dict
-
     def _render(self) -> str:
+        """
+        Render the Jinja2 specification template with optional `base_dir` context and write it
+        to the `plan_dir` as a YAML file.
+        """
         try:
             env = Environment(
                 autoescape=False,
@@ -91,6 +102,18 @@ class RenderSpecification:
             ) from exc
 
     def _parse(self, rendered_yaml: str) -> Dict[str, Any]:
+        """
+        Parse a rendered YAML string into a Python dictionary.
+
+        Args:
+            rendered_yaml (str): YAML content rendered from the template.
+
+        Returns:
+            Dict[str, Any]: Parsed dictionary representing the specification.
+
+        Raises:
+            ConfigurationError: If the YAML is invalid or cannot be parsed.
+        """
         try:
             return yaml.safe_load(rendered_yaml)
         except yaml.YAMLError as exc:
@@ -102,6 +125,16 @@ class RenderSpecification:
             ) from exc
 
     def _precheck(self, node: Any, prefix: str = "") -> None:
+        """
+        Recursively traverse the configuration dictionary and validate any filesystem paths.
+
+        Args:
+            node (Any): The current node (dict, str, or Path) in the configuration.
+            prefix (str): Dot-separated key path for error reporting.
+
+        Raises:
+            ConfigurationError: If any path is invalid, missing, empty, or inaccessible.
+        """
         if isinstance(node, dict):
             if set(node.keys()) == {"path"}:
                 self._check_path(node["path"], f"{prefix}.path" if prefix else "path")
@@ -115,6 +148,16 @@ class RenderSpecification:
             self._check_path(node, prefix)
 
     def _check_path(self, value: Union[str, Path], label: str) -> None:
+        """
+        Validate that a filesystem path exists and is non-empty.
+
+        Args:
+            value (Union[str, Path]): The filesystem path to check.
+            label (str): The configuration key label for reporting errors.
+
+        Raises:
+            ConfigurationError: If the path does not exist, is empty, or inaccessible.
+        """
         try:
             abs_path = get_absolute_path(value)
         except Exception as exc:
@@ -150,3 +193,25 @@ class RenderSpecification:
                 invalid_key=label,
                 context={"path": str(abs_path)},
             )
+
+    def eval(self) -> Dict[str, Any]:
+        """
+        Execute the full rendering pipeline: render the template, parse YAML, and precheck paths.
+
+        Returns:
+            Dict[str, Any]: Parsed configuration dictionary.
+
+        Raises:
+            TemplateError: If rendering the template fails (Jinja syntax, file issues).
+            ConfigurationError: If parsing YAML or path validation fails.
+        """
+        rendered_yaml = self._render()
+        config_dict = self._parse(rendered_yaml)
+        self._precheck(config_dict)
+
+        _json_dump = json.dumps(config_dict, indent=2)
+        self.logger.log_debug(
+            f"Rendered Specification File\n {_json_dump}",
+        )
+
+        return config_dict
