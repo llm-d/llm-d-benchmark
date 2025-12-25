@@ -335,9 +335,9 @@ set -e
 
 # Finalization
 # ========================================================
-announce '✅ 
-   Experiment ID is '"${_uid}"'.
+announce "✅ 
+   Experiment ID is ${_uid}.
    All workloads completed. 
    Results should be available in PVC ${harness_results_pvc}.
    Please use analyze.sh to fetch and analyze results.
-'
+"
