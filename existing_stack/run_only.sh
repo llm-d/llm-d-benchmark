@@ -229,9 +229,7 @@ if [[ "$harness_parallelism" != "1" ]]; then
 fi  
 #@TODO harness_parallelism=1 only is supported for now!!!
 
-
-
-_harness_pod_name=$(sanitize_pod_name "llmdbench-${harness_name}-launcher")
+_harness_pod_name=$(sanitize_pod_name "${HARNESS_POD_LABEL}")
 
 announce "ℹ️ Using endpoint_stack_name=$endpoint_stack_name on endpoint_namespace=$endpoint_namespace running model=${endpoint_model} at endpoint_base_url=$endpoint_base_url"
 announce "ℹ️ Using harness_name=$harness_name, with _harness_pod_name=$_harness_pod_name on harness_namespace=$harness_namespace"
