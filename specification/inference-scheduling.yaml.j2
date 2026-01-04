@@ -1,0 +1,15 @@
+# [REQUIRED]
+{% set base_dir = base_dir | default('../') -%}
+base_dir: {{ base_dir }}
+
+# [REQUIRED]
+values_file:
+  path: {{ base_dir }}/templates/values/defaults.yaml
+
+# [REQUIRED]
+template_dir:
+  path: {{ base_dir }}/templates/jinja
+
+# [OPTIONAL] 
+scenario_file:
+  path: {{ base_dir }}/scenarios/inference-scheduling.yaml

@@ -1,0 +1,15 @@
+gateway:
+  gatewayClassName: {{ gateway.className }}
+  gatewayParameters:
+    enabled: true
+    accessLogging: {{ gateway.accessLogging | lower }}
+    logLevel: {{ gateway.logLevel }}
+    resources:
+      limits:
+        cpu: "{{ gateway.resources.limits.cpu }}"
+        memory: {{ gateway.resources.limits.memory }}
+      requests:
+        cpu: "{{ gateway.resources.requests.cpu }}"
+        memory: {{ gateway.resources.requests.memory }}
+  service:
+    type: {{ gateway.service.type }}

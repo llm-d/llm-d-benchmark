@@ -1,0 +1,786 @@
+# ============================================================================
+# Common Default Values for LLM-D Deployment
+# These can be completely overridden via scenarios file.
+# ============================================================================
+
+# ============================================================================
+# ANCHORS - Define reusable values here
+# ============================================================================
+_anchors:
+  # Model identifiers
+  model_name: &model_name meta-llama/Llama-3.1-8B
+  model_short_name: &model_short_name meta-lla-1ebbf38c-a-3-1-8b
+  model_path: &model_path models/meta-llama/Llama-3.1-8B
+  model_cache_base: &model_cache_base /cache/models
+  
+  # Common ports
+  vllm_port: &vllm_port 8200
+  vllm_service_port: &vllm_service_port 8000
+  ext_proc_port: &ext_proc_port 9002
+  zmq_port: &zmq_port 5557
+  rsync_port: &rsync_port 20873
+  
+  # Common resource values
+  cpu_16: &cpu_16 "16"
+  cpu_4: &cpu_4 "4"
+  cpu_32: &cpu_32 "32"
+  memory_64gi: &memory_64gi 64Gi
+  memory_40gi: &memory_40gi 40Gi
+  memory_16gi: &memory_16gi 16Gi
+  memory_4gi: &memory_4gi 4Gi
+  memory_128gi: &memory_128gi 128Gi
+  memory_256gi: &memory_256gi 256Gi
+  shm_16gi: &shm_16gi 16Gi
+  shm_32gi: &shm_32gi 32Gi
+  shm_64gi: &shm_64gi 64Gi
+  
+  # GPU configuration
+  gpu_label_key: &gpu_label_key nvidia.com/gpu.product
+  gpu_label_value: &gpu_label_value NVIDIA-H100-80GB-HBM3
+  gpu_memory_util: &gpu_memory_util 0.95
+  
+  # Common vLLM settings
+  block_size: &block_size 64
+  max_model_len: &max_model_len 16000
+  tensor_parallel: &tensor_parallel 1
+  worker_method: &worker_method spawn
+  logging_level: &logging_level INFO
+  cache_root: &cache_root /tmp/vllm
+  
+  # vLLM KV Transfer config
+  kv_connector: &kv_connector NixlConnector
+  kv_role: &kv_role kv_both
+  
+  # Common probe settings
+  probe_startup: &probe_startup
+    failureThreshold: 60
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+  
+  probe_liveness: &probe_liveness
+    failureThreshold: 3
+    periodSeconds: 5
+  
+  probe_readiness: &probe_readiness
+    failureThreshold: 3
+    periodSeconds: 5
+  
+  # Common parallelism
+  parallelism_single: &parallelism_single
+    data: 1
+    dataLocal: 1
+    tensor: 1
+    workers: 1
+  
+  parallelism_4gpu: &parallelism_4gpu
+    data: 1
+    dataLocal: 1
+    tensor: 4
+    workers: 4
+
+  parallelism_8gpu: &parallelism_8gpu
+    data: 1
+    dataLocal: 1
+    tensor: 8
+    workers: 8
+  
+  # Storage class
+  storage_class: &storage_class ibm-spectrum-scale-fileset
+  
+  # Image pull policies
+  pull_always: &pull_always Always
+  pull_if_not_present: &pull_if_not_present IfNotPresent
+  
+  # Chart versions
+  istio_version: &istio_version 1.28.1
+  
+  # Common labels
+  app_label: &app_label llm-d-benchmark-harness
+  inference_serving_label: &inference_serving_label "true"
+  
+  # Preprocessing script
+  preprocess_script: &preprocess_script python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh
+
+# ============================================================================
+# RESOURCE PRESETS - For different model sizes
+# These can be referenced in scenarios via resourcePreset: <name>
+# ============================================================================
+resourcePresets:
+  # For 7B-13B models (single GPU)
+  small:
+    decode:
+      resources:
+        limits:
+          memory: *memory_40gi
+          cpu: *cpu_4
+        requests:
+          memory: *memory_40gi
+          cpu: *cpu_4
+      shm:
+        size: *shm_16gi
+      parallelism: *parallelism_single
+    prefill:
+      resources:
+        limits:
+          memory: *memory_40gi
+          cpu: *cpu_4
+        requests:
+          memory: *memory_40gi
+          cpu: *cpu_4
+      parallelism: *parallelism_single
+
+  # For 8B-30B models (single GPU, more memory)
+  medium:
+    decode:
+      resources:
+        limits:
+          memory: *memory_64gi
+          cpu: *cpu_16
+        requests:
+          memory: *memory_64gi
+          cpu: *cpu_16
+      shm:
+        size: *shm_16gi
+      parallelism: *parallelism_single
+    prefill:
+      resources:
+        limits:
+          memory: *memory_64gi
+          cpu: *cpu_16
+        requests:
+          memory: *memory_64gi
+          cpu: *cpu_16
+      parallelism: *parallelism_single
+
+  # For 70B models (4 GPUs)
+  large:
+    decode:
+      resources:
+        limits:
+          memory: *memory_256gi
+          cpu: *cpu_32
+        requests:
+          memory: *memory_256gi
+          cpu: *cpu_32
+      shm:
+        size: *shm_64gi
+      parallelism: *parallelism_4gpu
+    prefill:
+      resources:
+        limits:
+          memory: *memory_256gi
+          cpu: *cpu_32
+        requests:
+          memory: *memory_256gi
+          cpu: *cpu_32
+      parallelism: *parallelism_4gpu
+
+  # For 70B+ models (8 GPUs)
+  xlarge:
+    decode:
+      resources:
+        limits:
+          memory: *memory_256gi
+          cpu: *cpu_32
+        requests:
+          memory: *memory_256gi
+          cpu: *cpu_32
+      shm:
+        size: *shm_64gi
+      parallelism: *parallelism_8gpu
+    prefill:
+      resources:
+        limits:
+          memory: *memory_256gi
+          cpu: *cpu_32
+        requests:
+          memory: *memory_256gi
+          cpu: *cpu_32
+      parallelism: *parallelism_8gpu
+
+# ============================================================================
+# TOP-LEVEL / COMMON CONFIGURATION
+# ============================================================================
+
+# Common config block (passed through to helm chart)
+common: {}
+
+# For subchart usage
+modelservice:
+  enabled: true
+
+# Override service account name (optional)
+serviceAccountOverride: ""
+
+# Global scheduler name (can be overridden per decode/prefill)
+schedulerName: default-scheduler
+
+# ============================================================================
+# NAMESPACE CONFIGURATION
+# ============================================================================
+namespace:
+  name: vezio-wva-test
+  labels:
+    podSecurity:
+      audit: privileged
+      warn: privileged
+
+# ============================================================================
+# MODEL CONFIGURATION
+# ============================================================================
+model:
+  name: *model_name
+  shortName: *model_short_name
+  path: *model_path
+  huggingfaceId: *model_name
+  size: 1Ti
+  maxModelLen: *max_model_len
+  blockSize: *block_size
+  tensorParallelSize: *tensor_parallel
+  gpuMemoryUtilization: *gpu_memory_util
+  cacheBase: *model_cache_base
+
+# ============================================================================
+# MODEL ARTIFACTS CONFIGURATION
+# ============================================================================
+modelArtifacts:
+  # Mount path for model volume
+  mountPath: /model-cache
+  # Extra labels for model pods (in addition to llm-d.ai/inferenceServing and llm-d.ai/model)
+  extraLabels: {}
+
+# ============================================================================
+# STORAGE CONFIGURATION
+# ============================================================================
+storage:
+  workloadPvc:
+    name: workload-pvc
+    size: 20Gi
+    accessModes:
+      - ReadWriteMany
+    storageClassName: *storage_class
+  
+  modelPvc:
+    name: model-pvc
+    size: 100Gi
+    accessModes:
+      - ReadWriteMany
+    storageClassName: *storage_class
+
+# ============================================================================
+# HUGGINGFACE CONFIGURATION
+# ============================================================================
+huggingface:
+  secretName: llm-d-hf-token
+  tokenKey: HF_TOKEN
+  tokenBase64: "REPLACE_BASE64_HF_TOKEN"
+
+# ============================================================================
+# IMAGE CONFIGURATION
+# ============================================================================
+images:
+  benchmark:
+    repository: ghcr.io/llm-d/llm-d-benchmark
+    tag: v0.4.0
+    pullPolicy: *pull_always
+  
+  vllm:
+    repository: ghcr.io/llm-d/llm-d-cuda
+    tag: sha-04f3538d79c4a5cd28514f1bd53d5e98aa5048d2
+    pullPolicy: *pull_if_not_present
+  
+  inferenceScheduler:
+    repository: ghcr.io/llm-d/llm-d-inference-scheduler
+    tag: v0.4.0
+    pullPolicy: *pull_always
+  
+  routingSidecar:
+    repository: ghcr.io/llm-d/llm-d-routing-sidecar
+    tag: latest
+    pullPolicy: *pull_if_not_present
+  
+  python:
+    repository: python
+    tag: "3.10"
+
+# ============================================================================
+# HELM REPOSITORY CONFIGURATION
+# ============================================================================
+helmRepositories:
+  istio:
+    url: https://istio-release.storage.googleapis.com/charts
+  llmDModelservice:
+    url: https://llm-d-incubation.github.io/llm-d-modelservice/
+  llmDInfra:
+    url: https://llm-d-incubation.github.io/llm-d-infra/
+
+# ============================================================================
+# CHART VERSIONS
+# ============================================================================
+chartVersions:
+  istioBase: *istio_version
+  istiod: *istio_version
+  llmDInfra: v1.3.5
+  llmDModelservice: v0.3.16
+  inferencePool: v1.2.0
+
+# ============================================================================
+# SERVICE ACCOUNT CONFIGURATION
+# ============================================================================
+serviceAccount:
+  name: inference-perf-runner
+
+# ============================================================================
+# MONITORING CONFIGURATION
+# ============================================================================
+monitoring:
+  enabled: true
+  enableUserWorkload: true
+
+# ============================================================================
+# ACCELERATOR CONFIGURATION
+# Supports: nvidia, intel-i915, intel-xe, intel-gaudi, amd, google
+# ============================================================================
+accelerator:
+  type: nvidia
+  # Resource names for different accelerator types (optional override)
+  # resources:
+  #   nvidia: "nvidia.com/gpu"
+  #   intel-i915: "gpu.intel.com/i915"
+  #   intel-xe: "gpu.intel.com/xe"
+  #   intel-gaudi: "habana.ai/gaudi"
+  #   amd: "amd.com/gpu"
+  #   google: "google.com/tpu"
+  # Environment variables specific to accelerator types (optional)
+  # env:
+  #   intel-i915:
+  #     - name: VLLM_USE_V1
+  #       value: "1"
+
+# ============================================================================
+# DYNAMIC RESOURCE ALLOCATION (DRA) - Optional
+# ============================================================================
+dra:
+  enabled: false
+  type: nvidia
+  # claimTemplates:
+  #   - name: nvidia
+  #     class: gpu.nvidia.com
+  #     match: "exactly"
+  #     count: 1
+  #     selectors: []
+
+# ============================================================================
+# AFFINITY CONFIGURATION
+# ============================================================================
+affinity:
+  enabled: false
+  # Node selector labels (used for nodeAffinity)
+  nodeSelector: {}
+  # Example:
+  # nodeSelector:
+  #   nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  #   topology.kubernetes.io/zone: us-east-1a
+  
+  # Pod affinity rules (optional)
+  podAffinity: {}
+  
+  # Pod anti-affinity rules (optional)
+  podAntiAffinity: {}
+
+# ============================================================================
+# ANNOTATIONS CONFIGURATION
+# ============================================================================
+annotations:
+  # Common annotations applied to all pods
+  common: {}
+  
+  decode:
+    # Pod-level annotations
+    pod: {}
+    # Container-level annotations (if supported)
+    container: {}
+  
+  prefill:
+    pod: {}
+    container: {}
+
+# ============================================================================
+# GATEWAY CONFIGURATION
+# ============================================================================
+gateway:
+  name: infra-llmdbench-inference-gateway
+  namespace: llm-d-vezio
+  className: istio
+  provider: istio
+  version: *istio_version
+  accessLogging: false
+  logLevel: error
+  service:
+    type: NodePort
+  resources:
+    limits:
+      cpu: *cpu_16
+      memory: *memory_16gi
+    requests:
+      cpu: *cpu_4
+      memory: *memory_4gi
+
+# ============================================================================
+# INFERENCE EXTENSION CONFIGURATION
+# ============================================================================
+inferenceExtension:
+  replicas: 1
+  extProcPort: *ext_proc_port
+  zmqPort: *zmq_port
+  pluginsConfigFile: "default-plugins.yaml"
+
+# ============================================================================
+# ROUTING / PROXY CONFIGURATION
+# ============================================================================
+routing:
+  # Service port (matches routing.servicePort in helm chart)
+  servicePort: *vllm_service_port
+  connector: nixlv2
+  debugLevel: 3
+  secure: false
+  
+  # Proxy configuration
+  proxy:
+    enabled: true
+    imagePullPolicy: *pull_always
+    targetPort: *vllm_port
+    # TLS configuration (optional)
+    # prefillerUseTLS: false
+    # certPath: "/certs"
+    # Zap logging configuration
+    zapEncoder: json
+    zapLogLevel: debug
+    # zapDevel: false
+    # zapStacktraceLevel: error
+    # zapTimeEncoding: epoch
+
+# ============================================================================
+# REQUESTER (FMA - Fast Model Actuation) - Optional
+# ============================================================================
+requester:
+  enable: false
+  # image: "ghcr.io/llm-d-incubation/llm-d-fast-model-actuation-requester:latest"
+  # adminPort: 8081
+  # port:
+  #   probes: 8080
+  #   spi: 8081
+  # readinessProbe:
+  #   initialDelaySeconds: 2
+  #   periodSeconds: 5
+  # resources:
+  #   limits:
+  #     gpus: 1
+  #     cpus: 1
+  #     memory: 250Mi
+
+# ============================================================================
+# VLLM COMMON CONFIGURATION
+# ============================================================================
+vllmCommon:
+  host: "0.0.0.0"
+  preprocessScript: *preprocess_script
+  kvTransfer:
+    connector: *kv_connector
+    role: *kv_role
+  flags:
+    enforceEager: true
+    disableLogRequests: true
+    disableUvicornAccessLog: true
+    allowLongMaxModelLen: "1"
+    serverDevMode: "1"
+    # Additional vLLM flags (optional)
+    # enableChunkedPrefill: false
+    # maxNumBatchedTokens: null
+  
+  # Common volume configurations
+  volumes:
+    - name: preprocesses
+      type: configMap
+      configMap:
+        name: llm-d-benchmark-preprocesses
+        defaultMode: 320
+    - name: dshm
+      type: emptyDir
+      emptyDir:
+        medium: Memory
+        sizeLimit: *shm_16gi
+  
+  # Common volume mounts
+  volumeMounts:
+    - name: dshm
+      mountPath: /dev/shm
+    - name: preprocesses
+      mountPath: /setup/preprocess
+
+# ============================================================================
+# DECODE CONFIGURATION
+# ============================================================================
+decode:
+  enabled: true
+  replicas: 1
+  
+  # Autoscaling (optional)
+  autoscaling:
+    enabled: false
+    # minReplicas: 1
+    # maxReplicas: 10
+  
+  # Node selector (optional - for direct nodeSelector, not affinity)
+  nodeSelector: {}
+  
+  # Scheduler name override (optional)
+  # schedulerName: decode-scheduler
+  
+  # Accelerator type selection
+  acceleratorType:
+    labelKey: *gpu_label_key
+    labelValue: *gpu_label_value
+    # Use labelValues for multiple values (takes precedence over labelValue)
+    # labelValues:
+    #   - NVIDIA-H100-80GB-HBM3
+    #   - NVIDIA-A100-SXM4-80GB
+  
+  # Parallelism configuration
+  parallelism: *parallelism_single
+  
+  # Resource configuration
+  resources:
+    limits:
+      memory: *memory_64gi
+      cpu: *cpu_16
+      # GPU resource (optional - uncomment to explicitly request GPUs)
+      # nvidia.com/gpu: "1"
+      # DRA claims (optional)
+      # claims: {}
+    requests:
+      memory: *memory_64gi
+      cpu: *cpu_16
+      # nvidia.com/gpu: "1"
+  
+  # Shared memory
+  shm:
+    size: *shm_16gi
+  
+  # Probe configuration
+  probes:
+    startup: *probe_startup
+    liveness: *probe_liveness
+    readiness: *probe_readiness
+  
+  # vLLM configuration
+  vllm:
+    port: *vllm_port
+    servicePort: *vllm_service_port
+    workerMultiprocMethod: *worker_method
+    loggingLevel: *logging_level
+    cacheRoot: *cache_root
+    imagePullPolicy: *pull_if_not_present
+    useTemplatedArgs: true
+    customCommand: null
+    customPreprocessCommand: null
+  
+  # Mount model volume
+  mountModelVolume: true
+  
+  # Additional volume mounts
+  additionalVolumeMounts: []
+  
+  # Additional volumes
+  additionalVolumes: []
+  
+  # Extra environment variables
+  extraEnvVars: []
+  # Example:
+  # extraEnvVars:
+  #   - name: CUDA_VISIBLE_DEVICES
+  #     value: "0,1,2,3"
+  #   - name: NCCL_DEBUG
+  #     value: "INFO"
+  #   - name: MY_SECRET
+  #     valueFrom:
+  #       secretKeyRef:
+  #         name: my-secret
+  #         key: password
+  
+  # Extra ports (optional)
+  # ports:
+  #   - containerPort: 8200
+  #     name: metrics
+  #     protocol: TCP
+  
+  # Extra container config
+  extraContainerConfig: {}
+  # Example:
+  # extraContainerConfig:
+  #   securityContext:
+  #     privileged: true
+  #     capabilities:
+  #       add:
+  #         - IPC_LOCK
+  
+  # Extra pod config
+  extraPodConfig: {}
+  
+  # Init containers (optional)
+  initContainers: []
+  
+  # LWS / Multinode options (optional)
+  # hostIPC: false
+  # hostPID: false
+  # enableServiceLinks: true
+  # terminationGracePeriodSeconds: 30
+  # subGroupPolicy:
+  #   subGroupSize: 8
+  # subGroupExclusiveTopology: false
+  
+  # Monitoring / PodMonitor (optional)
+  monitoring:
+    podmonitor:
+      enabled: false
+      portName: "metrics"
+      path: "/metrics"
+      interval: "30s"
+      # scrapeTimeout: "10s"
+      labels: {}
+      annotations: {}
+      relabelings: []
+      metricRelabelings: []
+
+# ============================================================================
+# PREFILL CONFIGURATION
+# ============================================================================
+prefill:
+  enabled: false
+  replicas: 0
+  
+  # Autoscaling (optional)
+  autoscaling:
+    enabled: false
+    # minReplicas: 1
+    # maxReplicas: 10
+  
+  # Node selector (optional)
+  nodeSelector: {}
+  
+  # Scheduler name override (optional)
+  # schedulerName: prefill-scheduler
+  
+  # Accelerator type selection
+  acceleratorType:
+    labelKey: *gpu_label_key
+    labelValue: *gpu_label_value
+  
+  # Parallelism configuration
+  parallelism: *parallelism_single
+  
+  # Resource configuration
+  resources:
+    limits:
+      memory: *memory_40gi
+      cpu: *cpu_4
+    requests:
+      memory: *memory_40gi
+      cpu: *cpu_4
+  
+  # Probe configuration
+  probes:
+    startup: *probe_startup
+    liveness: *probe_liveness
+    readiness: *probe_readiness
+  
+  # vLLM configuration
+  vllm:
+    # servicePort inherits from decode if not specified
+    workerMultiprocMethod: *worker_method
+    loggingLevel: *logging_level
+    cacheRoot: *cache_root
+    useTemplatedArgs: true
+    customFlagsOnly:
+      - "--disable-log-requests"
+      - "--max-model-len"
+      - "16000"
+      - "--tensor-parallel-size"
+      - "1"
+    customCommand: null
+    customPreprocessCommand: null
+  
+  # Mount model volume
+  mountModelVolume: true
+  
+  # Additional volume mounts
+  additionalVolumeMounts: []
+  
+  # Additional volumes
+  additionalVolumes: []
+  
+  # Extra environment variables
+  extraEnvVars: []
+  
+  # Extra container config
+  extraContainerConfig: {}
+  
+  # Extra pod config
+  extraPodConfig: {}
+  
+  # Init containers (optional)
+  initContainers: []
+  
+  # Monitoring / PodMonitor (optional)
+  monitoring:
+    podmonitor:
+      enabled: false
+      portName: "metrics"
+      path: "/metrics"
+      interval: "30s"
+      labels: {}
+      annotations: {}
+      relabelings: []
+      metricRelabelings: []
+
+# ============================================================================
+# DOWNLOAD JOB CONFIGURATION
+# ============================================================================
+downloadJob:
+  backoffLimit: 3
+  mountPath: /cache
+
+# ============================================================================
+# DATA ACCESS CONFIGURATION
+# ============================================================================
+dataAccess:
+  rsyncPort: *rsync_port
+  runAsUser: 0
+
+# ============================================================================
+# LABELS
+# ============================================================================
+labels:
+  inferenceServing: *inference_serving_label
+  app: *app_label
+
+# ============================================================================
+# MULTINODE CONFIGURATION (LeaderWorkerSet)
+# ============================================================================
+multinode:
+  enabled: false
+  # When enabled, workers will be scaled by parallelism.workers
+
+# ============================================================================
+# EXTRA OBJECTS - Additional K8s resources to deploy
+# ============================================================================
+extraObjects: []
+# Example:
+# extraObjects:
+#   - apiVersion: v1
+#     kind: ConfigMap
+#     metadata:
+#       name: example-config
+#     data:
+#       key: value

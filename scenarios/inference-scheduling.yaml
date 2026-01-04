@@ -1,0 +1,207 @@
+
+# INFERENCE SCHEDULING WELL LIT PATH for LLM-D Deployment
+# Migrated from bash environment variables to YAML format
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/inference-scheduling
+#
+# Notes:
+# - Removed pod monitoring; can be added using decode.extraContainerConfig
+# - Removed extra volumes metrics-volume and torch-compile-volume (not needed for this model/hardware)
+# - Use decode.additionalVolumeMounts and decode.additionalVolumes to add them if needed
+
+scenario:
+  # ============================================================================
+  # Inference Scheduling - Llama 3.1 8B Instruct with 2 decode pods
+  # ============================================================================
+  - name: "inference-scheduling"
+    
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST
+    # -------------------------------------------------------------------------
+    model:
+      name: meta-llama/Llama-3.1-8B-Instruct
+      shortName: meta-lla-8b-instruct
+      path: models/meta-llama/Llama-3.1-8B-Instruct
+      huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
+      size: 1Ti  # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN
+      maxModelLen: 16000
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_BLOCK_SIZE
+      blockSize: 64
+      tensorParallelSize: 1
+      gpuMemoryUtilization: 0.95
+    
+    # -------------------------------------------------------------------------
+    # Routing Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true
+    # -------------------------------------------------------------------------
+    # Note: inferenceModel is enabled via the modelservice chart when this
+    # scenario is deployed. The routing is handled through the gaie values.
+    
+    # -------------------------------------------------------------------------
+    # Affinity Configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left uncommented for auto-detect)
+    # -------------------------------------------------------------------------
+    # Uncomment and modify to select specific GPU types:
+    # affinity:
+    #   enabled: true
+    #   nodeSelector:
+    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3        # OpenShift
+    #     # gpu.nvidia.com/model: H200                         # Kubernetes
+    #     # cloud.google.com/gke-accelerator: nvidia-tesla-a100  # GKE
+    #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb   # GKE
+    #     # nvidia.com/gpu.product: NVIDIA-L40S                  # OpenShift
+    #     # nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB        # OpenShift
+    
+    # -------------------------------------------------------------------------
+    # Routing / GAIE Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE
+    # -------------------------------------------------------------------------
+    inferenceExtension:
+      pluginsConfigFile: "default-plugins.yaml"
+      
+    # -------------------------------------------------------------------------
+    # Prefill Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: false
+      replicas: 0
+    
+    # -------------------------------------------------------------------------
+    # Decode Configuration
+    # -------------------------------------------------------------------------
+    decode:
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
+      replicas: 2
+      
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+      
+      # Resource configuration
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=16
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=64Gi
+      resources:
+        limits:
+          memory: 64Gi
+          cpu: "16"
+        requests:
+          memory: 64Gi
+          cpu: "16"
+      
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
+      # Uses custom command via the vllm serve configuration
+      vllm:
+        useTemplatedArgs: true
+        # Custom command is null to use the template-based command generation
+        customCommand: null
+        # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS
+        customPreprocessCommand: null  # Uses vllmCommon.preprocessScript
+      
+      # -----------------------------------------------------------------------
+      # Extra Environment Variables
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
+      # -----------------------------------------------------------------------
+      extraEnvVars:
+        - name: UCX_TLS
+          value: "rc,sm,cuda_ipc,cuda_copy,tcp"
+        - name: UCX_SOCKADDR_TLS_PRIORITY
+          value: "tcp"
+        - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+          value: "5557"
+        - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: VLLM_LOGGING_LEVEL
+          value: "INFO"
+        - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+          value: "1"
+      
+      # -----------------------------------------------------------------------
+      # Extra Container Configuration
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG
+      # -----------------------------------------------------------------------
+      extraContainerConfig:
+        ports:
+          - containerPort: 5557  # NIXL side channel port
+            protocol: TCP
+          - containerPort: 8000  # Metrics port
+            name: metrics
+            protocol: TCP
+      
+      # -----------------------------------------------------------------------
+      # Additional Volume Mounts
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
+      # Note: dshm and preprocesses are already in vllmCommon.volumeMounts
+      # -----------------------------------------------------------------------
+      additionalVolumeMounts: []
+      
+      # -----------------------------------------------------------------------
+      # Additional Volumes
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
+      # Note: dshm and preprocesses are already in vllmCommon.volumes
+      # -----------------------------------------------------------------------
+      additionalVolumes: []
+    
+    # -------------------------------------------------------------------------
+    # vLLM Common Configuration
+    # -------------------------------------------------------------------------
+    vllmCommon:
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS
+      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
+      
+      kvTransfer:
+        connector: NixlConnector
+        role: kv_both
+      
+      flags:
+        enforceEager: true
+        disableLogRequests: true
+        disableUvicornAccessLog: true
+        allowLongMaxModelLen: "1"
+        serverDevMode: "1"
+      
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
+      volumes:
+        - name: preprocesses
+          type: configMap
+          configMap:
+            name: llm-d-benchmark-preprocesses
+            defaultMode: 320
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            # Corresponds to: LLMDBENCH_VLLM_COMMON_SHM_MEM (using default 16Gi)
+            sizeLimit: 16Gi
+      
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        - name: preprocesses
+          mountPath: /setup/preprocess
+
+    # -------------------------------------------------------------------------
+    # Storage Configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
+    # -------------------------------------------------------------------------
+    storage:
+      modelPvc:
+        size: 1Ti
+    
+    # -------------------------------------------------------------------------
+    # Workload/Harness Configuration (for reference)
+    # Corresponds to: LLMDBENCH_HARNESS_NAME=inference-perf
+    #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic.yaml
+    # -------------------------------------------------------------------------
+    # Note: Harness configuration is typically handled separately from the
+    # model deployment scenario. These values are preserved here for reference.
+    # harness:
+    #   name: inference-perf
+    #   experimentProfile: shared_prefix_synthetic.yaml

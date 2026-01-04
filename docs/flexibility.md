@@ -1,3 +1,0 @@
-## Flexibility
-
-To be populated.
