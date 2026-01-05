@@ -12,7 +12,7 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from schema import BenchmarkReport, Scenario
+from benchmark_report_v0_1 import BenchmarkReport, Scenario
 
 # Configure logging
 logger = logging.getLogger(__name__)

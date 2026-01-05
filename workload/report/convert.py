@@ -20,9 +20,13 @@ import numpy as np
 # full Python.
 # Hack to ensure schema can be imported from harness pod or config explorer.
 try:
-    from schema import BenchmarkReport, Units, WorkloadGenerator, HostType
+    from benchmark_report import BenchmarkReport
+    from benchmark_report_v0_1 import Units, WorkloadGenerator, HostType
+    from schema import load_benchmark_report
 except ImportError:
-    from config_explorer.schema import BenchmarkReport, Units, WorkloadGenerator
+    from config_explorer.benchmark_report import BenchmarkReport
+    from config_explorer.benchmark_report_v0_1 import Units, WorkloadGenerator
+    from config_explorer.schema import load_benchmark_report
 
 
 def check_file(file_path: str) -> None:
@@ -273,7 +277,7 @@ def _get_llmd_benchmark_envars() -> dict:
 
 
 def import_benchmark_report(br_file: str) -> BenchmarkReport:
-    """Import benchmark report, and supplement with additional data from llm-d-benchmark run.
+    """Import benchmark report from a JSON or YAML file.
 
     Args:
         br_file (str): Benchmark report file to import.
@@ -286,7 +290,7 @@ def import_benchmark_report(br_file: str) -> BenchmarkReport:
     # Import benchmark report as a dict following the schema of BenchmarkReport
     br_dict = import_yaml(br_file)
 
-    return BenchmarkReport(**br_dict)
+    return load_benchmark_report(br_dict)
 
 
 def _vllm_timestamp_to_epoch(date_str: str) -> int:
@@ -339,6 +343,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
     br_dict = _get_llmd_benchmark_envars()
     # Append to that dict the data from vLLM benchmark.
     update_dict(br_dict, {
+        "version": "0.1",
         "scenario": {
             "model": {"name": results.get('model_id')},
             "load": {
@@ -437,7 +442,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
         },
     })
 
-    return BenchmarkReport(**br_dict)
+    return load_benchmark_report(br_dict)
 
 
 def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReport:
@@ -461,6 +466,7 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReport:
     br_dict = _get_llmd_benchmark_envars()
     # Append to that dict the data from GuideLLM
     update_dict(br_dict, {
+        "version": "0.1",
         "scenario": {
             "model": {"name": data["args"].get("model", "unknown")},
             "load": {
@@ -606,7 +612,7 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReport:
         },
     })
 
-    return BenchmarkReport(**br_dict)
+    return load_benchmark_report(br_dict)
 
 
 def _get_num_buidellm_runs(results_file: str) -> int:
@@ -674,6 +680,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
         model_name = "unknown"
     # Append to that dict the data from Inference Perf
     update_dict(br_dict, {
+        "version": "0.1",
         "scenario": {
             "model": {"name": model_name},
             "load": {
@@ -823,7 +830,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
         },
     })
 
-    return BenchmarkReport(**br_dict)
+    return load_benchmark_report(br_dict)
 
 
 def import_inference_max(results_file: str) -> BenchmarkReport:
@@ -845,6 +852,7 @@ def import_inference_max(results_file: str) -> BenchmarkReport:
     br_dict = _get_llmd_benchmark_envars()
     # Append to that dict the data from InferenceMAX benchmark.
     update_dict(br_dict, {
+        "version": "0.1",
         "scenario": {
             "model": {"name": results.get('model_id')},
             "load": {
@@ -943,7 +951,7 @@ def import_inference_max(results_file: str) -> BenchmarkReport:
         },
     })
 
-    return BenchmarkReport(**br_dict)
+    return load_benchmark_report(br_dict)
 
 
 def import_nop(results_file: str) -> BenchmarkReport:
@@ -985,6 +993,7 @@ def import_nop(results_file: str) -> BenchmarkReport:
     br_dict = _get_llmd_benchmark_envars()
 
     results_dict = {
+        "version": "0.1",
         "scenario": {
             "model": {
                 "name": results["scenario"]["model"]["name"]
@@ -1169,7 +1178,7 @@ def import_nop(results_file: str) -> BenchmarkReport:
 
     update_dict(br_dict, results_dict)
 
-    return BenchmarkReport(**br_dict)
+    return load_benchmark_report(br_dict)
 
 
 if __name__ == "__main__":

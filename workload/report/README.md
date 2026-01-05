@@ -6,7 +6,7 @@ A benchmarking report is a standard data format describing the cluster configura
 
 A benchmark report describes the inference service configuration, workload, and aggregate results. Individual traces from single inference executions are not captured, rather statistics from multiple traces of identical scenarios are combined to create a report.
 
-A [JSON Schema](https://json-schema.org/draft/2020-12) for the benchmark report is in [`report_json_schema.json`](report_json_schema.json). The report has three top-level fields, `version`, `scenario`, and `metrics`.
+A [JSON Schema](https://json-schema.org/draft/2020-12) for the benchmark report is in [`report_v0_1_json_schema.json`](report_v0_1_json_schema.json). The report has three top-level fields, `version`, `scenario`, and `metrics`.
 
 While each of these fields is required, some subfields may be optional or not apply to the specific benchmark being performed. For example, some metrics may not be captured or supported by a certain benchmarking toolset. In cases where one desires to capture information that is not part of the standard benchmark report schema, a `metadata` field may be placed almost anywhere under `scenario` or `metrics` to add arbitrary data.
 
