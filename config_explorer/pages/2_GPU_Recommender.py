@@ -175,7 +175,7 @@ if run_analysis:
             )
 
             # Run recommendation
-            gpu_results, failed_gpus = recommender.recommend_gpu(gpu_list=selected_gpus if selected_gpus else None)
+            gpu_results, failed_gpus = recommender.get_gpu_results(gpu_list=selected_gpus if selected_gpus else None)
 
             # Store in session state
             st.session_state.recommendation_results = gpu_results
@@ -806,6 +806,13 @@ if st.session_state.recommendation_results is not None:
                     else:
                         sort_order = 'Ascending'
 
+                    # Add helper text
+                if sort_by != 'GPU (Name)':
+                    if any(term in sort_by for term in ['Latency', 'TTFT', 'ITL']):
+                        st.caption("ℹ️ Lower latency values are better")
+                    else:
+                        st.caption("ℹ️ Higher throughput values are better")
+
                 # Apply sorting
                 if sort_by == 'GPU (Name)':
                     df_sorted = df.sort_values('GPU', ascending=True)
@@ -819,13 +826,6 @@ if st.session_state.recommendation_results is not None:
                     use_container_width=True,
                     hide_index=True
                 )
-
-                # Add helper text
-                if sort_by != 'GPU (Name)':
-                    if any(term in sort_by for term in ['Latency', 'TTFT', 'ITL']):
-                        st.caption("ℹ️ Lower latency values are better")
-                    else:
-                        st.caption("ℹ️ Higher values are better")
 
         # Export functionality
         st.divider()
@@ -1035,7 +1035,7 @@ else:
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.markdown("**🤖 Chatbot**")
+        st.markdown("**:computer: Chatbot**")
         st.markdown("""
         - Small to medium models
         - Low latency requirements

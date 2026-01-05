@@ -46,7 +46,7 @@ class GPURecommender:
         self.gpu_results: Optional[Dict[str, PerformanceEstimationResult]] = None
         self.failed_gpus: Optional[Dict[str, str]] = None
 
-    def recommend_gpu(self, gpu_list: Optional[list] = None) -> Tuple[Dict[str, PerformanceEstimationResult], Dict[str, str]]:
+    def get_gpu_results(self, gpu_list: Optional[list] = None) -> Tuple[Dict[str, PerformanceEstimationResult], Dict[str, str]]:
         """
         Runs bento's recommendation engine
 
@@ -82,8 +82,10 @@ class GPURecommender:
             )
 
             try:
-                updated_params, result = run_performance_estimation(params)
-                best_config = result.best_configs[0] if isinstance(result.best_configs, list) else result.best_configs
+                _, result = run_performance_estimation(params)
+
+                # check that best_config exists (if not, it means estimation failed due to constraints)
+                _ = result.best_configs[0] if isinstance(result.best_configs, list) else result.best_configs
                 gpu_results[gpu_name] = result
             except ValueError as e:
                 msg = f"GPU {gpu_name} not suitable: {e}"
@@ -106,7 +108,7 @@ class GPURecommender:
             Tuple of (gpu_name, throughput_value) or None if no valid data
         """
         if not self.gpu_results:
-            return None
+            self.get_gpu_results()
 
         best_gpu = None
         best_throughput = -float('inf')
@@ -131,7 +133,7 @@ class GPURecommender:
             Tuple of (gpu_name, ttft_value) or None if no valid data
         """
         if not self.gpu_results:
-            return None
+            self.get_gpu_results()
 
         best_gpu = None
         best_ttft = float('inf')
@@ -156,7 +158,7 @@ class GPURecommender:
             Tuple of (gpu_name, itl_value) or None if no valid data
         """
         if not self.gpu_results:
-            return None
+            self.get_gpu_results()
 
         best_gpu = None
         best_itl = float('inf')
@@ -181,7 +183,7 @@ class GPURecommender:
             Tuple of (gpu_name, e2e_latency_value) or None if no valid data
         """
         if not self.gpu_results:
-            return None
+            self.get_gpu_results()
 
         best_gpu = None
         best_e2e = float('inf')
