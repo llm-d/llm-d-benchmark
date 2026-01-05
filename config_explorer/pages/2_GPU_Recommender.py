@@ -103,7 +103,6 @@ output_len = st.sidebar.number_input(
 max_gpus = st.sidebar.number_input(
     "Maximum GPUs",
     min_value=1,
-    max_value=16,
     value=1,
     step=1,
     help="Maximum number of GPUs to use for inference, affects TP and DP values."
@@ -156,6 +155,34 @@ selected_gpus = st.sidebar.multiselect(
     help="Select specific GPUs to analyze. Leave empty to analyze all available GPUs."
 )
 
+# Per-GPU max_gpus configuration
+st.sidebar.subheader("GPU Count Configuration (Optional)")
+enable_per_gpu_config = st.sidebar.checkbox(
+    "Configure max GPUs per GPU type",
+    value=False,
+    help="Set different maximum GPU counts for each GPU type. When disabled, all GPUs use the default max GPU value."
+)
+
+max_gpus_per_type = {}
+if enable_per_gpu_config:
+    st.sidebar.markdown("Set maximum GPU count for each GPU type:")
+
+    # Get list of GPUs to configure (either selected or all)
+    gpus_to_configure = selected_gpus if selected_gpus else available_gpus
+
+    # Create a form or expandable section for cleaner UI
+    with st.sidebar.expander("⚙️ Configure GPU Counts", expanded=True):
+        for gpu_name in gpus_to_configure:
+            gpu_max = st.number_input(
+                f"{gpu_name}",
+                min_value=1,
+                value=max_gpus,  # Default to the general max_gpus value
+                step=1,
+                key=f"max_gpus_{gpu_name}",
+                help=f"Maximum number of {gpu_name} GPUs to use"
+            )
+            max_gpus_per_type[gpu_name] = gpu_max
+
 # Run button
 run_analysis = st.sidebar.button("🚀 Run Analysis", type="primary", use_container_width=True)
 
@@ -169,6 +196,7 @@ if run_analysis:
                 input_len=input_len,
                 output_len=output_len,
                 max_gpus=max_gpus,
+                max_gpus_per_type=max_gpus_per_type if max_gpus_per_type else None,
                 max_ttft=max_ttft,
                 max_itl=max_itl,
                 max_latency=max_latency
@@ -186,6 +214,7 @@ if run_analysis:
                 'input_len': input_len,
                 'output_len': output_len,
                 'max_gpus': max_gpus,
+                'max_gpus_per_type': max_gpus_per_type if max_gpus_per_type else None,
                 'max_ttft': max_ttft,
                 'max_itl': max_itl,
                 'max_latency': max_latency
@@ -215,7 +244,6 @@ if st.session_state.recommendation_results is not None:
     if constraints:
         st.info("🎯 **Constraints:** " + " & ".join(constraints))
 
-    st.divider()
 
     # Initialize tracking lists
     gpu_comparison_data = []

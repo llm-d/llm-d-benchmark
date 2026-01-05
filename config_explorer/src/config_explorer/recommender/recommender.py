@@ -19,12 +19,28 @@ class GPURecommender:
         input_len: int,
         output_len: int,
         max_gpus: int = 1,
+        max_gpus_per_type: Optional[Dict[str, int]] = None,
 
         # Performance constraints
         max_ttft: Optional[float] = None,
         max_itl: Optional[float] = None,
         max_latency: Optional[float] = None,
     ):
+        """
+        Initialize GPU Recommender.
+
+        Args:
+            model_id: HuggingFace model ID
+            input_len: Input sequence length
+            output_len: Output sequence length
+            max_gpus: Default maximum number of GPUs to use (applies to all GPU types unless overridden)
+            max_gpus_per_type: Optional dict mapping GPU names to their specific max_gpus limit.
+                              Example: {"H100": 8, "A100": 4, "L40": 2}
+                              If a GPU is not in this dict, it will use the default max_gpus value.
+            max_ttft: Maximum time to first token constraint (ms)
+            max_itl: Maximum inter-token latency constraint (ms)
+            max_latency: Maximum end-to-end latency constraint (s)
+        """
 
         # Read HF Token
         hf_token = os.getenv("HF_TOKEN", None)
@@ -36,6 +52,7 @@ class GPURecommender:
         self.text_config = get_text_config(self.model_config)
 
         self.max_gpus = max_gpus
+        self.max_gpus_per_type = max_gpus_per_type or {}
 
         # Keep track of performance bounds
         self.max_ttft = max_ttft
@@ -61,6 +78,8 @@ class GPURecommender:
         gpus_to_evaluate = gpu_list if gpu_list else list(GPU_SPECS.keys())
 
         for gpu_name in gpus_to_evaluate:
+            # Use GPU-specific max_gpus if configured, otherwise use default
+            num_gpus = self.max_gpus_per_type.get(gpu_name, self.max_gpus)
 
             constraints = ""
             if self.max_ttft is not None:
@@ -75,7 +94,7 @@ class GPURecommender:
                 input_len=self.input_len,
                 output_len=self.output_len,
                 gpu=gpu_name,
-                num_gpus=self.max_gpus,
+                num_gpus=num_gpus,
                 framework="vllm",
                 target="throughput",
                 constraints=constraints,
