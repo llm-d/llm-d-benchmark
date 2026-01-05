@@ -20,6 +20,9 @@ dependencies = [
     "llm-optimizer @ git+https://github.com/bentoml/llm-optimizer.git",
 ]
 
+[project.scripts]
+config-explorer = "config_explorer.cli:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

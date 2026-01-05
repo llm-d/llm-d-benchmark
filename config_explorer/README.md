@@ -1,19 +1,41 @@
 # Configuration Explorer
 
-The configuration explorer is a library that helps find the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements.
+The configuration explorer is a library and CLI tool that helps find the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements.
 
 This library provides the tooling for LLM serving such as
-- Capacity planning:
+- **Capacity planning**:
   - for any LLM on Hugging Face, determine the per-GPU memory requirement for loading the model and serving requests, taking into account parallelism strategies
   - from workload characteristics in terms of max model length and concurrency, determine the KV cache memory requirement
-- GPU Recommendation:
+- **GPU Recommendation**:
   - given model specifications and performance requirements, recommend optimal GPU configurations using BentoML's llm-optimizer roofline algorithm
   - analyze throughput, latency (TTFT, ITL, E2E), and concurrency trade-offs across different GPU types
   - export recommendations in JSON format for integration with other tools
-- 🚧 Configuration sweep and recommendation
+- **CLI Interface**:
+  - command-line tool for capacity planning and launching the UI
+  - JSON output for easy integration with scripts and pipelines
+  - support for all capacity planning features via `config-explorer` command
+- 🚧 **Configuration sweep and recommendation**:
   - given SLO requirements in terms of TTFT, TPOT, and throughput, visualize the optimal `llm-d` configuration, including Inference Scheduler and vLLM, for achieving the SLO
   - For unseen configurations, predict latency and throughput from a inference performance estimator
 
+## Quick Start
+
+### CLI Usage
+
+After installation, use the `config-explorer` command:
+
+```bash
+# Start the Streamlit UI
+config-explorer start
+
+# Run capacity planning
+config-explorer plan --model Qwen/Qwen3-32B --gpu-memory 80 --max-model-len 16000
+
+# Get help
+config-explorer --help
+```
+
+See [CLI_README.md](CLI_README.md) for detailed CLI documentation.
 
 ## Installation
 
