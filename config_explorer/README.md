@@ -35,8 +35,6 @@ config-explorer plan --model Qwen/Qwen3-32B --gpu-memory 80 --max-model-len 1600
 config-explorer --help
 ```
 
-See [CLI_README.md](CLI_README.md) for detailed CLI documentation.
-
 ## Installation
 
 * Requires python 3.11+
