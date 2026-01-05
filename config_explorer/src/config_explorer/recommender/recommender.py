@@ -20,6 +20,7 @@ class GPURecommender:
         output_len: int,
         max_gpus: int = 1,
         max_gpus_per_type: Optional[Dict[str, int]] = None,
+        gpu_list: Optional[list] = None,
 
         # Performance constraints
         max_ttft: Optional[float] = None,
@@ -37,6 +38,7 @@ class GPURecommender:
             max_gpus_per_type: Optional dict mapping GPU names to their specific max_gpus limit.
                               Example: {"H100": 8, "A100": 4, "L40": 2}
                               If a GPU is not in this dict, it will use the default max_gpus value.
+            gpu_list: Optional list of GPU names to evaluate. If None, evaluates all GPUs in GPU_SPECS.
             max_ttft: Maximum time to first token constraint (ms)
             max_itl: Maximum inter-token latency constraint (ms)
             max_latency: Maximum end-to-end latency constraint (s)
@@ -53,6 +55,7 @@ class GPURecommender:
 
         self.max_gpus = max_gpus
         self.max_gpus_per_type = max_gpus_per_type or {}
+        self.gpu_list = gpu_list if gpu_list else list(GPU_SPECS.keys())
 
         # Keep track of performance bounds
         self.max_ttft = max_ttft
@@ -63,21 +66,16 @@ class GPURecommender:
         self.gpu_results: Optional[Dict[str, PerformanceEstimationResult]] = None
         self.failed_gpus: Optional[Dict[str, str]] = None
 
-    def get_gpu_results(self, gpu_list: Optional[list] = None) -> Tuple[Dict[str, PerformanceEstimationResult], Dict[str, str]]:
+    def get_gpu_results(self) -> Tuple[Dict[str, PerformanceEstimationResult], Dict[str, str]]:
         """
         Runs bento's recommendation engine
-
-        Args:
-            gpu_list: Optional list of GPU names to evaluate. If None, evaluates all GPUs in GPU_SPECS.
         """
 
         gpu_results = {}
         failed_gpus = {}
 
-        # Use provided list or default to all GPUs
-        gpus_to_evaluate = gpu_list if gpu_list else list(GPU_SPECS.keys())
-
-        for gpu_name in gpus_to_evaluate:
+        # Use the gpu_list from instance attribute
+        for gpu_name in self.gpu_list:
             # Use GPU-specific max_gpus if configured, otherwise use default
             num_gpus = self.max_gpus_per_type.get(gpu_name, self.max_gpus)
 

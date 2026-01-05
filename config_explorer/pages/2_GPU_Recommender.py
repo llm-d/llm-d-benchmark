@@ -197,13 +197,14 @@ if run_analysis:
                 output_len=output_len,
                 max_gpus=max_gpus,
                 max_gpus_per_type=max_gpus_per_type if max_gpus_per_type else None,
+                gpu_list=selected_gpus if selected_gpus else None,
                 max_ttft=max_ttft,
                 max_itl=max_itl,
                 max_latency=max_latency
             )
 
             # Run recommendation
-            gpu_results, failed_gpus = recommender.get_gpu_results(gpu_list=selected_gpus if selected_gpus else None)
+            gpu_results, failed_gpus = recommender.get_gpu_results()
 
             # Store in session state
             st.session_state.recommendation_results = gpu_results
