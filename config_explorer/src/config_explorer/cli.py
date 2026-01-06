@@ -31,25 +31,20 @@ def start_ui():
     ui_file = config_explorer_dir / "Capacity_Planner.py"
 
     if not ui_file.exists():
-        sys.exit(f"Error: Capacity_Planner.py not found at expected location: {ui_file}\n")
+        sys.exit(f"Error: Capacity_Planner.py not found at expected location: {ui_file}")
 
     print("Starting Config Explorer UI...")
     try:
         result = subprocess.run(["streamlit", "run", str(ui_file)])
         if result.returncode != 0:
-            print(
-                f"Error: Failed to start Streamlit UI (exit code {result.returncode})."
-            )
-            sys.exit(result.returncode)
+            sys.exit(f"Error: Failed to start Streamlit UI (exit code {result.returncode}).")
     except FileNotFoundError:
-        print(
+        sys.exit(
             "Error: 'streamlit' command not found. Please install Streamlit and "
             "ensure it is available on your PATH."
         )
-        sys.exit(1)
     except Exception as e:
-        print(f"Error: Failed to start Streamlit UI: {e}")
-        sys.exit(1)
+        sys.exit(f"Error: Failed to start Streamlit UI: {e}")
 
 
 def plan_capacity(args):
@@ -91,8 +86,7 @@ def plan_capacity(args):
         if args.tp:
             possible_tp = find_possible_tp(model_config)
             if args.tp not in possible_tp:
-                print(f"Error: Invalid --tp value {args.tp}. Valid values for this model are: {possible_tp}")
-                sys.exit(1)
+                sys.exit(f"Error: Invalid --tp value {args.tp}. Valid values for this model are: {possible_tp}")
 
         # Add parameters to input_parameters
         result["input_parameters"]["max_model_len"] = max_model_len
@@ -200,11 +194,10 @@ def plan_capacity(args):
         return result
 
     except Exception as e:
-        print(f"Error during capacity planning: {str(e)}")
         if args.verbose:
             import traceback
             traceback.print_exc()
-        sys.exit(1)
+        sys.exit(f"Error during capacity planning: {str(e)}")
 
 
 def main():
