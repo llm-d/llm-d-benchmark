@@ -5,6 +5,7 @@ CLI interface for config_explorer package
 import argparse
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -24,7 +25,6 @@ from config_explorer.capacity_planner import (
 
 def start_ui():
     """Start the Streamlit UI"""
-    import subprocess
 
     # Get the path to Capacity_Planner.py
     config_explorer_dir = Path(__file__).parent.parent.parent
