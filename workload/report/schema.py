@@ -5,14 +5,20 @@ from typing import Any
 
 import yaml
 
-try:
-    from benchmark_report import BenchmarkReport
-    from benchmark_report_v0_1 import BenchmarkReportV01
-    from benchmark_report_v0_2 import BenchmarkReportV02
-except ImportError:
-    from config_explorer.benchmark_report import BenchmarkReport
-    from config_explorer.benchmark_report_v0_1 import BenchmarkReportV01
-    from config_explorer.benchmark_report_v0_2 import BenchmarkReportV02
+
+from benchmark_report import BenchmarkReport
+from benchmark_report_v0_1 import BenchmarkReportV01
+from benchmark_report_v0_2 import BenchmarkReportV02
+
+
+# try:
+#     from benchmark_report import BenchmarkReport
+#     from benchmark_report_v0_1 import BenchmarkReportV01
+#     from benchmark_report_v0_2 import BenchmarkReportV02
+# except ImportError:
+#     from config_explorer.benchmark_report import BenchmarkReport
+#     from config_explorer.benchmark_report_v0_1 import BenchmarkReportV01
+#     from config_explorer.benchmark_report_v0_2 import BenchmarkReportV02
 
 
 def load_benchmark_report(data: dict[str, Any]) -> BenchmarkReport:

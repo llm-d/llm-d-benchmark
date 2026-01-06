@@ -45,7 +45,7 @@ class HostAccelerator(BaseModel):
 
 class HostType(StrEnum):
     """
-    Enumeration of supported workload generators
+    Enumeration of host types.
 
     Attributes
         REPLICA: str
