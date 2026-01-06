@@ -31,10 +31,9 @@ def start_ui():
     ui_file = config_explorer_dir / "Capacity_Planner.py"
 
     if not ui_file.exists():
-        print(f"Error: UI file not found at {ui_file}")
-        sys.exit(1)
+        sys.exit(f"Error: Capacity_Planner.py not found at expected location: {ui_file}\n")
 
-    print(f"Starting Config Explorer UI...")
+    print("Starting Config Explorer UI...")
     try:
         result = subprocess.run(["streamlit", "run", str(ui_file)])
         if result.returncode != 0:
