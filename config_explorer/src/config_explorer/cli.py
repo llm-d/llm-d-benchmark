@@ -7,13 +7,11 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 from config_explorer.capacity_planner import (
     get_model_info_from_hf,
     get_model_config_from_hf,
     model_memory_req,
-    kv_cache_req,
     max_concurrent_requests,
     allocatable_kv_cache_memory,
     total_kv_cache_blocks,
@@ -37,7 +35,22 @@ def start_ui():
         sys.exit(1)
 
     print(f"Starting Config Explorer UI...")
-    subprocess.run(["streamlit", "run", str(ui_file)])
+    try:
+        result = subprocess.run(["streamlit", "run", str(ui_file)])
+        if result.returncode != 0:
+            print(
+                f"Error: Failed to start Streamlit UI (exit code {result.returncode})."
+            )
+            sys.exit(result.returncode)
+    except FileNotFoundError:
+        print(
+            "Error: 'streamlit' command not found. Please install Streamlit and "
+            "ensure it is available on your PATH."
+        )
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: Failed to start Streamlit UI: {e}")
+        sys.exit(1)
 
 
 def plan_capacity(args):
@@ -45,11 +58,6 @@ def plan_capacity(args):
 
     # Get HF token from environment if available
     hf_token = os.getenv("HF_TOKEN", None)
-
-    # Validate inputs
-    if not args.model:
-        print("Error: --model is required")
-        sys.exit(1)
 
     try:
         # Fetch model information
@@ -171,8 +179,8 @@ def plan_capacity(args):
                 tp, pp, dp
             )
             result["total_kv_cache_blocks"] = int(total_blocks)
-            if args.block_size:
-                result["input_parameters"]["block_size"] = args.block_size
+            # Always record the effective block_size used (including defaults)
+            result["input_parameters"]["block_size"] = block_size
 
         # Find possible TP values
         if args.show_possible_tp:
@@ -233,7 +241,7 @@ Examples:
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 
     # Start command
-    start_parser = subparsers.add_parser(
+    subparsers.add_parser(
         'start',
         help='Start the Streamlit UI'
     )

@@ -1,0 +1,387 @@
+#!/usr/bin/env python3
+"""
+Test suite for config_explorer CLI
+"""
+
+import subprocess
+import json
+import pytest
+
+
+def run_cli(*args):
+    """Run CLI command and return result"""
+    cmd = ["config-explorer"] + list(args)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result
+
+
+def parse_cli_json_output(stdout):
+    """Parse JSON output from CLI, removing any prefixed messages"""
+    # CLI outputs "Fetching model information..." before JSON
+    # Split by newline and skip the first line(s) until we find JSON
+    lines = stdout.split("\n")
+
+    # Find where JSON starts (first line with '{')
+    json_start = 0
+    for i, line in enumerate(lines):
+        if line.strip().startswith('{'):
+            json_start = i
+            break
+
+    # Join remaining lines and parse
+    json_output = "\n".join(lines[json_start:])
+    return json.loads(json_output)
+
+
+class TestHelp:
+    """Test help and usage commands"""
+
+    def test_help(self):
+        """Test help command"""
+        result = run_cli("--help")
+        assert result.returncode == 0
+        assert "config-explorer" in result.stdout.lower() or "config explorer" in result.stdout.lower()
+
+    def test_plan_help(self):
+        """Test plan help"""
+        result = run_cli("plan", "--help")
+        assert result.returncode == 0
+        assert "--model" in result.stdout
+
+    def test_start_help(self):
+        """Test start help"""
+        result = run_cli("start", "--help")
+        assert result.returncode == 0
+
+
+class TestBasicPlan:
+    """Test basic capacity planning functionality"""
+
+    def test_basic_plan_with_defaults(self):
+        """Test basic capacity planning with default max_model_len"""
+        result = run_cli("plan", "--model", "Qwen/Qwen3-32B")
+
+        assert result.returncode == 0
+
+        data = parse_cli_json_output(result.stdout)
+        assert "model_memory_gb" in data
+        assert "input_parameters" in data
+        assert "kv_cache_detail" in data
+        assert data["input_parameters"]["model"] == "Qwen/Qwen3-32B"
+        assert "max_model_len" in data["input_parameters"]
+        assert data["input_parameters"]["max_model_len"] > 0
+        assert "batch_size" in data["input_parameters"]
+        assert data["input_parameters"]["batch_size"] == 1
+
+    def test_plan_with_custom_max_model_len(self):
+        """Test capacity planning with explicit context length"""
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--max-model-len", "8192"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert "kv_cache_detail" in data
+        assert data["kv_cache_detail"]["context_len"] == 8192
+        assert data["input_parameters"]["max_model_len"] == 8192
+
+    def test_plan_with_batch_size(self):
+        """Test capacity planning with custom batch size"""
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--batch-size", "32"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert data["input_parameters"]["batch_size"] == 32
+        assert data["kv_cache_detail"]["batch_size"] == 32
+
+
+class TestGPUCalculations:
+    """Test GPU-related calculations"""
+
+    def test_plan_with_gpu_memory(self):
+        """Test capacity planning with GPU memory"""
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--gpu-memory", "80",
+            "--max-model-len", "8192"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert "max_concurrent_requests" in data
+        assert "total_kv_cache_blocks" in data
+        assert "allocatable_kv_cache_memory_gb" in data
+        assert "per_gpu_model_memory_gb" in data
+        assert "total_gpus_required" in data
+        assert data["input_parameters"]["tp"] == 1
+        assert data["input_parameters"]["pp"] == 1
+        assert data["input_parameters"]["dp"] == 1
+        assert data["input_parameters"]["gpu_mem_util"] == 0.9
+        assert data["input_parameters"]["block_size"] == 16  # Default block size
+
+    def test_plan_with_parallelism(self):
+        """Test capacity planning with tensor, pipeline, and data parallelism"""
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--gpu-memory", "80",
+            "--tp", "2",
+            "--pp", "1",
+            "--dp", "2"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert data["input_parameters"]["tp"] == 2
+        assert data["input_parameters"]["pp"] == 1
+        assert data["input_parameters"]["dp"] == 2
+        assert data["total_gpus_required"] == 4  # tp * pp * dp
+
+    def test_plan_with_custom_block_size(self):
+        """Test capacity planning with custom block size"""
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--gpu-memory", "80",
+            "--block-size", "32"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert "total_kv_cache_blocks" in data
+        assert data["input_parameters"]["block_size"] == 32
+
+    def test_plan_with_gpu_mem_util(self):
+        """Test capacity planning with custom GPU memory utilization"""
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--gpu-memory", "80",
+            "--gpu-mem-util", "0.85"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert data["input_parameters"]["gpu_mem_util"] == 0.85
+
+
+class TestTPValidation:
+    """Test tensor parallelism validation"""
+
+    def test_show_possible_tp(self):
+        """Test showing possible TP values"""
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--show-possible-tp"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert "possible_tp_values" in data
+        assert isinstance(data["possible_tp_values"], list)
+        assert len(data["possible_tp_values"]) > 0
+        assert 1 in data["possible_tp_values"]
+
+    def test_valid_tp_value(self):
+        """Test with a valid TP value"""
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--gpu-memory", "80",
+            "--tp", "4"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert data["input_parameters"]["tp"] == 4
+
+    def test_invalid_tp_value(self):
+        """Test with an invalid TP value"""
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--tp", "11"
+        )
+
+        assert result.returncode != 0
+        assert "Invalid --tp value" in result.stdout or "Invalid --tp value" in result.stderr
+
+
+class TestOutputFormats:
+    """Test output format and file writing"""
+
+    def test_output_to_file(self, tmp_path):
+        """Test writing output to file"""
+        output_file = tmp_path / "results.json"
+
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--output", str(output_file)
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+        assert output_file.exists()
+
+        with open(output_file, 'r') as f:
+            data = json.load(f)
+            assert "model_memory_gb" in data
+            assert "input_parameters" in data
+
+    def test_json_output_format(self):
+        """Test that output is valid JSON"""
+        result = run_cli("plan", "--model", "Qwen/Qwen3-32B")
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        # Should be able to parse as JSON
+        data = parse_cli_json_output(result.stdout)
+        assert isinstance(data, dict)
+
+
+class TestKVCacheDetails:
+    """Test KV cache detail calculations"""
+
+    def test_kv_cache_always_present(self):
+        """Test that KV cache details are always calculated"""
+        result = run_cli("plan", "--model", "Qwen/Qwen3-32B")
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert "kv_cache_detail" in data
+        kv_detail = data["kv_cache_detail"]
+
+        # Check all expected fields
+        assert "attention_type" in kv_detail
+        assert "kv_data_type" in kv_detail
+        assert "num_hidden_layers" in kv_detail
+        assert "num_attention_heads" in kv_detail
+        assert "num_key_value_heads" in kv_detail
+        assert "head_dimension" in kv_detail
+        assert "per_token_memory_bytes" in kv_detail
+        assert "per_request_kv_cache_gb" in kv_detail
+        assert "kv_cache_size_gb" in kv_detail
+        assert "context_len" in kv_detail
+        assert "batch_size" in kv_detail
+
+    def test_kv_cache_with_different_context_lengths(self):
+        """Test KV cache scales with context length"""
+        result_short = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--max-model-len", "2048"
+        )
+        result_long = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--max-model-len", "8192"
+        )
+
+        assert result_short.returncode == 0
+        assert result_long.returncode == 0
+
+        data_short = parse_cli_json_output(result_short.stdout)
+        data_long = parse_cli_json_output(result_long.stdout)
+
+        # Longer context should require more KV cache
+        assert data_long["kv_cache_detail"]["kv_cache_size_gb"] > \
+               data_short["kv_cache_detail"]["kv_cache_size_gb"]
+
+
+class TestErrorHandling:
+    """Test error handling and validation"""
+
+    def test_missing_model(self):
+        """Test error when model is not specified"""
+        result = run_cli("plan")
+        assert result.returncode != 0
+
+    def test_invalid_model(self):
+        """Test error with non-existent model"""
+        result = run_cli("plan", "--model", "invalid/model-name-that-does-not-exist-12345")
+        assert result.returncode != 0
+
+    def test_verbose_flag(self):
+        """Test verbose flag with an error"""
+        result = run_cli(
+            "plan",
+            "--model", "invalid/model-that-does-not-exist",
+            "--verbose"
+        )
+        assert result.returncode != 0
+        # Verbose should show traceback
+        assert len(result.stderr) > 0 or len(result.stdout) > 0
+
+
+class TestModelInfo:
+    """Test model information output"""
+
+    def test_model_info_present(self):
+        """Test that model info is included in output"""
+        result = run_cli("plan", "--model", "Qwen/Qwen3-32B")
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert "model_info" in data
+        assert "total_parameters" in data["model_info"]
+        assert data["model_info"]["total_parameters"] > 0
+
+
+class TestIntegration:
+    """Integration tests with multiple parameters"""
+
+    def test_full_deployment_planning(self):
+        """Test complete deployment planning scenario"""
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen3-32B",
+            "--gpu-memory", "80",
+            "--max-model-len", "8192",
+            "--batch-size", "64",
+            "--tp", "2",
+            "--pp", "1",
+            "--dp", "2",
+            "--block-size", "32",
+            "--gpu-mem-util", "0.85"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+
+        # Verify all parameters are recorded
+        assert data["input_parameters"]["max_model_len"] == 8192
+        assert data["input_parameters"]["batch_size"] == 64
+        assert data["input_parameters"]["tp"] == 2
+        assert data["input_parameters"]["pp"] == 1
+        assert data["input_parameters"]["dp"] == 2
+        assert data["input_parameters"]["block_size"] == 32
+        assert data["input_parameters"]["gpu_mem_util"] == 0.85
+
+        # Verify calculations
+        assert data["total_gpus_required"] == 4
+        assert "max_concurrent_requests" in data
+        assert "total_kv_cache_blocks" in data
+        assert "allocatable_kv_cache_memory_gb" in data
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
