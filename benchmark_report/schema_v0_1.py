@@ -8,10 +8,7 @@ from typing import Optional, Any
 
 from pydantic import BaseModel, model_validator
 
-try:
-    from benchmark_report import BenchmarkReport
-except ImportError:
-    from config_explorer.benchmark_report import BenchmarkReport
+from .core import BenchmarkReport
 
 # BenchmarkReport schema version
 VERSION = '0.1'

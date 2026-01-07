@@ -6,12 +6,9 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-try:
-    from benchmark_report import BenchmarkReport
-    from benchmark_report_v0_2_components import *
-except ImportError:
-    from config_explorer.benchmark_report import BenchmarkReport
-    from config_explorer.benchmark_report_v0_2_components import *
+from .base import BenchmarkReport
+from .schema_v0_2_components import *
+
 
 # BenchmarkReport schema version
 VERSION = '0.2'

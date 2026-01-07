@@ -45,36 +45,18 @@ from typing import Any
 import pandas as pd
 import yaml
 
-# TODO These packages can be imported in different ways depending on whether
-# these are imported as a notebook, or installed as a config_explorer library
-# in a Python environment. This needs to be made consistent as the overall
-# llm-d-benchmark repository is refactored into full Python.
-try:
-    import convert
-    from benchmark_report_v0_1 import (
-        BenchmarkReport,
-        HostType,
-        Units,
-        WorkloadGenerator,
-    )
-    from constants import (
-        BOUND_PREFIX_LEN,
-        COLUMN_BOUND_STR,
-        STR_TO_COLUMN_BOUND,
-    )
-except ImportError:
-    from config_explorer import convert
-    from config_explorer.benchmark_report_v0_1 import (
-        BenchmarkReport,
-        HostType,
-        Units,
-        WorkloadGenerator,
-    )
-    from config_explorer.constants import (
-        BOUND_PREFIX_LEN,
-        COLUMN_BOUND_STR,
-        STR_TO_COLUMN_BOUND,
-    )
+from .benchmark_report import import_benchmark_report
+from .benchmark_report.schema_v0_1 import (
+    BenchmarkReport,
+    HostType,
+    Units,
+    WorkloadGenerator,
+)
+from .constants import (
+    BOUND_PREFIX_LEN,
+    COLUMN_BOUND_STR,
+    STR_TO_COLUMN_BOUND,
+)
 
 
 class Text:
@@ -974,7 +956,7 @@ def add_benchmark_report_to_df(
     """
     # Import benchmark report.
     # We will parse through this to populate a row in the DataFrame
-    report = convert.import_benchmark_report(br_file)
+    report = import_benchmark_report(br_file)
 
     # Get parallelism and replica details
     rp = _get_replicas_and_parallelism(report)

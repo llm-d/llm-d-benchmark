@@ -12,34 +12,47 @@ import pandas as pd
 # these are imported as a notebook, or installed as a config_explorer library
 # in a Python environment. This needs to be made consistent as the overall
 # llm-d-benchmark repository is refactored into full Python.
-try:
-    from explorer import (
-        COLUMNS,
-        SLO,
-        col_base,
-        get_scenario_df,
-        get_meet_slo_df,
-        get_pareto_front_df,
-        rebound_scenario,
-    )
-    from constants import (
-        BOUND_PREFIX_LEN,
-        COLUMN_BOUND_STR,
-    )
-except ImportError:
-    from config_explorer.explorer import (
-        COLUMNS,
-        SLO,
-        col_base,
-        get_scenario_df,
-        get_meet_slo_df,
-        get_pareto_front_df,
-        rebound_scenario,
-    )
-    from config_explorer.constants import (
-        BOUND_PREFIX_LEN,
-        COLUMN_BOUND_STR,
-    )
+from .explorer import (
+    COLUMNS,
+    SLO,
+    col_base,
+    get_scenario_df,
+    get_meet_slo_df,
+    get_pareto_front_df,
+    rebound_scenario,
+)
+from .constants import (
+    BOUND_PREFIX_LEN,
+    COLUMN_BOUND_STR,
+)
+# try:
+#     from .explorer import (
+#         COLUMNS,
+#         SLO,
+#         col_base,
+#         get_scenario_df,
+#         get_meet_slo_df,
+#         get_pareto_front_df,
+#         rebound_scenario,
+#     )
+#     from .constants import (
+#         BOUND_PREFIX_LEN,
+#         COLUMN_BOUND_STR,
+#     )
+# except ImportError:
+#     from config_explorer.explorer import (
+#         COLUMNS,
+#         SLO,
+#         col_base,
+#         get_scenario_df,
+#         get_meet_slo_df,
+#         get_pareto_front_df,
+#         rebound_scenario,
+#     )
+#     from config_explorer.constants import (
+#         BOUND_PREFIX_LEN,
+#         COLUMN_BOUND_STR,
+#     )
 
 
 # Figure number

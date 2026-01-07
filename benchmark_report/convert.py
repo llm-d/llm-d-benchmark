@@ -16,46 +16,9 @@ import yaml
 
 import numpy as np
 
-# TODO fix this during refactor after repository has been converted into
-# full Python.
-# Hack to ensure schema can be imported from harness pod or config explorer.
-try:
-    from benchmark_report import BenchmarkReport
-    from benchmark_report_v0_1 import Units, WorkloadGenerator, HostType
-    from schema import load_benchmark_report
-except ImportError:
-    from config_explorer.benchmark_report import BenchmarkReport
-    from config_explorer.benchmark_report_v0_1 import Units, WorkloadGenerator
-    from config_explorer.schema import load_benchmark_report
-
-
-def check_file(file_path: str) -> None:
-    """Make sure regular file exists.
-
-    Args:
-        file_path (str): File to check.
-    """
-    if not os.path.exists(file_path):
-        sys.stderr.write('File does not exist: %s\n' % file_path)
-        exit(2)
-    if not os.path.isfile(file_path):
-        sys.stderr.write('Not a regular file: %s\n' % file_path)
-        exit(2)
-
-
-def import_yaml(file_path: str) -> dict[Any, Any]:
-    """Import a JSON/YAML file as a dict.
-
-    Args:
-        file_path (str): Path to JSON/YAML file.
-
-    Returns:
-        dict: Imported data.
-    """
-    check_file(file_path)
-    with open(file_path, 'r', encoding='UTF-8') as file:
-        data = yaml.safe_load(file)
-    return data
+from .base import BenchmarkReport
+from .core import check_file, import_yaml, load_benchmark_report
+from .schema_v0_1 import Units, WorkloadGenerator, HostType
 
 
 def import_csv_with_header(file_path: str) -> dict[str, list[Any]]:
@@ -274,23 +237,6 @@ def _get_llmd_benchmark_envars() -> dict:
     sys.stderr.write(
         'Warning: LLMDBENCH_DEPLOY_METHODS is not "modelservice" or "standalone", cannot extract environmental details.')
     return {}
-
-
-def import_benchmark_report(br_file: str) -> BenchmarkReport:
-    """Import benchmark report from a JSON or YAML file.
-
-    Args:
-        br_file (str): Benchmark report file to import.
-
-    Returns:
-        BenchmarkReport: Imported benchmark report supplemented with run data.
-    """
-    check_file(br_file)
-
-    # Import benchmark report as a dict following the schema of BenchmarkReport
-    br_dict = import_yaml(br_file)
-
-    return load_benchmark_report(br_dict)
 
 
 def _vllm_timestamp_to_epoch(date_str: str) -> int:
