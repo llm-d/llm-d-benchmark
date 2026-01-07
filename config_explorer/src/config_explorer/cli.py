@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import traceback
 from pathlib import Path
 
 from config_explorer.capacity_planner import (
@@ -197,7 +198,6 @@ def plan_capacity(args):
 
     except Exception as e:
         if args.verbose:
-            import traceback
             traceback.print_exc()
         sys.exit(f"Error during capacity planning: {str(e)}")
 

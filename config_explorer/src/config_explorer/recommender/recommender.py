@@ -264,7 +264,7 @@ class GPURecommender:
                 "e2e_latency_s": round(best_e2e[1], 4)
             }
 
-        # Add detailed results for each GPU conforming to llm-optimizer structure
+        # Extract and format detailed results for each GPU from llm-optimizer output
         for gpu_name, gpu_result in self.gpu_results.items():
             if hasattr(gpu_result, 'best_configs') and gpu_result.best_configs:
                 gpu_data = {}

@@ -680,8 +680,8 @@ class TestEstimateCommand:
         result = run_cli("estimate", "--model", "Qwen/Qwen-7B", "--input-len", "512")
         assert result.returncode != 0
 
-    def test_estimate_invalid_gpu_list_format(self):
-        """Test handling of GPU list format"""
+    def test_estimate_gpu_list_with_spaces(self):
+        """Test GPU list with spaces is accepted and trimmed"""
         result = run_cli(
             "estimate",
             "--model", "Qwen/Qwen-7B",
