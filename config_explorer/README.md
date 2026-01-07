@@ -31,6 +31,9 @@ config-explorer start
 # Run capacity planning
 config-explorer plan --model Qwen/Qwen3-32B --gpu-memory 80 --max-model-len 16000
 
+# Run GPU recommendation and performance estimation
+config-explorer estimate --model Qwen/Qwen3-32B --input-len 512 --output-len 128 --max-gpus 8
+
 # Get help
 config-explorer --help
 ```
