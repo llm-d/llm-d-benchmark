@@ -1255,7 +1255,7 @@ def convert_result(result_filepath: str, output_filepath: str) -> tuple[str, str
     """converts result to universal format"""
 
     try:
-        cmd = ["convert.py", result_filepath, output_filepath, "-w", "nop", "-f"]
+        cmd = ["benchmark-report", result_filepath, output_filepath, "-w", "nop", "-f"]
         with subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -1267,19 +1267,19 @@ def convert_result(result_filepath: str, output_filepath: str) -> tuple[str, str
             err_str = stderr.strip().decode("ascii")
             if proc.returncode != 0:
                 logger.info(
-                    "convert.py returned with error %s converting: %s",
+                    "benchmark-report returned with error %s converting: %s",
                     proc.returncode,
                     result_filepath,
                 )
             else:
-                logger.info("convert.py succeeded converting: %s", result_filepath)
+                logger.info("benchmark-report succeeded converting: %s", result_filepath)
 
             if err_str != "":
-                logger.info("convert.py stderr: %s", err_str)
+                logger.info("benchmark-report stderr: %s", err_str)
             if out_str != "":
-                logger.info("convert.py stdout: %s", out_str)
+                logger.info("benchmark-report stdout: %s", out_str)
     except Exception:
-        logger.exception("convert.py returned error converting: %s", result_filepath)
+        logger.exception("benchmark-report returned error converting: %s", result_filepath)
 
 
 def write_benchmark_categories_to_log(

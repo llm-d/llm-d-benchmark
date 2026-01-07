@@ -1,0 +1,16 @@
+# This file is strictly used for the harness pod.
+# This file will not do anything useful as-is in its current location.
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "benchmark-report"
+version = "0.1.0"
+
+[project.scripts]
+benchmark-report = "benchmark_report.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["benchmark_report"]
