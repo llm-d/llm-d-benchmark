@@ -1,6 +1,6 @@
 # Benchmark Report
 
-A "benchmark report" is a standardized format for aggregate benchmark results that describes the inference platform environment, workload, and performance metrics. Details on the benchmark report format are provided in [this document](../workload/report/README.md)
+A "benchmark report" is a standardized format for aggregate benchmark results that describes the inference platform environment, workload, and performance metrics. Details on the benchmark report format are provided in [this document](../benchmark_report/README.md)
 
 **Why is this needed**:
 A consistent data format which unambiguously describes a benchmarking experiment and results has multiple benefits:
