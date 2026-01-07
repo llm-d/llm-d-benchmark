@@ -216,3 +216,106 @@ class GPURecommender:
                         best_gpu = gpu_name
 
         return (best_gpu, best_e2e) if best_gpu else None
+
+    def get_performance_summary(self, verbose: bool = False) -> dict:
+        """
+        Get a comprehensive performance summary for all GPUs.
+
+        Args:
+            verbose: If True, include concurrency analysis for each GPU
+
+        Returns:
+            Dictionary with structured performance data for all GPUs
+        """
+        if not self.gpu_results:
+            self.get_gpu_results()
+
+        summary = {
+            "estimated_best_performance": {},
+            "gpu_results": {},
+        }
+
+        # Get best performance recommendations
+        best_throughput = self.get_gpu_with_highest_throughput()
+        if best_throughput:
+            summary["estimated_best_performance"]["highest_throughput"] = {
+                "gpu": best_throughput[0],
+                "throughput_tps": round(best_throughput[1], 2)
+            }
+
+        best_ttft = self.get_gpu_with_lowest_ttft()
+        if best_ttft:
+            summary["estimated_best_performance"]["lowest_ttft"] = {
+                "gpu": best_ttft[0],
+                "ttft_ms": round(best_ttft[1], 2)
+            }
+
+        best_itl = self.get_gpu_with_lowest_itl()
+        if best_itl:
+            summary["estimated_best_performance"]["lowest_itl"] = {
+                "gpu": best_itl[0],
+                "itl_ms": round(best_itl[1], 2)
+            }
+
+        best_e2e = self.get_gpu_with_lowest_e2e_latency()
+        if best_e2e:
+            summary["estimated_best_performance"]["lowest_e2e_latency"] = {
+                "gpu": best_e2e[0],
+                "e2e_latency_s": round(best_e2e[1], 4)
+            }
+
+        # Add detailed results for each GPU conforming to llm-optimizer structure
+        for gpu_name, gpu_result in self.gpu_results.items():
+            if hasattr(gpu_result, 'best_configs') and gpu_result.best_configs:
+                gpu_data = {}
+
+                # Extract best_latency config (concurrency = 1)
+                best_latency = gpu_result.best_configs.get('best_latency') if isinstance(gpu_result.best_configs, dict) else None
+                if best_latency:
+                    gpu_data["best_latency"] = {
+                        "optimal_concurrency": 1,
+                        "throughput_tps": round(best_latency.output_throughput_tps, 2) if best_latency.output_throughput_tps else None,
+                        "ttft_ms": round(best_latency.ttft_ms, 2) if best_latency.ttft_ms else None,
+                        "itl_ms": round(best_latency.itl_ms, 2) if best_latency.itl_ms else None,
+                        "e2e_latency_s": round(best_latency.e2e_latency_s, 4) if best_latency.e2e_latency_s else None,
+                        "prefill_is_memory_bound": best_latency.prefill_is_memory_bound if hasattr(best_latency, 'prefill_is_memory_bound') else None,
+                        "decode_is_memory_bound": best_latency.decode_is_memory_bound if hasattr(best_latency, 'decode_is_memory_bound') else None,
+                    }
+
+                # Extract best_throughput config (optimal concurrency)
+                best_throughput_config = gpu_result.best_configs.get('best_output_throughput') if isinstance(gpu_result.best_configs, dict) else None
+                if best_throughput_config:
+                    gpu_data["best_output_throughput"] = {
+                        "optimal_concurrency": best_throughput_config.concurrency if hasattr(best_throughput_config, 'concurrency') else None,
+                        "throughput_tps": round(best_throughput_config.output_throughput_tps, 2) if best_throughput_config.output_throughput_tps else None,
+                        "ttft_ms": round(best_throughput_config.ttft_ms, 2) if best_throughput_config.ttft_ms else None,
+                        "itl_ms": round(best_throughput_config.itl_ms, 2) if best_throughput_config.itl_ms else None,
+                        "e2e_latency_s": round(best_throughput_config.e2e_latency_s, 4) if best_throughput_config.e2e_latency_s else None,
+                        "prefill_is_memory_bound": best_throughput_config.prefill_is_memory_bound if hasattr(best_throughput_config, 'prefill_is_memory_bound') else None,
+                        "decode_is_memory_bound": best_throughput_config.decode_is_memory_bound if hasattr(best_throughput_config, 'decode_is_memory_bound') else None,
+                    }
+
+                # Add concurrency analysis if verbose
+                if verbose and hasattr(gpu_result, 'concurrency_analysis') and gpu_result.concurrency_analysis:
+                    gpu_data["concurrency_analysis"] = []
+                    for conc_result in gpu_result.concurrency_analysis:
+                        gpu_data["concurrency_analysis"].append({
+                            "optimal_concurrency": conc_result.concurrency if hasattr(conc_result, 'concurrency') else None,
+                            "throughput_tps": round(conc_result.output_throughput_tps, 2) if conc_result.output_throughput_tps else None,
+                            "ttft_ms": round(conc_result.ttft_ms, 2) if conc_result.ttft_ms else None,
+                            "itl_ms": round(conc_result.itl_ms, 2) if conc_result.itl_ms else None,
+                            "e2e_latency_s": round(conc_result.e2e_latency_s, 4) if conc_result.e2e_latency_s else None,
+                        })
+
+                # Add GPU memory info
+                if best_latency:
+                    if hasattr(best_latency, 'total_memory_gb'):
+                        gpu_data["total_memory_gb"] = best_latency.total_memory_gb
+                    if hasattr(best_latency, 'model_memory_gb'):
+                        gpu_data["model_memory_gb"] = round(best_latency.model_memory_gb, 2)
+                    if hasattr(best_latency, 'kv_cache_memory_gb'):
+                        gpu_data["kv_cache_memory_gb"] = round(best_latency.kv_cache_memory_gb, 2)
+
+                summary["gpu_results"][gpu_name] = gpu_data
+
+        return summary

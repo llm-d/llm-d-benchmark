@@ -383,5 +383,369 @@ class TestIntegration:
         assert "allocatable_kv_cache_memory_gb" in data
 
 
+class TestEstimateCommand:
+    """Test GPU performance estimation command"""
+
+    def test_estimate_help(self):
+        """Test estimate help command"""
+        result = run_cli("estimate", "--help")
+        assert result.returncode == 0
+        assert "--model" in result.stdout
+        assert "--input-len" in result.stdout
+        assert "--output-len" in result.stdout
+
+    def test_basic_estimate(self):
+        """Test basic performance estimation"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert "input_parameters" in data
+        assert "estimated_best_performance" in data
+        assert "gpu_results" in data
+        assert "summary" in data
+
+        # Check input parameters
+        assert data["input_parameters"]["model"] == "Qwen/Qwen-7B"
+        assert data["input_parameters"]["input_len"] == 512
+        assert data["input_parameters"]["output_len"] == 128
+        assert data["input_parameters"]["max_gpus"] == 1
+        assert "gpu_list" in data["input_parameters"]
+        assert len(data["input_parameters"]["gpu_list"]) > 0
+
+    def test_estimate_with_specific_gpus(self):
+        """Test estimation with specific GPU list"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--gpu-list", "H100,A100"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert data["input_parameters"]["gpu_list"] == ["H100", "A100"]
+
+        # Check that results only include specified GPUs (or failures)
+        all_gpus = set(data["gpu_results"].keys()) | set(data["failed_gpus"].keys())
+        assert all_gpus.issubset({"H100", "A100"})
+
+    def test_estimate_with_max_gpus(self):
+        """Test estimation with custom max GPUs"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--max-gpus", "4",
+            "--gpu-list", "H100"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert data["input_parameters"]["max_gpus"] == 4
+
+    def test_estimate_with_max_gpus_per_type(self):
+        """Test estimation with GPU-specific limits"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--max-gpus-per-type", "H100:8",
+            "--max-gpus-per-type", "A100:4",
+            "--gpu-list", "H100,A100"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert "max_gpus_per_type" in data["input_parameters"]
+        assert data["input_parameters"]["max_gpus_per_type"]["H100"] == 8
+        assert data["input_parameters"]["max_gpus_per_type"]["A100"] == 4
+
+    def test_estimate_with_ttft_constraint(self):
+        """Test estimation with TTFT constraint"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--max-ttft", "100.0",
+            "--gpu-list", "H100"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert data["input_parameters"]["max_ttft_ms"] == 100.0
+
+    def test_estimate_with_itl_constraint(self):
+        """Test estimation with ITL constraint"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--max-itl", "10.0",
+            "--gpu-list", "H100"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert data["input_parameters"]["max_itl_ms"] == 10.0
+
+    def test_estimate_with_latency_constraint(self):
+        """Test estimation with E2E latency constraint"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--max-latency", "2.0",
+            "--gpu-list", "H100"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert data["input_parameters"]["max_latency_s"] == 2.0
+
+    def test_estimate_with_all_constraints(self):
+        """Test estimation with all performance constraints"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--max-ttft", "100.0",
+            "--max-itl", "10.0",
+            "--max-latency", "2.0",
+            "--gpu-list", "H100"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        assert data["input_parameters"]["max_ttft_ms"] == 100.0
+        assert data["input_parameters"]["max_itl_ms"] == 10.0
+        assert data["input_parameters"]["max_latency_s"] == 2.0
+
+    def test_estimate_output_structure(self):
+        """Test that estimate output has correct structure"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--gpu-list", "H100"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+
+        # Check main sections
+        assert "input_parameters" in data
+        assert "estimated_best_performance" in data
+        assert "gpu_results" in data
+        assert "failed_gpus" in data
+        assert "summary" in data
+
+        # Check summary structure
+        assert "total_gpus_analyzed" in data["summary"]
+        assert "failed_gpus" in data["summary"]
+
+    def test_estimate_gpu_results_structure(self):
+        """Test GPU results have correct structure"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--gpu-list", "H100"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+
+        # If H100 succeeded, check its structure
+        if "H100" in data["gpu_results"]:
+            gpu_data = data["gpu_results"]["H100"]
+
+            # Should have best_latency config
+            if "best_latency" in gpu_data:
+                best_latency = gpu_data["best_latency"]
+                assert "optimal_concurrency" in best_latency
+                assert best_latency["optimal_concurrency"] == 1
+                assert "throughput_tps" in best_latency
+                assert "ttft_ms" in best_latency
+                assert "itl_ms" in best_latency
+                assert "e2e_latency_s" in best_latency
+
+            # Should have best_output_throughput config
+            if "best_output_throughput" in gpu_data:
+                best_throughput = gpu_data["best_output_throughput"]
+                assert "optimal_concurrency" in best_throughput
+                assert "throughput_tps" in best_throughput
+
+    def test_estimate_performance_recommendations(self):
+        """Test that performance recommendations are present"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--gpu-list", "H100,A100"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+
+        # Check estimated_best_performance section
+        estimated_best_perf = data["estimated_best_performance"]
+
+        # At least some recommendations should be present if any GPUs succeeded
+        if len(data["gpu_results"]) > 0:
+            possible_keys = ["highest_throughput", "lowest_ttft", "lowest_itl", "lowest_e2e_latency"]
+            assert any(key in estimated_best_perf for key in possible_keys)
+
+    def test_estimate_verbose_mode(self):
+        """Test verbose mode includes concurrency analysis"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--gpu-list", "H100",
+            "--verbose"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+
+        # In verbose mode, should have concurrency_analysis if available
+        if "H100" in data["gpu_results"]:
+            gpu_data = data["gpu_results"]["H100"]
+            # May or may not have concurrency_analysis depending on the result structure
+            # but verbose mode should at least show detailed results
+            assert "best_latency" in gpu_data or "best_output_throughput" in gpu_data
+
+    def test_estimate_output_to_file(self, tmp_path):
+        """Test writing estimate output to file"""
+        output_file = tmp_path / "estimate_results.json"
+
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--gpu-list", "H100",
+            "--output", str(output_file)
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+        assert output_file.exists()
+
+        with open(output_file, 'r') as f:
+            data = json.load(f)
+            assert "input_parameters" in data
+            assert "estimated_best_performance" in data
+            assert "gpu_results" in data
+
+    def test_estimate_missing_required_args(self):
+        """Test error when required arguments are missing"""
+        # Missing model
+        result = run_cli("estimate", "--input-len", "512", "--output-len", "128")
+        assert result.returncode != 0
+
+        # Missing input-len
+        result = run_cli("estimate", "--model", "Qwen/Qwen-7B", "--output-len", "128")
+        assert result.returncode != 0
+
+        # Missing output-len
+        result = run_cli("estimate", "--model", "Qwen/Qwen-7B", "--input-len", "512")
+        assert result.returncode != 0
+
+    def test_estimate_invalid_gpu_list_format(self):
+        """Test handling of GPU list format"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--gpu-list", "H100, A100, L40"  # With spaces - should be trimmed
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+        # Spaces should be stripped
+        assert "H100" in data["input_parameters"]["gpu_list"]
+        assert "A100" in data["input_parameters"]["gpu_list"]
+        assert "L40" in data["input_parameters"]["gpu_list"]
+
+    def test_estimate_invalid_max_gpus_per_type_format(self):
+        """Test error with invalid max-gpus-per-type format"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--max-gpus-per-type", "H100:invalid"
+        )
+
+        assert result.returncode != 0
+        assert "Invalid format" in result.stdout or "Invalid format" in result.stderr
+
+    def test_estimate_with_large_model(self):
+        """Test estimation with a large model that may fail on some GPUs"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen3-32B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--gpu-list", "L4,H100"  # L4 likely to fail, H100 likely to succeed
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        data = parse_cli_json_output(result.stdout)
+
+        # Should have both successful and failed GPUs
+        total_analyzed = len(data["gpu_results"]) + len(data["failed_gpus"])
+        assert total_analyzed == 2
+        assert data["summary"]["total_gpus_analyzed"] == 2
+
+    def test_estimate_json_output_validity(self):
+        """Test that estimate output is valid JSON"""
+        result = run_cli(
+            "estimate",
+            "--model", "Qwen/Qwen-7B",
+            "--input-len", "512",
+            "--output-len", "128",
+            "--gpu-list", "H100"
+        )
+
+        assert result.returncode == 0, f"Failed: {result.stderr}"
+
+        # Should be able to parse as JSON
+        data = parse_cli_json_output(result.stdout)
+        assert isinstance(data, dict)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

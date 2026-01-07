@@ -21,6 +21,8 @@ from config_explorer.capacity_planner import (
     gpus_required,
     per_gpu_model_memory_required,
 )
+from config_explorer.recommender.recommender import GPURecommender
+from llm_optimizer.predefined.gpus import GPU_SPECS
 
 
 def start_ui():
@@ -200,6 +202,94 @@ def plan_capacity(args):
         sys.exit(f"Error during capacity planning: {str(e)}")
 
 
+def estimate_performance(args):
+    """Run GPU performance estimation and recommendation"""
+
+    try:
+        # Parse GPU-specific max_gpus if provided
+        max_gpus_per_type = None
+        if args.max_gpus_per_type:
+            max_gpus_per_type = {}
+            for item in args.max_gpus_per_type:
+                try:
+                    gpu_name, max_count = item.split(':')
+                    max_gpus_per_type[gpu_name] = int(max_count)
+                except ValueError:
+                    sys.exit(f"Error: Invalid format for --max-gpus-per-type: {item}. Expected format: GPU_NAME:MAX_COUNT")
+
+        # Parse GPU list if provided, otherwise use all GPUs from GPU_SPECS
+        if args.gpu_list:
+            gpu_list = [g.strip() for g in args.gpu_list.split(',')]
+        else:
+            gpu_list = sorted(list(GPU_SPECS.keys()))
+
+        print(f"Running performance estimation for {args.model}...")
+        print(f"Analyzing {len(gpu_list)} GPU type(s)...")
+
+        recommender = GPURecommender(
+            model_id=args.model,
+            input_len=args.input_len,
+            output_len=args.output_len,
+            max_gpus=args.max_gpus,
+            max_gpus_per_type=max_gpus_per_type,
+            gpu_list=gpu_list,
+            max_ttft=args.max_ttft,
+            max_itl=args.max_itl,
+            max_latency=args.max_latency,
+        )
+
+        # Get results using the recommender's method
+        gpu_results, failed_gpus = recommender.get_gpu_results()
+        performance_summary = recommender.get_performance_summary(verbose=args.verbose)
+
+        # Prepare result dictionary
+        result = {
+            "input_parameters": {
+                "model": args.model,
+                "input_len": args.input_len,
+                "output_len": args.output_len,
+                "max_gpus": args.max_gpus,
+                "gpu_list": gpu_list,
+            },
+            "estimated_best_performance": performance_summary["estimated_best_performance"],
+            "gpu_results": performance_summary["gpu_results"],
+            "failed_gpus": failed_gpus,
+        }
+
+        # Add constraints if specified
+        if max_gpus_per_type:
+            result["input_parameters"]["max_gpus_per_type"] = max_gpus_per_type
+        if args.max_ttft:
+            result["input_parameters"]["max_ttft_ms"] = args.max_ttft
+        if args.max_itl:
+            result["input_parameters"]["max_itl_ms"] = args.max_itl
+        if args.max_latency:
+            result["input_parameters"]["max_latency_s"] = args.max_latency
+
+        # Summary statistics
+        result["summary"] = {
+            "total_gpus_analyzed": len(gpu_list),
+            "failed_gpus": len(failed_gpus),
+        }
+
+        # Output results
+        if args.output:
+            output_path = Path(args.output)
+            with open(output_path, 'w') as f:
+                json.dump(result, f, indent=2)
+            print(f"Results written to {output_path}")
+        else:
+            print(json.dumps(result, indent=2))
+
+        return result
+
+    except Exception as e:
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(f"Error during performance estimation: {str(e)}")
+
+
 def main():
     """Main CLI entry point"""
     parser = argparse.ArgumentParser(
@@ -227,6 +317,22 @@ Examples:
 
   # Show possible TP values for a model
   config-explorer plan --model Qwen/Qwen3-32B --show-possible-tp
+
+  # GPU performance estimation and recommendation
+  config-explorer estimate --model Qwen/Qwen3-32B --input-len 512 --output-len 128
+
+  # Estimate with specific GPU list
+  config-explorer estimate --model Qwen/Qwen3-32B --input-len 512 --output-len 128 \\
+    --gpu-list H100,A100,L40
+
+  # Estimate with performance constraints
+  config-explorer estimate --model Qwen/Qwen3-32B --input-len 512 --output-len 128 \\
+    --max-ttft 100 --max-itl 10 --max-latency 2.0
+
+  # Estimate with GPU-specific limits
+  config-explorer estimate --model Qwen/Qwen3-32B --input-len 512 --output-len 128 \\
+    --max-gpus 4 --max-gpus-per-type H100:8 --max-gpus-per-type A100:4 \\
+    --output estimate_results.json
         """
     )
 
@@ -330,6 +436,90 @@ Examples:
         help='Enable verbose output'
     )
 
+    # Estimate command (GPU performance estimation and recommendation)
+    estimate_parser = subparsers.add_parser(
+        'estimate',
+        help='Run GPU performance estimation and recommendation'
+    )
+
+    # Model parameters
+    estimate_parser.add_argument(
+        '--model',
+        type=str,
+        required=True,
+        help='HuggingFace model ID (e.g., Qwen/Qwen3-32B, meta-llama/Llama-2-70b-hf)'
+    )
+
+    # Workload parameters
+    estimate_parser.add_argument(
+        '--input-len',
+        type=int,
+        required=True,
+        help='Input sequence length in tokens'
+    )
+
+    estimate_parser.add_argument(
+        '--output-len',
+        type=int,
+        required=True,
+        help='Output sequence length in tokens'
+    )
+
+    # GPU parameters
+    estimate_parser.add_argument(
+        '--max-gpus',
+        type=int,
+        default=1,
+        help='Default maximum number of GPUs to use for all GPU types (default: 1)'
+    )
+
+    estimate_parser.add_argument(
+        '--max-gpus-per-type',
+        type=str,
+        action='append',
+        help='GPU-specific max GPU limit in format GPU_NAME:MAX_COUNT (e.g., H100:8). Can be specified multiple times.'
+    )
+
+    estimate_parser.add_argument(
+        '--gpu-list',
+        type=str,
+        help='Comma-separated list of GPU names to evaluate (e.g., H100,A100,L40). If not specified, evaluates all available GPUs.'
+    )
+
+    # Performance constraints
+    estimate_parser.add_argument(
+        '--max-ttft',
+        type=float,
+        help='Maximum time to first token constraint in milliseconds (ms)'
+    )
+
+    estimate_parser.add_argument(
+        '--max-itl',
+        type=float,
+        help='Maximum inter-token latency constraint in milliseconds (ms)'
+    )
+
+    estimate_parser.add_argument(
+        '--max-latency',
+        type=float,
+        help='Maximum end-to-end latency constraint in seconds (s)'
+    )
+
+    # Output options
+    estimate_parser.add_argument(
+        '--output',
+        '-o',
+        type=str,
+        help='Output file path for JSON results (prints to console if not specified)'
+    )
+
+    estimate_parser.add_argument(
+        '--verbose',
+        '-v',
+        action='store_true',
+        help='Enable verbose output with detailed results for all GPUs'
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -340,6 +530,8 @@ Examples:
         start_ui()
     elif args.command == 'plan':
         plan_capacity(args)
+    elif args.command == 'estimate':
+        estimate_performance(args)
     else:
         parser.print_help()
         sys.exit(1)
