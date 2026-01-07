@@ -65,6 +65,13 @@ RUN git clone --branch ${INFERENCEMAX_BRANCH} ${INFERENCEMAX_REPO}
 RUN cd bench_serving; \
     git checkout ${INFERENCEMAX_COMMIT}
 
+# TEMPORARILY using the vllm-benchmark code from https://github.com/kimbochen/bench_serving.git
+# It looks like the commit b6381ced9c52271f799a8348fcc98c5f40528cdf was deleted from the tree on https://github.com/vllm-project/vllm.git
+RUN mv vllm-benchmark vllm; \
+    mkdir vllm-benchmark ; \
+    cd vllm-benchmark ; \
+    ln -s ../bench_serving benchmarks
+
 RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \
     echo "vllm-benchmark: ${VLLM_BENCHMARK_REPO} ${VLLM_BENCHMARK_COMMIT}" >> /workspace/repos.txt; \
     echo "guidellm: ${GUIDELLM_REPO} ${GUIDELLM_COMMIT}" >> /workspace/repos.txt; \

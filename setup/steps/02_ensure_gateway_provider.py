@@ -395,8 +395,7 @@ def install_gateway_control_plane(
                    "telemetries.telemetry.istio.io", \
                    "virtualservices.networking.istio.io", \
                    "wasmplugins.extensions.istio.io", \
-                   "workloadgroups.networking.istio.io", \
-                   "telemetry.istio.io/v1" ] :
+                   "workloadgroups.networking.istio.io" ] :
                 if i not in crds :
                     should_install_gateway_control_plane = True
 

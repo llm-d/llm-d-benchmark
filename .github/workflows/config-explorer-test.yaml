@@ -26,6 +26,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r config_explorer/requirements.txt
+          pip install -e config_explorer/
 
       - name: Test with pytest
         run: |
