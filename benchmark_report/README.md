@@ -310,7 +310,7 @@ metrics: # These are the aggregate results from benchmarking
 
 ## Implementation and Usage
 
-The schema for a benchmarking report is defined through Python classes using [Pydantic](https://docs.pydantic.dev/latest/) in [schema.py](schema.py), where the base class is `BenchmarkReport`. If [schema.py](schema.py) is executed directly, the JSON Schema for the benchmark report will be printed out. Instantiating an instance of `BenchmarkReport` includes various checks, such as ensuring compliance with the schema, proper use of units, and defining all required entities.
+The schema for a benchmarking report is defined through Python classes using [Pydantic](https://docs.pydantic.dev/latest/) in `schema_{version}.py`. Instantiating an instance of a benchmark report class includes various checks, such as ensuring compliance with the schema, proper use of units, and defining all required entities.
 
 ### Requirements
 
