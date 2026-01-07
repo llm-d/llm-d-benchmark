@@ -325,7 +325,7 @@ scipy>=1.16.0
 
 An instance of `BenchmarkReport` may be created directly, for example:
 ```python
-br = schema.BenchmarkReport(**{
+br = BenchmarkReport(**{
     "scenario": {
         "model": {"name": "deepseek-ai/DeepSeek-R1-0528"},
         "load": {"name": schema.WorkloadGenerator.INFERENCE_PERF},
@@ -360,13 +360,10 @@ br = schema.BenchmarkReport(**{
 })
 ```
 
-A `BenchmarkReport` may also be created from a JSON/YAML string with the `schema.create_from_str()` function. A JSON/YAML file may be imported as a `dict` with the `convert.import_yaml()` function, and this `dict` can then be unpacked to create a `BenchmarkReport`.
-```python
-br = BenchmarkReport(**convert.import_yaml('benchmark_report.json'))
-```
+A `BenchmarkReport` may also be loaded from a JSON/YAML file with `load_benchmark_report()`, or as a JSON/YAML string with the `yaml_str_to_benchmark_report()` function.
 
-A JSON or YAML printout of `BenchmarkReport` may be generated the `print_json()` and `print_yaml()` methods, respectively. To save as a JSON/YAML file, use the `export_json()` or `export_yaml()` methods.
+A JSON or YAML string of `BenchmarkReport` may be generated the `get_json_str()` and `get_yaml_str()` methods, respectively. To save as a JSON/YAML file, use the `export_json()` or `export_yaml()` methods.
 
 ### Transforming harness native formats to a benchmark report
 
-The native formats returned by different harnesses may be converted to a benchmark report using [convert.py](convert.py). This file when executed directly as a script will import the native results data of a harness and print to `stdout` a benchmark report, or save a report to file if a second argument is provided. [convert.py](convert.py) can also be used as a library, to import results files as a `BenchmarkReport` object. This is done, for example, in the analysis Jupyter notebook [`analysis.ipynb`](../../analysis/analysis.ipynb).
+The native formats returned by different harnesses may be converted to a benchmark report using functions in [native_to_br.py](native_to_br.py) or the CLI defined in `cli.py`. This CLI may be executed with `python -m benchmark_report.cli ...` at the root of ths repository to import the native results data of a harness and print to `stdout` a benchmark report, or save a report to file if a second argument is provided.
