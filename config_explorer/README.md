@@ -10,6 +10,7 @@ This library provides the tooling for LLM serving such as
   - given model specifications and performance requirements, recommend optimal GPU configurations using BentoML's llm-optimizer roofline algorithm
   - analyze throughput, latency (TTFT, ITL, E2E), and concurrency trade-offs across different GPU types
   - export recommendations in JSON format for integration with other tools
+  - see example API usage [here](./examples/gpu_recommender_example.py)
 - **CLI Interface**:
   - command-line tool for capacity planning and launching the UI
   - JSON output for easy integration with scripts and pipelines
