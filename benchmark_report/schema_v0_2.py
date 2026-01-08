@@ -3,9 +3,9 @@ Benchmark report v0.2
 """
 
 import datetime
-from typing import Any
+from typing import Any, Annotated
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Discriminator
 
 from .base import BenchmarkReport
 from .schema_v0_2_components import *
@@ -159,10 +159,40 @@ class Component(BaseModel):
 
     metadata: ComponentMetadata
     """Component metadata."""
-    standardized: ComponentStandardizedBase | ComponentStandardizedTolerantBase
+    standardized: Annotated[COMPONENTS, Discriminator("kind")]
     """Component configuration details in standardized format."""
     native: ComponentNative
     """Component configuration in native format."""
+
+    @model_validator(mode="before")
+    def inject_kind(cls, data):
+        """Copy metadata.kind to standardized.kind so discriminator works."""
+        # We need a Discriminator to select between different classes defining
+        # the schema of the "standardized" field of a component. What class is
+        # used will depend on the value of a discriminator field within that
+        # that class (we use the field "kind"). It is cleaner in terms of YAML
+        # organization to define the kind of a component in the metadata field,
+        # rather than the standardized field, so we must copy that field into
+        # the standardized field here in order for the correct class to be
+        # selected and validation proceed.
+
+        # First, see if user already populated "kind" in "standardized", and
+        # raise an error if so.
+        if "standardized" in data and "kind" in data["standardized"]:
+            raise ValueError('Do not populate "kind" field of "standardized"')
+
+        # Copy kind from metadata to standardized
+        if "metadata" in data and "standardized" in data:
+            data["standardized"]["kind"] = data["metadata"].get("kind")
+        return data
+
+    @model_validator(mode="after")
+    def strip_kind(self):
+        """Remove the injected discriminator."""
+        if hasattr(self.standardized, "kind"):
+            delattr(self.standardized, "kind")
+        return self
+
 
 ###############################################################################
 # Experimental workload
@@ -724,3 +754,4 @@ class BenchmarkReportV02(BenchmarkReport):
     """Stack configuration and workload details of experiment"""
     results: Results
     """Experiment results."""
+
