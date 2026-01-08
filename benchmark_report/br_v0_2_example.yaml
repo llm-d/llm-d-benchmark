@@ -1,0 +1,488 @@
+# Schema version for this entire benchmark report
+version: '0.2'
+
+run: # These are details on the benchmark run that produced these results
+  # Unique ID, only this benchmark report has this ID
+  uid: 38b1f169ca178b756f7483523b17de61
+  # Experiment ID, common to benchmark reports captured during this experiment
+  eid: d9c5a5ddce6c2f885a9f8e6a6a6db0fb
+  # Cluster ID (could be hash of cluster URL from context)
+  cid: 09825952f60004aa59bb5b2a2eefa6d1
+  time:
+    start: 2025-11-05T18:00:42Z
+    end: 2025-11-05T18:17:03Z
+    duration: PT49.97206788184121S
+  user: namasluk
+
+# System inputs, combination of component configurations and workload
+scenario:
+  stack:
+  - metadata: # Details about this component
+      kind: inference_engine # This describes what this component is
+      schema_version: 0.0.1 # This is the version of this component's schema
+      label: vllm-svc-0 # This is a unique name for this particular component
+      cfg_id: cc73fc6b51a1d3b8128f312d70476d7c # This is a hash of this component's configuration
+      description: "Optional description of this component"
+    standardized: # These are common properties that apply to all instances of this kind of component
+      tool: llm-d
+      tool_version: ghcr.io/llm-d/llm-d-cuda:0.3.1
+      role: prefill # One of prefill, decode, aggregate
+      model:
+        name: Qwen/Qwen3-0.6B
+        precision: FP8
+      accelerator:
+        model: NVIDIA-H100-80GB-HBM3
+        count: 8
+        parallelism:
+          dp: 1
+          ep: 1
+          pp: 1
+          tp: 8
+    native: # These are the exact and specific arguments/variables/configuration details for this component
+      args: # Arguments sent to executable
+        --block-size: 1024
+        --kv-transfer-config: {"kv_connector":"NixlConnector", "kv_role":"kv_both"}
+        --disable-log-requests: null
+        --disable-uvicorn-access-log: null
+        --max-model-len: 1024
+        --tensor-parallel-size: 8
+      envars: # Relevant environment variables
+        UCX_TLS: "rc,sm,cuda_ipc,cuda_copy,tcp"
+        UCX_SOCKADDR_TLS_PRIORITY: "tcp"
+        UCX_NET_DEVICES: mlx5_1:1
+        NCCL_IB_HCA: mlx5_1
+        VLLM_NIXL_SIDE_CHANNEL_PORT: "5557"
+        VLLM_NIXL_SIDE_CHANNEL_HOST: 10.39.39.3
+        VLLM_LOGGING_LEVEL: DEBUG
+        VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
+
+  - metadata: 
+      kind: router 
+      schema_version: 0.0.1
+      label: epp-0
+      cfg_id: 47000e70c655e88198e0dc4e57d41d5f
+      description: "Optional description of this component"
+    standardized:
+      tool: llm-d-inference-scheduler
+      tool_version: ghcr.io/llm-d/llm-d-inference-scheduler:0.3.2
+    native:
+      config: # Configuration used (in this case a manifest of a k8s custom resource)
+        apiVersion: inference.networking.x-k8s.io/v1alpha1
+        kind: EndpointPickerConfig
+        plugins:
+        - type: single-profile-handler
+        - type: decode-filter
+        - parameters:
+            blockSize: 16
+            indexerConfig:
+              kvBlockIndexConfig:
+                enableMetrics: true
+                metricsLoggingInterval: 60000000000
+              tokenProcessorConfig:
+                blockSize: 64
+                hashSeed: '42'
+            lruCapacityPerServer: 31250
+            maxPrefixBlocksToMatch: 256
+            mode: cache_tracking
+          type: prefix-cache-scorer
+        - type: kv-cache-scorer
+        - type: queue-scorer
+        - type: max-score-picker
+        schedulingProfiles:
+        - name: default
+          plugins:
+          - pluginRef: decode-filter
+          - pluginRef: prefix-cache-scorer
+            weight: 2.0
+          - pluginRef: kv-cache-scorer
+            weight: 1.0
+          - pluginRef: queue-scorer
+            weight: 1.0
+          - pluginRef: max-score-picker
+
+  load:
+    metadata:
+      schema_version: 0.0.1
+      cfg_id: a4e18f265cc33786a42b8a3f7ac2edcb
+      description: "Optional description of workload"
+    standardized:
+      tool: inference-perf
+      tool_version: 0.3.0
+      # For workload generators that have stages, we must specify which stage this report's data is from
+      stage: 3
+      input_seq_len:
+        distribution: fixed
+        value: 2148
+      output_seq_len:
+        distribution: gaussian
+        value: 1000
+        std_dev: 100
+      prefix:
+        prefix_len:
+          distribution: fixed
+          value: 1000
+        num_groups: 32
+        num_users_per_group: 10
+        num_prefixes: 8
+      multi_turn:
+        enabled: true
+        max_turns:
+          distribution: fixed
+          value: 20
+      rate_qps: 10
+      concurrency: .inf
+      source: sampled
+    native:
+      config:
+        api:
+          headers: null
+          streaming: true
+          type: completion
+        data:
+          input_distribution: null
+          output_distribution: null
+          path: null
+          shared_prefix:
+            num_groups: 32
+            num_prompts_per_group: 8
+            output_len: 1000
+            question_len: 100
+            system_prompt_len: 2048
+          type: shared_prefix
+        load:
+          interval: 1.0
+          num_workers: 112
+          stages:
+          - duration: 50
+            rate: 2.0
+          - duration: 50
+            rate: 5.0
+          - duration: 50
+            rate: 8.0
+          - duration: 50
+            rate: 10.0
+          - duration: 50
+            rate: 12.0
+          - duration: 50
+            rate: 15.0
+          - duration: 50
+            rate: 20.0
+          sweep: null
+          type: constant
+          worker_max_concurrency: 100
+          worker_max_tcp_connections: 2500
+        metrics: null
+        report:
+          prometheus:
+            per_stage: false
+            summary: true
+          request_lifecycle:
+            per_request: true
+            per_stage: true
+            summary: true
+        server:
+          api_key: null
+          base_url: http://infra-nam-release-inference-gateway.namasluk.svc.cluster.local:80/qwen-qwen3-0-6b
+          ignore_eos: true
+          model_name: Qwen/Qwen3-0.6B
+          type: vllm
+        storage:
+          google_cloud_storage: null
+          local_storage:
+            path: /requests/inference-perf_1759339259-cache_tracking-run_100_1000_llm-d-0p6b-base
+            report_file_prefix: null
+          simple_storage_service: null
+        tokenizer:
+          pretrained_model_name_or_path: Qwen/Qwen3-0.6B
+          token: null
+          trust_remote_code: null
+
+# Add optional time series
+# Add confidence interval
+results:
+  request_performance: # Stack performance as seen by users
+    aggregate: # Statistical summary of results (required)
+      requests:
+        total: 500
+        failures: 0
+        input_length:
+          units: count
+          mean: 2262.448
+          min: 2223.0
+          p0p1: 2223.998
+          p1: 2227.99
+          p10: 2240.0
+          p25: 2252.0
+          p5: 2234.95
+          p50: 2262.0
+          p75: 2270.0
+          p90: 2286.0
+          p95: 2294.0
+          p99: 2322.0
+          p99p9: 2326.503
+          max: 2328.0
+        output_length:
+          units: count
+          mean: 2262.448
+          min: 2223.0
+          p0p1: 2223.998
+          p1: 2227.99
+          p10: 2240.0
+          p25: 2252.0
+          p5: 2234.95
+          p50: 2262.0
+          p75: 2270.0
+          p90: 2286.0
+          p95: 2294.0
+          p99: 2322.0
+          p99p9: 2326.503
+          max: 2328.0
+      throughput:
+        input_token_rate:
+          units: tokens/s
+          mean: 2262.448
+          min: 2223.0
+          p0p1: 2223.998
+          p1: 2227.99
+          p10: 2240.0
+          p25: 2252.0
+          p5: 2234.95
+          p50: 2262.0
+          p75: 2270.0
+          p90: 2286.0
+          p95: 2294.0
+          p99: 2322.0
+          p99p9: 2326.503
+          max: 2328.0
+        output_token_rate:
+          units: tokens/s
+          mean: 2262.448
+          min: 2223.0
+          p0p1: 2223.998
+          p1: 2227.99
+          p10: 2240.0
+          p25: 2252.0
+          p5: 2234.95
+          p50: 2262.0
+          p75: 2270.0
+          p90: 2286.0
+          p95: 2294.0
+          p99: 2322.0
+          p99p9: 2326.503
+          max: 2328.0
+        requests_rate:
+          units: queries/s
+          mean: 2262.448
+          min: 2223.0
+          p0p1: 2223.998
+          p1: 2227.99
+          p10: 2240.0
+          p25: 2252.0
+          p5: 2234.95
+          p50: 2262.0
+          p75: 2270.0
+          p90: 2286.0
+          p95: 2294.0
+          p99: 2322.0
+          p99p9: 2326.503
+          max: 2328.0
+        total_token_rate:
+          units: tokens/s
+          mean: 2262.448
+          min: 2223.0
+          p0p1: 2223.998
+          p1: 2227.99
+          p10: 2240.0
+          p25: 2252.0
+          p5: 2234.95
+          p50: 2262.0
+          p75: 2270.0
+          p90: 2286.0
+          p95: 2294.0
+          p99: 2322.0
+          p99p9: 2326.503
+          max: 2328.0
+      latency:
+        time_to_first_token:
+          units: s
+          mean: 0.0368578234128654
+          min: 0.027276142966002226
+          p0p1: 0.027322400792501866
+          p1: 0.02785794825293124
+          p10: 0.031235878029838203
+          p25: 0.033357357955537736
+          p5: 0.030159439309500158
+          p50: 0.03622930939309299
+          p75: 0.03993474820163101
+          p90: 0.04262634576298297
+          p95: 0.045246614259667695
+          p99: 0.05029489721637218
+          p99p9: 0.057014757215045425
+          max: 0.0574655020609498
+        inter_token_latency:
+          units: s/token
+          mean: 0.0368578234128654
+        time_per_output_token:
+          units: s/token
+          mean: 0.0368578234128654
+        normalized_time_per_output_token:
+          units: s/token
+          mean: 0.0368578234128654
+        request_latency:
+          units: s
+          mean: 0.0368578234128654
+
+    time_series: # Optional time series data
+      throughput:
+        input_token_rate:
+          units: tokens/s
+          series:
+            - ts: 2025-11-05T18:01:00Z
+              value: 204.0394
+              p90: 0.04262634576298297
+              p95: 0.045246614259667695
+            - ts: 2025-11-05T18:02:00Z
+              value: 204.0394
+              p90: 0.04262634576298297
+              p95: 0.045246614259667695
+        output_token_rate:
+          units: tokens/s
+          series:
+            - ts: 2025-11-05T18:01:00Z
+              value: 204.0394
+              p90: 0.04262634576298297
+              p95: 0.045246614259667695
+            - ts: 2025-11-05T18:02:00Z
+              value: 204.0394
+              p90: 0.04262634576298297
+              p95: 0.045246614259667695
+        total_token_rate:
+          units: tokens/s
+          series:
+            - ts: 2025-11-05T18:01:00Z
+              value: 204.0394
+              p90: 0.04262634576298297
+              p95: 0.045246614259667695
+            - ts: 2025-11-05T18:02:00Z
+              value: 204.0394
+              p90: 0.04262634576298297
+              p95: 0.045246614259667695
+        request_rate:
+          units: queries/s
+          series:
+            - ts: 2025-11-05T18:01:00Z
+              value: 204.0394
+              p90: 0.04262634576298297
+              p95: 0.045246614259667695
+            - ts: 2025-11-05T18:02:00Z
+              value: 204.0394
+              p90: 0.04262634576298297
+              p95: 0.045246614259667695
+      latency:
+        time_to_first_token:
+          units: s
+          series:
+          - ts: 2025-11-05T18:01:00Z
+            mean: 0.0368578234128654
+            p90: 0.04262634576298297
+            p95: 0.045246614259667695
+          - ts: 2025-11-05T18:02:00Z
+            mean: 0.0368578234128654
+            p90: 0.04262634576298297
+            p95: 0.045246614259667695
+
+  observability:
+    scrape_info:
+      interval_seconds: 15
+      method: pull
+      source: prom-sd
+      errors: []
+
+    metrics:
+      - name: series.tokens_total.vllm0                # 1) unique per file
+        metric_ref:                                    # 3) explicit type; registry ref is optional and can be omitted everywhere
+          id: tokens_total
+          version: 1 
+        component_id: vllm-svc-0
+        type: counter
+        unit: token                                    # 4) unit separate
+        description: "Cumulative count of prompt and generated tokens processed."
+        labels:                                        # 2) series-level labels
+          model_id: Qwen/Qwen3-7B
+          precision: FP8
+        samples:
+          - ts: 2025-11-05T18:05:00Z
+            value: 12400321
+
+      - name: series.gpu_util.vllm0.gpu0
+        metric_ref:
+          id: gpu_utilization
+          version: 1
+        component_id: vllm-svc-0
+        type: gauge
+        unit: percent
+        description: "Instantaneous streaming multiprocessor utilization reported by DCGM."
+        labels: { gpu: "0", uuid: "GPU-1111" }
+        samples:
+          - ts: 2025-11-05T18:05:00Z
+            value: 73.2 
+          - ts: 2025-11-05T18:05:15Z
+            value: 78.9
+
+      - name: series.ttft.gateway0
+        metric_ref:
+          id: ttft_seconds
+          version: 1
+        component_id: gateway-0
+        type: histogram
+        unit: second
+        description: "Distribution of time to first generated token observed at the gateway."
+        labels:
+          route: /v1/chat/completions
+          scheduler: prefix-cache
+        histogram:
+          ts: 2025-11-05T18:10:00Z
+          buckets:
+            - { le: 0.05,  count: 1305 }
+            - { le: 0.10,  count: 9120 }
+            - { le: 0.20,  count: 20155 }
+            - { le: 0.50,  count: 28990 }
+            - { le: 1.00,  count: 30112 }
+            - { le: "+Inf", count: 30120 }
+          sum: 12145.7
+          count: 30120
+
+      - name: series.latency.gateway0
+        metric_ref: 
+          id: request_latency_seconds
+          version: 1
+        component_id: "gateway-0"
+        type: summary
+        unit: second
+        description: "End-to-end request latency seen by the gateway."
+        labels:
+          route: /v1/chat/completions
+          scheduler: prefix-cache
+        summary:
+          ts: 2025-11-05T18:10:00Z
+          quantiles:
+            - { q: 0.5, value: 0.21 }
+            - { q: 0.9, value: 0.48 }
+            - { q: 0.99, value: 0.93 }
+          sum: 15822.3
+          count: 40211
+
+      # Optional inline metric (no registry), still follows the same shape.
+      - name: series.vram.vllm0.gpu0
+        component_id: vllm-svc-0
+        type: gauge
+        unit: byte
+        description: "Allocated device memory as reported by the runtime."
+        labels:
+          gpu: "0"
+        samples:
+          - ts: 2025-11-05T18:05:00Z
+            value: 6.72e10
+
+  profiling:
+    anything_goes: 5

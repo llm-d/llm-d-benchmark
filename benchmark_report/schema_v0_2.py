@@ -101,9 +101,9 @@ class Units(StrEnum):
     MS_PER_TOKEN = 'ms/token'
     S_PER_TOKEN = 's/token'
     # Generation throughput
-    TOKEN_PER_S = 'token/s'
+    TOKEN_PER_S = 'tokens/s'
     # Request throughput
-    QUERY_PER_S = 'qps'
+    QUERY_PER_S = 'queries/s'
     # Power
     WATTS = "Watts"
 
@@ -161,7 +161,7 @@ class Component(BaseModel):
     """Component metadata."""
     standardized: ComponentStandardizedBase | ComponentStandardizedTolerantBase
     """Component configuration details in standardized format."""
-    Native: ComponentNative
+    native: ComponentNative
     """Component configuration in native format."""
 
 ###############################################################################
@@ -181,8 +181,8 @@ class LoadMetadata(BaseModel):
     """Descriptin of workload."""
 
 
-class SLDistribution(StrEnum):
-    """Sequence length distribution type.
+class Distribution(StrEnum):
+    """Distribution type.
 
     Attributes
         FIXED: str
@@ -204,21 +204,20 @@ class SLDistribution(StrEnum):
     OTHER = auto()
 
 
-
 class SequenceLength(BaseModel):
     """Sequence length."""
 
     model_config = MODEL_CONFIG.copy()
 
-    distribution: SLDistribution
+    distribution: Distribution
     """Sequence length distribution type."""
-    value: int | float
+    value: int | float = Field(..., ge=1)
     """Primary value."""
-    std_dev: float | None = None
+    std_dev: float | None = Field(None, ge=0)
     """Standard deviation (if Gaussian)."""
-    min: int | None = None
+    min: int | None = Field(None, ge=0)
     """Minimum value."""
-    max: int | None = None
+    max: int | None = Field(None, ge=1)
     """Maximum value."""
 
 
@@ -229,11 +228,11 @@ class LoadPrefix(BaseModel):
 
     prefix_len: SequenceLength
     """Length of common prefix."""
-    num_groups: int
+    num_groups: int = Field(..., ge=1)
     """Number of groups of "users" that share common prefixes."""
-    num_users_per_group: int
+    num_users_per_group: int = Field(..., ge=1)
     """Number of users per group."""
-    num_prefixes: int
+    num_prefixes: int = Field(..., ge=1)
     """Number of common prefixes within a group."""
 
 
@@ -248,6 +247,20 @@ class MultiTurn(BaseModel):
     """Maximum number of requests per session."""
 
 
+class LoadSource(StrEnum):
+    """How input tokens are generated.
+
+    Attributes
+        RANDOM: str
+            Tokens are randomly generated from vocabulary.
+        SAMPLED: str
+            Tokens are sampled from some data.
+    """
+
+    RANDOM = auto()
+    SAMPLED = auto()
+
+
 class LoadStandardized(BaseModel):
     """Workload generator configuration details in standardized format."""
 
@@ -257,7 +270,9 @@ class LoadStandardized(BaseModel):
     """Particular tool used for this component."""
     tool_version: str
     """Version of tool."""
-    stage: int = 1
+    source: LoadSource
+    """How input tokens are generated."""
+    stage: int = Field(0, ge=0)
     """Workload stage number (if multi-stage)."""
     input_seq_len: SequenceLength
     """Input sequence length."""
@@ -267,10 +282,18 @@ class LoadStandardized(BaseModel):
     """Input sequence prefix details."""
     multi_turn: MultiTurn | None = None
     """Multi-turn request configuration."""
-    rate_qps: float | None = None
+    rate_qps: float | None = Field(None, gt=0)
     """Request rate, in queries per second."""
-    concurrency: int | None = None
+    concurrency: int | float | None = Field(None, ge=1)
     """Request concurrency."""
+
+    @model_validator(mode='after')
+    def check_concurrency(self):
+        """Concurrency must be an integer, unless value is infinite."""
+        if isinstance(self.concurrency, float):
+            if self.concurrency != float('inf'):
+                raise ValueError('concurrency must be integer or .inf')
+        return self
 
 
 class LoadNative(BaseModel):
@@ -298,7 +321,7 @@ class Load(BaseModel):
     """Workload metadata."""
     standardized: LoadStandardized
     """Workload generator configuration details in standardized format."""
-    Native: LoadNative
+    native: LoadNative
     """Workload generator configuration in native format."""
 
 ###############################################################################
@@ -315,7 +338,7 @@ class Statistics(BaseModel):
     units: Units
     mean: float
     mode: float | int | None = None
-    stddev: float | None = None
+    stddev: float | None = Field(None, ge=0)
     min: float | int | None = None
     p0p1: float | int | None = None
     p1: float | int | None = None
@@ -336,11 +359,11 @@ class AggregateRequests(BaseModel):
 
     model_config = MODEL_CONFIG.copy()
 
-    total: int
+    total: int = Field(..., ge=0)
     """Total number of requests sent."""
-    failures: int | None = None
+    failures: int | None = Field(None, ge=0)
     """Number of requests which responded with an error."""
-    incomplete: int | None = None
+    incomplete: int | None = Field(None, ge=0)
     """Number of requests which were not completed."""
     input_length: Statistics | None = None
     """Input sequence length."""
@@ -474,13 +497,13 @@ class TimeSeriesPoint(BaseModel):
 
     model_config = MODEL_CONFIG.copy()
 
-    ts: str
+    ts: datetime.datetime
     """ISO‑8601 timestamp."""
     value: str | float | int | bool | None = None
     """Value for datapoint."""
     mean: float | None = None
     mode: float | int | None = None
-    stddev: float | None = None
+    stddev: float | None = Field(None, ge=0)
     min: float | int | None = None
     p0p1: float | int | None = None
     p1: float | int | None = None
@@ -561,7 +584,7 @@ class TimeSeriesThroughput(BaseModel):
     """Output token rate."""
     total_token_rate: TimeSeriesData | None = None
     """Total token rate (input + output)."""
-    requests_rate: TimeSeriesData | None = None
+    request_rate: TimeSeriesData | None = None
     """Request (query) processing rate."""
 
     @model_validator(mode='after')
@@ -578,9 +601,9 @@ class TimeSeriesThroughput(BaseModel):
             raise ValueError(
                 f'Invalid units "{self.total_token_rate.units}", must be'
                 f' one of: {" ".join(UNITS_GEN_THROUGHPUT)}')
-        if self.requests_rate and self.requests_rate.units not in UNITS_REQUEST_THROUGHPUT:
+        if self.request_rate and self.request_rate.units not in UNITS_REQUEST_THROUGHPUT:
             raise ValueError(
-                f'Invalid units "{self.requests_rate.units}", must be'
+                f'Invalid units "{self.request_rate.units}", must be'
                 f' one of: {" ".join(UNITS_REQUEST_THROUGHPUT)}')
         return self
 
@@ -622,6 +645,7 @@ class Observability(BaseModel):
     """Observability metrics."""
 
     model_config = MODEL_CONFIG.copy()
+    model_config["extra"] = "allow" # TODO keep as permissive until schema defined
 
 ###############################################################################
 # Benchmark Report top-level classes
