@@ -2,7 +2,7 @@
 
 A benchmarking report is a standard data format describing the cluster configuration, workload, and results of a benchmark run. The report acts as a common API for different benchmarking experiments. Each supported harness in llm-d-benchmark creates a benchmark report upon completion of a run, in addition to saving results in its native format.
 
-## Format Description 
+## Format Description
 
 A benchmark report describes the inference service configuration, workload, and aggregate results. Individual traces from single inference executions are not captured, rather statistics from multiple traces of identical scenarios are combined to create a report.
 
