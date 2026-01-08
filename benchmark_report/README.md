@@ -1,8 +1,8 @@
-# Benchmarking Report
+# Benchmarking Report v0.1
 
 A benchmarking report is a standard data format describing the cluster configuration, workload, and results of a benchmark run. The report acts as a common API for different benchmarking experiments. Each supported harness in llm-d-benchmark creates a benchmark report upon completion of a run, in addition to saving results in its native format.
 
-## Format Description
+## Format Description 
 
 A benchmark report describes the inference service configuration, workload, and aggregate results. Individual traces from single inference executions are not captured, rather statistics from multiple traces of identical scenarios are combined to create a report.
 
@@ -366,4 +366,4 @@ A JSON or YAML string of `BenchmarkReport` may be generated the `get_json_str()`
 
 ### Transforming harness native formats to a benchmark report
 
-The native formats returned by different harnesses may be converted to a benchmark report using functions in [native_to_br.py](native_to_br.py) or the CLI defined in `cli.py`. This CLI may be executed with `python -m benchmark_report.cli ...` at the root of ths repository to import the native results data of a harness and print to `stdout` a benchmark report, or save a report to file if a second argument is provided.
+The native formats returned by different harnesses may be converted to a benchmark report using functions in [native_to_br.py](native_to_br.py), or using the CLI defined in `cli.py`. This CLI may be executed with `python -m benchmark_report.cli ...` at the root of ths repository, and can import native results data of a harness and print to `stdout` a benchmark report, or save a report to file if a second argument is provided.

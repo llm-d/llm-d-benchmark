@@ -2,6 +2,7 @@
 Benchmark report v0.2
 """
 
+import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -631,9 +632,9 @@ class RunTime(BaseModel):
 
     model_config = MODEL_CONFIG.copy()
 
-    start: str | None = None
+    start: datetime.datetime | None = None
     """ISO‑8601 timestamp for experiment start."""
-    end: str | None = None
+    end: datetime.datetime | None = None
     """ISO‑8601 timestamp for experiment end."""
     duration: str | None = None
     """ISO‑8601 duration for experiment."""
