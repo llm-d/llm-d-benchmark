@@ -12,7 +12,8 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from benchmark_report_v0_1 import BenchmarkReport, Scenario
+from benchmark_report import BenchmarkReportV01 as BenchmarkReport
+from benchmark_report.schema_v0_1 import Scenario
 
 # Configure logging
 logger = logging.getLogger(__name__)
