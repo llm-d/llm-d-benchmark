@@ -4,12 +4,39 @@ Example usage of the GPURecommender class from config_explorer package.
 
 This script demonstrates how to use the GPURecommender to find optimal GPUs
 for running LLM inference with various configurations and constraints.
+
+Run this example by executing the following command in your terminal:
+$ python config_explorer/examples/gpu_recommender_example.py
+
+================================================================================
+GPU Recommender Examples
+================================================================================
+...
+================================================================================
+Example 4: Different Max GPU Counts per GPU Type
+================================================================================
+💡 Inferred precision from model config: bf16
+💡 Inferred precision from model config: bf16
+💡 Inferred precision from model config: bf16
+
+GPU Configuration:
+  H100: up to 8 GPUs
+  A100: up to 4 GPUs
+  L40: up to 2 GPUs
+
+Successful configurations: 3
+
+Best Performance Recommendations:
+  highest_throughput: H100
+  lowest_ttft: H100
+  lowest_itl: H100
+  lowest_e2e_latency: H100
 """
 
 import json
 import os
 import traceback
-from config_explorer.recommender.recommender import GPURecommender
+from config_explorer.recommender import GPURecommender
 
 
 def example_basic_usage():
@@ -49,17 +76,19 @@ def example_specific_gpus():
     print("Example 2: Analyze Specific GPUs")
     print("=" * 80)
 
+    gpu_list = ["H100", "A100", "L40"]  # Only analyze these GPUs
+
     recommender = GPURecommender(
         model_id="Qwen/Qwen-7B",
         input_len=1024,
         output_len=256,
         max_gpus=1,
-        gpu_list=["H100", "A100", "L40"],  # Only analyze these GPUs
+        gpu_list=gpu_list,  # Only analyze these GPUs
     )
 
     gpu_results, failed_gpus = recommender.get_gpu_results()
 
-    print(f"\nRequested GPUs: H100, A100, L40")
+    print(f"\nRequested GPUs: {", ".join(gpu_list)}")
     print(f"Successful: {len(gpu_results)}")
     print(f"Failed: {len(failed_gpus)}")
 
@@ -124,9 +153,9 @@ def example_multi_gpu_configs():
     gpu_results, failed_gpus = recommender.get_gpu_results()
 
     print("\nGPU Configuration:")
-    print(f"  H100: up to 8 GPUs")
-    print(f"  A100: up to 4 GPUs")
-    print(f"  L40: up to 2 GPUs")
+    print(f"  H100: up to {recommender.max_gpus_per_type['H100']} GPUs")
+    print(f"  A100: up to {recommender.max_gpus_per_type['A100']} GPUs")
+    print(f"  L40: up to {recommender.max_gpus_per_type['L40']} GPUs")
 
     print(f"\nSuccessful configurations: {len(gpu_results)}")
 
@@ -190,44 +219,6 @@ def example_detailed_analysis():
             print(f"    Total Memory: {h100_data['total_memory_gb']} GB")
             print(f"    Model Memory: {h100_data.get('model_memory_gb', 'N/A')} GB")
             print(f"    KV Cache Memory: {h100_data.get('kv_cache_memory_gb', 'N/A')} GB")
-
-
-def example_export_to_json():
-    """Export results to JSON file"""
-    print("\n" + "=" * 80)
-    print("Example 6: Export Results to JSON")
-    print("=" * 80)
-
-    recommender = GPURecommender(
-        model_id="Qwen/Qwen-7B",
-        input_len=512,
-        output_len=128,
-        max_gpus=1,
-        gpu_list=["H100", "A100"],
-    )
-
-    gpu_results, failed_gpus = recommender.get_gpu_results()
-    summary = recommender.get_performance_summary(verbose=True)
-
-    # Prepare export data
-    export_data = {
-        "model": "Qwen/Qwen-7B",
-        "workload": {
-            "input_len": 512,
-            "output_len": 128,
-        },
-        "estimated_best_performance": summary["estimated_best_performance"],
-        "gpu_results": summary["gpu_results"],
-        "failed_gpus": failed_gpus,
-    }
-
-    # Write to file
-    output_file = "gpu_recommendation_results.json"
-    with open(output_file, 'w') as f:
-        json.dump(export_data, f, indent=2)
-
-    print(f"\nResults exported to: {output_file}")
-    print(f"File size: {os.path.getsize(output_file)} bytes")
 
 
 def example_restrictive_constraints():
@@ -355,7 +346,6 @@ def main():
         example_with_constraints()
         example_multi_gpu_configs()
         example_detailed_analysis()
-        example_export_to_json()
         example_restrictive_constraints()
         example_comparison()
 
