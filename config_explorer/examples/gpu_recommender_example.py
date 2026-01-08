@@ -153,7 +153,11 @@ def example_detailed_analysis():
         gpu_list=["H100"],  # Just analyze H100 for detailed output
     )
 
-    gpu_results, failed_gpus = recommender.get_gpu_results()
+    _, failed_gpus = recommender.get_gpu_results()
+    if failed_gpus:
+        print("\nFailed GPUs during detailed analysis:")
+        for gpu_name, error_msg in failed_gpus.items():
+            print(f"  {gpu_name}: {error_msg}")
 
     # Get detailed summary with verbose=True for concurrency analysis
     summary = recommender.get_performance_summary(verbose=True)
@@ -276,7 +280,7 @@ def example_restrictive_constraints():
     if not gpu_results:
         print(f"\n{'='*60}")
         print("⚠️  NO GPUs could meet these constraints!")
-        print("{'='*60}")
+        print(f"{'='*60}")
         print("\nRecommendations:")
         print("  1. Relax the performance constraints")
         print("  2. Increase max_gpus to allow tensor parallelism")
