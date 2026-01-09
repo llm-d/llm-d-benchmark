@@ -27,10 +27,8 @@ def provider(provider: str) -> str:
 
 def main():
     """Deploy GAIE (Gateway API Inference Extension) components."""
-    os.environ["CURRENT_STEP_NAME"] = os.path.splitext(os.path.basename(__file__))[0]
 
-    # Parse environment variables
-    ev = {}
+    ev = {'current_step_name': os.path.splitext(os.path.basename(__file__))[0] }
     environment_variable_to_dict(ev)
 
     if ev["control_environment_type_modelservice_active"] :
@@ -45,8 +43,8 @@ def main():
             )
 
             # Get model attribute
-            model_id_label = model_attribute(model, "modelid_label")
-            os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL"] = model_id_label
+            model_id_label = model_attribute(model, "modelid_label", ev)
+            ev["deploy_current_model_id_label"] = model_id_label
 
             # Format model number with zero padding
             model_num = f"{model_number:02d}"
@@ -125,7 +123,7 @@ def main():
         secretKeyRef:
           name: {ev["vllm_common_hf_token_name"]}
           key: {ev["vllm_common_hf_token_key"]}"""
-                
+
             gaie_provider = provider(ev['vllm_modelservice_gateway_class_name'])
             ip_provider_config = ev["vllm_modelservice_inference_pool_provider_config"]
 
@@ -149,7 +147,7 @@ def main():
       protocol: TCP
   {hf_token_env}
   pluginsConfigFile: "{ev['vllm_modelservice_gaie_plugins_configfile']}"
-{add_config(plugin_config, 4, "pluginsCustomConfig:")}
+{add_config(plugin_config, 4, "pluginsCustomConfig:", ev)}
 inferencePool:
   targetPortNumber: {ev['vllm_common_inference_port']}
   modelServerType: vllm
@@ -162,7 +160,7 @@ inferencePool:
             if ip_provider_config != "":
                 gaie_values_content = f"""{gaie_values_content}
   provider:
-    {add_config(ip_provider_config, 6, f"{ev['vllm_modelservice_gateway_class_name']}:").lstrip()}
+    {add_config(ip_provider_config, 6, f"{ev['vllm_modelservice_gateway_class_name']}:", ev).lstrip()}
 """
             if gaie_provider != "none":
                 gaie_values_content = f"""{gaie_values_content}
@@ -222,10 +220,6 @@ provider:
                     f"ERROR: Failed to get a snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\" with \"{kubectl_cmd}\" (exit code: {ecode})"
                 )
                 exit(ecode)
-
-            # Clean up environment variable
-            if "LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL" in os.environ:
-                del os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL"]
 
             model_number += 1
 

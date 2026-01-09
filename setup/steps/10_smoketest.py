@@ -112,9 +112,9 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     """
     model_list = ev.get("deploy_model_list", "").replace(",", " ").split()
     for model in model_list:
-        current_model = model_attribute(model, "model")
-        current_model_ID = model_attribute(model, "modelid")
-        current_model_ID_label = model_attribute(model, "modelid_label")
+        current_model = model_attribute(model, "model", ev)
+        current_model_ID = model_attribute(model, "modelid", ev)
+        current_model_ID_label = model_attribute(model, "modelid_label", ev)
 
     if dry_run:
         pod_ip_list = ["127.0.0.4"]
@@ -203,10 +203,7 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
 def main():
     """Main function following the pattern from other Python steps"""
 
-    # Set current step name for logging/tracking
-    os.environ["LLMDBENCH_CURRENT_STEP"] = os.path.splitext(os.path.basename(__file__))[0]
-
-    ev = {}
+    ev = {'current_step_name': os.path.splitext(os.path.basename(__file__))[0] }
     environment_variable_to_dict(ev)
 
     if ev["control_dry_run"]:

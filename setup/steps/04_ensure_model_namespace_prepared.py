@@ -31,9 +31,7 @@ from functions import (
 
 def main():
 
-    os.environ["LLMDBENCH_CURRENT_STEP"] = os.path.splitext(os.path.basename(__file__))[0]
-
-    ev = {}
+    ev = {'current_step_name': os.path.splitext(os.path.basename(__file__))[0] }
     environment_variable_to_dict(ev)
 
     env_cmd = f'source "{ev["control_dir"]}/env.sh"'
@@ -80,13 +78,13 @@ data:
             ev["vllm_modelservice_uri_protocol"] == "pvc"
             or ev["control_environment_type_standalone_active"]
         ):
-            download_model = model_attribute(model=model_name, attribute="model")
+            download_model = model_attribute(model=model_name, attribute="model", ev=ev)
             model_artifact_uri = (
                 f'pvc://{ev["vllm_common_pvc_name"]}/models/{download_model}'
             )
-            protocol, pvc_and_model_path = model_artifact_uri.split(
+            _, pvc_and_model_path = model_artifact_uri.split(
                 "://"
-            )  # protocol var unused but exists in prev script
+            )
             pvc_name, model_path = pvc_and_model_path.split(
                 "/", 1
             )  # split from first occurence
@@ -131,6 +129,7 @@ data:
                         namespace=ev["vllm_common_namespace"],
                         timeout=ev["vllm_common_pvc_download_timeout"],
                         dry_run=ev["control_dry_run"],
+                        ev=ev
                     )
                 )
                 time.sleep(10)

@@ -19,7 +19,6 @@ from functions import (
     wait_for_job,
     validate_and_create_pvc,
     launch_download_job,
-    model_attribute,
     kube_connect,
     llmdbench_execute_cmd,
     environment_variable_to_dict,
@@ -31,10 +30,7 @@ from functions import (
 )
 
 def main():
-
-    os.environ["LLMDBENCH_CURRENT_STEP"] = os.path.splitext(os.path.basename(__file__))[0]
-
-    ev = {}
+    ev = {'current_step_name': os.path.splitext(os.path.basename(__file__))[0] }
     environment_variable_to_dict(ev)
 
     env_cmd = f'source "{ev["control_dir"]}/env.sh"'

@@ -36,9 +36,8 @@ from functions import (
 
 def main():
     """Deploy vLLM standalone models with Kubernetes Deployment, Service, and HTTPRoute."""
-    os.environ["CURRENT_STEP_NAME"] = os.path.splitext(os.path.basename(__file__))[0]
 
-    ev={}
+    ev = {'current_step_name': os.path.splitext(os.path.basename(__file__))[0] }
     environment_variable_to_dict(ev)
 
     # Check if standalone environment is active
@@ -54,9 +53,6 @@ def main():
             announce("ERROR: Failed to check affinity")
             return 1
 
-        # Extract environment for debugging
-        extract_environment(ev)
-
         # Create yamls directory
         yamls_dir = Path(ev["control_work_dir"]) / "setup" / "yamls"
         yamls_dir.mkdir(parents=True, exist_ok=True)
@@ -68,11 +64,11 @@ def main():
             modelfn = model.replace("/", "___")
 
             # Set current model environment variable
-            current_model = model_attribute(model, "model")
-            os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL"] = current_model
+            current_model = model_attribute(model, "model", ev)
+            ev["deploy_current_model"] = current_model
 
             # Get model attributes
-            model_label = model_attribute(model, "label")
+            model_label = model_attribute(model, "label", ev)
 
             # Generate Deployment YAML
             deployment_yaml = generate_deployment_yaml(ev, model, model_label)
@@ -116,15 +112,12 @@ def main():
 
         # Second pass: Wait for pods to be ready
         for model in model_list:
-            model_label = model_attribute(model, "label")
+            model_label = model_attribute(model, "label", ev)
 
             ev["deploy_current_model_id_label"] = model_label
 
             # Wait for vllm pods to be created, running and ready
-            control_work_dir = os.environ.get(
-                "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
-            )
-            api, client = kube_connect(f"{control_work_dir}/environment/context.ctx")
+            api, client = kube_connect(f"{ev['control_work_dir']}/environment/context.ctx")
             api_client = client.CoreV1Api()
             result = wait_for_pods_created_running_ready(api_client, ev, ev["vllm_common_replicas"], "both")
             if result != 0:
@@ -179,7 +172,7 @@ def generate_deployment_yaml(ev, model, model_label):
 
     # Generate command line options
     args = add_command_line_options(ev, ev["vllm_standalone_args"])
-    launcher_args = add_command_line_options(None, ev["vllm_standalone_launcher_args"])
+    launcher_args = add_command_line_options(ev, ev["vllm_standalone_launcher_args"])
 
     # Generate additional environment variables
     additional_env = add_additional_env_to_yaml(ev, ev["vllm_standalone_envvars_to_yaml"])
@@ -189,10 +182,8 @@ def generate_deployment_yaml(ev, model, model_label):
     # Generate annotations
     annotations = add_annotations(ev, "LLMDBENCH_VLLM_COMMON_ANNOTATIONS")
 
-    extra_volume_mounts = add_config(ev['vllm_standalone_extra_volume_mounts'],8)
-    extra_volumes = add_config(ev['vllm_standalone_extra_volumes'],6)
-
-    launcher = os.environ.get("LLMDBENCH_VLLM_STANDALONE_LAUNCHER", "false").strip().lower() == "true"
+    extra_volume_mounts = add_config(ev['vllm_standalone_extra_volume_mounts'],8, "", ev)
+    extra_volumes = add_config(ev['vllm_standalone_extra_volumes'],6, "", ev)
 
     deployment_yaml = f"""apiVersion: apps/v1
 kind: Deployment
@@ -232,15 +223,13 @@ spec:
 {args}
         env:
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL
-          value: "{os.environ.get('LLMDBENCH_DEPLOY_CURRENT_MODEL', '')}"
+          value: "{ev['deploy_current_model']}"
         - name: LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT
-          value: "{ev.get('vllm_common_vllm_load_format', '')}"
+          value: "{ev['vllm_common_vllm_load_format']}"
         - name: LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG
-          value: "{os.environ.get('LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG', '{}')}"
-        - name: HF_HOME
-          value: {ev.get('vllm_standalone_pvc_mountpoint', '')}
+          value: "{ev['vllm_common_model_loader_extra_config']}"
         - name: LLMDBENCH_VLLM_COMMON_AFFINITY
-          value: "{os.environ.get('LLMDBENCH_VLLM_COMMON_AFFINITY', '')}"
+          value: "{ev['vllm_common_affinity']}"
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
@@ -284,7 +273,7 @@ spec:
         {extra_volume_mounts}
 {add_pull_secret(ev)}
 """
-    if launcher:
+    if ev["vllm_standalone_launcher"]:
       deployment_yaml += f"""
       - name: vllm-launcher-{model_label}
         image: {image}
@@ -296,15 +285,13 @@ spec:
 {launcher_args}
         env:
         - name: LLMDBENCH_VLLM_STANDALONE_MODEL
-          value: "{os.environ.get('LLMDBENCH_DEPLOY_CURRENT_MODEL', '')}"
+          value: "{ev['deploy_current_model']}"
         - name: LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT
-          value: "{ev.get('vllm_common_vllm_load_format', '')}"
+          value: "{ev['vllm_common_vllm_load_format']}"
         - name: LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG
-          value: "{os.environ.get('LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG', '{}')}"
-        - name: HF_HOME
-          value: {ev.get('vllm_standalone_pvc_mountpoint', '')}
+          value: "{ev['vllm_common_model_loader_extra_config']}"
         - name: LLMDBENCH_VLLM_COMMON_AFFINITY
-          value: "{os.environ.get('LLMDBENCH_VLLM_COMMON_AFFINITY', '')}"
+          value: "{ev['vllm_common_affinity']}"
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
@@ -368,8 +355,6 @@ spec:
 def generate_service_yaml(ev, model, model_label):
     """Generate Kubernetes Service YAML for vLLM standalone model."""
 
-    launcher = os.environ.get("LLMDBENCH_VLLM_STANDALONE_LAUNCHER", "false").strip().lower() == "true"
-
     service_yaml = f"""apiVersion: v1
 kind: Service
 metadata:
@@ -385,7 +370,7 @@ spec:
     port: 80
     targetPort: {ev['vllm_common_inference_port']}
 """
-    if launcher:
+    if ev["vllm_standalone_launcher"]:
       service_yaml += f"""
   - name: http-launcher
     port: 81

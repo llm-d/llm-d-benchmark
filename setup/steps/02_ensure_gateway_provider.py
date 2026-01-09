@@ -449,7 +449,7 @@ def ensure_gateway_provider(
                 announce("❌ Unable to find a version for model service helm chart!")
                 return 1
             # Update environment variable for use by other scripts
-            os.environ["LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION"] = detected_version
+            ev["vllm_modelservice_chart_version"] = detected_version
 
         # Check gateway infrastructure setup
         announce(f'🔍 Ensuring gateway infrastructure (provider {ev["vllm_modelservice_gateway_class_name"]}) is setup...')
@@ -499,10 +499,7 @@ def ensure_gateway_provider(
 def main():
     """Main function following the pattern from other Python steps"""
 
-    # Set current step name for logging/tracking
-    os.environ["LLMDBENCH_CURRENT_STEP"] = os.path.splitext(os.path.basename(__file__))[0]
-
-    ev = {}
+    ev = {'current_step_name': os.path.splitext(os.path.basename(__file__))[0] }
     environment_variable_to_dict(ev)
 
     if ev["control_dry_run"]:

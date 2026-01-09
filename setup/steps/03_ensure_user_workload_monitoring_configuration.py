@@ -138,10 +138,7 @@ def ensure_user_workload_monitoring(
 def main():
     """Main function following the pattern from other Python steps"""
 
-    # Set current step name for logging/tracking
-    os.environ["LLMDBENCH_CURRENT_STEP"] = os.path.splitext(os.path.basename(__file__))[0]
-
-    ev = {}
+    ev = {'current_step_name': os.path.splitext(os.path.basename(__file__))[0] }
     environment_variable_to_dict(ev)
 
     env_cmd=f'source "{ev["control_dir"]}/env.sh"'
