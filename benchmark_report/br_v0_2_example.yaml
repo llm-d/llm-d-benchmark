@@ -8,6 +8,8 @@ run: # These are details on the benchmark run that produced these results
   eid: d9c5a5ddce6c2f885a9f8e6a6a6db0fb
   # Cluster ID (could be hash of cluster URL from context)
   cid: 09825952f60004aa59bb5b2a2eefa6d1
+  # Pod ID, unique to a workload generating and/or data collecting pod
+  pid: 052d5f654ea08edf5caa2c0293fa7fb3
   time:
     start: 2025-11-05T18:00:42Z
     end: 2025-11-05T18:17:03Z

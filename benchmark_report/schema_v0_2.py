@@ -621,6 +621,8 @@ class Run(BaseModel):
     """Experiment ID, common across benchmark reports from a particular experiment."""
     cid: str | None = None
     """Cluster ID, unique to a particular cluster."""
+    pid: str | None = None
+    """Pod ID, unique to a workload generating and/or data collecting pod."""
     time: RunTime | None = None
     """Time details of experiment."""
     user: str | None = None
