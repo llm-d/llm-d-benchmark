@@ -26,9 +26,6 @@ class GPURecommender:
         max_ttft: Optional[float] = None,
         max_itl: Optional[float] = None,
         max_latency: Optional[float] = None,
-        
-        # Authentication
-        hf_token: Optional[str] = None,
     ):
         """
         Initialize GPU Recommender.
@@ -45,12 +42,11 @@ class GPURecommender:
             max_ttft: Maximum time to first token constraint (ms)
             max_itl: Maximum inter-token latency constraint (ms)
             max_latency: Maximum end-to-end latency constraint (s)
-            hf_token: HuggingFace token for accessing gated models. If None, uses HF_TOKEN environment variable.
         """
 
-        # Read HF Token from parameter or environment variable
-        if hf_token is None:
-            hf_token = os.getenv("HF_TOKEN", None)
+        # Read HF Token from environment variable
+        hf_token = os.getenv("HF_TOKEN", None)
+
         self.input_len = input_len
         self.output_len = output_len
         self.model_id = model_id

@@ -80,13 +80,6 @@ model_id = st.sidebar.text_input(
     help="Enter the HuggingFace model ID"
 )
 
-hf_token = st.sidebar.text_input(
-    "HuggingFace Token (for gated models)",
-    type="password",
-    value="",
-    help="Enter your HuggingFace token for accessing gated models (e.g., Llama, Gemma). Leave empty for public models."
-)
-
 # Workload parameters
 st.sidebar.subheader("Workload Parameters")
 input_len = st.sidebar.number_input(
@@ -207,8 +200,7 @@ if run_analysis:
                 gpu_list=selected_gpus if selected_gpus else None,
                 max_ttft=max_ttft,
                 max_itl=max_itl,
-                max_latency=max_latency,
-                hf_token=hf_token if hf_token else None
+                max_latency=max_latency
             )
 
             # Run recommendation
@@ -242,7 +234,20 @@ if run_analysis:
 
             # Check for gated model errors
             if "gated" in error_str or "401" in error_str or "403" in error_str or "unauthorized" in error_str:
-                st.error("🔒 **This model is gated and requires authentication. Please enter your Hugging Face token in the sidebar and try again.**")
+                st.error("🔒 **This model is gated and requires authentication**")
+                st.info("""
+                **To access gated models:**
+
+                1. **Request access** to the model on [HuggingFace](https://huggingface.co/)
+                2. **Generate a token** from your [HuggingFace settings page](https://huggingface.co/settings/tokens)
+                3. **Set the environment variable** before running the application:
+                   ```bash
+                   export HF_TOKEN=your_token_here
+                   ```
+                4. **Restart** the Streamlit application
+
+                **Popular gated models:** Llama 3, Gemma, Mistral, etc.
+                """)
                 with st.expander("🔍 View detailed error"):
                     st.exception(e)
             else:
