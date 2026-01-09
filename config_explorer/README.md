@@ -33,7 +33,7 @@ Core functionality is currently a Python module within `llm-d-benchmark`. In the
     ```bash
     git clone https://github.com/llm-d/llm-d-benchmark.git
     cd llm-d-benchmark
-    python install -e ./config_explorer
+    pip install -e ./config_explorer
     ```
 
 # Usage
