@@ -7,30 +7,6 @@ for running LLM inference with various configurations and constraints.
 
 Run this example by executing the following command in your terminal:
 $ python config_explorer/examples/gpu_recommender_example.py
-
-================================================================================
-GPU Recommender Examples
-================================================================================
-...
-================================================================================
-Example 4: Different Max GPU Counts per GPU Type
-================================================================================
-💡 Inferred precision from model config: bf16
-💡 Inferred precision from model config: bf16
-💡 Inferred precision from model config: bf16
-
-GPU Configuration:
-  H100: up to 8 GPUs
-  A100: up to 4 GPUs
-  L40: up to 2 GPUs
-
-Successful configurations: 3
-
-Best Performance Recommendations:
-  highest_throughput: H100
-  lowest_ttft: H100
-  lowest_itl: H100
-  lowest_e2e_latency: H100
 """
 
 import json
@@ -224,7 +200,7 @@ def example_detailed_analysis():
 def example_restrictive_constraints():
     """Handle failed results due to overly restrictive constraints"""
     print("\n" + "=" * 80)
-    print("Example 7: Handling Failed Results with Restrictive Constraints")
+    print("Example 6: Handling Failed Results with Restrictive Constraints")
     print("=" * 80)
 
     # Use extremely restrictive constraints that no GPU can meet
@@ -290,7 +266,7 @@ def example_restrictive_constraints():
 def example_comparison():
     """Compare performance across multiple models"""
     print("\n" + "=" * 80)
-    print("Example 8: Compare Multiple Models")
+    print("Example 7: Compare Multiple Models")
     print("=" * 80)
 
     models = ["Qwen/Qwen-7B", "Qwen/Qwen-14B"]
