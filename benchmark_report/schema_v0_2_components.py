@@ -5,7 +5,7 @@ Standardized component classes for v0.2 benchmark reports.
 from enum import StrEnum, auto
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 # Default model_config to apply to Pydantic classes
 MODEL_CONFIG = ConfigDict(
