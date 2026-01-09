@@ -49,7 +49,8 @@ config-explorer plan --model Qwen/Qwen3-32B --gpu-memory 80 --max-model-len 1600
 # Run GPU recommendation and performance estimation (BentoML's roofline model)
 config-explorer estimate --model Qwen/Qwen3-32B --input-len 512 --output-len 128 --max-gpus 8
 
-# Start the Streamlit web app (must install requirements-streamlit.txt, see below)
+# Start the Streamlit web app
+pip install -r config_explorer/requirements-streamlit.txt # one-time installation
 config-explorer start
 
 # Get help
@@ -60,13 +61,9 @@ config-explorer --help
 
 A Streamlit frontend is provided to showcase the capabilities of the Configuration Explorer in a more intuitive way. Before using this frontend additional requirements must be installed.
 
+After installing Streamlit requirements (`pip install -r config_explorer/requirements-streamlit.txt`) the web app may then be started with
 ```bash
-pip install -r config_explorer/requirements-streamlit.txt
-```
-
-The web app may then be started
-```bash
-streamlit run config_explorer/Capacity_Planner.py
+config-explorer start
 ```
 
 ### Pages
@@ -74,8 +71,8 @@ streamlit run config_explorer/Capacity_Planner.py
 The Streamlit frontend includes the following pages:
 
 1. **Capacity Planner** - Analyze GPU memory requirements and capacity planning for LLM models
-2. **Sweep Visualizer** - Visualize benchmark results and configuration sweeps
-3. **GPU Recommender** - Get optimal GPU recommendations based on model and workload requirements
+2. **GPU Recommender** - Get optimal GPU recommendations based on model and workload requirements
+3. **Sweep Visualizer** - Visualize benchmark results and configuration sweeps
 
 ### Using the Sweep Visualizer
 
