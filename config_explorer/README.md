@@ -95,7 +95,7 @@ The GPU Recommender page helps you find the optimal GPU for running LLM inferenc
 3. **Define Constraints (Optional)**:
    - Maximum Time to First Token (TTFT) in milliseconds
    - Maximum Inter-Token Latency (ITL) in milliseconds
-   - Maximum End-to-End Latency in milliseconds
+   - Maximum End-to-End Latency in seconds
 4. **Run Analysis**: Click the "Run Analysis" button to evaluate all available GPUs
 5. **Review Results**:
    - Compare GPUs through interactive visualizations
