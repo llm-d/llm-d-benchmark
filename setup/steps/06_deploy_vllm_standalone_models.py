@@ -172,7 +172,12 @@ def generate_deployment_yaml(ev, model, model_label):
 
     # Generate command line options
     args = add_command_line_options(ev, ev["vllm_standalone_args"])
-    launcher_args = add_command_line_options(ev, ev["vllm_standalone_launcher_args"])
+
+    # for the launcher remove sleep mode on ev so that it
+    # doesn't get added to the uvicorn arguments
+    launcher_ev = ev.copy()
+    _ = launcher_ev.pop("vllm_common_enable_sleep_mode", None)
+    launcher_args = add_command_line_options(launcher_ev, launcher_ev["vllm_standalone_launcher_args"])
 
     # Generate additional environment variables
     additional_env = add_additional_env_to_yaml(ev, ev["vllm_standalone_envvars_to_yaml"])

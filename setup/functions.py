@@ -1254,8 +1254,7 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
 
             processed_args = clear_string(processed_args)
 
-            # do not add this argument if ev is not passed
-            if ev is not None and ev["vllm_common_enable_sleep_mode"] :
+            if "vllm_common_enable_sleep_mode" in ev and ev["vllm_common_enable_sleep_mode"] :
                 processed_args = processed_args.split('\n')
 
                 processed_args[-1] = f"{processed_args[-1]} \\\n            --enable-sleep-mode"
