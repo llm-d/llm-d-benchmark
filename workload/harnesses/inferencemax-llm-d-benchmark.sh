@@ -7,9 +7,15 @@ en=$(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/inferencemax/${LLMDBENCH_RUN_EX
 echo "Running warmup with 3 prompts"
 python ${en} --$(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/inferencemax/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} | grep -v "^executable" | yq -r 'to_entries | map("\(.key)=\(.value)") | join(" --")' | sed -e 's^=none ^ ^g' -e 's^=none$^^g' -e 's^num-prompts=[0-9]*^num-prompts=3^') --seed $(date +%s) > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
 echo "Running main benchmark"
+start=$(date +%s.%N)
 python ${en} --$(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/inferencemax/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} | grep -v "^executable" | yq -r 'to_entries | map("\(.key)=\(.value)") | join(" --")' | sed -e 's^=none ^ ^g' -e 's^=none$^^g') --seed $(date +%s) --save-result > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
+stop=$(date +%s.%N)
 find ${LLMDBENCH_RUN_WORKSPACE_DIR}/bench_serving -maxdepth 1 -mindepth 1 -name '*.json' -exec mv -t "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"/ {} +
+
+export LLMDBENCH_HARNESS_START=$(date -d "@${start}" --iso-8601=seconds)
+export LLMDBENCH_HARNESS_STOP=$(date -d "@${stop}" --iso-8601=seconds)
+export LLMDBENCH_HARNESS_DELTA=PT$(echo "$stop - $start" | bc)S
 
 # If benchmark harness returned with an error, exit here
 if [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC -ne 0 ]]; then
