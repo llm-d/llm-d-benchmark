@@ -1,15 +1,20 @@
-#!/usr/bin/env python3
+"""
+Core functions for benchmark reports.
+"""
 
 import json
 import os
 import sys
 from typing import Any
 
+import hashlib
 import yaml
 
 from .base import BenchmarkReport
 from .schema_v0_1 import BenchmarkReportV01
 from .schema_v0_2 import BenchmarkReportV02
+
+import schema_v0_2
 
 
 def check_file(file_path: str) -> None:
@@ -107,16 +112,33 @@ def make_json_schema(version: str = "0.2") -> str:
         raise ValueError(f"Unsupported schema version: {version}")
 
 
-# If this is executed directly, print JSON schema.
-if __name__ == "__main__":
-    import argparse
+# def br_01_to_02_upgrade(
+#     b1: BenchmarkReportV01, eid: str | None = None, pid: str | None = None
+# ) -> BenchmarkReportV02:
+#     """Convert benchmark report v0.1 to v0.2.
 
-    parser = argparse.ArgumentParser(
-        description="Print JSON Schema for Benchmark Report."
-    )
-    parser.add_argument(
-        "version", nargs="?", default="0.2", type=str, help="Benchmark report version"
-    )
+#     Args:
+#         b1 (BenchmarkReportV01): Benchmark report v0.1 to convert to v0.2.
+#         eid (str): Experiment ID.
+#         pid (str): Pod ID.
 
-    args = parser.parse_args()
-    print(make_json_schema(args.version))
+#     Returns:
+#         BenchmarkReportV02: v0.2 benchmark report.
+#     """
+#     # Minimal dict to create a benchmark report v0.2
+#     br_dict = {
+#         "run": {},
+#         "results": {},
+#     }
+#     b2 = BenchmarkReportV02(**br_dict)
+
+#     if eid:
+#         b2.run.eid = eid
+#     if pid:
+#         b2.run.pid = pid
+#     # Create a unique ID
+#     b2.run.uid = hashlib.md5(b1.get_json_str().encode("utf8")).hexdigest()
+
+#     b2.scenario = schema_v0_2.Scenario
+
+#     return b2

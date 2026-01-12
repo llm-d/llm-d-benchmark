@@ -4,6 +4,7 @@ Benchmark Report standardized reporting format.
 
 from .base import BenchmarkReport
 from .core import (
+    br_01_to_02_upgrade,
     import_benchmark_report,
     load_benchmark_report,
     yaml_str_to_benchmark_report,
@@ -16,6 +17,7 @@ __all__ = [
     "BenchmarkReport",
     "BenchmarkReportV01",
     "BenchmarkReportV02",
+    "br_01_to_02_upgrade",
     "import_benchmark_report",
     "load_benchmark_report",
     "yaml_str_to_benchmark_report",

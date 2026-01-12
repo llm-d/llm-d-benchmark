@@ -12,9 +12,9 @@ import yaml
 
 import numpy as np
 
-from .base import BenchmarkReport
+from .base import BenchmarkReport, Units
 from .core import check_file, import_yaml, load_benchmark_report
-from .schema_v0_1 import Units, WorkloadGenerator, HostType
+from .schema_v0_1 import WorkloadGenerator, HostType
 
 
 def import_csv_with_header(file_path: str) -> dict[str, list[Any]]:
