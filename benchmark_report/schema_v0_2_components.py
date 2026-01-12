@@ -9,15 +9,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # Default model_config to apply to Pydantic classes
 MODEL_CONFIG = ConfigDict(
-    extra="forbid", # Do not allow fields that are not part of this schema
-    use_attribute_docstrings=True, # Use docstrings for JSON schema
-    populate_by_name=False, # Must use alias name, not internal field name
-    validate_assignment=True, # Validate field assignment after init
+    extra="forbid",  # Do not allow fields that are not part of this schema
+    use_attribute_docstrings=True,  # Use docstrings for JSON schema
+    populate_by_name=False,  # Must use alias name, not internal field name
+    validate_assignment=True,  # Validate field assignment after init
 )
 
 ###############################################################################
 # Base class for standardized section of a component
 ###############################################################################
+
 
 class ComponentStandardizedBase(BaseModel):
     """Component configuration details in standardized format.
@@ -34,12 +35,14 @@ class ComponentStandardizedBase(BaseModel):
     tool_version: str
     """Version of tool."""
 
+
 ###############################################################################
 # Generic component, kind: generic
 #
 # Use for any components that do not have a formal schema defined for the
 # standardized section.
 ###############################################################################
+
 
 class Generic(BaseModel):
     """Component configuration for a generic component.
@@ -50,7 +53,7 @@ class Generic(BaseModel):
     """
 
     model_config = MODEL_CONFIG.copy()
-    model_config["extra"] = "allow" # Here we allow for extra unvalidated fields
+    model_config["extra"] = "allow"  # Here we allow for extra unvalidated fields
 
     kind: Literal["generic"] = Field(
         exclude=True,
@@ -58,16 +61,18 @@ class Generic(BaseModel):
         description=(
             "Do not populate this field, this is for internal validation and"
             " will be copied over from the metadata section."
-        )
+        ),
     )
     tool: str
     """Particular tool used for this component."""
     tool_version: str
     """Version of tool."""
 
+
 ###############################################################################
 # Inference engine, kind: inference_engine
 ###############################################################################
+
 
 class HostType(StrEnum):
     """
@@ -128,7 +133,7 @@ class InferenceEngine(ComponentStandardizedBase):
         description=(
             "Do not populate this field, this is for internal validation and"
             " will be copied over from the metadata section."
-        )
+        ),
     )
     role: HostType
     """Type of model serving host."""
@@ -140,4 +145,3 @@ class InferenceEngine(ComponentStandardizedBase):
 
 # All supported component classes
 COMPONENTS = Generic | InferenceEngine
-

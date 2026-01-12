@@ -19,10 +19,10 @@ def check_file(file_path: str) -> None:
         file_path (str): File to check.
     """
     if not os.path.exists(file_path):
-        sys.stderr.write(f'File does not exist: {file_path}\n')
+        sys.stderr.write(f"File does not exist: {file_path}\n")
         exit(2)
     if not os.path.isfile(file_path):
-        sys.stderr.write(f'Not a regular file: {file_path}\n')
+        sys.stderr.write(f"Not a regular file: {file_path}\n")
         exit(2)
 
 
@@ -36,7 +36,7 @@ def import_yaml(file_path: str) -> dict[Any, Any]:
         dict: Imported data.
     """
     check_file(file_path)
-    with open(file_path, 'r', encoding='UTF-8') as file:
+    with open(file_path, "r", encoding="UTF-8") as file:
         data = yaml.safe_load(file)
     return data
 
@@ -115,12 +115,8 @@ if __name__ == "__main__":
         description="Print JSON Schema for Benchmark Report."
     )
     parser.add_argument(
-        "version",
-        nargs="?",
-        default="0.2",
-        type=str,
-        help="Benchmark report version"
+        "version", nargs="?", default="0.2", type=str, help="Benchmark report version"
     )
-    
+
     args = parser.parse_args()
     print(make_json_schema(args.version))

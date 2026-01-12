@@ -4,39 +4,37 @@ Benchmark report v0.2
 
 import datetime
 from typing import Any, Annotated
+from enum import StrEnum, auto
 
-from pydantic import BaseModel, ConfigDict, Discriminator, model_validator
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, model_validator
 
 from .base import (
     BenchmarkReport,
     Units,
     UNITS_QUANTITY,
-    UNITS_PORTION,
     UNITS_TIME,
-    UNITS_MEMORY,
-    UNITS_BANDWIDTH,
     UNITS_GEN_LATENCY,
     UNITS_GEN_THROUGHPUT,
     UNITS_REQUEST_THROUGHPUT,
-    UNITS_POWER,
 )
-from .schema_v0_2_components import *
+from .schema_v0_2_components import COMPONENTS
 
 
 # BenchmarkReport schema version
-VERSION = '0.2'
+VERSION = "0.2"
 
 # Default model_config to apply to Pydantic classes
 MODEL_CONFIG = ConfigDict(
-    extra="forbid", # Do not allow fields that are not part of this schema
-    use_attribute_docstrings=True, # Use docstrings for JSON schema
-    populate_by_name=False, # Must use alias name, not internal field name
-    validate_assignment=True, # Validate field assignment after init
+    extra="forbid",  # Do not allow fields that are not part of this schema
+    use_attribute_docstrings=True,  # Use docstrings for JSON schema
+    populate_by_name=False,  # Must use alias name, not internal field name
+    validate_assignment=True,  # Validate field assignment after init
 )
 
 ###############################################################################
 # Stack details
 ###############################################################################
+
 
 class ComponentMetadata(BaseModel):
     """Component metadata."""
@@ -113,6 +111,7 @@ class Component(BaseModel):
 ###############################################################################
 # Experimental workload
 ###############################################################################
+
 
 class LoadMetadata(BaseModel):
     """Workload metadata."""
@@ -233,12 +232,12 @@ class LoadStandardized(BaseModel):
     concurrency: int | float | None = Field(None, ge=1)
     """Request concurrency."""
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_concurrency(self):
         """Concurrency must be an integer, unless value is infinite."""
         if isinstance(self.concurrency, float):
-            if self.concurrency != float('inf'):
-                raise ValueError('concurrency must be integer or .inf')
+            if self.concurrency != float("inf"):
+                raise ValueError("concurrency must be integer or .inf")
         return self
 
 
@@ -254,9 +253,11 @@ class LoadNative(BaseModel):
     config: Any | None = None
     """Configuration file details."""
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Root for load
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 
 class Load(BaseModel):
     """Experimental workload details."""
@@ -270,13 +271,15 @@ class Load(BaseModel):
     native: LoadNative
     """Workload generator configuration in native format."""
 
+
 ###############################################################################
 # Request-level metrics
 ###############################################################################
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Aggregate request performance
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 
 class Statistics(BaseModel):
     """Statistical information about a property."""
@@ -291,7 +294,7 @@ class Statistics(BaseModel):
     p5: float | int | None = None
     p10: float | int | None = None
     p25: float | int | None = None
-    p50: float | int | None = None # This is the same as median
+    p50: float | int | None = None  # This is the same as median
     p75: float | int | None = None
     p90: float | int | None = None
     p95: float | int | None = None
@@ -316,17 +319,17 @@ class AggregateRequests(BaseModel):
     output_length: Statistics | None = None
     """Output sequence length."""
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_units(self):
         if self.input_length and self.input_length.units not in UNITS_QUANTITY:
             raise ValueError(
                 f'Invalid units "{self.input_length.units}", must be one of:'
-                f' {" ".join(UNITS_QUANTITY)}'
+                f" {' '.join(UNITS_QUANTITY)}"
             )
         if self.output_length and self.output_length.units not in UNITS_QUANTITY:
             raise ValueError(
                 f'Invalid units "{self.output_length.units}", must be one of:'
-                f' {" ".join(UNITS_QUANTITY)}'
+                f" {' '.join(UNITS_QUANTITY)}"
             )
         return self
 
@@ -362,28 +365,45 @@ class AggregateLatency(BaseModel):
     request_latency: Statistics | None = None
     """End-to-end request latency."""
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_units(self):
-        if self.time_to_first_token and self.time_to_first_token.units not in UNITS_TIME:
+        if (
+            self.time_to_first_token
+            and self.time_to_first_token.units not in UNITS_TIME
+        ):
             raise ValueError(
                 f'Invalid units "{self.time_to_first_token.units}", must be'
-                f' one of: {" ".join(UNITS_TIME)}')
-        if self.normalized_time_per_output_token and self.normalized_time_per_output_token.units not in UNITS_GEN_LATENCY:
+                f" one of: {' '.join(UNITS_TIME)}"
+            )
+        if (
+            self.normalized_time_per_output_token
+            and self.normalized_time_per_output_token.units not in UNITS_GEN_LATENCY
+        ):
             raise ValueError(
                 f'Invalid units "{self.normalized_time_per_output_token.units}"'
-                f', must be one of: {" ".join(UNITS_GEN_LATENCY)}')
-        if self.time_per_output_token and self.time_per_output_token.units not in UNITS_GEN_LATENCY:
+                f", must be one of: {' '.join(UNITS_GEN_LATENCY)}"
+            )
+        if (
+            self.time_per_output_token
+            and self.time_per_output_token.units not in UNITS_GEN_LATENCY
+        ):
             raise ValueError(
                 f'Invalid units "{self.time_per_output_token.units}", must be'
-                f' one of: {" ".join(UNITS_GEN_LATENCY)}')
-        if self.inter_token_latency and self.inter_token_latency.units not in UNITS_GEN_LATENCY:
+                f" one of: {' '.join(UNITS_GEN_LATENCY)}"
+            )
+        if (
+            self.inter_token_latency
+            and self.inter_token_latency.units not in UNITS_GEN_LATENCY
+        ):
             raise ValueError(
                 f'Invalid units "{self.inter_token_latency.units}", must be'
-                f' one of: {" ".join(UNITS_GEN_LATENCY)}')
+                f" one of: {' '.join(UNITS_GEN_LATENCY)}"
+            )
         if self.request_latency and self.request_latency.units not in UNITS_TIME:
             raise ValueError(
                 f'Invalid units "{self.request_latency.units}", must be'
-                f' one of: {" ".join(UNITS_TIME)}')
+                f" one of: {' '.join(UNITS_TIME)}"
+            )
         return self
 
 
@@ -401,24 +421,40 @@ class AggregateThroughput(BaseModel):
     requests_rate: Statistics | None = None
     """Request (query) processing rate."""
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_units(self):
-        if self.input_token_rate and self.input_token_rate.units not in UNITS_GEN_THROUGHPUT:
+        if (
+            self.input_token_rate
+            and self.input_token_rate.units not in UNITS_GEN_THROUGHPUT
+        ):
             raise ValueError(
                 f'Invalid units "{self.input_token_rate.units}", must be'
-                f' one of: {" ".join(UNITS_GEN_THROUGHPUT)}')
-        if self.output_token_rate and self.output_token_rate.units not in UNITS_GEN_THROUGHPUT:
+                f" one of: {' '.join(UNITS_GEN_THROUGHPUT)}"
+            )
+        if (
+            self.output_token_rate
+            and self.output_token_rate.units not in UNITS_GEN_THROUGHPUT
+        ):
             raise ValueError(
                 f'Invalid units "{self.output_token_rate.units}"'
-                f', must be one of: {" ".join(UNITS_GEN_THROUGHPUT)}')
-        if self.total_token_rate and self.total_token_rate.units not in UNITS_GEN_THROUGHPUT:
+                f", must be one of: {' '.join(UNITS_GEN_THROUGHPUT)}"
+            )
+        if (
+            self.total_token_rate
+            and self.total_token_rate.units not in UNITS_GEN_THROUGHPUT
+        ):
             raise ValueError(
                 f'Invalid units "{self.total_token_rate.units}", must be'
-                f' one of: {" ".join(UNITS_GEN_THROUGHPUT)}')
-        if self.requests_rate and self.requests_rate.units not in UNITS_REQUEST_THROUGHPUT:
+                f" one of: {' '.join(UNITS_GEN_THROUGHPUT)}"
+            )
+        if (
+            self.requests_rate
+            and self.requests_rate.units not in UNITS_REQUEST_THROUGHPUT
+        ):
             raise ValueError(
                 f'Invalid units "{self.requests_rate.units}", must be'
-                f' one of: {" ".join(UNITS_REQUEST_THROUGHPUT)}')
+                f" one of: {' '.join(UNITS_REQUEST_THROUGHPUT)}"
+            )
         return self
 
 
@@ -434,9 +470,11 @@ class AggregateRequestPerformance(BaseModel):
     throughput: AggregateThroughput | None = None
     """Aggregate response throughput performance metrics."""
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Time series request performance
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 
 class TimeSeriesPoint(BaseModel):
     """Time series data point."""
@@ -456,7 +494,7 @@ class TimeSeriesPoint(BaseModel):
     p5: float | int | None = None
     p10: float | int | None = None
     p25: float | int | None = None
-    p50: float | int | None = None # This is the same as median
+    p50: float | int | None = None  # This is the same as median
     p75: float | int | None = None
     p90: float | int | None = None
     p95: float | int | None = None
@@ -492,28 +530,45 @@ class TimeSeriesLatency(BaseModel):
     request_latency: TimeSeriesData | None = None
     """End-to-end request latency."""
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_units(self):
-        if self.time_to_first_token and self.time_to_first_token.units not in UNITS_TIME:
+        if (
+            self.time_to_first_token
+            and self.time_to_first_token.units not in UNITS_TIME
+        ):
             raise ValueError(
                 f'Invalid units "{self.time_to_first_token.units}", must be'
-                f' one of: {" ".join(UNITS_TIME)}')
-        if self.normalized_time_per_output_token and self.normalized_time_per_output_token.units not in UNITS_GEN_LATENCY:
+                f" one of: {' '.join(UNITS_TIME)}"
+            )
+        if (
+            self.normalized_time_per_output_token
+            and self.normalized_time_per_output_token.units not in UNITS_GEN_LATENCY
+        ):
             raise ValueError(
                 f'Invalid units "{self.normalized_time_per_output_token.units}"'
-                f', must be one of: {" ".join(UNITS_GEN_LATENCY)}')
-        if self.time_per_output_token and self.time_per_output_token.units not in UNITS_GEN_LATENCY:
+                f", must be one of: {' '.join(UNITS_GEN_LATENCY)}"
+            )
+        if (
+            self.time_per_output_token
+            and self.time_per_output_token.units not in UNITS_GEN_LATENCY
+        ):
             raise ValueError(
                 f'Invalid units "{self.time_per_output_token.units}", must be'
-                f' one of: {" ".join(UNITS_GEN_LATENCY)}')
-        if self.inter_token_latency and self.inter_token_latency.units not in UNITS_GEN_LATENCY:
+                f" one of: {' '.join(UNITS_GEN_LATENCY)}"
+            )
+        if (
+            self.inter_token_latency
+            and self.inter_token_latency.units not in UNITS_GEN_LATENCY
+        ):
             raise ValueError(
                 f'Invalid units "{self.inter_token_latency.units}", must be'
-                f' one of: {" ".join(UNITS_GEN_LATENCY)}')
+                f" one of: {' '.join(UNITS_GEN_LATENCY)}"
+            )
         if self.request_latency and self.request_latency.units not in UNITS_TIME:
             raise ValueError(
                 f'Invalid units "{self.request_latency.units}", must be'
-                f' one of: {" ".join(UNITS_TIME)}')
+                f" one of: {' '.join(UNITS_TIME)}"
+            )
         return self
 
 
@@ -533,24 +588,40 @@ class TimeSeriesThroughput(BaseModel):
     request_rate: TimeSeriesData | None = None
     """Request (query) processing rate."""
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_units(self):
-        if self.input_token_rate and self.input_token_rate.units not in UNITS_GEN_THROUGHPUT:
+        if (
+            self.input_token_rate
+            and self.input_token_rate.units not in UNITS_GEN_THROUGHPUT
+        ):
             raise ValueError(
                 f'Invalid units "{self.input_token_rate.units}", must be'
-                f' one of: {" ".join(UNITS_GEN_THROUGHPUT)}')
-        if self.output_token_rate and self.output_token_rate.units not in UNITS_GEN_THROUGHPUT:
+                f" one of: {' '.join(UNITS_GEN_THROUGHPUT)}"
+            )
+        if (
+            self.output_token_rate
+            and self.output_token_rate.units not in UNITS_GEN_THROUGHPUT
+        ):
             raise ValueError(
                 f'Invalid units "{self.output_token_rate.units}"'
-                f', must be one of: {" ".join(UNITS_GEN_THROUGHPUT)}')
-        if self.total_token_rate and self.total_token_rate.units not in UNITS_GEN_THROUGHPUT:
+                f", must be one of: {' '.join(UNITS_GEN_THROUGHPUT)}"
+            )
+        if (
+            self.total_token_rate
+            and self.total_token_rate.units not in UNITS_GEN_THROUGHPUT
+        ):
             raise ValueError(
                 f'Invalid units "{self.total_token_rate.units}", must be'
-                f' one of: {" ".join(UNITS_GEN_THROUGHPUT)}')
-        if self.request_rate and self.request_rate.units not in UNITS_REQUEST_THROUGHPUT:
+                f" one of: {' '.join(UNITS_GEN_THROUGHPUT)}"
+            )
+        if (
+            self.request_rate
+            and self.request_rate.units not in UNITS_REQUEST_THROUGHPUT
+        ):
             raise ValueError(
                 f'Invalid units "{self.request_rate.units}", must be'
-                f' one of: {" ".join(UNITS_REQUEST_THROUGHPUT)}')
+                f" one of: {' '.join(UNITS_REQUEST_THROUGHPUT)}"
+            )
         return self
 
 
@@ -564,9 +635,11 @@ class TimeSeriesRequestPerformance(BaseModel):
     throughput: TimeSeriesThroughput | None = None
     """Time series throughput metrics."""
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Root for request performance
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 
 class RequestPerformance(BaseModel):
     """Request-level performance metrics."""
@@ -578,24 +651,28 @@ class RequestPerformance(BaseModel):
     time_series: TimeSeriesRequestPerformance | None = None
     """Time series metrics."""
 
+
 ###############################################################################
 # Observability metrics
 ###############################################################################
 
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Root for observability
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 
 class Observability(BaseModel):
     """Observability metrics."""
 
     model_config = MODEL_CONFIG.copy()
-    model_config["extra"] = "allow" # TODO keep as permissive until schema defined
+    model_config["extra"] = "allow"  # TODO keep as permissive until schema defined
+
 
 ###############################################################################
 # Benchmark Report top-level classes
 ###############################################################################
+
 
 class RunTime(BaseModel):
     """Time details of experiment."""
@@ -654,9 +731,11 @@ class Results(BaseModel):
     profiling: Any | None = None
     """Profiling results."""
 
-#------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------
 # Root class for benchmark report
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 
 class BenchmarkReportV02(BenchmarkReport):
     """Base class for a benchmark report."""
@@ -672,4 +751,3 @@ class BenchmarkReportV02(BenchmarkReport):
     """Stack configuration and workload details of experiment"""
     results: Results
     """Experiment results."""
-

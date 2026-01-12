@@ -13,6 +13,7 @@ import yaml
 # Units
 ###############################################################################
 
+
 class Units(StrEnum):
     """
     Enumeration of units
@@ -69,37 +70,45 @@ class Units(StrEnum):
     MS = auto()
     S = auto()
     # Memory
-    MB = 'MB'
-    GB = 'GB'
-    TB = 'TB'
-    MIB = 'MiB'
-    GIB = 'GiB'
-    TIB = 'TiB'
+    MB = "MB"
+    GB = "GB"
+    TB = "TB"
+    MIB = "MiB"
+    GIB = "GiB"
+    TIB = "TiB"
     # Bandwidth
-    MBIT_PER_S = 'Mbit/s'
-    GBIT_PER_S = 'Gbit/s'
-    TBIT_PER_S = 'Tbit/s'
+    MBIT_PER_S = "Mbit/s"
+    GBIT_PER_S = "Gbit/s"
+    TBIT_PER_S = "Tbit/s"
     GIB_PER_S = "GiB/s"
 
-    MB_PER_S = 'MB/s'
-    GB_PER_S = 'GB/s'
-    TB_PER_S = 'TB/s'
+    MB_PER_S = "MB/s"
+    GB_PER_S = "GB/s"
+    TB_PER_S = "TB/s"
     # Generation latency
-    MS_PER_TOKEN = 'ms/token'
-    S_PER_TOKEN = 's/token'
+    MS_PER_TOKEN = "ms/token"
+    S_PER_TOKEN = "s/token"
     # Generation throughput
-    TOKEN_PER_S = 'tokens/s'
+    TOKEN_PER_S = "tokens/s"
     # Request throughput
-    QUERY_PER_S = 'queries/s'
+    QUERY_PER_S = "queries/s"
     # Power
     WATTS = "Watts"
+
 
 # Lists of compatible units for a particular application
 UNITS_QUANTITY = [Units.COUNT]
 UNITS_PORTION = [Units.PERCENT, Units.FRACTION]
 UNITS_TIME = [Units.MS, Units.S]
 UNITS_MEMORY = [Units.MB, Units.GB, Units.TB, Units.MIB, Units.GIB, Units.TIB]
-UNITS_BANDWIDTH = [Units.MBIT_PER_S, Units.GBIT_PER_S, Units.TBIT_PER_S, Units.MB_PER_S, Units.GB_PER_S, Units.TB_PER_S]
+UNITS_BANDWIDTH = [
+    Units.MBIT_PER_S,
+    Units.GBIT_PER_S,
+    Units.TBIT_PER_S,
+    Units.MB_PER_S,
+    Units.GB_PER_S,
+    Units.TB_PER_S,
+]
 UNITS_GEN_LATENCY = [Units.MS_PER_TOKEN, Units.S_PER_TOKEN]
 UNITS_GEN_THROUGHPUT = [Units.TOKEN_PER_S]
 UNITS_REQUEST_THROUGHPUT = [Units.QUERY_PER_S]
@@ -108,6 +117,7 @@ UNITS_POWER = [Units.WATTS]
 ###############################################################################
 # Base benchmark report class
 ###############################################################################
+
 
 class BenchmarkReport(BaseModel):
     """Common base class for a benchmark report."""
@@ -130,7 +140,7 @@ class BenchmarkReport(BaseModel):
         Args:
             filename: File to save BenchmarkReport to.
         """
-        with open(filename, 'w') as file:
+        with open(filename, "w") as file:
             json.dump(self.dump(), file, indent=2)
 
     def export_yaml(self, filename) -> None:
@@ -139,7 +149,7 @@ class BenchmarkReport(BaseModel):
         Args:
             filename: File to save BenchmarkReport to.
         """
-        with open(filename, 'w') as file:
+        with open(filename, "w") as file:
             yaml.dump(self.dump(), file, indent=2)
 
     def get_json_str(self) -> str:
