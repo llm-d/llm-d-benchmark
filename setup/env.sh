@@ -580,7 +580,6 @@ fi
 # Config to avoid blocked commands for non-admin users
 if [[ $LLMDBENCH_USER_IS_ADMIN -eq 0 ]]; then
   announce "ℹ️  Configuring environment for non-admin users."
-  export LLMDBENCH_VLLM_GAIE_CHART_VERSION="v0"
   export LLMDBENCH_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED=false
   export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL=false
 fi
