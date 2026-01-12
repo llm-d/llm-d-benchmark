@@ -585,6 +585,10 @@ spec:
       valueFrom:
         fieldRef:
           fieldPath: metadata.name
+    - name: POD_UID
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.uid
     volumeMounts:
     - name: results
       mountPath: /requests
