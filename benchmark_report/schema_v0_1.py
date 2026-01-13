@@ -11,6 +11,7 @@ from pydantic import BaseModel, model_validator
 from .base import (
     BenchmarkReport,
     Units,
+    WorkloadGenerator,
     UNITS_QUANTITY,
     UNITS_PORTION,
     UNITS_TIME,
@@ -118,30 +119,6 @@ class Model(BaseModel):
     quantization: Optional[str] = None
     adapters: Optional[list[dict[str, str]]] = None
     metadata: Optional[Any] = None
-
-
-class WorkloadGenerator(StrEnum):
-    """
-    Enumeration of supported workload generators
-
-    Attributes
-        GUIDELLM: str
-            GuideLLM
-        INFERENCE_MAX: str
-            InferenceMAX
-        INFERENCE_PERF: str
-            Inference Perf
-        VLLM_BENCHMARK: str
-            benchmark_serving from vLLM
-        NOP: str
-            vLLM Load times
-    """
-
-    GUIDELLM = auto()
-    INFERENCE_MAX = "inferencemax"
-    INFERENCE_PERF = "inference-perf"
-    VLLM_BENCHMARK = "vllm-benchmark"
-    NOP = "nop"
 
 
 class Load(BaseModel):

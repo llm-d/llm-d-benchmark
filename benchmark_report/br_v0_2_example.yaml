@@ -282,7 +282,7 @@ results:
           p99: 2322.0
           p99p9: 2326.503
           max: 2328.0
-        requests_rate:
+        request_rate:
           units: queries/s
           mean: 2262.448
           min: 2223.0

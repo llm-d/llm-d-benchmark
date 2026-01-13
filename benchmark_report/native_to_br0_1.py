@@ -12,78 +12,21 @@ import yaml
 
 import numpy as np
 
-from .base import BenchmarkReport, Units
-from .core import check_file, import_yaml, load_benchmark_report
-from .schema_v0_1 import WorkloadGenerator, HostType
-
-
-def import_csv_with_header(file_path: str) -> dict[str, list[Any]]:
-    """Import a CSV file where the first line is a header.
-
-    Args:
-        file_path (str): Path to CSV file.
-
-    Returns:
-        dict: Imported data where the header provides key names.
-    """
-    check_file(file_path)
-    with open(file_path, "r", encoding="UTF-8") as file:
-        for ii, line in enumerate(file):
-            if ii == 0:
-                headers: list[str] = list(map(str.strip, line.split(",")))
-                data: dict[str, list[Any]] = {}
-                for hdr in headers:
-                    data[hdr] = []
-                continue
-            row_vals = list(map(str.strip, line.split(",")))
-            if len(row_vals) != len(headers):
-                sys.stderr.write(
-                    'Warning: line %d of "%s" does not match header length, skipping: %d != %d\n'
-                    % (ii + 1, file_path, len(row_vals), len(headers))
-                )
-                continue
-            for jj, val in enumerate(row_vals):
-                # Try converting the value to an int or float
-                try:
-                    val = int(val)
-                except ValueError:
-                    try:
-                        val = float(val)
-                    except ValueError:
-                        pass
-                data[headers[jj]].append(val)
-    # Convert lists of ints or floats to numpy arrays
-    for hdr in headers:
-        if isinstance(data[hdr][0], int) or isinstance(data[hdr][0], float):
-            data[hdr] = np.array(data[hdr])
-    return data
-
-
-def update_dict(dest: dict[Any, Any], source: dict[Any, Any]) -> None:
-    """Deep update a dict using values from another dict. If a value is a dict,
-    then update that dict, otherwise overwrite with the new value.
-
-    Args:
-        dest (dict): dict to update.
-        source (dict): dict with new values to add to dest.
-    """
-    for key, val in source.items():
-        if key in dest and isinstance(dest[key], dict):
-            if not val:
-                # Do not "update" with null values
-                continue
-            if not isinstance(val, dict):
-                raise Exception("Cannot update dict type with non-dict: %s" % val)
-            update_dict(dest[key], val)
-        else:
-            dest[key] = val
+from .base import Units
+from .core import (
+    check_file,
+    import_yaml,
+    load_benchmark_report,
+    update_dict,
+)
+from .schema_v0_1 import BenchmarkReportV01, HostType, WorkloadGenerator
 
 
 def _get_llmd_benchmark_envars() -> dict:
     """Get information from environment variables for the benchmark report.
 
     Returns:
-        dict: Imported data about scenario following schema of BenchmarkReport.
+        dict: Imported data about scenario following schema of BenchmarkReportV01.
     """
     # We make the assumption that if the environment variable
     # LLMDBENCH_MAGIC_ENVAR is defined, then we are inside a harness pod.
@@ -357,14 +300,14 @@ def _vllm_timestamp_to_epoch(date_str: str) -> int:
     return datetime.datetime(year, month, day, hour, minute, second).timestamp()
 
 
-def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
-    """Import data from a vLLM benchmark run as a BenchmarkReport.
+def import_vllm_benchmark(results_file: str) -> BenchmarkReportV01:
+    """Import data from a vLLM benchmark run as a BenchmarkReportV01.
 
     Args:
         results_file (str): Results file to import.
 
     Returns:
-        BenchmarkReport: Imported data.
+        BenchmarkReportV01: Imported data.
     """
     check_file(results_file)
 
@@ -372,7 +315,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
     results = import_yaml(results_file)
 
     # Get environment variables from llm-d-benchmark run as a dict following the
-    # schema of BenchmarkReport
+    # schema of BenchmarkReportV01
     br_dict = _get_llmd_benchmark_envars()
     # Append to that dict the data from vLLM benchmark.
     update_dict(
@@ -483,15 +426,15 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReport:
     return load_benchmark_report(br_dict)
 
 
-def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReport:
-    """Import data from a GuideLLM run as a BenchmarkReport.
+def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV01:
+    """Import data from a GuideLLM run as a BenchmarkReportV01.
 
     Args:
         results_file (str): Results file to import.
         index (int): Benchmark index to import.
 
     Returns:
-        BenchmarkReport: Imported data.
+        BenchmarkReportV01: Imported data.
     """
     check_file(results_file)
 
@@ -500,7 +443,7 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReport:
     results = data["benchmarks"][index]
 
     # Get environment variables from llm-d-benchmark run as a dict following the
-    # schema of BenchmarkReport
+    # schema of BenchmarkReportV01
     br_dict = _get_llmd_benchmark_envars()
     # Append to that dict the data from GuideLLM
     update_dict(
@@ -869,14 +812,14 @@ def _get_num_buidellm_runs(results_file: str) -> int:
     return len(results["benchmarks"])
 
 
-def import_guidellm_all(results_file: str) -> list[BenchmarkReport]:
-    """Import all data from a GuideLLM results JSON as BenchmarkReports.
+def import_guidellm_all(results_file: str) -> list[BenchmarkReportV01]:
+    """Import all data from a GuideLLM results JSON as BenchmarkReportV01.
 
     Args:
         results_file (str): Results file to import.
 
     Returns:
-        list[BenchmarkReport]: Imported data.
+        list[BenchmarkReportV01]: Imported data.
     """
     reports = []
     for index in range(_get_num_buidellm_runs(results_file)):
@@ -884,14 +827,14 @@ def import_guidellm_all(results_file: str) -> list[BenchmarkReport]:
     return reports
 
 
-def import_inference_perf(results_file: str) -> BenchmarkReport:
-    """Import data from a Inference Perf run as a BenchmarkReport.
+def import_inference_perf(results_file: str) -> BenchmarkReportV01:
+    """Import data from a Inference Perf run as a BenchmarkReportV01.
 
     Args:
         results_file (str): Results file to import.
 
     Returns:
-        BenchmarkReport: Imported data.
+        BenchmarkReportV01: Imported data.
     """
     check_file(results_file)
 
@@ -909,7 +852,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
         config = {}
 
     # Get environment variables from llm-d-benchmark run as a dict following the
-    # schema of BenchmarkReport
+    # schema of BenchmarkReportV01
     br_dict = _get_llmd_benchmark_envars()
     if br_dict:
         model_name = br_dict["scenario"]["model"]["name"]
@@ -1215,14 +1158,14 @@ def import_inference_perf(results_file: str) -> BenchmarkReport:
     return load_benchmark_report(br_dict)
 
 
-def import_inference_max(results_file: str) -> BenchmarkReport:
-    """Import data from an InferenceMAX benchmark run as a BenchmarkReport.
+def import_inference_max(results_file: str) -> BenchmarkReportV01:
+    """Import data from an InferenceMAX benchmark run as a BenchmarkReportV01.
 
     Args:
         results_file (str): Results file to import.
 
     Returns:
-        BenchmarkReport: Imported data.
+        BenchmarkReportV01: Imported data.
     """
     check_file(results_file)
 
@@ -1230,7 +1173,7 @@ def import_inference_max(results_file: str) -> BenchmarkReport:
     results = import_yaml(results_file)
 
     # Get environment variables from llm-d-benchmark run as a dict following the
-    # schema of BenchmarkReport
+    # schema of BenchmarkReportV01
     br_dict = _get_llmd_benchmark_envars()
     # Append to that dict the data from InferenceMAX benchmark.
     update_dict(
@@ -1339,14 +1282,14 @@ def import_inference_max(results_file: str) -> BenchmarkReport:
     return load_benchmark_report(br_dict)
 
 
-def import_nop(results_file: str) -> BenchmarkReport:
-    """Import data from a nop run as a BenchmarkReport.
+def import_nop(results_file: str) -> BenchmarkReportV01:
+    """Import data from a nop run as a BenchmarkReportV01.
 
     Args:
         results_file (str): Results file to import.
 
     Returns:
-        BenchmarkReport: Imported data.
+        BenchmarkReportV01: Imported data.
     """
     check_file(results_file)
 
@@ -1373,7 +1316,7 @@ def import_nop(results_file: str) -> BenchmarkReport:
         return new_cat_list
 
     # Get environment variables from llm-d-benchmark run as a dict following the
-    # schema of BenchmarkReport
+    # schema of BenchmarkReportV01
     br_dict = _get_llmd_benchmark_envars()
 
     results_dict = {

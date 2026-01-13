@@ -418,7 +418,7 @@ class AggregateThroughput(BaseModel):
     """Output token rate."""
     total_token_rate: Statistics | None = None
     """Total token rate (input + output)."""
-    requests_rate: Statistics | None = None
+    request_rate: Statistics | None = None
     """Request (query) processing rate."""
 
     @model_validator(mode="after")

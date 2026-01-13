@@ -15,15 +15,7 @@ import os
 import sys
 
 from . import make_json_schema
-from .native_to_br import (
-    WorkloadGenerator,
-    import_nop,
-    import_inference_max,
-    import_vllm_benchmark,
-    import_inference_perf,
-    import_guidellm,
-    import_guidellm_all,
-)
+from .base import WorkloadGenerator
 
 
 def main() -> None:
@@ -61,6 +53,13 @@ def main() -> None:
         help="Benchmark index to import, for results files containing multiple runs. Default behavior creates benchmark reports for all runs.",
     )
     parser.add_argument(
+        "-b",
+        "--br-version",
+        type=str,
+        default="0.1",
+        help="Benchmark report version to create.",
+    )
+    parser.add_argument(
         "-j",
         "--json-schema",
         type=str,
@@ -76,6 +75,28 @@ def main() -> None:
         # Print JSON Schema and exit
         print(make_json_schema(args.json_schema))
         sys.exit(0)
+
+    if args.br_version == "0.1":
+        from .native_to_br0_1 import (
+            import_nop,
+            import_inference_max,
+            import_vllm_benchmark,
+            import_inference_perf,
+            import_guidellm,
+            import_guidellm_all,
+        )
+    elif args.br_version == "0.2":
+        from .native_to_br0_2 import (
+            import_nop,
+            import_inference_max,
+            import_vllm_benchmark,
+            import_inference_perf,
+            import_guidellm,
+            import_guidellm_all,
+        )
+    else:
+        sys.stderr.write("Invalid benchmark report version: %s\n" % args.br_version)
+        sys.exit(1)
 
     if args.results_file is None:
         parser.error(

@@ -2,110 +2,256 @@
 Convert application native output formats into a Benchmark Report.
 """
 
-import base64
-import datetime
+import uuid
+import hashlib
+import secrets
+import ssl
+from datetime import datetime
 import os
 import re
 import sys
-from typing import Any
-import yaml
-
-import numpy as np
-
-from .base import BenchmarkReport, Units
-from .core import check_file, import_yaml, load_benchmark_report
-from .schema_v0_1 import WorkloadGenerator, HostType
 
 
-def import_csv_with_header(file_path: str) -> dict[str, list[Any]]:
-    """Import a CSV file where the first line is a header.
-
-    Args:
-        file_path (str): Path to CSV file.
-
-    Returns:
-        dict: Imported data where the header provides key names.
-    """
-    check_file(file_path)
-    with open(file_path, "r", encoding="UTF-8") as file:
-        for ii, line in enumerate(file):
-            if ii == 0:
-                headers: list[str] = list(map(str.strip, line.split(",")))
-                data: dict[str, list[Any]] = {}
-                for hdr in headers:
-                    data[hdr] = []
-                continue
-            row_vals = list(map(str.strip, line.split(",")))
-            if len(row_vals) != len(headers):
-                sys.stderr.write(
-                    'Warning: line %d of "%s" does not match header length, skipping: %d != %d\n'
-                    % (ii + 1, file_path, len(row_vals), len(headers))
-                )
-                continue
-            for jj, val in enumerate(row_vals):
-                # Try converting the value to an int or float
-                try:
-                    val = int(val)
-                except ValueError:
-                    try:
-                        val = float(val)
-                    except ValueError:
-                        pass
-                data[headers[jj]].append(val)
-    # Convert lists of ints or floats to numpy arrays
-    for hdr in headers:
-        if isinstance(data[hdr][0], int) or isinstance(data[hdr][0], float):
-            data[hdr] = np.array(data[hdr])
-    return data
+from .base import Units
+from .core import (
+    check_file,
+    import_yaml,
+    load_benchmark_report,
+    update_dict,
+)
+from .schema_v0_2 import BenchmarkReportV02
 
 
-def update_dict(dest: dict[Any, Any], source: dict[Any, Any]) -> None:
-    """Deep update a dict using values from another dict. If a value is a dict,
-    then update that dict, otherwise overwrite with the new value.
-
-    Args:
-        dest (dict): dict to update.
-        source (dict): dict with new values to add to dest.
-    """
-    for key, val in source.items():
-        if key in dest and isinstance(dest[key], dict):
-            if not val:
-                # Do not "update" with null values
-                continue
-            if not isinstance(val, dict):
-                raise Exception("Cannot update dict type with non-dict: %s" % val)
-            update_dict(dest[key], val)
-        else:
-            dest[key] = val
-
-
-def _get_llmd_benchmark_envars() -> dict:
-    """Get information from environment variables for the benchmark report.
+def _populate_benchmark_report_from_envars() -> dict:
+    """Create a benchmark report with details from environment variables.
 
     Returns:
-        dict: Imported data about scenario following schema of BenchmarkReport.
+        dict: run and scenario following schema of BenchmarkReport.
     """
+    # Start benchmark report
     br_dict = {
         "version": "0.2",
-        "run":
-LLMDBENCH_HARNESS_START
     }
 
     # We make the assumption that if the environment variable
     # LLMDBENCH_MAGIC_ENVAR is defined, then we are inside a harness pod.
     if "LLMDBENCH_MAGIC_ENVAR" not in os.environ:
         # We are not in a harness pod
-        return {}
+        return br_dict
+
+    # Unique ID for pod
+    pod_uid = os.environ.get("POD_UID")
+    # Create a unique ID for this benchmark report, using the pod ID with a salt
+    run_salt = secrets.token_bytes(16)
+    br_uid = str(
+        uuid.UUID(hashlib.sha256(pod_uid.encode("utf8") + run_salt).hexdigest()[0:32])
+    )
+    # Create cluster ID by hashing the API server certificate
+    host = os.environ["KUBERNETES_SERVICE_HOST"]
+    port = int(os.environ["KUBERNETES_SERVICE_PORT"])
+    cert = ssl.get_server_certificate((host, port))
+    cid = hashlib.sha256(cert.encode()).hexdigest()
+
+    # Use the namespace for "user"
+    with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", "r") as ff:
+        namespace = ff.read().strip()
+
+    br_dict["run"] = {
+        "run": {
+            "uid": br_uid,
+            "eid": "",  # TODO
+            "cid": cid,
+            "pid": pod_uid,
+            "user": namespace,
+            "time": {
+                "start": os.environ.get("LLMDBENCH_HARNESS_START"),
+                "stop": os.environ.get("LLMDBENCH_HARNESS_STOP"),
+                "duration": os.environ.get("LLMDBENCH_HARNESS_DELTA"),
+            },
+        }
+    }
 
     if "LLMDBENCH_DEPLOY_METHODS" not in os.environ:
         sys.stderr.write(
             "Warning: LLMDBENCH_DEPLOY_METHODS undefined, cannot determine deployment method."
         )
-        return {}
+        return br_dict
 
     if os.environ["LLMDBENCH_DEPLOY_METHODS"] == "standalone":
         # Given a 'standalone' deployment, we expect the following environment
         # variables to be available
-        return {
-            "scenario": {}
-        }
+        return br_dict
+
+    return br_dict
+
+
+def _vllm_timestamp_to_iso(date_str: str) -> str:
+    """Convert timestamp from vLLM benchmark into ISO-8601 format.
+
+    This also works with InferenceMAX.
+    String format is YYYYMMDD-HHMMSS in UTC.
+
+    Args:
+        date_str (str): Timestamp from vLLM benchmark.
+
+    Returns:
+        str: Timestamp in ISO-8601 format.
+    """
+    date_str = date_str.strip()
+    if not re.search("[0-9]{8}-[0-9]{6}", date_str):
+        sys.stderr.write(f"Invalid date format: {date_str}\n")
+        return None
+    year = int(date_str[0:4])
+    month = int(date_str[4:6])
+    day = int(date_str[6:8])
+    hour = int(date_str[9:11])
+    minute = int(date_str[11:13])
+    second = int(date_str[13:15])
+
+    return (
+        datetime(year, month, day, hour, minute, second)
+        .astimezone()
+        .isoformat(timespec="seconds")
+    )
+
+
+def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
+    """Import data from a vLLM benchmark run as a BenchmarkReport.
+
+    Args:
+        results_file (str): Results file to import.
+
+    Returns:
+        BenchmarkReport: Imported data.
+    """
+    check_file(results_file)
+
+    # Import results file from vLLM benchmark
+    results = import_yaml(results_file)
+
+    # Get environment variables from llm-d-benchmark run as a dict following the
+    # schema of BenchmarkReport
+    br_dict = _populate_benchmark_report_from_envars()
+
+    # Append to that dict the data from vLLM benchmark.
+    update_dict(
+        br_dict,
+        {
+            "run": {"time": {"start": _vllm_timestamp_to_iso(results.get("date"))}},
+            "scenario": {
+                "load": {
+                    "metadata": {
+                        "schema_version": "0.0.1",
+                        "cfg_id": "",  # TODO
+                    },
+                    "standardized": {
+                        "tool": "vllm-benchmark",
+                        "tool_version": "",  # TODO
+                        "stage": 1,
+                        "rate_qps": results.get("request_rate"),
+                        "concurrency": results.get("max_concurrency"),
+                    },
+                    "native": {},  # TODO
+                },
+            },
+            "results": {
+                "request_performance": {
+                    "aggregate": {
+                        "requests": {
+                            "total": results.get("num_prompts"),
+                            "failures": results.get("num_prompts")
+                            - results.get("completed"),
+                            "input_length": {
+                                "units": Units.COUNT,
+                                "mean": results.get("total_input_tokens", 0)
+                                / results.get("num_prompts", -1),
+                            },
+                            "output_length": {
+                                "units": Units.COUNT,
+                                "mean": results.get("total_output_tokens", 0)
+                                / results.get("completed", -1),
+                            },
+                        },
+                        "latency": {
+                            "time_to_first_token": {
+                                "units": Units.MS,
+                                "mean": results.get("mean_ttft_ms"),
+                                "stddev": results.get("std_ttft_ms"),
+                                "p0p1": results.get("p0.1_ttft_ms"),
+                                "p1": results.get("p1_ttft_ms"),
+                                "p5": results.get("p5_ttft_ms"),
+                                "p10": results.get("p10_ttft_ms"),
+                                "P25": results.get("p25_ttft_ms"),
+                                "p50": results.get("median_ttft_ms"),
+                                "p75": results.get("p75_ttft_ms"),
+                                "p90": results.get("p90_ttft_ms"),
+                                "p95": results.get("p95_ttft_ms"),
+                                "p99": results.get("p99_ttft_ms"),
+                                "p99p9": results.get("p99.9_ttft_ms"),
+                            },
+                            "time_per_output_token": {
+                                "units": Units.MS_PER_TOKEN,
+                                "mean": results.get("mean_tpot_ms"),
+                                "stddev": results.get("std_tpot_ms"),
+                                "p0p1": results.get("p0.1_tpot_ms"),
+                                "p1": results.get("p1_tpot_ms"),
+                                "p5": results.get("p5_tpot_ms"),
+                                "p10": results.get("p10_tpot_ms"),
+                                "P25": results.get("p25_tpot_ms"),
+                                "p50": results.get("median_tpot_ms"),
+                                "p75": results.get("p75_tpot_ms"),
+                                "p90": results.get("p90_tpot_ms"),
+                                "p95": results.get("p95_tpot_ms"),
+                                "p99": results.get("p99_tpot_ms"),
+                                "p99p9": results.get("p99.9_tpot_ms"),
+                            },
+                            "inter_token_latency": {
+                                "units": Units.MS_PER_TOKEN,
+                                "mean": results.get("mean_itl_ms"),
+                                "stddev": results.get("std_itl_ms"),
+                                "p0p1": results.get("p0.1_itl_ms"),
+                                "p1": results.get("p1_itl_ms"),
+                                "p5": results.get("p5_itl_ms"),
+                                "p10": results.get("p10_itl_ms"),
+                                "P25": results.get("p25_itl_ms"),
+                                "p90": results.get("p90_itl_ms"),
+                                "p95": results.get("p95_itl_ms"),
+                                "p99": results.get("p99_itl_ms"),
+                                "p99p9": results.get("p99.9_itl_ms"),
+                            },
+                            "request_latency": {
+                                "units": Units.MS,
+                                "mean": results.get("mean_e2el_ms"),
+                                "stddev": results.get("std_e2el_ms"),
+                                "p0p1": results.get("p0.1_e2el_ms"),
+                                "p1": results.get("p1_e2el_ms"),
+                                "p5": results.get("p5_e2el_ms"),
+                                "p10": results.get("p10_e2el_ms"),
+                                "P25": results.get("p25_e2el_ms"),
+                                "p90": results.get("p90_e2el_ms"),
+                                "p95": results.get("p95_e2el_ms"),
+                                "p99": results.get("p99_e2el_ms"),
+                                "p99p9": results.get("p99.9_e2el_ms"),
+                            },
+                        },
+                        "throughput": {
+                            "output_token_rate": {
+                                "units": Units.TOKEN_PER_S,
+                                "mean": results.get("output_throughput"),
+                            },
+                            "total_token_rate": {
+                                "units": Units.TOKEN_PER_S,
+                                "mean": results.get("total_token_throughput"),
+                            },
+                            "request_rate": {
+                                "units": Units.QUERY_PER_S,
+                                "mean": results.get("request_throughput"),
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+
+    return load_benchmark_report(br_dict)

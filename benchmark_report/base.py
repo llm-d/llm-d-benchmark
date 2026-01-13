@@ -10,6 +10,35 @@ from pydantic import BaseModel
 import yaml
 
 ###############################################################################
+# Supported workload generators
+###############################################################################
+
+
+class WorkloadGenerator(StrEnum):
+    """
+    Enumeration of supported workload generators
+
+    Attributes
+        GUIDELLM: str
+            GuideLLM
+        INFERENCE_MAX: str
+            InferenceMAX
+        INFERENCE_PERF: str
+            Inference Perf
+        VLLM_BENCHMARK: str
+            benchmark_serving from vLLM
+        NOP: str
+            vLLM Load times
+    """
+
+    GUIDELLM = auto()
+    INFERENCE_MAX = "inferencemax"
+    INFERENCE_PERF = "inference-perf"
+    VLLM_BENCHMARK = "vllm-benchmark"
+    NOP = "nop"
+
+
+###############################################################################
 # Units
 ###############################################################################
 
