@@ -797,7 +797,7 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV01:
     return load_benchmark_report(br_dict)
 
 
-def _get_num_buidellm_runs(results_file: str) -> int:
+def _get_num_guidellm_runs(results_file: str) -> int:
     """Get the number of benchmark runs in a GuideLLM results JSON file.
 
     Args:
@@ -822,7 +822,7 @@ def import_guidellm_all(results_file: str) -> list[BenchmarkReportV01]:
         list[BenchmarkReportV01]: Imported data.
     """
     reports = []
-    for index in range(_get_num_buidellm_runs(results_file)):
+    for index in range(_get_num_guidellm_runs(results_file)):
         reports.append(import_guidellm(results_file, index))
     return reports
 
