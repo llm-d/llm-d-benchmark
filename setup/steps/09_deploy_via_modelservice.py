@@ -17,6 +17,7 @@ from functions import (
     llmdbench_execute_cmd,
     model_attribute,
     extract_environment,
+    add_pull_secret,
     check_storage_class,
     check_affinity,
     environment_variable_to_dict,
@@ -221,7 +222,9 @@ decode:
   podAnnotations:
       {add_annotations(ev, "LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS").lstrip()}
   schedulerName: {ev['vllm_common_pod_scheduler']}
-{conditional_extra_config(decode_extra_pod_config, 2, "extraConfig", ev)}
+  extraConfig:
+{add_pull_secret(ev)}
+{conditional_extra_config(decode_extra_pod_config, 2, "", ev)}
   containers:
   - name: "vllm"
     mountModelVolume: {str(mount_model_volume).lower()}
@@ -279,7 +282,9 @@ prefill:
   podAnnotations:
       {add_annotations(ev, "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS").lstrip()}
   schedulerName: {ev['vllm_common_pod_scheduler']}
-{conditional_extra_config(prefill_extra_pod_config, 2, "extraConfig", ev)}
+  extraConfig:
+{add_pull_secret(ev)}
+{conditional_extra_config(prefill_extra_pod_config, 2, "", ev)}
   containers:
   - name: "vllm"
     mountModelVolume: {str(mount_model_volume).lower()}

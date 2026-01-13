@@ -49,6 +49,12 @@ export LLMDBENCH_LLMD_IMAGE_REPO=ibmaiu_internal
 export LLMDBENCH_LLMD_IMAGE_NAME=vllm
 export LLMDBENCH_LLMD_IMAGE_TAG=1.0.4-amd64
 
+export LLMDBENCH_LLMD_IMAGE_REGISTRY=us.icr.io
+export LLMDBENCH_LLMD_IMAGE_REPO=wxpe-cicd-internal/amd64
+export LLMDBENCH_LLMD_IMAGE_NAME=aiu-vllm
+export LLMDBENCH_LLMD_IMAGE_TAG=v1.1.1-rc.3-amd64
+
+
 export LLMDBENCH_VLLM_STANDALONE_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_STANDALONE_ARGS
 /home/senuser/container-scripts/simple_vllm_serve.sh REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \

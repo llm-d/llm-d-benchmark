@@ -1465,11 +1465,19 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
 
 def add_pull_secret(ev:dict) -> str:
     pull_secret_string = "#noconfig"
-    if ev["vllm_common_pull_secret"] :
-        pull_secret_string = f"""      imagePullSecrets:
-      - name: {ev["vllm_common_pull_secret"]}"""
+    if ev["control_environment_type_standalone_active"] :
+        name_indent = "      "
+        value_indent = "  "
 
-    pull_secret_string = clear_string(pull_secret_string)
+    if ev["control_environment_type_modelservice_active"] :
+        name_indent = "    "
+        value_indent = ""
+
+    if ev["vllm_common_pull_secret"] :
+        pull_secret_string = f"""{name_indent}imagePullSecrets:
+    {value_indent}- name: {ev["vllm_common_pull_secret"]}"""
+
+        pull_secret_string = clear_string(pull_secret_string)
 
     return pull_secret_string
 
