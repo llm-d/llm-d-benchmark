@@ -1252,31 +1252,41 @@ def extract_floats(text: str) -> list[float]:
 
 
 def convert_result(
-        result_filepath: str,
-        output_filepath: str,
-        start_time: float,
-        stop_time: float,
-    ) -> tuple[str, str, int]:
+    result_filepath: str,
+    output_filepath: str,
+    start_time: float,
+    stop_time: float,
+) -> tuple[str, str, int]:
     """converts result to universal format"""
 
     try:
         cmd = ["benchmark-report", result_filepath, output_filepath, "-w", "nop", "-f"]
         # Add environment variables for start and stop times in ISO-8601 format
-        t_start = datetime.fromtimestamp(start_time, 
-            tz=timezone.utc).astimezone().isoformat(timespec="seconds")
-        t_stop = datetime.fromtimestamp(stop_time,
-            tz=timezone.utc).astimezone().isoformat(timespec="seconds")
+        t_start = (
+            datetime.fromtimestamp(start_time, tz=timezone.utc)
+            .astimezone()
+            .isoformat(timespec="seconds")
+        )
+        t_stop = (
+            datetime.fromtimestamp(stop_time, tz=timezone.utc)
+            .astimezone()
+            .isoformat(timespec="seconds")
+        )
         env = {
             "LLMDBENCH_HARNESS_START": t_start,
             "LLMDBENCH_HARNESS_STOP": t_stop,
             "LLMDBENCH_HARNESS_DELTA": f"PT{stop_time - start_time}S",
         }
+        # Create a copy of the existing environment
+        custom_env = os.environ.copy()
+        # Update with contents of env
+        custom_env.update(env)
         with subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=False,
-            env=env,
+            env=custom_env,
         ) as proc:
             stdout, stderr = proc.communicate()
             out_str = stdout.strip().decode("ascii")
@@ -1288,14 +1298,18 @@ def convert_result(
                     result_filepath,
                 )
             else:
-                logger.info("benchmark-report succeeded converting: %s", result_filepath)
+                logger.info(
+                    "benchmark-report succeeded converting: %s", result_filepath
+                )
 
             if err_str != "":
                 logger.info("benchmark-report stderr: %s", err_str)
             if out_str != "":
                 logger.info("benchmark-report stdout: %s", out_str)
     except Exception:
-        logger.exception("benchmark-report returned error converting: %s", result_filepath)
+        logger.exception(
+            "benchmark-report returned error converting: %s", result_filepath
+        )
 
 
 def write_benchmark_categories_to_log(
