@@ -144,7 +144,7 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
         if dry_run:
             announce(f"       ✅ [DRY RUN] Pod ip \"{pod_ip}\" responded successfully ({current_model})")
         else:
-            image_url = get_image(ev['llmd_image_registry'], ev['llmd_image_repo'], ev['llmd_image_name'], ev['llmd_image_tag'], False, True)
+            image_url = get_image(ev['image_registry'], ev['image_repo'], ev['image_name'], ev['image_tag'], False, True)
             received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev['vllm_common_namespace'], image_url, pod_ip, ev['vllm_common_inference_port'])
             if received_model_name == current_model:
                 announce(f"       ✅ Pod ip \"{pod_ip}\" responded successfully ({received_model_name})")
@@ -158,7 +158,7 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     if dry_run:
         announce(f"✅ [DRY RUN] Service responds successfully ({current_model})")
     else:
-        image_url = get_image(ev['llmd_image_registry'], ev['llmd_image_repo'], ev['llmd_image_name'], ev['llmd_image_tag'], False, True)
+        image_url = get_image(ev['image_registry'], ev['image_repo'], ev['image_name'], ev['image_tag'], False, True)
         received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev['vllm_common_namespace'], image_url, service_ip, "80")
         if received_model_name == current_model:
             announce(f"✅ Service responds successfully ({received_model_name})")
