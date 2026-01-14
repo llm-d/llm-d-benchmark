@@ -692,7 +692,7 @@ class Run(BaseModel):
 
     model_config = MODEL_CONFIG.copy()
 
-    uid: str | None = None
+    uid: str
     """Unique ID for this specific benchmark report."""
     eid: str | None = None
     """Experiment ID, common across benchmark reports from a particular experiment."""
