@@ -136,7 +136,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
     # schema of BenchmarkReportV02
     br_dict = _populate_benchmark_report_from_envars()
 
-    # Append to that dict the data from vLLM benchmark.
+    # Add to that dict the data from vLLM benchmark.
     update_dict(
         br_dict,
         {
@@ -278,7 +278,7 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
     # schema of BenchmarkReportV02
     br_dict = _populate_benchmark_report_from_envars()
 
-    # Append to that dict the data from vLLM benchmark.
+    # Add to that dict the data from vLLM benchmark.
     update_dict(
         br_dict,
         {
@@ -439,7 +439,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
     # schema of BenchmarkReportV02
     br_dict = _populate_benchmark_report_from_envars()
 
-    # Append to that dict the data from Inference Perf
+    # Add to that dict the data from Inference Perf
     update_dict(
         br_dict,
         {
@@ -600,6 +600,245 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                             "request_rate": {
                                 "units": Units.QUERY_PER_S,
                                 "mean": get_nested(results, ["successes", "throughput", "requests_per_sec"]),
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    )
+
+    return load_benchmark_report(br_dict)
+
+
+def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
+    """Import data from a GuideLLM run as a BenchmarkReportV02.
+
+    Args:
+        results_file (str): Results file to import.
+        index (int): Benchmark index to import.
+
+    Returns:
+        BenchmarkReportV02: Imported data.
+    """
+    check_file(results_file)
+
+    data = import_yaml(results_file)
+
+    results = data["benchmarks"][index]
+
+    # Get environment variables from llm-d-benchmark run as a dict following the
+    # schema of BenchmarkReportV02
+    br_dict = _populate_benchmark_report_from_envars()
+
+    # Add to that dict the data from GuideLLM
+    update_dict(
+        br_dict,
+        {
+            "run": {
+                "time": {
+                    "duration": results["duration"], # TODO
+                    "start": results["start_time"], # TODO
+                    "stop": results["end_time"], # TODO
+                },
+            },
+            "scenario": {
+                "load": {
+                    "metadata": {
+                        "schema_version": "0.0.1",
+                        "cfg_id": "",  # TODO
+                    },
+                    "standardized": {
+                        "tool": WorkloadGenerator.GUIDELLM,
+                        "tool_version": "",  # TODO
+                        "stage": index,
+                    },
+                    "native": {
+                        "args": data["args"], # TODO check this
+                    },
+                },
+            },
+            "results": {
+                "request_performance": {
+                    "aggregate": {
+                        "requests": {
+                            "total": get_nested(results, ["metrics", "request_totals", "total"]),
+                            "failures": get_nested(results, ["metrics", "request_totals", "errored"]),
+                            "incomplete": get_nested(results, ["metrics", "request_totals", "incomplete"]),
+                            "input_length": {
+                                "units": Units.COUNT,
+                                "mean": get_nested(results, ["metrics", "prompt_token_count", "successful", "mean"]),
+                                "mode": get_nested(results, ["metrics", "prompt_token_count", "successful", "mode"]),
+                                "stddev": get_nested(results, ["metrics", "prompt_token_count", "successful", "std_dev"]),
+                                "min": get_nested(results, ["metrics", "prompt_token_count", "successful", "min"]),
+                                "p0p1": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p001"]),
+                                "p1": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p01"]),
+                                "p5": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p05"]),
+                                "p10": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p10"]),
+                                "p25": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p25"]),
+                                "p50": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p50"]),
+                                "p75": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p75"]),
+                                "p90": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p90"]),
+                                "p95": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p95"]),
+                                "p99": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p99"]),
+                                "p99p9": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p999"]),
+                                "max": get_nested(results, ["metrics", "prompt_token_count", "successful", "max"]),
+                            },
+                            "output_length": {
+                                "units": Units.COUNT,
+                                "mean": get_nested(results, ["metrics", "output_token_count", "successful", "mean"]),
+                                "mode": get_nested(results, ["metrics", "output_token_count", "successful", "mode"]),
+                                "stddev": get_nested(results, ["metrics", "output_token_count", "successful", "std_dev"]),
+                                "min": get_nested(results, ["metrics", "output_token_count", "successful", "min"]),
+                                "p0p1": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p001"]),
+                                "p1": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p01"]),
+                                "p5": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p05"]),
+                                "p10": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p10"]),
+                                "p25": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p25"]),
+                                "p50": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p50"]),
+                                "p75": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p75"]),
+                                "p90": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p90"]),
+                                "p95": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p95"]),
+                                "p99": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p99"]),
+                                "p99p9": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p999"]),
+                                "max": get_nested(results, ["metrics", "output_token_count", "successful", "max"]),
+                            },
+                        },
+                        "latency": {
+                            "time_to_first_token": {
+                                "units": Units.MS,
+                                "mean": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "mean"]),
+                                "mode": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "mode"]),
+                                "stddev": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "std_dev"]),
+                                "min": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "min"]),
+                                "p0p1": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p001"]),
+                                "p1": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p01"]),
+                                "p5": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p05"]),
+                                "p10": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p10"]),
+                                "p25": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p25"]),
+                                "p50": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p50"]),
+                                "p75": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p75"]),
+                                "p90": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p90"]),
+                                "p95": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p95"]),
+                                "p99": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p99"]),
+                                "p99p9": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p999"]),
+                                "max": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "max"]),
+                            },
+                            "time_per_output_token": {
+                                "units": Units.MS_PER_TOKEN,
+                                "mean": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "mean"]),
+                                "mode": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "mode"]),
+                                "stddev": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "std_dev"]),
+                                "min": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "min"]),
+                                "p0p1": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p001"]),
+                                "p1": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p01"]),
+                                "p5": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p05"]),
+                                "p10": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p10"]),
+                                "p25": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p25"]),
+                                "p50": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p50"]),
+                                "p75": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p75"]),
+                                "p90": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p90"]),
+                                "p95": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p95"]),
+                                "p99": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p99"]),
+                                "p99p9": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p999"]),
+                                "max": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "max"]),
+                            },
+                            "inter_token_latency": {
+                                "units": Units.MS_PER_TOKEN,
+                                "mean": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "mean"]),
+                                "mode": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "mode"]),
+                                "stddev": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "std_dev"]),
+                                "min": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "min"]),
+                                "p0p1": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p001"]),
+                                "p1": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p01"]),
+                                "p5": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p05"]),
+                                "p10": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p10"]),
+                                "p25": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p25"]),
+                                "p50": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p50"]),
+                                "p75": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p75"]),
+                                "p90": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p90"]),
+                                "p95": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p95"]),
+                                "p99": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p99"]),
+                                "p99p9": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p999"]),
+                                "max": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "max"]),
+                            },
+                            "request_latency": {
+                                "units": Units.MS,
+                                "mean": get_nested(results, ["metrics", "request_latency", "successful", "mean"]),
+                                "mode": get_nested(results, ["metrics", "request_latency", "successful", "mode"]),
+                                "stddev": get_nested(results, ["metrics", "request_latency", "successful", "std_dev"]),
+                                "min": get_nested(results, ["metrics", "request_latency", "successful", "min"]),
+                                "p0p1": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p001"]),
+                                "p1": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p01"]),
+                                "p5": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p05"]),
+                                "p10": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p10"]),
+                                "p25": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p25"]),
+                                "p50": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p50"]),
+                                "p75": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p75"]),
+                                "p90": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p90"]),
+                                "p95": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p95"]),
+                                "p99": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p99"]),
+                                "p99p9": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p999"]),
+                                "max": get_nested(results, ["metrics", "request_latency", "successful", "max"]),
+                            },
+                        },
+                        "throughput": {
+                            "output_token_rate": {
+                                "units": Units.TOKEN_PER_S,
+                                "mean": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "mean"]),
+                                "mode": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "mode"]),
+                                "stddev": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "std_dev"]),
+                                "min": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "min"]),
+                                "p0p1": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p001"]),
+                                "p1": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p01"]),
+                                "p5": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p05"]),
+                                "p10": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p10"]),
+                                "p25": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p25"]),
+                                "p50": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p50"]),
+                                "p75": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p75"]),
+                                "p90": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p90"]),
+                                "p95": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p95"]),
+                                "p99": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p99"]),
+                                "p99p9": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p999"]),
+                                "max": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "max"]),
+                            },
+                            "total_token_rate": {
+                                "units": Units.TOKEN_PER_S,
+                                "mean": get_nested(results, ["metrics", "tokens_per_second", "successful", "mean"]),
+                                "mode": get_nested(results, ["metrics", "tokens_per_second", "successful", "mode"]),
+                                "stddev": get_nested(results, ["metrics", "tokens_per_second", "successful", "std_dev"]),
+                                "min": get_nested(results, ["metrics", "tokens_per_second", "successful", "min"]),
+                                "p0p1": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p001"]),
+                                "p1": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p01"]),
+                                "p5": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p05"]),
+                                "p10": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p10"]),
+                                "p25": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p25"]),
+                                "p50": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p50"]),
+                                "p75": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p75"]),
+                                "p90": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p90"]),
+                                "p95": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p95"]),
+                                "p99": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p99"]),
+                                "p99p9": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p999"]),
+                                "max": get_nested(results, ["metrics", "tokens_per_second", "successful", "max"]),
+                            },
+                            "request_rate": {
+                                "units": Units.QUERY_PER_S,
+                                "mean": get_nested(results, ["metrics", "requests_per_second", "successful", "mean"]),
+                                "mode": get_nested(results, ["metrics", "requests_per_second", "successful", "mode"]),
+                                "stddev": get_nested(results, ["metrics", "requests_per_second", "successful", "std_dev"]),
+                                "min": get_nested(results, ["metrics", "requests_per_second", "successful", "min"]),
+                                "p0p1": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p001"]),
+                                "p1": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p01"]),
+                                "p5": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p05"]),
+                                "p10": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p10"]),
+                                "p25": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p25"]),
+                                "p50": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p50"]),
+                                "p75": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p75"]),
+                                "p90": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p90"]),
+                                "p95": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p95"]),
+                                "p99": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p99"]),
+                                "p99p9": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p999"]),
+                                "max": get_nested(results, ["metrics", "requests_per_second", "successful", "max"]),
                             },
                         },
                     },
