@@ -71,6 +71,30 @@ def import_csv_with_header(file_path: str) -> dict[str, list[Any]]:
     return data
 
 
+def get_nested(ndict: dict[Any, Any], path: list[Any], default: Any = None) -> Any:
+    """Get value from path through nested dicts.
+
+    Args:
+        ndict (dict): Nested dict to get value from.
+        path (list): Path through nested dict, as a list of keys.
+        default (Any): Value to return if path does not exist.
+
+    Returns:
+        Any: Value at path location, or default value if path does not exist.
+    """
+
+    d_cur = ndict
+    for key in path:
+        if not isinstance(d_cur, dict):
+            # Path hit a non-dict
+            return default
+        if key not in d_cur:
+            # Key is not in dict
+            return default
+        d_cur = d_cur[key]
+    return d_cur
+
+
 def update_dict(dest: dict[Any, Any], source: dict[Any, Any]) -> None:
     """Deep update a dict using values from another dict. If a value is a dict,
     then update that dict, otherwise overwrite with the new value.
