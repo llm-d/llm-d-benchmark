@@ -100,11 +100,12 @@ it on your local machine, or system you are *driving* the experiments.
 
 ### Where is the Guidellm chatbot_synthetic Workload Profile Defined?
 
-You can find the actual location of the `chatbot_synthetic` workload profile in [chatbot_synthetic.yaml.in](https://github.com/llm-d/llm-d-benchmark/blob/main/workload/profiles/guidellm/chatbot_synthetic.yaml.in) - as well as the Guidellm [documentation](https://github.com/vllm-project/guidellm/tree/7666c658460bc34abe3cc821d3ca072cfd39074a).
+You can find the actual location of the `chatbot_synthetic` workload profile in [chatbot_synthetic.yaml.in](https://github.com/llm-d/llm-d-benchmark/blob/main/workload/profiles/guidellm/chatbot_synthetic.yaml.in) -
+as well as the Guidellm [documentation](https://github.com/vllm-project/guidellm/tree/7666c658460bc34abe3cc821d3ca072cfd39074a).
 
 For your convenience I have copied the profile below - notice, our automation will autopopulate the `target` and `model` fields:
 
-```yaml
+<!-- ```yaml
 target: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
 model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
 request_type: text_completions
@@ -121,7 +122,7 @@ output_tokens_max: 2048
 output_tokens: 1024
 output_tokens_stdev: 512
 samples: 1000
-```
+``` -->
 
 This will workload profile will generate synthetic data - there is still a PR open describing a feature to support the ability to supply the ShareGPT dataset directly, that is currently not functional, [source here](https://github.com/vllm-project/guidellm/pull/305).
 
