@@ -115,7 +115,7 @@ def main() -> None:
                         args.output_file
                     )
                 else:
-                    import_guidellm(args.results_file, args.index).print_yaml()
+                    print(import_guidellm(args.results_file, args.index).get_yaml_str())
             else:
                 br_list = import_guidellm_all(args.results_file)
                 # Generate reports for all runs
