@@ -194,35 +194,3 @@ def make_json_schema(version: str = "0.2") -> str:
         return json.dumps(BenchmarkReportV02.model_json_schema(), indent=2)
     else:
         raise ValueError(f"Unsupported schema version: {version}")
-
-
-# def br_01_to_02_upgrade(
-#     b1: BenchmarkReportV01, eid: str | None = None, pid: str | None = None
-# ) -> BenchmarkReportV02:
-#     """Convert benchmark report v0.1 to v0.2.
-
-#     Args:
-#         b1 (BenchmarkReportV01): Benchmark report v0.1 to convert to v0.2.
-#         eid (str): Experiment ID.
-#         pid (str): Pod ID.
-
-#     Returns:
-#         BenchmarkReportV02: v0.2 benchmark report.
-#     """
-#     # Minimal dict to create a benchmark report v0.2
-#     br_dict = {
-#         "run": {},
-#         "results": {},
-#     }
-#     b2 = BenchmarkReportV02(**br_dict)
-
-#     if eid:
-#         b2.run.eid = eid
-#     if pid:
-#         b2.run.pid = pid
-#     # Create a unique ID
-#     b2.run.uid = hashlib.md5(b1.get_json_str().encode("utf8")).hexdigest()
-
-#     b2.scenario = schema_v0_2.Scenario
-
-#     return b2

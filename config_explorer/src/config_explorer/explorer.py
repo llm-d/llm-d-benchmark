@@ -45,7 +45,7 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from .benchmark_report import import_benchmark_report
+from .benchmark_report import get_nested, import_benchmark_report
 from .benchmark_report.schema_v0_1 import (
     BenchmarkReport,
     HostType,
@@ -783,31 +783,6 @@ def check_file(file: str) -> None:
     """
     if not os.path.isfile(file):
         raise Exception(f'Invalid file: {file}')
-
-
-def get_nested(ndict: dict[Any, Any], path: list[Any],
-               default: Any = None) -> Any:
-    """Get value from path through nested dicts.
-
-    Args:
-        d (dict): Nested dict to get value from.
-        path (list): Path through nested dict, as a list of keys.
-        default (Any): Value to return if path does not exist.
-
-    Returns:
-        Any: Value at path location, or default value if path does not exist.
-    """
-
-    d_cur = ndict
-    for key in path:
-        if not isinstance(d_cur, dict):
-            # Path hit a non-dict
-            return default
-        if key not in d_cur:
-            # Key is not in dict
-            return default
-        d_cur = d_cur[key]
-    return d_cur
 
 
 def mul(a: int | None, b: int | None) -> int | None:
