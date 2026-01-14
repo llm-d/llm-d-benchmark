@@ -85,15 +85,15 @@ def main() -> None:
             import_guidellm,
             import_guidellm_all,
         )
-    elif args.br_version == "0.2":
-        from .native_to_br0_2 import (
-            import_nop,
-            import_inference_max,
-            import_vllm_benchmark,
-            import_inference_perf,
-            import_guidellm,
-            import_guidellm_all,
-        )
+    # elif args.br_version == "0.2":
+    #     from .native_to_br0_2 import (
+    #         import_nop,
+    #         import_inference_max,
+    #         import_vllm_benchmark,
+    #         import_inference_perf,
+    #         import_guidellm,
+    #         import_guidellm_all,
+    #     )
     else:
         sys.stderr.write("Invalid benchmark report version: %s\n" % args.br_version)
         sys.exit(1)

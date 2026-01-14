@@ -20,7 +20,6 @@ __all__ = [
     "BenchmarkReport",
     "BenchmarkReportV01",
     "BenchmarkReportV02",
-    "br_01_to_02_upgrade",
     "get_nested",
     "import_benchmark_report",
     "import_yaml",
