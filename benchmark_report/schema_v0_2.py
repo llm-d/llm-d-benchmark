@@ -448,11 +448,11 @@ class AggregateThroughput(BaseModel):
                 f" one of: {' '.join(UNITS_GEN_THROUGHPUT)}"
             )
         if (
-            self.requests_rate
-            and self.requests_rate.units not in UNITS_REQUEST_THROUGHPUT
+            self.request_rate
+            and self.request_rate.units not in UNITS_REQUEST_THROUGHPUT
         ):
             raise ValueError(
-                f'Invalid units "{self.requests_rate.units}", must be'
+                f'Invalid units "{self.request_rate.units}", must be'
                 f" one of: {' '.join(UNITS_REQUEST_THROUGHPUT)}"
             )
         return self
