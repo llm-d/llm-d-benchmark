@@ -11,7 +11,6 @@ from .core import (
     make_json_schema,
     update_dict,
     yaml_str_to_benchmark_report,
-
 )
 from .schema_v0_1 import BenchmarkReportV01
 from .schema_v0_2 import BenchmarkReportV02
