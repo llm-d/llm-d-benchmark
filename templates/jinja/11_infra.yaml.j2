@@ -1,3 +1,4 @@
+{% if standalone.enabled is defined and not standalone.enabled %}
 gateway:
   gatewayClassName: {{ gateway.className }}
   gatewayParameters:
@@ -13,3 +14,4 @@ gateway:
         memory: {{ gateway.resources.requests.memory }}
   service:
     type: {{ gateway.service.type }}
+{% endif %}

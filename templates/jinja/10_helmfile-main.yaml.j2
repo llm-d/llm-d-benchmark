@@ -1,3 +1,4 @@
+{% if standalone.enabled is defined and not standalone.enabled %}
 helmDefaults:
   createNamespace: false
 ---
@@ -44,3 +45,4 @@ releases:
       - gaie-values.yaml
     labels:
       kind: inference-stack
+{% endif %}

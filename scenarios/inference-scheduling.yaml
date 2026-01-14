@@ -1,4 +1,3 @@
-
 # INFERENCE SCHEDULING WELL LIT PATH for LLM-D Deployment
 # Migrated from bash environment variables to YAML format
 # Based on https://github.com/llm-d/llm-d/tree/main/guides/inference-scheduling
@@ -19,10 +18,10 @@ scenario:
     # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST
     # -------------------------------------------------------------------------
     model:
-      name: meta-llama/Llama-3.1-8B-Instruct
+      name: meta-llama/Llama-3.1-8B
       shortName: meta-lla-8b-instruct
-      path: models/meta-llama/Llama-3.1-8B-Instruct
-      huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
+      path: models/meta-llama/Llama-3.1-8B
+      huggingfaceId: meta-llama/Llama-3.1-8B
       size: 1Ti  # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE
       # Corresponds to: LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN
       maxModelLen: 16000

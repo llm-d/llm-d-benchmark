@@ -1,3 +1,4 @@
+{% if standalone.enabled is defined and not standalone.enabled %}
 repositories:
   - name: istio
     url: {{ helmRepositories.istio.url }}
@@ -32,3 +33,4 @@ releases:
     labels:
       type: gateway-provider
       kind: gateway-control-plane
+{% endif %}

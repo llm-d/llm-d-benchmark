@@ -1,0 +1,65 @@
+{% if standalone.enabled %}
+
+{# ============================================================================
+   standalone-service.yaml.j2
+   
+   Service for standalone vLLM deployment.
+   ============================================================================ #}
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ standalone.service.name | default(standalone.deployment.name | default('vllm-standalone-' ~ model.shortName)) }}
+  namespace: {{ namespace.name }}
+  labels:
+{% if standalone.labels is defined %}
+{% for key, value in standalone.labels.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if standalone.service.annotations is defined and standalone.service.annotations %}
+  annotations:
+{% for key, value in standalone.service.annotations.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+spec:
+  ports:
+  - name: http
+    port: {{ standalone.service.port | default(80) }}
+    targetPort: {{ standalone.vllm.port | default(8000) }}
+{% if standalone.service.additionalPorts is defined %}
+{% for port in standalone.service.additionalPorts %}
+  - name: {{ port.name }}
+    port: {{ port.port }}
+    targetPort: {{ port.targetPort }}
+{% if port.protocol is defined %}
+    protocol: {{ port.protocol }}
+{% endif %}
+{% endfor %}
+{% endif %}
+  selector:
+    app: {{ standalone.deployment.name | default('vllm-standalone-' ~ model.shortName) }}
+  type: {{ standalone.service.type | default('ClusterIP') }}
+{% if standalone.service.type == 'NodePort' and standalone.service.nodePort is defined %}
+  nodePort: {{ standalone.service.nodePort }}
+{% endif %}
+{% if standalone.service.type == 'LoadBalancer' %}
+{% if standalone.service.loadBalancerIP is defined %}
+  loadBalancerIP: {{ standalone.service.loadBalancerIP }}
+{% endif %}
+{% if standalone.service.loadBalancerSourceRanges is defined %}
+  loadBalancerSourceRanges:
+{% for range in standalone.service.loadBalancerSourceRanges %}
+  - {{ range }}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if standalone.service.externalTrafficPolicy is defined %}
+  externalTrafficPolicy: {{ standalone.service.externalTrafficPolicy }}
+{% endif %}
+{% if standalone.service.sessionAffinity is defined %}
+  sessionAffinity: {{ standalone.service.sessionAffinity }}
+{% endif %}
+
+{% endif %}

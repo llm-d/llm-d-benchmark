@@ -11,7 +11,7 @@ _anchors:
   model_name: &model_name meta-llama/Llama-3.1-8B
   model_short_name: &model_short_name meta-lla-1ebbf38c-a-3-1-8b
   model_path: &model_path models/meta-llama/Llama-3.1-8B
-  model_cache_base: &model_cache_base /cache/models
+  model_cache_base: &model_cache_base /model-cache
   
   # Common ports
   vllm_port: &vllm_port 8200
@@ -103,11 +103,17 @@ _anchors:
   preprocess_script: &preprocess_script python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh
 
 # ============================================================================
-# RESOURCE PRESETS - For different model sizes
+# RESOURCE PRESETS - For different model sizes (as we get understanding...)
+# 
+# Idea:
+# 
 # These can be referenced in scenarios via resourcePreset: <name>
+# 
+# I kind of have this implemented in the renderer. But I have not extensively
+# tested it.x
+# 
 # ============================================================================
 resourcePresets:
-  # For 7B-13B models (single GPU)
   small:
     decode:
       resources:
@@ -130,7 +136,6 @@ resourcePresets:
           cpu: *cpu_4
       parallelism: *parallelism_single
 
-  # For 8B-30B models (single GPU, more memory)
   medium:
     decode:
       resources:
@@ -153,7 +158,6 @@ resourcePresets:
           cpu: *cpu_16
       parallelism: *parallelism_single
 
-  # For 70B models (4 GPUs)
   large:
     decode:
       resources:
@@ -176,7 +180,6 @@ resourcePresets:
           cpu: *cpu_32
       parallelism: *parallelism_4gpu
 
-  # For 70B+ models (8 GPUs)
   xlarge:
     decode:
       resources:
@@ -213,14 +216,14 @@ modelservice:
 # Override service account name (optional)
 serviceAccountOverride: ""
 
-# Global scheduler name (can be overridden per decode/prefill)
+# Global scheduler name (can be overridden per decode/prefill or standalone)
 schedulerName: default-scheduler
 
 # ============================================================================
 # NAMESPACE CONFIGURATION
 # ============================================================================
 namespace:
-  name: vezio-wva-test
+  name: auto
   labels:
     podSecurity:
       audit: privileged
@@ -289,6 +292,11 @@ images:
     repository: ghcr.io/llm-d/llm-d-cuda
     tag: sha-04f3538d79c4a5cd28514f1bd53d5e98aa5048d2
     pullPolicy: *pull_if_not_present
+
+  vllmOpenai:
+    repository: docker.io/vllm/vllm-openai
+    tag: latest
+    pullPolicy: *pull_always
   
   inferenceScheduler:
     repository: ghcr.io/llm-d/llm-d-inference-scheduler
@@ -535,8 +543,8 @@ decode:
   # Node selector (optional - for direct nodeSelector, not affinity)
   nodeSelector: {}
   
-  # Scheduler name override (optional)
-  # schedulerName: decode-scheduler
+  # Scheduler name override global schedulerName (optional)
+  # schedulerName: default-scheduler
   
   # Accelerator type selection
   acceleratorType:
@@ -585,6 +593,12 @@ decode:
     useTemplatedArgs: true
     customCommand: null
     customPreprocessCommand: null
+    # Use these if wanted to use default command but add additional
+    # flags
+    additionalFlags: []
+      # - "--disable-log-requests"
+      # - "--max-model-len 16000"
+      # - "--tensor-parallel-size 1"
   
   # Mount model volume
   mountModelVolume: true
@@ -669,8 +683,8 @@ prefill:
   # Node selector (optional)
   nodeSelector: {}
   
-  # Scheduler name override (optional)
-  # schedulerName: prefill-scheduler
+  # Scheduler name override global schedulerName (optional)
+  # schedulerName: default-scheduler
   
   # Accelerator type selection
   acceleratorType:
@@ -702,12 +716,12 @@ prefill:
     loggingLevel: *logging_level
     cacheRoot: *cache_root
     useTemplatedArgs: true
-    customFlagsOnly:
-      - "--disable-log-requests"
-      - "--max-model-len"
-      - "16000"
-      - "--tensor-parallel-size"
-      - "1"
+    # Use these if wanted to use default command but add additional
+    # flags
+    additionalFlags: []
+      # - "--disable-log-requests"
+      # - "--max-model-len 16000"
+      # - "--tensor-parallel-size 1"
     customCommand: null
     customPreprocessCommand: null
   
@@ -743,6 +757,176 @@ prefill:
       annotations: {}
       relabelings: []
       metricRelabelings: []
+
+# ============================================================================
+# STANDALONE DEPLOYMENT CONFIGURATION
+# For simple single-model vLLM deployments without llm-d routing infrastructure
+# ============================================================================
+standalone:
+  enabled: false
+  replicas: 1
+  role: both  # Options: prefill, decode, both
+  
+  # Deployment naming
+  deployment:
+    name: null  # Auto-generated if null: vllm-standalone-<model.shortName>
+  
+  # Service configuration
+  service:
+    name: null  # Uses deployment name if null
+    port: 80
+    type: ClusterIP
+    # nodePort: 30080  # Only used when type: NodePort
+    # loadBalancerIP: ""  # Only used when type: LoadBalancer
+    # loadBalancerSourceRanges: []
+    # externalTrafficPolicy: Cluster
+    # sessionAffinity: None
+    annotations: {}
+    additionalPorts: []
+    # Example:
+    # additionalPorts:
+    #   - name: metrics
+    #     port: 9090
+    #     targetPort: 9090
+  
+  # Labels applied to deployment and service
+  labels:
+    stood-up-by: "auto" # Should be automatically configured to user
+    stood-up-from: llm-d-benchmark
+    stood-up-via: "standalone"
+  
+  # Extra labels for pod template
+  extraPodLabels: {}
+  
+  # Pod annotations
+  podAnnotations: {}
+  
+  # Scheduler name override global schedulerName (optional)
+  schedulerName: default-scheduler
+  
+  # Node selector (optional)
+  nodeSelector: {}
+  
+  # Accelerator type selection (inherits from decode if not specified)
+  acceleratorType:
+    labelKey: nvidia.com/gpu.product
+    labelValue: NVIDIA-H100-80GB-HBM3
+    # labelValues:  # Use for multiple GPU types
+    #   - NVIDIA-H100-80GB-HBM3
+    #   - NVIDIA-A100-SXM4-80GB
+  
+  # Image configuration (inherits from images.vllm if not specified)
+  image:
+    repository: docker.io/vllm/vllm-openai
+    tag: latest
+    pullPolicy: Always
+  
+  # Parallelism configuration
+  parallelism:
+    tensor: 1
+  
+  # Resource configuration (inherits from decode if not specified)
+  resources:
+    limits:
+      memory: 40Gi
+      cpu: "4"
+    requests:
+      memory: 40Gi
+      cpu: "4"
+  
+  # Shared memory
+  shm:
+    size: 16Gi
+  
+  # Probe configuration
+  probes:
+    startup:
+      failureThreshold: 200
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 5
+    liveness:
+      failureThreshold: 3
+      periodSeconds: 10
+    readiness:
+      failureThreshold: 3
+      periodSeconds: 5
+  
+  # vLLM configuration
+  vllm:
+    port: 8000
+    loadFormat: auto
+    modelLoaderExtraConfig: "{}"
+    workerMultiprocMethod: spawn
+    loggingLevel: INFO
+    cacheRoot: /tmp/vllm
+    enablePrefixCaching: false
+    preprocessCommand: /bin/true
+    customPreprocessCommand: null
+    customCommand: null
+    # Use these if wanted to use default command but add additional
+    # flags
+    additionalFlags: []
+    # Example:
+    # additionalFlags:
+    #   - "--enable-chunked-prefill"
+    #   - "--max-num-batched-tokens 8192"
+  
+  # Model volume configuration
+  mountModelVolume: true
+  modelMountPath: /model-storage
+  modelPvcName: model-pvc
+  
+  # Preprocess configmap name
+  preprocessConfigMap: llm-d-benchmark-preprocesses
+  
+  # Additional volume mounts
+  additionalVolumeMounts: []
+  # Example:
+  # additionalVolumeMounts:
+  #   - name: custom-config
+  #     mountPath: /config
+  #     readOnly: true
+  
+  # Additional volumes
+  additionalVolumes: []
+  # Example:
+  # additionalVolumes:
+  #   - name: custom-config
+  #     type: configMap
+  #     configMap:
+  #       name: my-config
+  
+  # Extra environment variables
+  extraEnvVars: []
+  # Example:
+  # extraEnvVars:
+  #   - name: CUDA_VISIBLE_DEVICES
+  #     value: "0"
+  #   - name: MY_SECRET
+  #     valueFrom:
+  #       secretKeyRef:
+  #         name: my-secret
+  #         key: password
+  
+  # Init containers (optional)
+  initContainers: []
+  # Example:
+  # initContainers:
+  #   - name: download-model
+  #     image: python:3.10
+  #     command: ["python", "-c", "print('downloading...')"]
+  
+  # Extra container config (merged into container spec)
+  extraContainerConfig: {}
+  # Example:
+  # extraContainerConfig:
+  #   securityContext:
+  #     privileged: true
+  
+  # Extra pod config (merged into pod spec)
+  extraPodConfig: {}
+
 
 # ============================================================================
 # DOWNLOAD JOB CONFIGURATION

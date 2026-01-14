@@ -1,3 +1,5 @@
+{% if standalone.enabled is defined and not standalone.enabled %}
+
 {# ============================================================================
    ms-values.yaml.j2
    
@@ -880,3 +882,5 @@ prefill:
 extraObjects:
 {{ extraObjects | toyaml | indent(2) }}
 {% endif %}
+
+{% endif %} 

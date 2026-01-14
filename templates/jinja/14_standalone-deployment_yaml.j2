@@ -1,0 +1,285 @@
+{% if standalone.enabled %}
+
+{# ============================================================================
+   standalone-deployment.yaml.j2
+   
+   Standalone vLLM deployment without llm-d routing infrastructure.
+   Useful for simple single-model deployments or testing.
+   ============================================================================ #}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-standalone-{{ model.shortName }}
+  labels:
+    app: vllm-standalone-{{ model.shortName }}
+{% if standalone.labels is defined %}
+{% for key, value in standalone.labels.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+  namespace: {{ namespace.name }}
+spec:
+  replicas: {{ standalone.replicas | default(1) }}
+  selector:
+    matchLabels:
+      app: vllm-standalone-{{ model.shortName }}
+  template:
+    metadata:
+      labels:
+        app: vllm-standalone-{{ model.shortName }}
+        llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
+        llm-d.ai/model: {{ model.shortName }}
+        llm-d.ai/role: {{ standalone.role | default('both') }}
+{% if standalone.extraPodLabels is defined %}
+{% for key, value in standalone.extraPodLabels.items() %}
+        {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if standalone.podAnnotations is defined and standalone.podAnnotations %}
+      annotations:
+{% for key, value in standalone.podAnnotations.items() %}
+        {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+
+    spec:
+      schedulerName: {{ standalone.schedulerName | default(schedulerName) | default('default-scheduler') }}
+{% if standalone.nodeSelector is defined and standalone.nodeSelector %}
+      nodeSelector:
+{% for key, value in standalone.nodeSelector.items() %}
+        {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: {{ standalone.acceleratorType.labelKey | default(decode.acceleratorType.labelKey) }}
+                operator: In
+                values:
+{% if standalone.acceleratorType is defined and standalone.acceleratorType.labelValues is defined %}
+{% for value in standalone.acceleratorType.labelValues %}
+                - {{ value }}
+{% endfor %}
+{% elif standalone.acceleratorType is defined and standalone.acceleratorType.labelValue is defined %}
+                - {{ standalone.acceleratorType.labelValue }}
+{% else %}
+                - {{ decode.acceleratorType.labelValue }}
+{% endif %}
+{% if standalone.initContainers is defined and standalone.initContainers %}
+      initContainers:
+{% for container in standalone.initContainers %}
+      - name: {{ container.name }}
+        image: {{ container.image }}
+{% if container.imagePullPolicy is defined %}
+        imagePullPolicy: {{ container.imagePullPolicy }}
+{% endif %}
+{% if container.command is defined %}
+        command:
+{% for cmd in container.command %}
+        - {{ cmd }}
+{% endfor %}
+{% endif %}
+{% if container.args is defined %}
+        args:
+{% for arg in container.args %}
+        - {{ arg }}
+{% endfor %}
+{% endif %}
+{% if container.env is defined %}
+        env:
+{% for env in container.env %}
+        - name: {{ env.name }}
+{% if env.value is defined %}
+          value: "{{ env.value }}"
+{% elif env.valueFrom is defined %}
+          valueFrom:
+{{ env.valueFrom | toyaml | indent(12) }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if container.volumeMounts is defined %}
+        volumeMounts:
+{% for mount in container.volumeMounts %}
+        - name: {{ mount.name }}
+          mountPath: {{ mount.mountPath }}
+{% if mount.readOnly is defined %}
+          readOnly: {{ mount.readOnly | lower }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if container.resources is defined %}
+        resources:
+{{ container.resources | toyaml | indent(10) }}
+{% endif %}
+{% endfor %}
+{% endif %}
+      containers:
+      - name: vllm-standalone-{{ model.shortName }}
+        image: {{ standalone.image.repository | default(images.vllm.repository) }}:{{ standalone.image.tag | default(images.vllm.tag) }}
+        imagePullPolicy: {{ standalone.image.pullPolicy | default(images.vllm.pullPolicy) }}
+        command:
+        - /bin/bash
+        - "-c"
+        args:
+        - |
+{{ build_standalone_vllm_command() | indent(10, first=True) }}
+        env:
+        - name: LLMDBENCH_VLLM_STANDALONE_MODEL
+          value: "{{ model.name }}"
+        - name: LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT
+          value: "{{ standalone.vllm.loadFormat | default('auto') }}"
+        - name: LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG
+          value: "{{ standalone.vllm.modelLoaderExtraConfig | default('{}') }}"
+        - name: LLMDBENCH_VLLM_COMMON_AFFINITY
+          value: "nvidia.com/gpu:{{ standalone.acceleratorType.labelKey | default(decode.acceleratorType.labelKey) }}:{{ standalone.acceleratorType.labelValue | default(decode.acceleratorType.labelValue) }}"
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ huggingface.secretName }}
+              key: {{ huggingface.tokenKey }}
+        - name: VLLM_WORKER_MULTIPROC_METHOD
+          value: "{{ standalone.vllm.workerMultiprocMethod | default(decode.vllm.workerMultiprocMethod) }}"
+        - name: VLLM_LOGGING_LEVEL
+          value: "{{ standalone.vllm.loggingLevel | default(decode.vllm.loggingLevel) }}"
+        - name: VLLM_CACHE_ROOT
+          value: "{{ standalone.vllm.cacheRoot | default(decode.vllm.cacheRoot) }}"
+        - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+          value: "{{ vllmCommon.flags.allowLongMaxModelLen | default('1') }}"
+        - name: VLLM_SERVER_DEV_MODE
+          value: "{{ vllmCommon.flags.serverDevMode | default('1') }}"
+        - name: VLLM_LOAD_FORMAT
+          value: "{{ standalone.vllm.loadFormat | default('auto') }}"
+{% if standalone.extraEnvVars is defined %}
+{% for env in standalone.extraEnvVars %}
+        - name: {{ env.name }}
+{% if env.value is defined %}
+          value: "{{ env.value }}"
+{% elif env.valueFrom is defined %}
+          valueFrom:
+{% if env.valueFrom.secretKeyRef is defined %}
+            secretKeyRef:
+              name: {{ env.valueFrom.secretKeyRef.name }}
+              key: {{ env.valueFrom.secretKeyRef.key }}
+{% elif env.valueFrom.configMapKeyRef is defined %}
+            configMapKeyRef:
+              name: {{ env.valueFrom.configMapKeyRef.name }}
+              key: {{ env.valueFrom.configMapKeyRef.key }}
+{% elif env.valueFrom.fieldRef is defined %}
+            fieldRef:
+              fieldPath: {{ env.valueFrom.fieldRef.fieldPath }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+        ports:
+        - containerPort: {{ standalone.vllm.port | default(8000) }}
+        startupProbe:
+          httpGet:
+            path: /health
+            port: {{ standalone.vllm.port | default(8000) }}
+          failureThreshold: {{ standalone.probes.startup.failureThreshold | default(200) }}
+          initialDelaySeconds: {{ standalone.probes.startup.initialDelaySeconds | default(30) }}
+          periodSeconds: {{ standalone.probes.startup.periodSeconds | default(30) }}
+          timeoutSeconds: {{ standalone.probes.startup.timeoutSeconds | default(5) }}
+        livenessProbe:
+          tcpSocket:
+            port: {{ standalone.vllm.port | default(8000) }}
+          failureThreshold: {{ standalone.probes.liveness.failureThreshold | default(3) }}
+          periodSeconds: {{ standalone.probes.liveness.periodSeconds | default(10) }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: {{ standalone.vllm.port | default(8000) }}
+          failureThreshold: {{ standalone.probes.readiness.failureThreshold | default(3) }}
+          periodSeconds: {{ standalone.probes.readiness.periodSeconds | default(5) }}
+        resources:
+          limits:
+            memory: {{ standalone.resources.limits.memory | default(decode.resources.limits.memory) }}
+            cpu: "{{ standalone.resources.limits.cpu | default(decode.resources.limits.cpu) }}"
+            nvidia.com/gpu: "{{ standalone.parallelism.tensor | default(decode.parallelism.tensor) }}"
+          requests:
+            memory: {{ standalone.resources.requests.memory | default(decode.resources.requests.memory) }}
+            cpu: "{{ standalone.resources.requests.cpu | default(decode.resources.requests.cpu) }}"
+            nvidia.com/gpu: "{{ standalone.parallelism.tensor | default(decode.parallelism.tensor) }}"
+        volumeMounts:
+        - name: preprocesses
+          mountPath: /setup/preprocess
+{% if standalone.mountModelVolume | default(true) %}
+        - name: cache-volume
+          mountPath: {{ standalone.modelMountPath | default('/model-storage') }}
+          readOnly: true
+{% endif %}
+        - name: shm
+          mountPath: /dev/shm
+{% if standalone.additionalVolumeMounts is defined %}
+{% for mount in standalone.additionalVolumeMounts %}
+        - name: {{ mount.name }}
+          mountPath: {{ mount.mountPath }}
+{% if mount.subPath is defined %}
+          subPath: {{ mount.subPath }}
+{% endif %}
+{% if mount.readOnly is defined %}
+          readOnly: {{ mount.readOnly | lower }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if standalone.extraContainerConfig is defined and standalone.extraContainerConfig %}
+{{ standalone.extraContainerConfig | toyaml | indent(8) }}
+{% endif %}
+      volumes:
+      - name: preprocesses
+        configMap:
+          name: {{ standalone.preprocessConfigMap | default('llm-d-benchmark-preprocesses') }}
+          defaultMode: 0500
+{% if standalone.mountModelVolume | default(true) %}
+      - name: cache-volume
+        persistentVolumeClaim:
+          claimName: {{ standalone.modelPvcName | default(storage.modelPvc.name) }}
+{% endif %}
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: {{ standalone.shm.size | default(decode.shm.size) }}
+{% if standalone.additionalVolumes is defined %}
+{% for volume in standalone.additionalVolumes %}
+      - name: {{ volume.name }}
+{% if volume.type == 'configMap' %}
+        configMap:
+          name: {{ volume.configMap.name }}
+{% if volume.configMap.defaultMode is defined %}
+          defaultMode: {{ volume.configMap.defaultMode }}
+{% endif %}
+{% elif volume.type == 'emptyDir' %}
+        emptyDir:
+{% if volume.emptyDir.medium is defined %}
+          medium: {{ volume.emptyDir.medium }}
+{% endif %}
+{% if volume.emptyDir.sizeLimit is defined %}
+          sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif %}
+{% elif volume.type == 'persistentVolumeClaim' %}
+        persistentVolumeClaim:
+          claimName: {{ volume.persistentVolumeClaim.claimName }}
+{% elif volume.type == 'secret' %}
+        secret:
+          secretName: {{ volume.secret.secretName }}
+{% if volume.secret.defaultMode is defined %}
+          defaultMode: {{ volume.secret.defaultMode }}
+{% endif %}
+{% elif volume.type == 'hostPath' %}
+        hostPath:
+          path: {{ volume.hostPath.path }}
+{% if volume.hostPath.type is defined %}
+          type: {{ volume.hostPath.type }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if standalone.extraPodConfig is defined and standalone.extraPodConfig %}
+{{ standalone.extraPodConfig | toyaml | indent(6) }}
+{% endif %}
+
+{% endif %}

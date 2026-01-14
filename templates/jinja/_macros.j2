@@ -9,17 +9,22 @@
 {% else -%}
 {% set config = prefill -%}
 {% endif -%}
-{# Check if custom command is provided #}
-{% if config.vllm.customCommand is not none -%}
-{{ config.vllm.customCommand }}
-{%- else -%}
-{# Use custom preprocess command if provided, otherwise use common one #}
-{% if config.vllm.customPreprocessCommand is not none -%}
-{{ config.vllm.customPreprocessCommand }}
+
+
+{# Determine preprocess script to use #}
+{% if config.vllm.customPreprocessCommand is defined and config.vllm.customPreprocessCommand is not none -%}
+{% set preprocess_script = config.vllm.customPreprocessCommand -%}
 {% else -%}
-{{ vllmCommon.preprocessScript }};
+{% set preprocess_script = vllmCommon.preprocessScript -%}
 {% endif -%}
-vllm serve {{ model.cacheBase }}/{{ model.path }} \
+
+{# Determine command to use #}
+{% if config.vllm.customCommand is defined and config.vllm.customCommand is not none -%}
+{# Custom command provided - combine with preprocess script #}
+{{ preprocess_script }}; {{ config.vllm.customCommand }}
+{%- else -%}
+{# Use default vllm serve command with preprocess script #}
+{{ preprocess_script }}; vllm serve {{ model.cacheBase }}/{{ model.path }} \
 --host {{ vllmCommon.host }} \
 --served-model-name {{ model.name }} \
 --port {{ config.vllm.port }} \
@@ -39,6 +44,36 @@ vllm serve {{ model.cacheBase }}/{{ model.path }} \
 {%- endif %}
 {%- endif %}
 {%- endmacro %}
+
+
+{# Macro to build standalone vLLM serve command #}
+{% macro build_standalone_vllm_command() -%}
+{# Determine preprocess script to use #}
+{% if standalone.vllm.customPreprocessCommand is defined and standalone.vllm.customPreprocessCommand is not none -%}
+{% set preprocess_script = standalone.vllm.customPreprocessCommand -%}
+{% else -%}
+{% set preprocess_script = standalone.vllm.preprocessCommand | default('/bin/true') -%}
+{% endif -%}
+
+{# Determine command to use #}
+{% if standalone.vllm.customCommand is defined and standalone.vllm.customCommand is not none -%}
+{# Custom command provided - combine with preprocess script #}
+{{ preprocess_script }} ; {{ standalone.vllm.customCommand }}
+{%- else -%}
+{# Use default vllm serve command with preprocess script #}
+{{ preprocess_script }} ;
+ vllm serve {{ model.name }} \
+  --no-enable-prefix-caching \
+  --load-format {{ standalone.vllm.loadFormat | default('auto') }} \
+  --port {{ standalone.vllm.port | default(8000) }} \
+  --max-model-len {{ model.maxModelLen }} \
+  --disable-log-requests \
+  --gpu-memory-utilization {{ model.gpuMemoryUtilization }} \
+  --tensor-parallel-size {{ standalone.parallelism.tensor | default(decode.parallelism.tensor) }} \
+  --model-loader-extra-config "$LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG"
+{%- endif %}
+{%- endmacro %}
+
 
 {# Macro to render volume mounts #}
 {% macro render_volume_mounts(mode='decode') -%}
