@@ -495,8 +495,19 @@ vllmCommon:
   host: "0.0.0.0"
   preprocessScript: *preprocess_script
   kvTransfer:
+    enabled: false
     connector: *kv_connector
     role: *kv_role
+  # KV Events Configuration (for precise prefix cache aware routing)
+  # When enabled, adds --kv-events-config to vllm serve command
+  # Generates endpoint: tcp://<serviceName>.<namespace>.svc.cluster.local:<port>
+  # Generates topic: <topicPrefix>@${POD_IP}@<model.name>
+  kvEvents:
+    enabled: false  # Set to true in scenario to enable
+    publisher: zmq
+    port: 5557
+    topicPrefix: kv
+    # serviceName: null  # Defaults to model.shortName if not specified
   flags:
     enforceEager: true
     disableLogRequests: true
