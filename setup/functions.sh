@@ -33,7 +33,11 @@ function model_attribute {
   local provider=$(echo $model | cut -d '/' -f 1)
   local modeltype=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision|opt" || echo base)
   local parameters=$(echo "${modelcomponents}" | grep -Ei "[0-9].*b|[0-9].*m" | $LLMDBENCH_CONTROL_SCMD -e 's^a^^' -e 's^\.^p^' -e 's/[0-9].*p//g' | tail -1)
-  local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" |  $LLMDBENCH_CONTROL_SCMD -e "s/$parameters//g" | cut -d '.' -f 1)
+  if [[ ! -z $parameters ]]; then
+    local majorversion=$(echo "${modelcomponents}" | grep -Ei "^[0-9]" | grep -Evi "b|E" |  $LLMDBENCH_CONTROL_SCMD -e "s/$parameters//g" | cut -d '.' -f 1)
+  else
+    local majorversion=
+  fi
   if [[ -z $majorversion ]]; then
     local majorversion=1
   fi
@@ -399,7 +403,7 @@ function run_step {
     if [[ ${!script_implementaton} == sh ]]; then
       source $script_path
     elif [[ ${!script_implementaton} == py ]]; then
-      python3 $script_path
+      $LLMDBENCH_CONTROL_PCMD $script_path
       local ec=$?
       if [[ $ec -ne 0 ]]; then
         exit $ec
@@ -585,6 +589,10 @@ spec:
       valueFrom:
         fieldRef:
           fieldPath: metadata.name
+    - name: POD_UID
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.uid
     volumeMounts:
     - name: results
       mountPath: /requests

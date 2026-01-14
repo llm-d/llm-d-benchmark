@@ -57,7 +57,7 @@ provider:
         return ""
 
 def auto_detect_version(ev, chart, version_key, repo_key) -> int:
-    if ev.get(version_key) == "auto":
+    if ev[version_key] == "auto":
         announce(f"🔍 Auto-detecting {chart} chart version...")
 
         try:
@@ -79,7 +79,6 @@ def auto_detect_version(ev, chart, version_key, repo_key) -> int:
                     version = last_line.split()[1] if len(last_line.split()) > 1 else ""
                     if version:
                         ev[version_key] = version
-                        os.environ[f"LLMDBENCH_{version_key.upper()}"]
                         announce(f"📦 Auto-detected chart version: {version}")
                         return 0
                     else:
@@ -99,10 +98,8 @@ def auto_detect_version(ev, chart, version_key, repo_key) -> int:
 
 def main():
     """Set up helm repositories and create helmfile configurations for model deployments."""
-    os.environ["CURRENT_STEP_NAME"] = os.path.splitext(os.path.basename(__file__))[0]
-
     # Parse environment variables
-    ev = {}
+    ev = {'current_step_name': os.path.splitext(os.path.basename(__file__))[0] }
     environment_variable_to_dict(ev)
 
     # Check if modelservice environment is active
@@ -133,8 +130,8 @@ def main():
         )
         result = llmdbench_execute_cmd(
             actual_cmd=helm_repo_add_cmd,
-            dry_run=int(ev.get("control_dry_run", 0)),
-            verbose=int(ev.get("control_verbose", 0))
+            dry_run=ev["control_dry_run"],
+            verbose=ev["control_verbose"]
         )
         if result != 0:
             announce(f"ERROR: Failed setting up llm-d-infra helm repository with \"{helm_repo_add_cmd}\" (exit code: {result})")
@@ -144,8 +141,8 @@ def main():
         helm_repo_update_cmd = f"{ev['control_hcmd']} repo update"
         result = llmdbench_execute_cmd(
             actual_cmd=helm_repo_update_cmd,
-            dry_run=int(ev.get("control_dry_run", 0)),
-            verbose=int(ev.get("control_verbose", 0))
+            dry_run=ev["control_dry_run"],
+            verbose=ev["control_verbose"]
         )
         if result != 0:
             announce(f"ERROR: Failed setting up helm repositories with \"{helm_repo_update_cmd}\" (exit code: {result})")
@@ -169,7 +166,7 @@ def main():
 
         for model in model_list:
             # Get model attribute
-            model_id_label = model_attribute(model, "modelid_label")
+            model_id_label = model_attribute(model, "modelid_label", ev)
 
             # Create infra values file
             infra_value_file = Path(helm_base_dir / "infra.yaml" )
@@ -179,7 +176,7 @@ def main():
                     gw_class = f"{gw_class}-openshift"
                 f.write(gateway_values(gw_class, f"{model_id_label}-gaie-epp.{ev['vllm_common_namespace']}{ev['vllm_common_fqdn']}", ev["vllm_modelservice_gateway_service_type"]))
 
-            os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL"] = model_id_label
+            ev["deploy_current_model_id_label"] = model_id_label
 
             # Format model number with zero padding
             model_num = f"{model_number:02d}"
@@ -244,18 +241,14 @@ releases:
 
             announce(f"📝 Created helmfile configuration for model {model} ({model_num})")
 
-            # Clean up environment variable
-            if "LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL" in os.environ:
-                del os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL"]
-
             model_number += 1
 
         announce(f"🚀 Installing helm chart \"infra-{ev['vllm_modelservice_release']}\" via helmfile...")
         install_cmd=f"helmfile --namespace {ev['vllm_common_namespace']} --kubeconfig {ev['control_work_dir']}/environment/context.ctx --selector name=infra-{ev['vllm_modelservice_release']} apply -f {ev['control_work_dir']}/setup/helm/{ev['vllm_modelservice_release']}/helmfile-00.yaml --skip-diff-on-install"
         result = llmdbench_execute_cmd(
             actual_cmd=install_cmd,
-            dry_run=int(ev.get("control_dry_run", 0)),
-            verbose=int(ev.get("control_verbose", 0))
+            dry_run=ev["control_dry_run"],
+            verbose=ev["control_verbose"]
         )
         if result != 0:
             announce(f"ERROR: Failed Failed installing chart \"infra-{ev['vllm_modelservice_release']}\" (exit code: {result})")

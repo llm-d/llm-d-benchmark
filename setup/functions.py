@@ -106,7 +106,7 @@ def announce(msgcont: str, logfile: str = None, ignore_if_failed: bool = False):
     os.makedirs(log_dir, exist_ok=True)
 
     if not logfile:
-        cur_step = os.getenv("CURRENT_STEP_NAME", "step")
+        cur_step = os.getenv("LLMDBENCH_CURRENT_STEP_NAME", "step")
         logfile = cur_step + ".log"
 
     logpath = os.path.join(log_dir, logfile)
@@ -140,7 +140,7 @@ def kube_connect(config_path: str = "~/.kube/config"):
     api = None
     try:
         api = pykube.HTTPClient(
-            pykube.KubeConfig.from_file(os.path.expanduser(config_path))
+            pykube.KubeConfig.from_file(os.path.expanduser(config_path)), timeout=120
         )
         k8s_config.load_kube_config(os.path.expanduser(config_path))
     except FileNotFoundError:
@@ -320,12 +320,14 @@ def environment_variable_to_dict(ev: dict = {}):
     for mandatory_key in [
         "control_dry_run",
         "control_verbose",
+        "control_deploy_is_minikube",
         "run_experiment_analyze_locally",
         "user_is_admin",
         "control_environment_type_standalone_active",
         "control_environment_type_modelservice_active",
         "wva_enabled",
-        "vllm_modelservice_multinode"
+        "vllm_modelservice_multinode",
+        "vllm_standalone_launcher"
     ]:
         if mandatory_key not in ev:
             ev[mandatory_key] = 0
@@ -681,7 +683,7 @@ spec:
 
     kubectl_apply(api=api, manifest_data=job_yaml, dry_run=ev["control_dry_run"])
 
-async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False):
+async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False, ev: dict = {}):
     """Wait for the  job to complete"""
     announce(f"Waiting for job {job_name} to complete...")
 
@@ -690,8 +692,7 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
         return True
 
     # use async config loading
-    #TODO kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
-    await k8s_async_config.load_kube_config()
+    await k8s_async_config.load_kube_config(f'{ev["control_work_dir"]}/environment/context.ctx')
     api_client = k8s_async_client.ApiClient()
     batch_v1_api = k8s_async_client.BatchV1Api(api_client)
     try:
@@ -731,7 +732,7 @@ async def wait_for_job(job_name, namespace, timeout=7200, dry_run: bool = False)
     finally:
         await api_client.close()
 
-def model_attribute(model: str, attribute: str) -> str:
+def model_attribute(model: str, attribute: str, ev: dict) -> str:
 
     if ":" in model:
         model, modelid = model.split(":", 1)
@@ -743,9 +744,8 @@ def model_attribute(model: str, attribute: str) -> str:
     #  split the model name into provider and rest
     provider, model_part = model.split("/", 1) if "/" in model else ("", model)
 
-    ns = os.getenv("LLMDBENCH_VLLM_COMMON_NAMESPACE")
     hash_object = hashlib.sha256()
-    hash_object.update(f"{ns}/{modelid}".encode("utf-8"))
+    hash_object.update(f"{ev['vllm_common_namespace']}/{modelid}".encode("utf-8"))
     digest = hash_object.hexdigest()
     modelid_label = f"{modelid[:8]}-{digest[:8]}-{modelid[-8:]}"
 
@@ -840,17 +840,17 @@ def extract_environment(ev):
     environment_variable_to_dict(ev)
 
     # Check if environment variables have been displayed before
-    envvar_displayed = int(os.environ.get("LLMDBENCH_CONTROL_ENVVAR_DISPLAYED", 0))
+    envvar_displayed = ev["control_envvar_displayed"]
 
     if envvar_displayed == 0:
         print("\n\nList of environment variables which will be used")
         for var in env_vars:
             print(var)
         print("\n\n")
-        os.environ["LLMDBENCH_CONTROL_ENVVAR_DISPLAYED"] = "1"
+        ev["control_envvar_displayed"] = "1"
 
     # Write environment variables to file
-    work_dir = os.environ.get("LLMDBENCH_CONTROL_WORK_DIR", ".")
+    work_dir = ev["control_work_dir"]
     env_dir = Path(work_dir) / "environment"
     env_dir.mkdir(parents=True, exist_ok=True)
 
@@ -939,11 +939,7 @@ def check_storage_class(ev):
     Equivalent to the bash check_storage_class function.
     """
     try:
-        # Use pykube to connect to Kubernetes
-        control_work_dir = os.environ.get(
-            "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
-        )
-        api, client = kube_connect(f"{control_work_dir}/environment/context.ctx")
+        api, client = kube_connect(f"{ev['control_work_dir']}/environment/context.ctx")
 
         # Create StorageClass object - try pykube-ng first, fallback to custom class
         try:
@@ -960,41 +956,38 @@ def check_storage_class(ev):
 
         # Handle default storage class
         if ev["vllm_common_pvc_storage_class"] == "default":
-            if ev["control_caller"] in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
+#            if ev["control_caller"] in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
 
-                try:
-                    # Find default storage class using pykube
-                    storage_classes = StorageClass.objects(api)
-                    default_sc = None
+            try:
+                # Find default storage class using pykube
+                storage_classes = StorageClass.objects(api)
+                default_sc = None
 
-                    for sc in storage_classes:
-                        annotations = sc.metadata.get("annotations", {})
-                        if (
-                            annotations.get(
-                                "storageclass.kubernetes.io/is-default-class"
-                            )
-                            == "true"
-                        ):
-                            default_sc = sc.name
-                            break
-
-                    if default_sc:
-                        announce(
-                            f'ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to "{default_sc}"'
+                for sc in storage_classes:
+                    annotations = sc.metadata.get("annotations", {})
+                    if (
+                        annotations.get(
+                            "storageclass.kubernetes.io/is-default-class"
                         )
-                        os.environ["LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS"] = (
-                            default_sc
-                        )
-                        ev["vllm_common_pvc_storage_class"] = default_sc
+                        == "true"
+                    ):
+                        default_sc = sc.name
+                        break
 
-                    else:
-                        announce(
-                            f"ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class"
-                        )
-                        return False
-                except Exception as e:
-                    announce(f"ERROR: unable to find a \"default\" storage class: {e}")
+                if default_sc:
+                    announce(
+                        f'ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS automatically set to "{default_sc}"'
+                    )
+                    ev["vllm_common_pvc_storage_class"] = default_sc
+
+                else:
+                    announce(
+                        f"ERROR: environment variable LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=default, but unable to find a default storage class"
+                    )
                     return False
+            except Exception as e:
+                announce(f"ERROR: unable to find a \"default\" storage class: {e}")
+                return False
 
         # Verify storage class exists using pykube
         try:
@@ -1024,26 +1017,13 @@ def check_affinity(ev: dict):
     Check and validate affinity configuration.
     Equivalent to the bash check_affinity function.
     """
-    caller = os.environ.get("LLMDBENCH_CONTROL_CALLER", "")
-    if caller not in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]:
-        return True
-
-    affinity = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY", "")
-    is_minikube = int(os.environ.get("LLMDBENCH_CONTROL_DEPLOY_IS_MINIKUBE", 0))
-
     try:
         # Use pykube to connect to Kubernetes
-        control_work_dir = os.environ.get(
-            "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
-        )
-        api, client = kube_connect(f"{control_work_dir}/environment/context.ctx")
+        api, client = kube_connect(f"{ev['control_work_dir']}/environment/context.ctx")
 
         # Handle auto affinity detection
-        if affinity == "auto":
-            if (
-                caller in ["standup.sh", "e2e.sh", "standup.py", "e2e.py"]
-                and is_minikube == 0
-            ):
+        if ev["vllm_common_affinity"] == "auto":
+            if not ev["control_deploy_is_minikube"] :
                 try:
                     # Get node labels to find accelerators using pykube
                     nodes = pykube.Node.objects(api)
@@ -1067,26 +1047,16 @@ def check_affinity(ev: dict):
                         if found_accelerator:
                             break
 
-                    if (
-                        os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"]
-                        == "auto"
-                    ):
-                        os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"] = (
-                            "nvidia.com/gpu"
-                        )
+                    if ev["vllm_common_accelerator_resource"] == "auto" :
+                        ev["vllm_common_accelerator_resource"] = "nvidia.com/gpu"
 
                     if found_accelerator:
-                        os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"] = found_accelerator
                         announce(
                             f'ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to "{found_accelerator}"'
                         )
-                        os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"] = (
-                            f"{found_accelerator}"
-                        )
 
-                        # Updates the common affinity env var if auto
                         ev["vllm_common_affinity"] = (
-                            f"{os.environ.get('LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE')}:{found_accelerator}"
+                            f'{ev["vllm_common_accelerator_resource"]}:{found_accelerator}'
                         )
                     else:
                         announce(
@@ -1098,8 +1068,8 @@ def check_affinity(ev: dict):
                     return False
         else:
             # Validate manually specified affinity using pykube
-            if affinity and ":" in affinity:
-                annotation_key, annotation_value = affinity.split(":", 1)
+            if ev["vllm_common_affinity"] and ":" in ev["vllm_common_affinity"]:
+                annotation_key, annotation_value = ev["vllm_common_affinity"].split(":", 1)
                 try:
                     nodes = pykube.Node.objects(api)
                     found_matching_node = False
@@ -1120,11 +1090,9 @@ def check_affinity(ev: dict):
                     return False
 
         # Handle auto accelerator resource detection
-        accelerator_resource = os.environ.get(
-            "LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE", ""
-        )
-        if accelerator_resource == "auto":
-            os.environ["LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE"] = "nvidia.com/gpu"
+        accelerator_resource = ev["vllm_common_accelerator_resource"]
+        if ev["vllm_common_accelerator_resource"] == "auto":
+            ev["vllm_common_accelerator_resource"] = "nvidia.com/gpu"
             announce(
                 f'ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE automatically set to "nvidia.com/gpu"'
             )
@@ -1186,7 +1154,7 @@ def add_annotations(ev: dict, varname: str) -> str:
 
     return "\n".join(annotation_lines)
 
-def render_string(input_string):
+def render_string(input_string, ev):
     """
     Process REPLACE_ENV variables in a string, equivalent to bash render_string function.
 
@@ -1224,7 +1192,8 @@ def render_string(input_string):
             default_value = ""
 
         # Get environment variable value
-        env_value = os.environ.get(parameter_name, "")
+        env_value = ev[parameter_name.replace('LLMDBENCH_','',1).lower()]
+#        env_value = os.environ.get(parameter_name, "")
 
         # Determine final value
         if env_value:
@@ -1236,7 +1205,7 @@ def render_string(input_string):
             sys.exit(1)
 
         # Replace in the string
-        processed_string = processed_string.replace(match, final_value)
+        processed_string = processed_string.replace(match, str(final_value))
 
         processed_string = clear_string(processed_string)
 
@@ -1258,8 +1227,6 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
     In case args_string is a file path, open the file and read the contents first
     Equivalent to the bash add_command_line_options function.
     """
-    current_step = os.environ["LLMDBENCH_CURRENT_STEP"].split("_")[0]
-
     if os.access(args_string, os.R_OK):
         with open(args_string, "r") as fp:
             fc = fp.read()
@@ -1267,10 +1234,10 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
 
     # Process REPLACE_ENV variables first
     if args_string:
-        processed_args = render_string(args_string)
+        processed_args = render_string(args_string, ev)
 
         # Handle formatting based on step and content
-        if current_step == "06":
+        if ev["current_step_nr"] == "06":
             # For step 06 (standalone), format as YAML list item with proper spacing
             if "[" in processed_args and "]" in processed_args:
                 # Handle array format: convert [arg1____arg2____arg3] to proper format
@@ -1287,15 +1254,14 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
 
             processed_args = clear_string(processed_args)
 
-            # do not add this argument if ev is not passed
-            if ev is not None and ev["vllm_common_enable_sleep_mode"] :
+            if "vllm_common_enable_sleep_mode" in ev and ev["vllm_common_enable_sleep_mode"] :
                 processed_args = processed_args.split('\n')
 
                 processed_args[-1] = f"{processed_args[-1]} \\\n            --enable-sleep-mode"
                 processed_args = '\n'.join(processed_args)
 
             return f"        - |\n          {processed_args}"
-        elif current_step == "09":
+        elif ev["current_step_nr"] == "09":
             # For step 09 (modelservice), format as proper YAML list
             if "[" in processed_args and "]" in processed_args:
                 # Handle array format with potential complex arguments
@@ -1349,7 +1315,7 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
             return processed_args
     else:
         # Handle empty args_string
-        if current_step == "06":
+        if ev["current_step_nr"] == "06":
             return "        - |"
         else:
             return ""
@@ -1444,8 +1410,11 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
 def add_affinity(ev:dict) -> str:
 
     affinity = ev["vllm_common_affinity"]
-    if ":" in affinity:
-        affinity_key, affinity_value = affinity.split(":", 1)
+
+    if affinity.count(':') == 1 :
+        affinity_key, affinity_value = affinity.split(":")
+    elif affinity.count(':') == 2 :
+        _, affinity_key, affinity_value = affinity.split(":")
     else:
         affinity_key, affinity_value = "", ""
 
@@ -1496,11 +1465,19 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
 
 def add_pull_secret(ev:dict) -> str:
     pull_secret_string = "#noconfig"
-    if ev["vllm_common_pull_secret"] :
-        pull_secret_string = f"""      imagePullSecrets:
-      - name: {ev["vllm_common_pull_secret"]}"""
+    if ev["control_environment_type_standalone_active"] :
+        name_indent = "      "
+        value_indent = "  "
 
-    pull_secret_string = clear_string(pull_secret_string)
+    if ev["control_environment_type_modelservice_active"] :
+        name_indent = "    "
+        value_indent = ""
+
+    if ev["vllm_common_pull_secret"] :
+        pull_secret_string = f"""{name_indent}imagePullSecrets:
+    {value_indent}- name: {ev["vllm_common_pull_secret"]}"""
+
+        pull_secret_string = clear_string(pull_secret_string)
 
     return pull_secret_string
 
@@ -1536,7 +1513,7 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
         with open(env_vars_string, "r") as fp:
             for line in fp:
                 if line[0] != "#":
-                    line = render_string(line)
+                    line = render_string(line, ev)
                     lines.append(name_indent + line.rstrip())
         return "\n".join(lines)
 
@@ -1555,11 +1532,12 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
             clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_DECODE_VLLM_", "VLLM_")
             clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_", "")
             clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
-            env_value = os.environ.get(envvar, "")
+            env_value = ev[envvar.replace('LLMDBENCH_','',1).lower()]
+#            env_value = os.environ.get(envvar, "")
 
             # Process REPLACE_ENV variables in the value (equivalent to bash sed processing)
             if env_value:
-                processed_value = render_string(env_value)
+                processed_value = render_string(env_value, ev)
             else:
                 processed_value = ""
 
@@ -1568,7 +1546,7 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
 
     return "\n".join(env_lines)
 
-def add_config(obj_or_filename, num_spaces=0, label=""):
+def add_config(obj_or_filename, num_spaces=0, label="", ev={}):
     spaces = " " * num_spaces
     contents = ""
     indented_contents = ""
@@ -1581,9 +1559,7 @@ def add_config(obj_or_filename, num_spaces=0, label=""):
                 contents = f.read()
         except FileNotFoundError:
             pass
-
-    contents = render_string(contents)
-
+    contents = render_string(contents, ev)
     indented_contents = "\n".join(f"{spaces}{line}" for line in contents.splitlines())
     if indented_contents.strip() not in ["{}", "[]"]:
         indented_contents = f"  {label}\n{indented_contents}"
@@ -2255,11 +2231,7 @@ def get_random_node_port(min_port: int, max_port: int, api=None) -> int:
     Return a random available NodePort in the given range.
     """
     if api is None:
-        # Use pykube to connect to Kubernetes
-        control_work_dir = os.environ.get(
-            "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
-        )
-        api, client = kube_connect(f"{control_work_dir}/environment/context.ctx")
+        api, client = kube_connect(f"{ev['control_work_dir']}/environment/context.ctx")
 
     existing_ports = set()
     services = pykube.Service.objects(api).all()
@@ -2450,10 +2422,8 @@ def install_wva(wva_config, wva_namespace, dry_run=False, verbose=False):
 
 def install_wva_components(ev: dict):
     # Use pykube to connect to Kubernetes
-    control_work_dir = os.environ.get(
-        "LLMDBENCH_CONTROL_WORK_DIR", "/tmp/llm-d-benchmark"
-    )
-    api, client = kube_connect(f"{control_work_dir}/environment/context.ctx")
+    api, client = kube_connect(f"{ev['control_work_dir']}/environment/context.ctx")
+
     secret = (
         pykube.Secret.objects(api)
         .filter(namespace="openshift-monitoring")

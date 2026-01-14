@@ -7,7 +7,7 @@ Benchmark 'nop' harness
 from __future__ import annotations
 import ast
 from dataclasses import dataclass, field, fields
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 import io
 import json
@@ -1251,16 +1251,42 @@ def extract_floats(text: str) -> list[float]:
     return [float(num) for num in re.findall(r"[-+]?\d*\.\d+|\d+", text)]
 
 
-def convert_result(result_filepath: str, output_filepath: str) -> tuple[str, str, int]:
+def convert_result(
+    result_filepath: str,
+    output_filepath: str,
+    start_time: float,
+    stop_time: float,
+) -> tuple[str, str, int]:
     """converts result to universal format"""
 
     try:
         cmd = ["benchmark-report", result_filepath, output_filepath, "-w", "nop", "-f"]
+        # Add environment variables for start and stop times in ISO-8601 format
+        t_start = (
+            datetime.fromtimestamp(start_time, tz=timezone.utc)
+            .astimezone()
+            .isoformat(timespec="seconds")
+        )
+        t_stop = (
+            datetime.fromtimestamp(stop_time, tz=timezone.utc)
+            .astimezone()
+            .isoformat(timespec="seconds")
+        )
+        env = {
+            "LLMDBENCH_HARNESS_START": t_start,
+            "LLMDBENCH_HARNESS_STOP": t_stop,
+            "LLMDBENCH_HARNESS_DELTA": f"PT{stop_time - start_time}S",
+        }
+        # Create a copy of the existing environment
+        custom_env = os.environ.copy()
+        # Update with contents of env
+        custom_env.update(env)
         with subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=False,
+            env=custom_env,
         ) as proc:
             stdout, stderr = proc.communicate()
             out_str = stdout.strip().decode("ascii")
@@ -1272,14 +1298,18 @@ def convert_result(result_filepath: str, output_filepath: str) -> tuple[str, str
                     result_filepath,
                 )
             else:
-                logger.info("benchmark-report succeeded converting: %s", result_filepath)
+                logger.info(
+                    "benchmark-report succeeded converting: %s", result_filepath
+                )
 
             if err_str != "":
                 logger.info("benchmark-report stderr: %s", err_str)
             if out_str != "":
                 logger.info("benchmark-report stdout: %s", out_str)
     except Exception:
-        logger.exception("benchmark-report returned error converting: %s", result_filepath)
+        logger.exception(
+            "benchmark-report returned error converting: %s", result_filepath
+        )
 
 
 def write_benchmark_categories_to_log(
@@ -1739,8 +1769,9 @@ def main():
         finally:
             logger.info("Benchmark launcher end")
 
+    stop_time = datetime.now().timestamp()
     benchmark_result.time.start = start_time
-    benchmark_result.time.stop = datetime.now().timestamp()
+    benchmark_result.time.stop = stop_time
 
     # write results yaml file
     result_filepath = os.path.join(requests_dir, "result.yaml")
@@ -1751,7 +1782,7 @@ def main():
     benchmark_report_filepath = os.path.join(requests_dir, "benchmark_report")
     os.makedirs(benchmark_report_filepath, exist_ok=True)
     benchmark_report_filepath = os.path.join(benchmark_report_filepath, "result.yaml")
-    convert_result(result_filepath, benchmark_report_filepath)
+    convert_result(result_filepath, benchmark_report_filepath, start_time, stop_time)
 
 
 if __name__ == "__main__":
