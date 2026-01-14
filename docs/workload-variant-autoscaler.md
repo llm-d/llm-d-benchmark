@@ -1,7 +1,7 @@
 # Workload Variant Autoscaler Integration
 
 `llm-d-benchmark` provides the opportunity to deploy models with an autoscaler, called `workload-variant-autoscaler`.
-For information about *how* the autoscaler works, please be sure to visit their documentation found [here](https://github.com/llm-d-incubation/workload-variant-autoscaler). In this document, we will refer to `workload-variant-autoscaler` as `WVA`.
+For information about *how* the autoscaler works, please be sure to visit their documentation found at the [workload-variant-autoscaler](https://github.com/llm-d-incubation/workload-variant-autoscaler) repo. In this document, we will refer to `workload-variant-autoscaler` as `WVA`.
 
 ## How to Deploy a Model with WVA
 
@@ -100,7 +100,7 @@ it on your local machine, or system you are *driving* the experiments.
 
 ### Where is the Guidellm chatbot_synthetic Workload Profile Defined?
 
-You can find the actual location of the `chatbot_synthetic` workload profile [here](https://github.com/llm-d/llm-d-benchmark/blob/main/workload/profiles/guidellm/chatbot_synthetic.yaml.in) - as well as the Guidellm [documentation](https://github.com/vllm-project/guidellm/tree/7666c658460bc34abe3cc821d3ca072cfd39074a).
+You can find the actual location of the `chatbot_synthetic` workload profile in [chatbot_synthetic.yaml.in](https://github.com/llm-d/llm-d-benchmark/blob/main/workload/profiles/guidellm/chatbot_synthetic.yaml.in) - as well as the Guidellm [documentation](https://github.com/vllm-project/guidellm/tree/7666c658460bc34abe3cc821d3ca072cfd39074a).
 
 For your convenience I have copied the profile below - notice, our automation will autopopulate the `target` and `model` fields:
 
