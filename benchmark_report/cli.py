@@ -85,15 +85,14 @@ def main() -> None:
             import_guidellm,
             import_guidellm_all,
         )
-    # elif args.br_version == "0.2":
-    #     from .native_to_br0_2 import (
-    #         import_nop,
-    #         import_inference_max,
-    #         import_vllm_benchmark,
-    #         import_inference_perf,
-    #         import_guidellm,
-    #         import_guidellm_all,
-    #     )
+    elif args.br_version == "0.2":
+        from .native_to_br0_2 import (
+            import_inference_max,
+            import_vllm_benchmark,
+            import_inference_perf,
+            import_guidellm,
+            import_guidellm_all,
+        )
     else:
         sys.stderr.write(f"Invalid benchmark report version: {args.br_version}\n")
         sys.exit(1)
@@ -134,27 +133,27 @@ def main() -> None:
                     else:
                         # Don't create a file, just print to stdout
                         print(f"# Benchmark {ii + 1} of {len(br_list)}")
-                        br.print_yaml()
+                        print(br.get_yaml_str())
         case WorkloadGenerator.INFERENCE_PERF:
             if args.output_file:
                 import_inference_perf(args.results_file).export_yaml(args.output_file)
             else:
-                import_inference_perf(args.results_file).print_yaml()
+                print(import_inference_perf(args.results_file).get_yaml_str())
         case WorkloadGenerator.VLLM_BENCHMARK:
             if args.output_file:
                 import_vllm_benchmark(args.results_file).export_yaml(args.output_file)
             else:
-                import_vllm_benchmark(args.results_file).print_yaml()
+                print(import_vllm_benchmark(args.results_file).get_yaml_str())
         case WorkloadGenerator.INFERENCE_MAX:
             if args.output_file:
                 import_inference_max(args.results_file).export_yaml(args.output_file)
             else:
-                import_inference_max(args.results_file).print_yaml()
+                print(import_inference_max(args.results_file).get_yaml_str())
         case WorkloadGenerator.NOP:
             if args.output_file:
                 import_nop(args.results_file).export_yaml(args.output_file)
             else:
-                import_nop(args.results_file).print_yaml()
+                print(import_nop(args.results_file).get_yaml_str())
         case _:
             sys.stderr.write(
                 "Unsupported workload generator: {args.workload_generator}\n"
