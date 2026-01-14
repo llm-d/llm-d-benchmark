@@ -5,7 +5,7 @@ For information about *how* the autoscaler works, please be sure to visit their 
 
 ## How to Deploy a Model with WVA
 
-The simplest way to deploy a model that takes advantage of `WVA` is through the flag `-u/--wva`. 
+The simplest way to deploy a model that takes advantage of `WVA` is through the flag `-u/--wva`.
 
 For example, we can easily standup a model that will take advantage of autoscaling via `WVA` by simply appending the aforementioned `WVA` flag:
 
@@ -15,7 +15,7 @@ Here is a summary of what will occur in that command:
 
 - A model will be stood up and all underlying infra will be provisioned. In this case it is `Qwen/Qwen3-0.6B` - and it will be deployed via the `inference-scheduling` well-lit-path - this is something that is **not** unique, but business as usual.
 
-- `WVA` will either be *installed* or will be idempotent in the `WVA` *controller namespace*  (*llm-d-autoscaler* being the default) depending on if it already exists on the cluster. Do note, that it is actually possible to have multiple installations of `WVA` on a cluster in seperate namespaces - which one you target is dependent on the `namespace` that is configured within the `setup/env.sh`. As part of this process, we configure `Prometheus Adapters` to allow metrics from `model` to `WVA` controller to flow naturally. 
+- `WVA` will either be *installed* or will be idempotent in the `WVA` *controller namespace*  (*llm-d-autoscaler* being the default) depending on if it already exists on the cluster. Do note, that it is actually possible to have multiple installations of `WVA` on a cluster in seperate namespaces - which one you target is dependent on the `namespace` that is configured within the `setup/env.sh`. As part of this process, we configure `Prometheus Adapters` to allow metrics from `model` to `WVA` controller to flow naturally.
 
 - `WVA` model specific components (hpa va servicemonitor vllm-service) will be created in the `model namespace` - in this case, `llm-d-test-exp`.
 
@@ -26,20 +26,19 @@ There is no difference here, simply run `teardown.sh` as per usual with no addit
 - `teardown.sh` will remove all model specific resources, including the `WVA` model specific resources.
 - `teardown.sh` will NOT remove the `WVA` controller from the `llm-d-autoscaler` namespace (or from another namespace) - this is done purposefully as to not interrupt other jobs, since many models can target a single instance of the `WVA` controller.
 
-
 ## How to Run Workloads on a Model that uses WVA
 
 There is no difference here, and there is no additional `WVA` information needed here. Simply run `run.sh` as per usual - with no additional flags for `WVA`. For an example benchmarking scenario see the below real usecase.
 
 ---
 
-# Initial Benchmarking of WVA by Leveraging LLM-D-Benchmark
+## Initial Benchmarking of WVA by Leveraging LLM-D-Benchmark
 
-Benchmark tests have been conducted on an `H100`. 
+Benchmark tests have been conducted on an `H100`.
 
 ## Reproducibility
 
-To reproduce the experiments run during the intial benchmarking of `WVA` you may follow the below guide - although both sub-sections may look identical 
+To reproduce the experiments run during the intial benchmarking of `WVA` you may follow the below guide - although both sub-sections may look identical
 at first glance, but there are some subtleties. This guide assumes that you have cloned [llm-d-benchmark](github.com/llm-d/llm-d-benchmark) and have installed
 it on your local machine, or system you are *driving* the experiments.
 
@@ -61,7 +60,7 @@ it on your local machine, or system you are *driving* the experiments.
 
 3. Repeat `Step 2` to rerun a workload, in our case we reran `Step 2`, a total of 4 times.
 
-4. Collect results from the `analysis` directory that is provided in the logs of the `run.sh` command. You can see a detailed and granular report in the `results` directory if needed. 
+4. Collect results from the `analysis` directory that is provided in the logs of the `run.sh` command. You can see a detailed and granular report in the `results` directory if needed.
 
     - Make sure you seperate these results into a seperate directory from the WVA experiment - they are not the best named - we will change this - otherwise it will be hard to tell what is what!
 
@@ -69,7 +68,7 @@ it on your local machine, or system you are *driving* the experiments.
 
     - Template Command: `./setup/teardown.sh -p <namespace> -d -c <well-lit-path>`
 
-        - Example Populated Command: `./setup/teardown.sh -p llm-d-vezio -d -c inference-scheduling` 
+        - Example Populated Command: `./setup/teardown.sh -p llm-d-vezio -d -c inference-scheduling`
 
 ### With WVA
 
@@ -97,7 +96,7 @@ it on your local machine, or system you are *driving* the experiments.
 
     - Template Command: `./setup/teardown.sh -p <namespace> -d -c <well-lit-path>`
 
-        - Example Populated Command: `./setup/teardown.sh -p llm-d-vezio -d -c inference-scheduling` 
+        - Example Populated Command: `./setup/teardown.sh -p llm-d-vezio -d -c inference-scheduling`
 
 ### Where is the Guidellm chatbot_synthetic Workload Profile Defined?
 
@@ -113,15 +112,15 @@ profile: constant
 rate: [1,2,4,8]
 max_seconds: 120
 data:
-  prompt_tokens_min: 10
-  prompt_tokens_max: 8192
-  prompt_tokens: 4096
-  prompt_tokens_stdev: 2048
-  output_tokens_min: 10
-  output_tokens_max: 2048
-  output_tokens: 1024
-  output_tokens_stdev: 512
-  samples: 1000
+prompt_tokens_min: 10
+prompt_tokens_max: 8192
+prompt_tokens: 4096
+prompt_tokens_stdev: 2048
+output_tokens_min: 10
+output_tokens_max: 2048
+output_tokens: 1024
+output_tokens_stdev: 512
+samples: 1000
 ```
 
 This will workload profile will generate synthetic data - there is still a PR open describing a feature to support the ability to supply the ShareGPT dataset directly, that is currently not functional, [source here](https://github.com/vllm-project/guidellm/pull/305).
@@ -155,48 +154,3 @@ Tear down the infrastructure (this will not delete the namespace, but will compl
 - For all options see the `manual` via `-h/--help`
 - Tears down model infrastructure of a given namespace - but it will *not* delete the namespace
 - Removes all model resources in the namespace provided, including the `wva` variant resources
-- Below is an example of the resources deleted:
-
-```
-==> Thu Dec 18 22:19:24 EST 2025 - ./setup/teardown.sh - 🧹 Cleaning up namespace: llm-d-vezio
-==> Thu Dec 18 22:19:25 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting Helm release "infra-llmdbench"...
-==> Thu Dec 18 22:19:27 EST 2025 - ./setup/teardown.sh - ✅ Helm release "infra-llmdbench" fully deleted.
-==> Thu Dec 18 22:19:36 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all deployment in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:36 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all service in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:37 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all secret in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:38 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all gateway in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:38 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all inferencemodel in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:38 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all inferencepool in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:39 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all httproute in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:39 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all configmap in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:40 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all job in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:40 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all role in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:40 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all rolebinding in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:41 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all serviceaccount in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:41 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all hpa in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:42 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all va in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:42 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all servicemonitor in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:42 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all pod in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:43 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all pvc in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:44 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all route in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:44 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all deployment in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:44 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all service in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:44 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all secret in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:45 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all gateway in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:45 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all inferencemodel in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:45 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all inferencepool in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:45 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all httproute in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:46 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all configmap in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:46 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all job in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:46 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all role in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:47 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all rolebinding in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:47 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all serviceaccount in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:47 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all hpa in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:48 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all va in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:48 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all servicemonitor in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:48 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all pod in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:48 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all pvc in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:49 EST 2025 - ./setup/teardown.sh - 🗑️  Deleting all route in namespace llm-d-vezio...
-==> Thu Dec 18 22:19:49 EST 2025 - ./setup/teardown.sh - 🧼 Cleaning up local Git clones...
-==> Thu Dec 18 22:19:59 EST 2025 - ./setup/teardown.sh - ✅ Cleanup complete. Namespaces "llm-d-vezio,llm-d-vezio" are now cleared (except shared cluster-scoped resources like Gateway Provider).
-```
