@@ -95,7 +95,7 @@ def main() -> None:
     #         import_guidellm_all,
     #     )
     else:
-        sys.stderr.write("Invalid benchmark report version: %s\n" % args.br_version)
+        sys.stderr.write(f"Invalid benchmark report version: {args.br_version}\n")
         sys.exit(1)
 
     if args.results_file is None:
@@ -104,7 +104,7 @@ def main() -> None:
         )
 
     if args.output_file and os.path.exists(args.output_file) and not args.force:
-        sys.stderr.write("Output file already exists: %s\n" % args.output_file)
+        sys.stderr.write(f"Output file already exists: {args.output_file}\n")
         sys.exit(1)
 
     match args.workload_generator:
@@ -127,7 +127,7 @@ def main() -> None:
                         output_file = f"{fname}_{ii}{ext}"
                         if os.path.exists(output_file) and not args.force:
                             sys.stderr.write(
-                                "Output file already exists: %s\n" % output_file
+                                f"Output file already exists: {output_file}\n"
                             )
                             sys.exit(1)
                         br.export_yaml(output_file)
@@ -157,11 +157,10 @@ def main() -> None:
                 import_nop(args.results_file).print_yaml()
         case _:
             sys.stderr.write(
-                "Unsupported workload generator: %s\n" % args.workload_generator
+                "Unsupported workload generator: {args.workload_generator}\n"
             )
             sys.stderr.write(
-                "Must be one of: %s\n"
-                % str([wg.value for wg in WorkloadGenerator])[1:-1]
+                f"Must be one of: {str([wg.value for wg in WorkloadGenerator])[1:-1]}\n"
             )
             sys.exit(1)
 

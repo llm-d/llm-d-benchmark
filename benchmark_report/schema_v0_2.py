@@ -79,7 +79,7 @@ class Component(BaseModel):
     """Component configuration in native format."""
 
     @model_validator(mode="before")
-    def inject_kind(cls, data):
+    def inject_kind(self, data):
         """Copy metadata.kind to standardized.kind so discriminator works."""
         # We need a Discriminator to select between different classes defining
         # the schema of the "standardized" field of a component. What class is

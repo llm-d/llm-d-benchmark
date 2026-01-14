@@ -23,10 +23,10 @@ def check_file(file_path: str) -> None:
     """
     if not os.path.exists(file_path):
         sys.stderr.write(f"File does not exist: {file_path}\n")
-        exit(2)
+        sys.exit(2)
     if not os.path.isfile(file_path):
         sys.stderr.write(f"Not a regular file: {file_path}\n")
-        exit(2)
+        sys.exit(2)
 
 
 def import_csv_with_header(file_path: str) -> dict[str, list[Any]]:
@@ -50,8 +50,8 @@ def import_csv_with_header(file_path: str) -> dict[str, list[Any]]:
             row_vals = list(map(str.strip, line.split(",")))
             if len(row_vals) != len(headers):
                 sys.stderr.write(
-                    'Warning: line %d of "%s" does not match header length, skipping: %d != %d\n'
-                    % (ii + 1, file_path, len(row_vals), len(headers))
+                    f'Warning: line {ii + 1} of "{file_path}" does not match '
+                    f"header length, skipping: {len(row_vals)} != {len(headers)}\n"
                 )
                 continue
             for jj, val in enumerate(row_vals):
@@ -66,7 +66,7 @@ def import_csv_with_header(file_path: str) -> dict[str, list[Any]]:
                 data[headers[jj]].append(val)
     # Convert lists of ints or floats to numpy arrays
     for hdr in headers:
-        if isinstance(data[hdr][0], int) or isinstance(data[hdr][0], float):
+        if isinstance(data[hdr][0], int, float):
             data[hdr] = np.array(data[hdr])
     return data
 
@@ -109,7 +109,7 @@ def update_dict(dest: dict[Any, Any], source: dict[Any, Any]) -> None:
                 # Do not "update" with null values
                 continue
             if not isinstance(val, dict):
-                raise Exception("Cannot update dict type with non-dict: %s" % val)
+                raise TypeError(f"Cannot update dict type with non-dict: {val}")
             update_dict(dest[key], val)
         else:
             dest[key] = val
@@ -145,10 +145,9 @@ def load_benchmark_report(data: dict[str, Any]) -> BenchmarkReport:
 
     if version == "0.1":
         return BenchmarkReportV01(**data)
-    elif version == "0.2":
+    if version == "0.2":
         return BenchmarkReportV02(**data)
-    else:
-        raise ValueError(f"Unsupported schema version: {version}")
+    raise ValueError(f"Unsupported schema version: {version}")
 
 
 def import_benchmark_report(br_file: str) -> BenchmarkReport:
@@ -190,7 +189,6 @@ def make_json_schema(version: str = "0.2") -> str:
     """
     if version == "0.1":
         return json.dumps(BenchmarkReportV01.model_json_schema(), indent=2)
-    elif version == "0.2":
+    if version == "0.2":
         return json.dumps(BenchmarkReportV02.model_json_schema(), indent=2)
-    else:
-        raise ValueError(f"Unsupported schema version: {version}")
+    raise ValueError(f"Unsupported schema version: {version}")
