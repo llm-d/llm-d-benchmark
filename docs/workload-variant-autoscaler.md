@@ -39,7 +39,7 @@ Benchmark tests have been conducted on an `H100`.
 ## Reproducibility
 
 To reproduce the experiments run during the intial benchmarking of `WVA` you may follow the below guide - although both sub-sections may look identical
-at first glance, but there are some subtleties. This guide assumes that you have cloned [llm-d-benchmark](github.com/llm-d/llm-d-benchmark) and have installed
+at first glance, but there are some subtleties. This guide assumes that you have cloned [llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) and have installed
 it on your local machine, or system you are *driving* the experiments.
 
 ### Without WVA
@@ -105,7 +105,7 @@ as well as the Guidellm [documentation](https://github.com/vllm-project/guidellm
 
 For your convenience I have copied the profile below - notice, our automation will autopopulate the `target` and `model` fields:
 
-<!-- ```yaml
+```yaml
 target: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
 model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
 request_type: text_completions
@@ -122,7 +122,7 @@ output_tokens_max: 2048
 output_tokens: 1024
 output_tokens_stdev: 512
 samples: 1000
-``` -->
+```
 
 This will workload profile will generate synthetic data - there is still a PR open describing a feature to support the ability to supply the ShareGPT dataset directly, that is currently not functional, [source here](https://github.com/vllm-project/guidellm/pull/305).
 
