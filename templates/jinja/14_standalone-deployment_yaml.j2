@@ -56,7 +56,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: {{ standalone.acceleratorType.labelKey | default(decode.acceleratorType.labelKey) }}
+              - key: {{ standalone.acceleratorType.labelKey | default(standalone.acceleratorType.labelKey) }}
                 operator: In
                 values:
 {% if standalone.acceleratorType is defined and standalone.acceleratorType.labelValues is defined %}
@@ -66,7 +66,7 @@ spec:
 {% elif standalone.acceleratorType is defined and standalone.acceleratorType.labelValue is defined %}
                 - {{ standalone.acceleratorType.labelValue }}
 {% else %}
-                - {{ decode.acceleratorType.labelValue }}
+                - {{ standalone.acceleratorType.labelValue }}
 {% endif %}
 {% if standalone.initContainers is defined and standalone.initContainers %}
       initContainers:
@@ -134,18 +134,18 @@ spec:
         - name: LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG
           value: "{{ standalone.vllm.modelLoaderExtraConfig | default('{}') }}"
         - name: LLMDBENCH_VLLM_COMMON_AFFINITY
-          value: "nvidia.com/gpu:{{ standalone.acceleratorType.labelKey | default(decode.acceleratorType.labelKey) }}:{{ standalone.acceleratorType.labelValue | default(decode.acceleratorType.labelValue) }}"
+          value: "nvidia.com/gpu:{{ standalone.acceleratorType.labelKey | default(standalone.acceleratorType.labelKey) }}:{{ standalone.acceleratorType.labelValue | default(standalone.acceleratorType.labelValue) }}"
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
               name: {{ huggingface.secretName }}
               key: {{ huggingface.tokenKey }}
         - name: VLLM_WORKER_MULTIPROC_METHOD
-          value: "{{ standalone.vllm.workerMultiprocMethod | default(decode.vllm.workerMultiprocMethod) }}"
+          value: "{{ standalone.vllm.workerMultiprocMethod | default(standalone.vllm.workerMultiprocMethod) }}"
         - name: VLLM_LOGGING_LEVEL
-          value: "{{ standalone.vllm.loggingLevel | default(decode.vllm.loggingLevel) }}"
+          value: "{{ standalone.vllm.loggingLevel | default(standalone.vllm.loggingLevel) }}"
         - name: VLLM_CACHE_ROOT
-          value: "{{ standalone.vllm.cacheRoot | default(decode.vllm.cacheRoot) }}"
+          value: "{{ standalone.vllm.cacheRoot | default(standalone.vllm.cacheRoot) }}"
         - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
           value: "{{ vllmCommon.flags.allowLongMaxModelLen | default('1') }}"
         - name: VLLM_SERVER_DEV_MODE
@@ -197,13 +197,13 @@ spec:
           periodSeconds: {{ standalone.probes.readiness.periodSeconds | default(5) }}
         resources:
           limits:
-            memory: {{ standalone.resources.limits.memory | default(decode.resources.limits.memory) }}
-            cpu: "{{ standalone.resources.limits.cpu | default(decode.resources.limits.cpu) }}"
-            nvidia.com/gpu: "{{ standalone.parallelism.tensor | default(decode.parallelism.tensor) }}"
+            memory: {{ standalone.resources.limits.memory | default(standalone.resources.limits.memory) }}
+            cpu: "{{ standalone.resources.limits.cpu | default(standalone.resources.limits.cpu) }}"
+            nvidia.com/gpu: "{{ standalone.parallelism.tensor | default(standalone.parallelism.tensor) }}"
           requests:
-            memory: {{ standalone.resources.requests.memory | default(decode.resources.requests.memory) }}
-            cpu: "{{ standalone.resources.requests.cpu | default(decode.resources.requests.cpu) }}"
-            nvidia.com/gpu: "{{ standalone.parallelism.tensor | default(decode.parallelism.tensor) }}"
+            memory: {{ standalone.resources.requests.memory | default(standalone.resources.requests.memory) }}
+            cpu: "{{ standalone.resources.requests.cpu | default(standalone.resources.requests.cpu) }}"
+            nvidia.com/gpu: "{{ standalone.parallelism.tensor | default(standalone.parallelism.tensor) }}"
         volumeMounts:
         - name: preprocesses
           mountPath: /setup/preprocess
@@ -242,7 +242,7 @@ spec:
       - name: shm
         emptyDir:
           medium: Memory
-          sizeLimit: {{ standalone.shm.size | default(decode.shm.size) }}
+          sizeLimit: {{ standalone.shm.size | default(standalone.shm.size) }}
 {% if standalone.additionalVolumes is defined %}
 {% for volume in standalone.additionalVolumes %}
       - name: {{ volume.name }}

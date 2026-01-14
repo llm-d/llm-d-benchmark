@@ -1,6 +1,18 @@
-{# ============================================================================
-   MACROS - Reusable template functions
-   ============================================================================ #}
+{# Macro to build kv-transfer-config JSON #}
+{% macro build_kv_transfer_config() -%}
+{"kv_connector":"{{ vllmCommon.kvTransfer.connector }}","kv_role":"{{ vllmCommon.kvTransfer.role }}"}
+{%- endmacro %}
+
+{# Macro to build kv-events-config JSON #}
+{% macro build_kv_events_config() -%}
+{% set default_service_name = model.shortName ~ '-gaie-epp' -%}
+{% set service_name = vllmCommon.kvEvents.serviceName | default(default_service_name) -%}
+{% set ns = namespace.name -%}
+{% set port = vllmCommon.kvEvents.port | default(5557) -%}
+{% set publisher = vllmCommon.kvEvents.publisher | default('zmq') -%}
+{% set topic_prefix = vllmCommon.kvEvents.topicPrefix | default('kv') -%}
+{"enable_kv_cache_events":true,"publisher":"{{ publisher }}","endpoint":"tcp://{{ service_name }}.{{ ns }}.svc.cluster.local:{{ port }}","topic":"{{ topic_prefix }}@${POD_IP}@{{ model.name }}"}
+{%- endmacro %}
 
 {# Macro to build vLLM serve command with templated arguments #}
 {% macro build_vllm_command(mode='decode') -%}
@@ -10,25 +22,6 @@
 {% set config = prefill -%}
 {% endif -%}
 
-{# Macro to build kv-transfer-config JSON #}
-{% macro build_kv_transfer_config() -%}
-{\"kv_connector\":\"{{ vllmCommon.kvTransfer.connector }}\",\"kv_role\":\"{{ vllmCommon.kvTransfer.role }}\"}
-{%- endmacro %}
-
-{# Macro to build kv-events-config JSON #}
-{# Uses service name and namespace for endpoint construction #}
-{# Default service name pattern: <model.shortName>-gaie-epp #}
-{% macro build_kv_events_config() -%}
-{% set default_service_name = model.shortName ~ '-gaie-epp' -%}
-{% set service_name = vllmCommon.kvEvents.serviceName | default(default_service_name) -%}
-{% set ns = namespace.name -%}
-{% set port = vllmCommon.kvEvents.port | default(5557) -%}
-{% set publisher = vllmCommon.kvEvents.publisher | default('zmq') -%}
-{% set topic_prefix = vllmCommon.kvEvents.topicPrefix | default('kv') -%}
-{\"enable_kv_cache_events\":true,\"publisher\":\"{{ publisher }}\",\"endpoint\":\"tcp://{{ service_name }}.{{ ns }}.svc.cluster.local:{{ port }}\",\"topic\":\"{{ topic_prefix }}@${POD_IP}@{{ model.name }}\"}
-{%- endmacro %}
-
-
 {# Determine preprocess script to use #}
 {% if config.vllm.customPreprocessCommand is defined and config.vllm.customPreprocessCommand is not none -%}
 {% set preprocess_script = config.vllm.customPreprocessCommand -%}
@@ -36,49 +29,47 @@
 {% set preprocess_script = vllmCommon.preprocessScript -%}
 {% endif -%}
 
-{# Pre-calculate which optional flags are enabled to handle trailing backslashes #}
+{# Pre-calculate which optional flags are enabled TODO Seperate into confg. #}
 {% set has_enforce_eager = vllmCommon.flags.enforceEager -%}
 {% set has_disable_log_requests = vllmCommon.flags.disableLogRequests -%}
 {% set has_disable_uvicorn = vllmCommon.flags.disableUvicornAccessLog -%}
 {% set has_kv_transfer = vllmCommon.kvTransfer is defined and vllmCommon.kvTransfer.enabled -%}
 {% set has_kv_events = vllmCommon.kvEvents is defined and vllmCommon.kvEvents.enabled -%}
 
-{# Determine command to use #}
+{# Custom command provided #}
 {% if config.vllm.customCommand is defined and config.vllm.customCommand is not none -%}
-{# Custom command provided - combine with preprocess script #}
-{{ preprocess_script }}; {{ config.vllm.customCommand }}
-{%- if has_kv_transfer or has_kv_events %} \
+{{ preprocess_script }}; {{ config.vllm.customCommand | trim }}
+{%- if has_kv_transfer %} \
+  --kv-transfer-config "{{ build_kv_transfer_config() }}"
+{%- endif %}
+{%- if has_kv_events %} \
+  --kv-events-config "{{ build_kv_events_config() }}"
 {%- endif %}
 {%- else -%}
-{# Use default vllm serve command with preprocess script #}
+{# Use default vllm serve command #}
 {{ preprocess_script }}; vllm serve {{ model.cacheBase }}/{{ model.path }} \
---host {{ vllmCommon.host }} \
---served-model-name {{ model.name }} \
---port {{ config.vllm.port }} \
---block-size {{ model.blockSize }} \
---max-model-len {{ model.maxModelLen }} \
---tensor-parallel-size {{ config.parallelism.tensor }} \
---gpu-memory-utilization {{ model.gpuMemoryUtilization }}
+  --host {{ vllmCommon.host }} \
+  --served-model-name {{ model.name }} \
+  --port {{ config.vllm.port }} \
+  --block-size {{ model.blockSize }} \
+  --max-model-len {{ model.maxModelLen }} \
+  --tensor-parallel-size {{ config.parallelism.tensor }} \
+  --gpu-memory-utilization {{ model.gpuMemoryUtilization }}
 {%- if has_enforce_eager %} \
---enforce-eager
+  --enforce-eager
 {%- endif %}
 {%- if has_disable_log_requests %} \
---disable-log-requests
+  --disable-log-requests
 {%- endif %}
 {%- if has_disable_uvicorn %} \
---disable-uvicorn-access-log
+  --disable-uvicorn-access-log
 {%- endif %}
-{%- if has_kv_transfer or has_kv_events %} \
-{% endif %}
+{%- if has_kv_transfer %} \
+  --kv-transfer-config "{{ build_kv_transfer_config() }}"
 {%- endif %}
-{# Append kv-transfer-config and kv-events-config at the end (for both custom and default commands) #}
-{%- if has_kv_transfer %}
---kv-transfer-config "{{ build_kv_transfer_config() }}"
 {%- if has_kv_events %} \
-{% endif %}
+  --kv-events-config "{{ build_kv_events_config() }}"
 {%- endif %}
-{%- if has_kv_events %}
---kv-events-config "{{ build_kv_events_config() }}"
 {%- endif %}
 {%- endmacro %}
 
@@ -92,38 +83,39 @@
 {% set preprocess_script = standalone.vllm.preprocessCommand | default('/bin/true') -%}
 {% endif -%}
 
-{# Determine command to use #}
+{# Pre-calculate which optional flags are enabled #}
+{% set has_kv_transfer = vllmCommon.kvTransfer is defined and vllmCommon.kvTransfer.enabled -%}
+{% set has_kv_events = vllmCommon.kvEvents is defined and vllmCommon.kvEvents.enabled -%}
+
+{# Custom command provided #}
 {% if standalone.vllm.customCommand is defined and standalone.vllm.customCommand is not none -%}
-{# Custom command provided - combine with preprocess script #}
-{{ preprocess_script }} ; {{ standalone.vllm.customCommand }}
-{%- if has_kv_transfer or has_kv_events %} \
+{{ preprocess_script }}; {{ standalone.vllm.customCommand }}
+{%- if has_kv_transfer %} \
+  --kv-transfer-config "{{ build_kv_transfer_config() }}"
+{%- endif %}
+{%- if has_kv_events %} \
+  --kv-events-config "{{ build_kv_events_config() }}"
 {%- endif %}
 {%- else -%}
-{# Use default vllm serve command with preprocess script #}
-{{ preprocess_script }} ; vllm serve {{ model.name }} \
---no-enable-prefix-caching \
---load-format {{ standalone.vllm.loadFormat | default('auto') }} \
---port {{ standalone.vllm.port | default(8000) }} \
---max-model-len {{ model.maxModelLen }} \
---disable-log-requests \
---gpu-memory-utilization {{ model.gpuMemoryUtilization }} \
---tensor-parallel-size {{ standalone.parallelism.tensor | default(decode.parallelism.tensor) }} \
---model-loader-extra-config "$LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG"
-{%- if has_kv_transfer or has_kv_events %} \
-{% endif %}
+{# Use default vllm serve command #}
+{{ preprocess_script }}; vllm serve {{ model.name }} \
+  --no-enable-prefix-caching \
+  --load-format {{ standalone.vllm.loadFormat | default('auto') }} \
+  --port {{ standalone.vllm.port | default(8000) }} \
+  --max-model-len {{ model.maxModelLen }} \
+  --disable-log-requests \
+  --gpu-memory-utilization {{ model.gpuMemoryUtilization }} \
+  --tensor-parallel-size {{ standalone.parallelism.tensor | default(decode.parallelism.tensor) }} \
+  --model-loader-extra-config "$LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG"
+{%- if has_kv_transfer %} \
+  --kv-transfer-config "{{ build_kv_transfer_config() }}"
 {%- endif %}
-
-{# Append kv-transfer-config and kv-events-config at the end (same as first macro) #}
-{%- if has_kv_transfer %}
---kv-transfer-config "{{ build_kv_transfer_config() }}"
 {%- if has_kv_events %} \
-{% endif %}
+  --kv-events-config "{{ build_kv_events_config() }}"
 {%- endif %}
-{%- if has_kv_events %}
---kv-events-config "{{ build_kv_events_config() }}"
 {%- endif %}
-
 {%- endmacro %}
+
 
 {# Macro to render volume mounts #}
 {% macro render_volume_mounts(mode='decode') -%}
