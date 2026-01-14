@@ -304,16 +304,6 @@ decode:
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      - name: VLLM_WORKER_MULTIPROC_METHOD
-        value: "{{ decode.vllm.workerMultiprocMethod | default('spawn') }}"
-      - name: VLLM_LOGGING_LEVEL
-        value: "{{ decode.vllm.loggingLevel | default('INFO') }}"
-      - name: VLLM_CACHE_ROOT
-        value: "{{ decode.vllm.cacheRoot | default('/tmp/vllm') }}"
-      - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
-        value: "{{ vllmCommon.flags.allowLongMaxModelLen | default('1') }}"
-      - name: VLLM_SERVER_DEV_MODE
-        value: "{{ vllmCommon.flags.serverDevMode | default('1') }}"
 {% if decode.extraEnvVars is defined and decode.extraEnvVars %}
 {% for env in decode.extraEnvVars %}
       - name: {{ env.name }}
@@ -654,16 +644,6 @@ prefill:
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      - name: VLLM_WORKER_MULTIPROC_METHOD
-        value: "{{ (prefill.vllm.workerMultiprocMethod if prefill.vllm is defined and prefill.vllm.workerMultiprocMethod is defined else decode.vllm.workerMultiprocMethod) | default('spawn') }}"
-      - name: VLLM_LOGGING_LEVEL
-        value: "{{ (prefill.vllm.loggingLevel if prefill.vllm is defined and prefill.vllm.loggingLevel is defined else decode.vllm.loggingLevel) | default('INFO') }}"
-      - name: VLLM_CACHE_ROOT
-        value: "{{ (prefill.vllm.cacheRoot if prefill.vllm is defined and prefill.vllm.cacheRoot is defined else decode.vllm.cacheRoot) | default('/tmp/vllm') }}"
-      - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
-        value: "{{ vllmCommon.flags.allowLongMaxModelLen | default('1') }}"
-      - name: VLLM_SERVER_DEV_MODE
-        value: "{{ vllmCommon.flags.serverDevMode | default('1') }}"
 {% if prefill.extraEnvVars is defined and prefill.extraEnvVars %}
 {% for env in prefill.extraEnvVars %}
       - name: {{ env.name }}
