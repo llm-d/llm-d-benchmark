@@ -54,7 +54,7 @@ def _populate_benchmark_report_from_envars() -> dict:
     port = int(os.environ["KUBERNETES_SERVICE_PORT"])
     try:
         cert = ssl.get_server_certificate((host, port), timeout=5)
-    except TimeoutError:
+    except (TimeoutError, OSError):
         # As a failover, just use the service host
         cert = host
     cid = str(uuid.uuid5(uuid.NAMESPACE_DNS, cert))
@@ -78,6 +78,40 @@ def _populate_benchmark_report_from_envars() -> dict:
             "duration": os.environ.get("LLMDBENCH_HARNESS_DELTA"),
         },
     }
+
+    # Get arguments to harness
+    args_str = os.environ.get("LLMDBENCH_HARNESS_ARGS")
+    kv_pairs = [kv.strip() for kv in args_str.split('--') if kv.strip()]
+    args = {}
+    for kv in kv_pairs:
+        if "=" in kv:
+            # Flag and value separated by "="
+            key, value = kv.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+        elif " " in kv:
+            # Flag and value separated by " "
+            key, value = kv.split(" ", 1)
+            key = key.strip()
+            value = value.strip()
+        else:
+            # Flag-only argument
+            key = kv
+            value = None
+
+        args[key] = value
+
+    br_dict["scenario"] = {
+        "load": {
+            "standardized": {
+                "tool_version": os.environ.get("LLMDBENCH_HARNESS_VERSION", ""),
+            },
+            "native": {
+                "args": args,
+            },
+        },
+    }
+
 
     if "LLMDBENCH_DEPLOY_METHODS" not in os.environ:
         sys.stderr.write(
@@ -154,8 +188,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                     },
                     "standardized": {
                         "tool": WorkloadGenerator.VLLM_BENCHMARK,
-                        "tool_version": "",  # TODO
-                        "stage": 1,
+                        "stage": 0,
                         "rate_qps": results.get("request_rate"),
                         "concurrency": results.get("max_concurrency"),
                         "source": "random", # TODO
@@ -164,7 +197,6 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                             "value": 1, # TODO
                         },
                     },
-                    "native": {},  # TODO
                 },
             },
             "results": {
@@ -306,8 +338,7 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                     },
                     "standardized": {
                         "tool": WorkloadGenerator.INFERENCE_MAX,
-                        "tool_version": "",  # TODO
-                        "stage": 1,
+                        "stage": 0,
                         "rate_qps": results.get("request_rate"),
                         "concurrency": results.get("max_concurrency"),
                         "source": "random", # TODO
@@ -316,7 +347,6 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                             "value": 1, # TODO
                         },
                     },
-                    "native": {},  # TODO
                 },
             },
             "results": {
@@ -439,16 +469,10 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
     # Get stage number from metrics filename
     stage = int(results_file.rsplit("stage_")[-1].split("_", 1)[0])
 
-    # Import Inference Perf config file, assuming it is the only YAML file.
-    # Find all YAML files
-    yaml_files = [ff for ff in os.listdir(os.path.dirname(results_file)) if ff.endswith(".yaml")]
-    if len(yaml_files) == 1:
-        config_file = os.path.join(os.path.dirname(results_file), yaml_files[0])
+    # Get config file
+    if "LLMDBENCH_MAGIC_ENVAR" in os.environ:
+        config_file = os.environ.get("LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME")
         config = import_yaml(config_file)
-    else:
-        # Cannot identify config file
-        config = {}
-    
 
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReportV02
@@ -466,7 +490,6 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                     },
                     "standardized": {
                         "tool": WorkloadGenerator.INFERENCE_PERF,
-                        "tool_version": "",  # TODO
                         "stage": stage,
                         "rate_qps": get_nested(results, ["load_summary", "requested_rate"]), # TODO see if this is always present
                         "source": "random", # TODO
@@ -647,10 +670,6 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
 
     results = data["benchmarks"][index]
 
-    # Get environment variables from llm-d-benchmark run as a dict following the
-    # schema of BenchmarkReportV02
-    br_dict = _populate_benchmark_report_from_envars()
-
     # Convert Unix epoch floats to ISO-8601 timestamps
     t_start = (
         datetime.fromtimestamp(results["start_time"], tz=timezone.utc)
@@ -662,6 +681,10 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
         .astimezone()
         .isoformat(timespec="seconds")
     )
+
+    # Get environment variables from llm-d-benchmark run as a dict following the
+    # schema of BenchmarkReportV02
+    br_dict = _populate_benchmark_report_from_envars()
 
     # Add to that dict the data from GuideLLM
     update_dict(
@@ -682,7 +705,6 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                     },
                     "standardized": {
                         "tool": WorkloadGenerator.GUIDELLM,
-                        "tool_version": "",  # TODO
                         "stage": index,
                         "source": "random", # TODO
                         "input_seq_len": {
@@ -691,7 +713,7 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                         },
                     },
                     "native": {
-                        "args": data["args"], # TODO check this
+                        "args": data["args"],
                     },
                 },
             },
