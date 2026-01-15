@@ -7,8 +7,11 @@ en=$(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/vllm-benchmark/${LLMDBENCH_RUN_
 echo "Running warmup with 3 prompts"
 python benchmarks/${en} --$(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/vllm-benchmark/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} | grep -v "^executable" | yq -r 'to_entries | map("\(.key)=\(.value)") | join(" --")' | sed -e 's^=none ^ ^g' -e 's^=none$^^g' -e 's^num-prompts=[0-9]*^num-prompts=3^')  --seed $(date +%s) > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
 echo "Running main benchmark"
+export LLMDBENCH_HARNESS_ARGS="--$(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/vllm-benchmark/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} \
+  | grep -v "^executable" | yq -r 'to_entries | map("\(.key)=\(.value)") | join(" --")' \
+  | sed -e 's^=none ^ ^g' -e 's^=none$^^g') --seed $(date +%s) --save-result"
 start=$(date +%s.%N)
-python benchmarks/${en} --$(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/vllm-benchmark/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} | grep -v "^executable" | yq -r 'to_entries | map("\(.key)=\(.value)") | join(" --")' | sed -e 's^=none ^ ^g' -e 's^=none$^^g')  --seed $(date +%s) --save-result > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
+python benchmarks/${en} $LLMDBENCH_HARNESS_ARGS > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
 stop=$(date +%s.%N)
 find ${LLMDBENCH_RUN_WORKSPACE_DIR}/vllm-benchmark -maxdepth 1 -mindepth 1 -name '*.json' -exec mv -t "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"/ {} +
@@ -16,6 +19,7 @@ find ${LLMDBENCH_RUN_WORKSPACE_DIR}/vllm-benchmark -maxdepth 1 -mindepth 1 -name
 export LLMDBENCH_HARNESS_START=$(date -d "@${start}" --iso-8601=seconds)
 export LLMDBENCH_HARNESS_STOP=$(date -d "@${stop}" --iso-8601=seconds)
 export LLMDBENCH_HARNESS_DELTA=PT$(echo "$stop - $start" | bc)S
+export LLMDBENCH_HARNESS_VERSION=$(cd /workspace/vllm; git rev-parse HEAD)
 
 # If benchmark harness returned with an error, exit here
 if [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC -ne 0 ]]; then
