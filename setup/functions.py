@@ -2226,7 +2226,7 @@ def capacity_planner_sanity_check(ev: dict):
         validate_modelservice_vllm_params(ev, ignore_failed_validation)
 
 
-def get_random_node_port(min_port: int, max_port: int, api=None) -> int:
+def get_random_node_port(ev: dict, min_port: int, max_port: int, api=None) -> int:
     """
     Return a random available NodePort in the given range.
     """
@@ -2481,6 +2481,7 @@ def install_wva_components(ev: dict):
             "enabled": ev["wva_vllm_service_enabled"],
             "nodePort": int(
                 get_random_node_port(
+                    ev,
                     int(ev["wva_vllm_service_node_port_min"]),
                     int(ev["wva_vllm_service_node_port_max"]),
                 )
