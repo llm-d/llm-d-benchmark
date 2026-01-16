@@ -106,10 +106,14 @@ class InferenceEngineParallelism(BaseModel):
 
     model_config = MODEL_CONFIG.copy()
 
+    tp: int = Field(1, ge=1, description="Tensor parallelism.")
     dp: int = Field(1, ge=1, description="Data parallelism.")
+    dp_local: int = Field(
+        1, ge=1, description="Local data parallelism for this engine instance."
+    )
+    workers: int = Field(1, ge=1, description="Number of workers.")
     ep: int = Field(1, ge=1, description="Expert parallelism.")
     pp: int = Field(1, ge=1, description="Pipeline parallelism.")
-    tp: int = Field(1, ge=1, description="Tensor parallelism.")
 
 
 class InferenceEngineAccelerator(BaseModel):

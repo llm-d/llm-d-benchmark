@@ -36,6 +36,8 @@ scenario:
         count: 8
         parallelism:
           dp: 1
+          dp_local: 1
+          workers: 1
           ep: 1
           pp: 1
           tp: 8

@@ -126,6 +126,8 @@ def _populate_aggregate_stack() -> dict:
     replicas = int(os.environ.get("LLMDBENCH_VLLM_COMMON_REPLICAS", 1))
     tp = int(os.environ.get("LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM", 1))
     dp = int(os.environ.get("LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM", 1))
+    dp_local = int(os.environ.get("LLMDBENCH_VLLM_COMMON_DATA_LOCAL_PARALLELISM", 1))
+    workers = int(os.environ.get("LLMDBENCH_VLLM_COMMON_NUM_WORKERS_PARALLELISM", 1))
     img_reg = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY")
     img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO")
     img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME")
@@ -160,10 +162,12 @@ def _populate_aggregate_stack() -> dict:
             "model": {"name": model},
             "accelerator": {
                 "model": accelerator,
-                "count": tp * dp,
+                "count": tp * dp_local,
                 "parallelism": {
                     "tp": tp,
                     "dp": dp,
+                    "dp_local": dp_local,
+                    "workers": workers,
                 },
             },
         },
@@ -207,6 +211,18 @@ def _populate_disaggregate_stack() -> dict:
         os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM", 1)
     )
     d_dp = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM", 1))
+    p_dp_local = int(
+        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM", 1)
+    )
+    d_dp_local = int(
+        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM", 1)
+    )
+    p_workers = int(
+        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NUM_WORKERS_PARALLELISM", 1)
+    )
+    d_workers = int(
+        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_NUM_WORKERS_PARALLELISM", 1)
+    )
     img_reg = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY")
     img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO")
     img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME")
@@ -245,10 +261,12 @@ def _populate_disaggregate_stack() -> dict:
             "model": {"name": model},
             "accelerator": {
                 "model": accelerator,
-                "count": p_tp * p_dp,
+                "count": p_tp * p_dp_local,
                 "parallelism": {
                     "tp": p_tp,
                     "dp": p_dp,
+                    "dp_local": p_dp_local,
+                    "workers": p_workers,
                 },
             },
         },
@@ -273,10 +291,12 @@ def _populate_disaggregate_stack() -> dict:
             "model": {"name": model},
             "accelerator": {
                 "model": accelerator,
-                "count": d_tp * d_dp,
+                "count": d_tp * d_dp_local,
                 "parallelism": {
                     "tp": d_tp,
                     "dp": d_dp,
+                    "dp_local": d_dp_local,
+                    "workers": d_workers,
                 },
             },
         },
