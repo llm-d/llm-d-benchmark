@@ -12,7 +12,9 @@ sys.path.insert(0, str(project_root))
 
 from functions import (announce,
                         capacity_planner_sanity_check,
-                        check_affinity,
+                        check_accelerator,
+                        check_network,
+                        discover_node_resources,
                         llmdbench_execute_cmd,
                         environment_variable_to_dict,
                         kube_connect,
@@ -153,10 +155,18 @@ def main():
     if ev["control_dry_run"] :
         announce("DRY RUN enabled. No actual changes will be made.")
 
-    # Check affinity
-    if not check_affinity(ev):
-        announce("ERROR: Failed to check affinity")
+    if not discover_node_resources(ev):
+        announce("ERROR: Failed to discover resources on nodes")
         return 1
+
+    if not check_accelerator(ev):
+        announce("ERROR: Failed to check accelerator")
+        return 1
+
+    if not check_network(ev):
+        announce("ERROR: Failed to check network")
+        return 1
+
     capacity_planner_sanity_check(ev)
 
     if not ev["control_environment_type_modelservice_active"]:

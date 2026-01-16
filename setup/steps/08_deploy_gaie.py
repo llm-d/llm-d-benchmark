@@ -13,7 +13,9 @@ sys.path.insert(0, str(project_root))
 from functions import (
     environment_variable_to_dict,
     announce,
+    kube_connect,
     llmdbench_execute_cmd,
+    wait_for_pods_created_running_ready,
     model_attribute,
     extract_environment,
     get_image,
@@ -199,11 +201,20 @@ provider:
                 f"✅ {ev['vllm_common_namespace']}-{model_id_label}-gaie helm chart deployed successfully"
             )
 
+            api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
+
+            api_client = client.CoreV1Api()
+            result = wait_for_pods_created_running_ready(
+                api_client, ev, 1, "gateway"
+            )
+            if result != 0:
+                return result
+
             # List relevant resources
             resource_list = "deployment,service,pods,secrets,inferencepools"
             if ev['control_deploy_is_openshift'] == "1" :
                 resource_list += ",route"
-
+            '''
             announce(
                 f"ℹ️ A snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\":"
             )
@@ -220,7 +231,7 @@ provider:
                     f"ERROR: Failed to get a snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\" with \"{kubectl_cmd}\" (exit code: {ecode})"
                 )
                 exit(ecode)
-
+            '''
             model_number += 1
 
         announce("✅ Completed GAIE deployment")

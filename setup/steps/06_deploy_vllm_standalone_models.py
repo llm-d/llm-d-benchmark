@@ -17,7 +17,9 @@ from functions import (
     extract_environment, \
     get_image, \
     check_storage_class, \
-    check_affinity, \
+    check_accelerator, \
+    check_network, \
+    discover_node_resources, \
     add_annotations, \
     add_command_line_options, \
     add_additional_env_to_yaml, \
@@ -48,9 +50,16 @@ def main():
             announce("ERROR: Failed to check storage class")
             return 1
 
-        # Check affinity
-        if not check_affinity(ev):
-            announce("ERROR: Failed to check affinity")
+        if not discover_node_resources(ev):
+            announce("ERROR: Failed to discover resources on nodes")
+            return 1
+
+        if not check_accelerator(ev):
+            announce("ERROR: Failed to check accelerator")
+            return 1
+
+        if not check_network(ev):
+            announce("ERROR: Failed to check network")
             return 1
 
         # Create yamls directory

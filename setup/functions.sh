@@ -805,7 +805,6 @@ export -f generate_profile_parameter_treatments
 function cleanup_pre_execution {
   announce "🗑️ Deleting pods with label \"${LLMDBENCH_HARNESS_POD_LABEL}\"..."
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l app=${LLMDBENCH_HARNESS_POD_LABEL} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  echo "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l ${LLMDBENCH_HARNESS_POD_LABEL} --ignore-not-found"
   # Sanitize the stack name to make it a valid K8s/OpenShift resource name
   local LLMDBENCH_HARNESS_SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | $LLMDBENCH_CONTROL_SCMD 's|[/:]|-|g')
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_HARNESS_SANITIZED_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}

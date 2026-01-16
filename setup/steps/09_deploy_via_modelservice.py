@@ -19,7 +19,9 @@ from functions import (
     extract_environment,
     add_pull_secret,
     check_storage_class,
-    check_affinity,
+    check_accelerator,
+    check_network,
+    discover_node_resources,
     environment_variable_to_dict,
     wait_for_pods_created_running_ready,
     collect_logs,
@@ -418,9 +420,16 @@ def main():
         announce("ERROR: Failed to check storage class")
         return 1
 
-    # Check affinity
-    if not check_affinity(ev):
-        announce("ERROR: Failed to check affinity")
+    if not discover_node_resources(ev):
+        announce("ERROR: Failed to discover resources on nodes")
+        return 1
+
+    if not check_accelerator(ev):
+        announce("ERROR: Failed to check accelerator")
+        return 1
+
+    if not check_network(ev):
+        announce("ERROR: Failed to check network")
         return 1
 
     # Deploy models
@@ -531,6 +540,12 @@ def main():
       # Wait for prefill pods to be created, running, and ready
       result = wait_for_pods_created_running_ready(
           api_client, ev, expected_num_prefill_pods, "prefill"
+      )
+      if result != 0:
+          return result
+
+      result = wait_for_pods_created_running_ready(
+          api_client, ev, 1, "inferencepool"
       )
       if result != 0:
           return result

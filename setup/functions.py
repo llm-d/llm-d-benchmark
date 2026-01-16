@@ -317,7 +317,7 @@ def environment_variable_to_dict(ev: dict = {}):
             if value == "false":
                 ev[key] = False
 
-    for mandatory_key in [
+    for mandatory_boolean_key in [
         "control_dry_run",
         "control_verbose",
         "control_deploy_is_minikube",
@@ -329,10 +329,22 @@ def environment_variable_to_dict(ev: dict = {}):
         "vllm_modelservice_multinode",
         "vllm_standalone_launcher"
     ]:
-        if mandatory_key not in ev:
-            ev[mandatory_key] = 0
+        if mandatory_boolean_key not in ev:
+            ev[mandatory_boolean_key] = 0
 
-        ev[mandatory_key] = bool(int(ev[mandatory_key]))
+        ev[mandatory_boolean_key] = bool(int(ev[mandatory_boolean_key]))
+
+    for mandatory_empty_key in [
+        "vllm_common_affinity",
+        "vllm_common_network_resource"
+    ]:
+        if mandatory_empty_key not in ev:
+            ev[mandatory_empty_key] = ''
+
+    if "discovered" not in ev :
+        ev["discovered"] = {}
+        ev["discovered"]["accelerators"] = []
+        ev["discovered"]["network"] = []
 
     ev["infra_dir"] = ev.get("infra_dir", "/tmp")
     ev["infra_git_branch"] = ev.get("infra_git_branch", "main")
@@ -1012,96 +1024,162 @@ def check_storage_class(ev):
         announce(f"ERROR: connecting to Kubernetes: {e}")
         return False
 
-def check_affinity(ev: dict):
-    """
-    Check and validate affinity configuration.
-    Equivalent to the bash check_affinity function.
-    """
+def discover_node_resources(ev: dict):
     try:
         # Use pykube to connect to Kubernetes
         api, client = kube_connect(f"{ev['control_work_dir']}/environment/context.ctx")
 
-        # Handle auto affinity detection
-        if ev["vllm_common_affinity"] == "auto":
-            if not ev["control_deploy_is_minikube"] :
-                try:
-                    # Get node labels to find accelerators using pykube
-                    nodes = pykube.Node.objects(api)
+        try:
+            # Get node labels to find accelerators using pykube
+            nodes = pykube.Node.objects(api)
 
-                    accelerator_patterns = [
-                        "nvidia.com/gpu.product",
-                        "gpu.nvidia.com/class",
-                        "cloud.google.com/gke-accelerator",
-                    ]
+            accelerator_patterns = [
+                "nvidia.com/gpu.product",
+                "gpu.nvidia.com/class",
+                "cloud.google.com/gke-accelerator",
+            ]
 
-                    found_accelerator = None
-                    for node in nodes:
-                        labels = node.metadata.get("labels", {})
-                        for pattern in accelerator_patterns:
-                            for label_key, label_value in labels.items():
-                                if pattern in label_key:
-                                    found_accelerator = f"{label_key}:{label_value}"
-                                    break
-                            if found_accelerator:
-                                break
-                        if found_accelerator:
-                            break
+            network_resource_patterns = [
+                "f:rdma/roce_gdr",
+                "f:rdma/ib"
+            ]
 
-                    if ev["vllm_common_accelerator_resource"] == "auto" :
-                        ev["vllm_common_accelerator_resource"] = "nvidia.com/gpu"
+            for node in nodes:
+                labels = node.metadata.get("labels", {})
+                resources = {}
+                for field in node.metadata['managedFields'] :
+                    if field['manager'] == 'kubelet' :
+                        if 'fieldsV1' in field :
+                            if 'f:status' in field['fieldsV1'] :
+                                if 'f:capacity' in field['fieldsV1']['f:status'] :
+                                    resources = field['fieldsV1']['f:status']['f:capacity']
 
-                    if found_accelerator:
-                        announce(
-                            f'ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to "{found_accelerator}"'
-                        )
+                for apattern in accelerator_patterns:
+                    for label_key, label_value in labels.items():
+                        if apattern in label_key:
+                            if f"{label_key}:{label_value}" not in ev["discovered"]["accelerators"] :
+                                ev["discovered"]["accelerators"].append(f"{label_key}:{label_value}")
 
-                        ev["vllm_common_affinity"] = (
-                            f'{ev["vllm_common_accelerator_resource"]}:{found_accelerator}'
-                        )
-                    else:
-                        announce(
-                            "ERROR: environment variable LLMDBENCH_VLLM_COMMON_AFFINITY=auto, but unable to find an accelerator on any node"
-                        )
-                        return False
-                except Exception as e:
-                    announce(f"ERROR: unable to find nodes with requested affinity: {e}")
-                    return False
-        else:
-            # Validate manually specified affinity using pykube
-            if ev["vllm_common_affinity"] and ":" in ev["vllm_common_affinity"]:
-                annotation_key, annotation_value = ev["vllm_common_affinity"].split(":", 1)
-                try:
-                    nodes = pykube.Node.objects(api)
-                    found_matching_node = False
+                for npattern in network_resource_patterns :
+                    if npattern in resources :
+                        npattern = npattern.replace("f:",'')
+                        if npattern not in ev["discovered"]["network"] :
+                            ev["discovered"]["network"].append(f"{npattern}")
 
-                    for node in nodes:
-                        labels = node.metadata.get("labels", {})
-                        if labels.get(annotation_key) == annotation_value:
-                            found_matching_node = True
-                            break
+            return True
 
-                    if not found_matching_node:
-                        announce(
-                            f'ERROR: There are no nodes on this cluster with the label "{annotation_key}:{annotation_value}" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)'
-                        )
-                        return False
-                except Exception as e:
-                    announce(f"ERROR: unable to validate affinity: {e}")
-                    return False
-
-        # Handle auto accelerator resource detection
-        accelerator_resource = ev["vllm_common_accelerator_resource"]
-        if ev["vllm_common_accelerator_resource"] == "auto":
-            ev["vllm_common_accelerator_resource"] = "nvidia.com/gpu"
-            announce(
-                f'ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE automatically set to "nvidia.com/gpu"'
-            )
-
-        return True
+        except Exception as e:
+            announce(f"ERROR: unable to discover nodes resources: {e}")
+            return False
 
     except Exception as e:
         announce(f"ERROR: unable to connect to cluster: {e}")
         return False
+
+def propagate_common_to_standup_methods(ev: dict, prefix: str, entry: str) :
+    for method in [ 'standalone' , 'modelservice_decode', 'modelservice_prefill'] :
+        msv = f"{prefix}_{method}_{entry}"
+        if msv in ev :
+            if ev[msv] == "auto" :
+                ev[msv] = ev[f"{prefix}_common_{entry}"]
+    return True
+
+def check_accelerator(ev: dict):
+    """
+    Check and validate affinity configuration.
+    Equivalent to the bash check_affinity function.
+    """
+    if ev["vllm_common_affinity"] == "auto":
+        if not ev["control_deploy_is_minikube"] :
+
+            found_accelerator = None
+            if ev["discovered"]["accelerators"] :
+                found_accelerator = ev["discovered"]["accelerators"][0]
+
+            if found_accelerator:
+                announce(
+                    f'ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_AFFINITY automatically set to "{found_accelerator}"'
+                )
+
+                if ev["vllm_common_accelerator_resource"] == "auto" :
+                    ev["vllm_common_accelerator_resource"] = "nvidia.com/gpu"
+
+                propagate_common_to_standup_methods(ev, "vllm", "accelerator_resource")
+
+
+                ev["vllm_common_affinity"] = (
+                    f'{ev["vllm_common_accelerator_resource"]}:{found_accelerator}'
+                )
+
+                propagate_common_to_standup_methods(ev, "vllm", "affinity")
+
+                return True
+            else:
+                announce(
+                    "ERROR: environment variable LLMDBENCH_VLLM_COMMON_AFFINITY=auto, but unable to find an accelerator on any node"
+                )
+                return False
+        else:
+            # Validate manually specified affinity using pykube
+            if ev["vllm_common_affinity"] and ":" in ev["vllm_common_affinity"]:
+                found_matching_node = False
+                if ev["vllm_common_affinity"] in ev["discovered"]["accelerators"] :
+                    found_matching_node = True
+                    return True
+
+                if not found_matching_node:
+                    announce(
+                        f'ERROR: There are no nodes on this cluster with the label \"{ev["vllm_common_affinity"]}\" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)'
+                    )
+                    return False
+    return True
+
+def check_network(ev: dict):
+    """
+    Check and validate affinity configuration.
+    Equivalent to the bash check_affinity function.
+    """
+    if ev["vllm_common_network_resource"] == "auto":
+        if not ev["control_deploy_is_minikube"] :
+
+            found_network_resource = None
+            if ev["discovered"]["network"] :
+                found_network_resource = ev["discovered"]["network"][0]
+
+
+            if found_network_resource:
+                announce(
+                    f'ℹ️ Environment variable LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE automatically set to "{found_network_resource}"'
+                )
+
+                if ev["vllm_common_network_resource"] == "auto" :
+                    ev["vllm_common_network_resource"] = found_network_resource
+
+                if ev["vllm_common_network_nr"] == "auto" :
+                    ev["vllm_common_network_nr"] = 1
+
+                propagate_common_to_standup_methods(ev, "vllm", "network_resource")
+                propagate_common_to_standup_methods(ev, "vllm", "network_nr")
+
+                return True
+            else:
+                announce(
+                    "WARNING:environment variable LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=auto, but unable to find network resources on any node"
+                )
+                return True
+    else:
+        if bool(ev["vllm_common_network_resource"]) :
+            found_matching_node = False
+            if ev["vllm_common_network_resource"] in ev["discovered"]["network"] :
+                found_matching_node = True
+                return True
+
+            if not found_matching_node:
+                announce(
+                    f'ERROR: There are no nodes on this cluster with the capacity \"{ev["vllm_common_network_resource"]}\" (environment variable LLMDBENCH_VLLM_COMMON_AFFINITY)'
+                )
+                return False
+    return True
 
 def get_accelerator_nr(accelerator_nr, tp, dp) -> int:
     """
@@ -1781,9 +1859,19 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
     Wait for pods to be created, in Running state and then in Ready state.
     """
 
-    dry_run = int(ev.get("control_dry_run", 0))
+    dry_run = ev["control_dry_run"]
     result = 0
     ev["control_wait_timeout"] = int(ev["control_wait_timeout"])
+    if component in [ "both", "decode", "prefill" ] :
+        label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}"
+    elif component in [ "gateway" ] :
+        label_selector = f"gateway.networking.k8s.io/gateway-name=infra-{ev['vllm_modelservice_release']}-inference-gateway"
+    elif component in [ "inferencepool" ] :
+        label_selector = f"inferencepool={ev['deploy_current_model_id_label']}-gaie-epp"
+    else :
+        announce(f"ERROR: Unknown component ({component})")
+        return 10
+
     if not dry_run and int(component_nr) > 0:
         delay = 10
         max_retries = int(ev["control_wait_timeout"]/delay)
@@ -1796,7 +1884,7 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
                 w = k8s_watch.Watch()
                 pod_running_list = []
                 pod_ready_list = []
-                for event in w.stream(api_client.list_namespaced_pod, namespace=ev["vllm_common_namespace"], label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}", timeout_seconds=int(ev["control_wait_timeout"])):
+                for event in w.stream(api_client.list_namespaced_pod, namespace=ev["vllm_common_namespace"], label_selector=label_selector, timeout_seconds=int(ev["control_wait_timeout"])):
                     pod = event['object']
                     event_type = event['type']
                     if event_type in ("ADDED", "MODIFIED") and (pod.status.init_container_statuses or pod.status.container_statuses):
