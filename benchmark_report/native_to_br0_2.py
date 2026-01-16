@@ -23,6 +23,7 @@ from .core import (
     update_dict,
 )
 from .schema_v0_2 import BenchmarkReportV02, Distribution, LoadSource
+from .schema_v0_2_components import HostType
 
 
 def _populate_run() -> dict:
@@ -119,7 +120,7 @@ def _populate_aggregate_stack() -> dict:
         dict: dict with scenario.stack part of of BenchmarkReport.
     """
     model = os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL")
-    accelerator = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY")
+    accelerator = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY").split(":", 1)[-1]
     replicas = int(os.environ.get("LLMDBENCH_VLLM_COMMON_REPLICAS", 1))
     tp = int(os.environ.get("LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM", 1))
     dp = int(os.environ.get("LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM", 1))
@@ -147,7 +148,7 @@ def _populate_aggregate_stack() -> dict:
             "kind": "inference_engine",
             "tool": img_repo,
             "tool_version": f"{img_reg}/{img_repo}/{img_name}:{img_tag}",
-            "role": "prefill",
+            "role": HostType.REPLICA,
             "model": {
                 "name": model
             },
@@ -184,12 +185,97 @@ def _populate_disaggregate_stack() -> dict:
     Returns:
         dict: dict with scenario.stack part of of BenchmarkReport.
     """
-    stack = []
 
+    model = os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL")
+    accelerator = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY").split(":", 1)[-1]
+    p_replicas = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS", 0))
+    d_replicas = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS", 1))
+    p_tp = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM", 1))
+    p_dp = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM", 1))
+    d_tp = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM", 1))
+    d_dp = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM", 1))
+    img_reg = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY")
+    img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO")
+    img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME")
+    img_tag = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG")
+    p_cli_args_str = base64.b64decode(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS", "")).decode('utf-8')
+    d_cli_args_str = base64.b64decode(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS", "")).decode('utf-8')
+
+
+    # Parse through environment variables YAML
+    envars_list: list[dict[str, Any]] = yaml.safe_load(base64.b64decode(os.environ.get("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML", "")).decode('utf-8'))
+    envars = {}
+    for envar_dict in envars_list:
+        value = envar_dict.get("value", envar_dict.get("valueFrom"))
+        envars[envar_dict["name"]] = value
+
+    p_cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, p_cli_args_str + str(envars)))
+    d_cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, d_cli_args_str + str(envars)))
+
+    p_inference_engine = {
+        "metadata": {
+            "label": "", # TODO
+            "cfg_id": p_cfg_id,
+        },
+        "standardized": {
+            "kind": "inference_engine",
+            "tool": img_repo,
+            "tool_version": f"{img_reg}/{img_repo}/{img_name}:{img_tag}",
+            "role": HostType.PREFILL,
+            "model": {
+                "name": model
+            },
+            "accelerator": {
+                "model": accelerator,
+                "count": p_tp * p_dp,
+                "parallelism": {
+                    "tp": p_tp,
+                    "dp": p_dp,
+                },
+            },
+        },
+        "native": {
+            "args": { "cmd_str": p_cli_args_str, # TODO This is an ugly hack for now
+            },
+            "envars": envars,
+        },
+    }
+
+    d_inference_engine = {
+        "metadata": {
+            "label": "", # TODO
+            "cfg_id": d_cfg_id,
+        },
+        "standardized": {
+            "kind": "inference_engine",
+            "tool": img_repo,
+            "tool_version": f"{img_reg}/{img_repo}/{img_name}:{img_tag}",
+            "role": HostType.DECODE,
+            "model": {
+                "name": model
+            },
+            "accelerator": {
+                "model": accelerator,
+                "count": d_tp * d_dp,
+                "parallelism": {
+                    "tp": d_tp,
+                    "dp": d_dp,
+                },
+            },
+        },
+        "native": {
+            "args": { "cmd_str": d_cli_args_str, # TODO This is an ugly hack for now
+            },
+            "envars": envars,
+        },
+    }
+
+    p_stack = [p_inference_engine] * p_replicas
+    d_stack = [d_inference_engine] * d_replicas
 
     br_dict = {
         "scenario": {
-            "stack": stack,
+            "stack": p_stack + d_stack,
         },
     }
     return br_dict
