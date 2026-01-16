@@ -35,7 +35,9 @@ def _populate_run() -> dict:
     # Unique ID for pod
     pid = os.environ.get("POD_UID")
     # Create an experiment ID from the results directory used (includes a timestamp)
-    eid = str(uuid.uuid5(uuid.NAMESPACE_URL, os.environ.get("LLMDBENCH_RUN_EXPERIMENT_ID")))
+    eid = str(
+        uuid.uuid5(uuid.NAMESPACE_URL, os.environ.get("LLMDBENCH_RUN_EXPERIMENT_ID"))
+    )
     # Create cluster ID from the API server certificate
     host = os.environ.get("KUBERNETES_SERVICE_HOST")
     port = int(os.environ.get("KUBERNETES_SERVICE_PORT", 0))
@@ -77,7 +79,7 @@ def _populate_load() -> dict:
     """
     # Get arguments to harness command
     args_str = os.environ.get("LLMDBENCH_HARNESS_ARGS")
-    kv_pairs = [kv.strip() for kv in args_str.split('--') if kv.strip()]
+    kv_pairs = [kv.strip() for kv in args_str.split("--") if kv.strip()]
     args = {}
     for kv in kv_pairs:
         if "=" in kv:
@@ -128,10 +130,16 @@ def _populate_aggregate_stack() -> dict:
     img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO")
     img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME")
     img_tag = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG")
-    cli_args_str = base64.b64decode(os.environ.get("LLMDBENCH_VLLM_STANDALONE_ARGS", "")).decode('utf-8')
+    cli_args_str = base64.b64decode(
+        os.environ.get("LLMDBENCH_VLLM_STANDALONE_ARGS", "")
+    ).decode("utf-8")
 
     # Parse through environment variables YAML
-    envars_list: list[dict[str, Any]] = yaml.safe_load(base64.b64decode(os.environ.get("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML", "")).decode('utf-8'))
+    envars_list: list[dict[str, Any]] = yaml.safe_load(
+        base64.b64decode(
+            os.environ.get("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML", "")
+        ).decode("utf-8")
+    )
     envars = {}
     for envar_dict in envars_list:
         value = envar_dict.get("value", envar_dict.get("valueFrom"))
@@ -141,7 +149,7 @@ def _populate_aggregate_stack() -> dict:
 
     inference_engine = {
         "metadata": {
-            "label": "", # TODO
+            "label": "",  # TODO
             "cfg_id": cfg_id,
         },
         "standardized": {
@@ -149,9 +157,7 @@ def _populate_aggregate_stack() -> dict:
             "tool": img_repo,
             "tool_version": f"{img_reg}/{img_repo}/{img_name}:{img_tag}",
             "role": HostType.REPLICA,
-            "model": {
-                "name": model
-            },
+            "model": {"name": model},
             "accelerator": {
                 "model": accelerator,
                 "count": tp * dp,
@@ -162,7 +168,8 @@ def _populate_aggregate_stack() -> dict:
             },
         },
         "native": {
-            "args": { "cmd_str": cli_args_str, # TODO This is an ugly hack for now
+            "args": {
+                "cmd_str": cli_args_str,  # TODO This is an ugly hack for now
             },
             "envars": envars,
         },
@@ -190,20 +197,33 @@ def _populate_disaggregate_stack() -> dict:
     accelerator = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY").split(":", 1)[-1]
     p_replicas = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS", 0))
     d_replicas = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS", 1))
-    p_tp = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM", 1))
-    p_dp = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM", 1))
-    d_tp = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM", 1))
+    p_tp = int(
+        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM", 1)
+    )
+    p_dp = int(
+        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM", 1)
+    )
+    d_tp = int(
+        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM", 1)
+    )
     d_dp = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM", 1))
     img_reg = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY")
     img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO")
     img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME")
     img_tag = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG")
-    p_cli_args_str = base64.b64decode(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS", "")).decode('utf-8')
-    d_cli_args_str = base64.b64decode(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS", "")).decode('utf-8')
-
+    p_cli_args_str = base64.b64decode(
+        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS", "")
+    ).decode("utf-8")
+    d_cli_args_str = base64.b64decode(
+        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS", "")
+    ).decode("utf-8")
 
     # Parse through environment variables YAML
-    envars_list: list[dict[str, Any]] = yaml.safe_load(base64.b64decode(os.environ.get("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML", "")).decode('utf-8'))
+    envars_list: list[dict[str, Any]] = yaml.safe_load(
+        base64.b64decode(
+            os.environ.get("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML", "")
+        ).decode("utf-8")
+    )
     envars = {}
     for envar_dict in envars_list:
         value = envar_dict.get("value", envar_dict.get("valueFrom"))
@@ -214,7 +234,7 @@ def _populate_disaggregate_stack() -> dict:
 
     p_inference_engine = {
         "metadata": {
-            "label": "", # TODO
+            "label": "",  # TODO
             "cfg_id": p_cfg_id,
         },
         "standardized": {
@@ -222,9 +242,7 @@ def _populate_disaggregate_stack() -> dict:
             "tool": img_repo,
             "tool_version": f"{img_reg}/{img_repo}/{img_name}:{img_tag}",
             "role": HostType.PREFILL,
-            "model": {
-                "name": model
-            },
+            "model": {"name": model},
             "accelerator": {
                 "model": accelerator,
                 "count": p_tp * p_dp,
@@ -235,7 +253,8 @@ def _populate_disaggregate_stack() -> dict:
             },
         },
         "native": {
-            "args": { "cmd_str": p_cli_args_str, # TODO This is an ugly hack for now
+            "args": {
+                "cmd_str": p_cli_args_str,  # TODO This is an ugly hack for now
             },
             "envars": envars,
         },
@@ -243,7 +262,7 @@ def _populate_disaggregate_stack() -> dict:
 
     d_inference_engine = {
         "metadata": {
-            "label": "", # TODO
+            "label": "",  # TODO
             "cfg_id": d_cfg_id,
         },
         "standardized": {
@@ -251,9 +270,7 @@ def _populate_disaggregate_stack() -> dict:
             "tool": img_repo,
             "tool_version": f"{img_reg}/{img_repo}/{img_name}:{img_tag}",
             "role": HostType.DECODE,
-            "model": {
-                "name": model
-            },
+            "model": {"name": model},
             "accelerator": {
                 "model": accelerator,
                 "count": d_tp * d_dp,
@@ -264,7 +281,8 @@ def _populate_disaggregate_stack() -> dict:
             },
         },
         "native": {
-            "args": { "cmd_str": d_cli_args_str, # TODO This is an ugly hack for now
+            "args": {
+                "cmd_str": d_cli_args_str,  # TODO This is an ugly hack for now
             },
             "envars": envars,
         },
@@ -303,7 +321,7 @@ def _populate_stack() -> dict:
         return _populate_disaggregate_stack()
 
     sys.stderr.write(
-        f"Warning: Unknown deployment method LLMDBENCH_DEPLOY_METHODS={os.environ.get("LLMDBENCH_DEPLOY_METHODS")}\n"
+        f"Warning: Unknown deployment method LLMDBENCH_DEPLOY_METHODS={os.environ.get('LLMDBENCH_DEPLOY_METHODS')}\n"
     )
     return {}
 
@@ -318,8 +336,8 @@ def _populate_benchmark_report_from_envars() -> dict:
     br_dict = {
         "version": "0.2",
         "run": {
-            "uid": str(uuid.uuid4()), # Initial UID, may be updated
-        }
+            "uid": str(uuid.uuid4()),  # Initial UID, may be updated
+        },
     }
 
     # We make the assumption that if the environment variable
@@ -386,7 +404,11 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
     # schema of BenchmarkReportV02
     br_dict = _populate_benchmark_report_from_envars()
 
-    cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(get_nested(br_dict, ["scenario", "load", "native"]))))
+    cfg_id = str(
+        uuid.uuid5(
+            uuid.NAMESPACE_DNS, str(get_nested(br_dict, ["scenario", "load", "native"]))
+        )
+    )
 
     # Add to that dict the data from vLLM benchmark.
     update_dict(
@@ -404,10 +426,10 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                         "stage": 0,
                         "rate_qps": results.get("request_rate"),
                         "concurrency": results.get("max_concurrency"),
-                        "source": LoadSource.RANDOM, # TODO
+                        "source": LoadSource.RANDOM,  # TODO
                         "input_seq_len": {
-                            "distribution": Distribution.FIXED, # TODO
-                            "value": 1, # TODO
+                            "distribution": Distribution.FIXED,  # TODO
+                            "value": 1,  # TODO
                         },
                     },
                 },
@@ -533,7 +555,11 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
     # schema of BenchmarkReportV02
     br_dict = _populate_benchmark_report_from_envars()
 
-    cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(get_nested(br_dict, ["scenario", "load", "native"]))))
+    cfg_id = str(
+        uuid.uuid5(
+            uuid.NAMESPACE_DNS, str(get_nested(br_dict, ["scenario", "load", "native"]))
+        )
+    )
 
     # Add to that dict the data from vLLM benchmark.
     update_dict(
@@ -556,10 +582,10 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                         "stage": 0,
                         "rate_qps": results.get("request_rate"),
                         "concurrency": results.get("max_concurrency"),
-                        "source": LoadSource.RANDOM, # TODO
+                        "source": LoadSource.RANDOM,  # TODO
                         "input_seq_len": {
-                            "distribution": Distribution.FIXED, # TODO
-                            "value": 1, # TODO
+                            "distribution": Distribution.FIXED,  # TODO
+                            "value": 1,  # TODO
                         },
                     },
                 },
@@ -704,19 +730,39 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                     "standardized": {
                         "tool": WorkloadGenerator.INFERENCE_PERF,
                         "stage": stage,
-                        "rate_qps": get_nested(results, ["load_summary", "requested_rate"]),
-                        "concurrency": get_nested(results, ["load_summary", "concurrency"]),
-                        "source": LoadSource.RANDOM, # TODO see https://github.com/kubernetes-sigs/inference-perf/blob/main/docs/config.md?plain=1#L42
+                        "rate_qps": get_nested(
+                            results, ["load_summary", "requested_rate"]
+                        ),
+                        "concurrency": get_nested(
+                            results, ["load_summary", "concurrency"]
+                        ),
+                        "source": LoadSource.RANDOM,  # TODO see https://github.com/kubernetes-sigs/inference-perf/blob/main/docs/config.md?plain=1#L42
                         "input_seq_len": {
-                            "distribution": Distribution.OTHER, #  TODO
+                            "distribution": Distribution.OTHER,  #  TODO
                             # If br_dict has config file from
                             # _populate_benchmark_report_from_envars, get
                             # details from there, otherwise get what is available
                             # from results file.
-                            "value": get_nested(config, ["data", "input_distribution", "mean"], get_nested(results, ["successes", "prompt_len", "mean"])),
-                            "std_dev": get_nested(config, ["data", "input_distribution", "std"]),
-                            "min": get_nested(config, ["data", "input_distribution", "min"], get_nested(results, ["successes", "prompt_len", "min"])),
-                            "max": get_nested(config, ["data", "input_distribution", "max"], get_nested(results, ["successes", "prompt_len", "max"])),
+                            "value": get_nested(
+                                config,
+                                ["data", "input_distribution", "mean"],
+                                get_nested(
+                                    results, ["successes", "prompt_len", "mean"]
+                                ),
+                            ),
+                            "std_dev": get_nested(
+                                config, ["data", "input_distribution", "std"]
+                            ),
+                            "min": get_nested(
+                                config,
+                                ["data", "input_distribution", "min"],
+                                get_nested(results, ["successes", "prompt_len", "min"]),
+                            ),
+                            "max": get_nested(
+                                config,
+                                ["data", "input_distribution", "max"],
+                                get_nested(results, ["successes", "prompt_len", "max"]),
+                            ),
                         },
                     },
                     "native": {
@@ -724,7 +770,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                     },
                 },
             },
-           "results": {
+            "results": {
                 "request_performance": {
                     "aggregate": {
                         "requests": {
@@ -732,138 +778,707 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                             "failures": get_nested(results, ["failures", "count"]),
                             "input_length": {
                                 "units": Units.COUNT,
-                                "mean": get_nested(results, ["successes", "prompt_len", "mean"]),
-                                "min": get_nested(results, ["successes", "prompt_len", "min"]),
-                                "p0p1": get_nested(results, ["successes", "prompt_len", "p0.1"]),
-                                "p1": get_nested(results, ["successes", "prompt_len", "p1"]),
-                                "p5": get_nested(results, ["successes", "prompt_len", "p5"]),
-                                "p10": get_nested(results, ["successes", "prompt_len", "p10"]),
-                                "p25": get_nested(results, ["successes", "prompt_len", "p25"]),
-                                "p50": get_nested(results, ["successes", "prompt_len", "median"]),
-                                "p75": get_nested(results, ["successes", "prompt_len", "p75"]),
-                                "p90": get_nested(results, ["successes", "prompt_len", "p90"]),
-                                "p95": get_nested(results, ["successes", "prompt_len", "p95"]),
-                                "p99": get_nested(results, ["successes", "prompt_len", "p99"]),
-                                "p99p9": get_nested(results, ["successes", "prompt_len", "p99.9"]),
-                                "max": get_nested(results, ["successes", "prompt_len", "max"]),
+                                "mean": get_nested(
+                                    results, ["successes", "prompt_len", "mean"]
+                                ),
+                                "min": get_nested(
+                                    results, ["successes", "prompt_len", "min"]
+                                ),
+                                "p0p1": get_nested(
+                                    results, ["successes", "prompt_len", "p0.1"]
+                                ),
+                                "p1": get_nested(
+                                    results, ["successes", "prompt_len", "p1"]
+                                ),
+                                "p5": get_nested(
+                                    results, ["successes", "prompt_len", "p5"]
+                                ),
+                                "p10": get_nested(
+                                    results, ["successes", "prompt_len", "p10"]
+                                ),
+                                "p25": get_nested(
+                                    results, ["successes", "prompt_len", "p25"]
+                                ),
+                                "p50": get_nested(
+                                    results, ["successes", "prompt_len", "median"]
+                                ),
+                                "p75": get_nested(
+                                    results, ["successes", "prompt_len", "p75"]
+                                ),
+                                "p90": get_nested(
+                                    results, ["successes", "prompt_len", "p90"]
+                                ),
+                                "p95": get_nested(
+                                    results, ["successes", "prompt_len", "p95"]
+                                ),
+                                "p99": get_nested(
+                                    results, ["successes", "prompt_len", "p99"]
+                                ),
+                                "p99p9": get_nested(
+                                    results, ["successes", "prompt_len", "p99.9"]
+                                ),
+                                "max": get_nested(
+                                    results, ["successes", "prompt_len", "max"]
+                                ),
                             },
                             "output_length": {
                                 "units": Units.COUNT,
-                                "mean": get_nested(results, ["successes", "output_len", "mean"]),
-                                "min": get_nested(results, ["successes", "output_len", "min"]),
-                                "p0p1": get_nested(results, ["successes", "output_len", "p0.1"]),
-                                "p1": get_nested(results, ["successes", "output_len", "p1"]),
-                                "p5": get_nested(results, ["successes", "output_len", "p5"]),
-                                "p10": get_nested(results, ["successes", "output_len", "p10"]),
-                                "p25": get_nested(results, ["successes", "output_len", "p25"]),
-                                "p50": get_nested(results, ["successes", "output_len", "median"]),
-                                "p75": get_nested(results, ["successes", "output_len", "p75"]),
-                                "p90": get_nested(results, ["successes", "output_len", "p90"]),
-                                "p95": get_nested(results, ["successes", "output_len", "p95"]),
-                                "p99": get_nested(results, ["successes", "output_len", "p99"]),
-                                "p99p9": get_nested(results, ["successes", "output_len", "p99.9"]),
-                                "max": get_nested(results, ["successes", "output_len", "max"]),
+                                "mean": get_nested(
+                                    results, ["successes", "output_len", "mean"]
+                                ),
+                                "min": get_nested(
+                                    results, ["successes", "output_len", "min"]
+                                ),
+                                "p0p1": get_nested(
+                                    results, ["successes", "output_len", "p0.1"]
+                                ),
+                                "p1": get_nested(
+                                    results, ["successes", "output_len", "p1"]
+                                ),
+                                "p5": get_nested(
+                                    results, ["successes", "output_len", "p5"]
+                                ),
+                                "p10": get_nested(
+                                    results, ["successes", "output_len", "p10"]
+                                ),
+                                "p25": get_nested(
+                                    results, ["successes", "output_len", "p25"]
+                                ),
+                                "p50": get_nested(
+                                    results, ["successes", "output_len", "median"]
+                                ),
+                                "p75": get_nested(
+                                    results, ["successes", "output_len", "p75"]
+                                ),
+                                "p90": get_nested(
+                                    results, ["successes", "output_len", "p90"]
+                                ),
+                                "p95": get_nested(
+                                    results, ["successes", "output_len", "p95"]
+                                ),
+                                "p99": get_nested(
+                                    results, ["successes", "output_len", "p99"]
+                                ),
+                                "p99p9": get_nested(
+                                    results, ["successes", "output_len", "p99.9"]
+                                ),
+                                "max": get_nested(
+                                    results, ["successes", "output_len", "max"]
+                                ),
                             },
                         },
                         "latency": {
                             "time_to_first_token": {
                                 "units": Units.S,
-                                "mean": get_nested(results, ["successes", "latency", "time_to_first_token", "mean"]),
-                                "min": get_nested(results, ["successes", "latency", "time_to_first_token", "min"]),
-                                "p0p1": get_nested(results, ["successes", "latency", "time_to_first_token", "p0.1"]),
-                                "p1": get_nested(results, ["successes", "latency", "time_to_first_token", "p1"]),
-                                "p5": get_nested(results, ["successes", "latency", "time_to_first_token", "p5"]),
-                                "p10": get_nested(results, ["successes", "latency", "time_to_first_token", "p10"]),
-                                "p25": get_nested(results, ["successes", "latency", "time_to_first_token", "p25"]),
-                                "p50": get_nested(results, ["successes", "latency", "time_to_first_token", "median"]),
-                                "p75": get_nested(results, ["successes", "latency", "time_to_first_token", "p75"]),
-                                "p90": get_nested(results, ["successes", "latency", "time_to_first_token", "p90"]),
-                                "p95": get_nested(results, ["successes", "latency", "time_to_first_token", "p95"]),
-                                "p99": get_nested(results, ["successes", "latency", "time_to_first_token", "p99"]),
-                                "p99p9": get_nested(results, ["successes", "latency", "time_to_first_token", "p99.9"]),
-                                "max": get_nested(results, ["successes", "latency", "time_to_first_token", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "mean",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "min",
+                                    ],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "p0.1",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "p1",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "p5",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "median",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "p99.9",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_to_first_token",
+                                        "max",
+                                    ],
+                                ),
                             },
                             "normalized_time_per_output_token": {
                                 "units": Units.S_PER_TOKEN,
-                                "mean": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "mean"]),
-                                "min": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "min"]),
-                                "p0p1": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "p0.1"]),
-                                "p1": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "p1"]),
-                                "p5": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "p5"]),
-                                "p10": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "p10"]),
-                                "p25": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "p25"]),
-                                "p50": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "median"]),
-                                "p75": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "p75"]),
-                                "p90": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "p90"]),
-                                "p95": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "p95"]),
-                                "p99": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "p99"]),
-                                "p99p9": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "p99.9"]),
-                                "max": get_nested(results, ["successes", "latency", "normalized_time_per_output_token", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "mean",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "min",
+                                    ],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "p0.1",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "p1",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "p5",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "median",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "p99.9",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "normalized_time_per_output_token",
+                                        "max",
+                                    ],
+                                ),
                             },
                             "time_per_output_token": {
                                 "units": Units.S_PER_TOKEN,
-                                "mean": get_nested(results, ["successes", "latency", "time_per_output_token", "mean"]),
-                                "min": get_nested(results, ["successes", "latency", "time_per_output_token", "min"]),
-                                "p0p1": get_nested(results, ["successes", "latency", "time_per_output_token", "p0.1"]),
-                                "p1": get_nested(results, ["successes", "latency", "time_per_output_token", "p1"]),
-                                "p5": get_nested(results, ["successes", "latency", "time_per_output_token", "p5"]),
-                                "p10": get_nested(results, ["successes", "latency", "time_per_output_token", "p10"]),
-                                "p25": get_nested(results, ["successes", "latency", "time_per_output_token", "p25"]),
-                                "p50": get_nested(results, ["successes", "latency", "time_per_output_token", "median"]),
-                                "p75": get_nested(results, ["successes", "latency", "time_per_output_token", "p75"]),
-                                "p90": get_nested(results, ["successes", "latency", "time_per_output_token", "p90"]),
-                                "p95": get_nested(results, ["successes", "latency", "time_per_output_token", "p95"]),
-                                "p99": get_nested(results, ["successes", "latency", "time_per_output_token", "p99"]),
-                                "p99p9": get_nested(results, ["successes", "latency", "time_per_output_token", "p99.9"]),
-                                "max": get_nested(results, ["successes", "latency", "time_per_output_token", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "mean",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "min",
+                                    ],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "p0.1",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "p1",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "p5",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "median",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "p99.9",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "time_per_output_token",
+                                        "max",
+                                    ],
+                                ),
                             },
                             "inter_token_latency": {
                                 "units": Units.S_PER_TOKEN,
-                                "mean": get_nested(results, ["successes", "latency", "inter_token_latency", "mean"]),
-                                "min": get_nested(results, ["successes", "latency", "inter_token_latency", "min"]),
-                                "p0p1": get_nested(results, ["successes", "latency", "inter_token_latency", "p0.1"]),
-                                "p1": get_nested(results, ["successes", "latency", "inter_token_latency", "p1"]),
-                                "p5": get_nested(results, ["successes", "latency", "inter_token_latency", "p5"]),
-                                "p10": get_nested(results, ["successes", "latency", "inter_token_latency", "p10"]),
-                                "p25": get_nested(results, ["successes", "latency", "inter_token_latency", "p25"]),
-                                "p50": get_nested(results, ["successes", "latency", "inter_token_latency", "median"]),
-                                "p75": get_nested(results, ["successes", "latency", "inter_token_latency", "p75"]),
-                                "p90": get_nested(results, ["successes", "latency", "inter_token_latency", "p90"]),
-                                "p95": get_nested(results, ["successes", "latency", "inter_token_latency", "p95"]),
-                                "p99": get_nested(results, ["successes", "latency", "inter_token_latency", "p99"]),
-                                "p99p9": get_nested(results, ["successes", "latency", "inter_token_latency", "p99.9"]),
-                                "max": get_nested(results, ["successes", "latency", "inter_token_latency", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "mean",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "min",
+                                    ],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "p0.1",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "p1",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "p5",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "median",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "p99.9",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "inter_token_latency",
+                                        "max",
+                                    ],
+                                ),
                             },
                             "request_latency": {
                                 "units": Units.S,
-                                "mean": get_nested(results, ["successes", "latency", "request_latency", "mean"]),
-                                "min": get_nested(results, ["successes", "latency", "request_latency", "min"]),
-                                "p0p1": get_nested(results, ["successes", "latency", "request_latency", "p0.1"]),
-                                "p1": get_nested(results, ["successes", "latency", "request_latency", "p1"]),
-                                "p5": get_nested(results, ["successes", "latency", "request_latency", "p5"]),
-                                "p10": get_nested(results, ["successes", "latency", "request_latency", "p10"]),
-                                "p25": get_nested(results, ["successes", "latency", "request_latency", "p25"]),
-                                "p50": get_nested(results, ["successes", "latency", "request_latency", "median"]),
-                                "p75": get_nested(results, ["successes", "latency", "request_latency", "p75"]),
-                                "p90": get_nested(results, ["successes", "latency", "request_latency", "p90"]),
-                                "p95": get_nested(results, ["successes", "latency", "request_latency", "p95"]),
-                                "p99": get_nested(results, ["successes", "latency", "request_latency", "p99"]),
-                                "p99p9": get_nested(results, ["successes", "latency", "request_latency", "p99.9"]),
-                                "max": get_nested(results, ["successes", "latency", "request_latency", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    ["successes", "latency", "request_latency", "mean"],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    ["successes", "latency", "request_latency", "min"],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    ["successes", "latency", "request_latency", "p0.1"],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    ["successes", "latency", "request_latency", "p1"],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    ["successes", "latency", "request_latency", "p5"],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    ["successes", "latency", "request_latency", "p10"],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    ["successes", "latency", "request_latency", "p25"],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "request_latency",
+                                        "median",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    ["successes", "latency", "request_latency", "p75"],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    ["successes", "latency", "request_latency", "p90"],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    ["successes", "latency", "request_latency", "p95"],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    ["successes", "latency", "request_latency", "p99"],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "latency",
+                                        "request_latency",
+                                        "p99.9",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    ["successes", "latency", "request_latency", "max"],
+                                ),
                             },
                         },
                         "throughput": {
                             "output_token_rate": {
                                 "units": Units.TOKEN_PER_S,
-                                "mean": get_nested(results, ["successes", "throughput", "output_tokens_per_sec"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "successes",
+                                        "throughput",
+                                        "output_tokens_per_sec",
+                                    ],
+                                ),
                             },
                             "total_token_rate": {
                                 "units": Units.TOKEN_PER_S,
-                                "mean": get_nested(results, ["successes", "throughput", "total_tokens_per_sec"]),
+                                "mean": get_nested(
+                                    results,
+                                    ["successes", "throughput", "total_tokens_per_sec"],
+                                ),
                             },
                             "request_rate": {
                                 "units": Units.QUERY_PER_S,
-                                "mean": get_nested(results, ["successes", "throughput", "requests_per_sec"]),
+                                "mean": get_nested(
+                                    results,
+                                    ["successes", "throughput", "requests_per_sec"],
+                                ),
                             },
                         },
                     },
@@ -931,10 +1546,10 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                     "standardized": {
                         "tool": WorkloadGenerator.GUIDELLM,
                         "stage": index,
-                        "source": LoadSource.RANDOM, # TODO
+                        "source": LoadSource.RANDOM,  # TODO
                         "input_seq_len": {
-                            "distribution": Distribution.FIXED, # TODO
-                            "value": 1, # TODO
+                            "distribution": Distribution.FIXED,  # TODO
+                            "value": 1,  # TODO
                         },
                     },
                     "native": native,
@@ -944,183 +1559,1430 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                 "request_performance": {
                     "aggregate": {
                         "requests": {
-                            "total": get_nested(results, ["metrics", "request_totals", "total"]),
-                            "failures": get_nested(results, ["metrics", "request_totals", "errored"]),
-                            "incomplete": get_nested(results, ["metrics", "request_totals", "incomplete"]),
+                            "total": get_nested(
+                                results, ["metrics", "request_totals", "total"]
+                            ),
+                            "failures": get_nested(
+                                results, ["metrics", "request_totals", "errored"]
+                            ),
+                            "incomplete": get_nested(
+                                results, ["metrics", "request_totals", "incomplete"]
+                            ),
                             "input_length": {
                                 "units": Units.COUNT,
-                                "mean": get_nested(results, ["metrics", "prompt_token_count", "successful", "mean"]),
-                                "mode": get_nested(results, ["metrics", "prompt_token_count", "successful", "mode"]),
-                                "stddev": get_nested(results, ["metrics", "prompt_token_count", "successful", "std_dev"]),
-                                "min": get_nested(results, ["metrics", "prompt_token_count", "successful", "min"]),
-                                "p0p1": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p001"]),
-                                "p1": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p01"]),
-                                "p5": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p05"]),
-                                "p10": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p10"]),
-                                "p25": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p25"]),
-                                "p50": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p50"]),
-                                "p75": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p75"]),
-                                "p90": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p90"]),
-                                "p95": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p95"]),
-                                "p99": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p99"]),
-                                "p99p9": get_nested(results, ["metrics", "prompt_token_count", "successful", "percentiles", "p999"]),
-                                "max": get_nested(results, ["metrics", "prompt_token_count", "successful", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "mean",
+                                    ],
+                                ),
+                                "mode": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "mode",
+                                    ],
+                                ),
+                                "stddev": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "std_dev",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "min",
+                                    ],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p001",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p01",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p05",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p50",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p999",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "prompt_token_count",
+                                        "successful",
+                                        "max",
+                                    ],
+                                ),
                             },
                             "output_length": {
                                 "units": Units.COUNT,
-                                "mean": get_nested(results, ["metrics", "output_token_count", "successful", "mean"]),
-                                "mode": get_nested(results, ["metrics", "output_token_count", "successful", "mode"]),
-                                "stddev": get_nested(results, ["metrics", "output_token_count", "successful", "std_dev"]),
-                                "min": get_nested(results, ["metrics", "output_token_count", "successful", "min"]),
-                                "p0p1": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p001"]),
-                                "p1": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p01"]),
-                                "p5": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p05"]),
-                                "p10": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p10"]),
-                                "p25": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p25"]),
-                                "p50": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p50"]),
-                                "p75": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p75"]),
-                                "p90": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p90"]),
-                                "p95": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p95"]),
-                                "p99": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p99"]),
-                                "p99p9": get_nested(results, ["metrics", "output_token_count", "successful", "percentiles", "p999"]),
-                                "max": get_nested(results, ["metrics", "output_token_count", "successful", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "mean",
+                                    ],
+                                ),
+                                "mode": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "mode",
+                                    ],
+                                ),
+                                "stddev": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "std_dev",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "min",
+                                    ],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p001",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p01",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p05",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p50",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "percentiles",
+                                        "p999",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_token_count",
+                                        "successful",
+                                        "max",
+                                    ],
+                                ),
                             },
                         },
                         "latency": {
                             "time_to_first_token": {
                                 "units": Units.MS,
-                                "mean": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "mean"]),
-                                "mode": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "mode"]),
-                                "stddev": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "std_dev"]),
-                                "min": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "min"]),
-                                "p0p1": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p001"]),
-                                "p1": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p01"]),
-                                "p5": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p05"]),
-                                "p10": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p10"]),
-                                "p25": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p25"]),
-                                "p50": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p50"]),
-                                "p75": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p75"]),
-                                "p90": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p90"]),
-                                "p95": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p95"]),
-                                "p99": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p99"]),
-                                "p99p9": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "percentiles", "p999"]),
-                                "max": get_nested(results, ["metrics", "time_to_first_token_ms", "successful", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "mean",
+                                    ],
+                                ),
+                                "mode": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "mode",
+                                    ],
+                                ),
+                                "stddev": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "std_dev",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "min",
+                                    ],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p001",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p01",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p05",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p50",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p999",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_to_first_token_ms",
+                                        "successful",
+                                        "max",
+                                    ],
+                                ),
                             },
                             "time_per_output_token": {
                                 "units": Units.MS_PER_TOKEN,
-                                "mean": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "mean"]),
-                                "mode": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "mode"]),
-                                "stddev": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "std_dev"]),
-                                "min": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "min"]),
-                                "p0p1": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p001"]),
-                                "p1": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p01"]),
-                                "p5": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p05"]),
-                                "p10": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p10"]),
-                                "p25": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p25"]),
-                                "p50": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p50"]),
-                                "p75": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p75"]),
-                                "p90": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p90"]),
-                                "p95": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p95"]),
-                                "p99": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p99"]),
-                                "p99p9": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "percentiles", "p999"]),
-                                "max": get_nested(results, ["metrics", "time_per_output_token_ms", "successful", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "mean",
+                                    ],
+                                ),
+                                "mode": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "mode",
+                                    ],
+                                ),
+                                "stddev": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "std_dev",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "min",
+                                    ],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p001",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p01",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p05",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p50",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p999",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "time_per_output_token_ms",
+                                        "successful",
+                                        "max",
+                                    ],
+                                ),
                             },
                             "inter_token_latency": {
                                 "units": Units.MS_PER_TOKEN,
-                                "mean": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "mean"]),
-                                "mode": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "mode"]),
-                                "stddev": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "std_dev"]),
-                                "min": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "min"]),
-                                "p0p1": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p001"]),
-                                "p1": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p01"]),
-                                "p5": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p05"]),
-                                "p10": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p10"]),
-                                "p25": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p25"]),
-                                "p50": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p50"]),
-                                "p75": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p75"]),
-                                "p90": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p90"]),
-                                "p95": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p95"]),
-                                "p99": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p99"]),
-                                "p99p9": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "percentiles", "p999"]),
-                                "max": get_nested(results, ["metrics", "inter_token_latency_ms", "successful", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "mean",
+                                    ],
+                                ),
+                                "mode": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "mode",
+                                    ],
+                                ),
+                                "stddev": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "std_dev",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "min",
+                                    ],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p001",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p01",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p05",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p50",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "percentiles",
+                                        "p999",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "inter_token_latency_ms",
+                                        "successful",
+                                        "max",
+                                    ],
+                                ),
                             },
                             "request_latency": {
                                 "units": Units.MS,
-                                "mean": get_nested(results, ["metrics", "request_latency", "successful", "mean"]),
-                                "mode": get_nested(results, ["metrics", "request_latency", "successful", "mode"]),
-                                "stddev": get_nested(results, ["metrics", "request_latency", "successful", "std_dev"]),
-                                "min": get_nested(results, ["metrics", "request_latency", "successful", "min"]),
-                                "p0p1": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p001"]),
-                                "p1": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p01"]),
-                                "p5": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p05"]),
-                                "p10": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p10"]),
-                                "p25": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p25"]),
-                                "p50": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p50"]),
-                                "p75": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p75"]),
-                                "p90": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p90"]),
-                                "p95": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p95"]),
-                                "p99": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p99"]),
-                                "p99p9": get_nested(results, ["metrics", "request_latency", "successful", "percentiles", "p999"]),
-                                "max": get_nested(results, ["metrics", "request_latency", "successful", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "mean",
+                                    ],
+                                ),
+                                "mode": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "mode",
+                                    ],
+                                ),
+                                "stddev": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "std_dev",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    ["metrics", "request_latency", "successful", "min"],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "percentiles",
+                                        "p001",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "percentiles",
+                                        "p01",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "percentiles",
+                                        "p05",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "percentiles",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "percentiles",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "percentiles",
+                                        "p50",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "percentiles",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "percentiles",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "percentiles",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "percentiles",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "request_latency",
+                                        "successful",
+                                        "percentiles",
+                                        "p999",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    ["metrics", "request_latency", "successful", "max"],
+                                ),
                             },
                         },
                         "throughput": {
                             "output_token_rate": {
                                 "units": Units.TOKEN_PER_S,
-                                "mean": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "mean"]),
-                                "mode": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "mode"]),
-                                "stddev": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "std_dev"]),
-                                "min": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "min"]),
-                                "p0p1": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p001"]),
-                                "p1": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p01"]),
-                                "p5": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p05"]),
-                                "p10": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p10"]),
-                                "p25": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p25"]),
-                                "p50": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p50"]),
-                                "p75": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p75"]),
-                                "p90": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p90"]),
-                                "p95": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p95"]),
-                                "p99": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p99"]),
-                                "p99p9": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "percentiles", "p999"]),
-                                "max": get_nested(results, ["metrics", "output_tokens_per_second", "successful", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "mean",
+                                    ],
+                                ),
+                                "mode": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "mode",
+                                    ],
+                                ),
+                                "stddev": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "std_dev",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "min",
+                                    ],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p001",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p01",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p05",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p50",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p999",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "output_tokens_per_second",
+                                        "successful",
+                                        "max",
+                                    ],
+                                ),
                             },
                             "total_token_rate": {
                                 "units": Units.TOKEN_PER_S,
-                                "mean": get_nested(results, ["metrics", "tokens_per_second", "successful", "mean"]),
-                                "mode": get_nested(results, ["metrics", "tokens_per_second", "successful", "mode"]),
-                                "stddev": get_nested(results, ["metrics", "tokens_per_second", "successful", "std_dev"]),
-                                "min": get_nested(results, ["metrics", "tokens_per_second", "successful", "min"]),
-                                "p0p1": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p001"]),
-                                "p1": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p01"]),
-                                "p5": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p05"]),
-                                "p10": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p10"]),
-                                "p25": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p25"]),
-                                "p50": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p50"]),
-                                "p75": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p75"]),
-                                "p90": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p90"]),
-                                "p95": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p95"]),
-                                "p99": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p99"]),
-                                "p99p9": get_nested(results, ["metrics", "tokens_per_second", "successful", "percentiles", "p999"]),
-                                "max": get_nested(results, ["metrics", "tokens_per_second", "successful", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "mean",
+                                    ],
+                                ),
+                                "mode": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "mode",
+                                    ],
+                                ),
+                                "stddev": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "std_dev",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "min",
+                                    ],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p001",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p01",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p05",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p50",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p999",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "tokens_per_second",
+                                        "successful",
+                                        "max",
+                                    ],
+                                ),
                             },
                             "request_rate": {
                                 "units": Units.QUERY_PER_S,
-                                "mean": get_nested(results, ["metrics", "requests_per_second", "successful", "mean"]),
-                                "mode": get_nested(results, ["metrics", "requests_per_second", "successful", "mode"]),
-                                "stddev": get_nested(results, ["metrics", "requests_per_second", "successful", "std_dev"]),
-                                "min": get_nested(results, ["metrics", "requests_per_second", "successful", "min"]),
-                                "p0p1": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p001"]),
-                                "p1": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p01"]),
-                                "p5": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p05"]),
-                                "p10": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p10"]),
-                                "p25": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p25"]),
-                                "p50": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p50"]),
-                                "p75": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p75"]),
-                                "p90": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p90"]),
-                                "p95": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p95"]),
-                                "p99": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p99"]),
-                                "p99p9": get_nested(results, ["metrics", "requests_per_second", "successful", "percentiles", "p999"]),
-                                "max": get_nested(results, ["metrics", "requests_per_second", "successful", "max"]),
+                                "mean": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "mean",
+                                    ],
+                                ),
+                                "mode": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "mode",
+                                    ],
+                                ),
+                                "stddev": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "std_dev",
+                                    ],
+                                ),
+                                "min": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "min",
+                                    ],
+                                ),
+                                "p0p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p001",
+                                    ],
+                                ),
+                                "p1": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p01",
+                                    ],
+                                ),
+                                "p5": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p05",
+                                    ],
+                                ),
+                                "p10": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p10",
+                                    ],
+                                ),
+                                "p25": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p25",
+                                    ],
+                                ),
+                                "p50": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p50",
+                                    ],
+                                ),
+                                "p75": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p75",
+                                    ],
+                                ),
+                                "p90": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p90",
+                                    ],
+                                ),
+                                "p95": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p95",
+                                    ],
+                                ),
+                                "p99": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p99",
+                                    ],
+                                ),
+                                "p99p9": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "percentiles",
+                                        "p999",
+                                    ],
+                                ),
+                                "max": get_nested(
+                                    results,
+                                    [
+                                        "metrics",
+                                        "requests_per_second",
+                                        "successful",
+                                        "max",
+                                    ],
+                                ),
                             },
                         },
                     },
