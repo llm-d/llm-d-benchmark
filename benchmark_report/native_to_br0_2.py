@@ -2,15 +2,17 @@
 Convert application native output formats into a Benchmark Report.
 """
 
-import uuid
-import ssl
+import base64
 import os
 import re
+import ssl
 import sys
+import uuid
+from typing import Any
 from datetime import datetime, timezone
 
 import numpy as np
-
+import yaml
 
 from .base import Units, WorkloadGenerator
 from .core import (
@@ -32,10 +34,10 @@ def _populate_run() -> dict:
     # Unique ID for pod
     pid = os.environ.get("POD_UID")
     # Create an experiment ID from the results directory used (includes a timestamp)
-    eid = str(uuid.uuid5(uuid.NAMESPACE_URL, os.environ.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR")))
+    eid = str(uuid.uuid5(uuid.NAMESPACE_URL, os.environ.get("LLMDBENCH_RUN_EXPERIMENT_ID")))
     # Create cluster ID from the API server certificate
-    host = os.environ["KUBERNETES_SERVICE_HOST"]
-    port = int(os.environ["KUBERNETES_SERVICE_PORT"])
+    host = os.environ.get("KUBERNETES_SERVICE_HOST")
+    port = int(os.environ.get("KUBERNETES_SERVICE_PORT", 0))
     try:
         cert = ssl.get_server_certificate((host, port), timeout=5)
     except (TimeoutError, OSError):
@@ -98,6 +100,7 @@ def _populate_load() -> dict:
             "load": {
                 "standardized": {
                     "tool_version": os.environ.get("LLMDBENCH_HARNESS_VERSION", ""),
+                    "parallelism": os.environ.get("LLMDBENCH_HARNESS_LOAD_PARALLELISM"),
                 },
                 "native": {
                     "args": args,
@@ -115,10 +118,60 @@ def _populate_aggregate_stack() -> dict:
     Returns:
         dict: dict with scenario.stack part of of BenchmarkReport.
     """
+    model = os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL")
+    accelerator = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY")
+    replicas = int(os.environ.get("LLMDBENCH_VLLM_COMMON_REPLICAS", 1))
+    tp = int(os.environ.get("LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM", 1))
+    dp = int(os.environ.get("LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM", 1))
+    img_reg = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY")
+    img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO")
+    img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME")
+    img_tag = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG")
+    cli_args_str = base64.b64decode(os.environ.get("LLMDBENCH_VLLM_STANDALONE_ARGS", "")).decode('utf-8')
+
+    # Parse through environment variables YAML
+    envars_list: list[dict[str, Any]] = yaml.safe_load(base64.b64decode(os.environ.get("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML", "")).decode('utf-8'))
+    envars = {}
+    for envar_dict in envars_list:
+        value = envar_dict.get("value", envar_dict.get("valueFrom"))
+        envars[envar_dict["name"]] = value
+
+    cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, cli_args_str + str(envars)))
+
+    inference_engine = {
+        "metadata": {
+            "label": "", # TODO
+            "cfg_id": cfg_id,
+        },
+        "standardized": {
+            "kind": "inference_engine",
+            "tool": img_repo,
+            "tool_version": f"{img_reg}/{img_repo}/{img_name}:{img_tag}",
+            "role": "prefill",
+            "model": {
+                "name": model
+            },
+            "accelerator": {
+                "model": accelerator,
+                "count": tp * dp,
+                "parallelism": {
+                    "tp": tp,
+                    "dp": dp,
+                },
+            },
+        },
+        "native": {
+            "args": { "cmd_str": cli_args_str, # TODO This is an ugly hack for now
+            },
+            "envars": envars,
+        },
+    }
+
+    stack = [inference_engine] * replicas
+
     br_dict = {
         "scenario": {
-            "stack": [
-            ],
+            "stack": stack,
         },
     }
     return br_dict
@@ -131,10 +184,12 @@ def _populate_disaggregate_stack() -> dict:
     Returns:
         dict: dict with scenario.stack part of of BenchmarkReport.
     """
+    stack = []
+
+
     br_dict = {
         "scenario": {
-            "stack": [
-            ],
+            "stack": stack,
         },
     }
     return br_dict
@@ -153,16 +208,16 @@ def _populate_stack() -> dict:
         )
         return {}
 
-    if os.environ["LLMDBENCH_DEPLOY_METHODS"] == "standalone":
+    if os.environ.get("LLMDBENCH_DEPLOY_METHODS") == "standalone":
         # This is an aggregate serving setup
         return _populate_aggregate_stack()
 
-    if os.environ["LLMDBENCH_DEPLOY_METHODS"] == "modelservice":
+    if os.environ.get("LLMDBENCH_DEPLOY_METHODS") == "modelservice":
         # This is a disaggregated serving setup
         return _populate_disaggregate_stack()
 
     sys.stderr.write(
-        f"Warning: Unknown deployment method LLMDBENCH_DEPLOY_METHODS={os.environ["LLMDBENCH_DEPLOY_METHODS"]}\n"
+        f"Warning: Unknown deployment method LLMDBENCH_DEPLOY_METHODS={os.environ.get("LLMDBENCH_DEPLOY_METHODS")}\n"
     )
     return {}
 
@@ -245,6 +300,8 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
     # schema of BenchmarkReportV02
     br_dict = _populate_benchmark_report_from_envars()
 
+    cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(get_nested(br_dict, ["scenario", "load", "native"]))))
+
     # Add to that dict the data from vLLM benchmark.
     update_dict(
         br_dict,
@@ -254,7 +311,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                 "load": {
                     "metadata": {
                         "schema_version": "0.0.1",
-                        "cfg_id": "",  # TODO
+                        "cfg_id": cfg_id,
                     },
                     "standardized": {
                         "tool": WorkloadGenerator.VLLM_BENCHMARK,
@@ -390,6 +447,8 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
     # schema of BenchmarkReportV02
     br_dict = _populate_benchmark_report_from_envars()
 
+    cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(get_nested(br_dict, ["scenario", "load", "native"]))))
+
     # Add to that dict the data from vLLM benchmark.
     update_dict(
         br_dict,
@@ -404,7 +463,7 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                 "load": {
                     "metadata": {
                         "schema_version": "0.0.1",
-                        "cfg_id": "",  # TODO
+                        "cfg_id": cfg_id,
                     },
                     "standardized": {
                         "tool": WorkloadGenerator.INFERENCE_MAX,
@@ -544,6 +603,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
     br_dict = _populate_benchmark_report_from_envars()
 
     config = get_nested(br_dict, ["scenario", "load", "native", "config"], {})
+    cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(config)))
 
     # Add to that dict the data from Inference Perf
     update_dict(
@@ -553,7 +613,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                 "load": {
                     "metadata": {
                         "schema_version": "0.0.1",
-                        "cfg_id": "",  # TODO
+                        "cfg_id": cfg_id,
                     },
                     "standardized": {
                         "tool": WorkloadGenerator.INFERENCE_PERF,
@@ -761,6 +821,10 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
     # schema of BenchmarkReportV02
     br_dict = _populate_benchmark_report_from_envars()
 
+    native = get_nested(br_dict, ["scenario", "load", "native"])
+    update_dict(native, {"args": data["args"]})
+    cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(native)))
+
     # Add to that dict the data from GuideLLM
     update_dict(
         br_dict,
@@ -776,7 +840,7 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                 "load": {
                     "metadata": {
                         "schema_version": "0.0.1",
-                        "cfg_id": "",  # TODO
+                        "cfg_id": cfg_id,
                     },
                     "standardized": {
                         "tool": WorkloadGenerator.GUIDELLM,
@@ -787,9 +851,7 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                             "value": 1, # TODO
                         },
                     },
-                    "native": {
-                        "args": data["args"],
-                    },
+                    "native": native,
                 },
             },
             "results": {
