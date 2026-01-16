@@ -127,14 +127,8 @@ class InferenceEngineAccelerator(BaseModel):
 class InferenceEngine(ComponentStandardizedBase):
     """Component configuration for an inference engine."""
 
-    kind: Literal["inference_engine"] = Field(
-        exclude=True,
-        json_schema_extra={"exclude": True},
-        description=(
-            "Do not populate this field, this is for internal validation and"
-            " will be copied over from the metadata section."
-        ),
-    )
+    kind: Literal["inference_engine"]
+    """The type of component."""
     role: HostType
     """Type of model serving host."""
     model: InferenceEngineModel
