@@ -20,7 +20,151 @@ from .core import (
     load_benchmark_report,
     update_dict,
 )
-from .schema_v0_2 import BenchmarkReportV02
+from .schema_v0_2 import BenchmarkReportV02, Distribution, LoadSource
+
+
+def _populate_run() -> dict:
+    """Create a benchmark report with run details from environment variables.
+
+    Returns:
+        dict: dict with run section of BenchmarkReport.
+    """
+    # Unique ID for pod
+    pid = os.environ.get("POD_UID")
+    # Create an experiment ID from the results directory used (includes a timestamp)
+    eid = str(uuid.uuid5(uuid.NAMESPACE_URL, os.environ.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR")))
+    # Create cluster ID from the API server certificate
+    host = os.environ["KUBERNETES_SERVICE_HOST"]
+    port = int(os.environ["KUBERNETES_SERVICE_PORT"])
+    try:
+        cert = ssl.get_server_certificate((host, port), timeout=5)
+    except (TimeoutError, OSError):
+        # As a failover, just use the service host
+        cert = host
+    cid = str(uuid.uuid5(uuid.NAMESPACE_DNS, cert))
+
+    # Use the namespace for "user"
+    try:
+        with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", "r") as ff:
+            namespace = ff.read().strip()
+    except FileNotFoundError:
+        namespace = os.environ.get("LLMDBENCH_VLLM_COMMON_NAMESPACE")
+
+    br_dict = {
+        "run": {
+            "eid": eid,
+            "cid": cid,
+            "pid": pid,
+            "user": "namespace=" + namespace,
+            "time": {
+                "start": os.environ.get("LLMDBENCH_HARNESS_START"),
+                "end": os.environ.get("LLMDBENCH_HARNESS_STOP"),
+                "duration": os.environ.get("LLMDBENCH_HARNESS_DELTA"),
+            },
+        },
+    }
+    return br_dict
+
+
+def _populate_load() -> dict:
+    """Create a benchmark report with scenario.load from environment variables.
+
+    Returns:
+        dict: dict with scenario.load part of of BenchmarkReport.
+    """
+    # Get arguments to harness command
+    args_str = os.environ.get("LLMDBENCH_HARNESS_ARGS")
+    kv_pairs = [kv.strip() for kv in args_str.split('--') if kv.strip()]
+    args = {}
+    for kv in kv_pairs:
+        if "=" in kv:
+            # Flag and value separated by "="
+            key, value = kv.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+        elif " " in kv:
+            # Flag and value separated by " "
+            key, value = kv.split(" ", 1)
+            key = key.strip()
+            value = value.strip()
+        else:
+            # Flag-only argument
+            key = kv
+            value = None
+        args[key] = value
+
+    br_dict = {
+        "scenario": {
+            "load": {
+                "standardized": {
+                    "tool_version": os.environ.get("LLMDBENCH_HARNESS_VERSION", ""),
+                },
+                "native": {
+                    "args": args,
+                },
+            },
+        },
+    }
+    return br_dict
+
+
+def _populate_aggregate_stack() -> dict:
+    """Create a benchmark report with scenario.stack from environment variables
+    for aggregate.
+
+    Returns:
+        dict: dict with scenario.stack part of of BenchmarkReport.
+    """
+    br_dict = {
+        "scenario": {
+            "stack": [
+            ],
+        },
+    }
+    return br_dict
+
+
+def _populate_disaggregate_stack() -> dict:
+    """Create a benchmark report with scenario.stack from environment variables
+    for disaggregate.
+
+    Returns:
+        dict: dict with scenario.stack part of of BenchmarkReport.
+    """
+    br_dict = {
+        "scenario": {
+            "stack": [
+            ],
+        },
+    }
+    return br_dict
+
+
+def _populate_stack() -> dict:
+    """Create a benchmark report with scenario.stack from environment variables.
+
+    Returns:
+        dict: dict with scenario.stack part of of BenchmarkReport.
+    """
+
+    if "LLMDBENCH_DEPLOY_METHODS" not in os.environ:
+        sys.stderr.write(
+            "Warning: LLMDBENCH_DEPLOY_METHODS undefined, cannot determine deployment method\n"
+        )
+        return {}
+
+    if os.environ["LLMDBENCH_DEPLOY_METHODS"] == "standalone":
+        # This is an aggregate serving setup
+        return _populate_aggregate_stack()
+
+    if os.environ["LLMDBENCH_DEPLOY_METHODS"] == "modelservice":
+        # This is a disaggregated serving setup
+        return _populate_disaggregate_stack()
+
+    sys.stderr.write(
+        f"Warning: Unknown deployment method LLMDBENCH_DEPLOY_METHODS={os.environ["LLMDBENCH_DEPLOY_METHODS"]}\n"
+    )
+    return {}
 
 
 def _populate_benchmark_report_from_envars() -> dict:
@@ -43,86 +187,12 @@ def _populate_benchmark_report_from_envars() -> dict:
         # We are not in a harness pod
         return br_dict
 
-    # Unique ID for pod
-    pid = os.environ.get("POD_UID")
-    # Create a unique ID for this benchmark report
-    uid = str(uuid.uuid4())
-    # Create an experiment ID from the results directory used (includes a timestamp)
-    eid = str(uuid.uuid5(uuid.NAMESPACE_URL, os.environ.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR")))
-    # Create cluster ID from the API server certificate
-    host = os.environ["KUBERNETES_SERVICE_HOST"]
-    port = int(os.environ["KUBERNETES_SERVICE_PORT"])
-    try:
-        cert = ssl.get_server_certificate((host, port), timeout=5)
-    except (TimeoutError, OSError):
-        # As a failover, just use the service host
-        cert = host
-    cid = str(uuid.uuid5(uuid.NAMESPACE_DNS, cert))
-
-    # Use the namespace for "user"
-    try:
-        with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", "r") as ff:
-            namespace = ff.read().strip()
-    except FileNotFoundError:
-        namespace = os.environ.get("LLMDBENCH_VLLM_COMMON_NAMESPACE")
-
-    br_dict["run"] = {
-        "uid": uid,
-        "eid": eid,
-        "cid": cid,
-        "pid": pid,
-        "user": "namespace=" + namespace,
-        "time": {
-            "start": os.environ.get("LLMDBENCH_HARNESS_START"),
-            "end": os.environ.get("LLMDBENCH_HARNESS_STOP"),
-            "duration": os.environ.get("LLMDBENCH_HARNESS_DELTA"),
-        },
-    }
-
-    # Get arguments to harness
-    args_str = os.environ.get("LLMDBENCH_HARNESS_ARGS")
-    kv_pairs = [kv.strip() for kv in args_str.split('--') if kv.strip()]
-    args = {}
-    for kv in kv_pairs:
-        if "=" in kv:
-            # Flag and value separated by "="
-            key, value = kv.split("=", 1)
-            key = key.strip()
-            value = value.strip()
-        elif " " in kv:
-            # Flag and value separated by " "
-            key, value = kv.split(" ", 1)
-            key = key.strip()
-            value = value.strip()
-        else:
-            # Flag-only argument
-            key = kv
-            value = None
-
-        args[key] = value
-
-    br_dict["scenario"] = {
-        "load": {
-            "standardized": {
-                "tool_version": os.environ.get("LLMDBENCH_HARNESS_VERSION", ""),
-            },
-            "native": {
-                "args": args,
-            },
-        },
-    }
-
-
-    if "LLMDBENCH_DEPLOY_METHODS" not in os.environ:
-        sys.stderr.write(
-            "Warning: LLMDBENCH_DEPLOY_METHODS undefined, cannot determine deployment method."
-        )
-        return br_dict
-
-    if os.environ["LLMDBENCH_DEPLOY_METHODS"] == "standalone":
-        # Given a 'standalone' deployment, we expect the following environment
-        # variables to be available
-        return br_dict
+    # Fill in more run details
+    update_dict(br_dict, _populate_run())
+    # Populate part of scenario.load
+    update_dict(br_dict, _populate_load())
+    # Populate part of scenario.stack
+    update_dict(br_dict, _populate_stack())
 
     return br_dict
 
@@ -191,9 +261,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                         "stage": 0,
                         "rate_qps": results.get("request_rate"),
                         "concurrency": results.get("max_concurrency"),
-                        "source": "random", # TODO
+                        "source": LoadSource.RANDOM, # TODO
                         "input_seq_len": {
-                            "distribution": "fixed", # TODO
+                            "distribution": Distribution.FIXED, # TODO
                             "value": 1, # TODO
                         },
                     },
@@ -341,9 +411,9 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                         "stage": 0,
                         "rate_qps": results.get("request_rate"),
                         "concurrency": results.get("max_concurrency"),
-                        "source": "random", # TODO
+                        "source": LoadSource.RANDOM, # TODO
                         "input_seq_len": {
-                            "distribution": "fixed", # TODO
+                            "distribution": Distribution.FIXED, # TODO
                             "value": 1, # TODO
                         },
                     },
@@ -469,14 +539,11 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
     # Get stage number from metrics filename
     stage = int(results_file.rsplit("stage_")[-1].split("_", 1)[0])
 
-    # Get config file
-    if "LLMDBENCH_MAGIC_ENVAR" in os.environ:
-        config_file = os.environ.get("LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME")
-        config = import_yaml(config_file)
-
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReportV02
     br_dict = _populate_benchmark_report_from_envars()
+
+    config = get_nested(br_dict, ["scenario", "load", "native", "config"], {})
 
     # Add to that dict the data from Inference Perf
     update_dict(
@@ -491,11 +558,19 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                     "standardized": {
                         "tool": WorkloadGenerator.INFERENCE_PERF,
                         "stage": stage,
-                        "rate_qps": get_nested(results, ["load_summary", "requested_rate"]), # TODO see if this is always present
-                        "source": "random", # TODO
+                        "rate_qps": get_nested(results, ["load_summary", "requested_rate"]),
+                        "concurrency": get_nested(results, ["load_summary", "concurrency"]),
+                        "source": LoadSource.RANDOM, # TODO see https://github.com/kubernetes-sigs/inference-perf/blob/main/docs/config.md?plain=1#L42
                         "input_seq_len": {
-                            "distribution": "fixed", # TODO
-                            "value": 1, # TODO
+                            "distribution": Distribution.OTHER, #  TODO
+                            # If br_dict has config file from
+                            # _populate_benchmark_report_from_envars, get
+                            # details from there, otherwise get what is available
+                            # from results file.
+                            "value": get_nested(config, ["data", "input_distribution", "mean"], get_nested(results, ["successes", "prompt_len", "mean"])),
+                            "std_dev": get_nested(config, ["data", "input_distribution", "std"]),
+                            "min": get_nested(config, ["data", "input_distribution", "min"], get_nested(results, ["successes", "prompt_len", "min"])),
+                            "max": get_nested(config, ["data", "input_distribution", "max"], get_nested(results, ["successes", "prompt_len", "max"])),
                         },
                     },
                     "native": {
@@ -706,9 +781,9 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                     "standardized": {
                         "tool": WorkloadGenerator.GUIDELLM,
                         "stage": index,
-                        "source": "random", # TODO
+                        "source": LoadSource.RANDOM, # TODO
                         "input_seq_len": {
-                            "distribution": "fixed", # TODO
+                            "distribution": Distribution.FIXED, # TODO
                             "value": 1, # TODO
                         },
                     },
