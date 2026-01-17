@@ -20,15 +20,16 @@ run: # These are details on the benchmark run that produced these results
 scenario:
   stack:
   - metadata: # Details about this component
-      kind: inference_engine # This describes what this component is
       schema_version: 0.0.1 # This is the version of this component's schema
       label: vllm-svc-0 # This is a unique name for this particular component
       cfg_id: cc73fc6b51a1d3b8128f312d70476d7c # This is a hash of this component's configuration
       description: "Optional description of this component"
     standardized: # These are common properties that apply to all instances of this kind of component
+      kind: inference_engine # This describes what this component is
       tool: llm-d
       tool_version: ghcr.io/llm-d/llm-d-cuda:0.3.1
-      role: prefill # One of prefill, decode, aggregate
+      role: decode # One of prefill, decode, aggregate
+      replicas: 2
       model:
         name: Qwen/Qwen3-0.6B
       accelerator:
@@ -36,6 +37,8 @@ scenario:
         count: 8
         parallelism:
           dp: 1
+          dp_local: 1
+          workers: 1
           ep: 1
           pp: 1
           tp: 8
@@ -58,7 +61,6 @@ scenario:
         VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
 
   - metadata: 
-      kind: generic
       schema_version: 0.0.1
       label: epp-0
       cfg_id: 47000e70c655e88198e0dc4e57d41d5f
@@ -67,7 +69,8 @@ scenario:
     # section contains only "tool" and "tool_version", but otherwise this kind
     # has no other features.
     standardized:
-      # tool and tool_version are the only required fields
+      # kind, tool, and tool_version are the only required fields
+      kind: generic
       tool: llm-d-inference-scheduler
       tool_version: ghcr.io/llm-d/llm-d-inference-scheduler:0.3.2
       # Other fields are not validated, and can be anything
