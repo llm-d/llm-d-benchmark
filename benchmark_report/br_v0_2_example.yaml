@@ -28,7 +28,8 @@ scenario:
       kind: inference_engine # This describes what this component is
       tool: llm-d
       tool_version: ghcr.io/llm-d/llm-d-cuda:0.3.1
-      role: prefill # One of prefill, decode, aggregate
+      role: decode # One of prefill, decode, aggregate
+      replicas: 2
       model:
         name: Qwen/Qwen3-0.6B
       accelerator:

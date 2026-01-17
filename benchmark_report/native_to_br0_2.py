@@ -159,6 +159,7 @@ def _populate_aggregate_stack() -> dict:
             "tool": img_repo,
             "tool_version": f"{img_reg}/{img_repo}/{img_name}:{img_tag}",
             "role": HostType.REPLICA,
+            "replicas": replicas,
             "model": {"name": model},
             "accelerator": {
                 "model": accelerator,
@@ -179,11 +180,9 @@ def _populate_aggregate_stack() -> dict:
         },
     }
 
-    stack = [inference_engine] * replicas
-
     br_dict = {
         "scenario": {
-            "stack": stack,
+            "stack": [inference_engine],
         },
     }
     return br_dict
@@ -258,6 +257,7 @@ def _populate_disaggregate_stack() -> dict:
             "tool": img_repo,
             "tool_version": f"{img_reg}/{img_repo}/{img_name}:{img_tag}",
             "role": HostType.PREFILL,
+            "replicas": p_replicas,
             "model": {"name": model},
             "accelerator": {
                 "model": accelerator,
@@ -288,6 +288,7 @@ def _populate_disaggregate_stack() -> dict:
             "tool": img_repo,
             "tool_version": f"{img_reg}/{img_repo}/{img_name}:{img_tag}",
             "role": HostType.DECODE,
+            "replicas": d_replicas,
             "model": {"name": model},
             "accelerator": {
                 "model": accelerator,
@@ -308,12 +309,13 @@ def _populate_disaggregate_stack() -> dict:
         },
     }
 
-    p_stack = [p_inference_engine] * p_replicas
-    d_stack = [d_inference_engine] * d_replicas
+    stack = (
+        [p_inference_engine, d_inference_engine] if p_replicas else [d_inference_engine]
+    )
 
     br_dict = {
         "scenario": {
-            "stack": p_stack + d_stack,
+            "stack": stack,
         },
     }
     return br_dict

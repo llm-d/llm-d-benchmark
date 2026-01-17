@@ -135,6 +135,8 @@ class InferenceEngine(ComponentStandardizedBase):
     """The type of component."""
     role: HostType
     """Type of model serving host."""
+    replicas: int = Field(..., ge=1)
+    """Number of replicas."""
     model: InferenceEngineModel
     """Hosted model details."""
     accelerator: InferenceEngineAccelerator
