@@ -65,7 +65,7 @@ jobs:
 
       - name: Standup (modelservice) using llm-d-inference-sim
         run: |
-          ./setup/standup.sh -c kind_sim_fb -t modelservice -s 0,1,2,4,5,7,8
+          ./setup/standup.sh -c kind_sim_fb -t modelservice -s 0,1,2,4,5,7,8,9,10
         shell: bash
 
       - name: Run harness (mock)
