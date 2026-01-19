@@ -39,7 +39,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
     standup_parser.add_argument(
         "-t", "--methods",
         default=env("LLMDBENCH_METHODS"),
-        help="Standup methods (standalone, modelservice).",
+        help="Standup methods (standalone, modelservice, fma).",
     )
     standup_parser.add_argument(
         "-a", "--affinity",

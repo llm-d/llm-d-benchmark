@@ -41,8 +41,8 @@ def _get_llmd_benchmark_envars() -> dict:
         )
         return {}
 
-    if os.environ.get("LLMDBENCH_DEPLOY_METHODS", "") == "standalone":
-        # Given a 'standalone' deployment, we expect the following environment
+    if os.environ.get("LLMDBENCH_DEPLOY_METHODS", "") in {"standalone", "fma"}:
+        # Given a 'standalone'  or 'fma' deployment, we expect the following environment
         # variables to be available
         return {
             "scenario": {
@@ -270,8 +270,8 @@ def _get_llmd_benchmark_envars() -> dict:
     # Pre-existing deployment, cannot extract details about unknown inference
     # service environment
     sys.stderr.write(
-        'Warning: LLMDBENCH_DEPLOY_METHODS is not "modelservice" or'
-        ' "standalone", cannot extract environmental details.'
+        f'Warning: LLMDBENCH_DEPLOY_METHODS: "{os.environ.get("LLMDBENCH_DEPLOY_METHODS", "")}" '
+        'is not "modelservice" or "standalone" or "fma", cannot extract environmental details.'
     )
     return {}
 
@@ -2013,6 +2013,18 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
     # schema of BenchmarkReportV01
     br_dict = _get_llmd_benchmark_envars()
 
+    engines = []
+    for engine in results["scenario"]["platform"]["engines"]:
+        e = {
+            "name": engine["name"],
+            "version": engine["version"],
+            "args": engine["args"],
+            "metadata": {
+                "image": engine["image"],
+            }
+        }
+        engines.append(e)
+
     results_dict = {
         "version": "0.1",
         "scenario": {
@@ -2020,12 +2032,13 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
             "load": {
                 "name": WorkloadGenerator.NOP,
             },
-            "platform": {"engine": results["scenario"]["platform"]["engines"]},
+            "platform": {"engine": engines},
             "host": {
                 "accelerator": [],
                 "type": [],
             },
             "metadata": {
+                "deploy_methods": results["scenario"]["deploy_methods"],
                 "load_format": results["scenario"]["load_format"],
                 "sleep_mode": results["scenario"]["sleep_mode"],
                 "gpus": results["scenario"]["gpus"],
@@ -2124,74 +2137,89 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
         )
         results_dict["scenario"]["host"]["type"].append(HostType.REPLICA)
 
-    for metrics in results["metrics"]:
-        categories = _import_categories(metrics["categories"])
+    vllm_metadatas = []
+    metrics_name = "vllm_metrics"
+    for vllm_metrics in results[metrics_name]:
+        categories = _import_categories(vllm_metrics.get("categories", []))
         metadata_dict = {
-            "name": metrics["name"],
+            "name": vllm_metrics["name"],
             "load": {
                 "time": {
                     "units": Units.S,
-                    "value": metrics["load"]["time"],
+                    "value": vllm_metrics["load"]["time"],
                 },
                 "size": {
                     "units": Units.GIB,
-                    "value": metrics["load"]["size"],
+                    "value": vllm_metrics["load"]["size"],
                 },
                 "transfer_rate": {
                     "units": Units.GIB_PER_S,
-                    "value": metrics["load"]["transfer_rate"],
+                    "value": vllm_metrics["load"]["transfer_rate"],
                 },
             },
             "dynamo_bytecode_transform": {
                 "units": Units.S,
-                "value": metrics["dynamo_bytecode_transform"],
+                "value": vllm_metrics["dynamo_bytecode_transform"],
             },
             "torch_compile": {
                 "units": Units.S,
-                "value": metrics["torch_compile"],
+                "value": vllm_metrics["torch_compile"],
             },
             "memory_profiling": {
                 "initial_free": {
                     "units": Units.GIB,
-                    "value": metrics["memory_profiling"]["initial_free"],
+                    "value": vllm_metrics["memory_profiling"]["initial_free"],
                 },
                 "after_free": {
                     "units": Units.GIB,
-                    "value": metrics["memory_profiling"]["after_free"],
+                    "value": vllm_metrics["memory_profiling"]["after_free"],
                 },
                 "time": {
                     "units": Units.S,
-                    "value": metrics["memory_profiling"]["time"],
+                    "value": vllm_metrics["memory_profiling"]["time"],
                 },
             },
-            "sleep": {
-                "time": {
-                    "units": Units.S,
-                    "value": metrics["sleep"]["time"],
-                },
-                "gpu_freed": {
-                    "units": Units.GIB,
-                    "value": metrics["sleep"]["gpu_freed"],
-                },
-                "gpu_in_use": {
-                    "units": Units.GIB,
-                    "value": metrics["sleep"]["gpu_in_use"],
-                },
-            },
-            "wake": {
-                "units": Units.S,
-                "value": metrics["wake"],
-            },
+            "sleep_wake": [],
             "categories": categories,
         }
+
+        metadata_dict["sleep_wake"] = []
+        for sleep_wake in vllm_metrics["sleep_wake"]:
+            m = {
+                "timestamp": {
+                    "units": Units.S,
+                    "value": sleep_wake["timestamp"],
+                },
+                "type": sleep_wake["type"],
+                "time": {
+                    "units": Units.S,
+                    "value": sleep_wake["time"],
+                },
+            }
+            if m["type"] == "sleep":
+                m["gpu_freed"] = {
+                    "units": Units.GIB,
+                    "value": sleep_wake["gpu_freed"],
+                }
+                m["gpu_in_use"] = {
+                    "units": Units.GIB,
+                    "value": sleep_wake["gpu_in_use"],
+                }
+            metadata_dict["sleep_wake"].append(m)
+
         for name in ["load_cached_compiled_graph", "compile_graph"]:
-            value = metrics.get(name)
+            value = vllm_metrics.get(name)
             if value is not None:
                 metadata_dict[name] = {
                     "units": Units.S,
                     "value": value,
                 }
-        results_dict["metrics"]["metadata"].append(metadata_dict)
+        vllm_metadatas.append(metadata_dict)
+
+    results_dict["metrics"]["metadata"].append({"name": metrics_name, "value": vllm_metadatas})
+
+    metrics_name = "extra_metrics"
+    results_dict["metrics"]["metadata"].append({"name": metrics_name, "value": results.get(metrics_name, [])})
 
     update_dict(br_dict, results_dict)
 

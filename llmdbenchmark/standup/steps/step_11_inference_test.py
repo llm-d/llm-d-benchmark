@@ -68,6 +68,9 @@ class InferenceTestStep(Step):
             per_stack=True,
         )
 
+    def should_skip(self, context: ExecutionContext) -> bool:
+        return "fma" in context.deployed_methods
+
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:

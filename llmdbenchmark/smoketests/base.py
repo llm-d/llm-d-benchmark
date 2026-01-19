@@ -51,6 +51,7 @@ class BaseSmoketest:
         Returns (service_ip, gateway_port, is_standalone).
         """
         is_standalone = "standalone" in context.deployed_methods
+        is_fma = "fma" in context.deployed_methods
         namespace = context.require_namespace()
 
         inference_port = _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
@@ -60,6 +61,8 @@ class BaseSmoketest:
             service_ip, _, gateway_port = find_standalone_endpoint(
                 cmd, namespace, inference_port
             )
+        elif is_fma:
+            return None, "0", False
         else:
             service_ip, _, gateway_port = find_gateway_endpoint(
                 cmd, namespace, release
@@ -87,6 +90,10 @@ class BaseSmoketest:
         model_name = _nested_get(plan_config, "model", "name") or ""
         model_id_label = plan_config.get("model_id_label", "") or _nested_get(plan_config, "model", "shortName") or ""
         standalone_role = _nested_get(plan_config, "standalone", "role") or "standalone"
+
+        # skip base healh checks for FMA
+        if "fma" in context.deployed_methods:
+            return report
 
         service_ip, gateway_port, is_standalone = self.discover_endpoint(
             cmd, context, plan_config,
@@ -295,6 +302,10 @@ class BaseSmoketest:
         plan_config = _load_config(stack_path)
 
         model_name = _nested_get(plan_config, "model", "name") or ""
+
+        # skip base inference test for FMA
+        if "fma" in context.deployed_methods:
+            return report
 
         service_ip, gateway_port, _is_standalone = self.discover_endpoint(
             cmd, context, plan_config,

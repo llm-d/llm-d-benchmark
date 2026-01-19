@@ -425,7 +425,8 @@ class RenderPlans:
     def _resolve_deploy_method(self, values: dict) -> dict:
         """Override deploy method based on CLI ``--methods`` flag.
 
-        Accepts ``--methods standalone`` or ``--methods modelservice``.
+        Accepts ``--methods standalone`` or ``--methods modelservice``
+        or ``--methods fma``.
         Only one method may be active at a time.
 
         Without ``--methods``, the scenario YAML value is used as-is.
@@ -442,18 +443,38 @@ class RenderPlans:
                 "choose one. Using modelservice."
             )
             methods = ["modelservice"]
+        if "standalone" in methods and "fma" in methods:
+            self.logger.log_warning(
+                "Cannot enable both standalone and fma -- "
+                "choose one. Using standalone."
+            )
+            methods = ["standalone"]
+        if "modelservice" in methods and "fma" in methods:
+            self.logger.log_warning(
+                "Cannot enable both modelservice and fma -- "
+                "choose one. Using modelservice."
+            )
+            methods = ["modelservice"]
 
         standalone_config = result.setdefault("standalone", {})
         modelservice_config = result.setdefault("modelservice", {})
+        fma_config = result.setdefault("fma", {})
 
         if "standalone" in methods:
             standalone_config["enabled"] = True
             modelservice_config["enabled"] = False
+            fma_config["enabled"] = False
             self.logger.log_info("Deploy method from CLI: standalone")
         elif "modelservice" in methods:
             standalone_config["enabled"] = False
             modelservice_config["enabled"] = True
+            fma_config["enabled"] = False
             self.logger.log_info("Deploy method from CLI: modelservice")
+        elif "fma" in methods:
+            standalone_config["enabled"] = False
+            modelservice_config["enabled"] = False
+            fma_config["enabled"] = True
+            self.logger.log_info("Deploy method from CLI: fma")
 
         return result
 

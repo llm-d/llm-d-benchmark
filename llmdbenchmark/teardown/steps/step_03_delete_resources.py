@@ -12,6 +12,10 @@ NORMAL_RESOURCE_LIST = (
     "inferencepool,inferencemodel,configmap,ingress,pod,job"
 )
 
+FMA_RESOURCE_LIST = (
+    "replicaset,inferenceserverconfig,launcherconfig,launcherpopulationpolicy"
+)
+
 SYSTEM_EXCLUDES = {
     "kube-root-ca.crt",
     "odh-trusted-ca-bundle",
@@ -158,6 +162,10 @@ class DeleteResourcesStep(Step):
         resource_list = NORMAL_RESOURCE_LIST
         if context.is_openshift:
             resource_list += ",route"
+
+        fma_active = "fma" in context.deployed_methods
+        if fma_active:
+            resource_list += f",{FMA_RESOURCE_LIST}"
 
         resource_list = self._prune_unsupported(cmd, resource_list, namespaces[0])
 
