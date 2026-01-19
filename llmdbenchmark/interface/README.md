@@ -54,7 +54,7 @@ Generates deployment plans (YAML/Helm manifests) without executing anything on t
 |------|---------|-------------|
 | `-p` / `--namespace` | `LLMDBENCH_NAMESPACE` | Namespace(s) for rendering |
 | `-m` / `--models` | `LLMDBENCH_MODELS` | Model to render the plan for |
-| `-t` / `--methods` | `LLMDBENCH_METHODS` | Deploy method (standalone, modelservice) |
+| `-t` / `--methods` | `LLMDBENCH_METHODS` | Deploy method (standalone, modelservice, fma) |
 | `-f` / `--monitoring` | -- | Enable monitoring in rendered templates |
 | `-k` / `--kubeconfig` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig for cluster resource auto-detection |
 
@@ -68,7 +68,7 @@ Provisions model infrastructure from a specification. Implicitly generates a pla
 | `-c` / `--scenario` | `LLMDBENCH_SCENARIO` | Scenario file |
 | `-m` / `--models` | `LLMDBENCH_MODELS` | Models to stand up |
 | `-p` / `--namespace` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
-| `-t` / `--methods` | `LLMDBENCH_METHODS` | Deploy method (standalone, modelservice) |
+| `-t` / `--methods` | `LLMDBENCH_METHODS` | Deploy method (standalone, modelservice, fma) |
 | `-a` / `--affinity` | `LLMDBENCH_AFFINITY` | Node affinity config |
 | `-b` / `--annotations` | `LLMDBENCH_ANNOTATIONS` | Pod annotations |
 | `-r` / `--release` | `LLMDBENCH_RELEASE` | Helm chart release name |

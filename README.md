@@ -341,7 +341,7 @@ llmdbenchmark --spec gpu smoketest -p my-namespace -s 2   # config validation on
 |------|---------|-------------|
 | `-s STEPS` | | Step filter (e.g., `0,1,2` or `0-2`) |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
-| `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (standalone, modelservice) |
+| `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (standalone, modelservice, fma) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
 

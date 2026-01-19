@@ -44,6 +44,14 @@ def get_env_variables(keys: list[str]) -> list[str]:
     return envs
 
 
+def fmt(val, spec):
+    """format pandas report"""
+    width = int(spec.split(".")[0])
+    if pd.notna(val):
+        return format(val, spec)
+    return " " * width
+
+
 def get_formatted_output(
     left_padding: int, columns: list[str], df: pd.DataFrame
 ) -> str:
@@ -108,6 +116,7 @@ def write_benchmark_scenario(file: io.TextIOWrapper, scenario: Scenario):
     """write benchmark scenario to file"""
 
     file.write("Scenario\n")
+    file.write(f"  Deploy Methods       : {scenario.metadata['deploy_methods']}\n")
     file.write(f"  Harness              : {scenario.load.name}\n")
     file.write(f"  Load Format          : {scenario.metadata['load_format']}\n")
     file.write(f"  Sleep Mode On        : {scenario.metadata['sleep_mode']}\n")
@@ -115,6 +124,7 @@ def write_benchmark_scenario(file: io.TextIOWrapper, scenario: Scenario):
     for engine in scenario.platform.engine:
         file.write("  Engine\n")
         file.write(f"    Name               : {engine.name}\n")
+        file.write(f"    Image              : {engine.metadata['image']}\n")
         file.write(f"    Version            : {engine.version}\n")
         file.write(f"    Args               : {str(engine.args)}\n")
     for gpu in scenario.metadata["gpus"]:
@@ -133,7 +143,9 @@ def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkR
     file.write("\n")
 
     time_iso = (
-        datetime.fromtimestamp(benchmark_report.metrics.time.start).astimezone().isoformat()
+        datetime.fromtimestamp(benchmark_report.metrics.time.start)
+        .astimezone()
+        .isoformat()
     )
     duration = benchmark_report.metrics.time.duration
 
@@ -141,7 +153,23 @@ def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkR
     file.write(f"  Start                             : {time_iso}\n")
     file.write(f"  Elapsed(secs)                     : {duration:7.3f}\n")
 
-    for metrics_metadata in benchmark_report.metrics.metadata:
+    left_padding = 4
+    for metadata in benchmark_report.metrics.metadata:
+        metadatas = metadata["value"]
+        if metadata["name"] == "vllm_metrics":
+            write_vllm_metrics(file, metadatas, left_padding)
+        elif metadata["name"] == "extra_metrics":
+            write_extra_metrics(file, metadatas)
+        else:
+            logger.info("Unhandled metrics name '%s'", metadata["name"])
+
+
+def write_vllm_metrics(
+    file: io.TextIOWrapper, metadatas: list[dict], left_padding: int
+):
+    """prints vLLM metrics"""
+
+    for metrics_metadata in metadatas:
         name = metrics_metadata["name"]
         elapsed = metrics_metadata["load"]["time"]["value"]
         rate = metrics_metadata["load"]["transfer_rate"]["value"]
@@ -179,28 +207,138 @@ def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkR
         file.write("      Free Memory GPU(GiB)\n")
         file.write(f"        Initial                     : {initial_free:7.2f}\n")
         file.write(f"        After                       : {after_free:7.2f}\n")
-        if scenario.metadata["sleep_mode"]:
-            sleep = metrics_metadata["sleep"]["time"]["value"]
-            freed = metrics_metadata["sleep"]["gpu_freed"]["value"]
-            use = metrics_metadata["sleep"]["gpu_in_use"]["value"]
-            wake = metrics_metadata["wake"]["value"]
-            file.write("    Sleep\n")
-            file.write(f"      Elapsed(secs)                 : {sleep:7.3f}\n")
-            file.write("      Memory GPU(GiB)\n")
-            file.write(f"        Freed                       : {freed:7.2f}\n")
-            file.write(f"        in Use                      : {use:7.2f}\n")
-            file.write("    Wake\n")
-            file.write(f"      Elapsed(secs)                 : {wake:7.3f}\n")
 
-    for metrics_metadata in benchmark_report.metrics.metadata:
+        metrics_sleep_wake = metrics_metadata.get("sleep_wake", [])
+        if len(metrics_sleep_wake) > 0:
+            pandas_datas = []
+            for sleep_wake in metrics_sleep_wake:
+                data = {
+                    "Type": sleep_wake["type"],
+                    "Elapsed(secs)": sleep_wake["time"]["value"],
+                    "GPU Freed(GiB)": None,
+                    "GPU In Use(GiB)": None,
+                }
+                if sleep_wake["type"] == "sleep":
+                    data["GPU Freed(GiB)"] = sleep_wake["gpu_freed"]["value"]
+                    data["GPU In Use(GiB)"] = sleep_wake["gpu_in_use"]["value"]
+                pandas_datas.append(data)
+
+            df = pd.DataFrame(pandas_datas)
+            file.write("\n")
+            header = (
+                f"{'Type':<6} "
+                f"{'Elapsed(secs)':>13} "
+                f"{'GPU Freed(GiB)':>15} "
+                f"{'GPU In Use(GiB)':>15}"
+            )
+            file.write(f"{' ' * left_padding}{header}\n")
+            file.write(f"{' ' * left_padding}{'-' * len(header)}\n")
+            for _, r in df.iterrows():
+                file.write(
+                    f"{' ' * left_padding}"
+                    f"{r['Type']:<6} "
+                    f"{fmt(r['Elapsed(secs)'], '13.3f')} "
+                    f"{fmt(r['GPU Freed(GiB)'], '15.2f')} "
+                    f"{fmt(r['GPU In Use(GiB)'], '15.2f')}\n"
+                )
+            file.write("\n")
+
+        file.write("\n")
         categories = metrics_metadata.get("categories")
-        if categories is None:
-            continue
+        if categories is not None and len(categories) > 0:
+            data_frame = create_categories_dataframe(categories, 0, pd.DataFrame())
+            file.write(
+                get_formatted_output(left_padding, ["Category", "Process"], data_frame)
+            )
 
-        name = metrics_metadata["name"]
-        file.write(f"\n  Name                              : {name}\n\n")
-        data_frame = create_categories_dataframe(categories, 0, pd.DataFrame())
-        file.write(get_formatted_output(4, ["Category", "Process"], data_frame))
+
+def write_extra_metrics(file: io.TextIOWrapper, metadatas: list[dict]):
+    """prints extra metrics"""
+
+    for metrics_metadata in metadatas:
+        if metrics_metadata["name"] == "fma":
+            write_fma_metrics(file, metrics_metadata["iterations"], 0)
+        else:
+            logger.info("Unhandled extra metrics name '%s'", metrics_metadata["name"])
+
+
+def write_fma_metrics(
+    file: io.TextIOWrapper, iterations: list[dict], left_padding: int
+):
+    """prints FMA metrics"""
+
+    file.write("\n\n")
+    file.write("TTRR: Time for the Requester Pod to be ready\n")
+    file.write("TTRD: Time for the Requester Pod to have dual label set\n")
+    file.write("TTFT: Time for vLLM server to return first token\n")
+    file.write("Each iteration scales ReplicaSet from 0 to 1 and then from 1 to 0\n")
+
+    pandas_datas = []
+    for iteration in iterations:
+        for launcher_info in iteration["launcher_infos"]:
+            ct = float(launcher_info["requester_info"]["creation_timestamp"])
+            rt = float(launcher_info["requester_info"]["ready_timestamp"])
+            dt = float(launcher_info["requester_info"]["dual_label_timestamp"])
+            ttrr = rt - ct if rt > 0.0 else 0.0
+            ttrd = dt - ct if dt > 0.0 else 0.0
+            ttft = float(launcher_info["ttft"])
+
+            pandas_datas.append(
+                {
+                    "Iteration": iteration["iteration"],
+                    "vLLM Name": launcher_info["name"],
+                    "TTRR(secs)": ttrr,
+                    "TTRD(secs)": ttrd,
+                    "TTFT(secs)": ttft,
+                    "TTRD+TTFT": ttrd + ttft,
+                }
+            )
+
+    df = pd.DataFrame(pandas_datas)
+
+    file.write("\n")
+
+    # Float formatting
+    float_columns = ["TTRR(secs)", "TTRD(secs)", "TTFT(secs)", "TTRD+TTFT"]
+
+    # Compute column widths dynamically
+    col_widths = {}
+    for col in df.columns:
+        if col in float_columns:
+            # max width between header and max formatted float
+            max_float_width = max(df[col].apply(lambda x: len(f"{x:.4f}")))
+            col_widths[col] = max(len(col), max_float_width)
+        else:
+            col_widths[col] = max(len(col), df[col].astype(str).apply(len).max())
+
+    space_between_cols = 2
+
+    # Header
+    header = (" " * space_between_cols).join(
+        f"{col:<{col_widths[col]}}" for col in df.columns
+    )
+    file.write(f"{' ' * left_padding}{header}\n")
+
+    # Separator
+    separator = (" " * space_between_cols).join(
+        "-" * col_widths[col] for col in df.columns
+    )
+    file.write(f"{' ' * left_padding}{separator}\n")
+
+    # Rows
+    for _, r in df.iterrows():
+        row = []
+        for col in df.columns:
+            val = r[col]
+            if col in float_columns:
+                row.append(f"{val:>{col_widths[col]}.4f}")  # right-align numbers
+            elif isinstance(val, int):
+                row.append(f"{val:>{col_widths[col]}}")
+            else:
+                row.append(f"{val:<{col_widths[col]}}")  # left-align strings
+        file.write(f"{' ' * left_padding}{(' ' * space_between_cols).join(row)}\n")
+
+    file.write("\n")
 
 
 def main():
@@ -212,8 +350,7 @@ def main():
         ]
     )
 
-    control_work_dir = envs[0]
-    requests_dir = control_work_dir
+    requests_dir = envs[0]
 
     analysis_dir = os.path.join(requests_dir, "analysis")
     os.makedirs(analysis_dir, exist_ok=True)

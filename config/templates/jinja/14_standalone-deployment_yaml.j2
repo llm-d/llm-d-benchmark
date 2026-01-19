@@ -434,6 +434,9 @@ spec:
         - "-c"
         args:
         - |
+{% if standalone.launcher.customPreprocessCommand is defined and standalone.launcher.customPreprocessCommand is not none %}
+{{ standalone.launcher.customPreprocessCommand | indent(10, first=True) }}
+{% endif %}
 {% if standalone.launcher.args is defined and standalone.launcher.args is not none %}
 {{ standalone.launcher.args | indent(10, first=True) }}
 {% else %}

@@ -6,6 +6,7 @@ from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.utilities.endpoint import (
     find_standalone_endpoint,
+    find_fma_endpoint,
     find_gateway_endpoint,
     find_custom_endpoint,
     discover_hf_token_secret,
@@ -67,6 +68,10 @@ class DetectEndpointStep(Step):
             "standalone" in context.deployed_methods
             or self._resolve(plan_config, "standalone.enabled", default=False)
         )
+        is_fma = (
+            "fma" in context.deployed_methods
+            or self._resolve(plan_config, "fma.enabled", default=False)
+        )
         inference_port = self._resolve(
             plan_config, "vllmCommon.inferencePort", default=8000,
         )
@@ -84,7 +89,7 @@ class DetectEndpointStep(Step):
         methods_arg = getattr(context, "deployed_methods", [])
         if methods_arg:
             for m in methods_arg:
-                if m not in ("standalone", "modelservice"):
+                if m not in ("standalone", "modelservice", "fma"):
                     deploy_method = m
                     break
 
@@ -93,6 +98,10 @@ class DetectEndpointStep(Step):
                 cmd, namespace, inference_port
             )
             stack_type = "vllm-prod"
+        elif is_fma:
+            service_ip = find_fma_endpoint(cmd, namespace)
+            service_name = service_ip
+            gateway_port = 0
         elif deploy_method:
             # Custom deployment -- use multi-level fallback discovery
             # matching the original bash run.sh logic.
@@ -143,7 +152,7 @@ class DetectEndpointStep(Step):
         )
 
         # --- HF token auto-discovery for custom deployments ---
-        # When the deployment method is neither standalone nor modelservice,
+        # When the deployment method is neither standalone nor modelservice nor fma,
         # attempt to discover a HuggingFace token from cluster secrets,
         # matching the original bash run.sh logic.
         if deploy_method and not context.dry_run:
@@ -162,6 +171,8 @@ class DetectEndpointStep(Step):
     def _detect_stack_type(context: ExecutionContext) -> str:
         """Determine the stack type from deployed methods."""
         if "standalone" in context.deployed_methods:
+            return "vllm-prod"
+        if "fma" in context.deployed_methods:
             return "vllm-prod"
         if "modelservice" in context.deployed_methods:
             return "llm-d"

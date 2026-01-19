@@ -1,0 +1,53 @@
+# FMA example Scenario for LLM-D Deployment
+#
+# This scenario deploys Fast Model Actuation controllers
+#
+# IMPORTANT NOTE:
+# All parameters not defined here will use the default values from defaults.yaml.
+# Many commonly defined values were left blank (default) so that this scenario
+# is applicable to as many environments as possible.
+#
+# The model parameter is left commented -- uncomment the model you want to deploy.
+# Uncommenting a model here will override the default model from defaults.yaml.
+
+scenario:
+  - name: "fma-example"
+    model:
+      name: meta-llama/Llama-3.1-8B-Instruct
+      shortName: llama-3.1-8b
+      path: models/meta-llama/Llama-3.1-8B-Instruct
+      huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
+
+    modelservice:
+      enabled: false
+    standalone:
+      enabled: false
+
+    fma:
+      enabled: true
+      iterations: 1
+
+    workDir: "~/data/fma"
+
+    harness:
+      name: nop
+      profile: nop.yaml
+      executable: llm-d-benchmark.py
+      experimentProfile: nop.yaml
+      condaEnvName: nop-env
+      waitTimeout: 3600
+      loadParallelism: 1
+      podLabel: llmdbench-harness-fma
+      debug: false
+      resources:
+        cpu: 16
+        memory: 32Gi
+      output: local
+      inferencePerf:
+        rayonNumThreads: 4
+
+    images:
+      benchmark:
+        repository: quay.io/manoelmrqs/llm-d-benchmark
+        tag: 0.0.2
+
