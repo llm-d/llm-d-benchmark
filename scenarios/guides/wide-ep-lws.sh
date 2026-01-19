@@ -12,15 +12,15 @@
 #export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
-#export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
-export LLMDBENCH_DEPLOY_MODEL_LIST="deepseek-ai/DeepSeek-R1-0528"
+export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="deepseek-ai/DeepSeek-R1-0528"
 
 # PVC parameters
 #             Storage class (leave uncommented to automatically detect the "default" storage class)
 #export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=standard-rwx
 #export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=shared-vast
 #export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=ocs-storagecluster-cephfs
-export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
+export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=2Ti
 
 # Routing configuration (via gaie)
 export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="custom-plugins.yaml"
@@ -188,17 +188,17 @@ exec vllm serve \
   --gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_MEM_UTIL
 EOF
 
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG=$(mktemp)
-cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG}
-securityContext:
-  capabilities:
-    add:
-    - IPC_LOCK
-    - SYS_RAWIO
-  runAsGroup: 0
-  runAsUser: 0
-imagePullPolicy: Always
-EOF
+#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG=$(mktemp)
+#cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG}
+#securityContext:
+#  capabilities:
+#    add:
+#    - IPC_LOCK
+#    - SYS_RAWIO
+#  runAsGroup: 0
+#  runAsUser: 0
+#imagePullPolicy: Always
+#EOF
 
 export LLMDBENCH_VLLM_MODELSERVICE_MOUNT_MODEL_VOLUME_OVERRIDE=true
 
@@ -208,10 +208,10 @@ cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS}
   mountPath: /dev/shm
 - name: preprocesses
   mountPath: /setup/preprocess
-- name: hf-cache
-  mountPath: /var/cache/huggingface
-- name: jit-cache
-  mountPath: /var/cache/vllm
+#- name: hf-cache
+#  mountPath: /var/cache/huggingface
+#- name: jit-cache
+#  mountPath: /var/cache/vllm
 EOF
 
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES=$(mktemp)
@@ -224,14 +224,14 @@ cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES}
   configMap:
     defaultMode: 320
     name: llm-d-benchmark-preprocesses
-- hostPath:
-    path: /mnt/local/hf-cache
-    type: DirectoryOrCreate
-  name: hf-cache
-- hostPath:
-    path: /mnt/local/jit-cache
-    type: DirectoryOrCreate
-  name: jit-cache
+#- hostPath:
+#    path: /mnt/local/hf-cache
+#    type: DirectoryOrCreate
+#  name: hf-cache
+#- hostPath:
+#    path: /mnt/local/jit-cache
+#    type: DirectoryOrCreate
+#  name: jit-cache
 EOF
 
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1
@@ -330,17 +330,17 @@ cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_ENVVARS_TO_YAML
   value: ibp
 EOF
 
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG=$(mktemp)
-cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG}
-securityContext:
-  capabilities:
-    add:
-    - IPC_LOCK
-    - SYS_RAWIO
-  runAsGroup: 0
-  runAsUser: 0
-imagePullPolicy: Always
-EOF
+#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG=$(mktemp)
+#cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG}
+#securityContext:
+#  capabilities:
+#    add:
+#    - IPC_LOCK
+#    - SYS_RAWIO
+#  runAsGroup: 0
+#  runAsUser: 0
+#imagePullPolicy: Always
+#EOF
 
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS=$(mktemp)
 cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS}
@@ -348,10 +348,10 @@ cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS}
   mountPath: /dev/shm
 - name: preprocesses
   mountPath: /setup/preprocess
-- name: hf-cache
-  mountPath: /var/cache/huggingface
-- name: jit-cache
-  mountPath: /var/cache/vllm
+#- name: hf-cache
+#  mountPath: /var/cache/huggingface
+#- name: jit-cache
+#  mountPath: /var/cache/vllm
 EOF
 
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES=$(mktemp)
@@ -364,14 +364,14 @@ cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES}
   configMap:
     defaultMode: 320
     name: llm-d-benchmark-preprocesses
-- hostPath:
-    path: /mnt/local/hf-cache
-    type: DirectoryOrCreate
-  name: hf-cache
-- hostPath:
-    path: /mnt/local/jit-cache
-    type: DirectoryOrCreate
-  name: jit-cache
+#- hostPath:
+#    path: /mnt/local/hf-cache
+#    type: DirectoryOrCreate
+#  name: hf-cache
+#- hostPath:
+#    path: /mnt/local/jit-cache
+#    type: DirectoryOrCreate
+#  name: jit-cache
 EOF
 
 # Workload parameters

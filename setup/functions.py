@@ -340,6 +340,7 @@ def environment_variable_to_dict(ev: dict = {}):
     ]:
         if mandatory_empty_key not in ev:
             ev[mandatory_empty_key] = ''
+        ev[mandatory_empty_key] = ev[mandatory_empty_key].replace(" ",'')
 
     if "discovered" not in ev :
         ev["discovered"] = {}
@@ -1754,59 +1755,74 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
                             namespace: str,
                             image: str,
                             ip: str,
-                            port: str):
+                            port: str,
+                            period: int = 5,
+                            timeout: int = 60):
     """
     Get model name by starting/running a pod
     """
+    total_attempts = timeout/period
+    current_attempts = 0
+    while current_attempts <= total_attempts :
+        if not ip :
+            return "empty", "N/A"
 
-    if not ip :
-        return "empty", "N/A"
+        pod_name = f"testinference-pod-{get_rand_string()}"
+        if "http://" not in ip:
+            ip = "http://" + ip
+        if ip.count(":") == 1:
+            ip = ip + ":" + port
+        ip = ip + "/v1/models"
+        curl_command = f"curl --no-progress-meter {ip}"
+        full_command = ["/bin/bash", "-c", f"curl --no-progress-meter {ip}"]
+        pod_manifest = client.V1Pod(
+            metadata=client.V1ObjectMeta(name=pod_name, namespace=namespace),
+            spec=client.V1PodSpec(
+                restart_policy="Never",
+                containers=[
+                    client.V1Container(name="model", image=image, command=full_command)
+                ],
+            ),
+        )
 
-    pod_name = f"testinference-pod-{get_rand_string()}"
-    if "http://" not in ip:
-        ip = "http://" + ip
-    if ip.count(":") == 1:
-        ip = ip + ":" + port
-    ip = ip + "/v1/models"
-    curl_command = f"curl --no-progress-meter {ip}"
-    full_command = ["/bin/bash", "-c", f"curl --no-progress-meter {ip}"]
-    pod_manifest = client.V1Pod(
-        metadata=client.V1ObjectMeta(name=pod_name, namespace=namespace),
-        spec=client.V1PodSpec(
-            restart_policy="Never",
-            containers=[
-                client.V1Container(name="model", image=image, command=full_command)
-            ],
-        ),
-    )
+        api_instance = client.CoreV1Api()
+        api_instance.create_namespaced_pod(namespace=namespace, body=pod_manifest)
 
-    api_instance = client.CoreV1Api()
-    api_instance.create_namespaced_pod(namespace=namespace, body=pod_manifest)
+        model_name = "pod never started"
+        sca = 0
+        while sca <= total_attempts :
+            pod_status = api_instance.read_namespaced_pod_status(pod_name, namespace)
+            if pod_status.status.phase != "Pending":
+                break
+            sca += 1
+            time.sleep(1)
 
-    while True:
-        pod_status = api_instance.read_namespaced_pod_status(pod_name, namespace)
-        if pod_status.status.phase != "Pending":
+
+        pod_logs = api_instance.read_namespaced_pod_log(
+            name=pod_name, namespace=namespace, tail_lines=100
+        )
+        valid_model_name = False
+        model_name = "empty"
+        if pod_logs:
+            if pod_logs.count("'id': '"):
+                model_name = pod_logs.split("'id': '")[1].split("', '")[0]
+                valid_model_name = True
+            else:
+                model_name = f"malformed ({model_name})"
+
+        api_instance.delete_namespaced_pod(
+            name=pod_name,
+            namespace=namespace,
+            body=k8s_client.V1DeleteOptions(
+                propagation_policy="Foreground", grace_period_seconds=10
+            ),
+        )
+
+        if valid_model_name :
             break
-        time.sleep(1)
+        current_attempts += 1
+        time.sleep(period)
 
-    pod_logs = api_instance.read_namespaced_pod_log(
-        name=pod_name, namespace=namespace, tail_lines=100
-    )
-
-    model_name = "empty"
-    if pod_logs:
-        if pod_logs.count("'id': '"):
-            model_name = pod_logs.split("'id': '")[1].split("', '")[0]
-        else:
-            model_name = "malformed"
-    # Clean up
-    api_instance.delete_namespaced_pod(
-        name=pod_name,
-        namespace=namespace,
-        body=k8s_client.V1DeleteOptions(
-            propagation_policy="Foreground", grace_period_seconds=10
-        ),
-    )
     return model_name, curl_command
 
 def add_scc_to_service_account(
@@ -1873,7 +1889,7 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
         return 10
 
     if not dry_run and int(component_nr) > 0:
-        delay = 10
+        delay = int(ev["control_wait_period"])
         max_retries = int(ev["control_wait_timeout"]/delay)
         announce(
             f'⏳ Waiting for all ({component_nr}) "{component}" pods serving model to be in "Running" state (timeout={ev["control_wait_timeout"]}s/{max_retries} tries)...'

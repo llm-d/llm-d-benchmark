@@ -72,7 +72,7 @@ if deps_checked :
             ipv6 = ip_info[lo]['ipv6']
             if hca_info[entry]["status"] == "UP" :
                 nccl_list.append(f"{entry}")
-                nixl_list.append(f"{entry}:{port}")
+                nixl_list.append(f"{if_name}")
         print(f"{entry.ljust(10)} {node_guid.ljust(25)} {port.ljust(5)} {stat.ljust(5)} {if_name.ljust(10)} {ipv4.ljust(20)} {ipv6}")
 else :
     print(f"WARNING: Unable to create network device file map.")

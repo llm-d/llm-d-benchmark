@@ -40,19 +40,21 @@ export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true # (default is "false")
 # Common parameters across standalone and llm-d (prefill and decode) pods
 export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
 export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
+export LLMDBENCH_VLLM_COMMON_CPU_NR=16
+export LLMDBENCH_VLLM_COMMON_CPU_MEM=64Gi
+export LLMDBENCH_VLLM_COMMON_SHM_MEM=16Gi
+export LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=1
+export LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM=1
 
+# VLLM_NIXL_SIDE_CHANNEL_HOST is automatically exported
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 - name: UCX_TLS
-  value: "rc,sm,cuda_ipc,cuda_copy,tcp"
+  value: "sm,cuda_ipc,cuda_copy,tcp"
 - name: UCX_SOCKADDR_TLS_PRIORITY
   value: "tcp"
 - name: VLLM_NIXL_SIDE_CHANNEL_PORT
   value: "REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT"
-- name: VLLM_NIXL_SIDE_CHANNEL_HOST
-  valueFrom:
-    fieldRef:
-      fieldPath: status.podIP
 - name: VLLM_LOGGING_LEVEL
   value: INFO
 - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
@@ -69,24 +71,46 @@ ports:
     protocol: TCP
 EOF
 
+export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS}
+- name: dshm
+  mountPath: /dev/shm
+- name: preprocesses
+  mountPath: /setup/preprocess
+EOF
+
+export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES}
+- name: preprocesses
+  configMap:
+    defaultMode: 320
+    name: llm-d-benchmark-preprocesses
+- name: dshm
+  emptyDir:
+    medium: Memory
+    sizeLimit: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM
+EOF
+
 # Prefill parameters: 0 prefill pod
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
-#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM)
 
 # Decode parameters: 2 decode pods
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=16
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=64Gi
-#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM)
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=$LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=$LLMDBENCH_VLLM_COMMON_CPU_MEM
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_SHM_MEM=$LLMDBENCH_VLLM_COMMON_SHM_MEM
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ENVVARS_TO_YAML=${LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML}
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG=${LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG}
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS=${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS}
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES=${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES}
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM)
 #              Uncomment (######) the following line to enable multi-nic
 ######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:multi-nic-compute
-#              Uncomment (######) the following two lines to enable roce/gdr (or switch to rdma/ib for infiniband)
-######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/roce_gdr
-######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=1
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
+#              Uncomment (######) the following to enable automatic detection of network acceleration (roce/gdr or rdma/ib)
+######export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=auto
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
-
 
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
@@ -100,29 +124,9 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM \
 --gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_MEM_UTIL \
 --kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}" \
---enforce-eager
+--enforce-eager \
 --disable-log-requests \
 --disable-uvicorn-access-log
-EOF
-
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS=$(mktemp)
-cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS}
-- name: dshm
-  mountPath: /dev/shm
-- name: preprocesses
-  mountPath: /setup/preprocess
-EOF
-
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES=$(mktemp)
-cat << EOF > ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES}
-- name: preprocesses
-  configMap:
-    defaultMode: 320
-    name: llm-d-benchmark-preprocesses
-- name: dshm
-  emptyDir:
-    medium: Memory
-    sizeLimit: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM
 EOF
 
 # Workload parameters
