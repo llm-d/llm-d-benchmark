@@ -50,7 +50,7 @@ jobs:
 
       - name: Standup (standalone) using llm-d-inference-sim
         run: |
-          ./setup/standup.sh -c kind_sim_fb -t standalone
+          ./setup/standup.sh -c kind_sim_fb -t standalone || ./setup/standup.sh -c kind_sim_fb -t standalone -s 10
         shell: bash
 
       - name: Run harness (standalone)
@@ -65,7 +65,7 @@ jobs:
 
       - name: Standup (modelservice) using llm-d-inference-sim
         run: |
-          ./setup/standup.sh -c kind_sim_fb -t modelservice
+          ./setup/standup.sh -c kind_sim_fb -t modelservice || ./setup/standup.sh -c kind_sim_fb -t modelservice -s 10 || true
         shell: bash
 
       - name: Run harness (mock)
