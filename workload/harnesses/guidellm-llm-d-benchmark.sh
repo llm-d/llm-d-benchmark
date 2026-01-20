@@ -22,20 +22,27 @@ fi
 echo "Harness completed successfully."
 
 # Convert results into universal format
+export LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC=0
 echo "Converting results.json to Benchmark Report v0.1"
 benchmark-report $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/results.json -b 0.1 -w guidellm $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/benchmark_report,_results.json.yaml 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
-export LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC=$?
-if [[ $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC -ne 0 ]]; then
-  echo "benchmark-report returned with error $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC"
-  exit $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC
+rc=$?
+# Report errors but don't quit
+if [[ $rc -ne 0 ]]; then
+  echo "benchmark-report returned with error $rc"
+  export LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC=$rc
 fi
 
 echo "Converting results.json to Benchmark Report v0.2"
 benchmark-report $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/results.json -b 0.2 -w guidellm $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/benchmark_report_v0.2,_results.json.yaml 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
-export LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC=$?
-if [[ $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC -ne 0 ]]; then
-  echo "benchmark-report returned with error $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC"
-  exit $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC
+rc=$?
+# Report errors but don't quit
+if [[ $rc -ne 0 ]]; then
+  echo "benchmark-report returned with error $rc"
+  export LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC=$rc
 fi
 
+if [[ $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC -ne 0 ]]; then
+  echo "Results data conversion completed with errors."
+  exit $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC
+fi
 echo "Results data conversion completed successfully."
