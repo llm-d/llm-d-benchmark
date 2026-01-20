@@ -718,7 +718,7 @@ class TestEstimateCommand:
             "--model", "Qwen/Qwen3-32B",
             "--input-len", "512",
             "--output-len", "128",
-            "--gpu-list", "L4,H100"  # L4 likely to fail, H100 likely to succeed
+            "--gpu-list", "L20,H100"  # L20 likely to fail, H100 likely to succeed
         )
 
         assert result.returncode == 0, f"Failed: {result.stderr}"

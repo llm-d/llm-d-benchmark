@@ -304,6 +304,70 @@ def example_comparison():
         print(f"  Best Throughput: {data['best_throughput']:.2f} tokens/s" if data['best_throughput'] else "  Best Throughput: N/A")
 
 
+def example_cost_display():
+    """Display cost information for GPUs"""
+    print("\n" + "=" * 80)
+    print("Example 8: GPU Costs")
+    print("=" * 80)
+
+    # Basic usage with default costs
+    print("\nUsing default GPU costs:")
+    recommender = GPURecommender(
+        model_id="Qwen/Qwen-7B",
+        input_len=512,
+        output_len=128,
+        max_gpus=1,
+        gpu_list=["H100", "A100", "L40", "L4"],
+    )
+
+    gpu_results, _ = recommender.get_gpu_results()
+
+    # Get lowest cost GPU
+    best_cost = recommender.get_gpu_with_lowest_cost()
+    if best_cost:
+        print(f"\nLowest cost GPU: {best_cost[0]}")
+        print(f"  Cost: ${best_cost[1]:.2f}/hour")
+
+    # Show cost-sorted results
+    sorted_results = recommender.get_results_sorted_by_cost()
+    print("\nGPUs sorted by cost:")
+    for gpu_name, cost, _ in sorted_results:
+        print(f"  {gpu_name}: ${cost:.2f}/hour")
+
+    # Example with custom costs
+    print("\n" + "-" * 80)
+    print("Using custom GPU costs:")
+    custom_costs = {
+        "H100": 30.0,
+        "A100": 20.0,
+        "L40": 22.0,
+        "L4": 6.0,
+    }
+
+    recommender_custom = GPURecommender(
+        model_id="Qwen/Qwen-7B",
+        input_len=512,
+        output_len=128,
+        max_gpus=1,
+        gpu_list=["H100", "A100", "L40", "L4"],
+        custom_gpu_costs=custom_costs,
+    )
+
+    gpu_results_custom, _ = recommender_custom.get_gpu_results()
+
+    # Get lowest cost GPU with custom costs
+    best_cost_custom = recommender_custom.get_gpu_with_lowest_cost()
+    if best_cost_custom:
+        print(f"\nLowest cost GPU (custom): {best_cost_custom[0]}")
+        print(f"  Cost: ${best_cost_custom[1]:.2f}/hour")
+
+    # Show cost-sorted results with custom costs
+    sorted_results_custom = recommender_custom.get_results_sorted_by_cost()
+    print("\nGPUs sorted by custom cost:")
+    for gpu_name, cost, _ in sorted_results_custom:
+        print(f"  {gpu_name}: ${cost:.2f}/hour")
+
+
 def main():
     """Run all examples"""
     print("\n")
@@ -324,6 +388,7 @@ def main():
         example_detailed_analysis()
         example_restrictive_constraints()
         example_comparison()
+        example_cost_display()
 
         print("\n" + "=" * 80)
         print("All examples completed successfully!")

@@ -183,6 +183,43 @@ if enable_per_gpu_config:
             )
             max_gpus_per_type[gpu_name] = gpu_max
 
+# Cost Configuration
+st.sidebar.subheader("💰 Custom GPU Costs (Optional)")
+st.sidebar.caption("⚠️ Default costs are reference values for relative comparison only")
+st.sidebar.caption("Override with your actual infrastructure costs")
+
+# Import CostManager to get default costs
+from config_explorer.recommender.cost_manager import CostManager
+cost_manager_temp = CostManager()
+
+custom_gpu_costs = {}
+with st.sidebar.expander("⚙️ Set Custom Costs", expanded=False):
+    # List of GPUs to configure - use the 8 specified GPUs
+    priority_gpus = ["H100", "H200", "A100", "A100-40GB", "L20", "L40", "B100", "B200"]
+
+    # Use selected GPUs if any, otherwise show all priority GPUs that are available
+    if selected_gpus:
+        gpus_for_cost = selected_gpus
+    else:
+        gpus_for_cost = [gpu for gpu in priority_gpus if gpu in available_gpus]
+
+    for gpu_name in gpus_for_cost:
+        # Get default cost as initial value
+        default_cost = cost_manager_temp.get_cost(gpu_name, num_gpus=1)
+        default_value = default_cost if default_cost is not None else 0.0
+
+        cost = st.number_input(
+            f"{gpu_name} ($/hour)",
+            min_value=0.0,
+            value=default_value,
+            step=0.5,
+            key=f"cost_{gpu_name}",
+            help=f"Custom cost for {gpu_name} per hour (default: ${default_value:.2f})"
+        )
+        # Only add to custom costs if different from default
+        if cost != default_value:
+            custom_gpu_costs[gpu_name] = cost
+
 # Run button
 run_analysis = st.sidebar.button("🚀 Run Analysis", type="primary", use_container_width=True)
 
@@ -200,7 +237,8 @@ if run_analysis:
                 gpu_list=selected_gpus if selected_gpus else None,
                 max_ttft=max_ttft,
                 max_itl=max_itl,
-                max_latency=max_latency
+                max_latency=max_latency,
+                custom_gpu_costs=custom_gpu_costs if custom_gpu_costs else None
             )
 
             # Run recommendation
@@ -218,6 +256,7 @@ if run_analysis:
                 'max_gpus_per_type': max_gpus_per_type if max_gpus_per_type else None,
                 'max_ttft': max_ttft,
                 'max_itl': max_itl,
+                'custom_gpu_costs': custom_gpu_costs if custom_gpu_costs else None,
                 'max_latency': max_latency
             }
 
@@ -323,6 +362,12 @@ if st.session_state.recommendation_results is not None:
                 # Extract optimal concurrency if available
                 if hasattr(result, 'optimal_concurrency') and result.optimal_concurrency is not None:
                     gpu_info['Optimal Concurrency'] = result.optimal_concurrency
+
+                # Add cost information
+                num_gpus = recommender.max_gpus_per_type.get(gpu_name, recommender.max_gpus)
+                cost = recommender.cost_manager.get_cost(gpu_name, num_gpus)
+                if cost is not None:
+                    gpu_info['Cost per Hour ($)'] = cost
 
                 gpu_comparison_data.append(gpu_info)
             except Exception as e:
@@ -442,12 +487,17 @@ if st.session_state.recommendation_results is not None:
         if gpu_comparison_data:
             df = pd.DataFrame(gpu_comparison_data)
 
+            # Sort by cost if enabled
+            params = st.session_state.recommender_params
+            if params.get('sort_by_cost', False) and 'Cost per Hour ($)' in df.columns:
+                df = df.sort_values('Cost per Hour ($)')
+
             # Combined Summary Section - Best GPUs and Compatibility Status
             st.subheader("⭐ Best GPU Recommendations")
             st.caption("These results represent best latency performance at concurrency = 1")
 
             # Create metric cards for best GPUs
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5 = st.columns(5)
 
             # Get recommender instance from session state
             recommender = st.session_state.recommender_instance
@@ -490,6 +540,16 @@ if st.session_state.recommendation_results is not None:
                         "🎯 Lowest E2E Latency",
                         f"{best_gpu}",
                         f"{best_val:.2f} s"
+                    )
+
+            with col5:
+                best_cost = recommender.get_gpu_with_lowest_cost()
+                if best_cost:
+                    best_gpu, best_val = best_cost
+                    st.metric(
+                        "💰 Lowest Cost",
+                        f"{best_gpu}",
+                        f"${best_val:.2f}/hour"
                     )
 
             # Show summary of excluded GPUs if any
@@ -538,8 +598,9 @@ if st.session_state.recommendation_results is not None:
             st.subheader("Analysis Results")
 
             # Create tabs for different sections
-            tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
                 "Performance Visualizations",
+                "Cost Analysis",
                 "Model Details",
                 "Detailed GPU Analysis",
                 "LLM-Optimizer Commands",
@@ -649,6 +710,69 @@ if st.session_state.recommendation_results is not None:
                     st.info("Concurrency data not available in results")
 
             with tab2:
+                st.markdown("### 💰 Cost Analysis")
+                st.caption("⚠️ Costs shown are reference values for relative comparison only")
+
+                # Cost comparison chart
+                if 'Cost per Hour ($)' in df.columns:
+                    st.markdown("#### 💵 Cost Comparison")
+                    df_sorted_cost = df.sort_values('Cost per Hour ($)')
+                    fig_cost = px.bar(
+                        df_sorted_cost,
+                        x='GPU',
+                        y='Cost per Hour ($)',
+                        title='GPU Cost Comparison (Reference Values)',
+                        text='Cost per Hour ($)'
+                    )
+                    fig_cost.update_traces(
+                        texttemplate='$%{text:.2f}',
+                        textposition='outside'
+                    )
+                    fig_cost.update_layout(
+                        xaxis_title="GPU Type",
+                        yaxis_title="Cost per Hour ($)",
+                        showlegend=False,
+                        height=500
+                    )
+                    st.plotly_chart(fig_cost, use_container_width=True, key="cost_comparison_chart")
+
+                    st.markdown("---")
+
+                    # Cost vs Performance scatter
+                    st.markdown("#### 📊 Cost vs Performance")
+                    if 'Throughput (tokens/s)' in df.columns:
+                        # Filter out rows with NaN cost values
+                        df_cost_perf = df[df['Cost per Hour ($)'].notna()].copy()
+
+                        if not df_cost_perf.empty:
+                            fig_cost_perf = px.scatter(
+                                df_cost_perf,
+                                x='Throughput (tokens/s)',
+                                y='Cost per Hour ($)',
+                                text='GPU',
+                                title='Cost vs Throughput',
+                                size='Cost per Hour ($)',
+                                hover_data=['TTFT (ms)', 'ITL (ms)'] if 'TTFT (ms)' in df_cost_perf.columns else None
+                            )
+                            fig_cost_perf.update_traces(
+                                textposition='top center',
+                                marker=dict(sizemode='diameter', sizeref=2)
+                            )
+                            fig_cost_perf.update_layout(
+                                xaxis_title="Throughput (tokens/s)",
+                                yaxis_title="Cost per Hour ($)",
+                                height=500
+                            )
+                            st.plotly_chart(fig_cost_perf, use_container_width=True, key="cost_performance_scatter")
+
+                            st.caption("💡 Lower-left quadrant represents better value (high performance, low cost)")
+                            st.caption("🔵 Bubble size represents cost per hour (larger bubbles = higher cost)")
+                        else:
+                            st.info("Cost data not available for performance comparison")
+                else:
+                    st.info("Cost data not available in results")
+
+            with tab3:
                 st.markdown("### 🔧 Model Details")
                 st.caption("Model card details")
 
@@ -682,13 +806,33 @@ if st.session_state.recommendation_results is not None:
                 else:
                     st.info("Model configuration not available")
 
-            with tab3:
+            with tab4:
                 st.markdown("### 🔍 Detailed GPU Analysis")
                 st.caption("Comprehensive performance breakdown for each GPU")
 
                 # Create expandable sections for each GPU
                 for gpu_name, result in gpu_results.items():
                     with st.expander(f"**{gpu_name}**"):
+
+                        # Cost Information
+                        st.markdown("#### 💰 Cost")
+                        cost_col1, cost_col2 = st.columns(2)
+
+                        num_gpus = recommender.max_gpus_per_type.get(gpu_name, recommender.max_gpus)
+                        cost = recommender.cost_manager.get_cost(gpu_name, num_gpus)
+
+                        with cost_col1:
+                            if cost is not None:
+                                st.write(f"• **Cost per Hour:** `${cost:.2f}`")
+                            else:
+                                st.write(f"• **Cost per Hour:** `N/A`")
+
+                        with cost_col2:
+                            st.write(f"• **Number of GPUs:** `{num_gpus}`")
+                            if params.get('custom_gpu_costs') and gpu_name in params.get('custom_gpu_costs', {}):
+                                st.caption("🔧 Custom cost")
+
+                        st.markdown("---")
 
                         # GPU Specifications
                         if gpu_name in GPU_SPECS:
@@ -798,7 +942,7 @@ if st.session_state.recommendation_results is not None:
                                                     decode_status = "✅ Yes" if perf_result.decode_is_memory_bound else "❌ No"
                                                     st.write(f"• Decode: {decode_status}")
 
-            with tab4:
+            with tab5:
                 st.markdown("### 🔧 LLM-Optimizer Tuning Commands")
                 st.caption("Use these commands with the llm-optimizer engine for fine-tuning")
 
@@ -825,7 +969,7 @@ if st.session_state.recommendation_results is not None:
                         with st.expander(f"**{gpu_name}**"):
                             st.info("No tuning commands available for this GPU")
 
-            with tab5:
+            with tab6:
                 st.markdown("### 📊 GPU Performance Comparison Table")
                 st.caption("Download or sort the complete performance data")
 

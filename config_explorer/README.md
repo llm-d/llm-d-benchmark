@@ -49,6 +49,17 @@ config-explorer plan --model Qwen/Qwen3-32B --gpu-memory 80 --max-model-len 1600
 # Run GPU recommendation and performance estimation (BentoML's roofline model)
 config-explorer estimate --model Qwen/Qwen3-32B --input-len 512 --output-len 128 --max-gpus 8
 
+# Human-readable output
+config-explorer estimate --model Qwen/Qwen3-32B --input-len 512 --output-len 128 --pretty
+
+# Override GPU costs with custom pricing
+config-explorer estimate --model Qwen/Qwen3-32B \
+  --input-len 512 --output-len 128 \
+  --custom-gpu-cost H100:30.50 \
+  --custom-gpu-cost A100:22 \
+  --custom-gpu-cost L40:25.00 \
+  --pretty
+
 # Start the Streamlit web app
 pip install -r config_explorer/requirements-streamlit.txt # one-time installation
 config-explorer start
@@ -107,6 +118,15 @@ The GPU Recommender uses BentoML's llm-optimizer roofline algorithm to provide s
 
 **Note**: You'll need a HuggingFace token set as the `HF_TOKEN` environment variable to access gated models.
 
+### Cost Information
+
+The GPU Recommender now displays cost information to help you find cost-effective GPU configurations:
+
+- **Default GPU Costs**: Built-in cost database based on cloud provider pricing (H200: $40/hr, L40S: $32/hr, H100: $35/hr, A100: $25/hr, L40: $28/hr, L4: $8/hr)
+- **Custom Cost Override**: Specify your own GPU costs for private infrastructure
+- **Cost-Based Sorting**: Sort results by cost per hour to find the most economical option
+
+**⚠️ IMPORTANT**: The default costs shown are **reference values for relative comparison only**. They do **NOT** represent actual pricing from any cloud provider. These are relative numbers to help compare GPU options. Always use custom costs that reflect your actual infrastructure pricing.
 
 ## Library
 

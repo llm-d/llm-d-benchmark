@@ -1,0 +1,43 @@
+{
+  "_disclaimer": "IMPORTANT: These costs are REFERENCE VALUES ONLY for relative comparison. They do NOT represent actual pricing from any cloud provider. Use custom costs for accurate pricing.",
+  "H100": {
+    "cost_per_hour": 35.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "H200": {
+    "cost_per_hour": 40.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "A100": {
+    "cost_per_hour": 25.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "A100-40GB": {
+    "cost_per_hour": 20.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "L20": {
+    "cost_per_hour": 15.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "L40": {
+    "cost_per_hour": 28.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "B100": {
+    "cost_per_hour": 50.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "B200": {
+    "cost_per_hour": 60.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  }
+}
