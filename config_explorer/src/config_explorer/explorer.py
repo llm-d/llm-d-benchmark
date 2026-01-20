@@ -785,18 +785,33 @@ def check_file(file: str) -> None:
         raise Exception(f'Invalid file: {file}')
 
 
-def mul(a: int | None, b: int | None) -> int | None:
+def mul(a: int | float | None, b: int | float | None) -> int | float | None:
     """Multiply two values, returning None if either value is None.
 
     Args:
-        a (int | None): First multiplicand.
-        b (int | None): Second multiplicand.
+        a (int | float | None): First multiplicand.
+        b (int | float | None): Second multiplicand.
 
     Returns:
-        int | None: Multiplied result if multiplicands exist, otherwise None.
+        int | float | None: Multiplied result if multiplicands exist, otherwise None.
     """
-    if a and b:
+    if a is not None and b is not None:
         return a * b
+    return None
+
+
+def div(a: int | float | None, b: int | float | None) -> float | None:
+    """Divide two values, returning None if either value is None or divisor is 0.
+
+    Args:
+        a (int | float | None): Dividend.
+        b (int | float | None): Divisor.
+
+    Returns:
+        float | None: Result if inputs exist, otherwise None.
+    """
+    if a is not None and b:
+        return a / b
     return None
 
 
@@ -1057,10 +1072,8 @@ def add_benchmark_report_to_df(
     e2el_mult = 1000 if report.metrics.latency.request_latency.units == Units.S else 1
 
     # Calculated metrics
-    thpt_per_gpu = None
-    if num_gpus:
-        thpt_per_gpu = report.metrics.throughput.output_tokens_per_sec / num_gpus
-    thpt_per_user = 1 / (mul(report.metrics.latency.time_per_output_token.mean, tpot_mult) / 1000)
+    thpt_per_gpu = div(report.metrics.throughput.output_tokens_per_sec, num_gpus)
+    thpt_per_user = div(1, (div(mul(report.metrics.latency.time_per_output_token.mean, tpot_mult), 1000)))
 
     # Scenario details
     engine = None
