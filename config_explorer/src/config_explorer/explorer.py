@@ -1259,7 +1259,15 @@ def get_scenarios(
         s_dict = {}
         if bounded:
             for ii, col_nn in enumerate(cols_nn):
-                s_dict[col_nn] = s_tuple[ii]
+                if isinstance(s_tuple, str):
+                    # If only a single non-numeric column exists,
+                    # runs_df.set_index(cols_nn) will be type 
+                    # pandas.core.indexes.base.Index rather than
+                    # pandas.core.indexes.multi.MultiIndex and s_tuple will be
+                    # the column name (string rather than tuple of strings)
+                    s_dict[col_nn] = s_tuple
+                else:
+                    s_dict[col_nn] = s_tuple[ii]
             # Get rows matching this scenario's non-numeric columns
             df = get_scenario_df(runs_df, s_dict)
             # Get min/max for numeric columns of this scenario
@@ -1281,7 +1289,15 @@ def get_scenarios(
                     s_dict['__le__' + col_num] = val_max
         else:
             for ii, col in enumerate(scenario_columns):
-                s_dict[col] = s_tuple[ii]
+                if isinstance(s_tuple, str):
+                    # If only a single scenario column is defined,
+                    # runs_df.set_index(scenario_columns) will be type 
+                    # pandas.core.indexes.base.Index rather than
+                    # pandas.core.indexes.multi.MultiIndex and s_tuple will be
+                    # the column name (string rather than tuple of strings)
+                    s_dict[col] = s_tuple
+                else:
+                    s_dict[col] = s_tuple[ii]
         if not all_na:
             # Add scenario only if there are rows were all columns have data
             scenarios.append(s_dict)
