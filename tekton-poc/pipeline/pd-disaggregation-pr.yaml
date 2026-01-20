@@ -1,0 +1,239 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: pd
+spec:
+  taskRunTemplate:
+    serviceAccountName: helm-installer
+  taskRunSpecs:
+    - pipelineTaskName: treatment
+      computeResources:
+        requests:
+          memory: "16Gi"
+          cpu: "8"
+          # memory: "32Gi"
+          # cpu: "16"
+        limits:
+          memory: "16Gi"
+          cpu: "8"
+          # memory: "32Gi"
+          # cpu: "16"
+  workspaces:
+    - name: data
+      persistentVolumeClaim:
+        claimName: workspace-pvc
+  params:
+    - name: targetNamespacePrefix
+      # This can be anything.
+      value: $(context.pipelineRun.namespace)
+    - name: model-id
+      value: "meta-llama/Llama-3.1-8B-Instruct"
+      # value: "meta-llama/Llama-3.1-70B-Instruct"
+
+    # Properties needed to evaluate stack capacity (will it be able to host the model)?
+    - name: validateCapacity
+      value: true
+    - name: behaviorOnValidationFailure
+      value: terminate
+    - name: maxModelLength
+      value: 16000
+    # will be set via treatment below
+    # - name: decodeReplicas
+    # - name: decodeTensorParallelism
+    - name: decodeDataParallelism
+      value: 1
+    # If not set, will be set to decodeTensorParallelism * decodeDataParallelism
+    # - name: decodeNumGpus
+
+    # will be set via treatment below
+    # - name: prefillReplicas
+    # - name: prefillTensorParallelism
+    - name: prefillDataParallelism
+      value: 1
+    # If not set, will be set to prefillTensorParallelism * prefillDataParallelism
+    # - name: prefillNumGpus
+
+    # Rely on default value
+    # Assume the same for prefill and decode
+    # - name: targetGpuMemoryUtilization
+
+    # Required
+    # Assume the same for prefill and decode
+    # TBD - attempt to read from the cluster
+    - name: gpuType
+      value: "NVIDIA-H100-80GB-HBM3"
+    - name: gpuMemory
+      value: 80 #GB
+
+    # Harness / Workload
+    - name: harnessName
+      value: vllm-benchmark
+    - name: harnessProfile
+      value: random_concurrent.yaml
+
+    # Output Location
+    - name: s3-keys
+      value: ibm-cos-secret
+    - name: s3-bucket
+      value: "cloud-object-storage-cos-standard-ere"
+    - name: s3-endpoint
+      value: "https://s3.us-east.cloud-object-storage.appdomain.cloud"
+
+    # Control
+    - name: debug
+      value: true
+
+  pipelineSpec:
+    workspaces:
+      - name: data
+    params:
+      - name: maxModelLength
+        default: ""
+      - name: decodeReplicas
+        default: ""
+      - name: decodeTensorParallelism
+        default: ""
+      - name: decodeDataParallelism
+        default: ""
+      - name: decodeNumGpus
+        default: ""
+      - name: prefillReplicas
+        default: ""
+      - name: prefillTensorParallelism
+        default: ""
+      - name: prefillDataParallelism
+        default: ""
+      - name: prefillNumGpus
+        default: ""
+
+    tasks:
+      - name: treatment
+        taskRef:
+          name: treatment
+        workspaces:
+          - name: data
+            workspace: data
+        params:
+          - name: model-id
+            value: $(params.model-id)
+
+          # Properties needed to evaluate stack capacity (will it be able to host the model)?
+          - name: validateCapacity
+            value: $(params.validateCapacity)
+          - name: behaviorOnValidationFailure
+            value: $(params.behaviorOnValidationFailure)
+
+          - name: maxModelLength
+            value: $(params.maxModelLength)
+
+          - name: decodeReplicas
+            value: $(params.decodeReplicas)
+          - name: decodeTensorParallelism
+            value: $(params.decodeTensorParallelism)
+          - name: decodeDataParallelism
+            value: $(params.decodeDataParallelism)
+          - name: decodeNumGpus
+            value: $(params.decodeNumGpus)
+
+          - name: prefillReplicas
+            value: $(params.prefillReplicas)
+          - name: prefillTensorParallelism
+            value: $(params.prefillTensorParallelism)
+          - name: prefillDataParallelism
+            value: $(params.prefillDataParallelism)
+          - name: prefillNumGpus
+            value: $(params.prefillNumGpus)
+
+          - name: gpuType
+            value: $(params.gpuType)
+          - name: gpuMemory
+            value: $(params.gpuMemory)
+
+          - name: targetNamespacePrefix
+            value: $(params.targetNamespacePrefix)
+          - name: stackBaseUrl
+            value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/pd-disaggregation/
+
+          - name: s3-keys
+            value: $(params.s3-keys)
+          - name: s3-bucket
+            value: $(params.s3-bucket)
+          - name: s3-endpoint
+            value: $(params.s3-endpoint)
+
+          - name: harnessName
+            value: $(params.harnessName)
+          - name: harnessProfile
+            value: $(params.harnessProfile)
+
+          - name: factorMapping
+            value: |
+              {
+                "modelservice": {
+                  "prefillReplicas": "prefill.replicas",
+                  "prefillTensorParallelism":  "prefill.parallelism.tensor",
+                  "decodeReplicas": "decode.replicas",
+                  "decodeTensorParallelism":  "decode.parallelism.tensor"
+                },
+                "gaie": {
+                  "gaiePluginConfig": "inferenceExtension.pluginsConfigFile"
+                },
+                "workload": {
+                  "max-concurrency": "max-concurrency",
+                  "num_prompts": "num-prompts",
+                  "question_len": "data.shared_prefix.question_len",
+                  "output_len": "data.shared_prefix.output_len"
+                }
+              }
+
+          - name: debug
+            value: "$(params.debug)"
+          - name: step-upload-results
+            value: false
+          - name: pipelineUID
+            value: "$(context.pipelineRun.uid)"
+
+        matrix:
+          include:
+            - name: combo-0
+              params:
+                - name: treatment
+                  value: |
+                    {
+                      "prefillReplicas": 1,
+                      "prefillTensorParallelism": 1,
+                      "decodeReplicas": 1,
+                      "decodeTensorParallelism": 2,
+                      "max-concurrency": 1,
+                      "num-prompts": 10
+                    }
+            # - name: combo-1
+            #   params:
+            #     - name: treatment
+            #       value: |
+            #         {
+            #           "prefillReplicas": 1,
+            #           "prefillTensorParallelism": 2,
+            #           "decodeReplicas": 1,
+            #           "decodeTensorParallelism": 1,
+            #           "max-concurrency": 1,
+            #           "num-prompts": 10
+            #         }
+
+          # params:
+          #   - name: max-concurrency
+          #     value:
+          #       - "1"
+          #       # - "8"
+          #       # - "32"
+          #       # - "64"
+          #       # - "128"
+          #       # - "256"
+          #   - name: num-prompts
+          #     value: 
+          #       - "10"
+          #       # - "80"
+          #       # - "320"
+          #       # - "640"
+          #       # - "1280"
+          #       # - "2560"
