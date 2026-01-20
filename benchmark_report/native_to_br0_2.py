@@ -98,6 +98,14 @@ def _populate_load() -> dict:
             value = None
         args[key] = value
 
+    # Import config file, if it exists
+    config_file = os.environ.get("LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME", "")
+    try:
+        with open(config_file, "r", encoding="UTF-8") as file:
+            config = yaml.safe_load(file)
+    except FileNotFoundError:
+        config = None
+
     br_dict = {
         "scenario": {
             "load": {
@@ -107,6 +115,7 @@ def _populate_load() -> dict:
                 },
                 "native": {
                     "args": args,
+                    "config": config,
                 },
             },
         },
@@ -433,7 +442,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
     )
 
     # Get CLI arguments, if available
-    args: dict[str, str] = get_nested(br_dict, ["scenario", "load", "native", "args"], {})
+    args: dict[str, str] = get_nested(
+        br_dict, ["scenario", "load", "native", "args"], {}
+    )
 
     ds_name = args.get("dataset-name", "sharegpt")
     source = LoadSource.RANDOM if ds_name == "random" else LoadSource.SAMPLED
@@ -447,7 +458,9 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
             isl_value = int(value)
             break
 
-    isl_dist = Distribution.FIXED if ds_name in ["random", "sonnet"] else Distribution.OTHER
+    isl_dist = (
+        Distribution.FIXED if ds_name in ["random", "sonnet"] else Distribution.OTHER
+    )
 
     # See if OSL is in args
     osl_value = None
@@ -614,9 +627,10 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
         )
     )
 
-
     # Get CLI arguments, if available
-    args: dict[str, str] = get_nested(br_dict, ["scenario", "load", "native", "args"], {})
+    args: dict[str, str] = get_nested(
+        br_dict, ["scenario", "load", "native", "args"], {}
+    )
 
     ds_name = args.get("dataset-name", "sharegpt")
     source = LoadSource.RANDOM if ds_name == "random" else LoadSource.SAMPLED
@@ -630,7 +644,9 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
             isl_value = int(value)
             break
 
-    isl_dist = Distribution.FIXED if ds_name in ["random", "sonnet"] else Distribution.OTHER
+    isl_dist = (
+        Distribution.FIXED if ds_name in ["random", "sonnet"] else Distribution.OTHER
+    )
 
     # See if OSL is in args
     osl_value = None
@@ -802,6 +818,17 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
     config = get_nested(br_dict, ["scenario", "load", "native", "config"], {})
     cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(config)))
 
+    data_type = get_nested(config, ["data", "type"])
+    source = LoadSource.UNKNOWN
+    if data_type:
+        # The "random" and "shared_prefix" load types sample randomly from the
+        # model vocabulary, while others sample from some source of text.
+        source = (
+            LoadSource.RANDOM
+            if data_type in ["random", "shared_prefix"]
+            else LoadSource.SAMPLED
+        )
+
     # Add to that dict the data from Inference Perf
     update_dict(
         br_dict,
@@ -821,13 +848,13 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                         "concurrency": get_nested(
                             results, ["load_summary", "concurrency"]
                         ),
-                        "source": LoadSource.RANDOM,  # TODO see https://github.com/kubernetes-sigs/inference-perf/blob/main/docs/config.md?plain=1#L42
+                        "source": source,
+                        # For ISL and OSL, If br_dict has config file from
+                        # _populate_benchmark_report_from_envars, get details
+                        # from there, otherwise get what is available from the
+                        # results file.
                         "input_seq_len": {
-                            "distribution": Distribution.OTHER,  #  TODO
-                            # If br_dict has config file from
-                            # _populate_benchmark_report_from_envars, get
-                            # details from there, otherwise get what is available
-                            # from results file.
+                            "distribution": Distribution.GAUSSIAN,
                             "value": get_nested(
                                 config,
                                 ["data", "input_distribution", "mean"],
@@ -847,6 +874,29 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                                 config,
                                 ["data", "input_distribution", "max"],
                                 get_nested(results, ["successes", "prompt_len", "max"]),
+                            ),
+                        },
+                        "output_seq_len": {
+                            "distribution": Distribution.GAUSSIAN,
+                            "value": get_nested(
+                                config,
+                                ["data", "output_distribution", "mean"],
+                                get_nested(
+                                    results, ["successes", "output_len", "mean"]
+                                ),
+                            ),
+                            "std_dev": get_nested(
+                                config, ["data", "output_distribution", "std"]
+                            ),
+                            "min": get_nested(
+                                config,
+                                ["data", "output_distribution", "min"],
+                                get_nested(results, ["successes", "output_len", "min"]),
+                            ),
+                            "max": get_nested(
+                                config,
+                                ["data", "output_distribution", "max"],
+                                get_nested(results, ["successes", "output_len", "max"]),
                             ),
                         },
                     },

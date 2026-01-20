@@ -169,10 +169,13 @@ class LoadSource(StrEnum):
             Tokens are randomly generated from vocabulary.
         SAMPLED: str
             Tokens are sampled from some data.
+        UNKNOWN: str
+            The source of tokens used is unknown.
     """
 
     RANDOM = auto()
     SAMPLED = auto()
+    UNKNOWN = auto()
 
 
 class LoadStandardized(BaseModel):
