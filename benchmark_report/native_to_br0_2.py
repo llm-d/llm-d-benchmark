@@ -432,6 +432,36 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
         )
     )
 
+    # Get CLI arguments, if available
+    args: dict[str, str] = get_nested(br_dict, ["scenario", "load", "native", "args"], {})
+
+    ds_name = args.get("dataset-name", "sharegpt")
+    source = LoadSource.RANDOM if ds_name == "random" else LoadSource.SAMPLED
+
+    # Calculate ISL, as fallback option
+    isl_value = results.get("total_input_tokens", 0) / results.get("completed", -1)
+    # Get requested ISL, if it is in arguments from --sonnet-input-len or
+    # --random-input-len
+    for arg, value in args.items():
+        if arg.endswith("input-len"):
+            isl_value = int(value)
+            break
+
+    isl_dist = Distribution.FIXED if ds_name in ["random", "sonnet"] else Distribution.OTHER
+
+    # See if OSL is in args
+    osl_value = None
+    for arg, value in args.items():
+        if arg.endswith("output-len"):
+            osl_value = int(value)
+            break
+    osl = None
+    if osl_value:
+        osl = {
+            "value": osl_value,
+            "distribution": Distribution.FIXED,
+        }
+
     # Add to that dict the data from vLLM benchmark.
     update_dict(
         br_dict,
@@ -448,11 +478,12 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                         "stage": 0,
                         "rate_qps": results.get("request_rate"),
                         "concurrency": results.get("max_concurrency"),
-                        "source": LoadSource.RANDOM,  # TODO
+                        "source": source,
                         "input_seq_len": {
-                            "distribution": Distribution.FIXED,  # TODO
-                            "value": 1,  # TODO
+                            "distribution": isl_dist,
+                            "value": isl_value,
                         },
+                        "output_seq_len": osl,
                     },
                 },
             },
@@ -583,6 +614,37 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
         )
     )
 
+
+    # Get CLI arguments, if available
+    args: dict[str, str] = get_nested(br_dict, ["scenario", "load", "native", "args"], {})
+
+    ds_name = args.get("dataset-name", "sharegpt")
+    source = LoadSource.RANDOM if ds_name == "random" else LoadSource.SAMPLED
+
+    # Calculate ISL, as fallback option
+    isl_value = results.get("total_input_tokens", 0) / results.get("completed", -1)
+    # Get requested ISL, if it is in arguments from --sonnet-input-len or
+    # --random-input-len
+    for arg, value in args.items():
+        if arg.endswith("input-len"):
+            isl_value = int(value)
+            break
+
+    isl_dist = Distribution.FIXED if ds_name in ["random", "sonnet"] else Distribution.OTHER
+
+    # See if OSL is in args
+    osl_value = None
+    for arg, value in args.items():
+        if arg.endswith("output-len"):
+            osl_value = int(value)
+            break
+    osl = None
+    if osl_value:
+        osl = {
+            "value": osl_value,
+            "distribution": Distribution.FIXED,
+        }
+
     # Add to that dict the data from vLLM benchmark.
     update_dict(
         br_dict,
@@ -604,11 +666,12 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
                         "stage": 0,
                         "rate_qps": results.get("request_rate"),
                         "concurrency": results.get("max_concurrency"),
-                        "source": LoadSource.RANDOM,  # TODO
+                        "source": source,
                         "input_seq_len": {
-                            "distribution": Distribution.FIXED,  # TODO
-                            "value": 1,  # TODO
+                            "distribution": isl_dist,
+                            "value": isl_value,
                         },
+                        "output_seq_len": osl,
                     },
                 },
             },
