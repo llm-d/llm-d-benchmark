@@ -103,7 +103,7 @@ def _populate_load() -> dict:
     try:
         with open(config_file, "r", encoding="UTF-8") as file:
             config = yaml.safe_load(file)
-    except FileNotFoundError:
+    except (FileNotFoundError, IsADirectoryError):
         config = None
 
     br_dict = {
@@ -820,6 +820,8 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
 
     data_type = get_nested(config, ["data", "type"])
     source = LoadSource.UNKNOWN
+    prefix = None
+    multi_turn = None
     if data_type:
         # The "random" and "shared_prefix" load types sample randomly from the
         # model vocabulary, while others sample from some source of text.
@@ -828,6 +830,24 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
             if data_type in ["random", "shared_prefix"]
             else LoadSource.SAMPLED
         )
+        if data_type == "shared_prefix":
+            prefix = {
+                "prefix_len": {
+                    "distribution": Distribution.FIXED,
+                    "value": get_nested(
+                        config, ["data", "shared_prefix", "system_prompt_len"]
+                    ),
+                },
+                "num_groups": get_nested(
+                    config, ["data", "shared_prefix", "num_groups"]
+                ),
+                "num_users_per_group": get_nested(
+                    config, ["data", "shared_prefix", "num_prompts_per_group"]
+                ),
+                "num_prefixes": 1,
+            }
+            if get_nested(config, ["data", "shared_prefix", "enable_multi_turn_chat"]):
+                multi_turn = {"enabled": True}
 
     # Add to that dict the data from Inference Perf
     update_dict(
@@ -899,6 +919,8 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                                 get_nested(results, ["successes", "output_len", "max"]),
                             ),
                         },
+                        "prefix": prefix,
+                        "multi_turn": multi_turn,
                     },
                     "native": {
                         "config": config,
@@ -1658,7 +1680,9 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
     br_dict = _populate_benchmark_report_from_envars()
 
     native = get_nested(br_dict, ["scenario", "load", "native"])
-    update_dict(native, {"args": data["args"]})
+    # If config file was loaded, use that, otherwise extract args from results file
+    if not native.get("config"):
+        native["config"] = data["args"]
     cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(native)))
 
     # Add to that dict the data from GuideLLM
