@@ -185,8 +185,7 @@ if enable_per_gpu_config:
 
 # Cost Configuration
 st.sidebar.subheader("💰 Custom GPU Costs (Optional)")
-st.sidebar.caption("⚠️ Default costs are reference values for relative comparison only")
-st.sidebar.caption("Override with your actual infrastructure costs")
+st.sidebar.caption("⚠️ Default costs are reference values for relative comparison only. Override with your actual infrastructure costs.")
 
 # Import CostManager to get default costs
 from config_explorer.recommender.cost_manager import CostManager
@@ -739,8 +738,12 @@ if st.session_state.recommendation_results is not None:
                     st.markdown("---")
 
                     # Cost vs Performance scatter
-                    st.markdown("#### 📊 Cost vs Performance")
+                    st.markdown("#### 📊 Performance Cost Analysis")
                     if 'Throughput (tokens/s)' in df.columns:
+                        st.caption("💡 Lower-right quadrant represents better value (high throughput, low latency)")
+                        st.caption("🔵 Bubble size  represents cost per hour (larger bubbles = higher cost)")
+                        st.caption("Small bubbles near the lower-right are the most performant and cost-effective solutions.")
+
                         # Filter out rows with NaN cost values
                         df_cost_perf = df[df['Cost per Hour ($)'].notna()].copy()
 
@@ -748,9 +751,9 @@ if st.session_state.recommendation_results is not None:
                             fig_cost_perf = px.scatter(
                                 df_cost_perf,
                                 x='Throughput (tokens/s)',
-                                y='Cost per Hour ($)',
+                                y='E2E Latency (s)',
                                 text='GPU',
-                                title='Cost vs Throughput',
+                                title='E2E Latency vs Throughput',
                                 size='Cost per Hour ($)',
                                 hover_data=['TTFT (ms)', 'ITL (ms)'] if 'TTFT (ms)' in df_cost_perf.columns else None
                             )
@@ -760,13 +763,11 @@ if st.session_state.recommendation_results is not None:
                             )
                             fig_cost_perf.update_layout(
                                 xaxis_title="Throughput (tokens/s)",
-                                yaxis_title="Cost per Hour ($)",
+                                yaxis_title="E2E Latency (s)",
                                 height=500
                             )
                             st.plotly_chart(fig_cost_perf, use_container_width=True, key="cost_performance_scatter")
 
-                            st.caption("💡 Lower-left quadrant represents better value (high performance, low cost)")
-                            st.caption("🔵 Bubble size represents cost per hour (larger bubbles = higher cost)")
                         else:
                             st.info("Cost data not available for performance comparison")
                 else:
