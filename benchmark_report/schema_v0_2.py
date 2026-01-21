@@ -103,18 +103,15 @@ class Distribution(StrEnum):
             Length is a fixed value.
         GAUSSIAN: str
             Gaussian distribution, with a mean and standard deviation.
-        RANDOM: str
-            Uniform distribution between a minimum and maximum value.
         UNIFORM: str
-            Alias for random distribution.
+            Uniform distribution between a minimum and maximum value.
         OTHER: str
             An otherwise undefined distribution.
     """
 
     FIXED = auto()
     GAUSSIAN = auto()
-    RANDOM = auto()
-    UNIFORM = RANDOM
+    UNIFORM = auto()
     OTHER = auto()
 
 

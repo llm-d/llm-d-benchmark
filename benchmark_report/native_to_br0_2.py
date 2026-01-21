@@ -1685,6 +1685,57 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
         native["config"] = data["args"]
     cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(native)))
 
+    input_args_list = get_nested(data, ["args", "data"])
+    if len(input_args_list) > 1:
+        sys.stderr.write(
+            "WARNING: Multiple data sources not supported in conversion, will"
+            " only record first source\n"
+        )
+    # Deserialize input arguments
+    input_args = yaml.safe_load(input_args_list[0])
+
+    isl = {
+        "value": input_args.get("prompt_tokens"),
+        "std_dev": input_args.get("prompt_tokens_stdev"),
+        "min": input_args.get("prompt_tokens_min"),
+        "max": input_args.get("prompt_tokens_max"),
+    }
+    if isl.get("std_dev"):
+        isl["distribution"] = Distribution.GAUSSIAN
+    else:
+        if isl.get("min"):
+            isl["distribution"] = Distribution.UNIFORM
+        else:
+            isl["distribution"] = Distribution.FIXED
+
+    osl = {
+        "value": input_args.get("output_tokens"),
+        "std_dev": input_args.get("output_tokens_stdev"),
+        "min": input_args.get("output_tokens_min"),
+        "max": input_args.get("output_tokens_max"),
+    }
+    if osl.get("std_dev"):
+        osl["distribution"] = Distribution.GAUSSIAN
+    else:
+        if osl.get("min"):
+            osl["distribution"] = Distribution.UNIFORM
+        else:
+            osl["distribution"] = Distribution.FIXED
+
+    if "source" in input_args:
+        source = LoadSource.SAMPLED
+    else:
+        source = LoadSource.RANDOM
+
+    profile = get_nested(data, ["args", "profile"])
+
+    rate_qps = None
+    concurrency = None
+    if profile in ["async", "constant", "poisson"]:
+        rate_qps = get_nested(data, ["args", "rate"])[index]
+    elif profile in ["concurrent", "throughput"]:
+        concurrency = int(get_nested(data, ["args", "rate"])[index])
+
     # Add to that dict the data from GuideLLM
     update_dict(
         br_dict,
@@ -1705,11 +1756,11 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                     "standardized": {
                         "tool": WorkloadGenerator.GUIDELLM,
                         "stage": index,
-                        "source": LoadSource.RANDOM,  # TODO
-                        "input_seq_len": {
-                            "distribution": Distribution.FIXED,  # TODO
-                            "value": 1,  # TODO
-                        },
+                        "rate_qps": rate_qps,
+                        "concurrency": concurrency,
+                        "source": source,
+                        "input_seq_len": isl,
+                        "output_seq_len": osl,
                     },
                     "native": native,
                 },
