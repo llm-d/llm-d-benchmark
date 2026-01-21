@@ -1736,6 +1736,26 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
     elif profile in ["concurrent", "throughput"]:
         concurrency = int(get_nested(data, ["args", "rate"])[index])
 
+    prefix = None
+    if "prefix_tokens" in input_args:
+        prefix = {
+            "prefix_len": {
+                "distribution": Distribution.FIXED,
+                "value": input_args.get("prefix_tokens"),
+            },
+            "num_groups": 1,
+            "num_users_per_group": 1,
+            "num_prefixes": input_args.get("prefix_count"),
+        }
+    elif "prefix_buckets" in input_args:
+        sys.stderr.write(
+            "WARNING: prefix_buckets used, not capturing in standardized"
+            " section, as description there is too limited. Utilize native"
+            " section to properly capture.\n"
+        )
+
+    multi_turn = None
+
     # Add to that dict the data from GuideLLM
     update_dict(
         br_dict,
@@ -1761,6 +1781,8 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                         "source": source,
                         "input_seq_len": isl,
                         "output_seq_len": osl,
+                        "prefix": prefix,
+                        "multi_turn": multi_turn,
                     },
                     "native": native,
                 },
