@@ -13,8 +13,18 @@ class CostManager:
         
         Args:
             custom_costs: Optional dict mapping GPU names to custom costs ($/hour)
+            
+        Raises:
+            ValueError: If custom_costs contains invalid values
         """
         self.default_costs = self._load_default_costs()
+        
+        # Validate custom costs
+        if custom_costs:
+            for gpu_name, cost in custom_costs.items():
+                if cost is not None and (not isinstance(cost, (int, float)) or cost < 0):
+                    raise ValueError(f"Invalid cost for {gpu_name}: {cost}. Cost must be a non-negative number.")
+        
         self.custom_costs = custom_costs or {}
     
     def get_cost(self, gpu_name: str, num_gpus: int = 1) -> Optional[float]:
@@ -73,8 +83,13 @@ class CostManager:
         """
         return gpu_name in self.custom_costs or gpu_name in self.default_costs
     
-    def _load_default_costs(self) -> Dict[str, dict]:
-        """Load default costs from JSON file"""
+    def _load_default_costs(self) -> Dict[str, Dict]:
+        """
+        Load default costs from JSON file
+        
+        Returns:
+            Dict mapping GPU names to cost data dictionaries
+        """
         # Navigate from recommender module to config_explorer root
         cost_file = Path(__file__).parent.parent.parent.parent / "gpu_costs.json"
         

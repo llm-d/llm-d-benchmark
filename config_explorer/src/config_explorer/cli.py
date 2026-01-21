@@ -229,10 +229,10 @@ def estimate_performance(args):
             custom_gpu_costs = {}
             for item in args.custom_gpu_cost:
                 try:
-                    gpu_name, cost = item.split(':')
-                    custom_gpu_costs[gpu_name] = float(cost)
+                    gpu_name, cost_str = item.split(':', 1)
+                    custom_gpu_costs[gpu_name.strip()] = float(cost_str)
                 except ValueError:
-                    sys.exit(f"Error: Invalid format for --custom-gpu-cost: {item}. Expected format: GPU_NAME:COST")
+                    sys.exit(f"Error: Invalid cost format '{item}'. Use GPU_NAME:COST (e.g., H100:30.5)")
 
         print(f"Running performance estimation for {args.model}...")
         print(f"Analyzing {len(gpu_list)} GPU type(s)...")
@@ -300,7 +300,7 @@ def estimate_performance(args):
             print("\n📊 Results sorted by cost (lowest to highest)")
             print("    Only showing GPUs that meet performance requirements")
             print("="*80)
-            
+
             # Show lowest cost GPU
             if "lowest_cost" in performance_summary["estimated_best_performance"]:
                 best_cost_info = performance_summary["estimated_best_performance"]["lowest_cost"]
@@ -312,7 +312,7 @@ def estimate_performance(args):
                     print(f"   TTFT: {best_cost_info['ttft_ms']:.2f} ms")
                 if 'itl_ms' in best_cost_info:
                     print(f"   ITL: {best_cost_info['itl_ms']:.2f} ms")
-            
+
             # Show sorted results
             sorted_results = recommender.get_results_sorted_by_cost()
             if sorted_results:
@@ -321,28 +321,28 @@ def estimate_performance(args):
                 for idx, (gpu_name, cost, _) in enumerate(sorted_results, 1):
                     gpu_data = performance_summary["gpu_results"].get(gpu_name, {})
                     best_config = gpu_data.get("best_latency", {})
-                    
+
                     print(f"\n{idx}. {gpu_name}")
                     print(f"   💰 Cost: ${cost:.2f}/hour")
-                    
+
                     if best_config:
                         throughput = best_config.get("throughput_tps", "N/A")
                         ttft = best_config.get("ttft_ms", "N/A")
                         itl = best_config.get("itl_ms", "N/A")
                         num_gpus = best_config.get("num_gpus", "N/A")
                         tp = best_config.get("tp", "N/A")
-                        
+
                         print(f"   🚀 Throughput: {throughput} tokens/s")
                         print(f"   ⚡ TTFT: {ttft} ms | ITL: {itl} ms")
                         print(f"   🔧 Config: {num_gpus} GPU(s), TP={tp}")
-            
+
             # Show failed GPUs if verbose
             if args.verbose and failed_gpus:
                 print(f"\n❌ Failed GPUs ({len(failed_gpus)}):")
                 print("-" * 80)
                 for gpu_name, error in failed_gpus.items():
                     print(f"   • {gpu_name}: {error}")
-            
+
             print("\n" + "="*80)
         else:
             # JSON output (default)
