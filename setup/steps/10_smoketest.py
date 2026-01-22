@@ -35,8 +35,8 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     """
 
     announce("🔍 Checking if current deployment was successful...")
-    dry_run = int(ev.get("control_dry_run", 0))
-    verbose = int(ev.get("control_verbose", 0))
+    dry_run = ev["control_dry_run"]
+    verbose = ev["control_verbose"]
 
     """
     Checking if service/gateway was successfully deployed
@@ -144,8 +144,7 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
         if dry_run:
             announce(f"       ✅ [DRY RUN] Pod ip \"{pod_ip}\" responded successfully ({current_model})")
         else:
-            image_url = get_image(ev['image_registry'], ev['image_repo'], ev['image_name'], ev['image_tag'], False, True)
-            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev['vllm_common_namespace'], image_url, pod_ip, ev['vllm_common_inference_port'])
+            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, pod_ip)
             if received_model_name == current_model:
                 announce(f"       ✅ Pod ip \"{pod_ip}\" responded successfully ({received_model_name})")
             else:
@@ -158,8 +157,7 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     if dry_run:
         announce(f"✅ [DRY RUN] Service responds successfully ({current_model})")
     else:
-        image_url = get_image(ev['image_registry'], ev['image_repo'], ev['image_name'], ev['image_tag'], False, True)
-        received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev['vllm_common_namespace'], image_url, service_ip, "80")
+        received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, service_ip, "80")
         if received_model_name == current_model:
             announce(f"✅ Service responds successfully ({received_model_name})")
         else:
@@ -190,9 +188,9 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     if ev['control_deploy_is_openshift'] == "1" and route_url:
         announce(f"🚀 Testing external route \"{route_url}\"...")
         if is_standalone_deployment(ev):
-            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev['vllm_common_namespace'], image_url, route_url, '80')
+            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, route_url, '80')
         else:
-            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev['vllm_common_namespace'], image_url, route_url, '80')
+            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, route_url, '80')
         if received_model_name == current_model:
             announce(f"✅ External route responds successfully ({received_model_name})")
         else:

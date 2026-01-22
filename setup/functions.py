@@ -1081,7 +1081,7 @@ def propagate_common_to_standup_methods(ev: dict, prefix: str, entry: str) :
     for method in [ 'standalone' , 'modelservice_decode', 'modelservice_prefill'] :
         msv = f"{prefix}_{method}_{entry}"
         if msv in ev :
-            if ev[msv] == "auto" :
+            if ev[msv] == "auto" or not ev[msv] :
                 ev[msv] = ev[f"{prefix}_common_{entry}"]
     return True
 
@@ -1106,7 +1106,6 @@ def check_accelerator(ev: dict):
                     ev["vllm_common_accelerator_resource"] = "nvidia.com/gpu"
 
                 propagate_common_to_standup_methods(ev, "vllm", "accelerator_resource")
-
 
                 ev["vllm_common_affinity"] = (
                     f'{ev["vllm_common_accelerator_resource"]}:{found_accelerator}'
@@ -1141,6 +1140,9 @@ def check_network(ev: dict):
     Equivalent to the bash check_affinity function.
     """
     if ev["vllm_common_network_resource"] == "auto":
+        if not ev["vllm_common_network_nr"] :
+            ev["vllm_common_network_nr"] = "auto"
+
         if not ev["control_deploy_is_minikube"] :
 
             found_network_resource = None
@@ -1400,7 +1402,6 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
             return ""
 
 def add_resources(ev:dict, identifier: str) -> [str, str]:
-
     limits_resources = []
     requests_resources = []
 
@@ -1412,29 +1413,28 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
         identifier = f"modelservice_{identifier}"
         section_indent = " " * 8
 
-    if ev["control_environment_type_standalone_active"] :
-        accelerator_resource = ev[f"vllm_{identifier}_accelerator_resource"]
+    accelerator_resource = ev[f"vllm_{identifier}_accelerator_resource"]
 
-        if accelerator_resource == "auto":
-            accelerator_resource = "nvidia.com/gpu"
+    if accelerator_resource == "auto":
+        accelerator_resource = "nvidia.com/gpu"
 
-        accelerator_nr = ev[f"vllm_{identifier}_accelerator_nr"]
+    accelerator_nr = ev[f"vllm_{identifier}_accelerator_nr"]
 
-        data_local_parallelism = ev[f"vllm_{identifier}_data_local_parallelism"]
-        tensor_parallelism = ev[f"vllm_{identifier}_tensor_parallelism"]
+    data_local_parallelism = ev[f"vllm_{identifier}_data_local_parallelism"]
+    tensor_parallelism = ev[f"vllm_{identifier}_tensor_parallelism"]
 
-        accelerator_count = get_accelerator_nr(
-            accelerator_nr, tensor_parallelism, data_local_parallelism
-        )
+    accelerator_count = get_accelerator_nr(
+        accelerator_nr, tensor_parallelism, data_local_parallelism
+    )
 
     cpu_mem = ev[f"vllm_{identifier}_cpu_mem"]
     cpu_nr = ev[f"vllm_{identifier}_cpu_nr"]
 
-    ephemeral_storage_resource = ev.get("vllm_common_ephemeral_storage_resource", "")
+    ephemeral_storage_resource = ev["vllm_common_ephemeral_storage_resource"]
     ephemeral_storage = ev[f"vllm_{identifier}_ephemeral_storage"]
 
-    decode_network_resource = ev.get("vllm_modelservice_decode_network_resource", "")
-    decode_network_nr = ev.get("vllm_modelservice_decode_network_nr", "")
+    decode_network_resource = ev["vllm_modelservice_decode_network_resource"]
+    decode_network_nr = ev["vllm_modelservice_decode_network_nr"]
 
     network_resource = ev[f"vllm_{identifier}_network_resource"]
     network_nr = ev[f"vllm_{identifier}_network_nr"]
@@ -1453,18 +1453,17 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
             f'{section_indent}{ephemeral_storage_resource}: "{ephemeral_storage}"'
         )
 
-    if ev["control_environment_type_standalone_active"] :
-        if (
-            accelerator_resource
-            and accelerator_count
-            and str(accelerator_count) != "0"
-        ):
-            limits_resources.append(
-                f'{section_indent}{accelerator_resource}: "{accelerator_count}"'
-            )
-            requests_resources.append(
-                f'{section_indent}{accelerator_resource}: "{accelerator_count}"'
-            )
+    if (
+        accelerator_resource
+        and accelerator_count
+        and str(accelerator_count) != "0"
+    ):
+        limits_resources.append(
+            f'{section_indent}{accelerator_resource}: "{accelerator_count}"'
+        )
+        requests_resources.append(
+            f'{section_indent}{accelerator_resource}: "{accelerator_count}"'
+        )
 
     if network_resource and network_nr:
         limits_resources.append(
@@ -1752,17 +1751,22 @@ def get_rand_string(length: int = 8):
 
 def get_model_name_from_pod(api: pykube.HTTPClient,
                             client: any,
-                            namespace: str,
-                            image: str,
+                            ev : dict,
                             ip: str,
-                            port: str,
-                            period: int = 5,
+                            port: str = "auto",
+                            period: int = 10,
                             timeout: int = 60):
     """
     Get model name by starting/running a pod
     """
     total_attempts = timeout/period
     current_attempts = 0
+    valid_model_name = False
+    image = get_image(ev['image_registry'], ev['image_repo'], ev['image_name'], ev['image_tag'], False, True)
+
+    if port == "auto" :
+        port = ev['vllm_common_inference_port']
+
     while current_attempts <= total_attempts :
         if not ip :
             return "empty", "N/A"
@@ -1776,7 +1780,7 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
         curl_command = f"curl --no-progress-meter {ip}"
         full_command = ["/bin/bash", "-c", f"curl --no-progress-meter {ip}"]
         pod_manifest = client.V1Pod(
-            metadata=client.V1ObjectMeta(name=pod_name, namespace=namespace),
+            metadata=client.V1ObjectMeta(name=pod_name, namespace=ev['vllm_common_namespace'], labels={"llm-d.ai/id": f"{pod_name}"}),
             spec=client.V1PodSpec(
                 restart_policy="Never",
                 containers=[
@@ -1786,33 +1790,27 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
         )
 
         api_instance = client.CoreV1Api()
-        api_instance.create_namespaced_pod(namespace=namespace, body=pod_manifest)
+        api_instance.create_namespaced_pod(namespace=ev['vllm_common_namespace'], body=pod_manifest)
 
         model_name = "pod never started"
-        sca = 0
-        while sca <= total_attempts :
-            pod_status = api_instance.read_namespaced_pod_status(pod_name, namespace)
-            if pod_status.status.phase != "Pending":
-                break
-            sca += 1
-            time.sleep(1)
+        result =  wait_for_pods_created_running_ready(api_instance, ev, 1, pod_name)
+        if result == 0:
 
-
-        pod_logs = api_instance.read_namespaced_pod_log(
-            name=pod_name, namespace=namespace, tail_lines=100
-        )
-        valid_model_name = False
-        model_name = "empty"
-        if pod_logs:
-            if pod_logs.count("'id': '"):
-                model_name = pod_logs.split("'id': '")[1].split("', '")[0]
-                valid_model_name = True
-            else:
-                model_name = f"malformed ({model_name})"
+            pod_logs = api_instance.read_namespaced_pod_log(
+                name=pod_name, namespace=ev['vllm_common_namespace'], tail_lines=100
+            )
+            valid_model_name = False
+            model_name = "empty"
+            if pod_logs:
+                if pod_logs.count("'id': '"):
+                    model_name = pod_logs.split("'id': '")[1].split("', '")[0]
+                    valid_model_name = True
+                else:
+                    model_name = f"malformed ({model_name})"
 
         api_instance.delete_namespaced_pod(
             name=pod_name,
-            namespace=namespace,
+            namespace=ev['vllm_common_namespace'],
             body=k8s_client.V1DeleteOptions(
                 propagation_policy="Foreground", grace_period_seconds=10
             ),
@@ -1820,6 +1818,7 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
 
         if valid_model_name :
             break
+
         current_attempts += 1
         time.sleep(period)
 
@@ -1880,10 +1879,16 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
     ev["control_wait_timeout"] = int(ev["control_wait_timeout"])
     if component in [ "both", "decode", "prefill" ] :
         label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}"
+        silent = False
     elif component in [ "gateway" ] :
         label_selector = f"gateway.networking.k8s.io/gateway-name=infra-{ev['vllm_modelservice_release']}-inference-gateway"
+        silent = False
     elif component in [ "inferencepool" ] :
         label_selector = f"inferencepool={ev['deploy_current_model_id_label']}-gaie-epp"
+        silent = False
+    elif component.count("testinference-pod") :
+        label_selector = f"llm-d.ai/id={component}"
+        silent = True
     else :
         announce(f"ERROR: Unknown component ({component})")
         return 10
@@ -1891,9 +1896,10 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
     if not dry_run and int(component_nr) > 0:
         delay = int(ev["control_wait_period"])
         max_retries = int(ev["control_wait_timeout"]/delay)
-        announce(
-            f'⏳ Waiting for all ({component_nr}) "{component}" pods serving model to be in "Running" state (timeout={ev["control_wait_timeout"]}s/{max_retries} tries)...'
-        )
+        if not silent :
+            announce(
+                f'⏳ Waiting for all ({component_nr}) "{component}" pods serving model to be in "Running" state (timeout={ev["control_wait_timeout"]}s/{max_retries} tries)...'
+            )
         pod_create_list = []
         for attempt in range(max_retries):
             try:
@@ -1907,42 +1913,59 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
                         if pod.status.init_container_statuses and (len(pod_running_list) < int(component_nr)):
                             for init_container_status in pod.status.init_container_statuses:
                                 if init_container_status.state and init_container_status.state.waiting and init_container_status.state.waiting.reason == "CrashLoopBackOff":
-                                    announce(f"ERROR: init:CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
+                                    if not silent :
+                                        announce(f"ERROR: init:CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
                                     result = 1
                                     return result
                                 elif init_container_status.state.terminated and init_container_status.state.terminated.exit_code not in (0, None):
-                                    announce(f"ERROR: Crashed init:container in pod: {pod.metadata.name}, container: {container_status.name}")
+                                    if not silent :
+                                        announce(f"ERROR: Crashed init:container in pod: {pod.metadata.name}, container: {container_status.name}")
                                     result = 2
                                     return result
                         if pod.status.container_statuses:
                             if pod.metadata.name not in pod_create_list:
-                                announce(f"✅     \"{pod.metadata.name}\" ({component}) pod serving model created")
+                                if not silent :
+                                    announce(f"✅     \"{pod.metadata.name}\" ({component}) pod created")
                                 pod_create_list.append(pod.metadata.name)
                             for container_status in pod.status.container_statuses:
                                 if container_status.state.waiting and container_status.state.waiting.reason == "CrashLoopBackOff":
-                                    announce(f"ERROR: CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
+                                    if not silent :
+                                        announce(f"ERROR: CrashLoopBackOff in pod: {pod.metadata.name}, container: {container_status.name}")
                                     result = 3
                                     return result
-                                elif container_status.state.terminated and container_status.state.terminated.exit_code not in (0, None):
-                                    announce(f"ERROR: Crashed container in pod: {pod.metadata.name}, container: {container_status.name}")
-                                    result = 4
-                                    return result
+                                elif container_status.state.terminated :
+
+                                    if container_status.state.terminated.exit_code == 0 :
+                                        if not silent :
+                                            announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod complete")
+                                        result = 0
+                                        return result
+
+                                    if container_status.state.terminated.exit_code not in (0, None):
+                                        if not silent :
+                                            announce(f"ERROR: Crashed container in pod: {pod.metadata.name}, container: {container_status.name}")
+                                        result = 4
+                                        return result
+
                             if pod.metadata.name not in pod_running_list and all(cs.state.running for cs in pod.status.container_statuses):
-                                announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model running")
-                                announce(f'⏳ Waiting for all ({component_nr}) "{component}" pods to be Ready (timeout={int(ev["control_wait_timeout"])}s)...')
+                                if not silent :
+                                    announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod running")
+                                    announce(f'⏳ Waiting for all ({component_nr}) "{component}" pods to be Ready (timeout={int(ev["control_wait_timeout"])}s)...')
                                 pod_running_list.append(pod.metadata.name)
                             if pod.metadata.name not in pod_ready_list and all(cs.ready for cs in pod.status.container_statuses):
-                                announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod serving model ready")
+                                announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod ready")
                                 pod_ready_list.append(pod.metadata.name)
                                 if len(pod_create_list) == len(pod_ready_list) and len(pod_ready_list) == int(component_nr):
                                     result = 0
                                     return result
             except (Exception, ProtocolError) as e:
                 if "Response ended prematurely" in str(e):
-                    announce(f"WARNING: {e}, NOT-FATAL, retrying in {delay} seconds...")
+                    if not silent :
+                        announce(f"WARNING: {e}, NOT-FATAL, retrying in {delay} seconds...")
                     time.sleep(delay)
                 else:
-                    announce(f"ERROR: Exception occured while waiting for ({component}) pods : {e}")
+                    if not silent :
+                        announce(f"ERROR: Exception occured while waiting for ({component}) pods : {e}")
                     result = 5
                     return result
             finally:

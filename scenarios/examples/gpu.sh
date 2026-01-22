@@ -4,6 +4,7 @@
 
 # Model parameters
 #export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic"
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-vision-3.3-2b
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-speech-3.3-8b
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-8b-instruct
@@ -34,14 +35,13 @@
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-A100-SXM4-80GB        # OpenShift
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu                                      # ANY GPU (useful for Minikube)
 
-#             Uncomment to request specific network devices
-#########export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/roce_gdr
-#######export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=rdma/ib
-#########export LLMDBENCH_VLLM_COMMON_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:compute-q0v0
-#########export LLMDBENCH_VLLM_COMMON_NETWORK_NR=1
+# Uncomment ( ######## ) the following line to enable multi-nic
+######## export LLMDBENCH_VLLM_COMMON_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:multi-nic-compute
+# Uncomment ( ###### ) the following to enable automatic detection of network acceleration (roce/gdr or rdma/ib)
+###### export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=auto
 
 # Standalone Parameters
-#export LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=1 # (default is "1")
+#export LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=2 # (default is "1")
 #export LLMDBENCH_VLLM_COMMON_REPLICAS=1 # (default is "1")
 
 #export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS=$(mktemp)
@@ -53,6 +53,7 @@
 #- name: preprocesses
 #  mountPath: /setup/preprocess
 #EOF
+
 #export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES=$(mktemp)
 #cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES}
 #- name: extra-vol
@@ -60,13 +61,26 @@
 #    claimName: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME
 #- name: preprocesses
 #  configMap:
-#    defaultMode: 320
+#    defaultMode: 0755
 #    name: llm-d-benchmark-preprocesses
 #- name: dshm
 #  emptyDir:
 #    medium: Memory
 #    sizeLimit: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM
 #EOF
+
+#export LLMDBENCH_VLLM_COMMON_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
+# source preprocessor script that will install NVIDIA Nsight Systems (nsys) for vllm execution profiling
+# Remember to replace "vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL" with
+#"nsys profile --trace cuda,nvtx --cuda-graph-trace node vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL"
+########export LLMDBENCH_VLLM_COMMON_PREPROCESS="source /setup/preprocess/install_nsys.sh"
+
+# source preprocessor script that will install libraries for some load formats and set env. variables
+# run preprocessor python that will change the debug log date format and pre-serialize a model when using
+# tensorizer load format
+######export LLMDBENCH_VLLM_COMMON_PREPROCESS="source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
+
+export LLMDBENCH_VLLM_STANDALONE_PREPROCESS=$LLMDBENCH_VLLM_COMMON_PREPROCESS
 
 #export LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT=auto # (default is "auto")
 #export LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT=safetensors
@@ -81,20 +95,11 @@
 ######export LLMDBENCH_VLLM_COMMON_VLLM_WORKER_MULTIPROC_METHOD=fork
 ######export LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG="{ \\\"enable_multithread_load\\\": true, \\\"num_threads\\\": 8 }"
 
-# source preprocessor script that will install libraries for some load formats and set env. variables
-# run preprocessor python that will change the debug log date format and pre-serialize a model when using
-# tensorizer load format
-######export LLMDBENCH_VLLM_STANDALONE_PREPROCESS="source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
-
 ######export LLMDBENCH_VLLM_COMMON_VLLM_CACHE_ROOT=/mnt/extravol
-######export LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME=extra-vol
+#export LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME=extra-vol
 ######export LLMDBENCH_VLLM_STANDALONE_EXTRA_VOLUME_MOUNTS="-{\\s}name:{\\s}extra-vol{\\n}{\\s}{\\s}mountPath:{\\s}/mnt/extravol"
 ######export LLMDBENCH_VLLM_STANDALONE_EXTRA_VOLUMES="-{\\s}name:{\\s}extra-vol{\\n}{\\s}{\\s}persistentVolumeClaim:{\\n}{\\s}{\\s}{\\s}claimName:{\\s}REPLACE_ENV_LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME"
 
-# source preprocessor script that will install NVIDIA Nsight Systems (nsys) for vllm execution profiling
-# Remember to replace "vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL" with
-#"nsys profile --trace cuda,nvtx --cuda-graph-trace node vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL"
-########export LLMDBENCH_VLLM_STANDALONE_PREPROCESS="source /setup/preprocess/install_nsys.sh"
 export LLMDBENCH_VLLM_STANDALONE_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_STANDALONE_ARGS
 REPLACE_ENV_LLMDBENCH_VLLM_STANDALONE_PREPROCESS; \
@@ -114,15 +119,11 @@ vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 EOF
 
 # llm-d Parameters
-#########export LLMDBENCH_VLLM_MODELSERVICE_PREFIIL_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:compute-q0v0
-#########export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=auto
-#export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=1 # (default is "1")
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=$LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM # (default is "1")
 #export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1 # (default is "1")
 #export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS=${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS}
 #export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES=${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES}
-#########export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:compute-q0v0
-#########export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=auto
-#export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1 # (default is "1")
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=$LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM # (default is "1")
 #export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1 # (default is "1")
 #export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS=${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS}
 #export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES=${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES}

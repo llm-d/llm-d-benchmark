@@ -221,7 +221,7 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_
   fi
 fi
 
-python3 ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.py 2> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log 1> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
+$LLMDBENCH_CONTROL_PCMD ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.py 2> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log 1> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
 if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
   cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log

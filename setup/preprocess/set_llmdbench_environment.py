@@ -18,9 +18,11 @@ for dep in [ 'ip', 'ibstat' ] :
         print(f"WARNING: Dependency '{dep}' not available on the image {e.cmd} returned {e.returncode}.")
         deps_checked = False
 
+disable_acs = True
+
 if deps_checked :
-    result = subprocess.run(['ip', '-o', 'a', 'list'], capture_output=True, text=True, check=True)
-    for line in result.stdout.split('\n') :
+    ip_command_output = subprocess.run(['ip', '-o', 'a', 'list'], capture_output=True, text=True, check=True)
+    for line in ip_command_output.stdout.split('\n') :
         if line.count('inet ') :
             curr_if = line.split()[1]
             curr_ipv4 = line.split()[3]
@@ -32,8 +34,8 @@ if deps_checked :
             ip_info[curr_last_octect]['ipv4'] = curr_ipv4
             ip_info[curr_last_octect]['ipv6'] = curr_ipv6
     #print(ip_info)
-    result = subprocess.run(['ibstat'], capture_output=True, text=True, check=True)
-    for line in result.stdout.split('\n') :
+    ibstat_command_output = subprocess.run(['ibstat'], capture_output=True, text=True, check=True)
+    for line in ibstat_command_output.stdout.split('\n') :
         if line.count("CA '") :
             curr_hca=line.split("'")[1].strip()
             hca_info[curr_hca] = {}
@@ -59,10 +61,12 @@ if deps_checked :
     c7="ipv6"
     print(f"{c1.ljust(10)} {c2.ljust(25)} {c3.ljust(5)} {c4.ljust(5)} {c5.ljust(10)} {c6.ljust(20)} {c7}")
     for entry in hca_info.keys() :
+        id = hca_info[entry]['hca_id']
         lo = hca_info[entry]['last_octect']
         stat = hca_info[entry]['status']
         node_guid = hca_info[entry]['node_guid']
         port = hca_info[entry]['port']
+        status = hca_info[entry]["status"]
         if_name = "N/A"
         ipv4 = "N/A"
         ipv6 = "N/A"
@@ -70,10 +74,20 @@ if deps_checked :
             if_name = ip_info[lo]['interface_name']
             ipv4 = ip_info[lo]['ipv4']
             ipv6 = ip_info[lo]['ipv6']
-            if hca_info[entry]["status"] == "UP" :
+            if status == "UP" :
                 nccl_list.append(f"{entry}")
                 nixl_list.append(f"{if_name}")
+        if id.count("ibp") and status == "UP" :
+            disable_acs = False
+            nccl_list.append(f"{entry}")
+
         print(f"{entry.ljust(10)} {node_guid.ljust(25)} {port.ljust(5)} {stat.ljust(5)} {if_name.ljust(10)} {ipv4.ljust(20)} {ipv6}")
+
+    if not nixl_list and nccl_list :
+        for entry in ip_info.keys() :
+            if ip_info[entry]["interface_name"].count('eth') :
+                nixl_list.append(ip_info[entry]["interface_name"])
+
 else :
     print(f"WARNING: Unable to create network device file map.")
 
@@ -95,22 +109,22 @@ env_file_contents.append(f"export START_RANK=\"{sr}\"")
 env_file_contents.append("if [[ -z $LWS_WORKER_INDEX ]]; then")
 env_file_contents.append("  find /dev/shm -type f -delete")
 env_file_contents.append("fi")
-
-env_file_contents.append("if [[ ! -z $UCX_NET_DEVICES && ! -z NCCL_IB_HCA ]]; then")
-env_file_contents.append(" for BDF in $(lspci -d \"*:*:*\" | awk '{print $1}'); do")
-env_file_contents.append("    setpci -v -s ${BDF} ECAP_ACS+0x6.w > /dev/null 2>&1")
-env_file_contents.append("    if [ $? -ne 0 ]; then")
-env_file_contents.append("      echo \"ACS is already disabled for PCI device \\\"${BDF}\\\"\"")
-env_file_contents.append("      continue")
-env_file_contents.append("    fi")
-env_file_contents.append("    setpci -v -s ${BDF} ECAP_ACS+0x6.w=0000 > /dev/null 2>&1")
-env_file_contents.append("    if [ $? -eq 0 ]; then")
-env_file_contents.append("      echo \"ACS disabled for PCI device \\\"${BDF}\\\"\"")
-env_file_contents.append("    else")
-env_file_contents.append("      echo \"WARNING: Failed to disable ACS for PCI device \\\"${BDF}\\\"\"")
-env_file_contents.append("    fi")
-env_file_contents.append("  done")
-env_file_contents.append("fi")
+if disable_acs :
+    env_file_contents.append("if [[ ! -z $UCX_NET_DEVICES && ! -z NCCL_IB_HCA ]]; then")
+    env_file_contents.append(" for BDF in $(lspci -d \"*:*:*\" | awk '{print $1}'); do")
+    env_file_contents.append("    setpci -v -s ${BDF} ECAP_ACS+0x6.w > /dev/null 2>&1")
+    env_file_contents.append("    if [ $? -ne 0 ]; then")
+    env_file_contents.append("      echo \"ACS is already disabled for PCI device \\\"${BDF}\\\"\"")
+    env_file_contents.append("      continue")
+    env_file_contents.append("    fi")
+    env_file_contents.append("    setpci -v -s ${BDF} ECAP_ACS+0x6.w=0000 > /dev/null 2>&1")
+    env_file_contents.append("    if [ $? -eq 0 ]; then")
+    env_file_contents.append("      echo \"ACS disabled for PCI device \\\"${BDF}\\\"\"")
+    env_file_contents.append("    else")
+    env_file_contents.append("      echo \"WARNING: Failed to disable ACS for PCI device \\\"${BDF}\\\"\"")
+    env_file_contents.append("    fi")
+    env_file_contents.append("  done")
+    env_file_contents.append("fi")
 
 env_file_contents.append("echo")
 env_file_contents.append("env | grep -E 'UCX|NCCL' | sort")
