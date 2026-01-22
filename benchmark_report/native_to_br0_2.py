@@ -78,7 +78,7 @@ def _populate_load() -> dict:
         dict: dict with scenario.load part of of BenchmarkReport.
     """
     # Get arguments to harness command
-    args_str = os.environ.get("LLMDBENCH_HARNESS_ARGS")
+    args_str = os.environ.get("LLMDBENCH_HARNESS_ARGS", "")
     kv_pairs = [kv.strip() for kv in args_str.split("--") if kv.strip()]
     args = {}
     for kv in kv_pairs:
