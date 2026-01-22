@@ -2,6 +2,7 @@ FROM python:3.12.9-slim-bookworm
 
 RUN apt-get update; \
     apt-get install -y \
+    bc \
     git \
     gpg \
     jq \
@@ -43,18 +44,36 @@ RUN cd inference-perf; \
 
 ARG VLLM_BENCHMARK_REPO=https://github.com/vllm-project/vllm.git
 ARG VLLM_BENCHMARK_BRANCH=main
-ARG VLLM_BENCHMARK_COMMIT=b6381ced9c52271f799a8348fcc98c5f40528cdf
+ARG VLLM_BENCHMARK_COMMIT=e675dda67be278d21c4ec177b2baa8b7a0550920
 RUN git clone --branch ${VLLM_BENCHMARK_BRANCH} ${VLLM_BENCHMARK_REPO}
-RUN cd vllm; \
-    git checkout ${VLLM_BENCHMARK_COMMIT}; \
-    cd ..; mv -f vllm vllm-benchmark
+RUN cd vllm; git checkout ${VLLM_BENCHMARK_COMMIT}
+# Patch the pyproject.toml to allow "pip install -e ."
+RUN cd vllm; printf '%s\n' \
+    '--- a/pyproject.toml' \
+    '+++ b/pyproject.toml' \
+    '@@ -16,8 +16,7 @@ build-backend = "setuptools.build_meta"' \
+    ' [project]' \
+    ' name = "vllm"' \
+    ' authors = [{name = "vLLM Team"}]' \
+    '-license = "Apache-2.0"' \
+    '-license-files = ["LICENSE"]' \
+    '+license = {text = "Apache-2.0"}' \
+    ' readme = "README.md"' \
+    ' description = "A high-throughput and memory-efficient inference and serving engine for LLMs"' \
+    ' classifiers = [' \
+    | git apply
+# Install some pre-reqs
+RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
+RUN pip install setuptools-scm
+# Install
+RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install -e . --no-build-isolation
 
+# GuideLLM also requires torch, installed above
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
 ARG GUIDELLM_BRANCH=main
 ARG GUIDELLM_COMMIT=adfa108ab1df6f2a1452d1037a71817a493303a8
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
-    pip install torch --index-url https://download.pytorch.org/whl/cpu; \
     git checkout ${GUIDELLM_COMMIT}; \
     pip install .[recommended]
 
