@@ -106,10 +106,14 @@ class InferenceEngineParallelism(BaseModel):
 
     model_config = MODEL_CONFIG.copy()
 
+    tp: int = Field(1, ge=1, description="Tensor parallelism.")
     dp: int = Field(1, ge=1, description="Data parallelism.")
+    dp_local: int = Field(
+        1, ge=1, description="Local data parallelism for this engine instance."
+    )
+    workers: int = Field(1, ge=1, description="Number of workers.")
     ep: int = Field(1, ge=1, description="Expert parallelism.")
     pp: int = Field(1, ge=1, description="Pipeline parallelism.")
-    tp: int = Field(1, ge=1, description="Tensor parallelism.")
 
 
 class InferenceEngineAccelerator(BaseModel):
@@ -127,16 +131,12 @@ class InferenceEngineAccelerator(BaseModel):
 class InferenceEngine(ComponentStandardizedBase):
     """Component configuration for an inference engine."""
 
-    kind: Literal["inference_engine"] = Field(
-        exclude=True,
-        json_schema_extra={"exclude": True},
-        description=(
-            "Do not populate this field, this is for internal validation and"
-            " will be copied over from the metadata section."
-        ),
-    )
+    kind: Literal["inference_engine"]
+    """The type of component."""
     role: HostType
     """Type of model serving host."""
+    replicas: int = Field(..., ge=1)
+    """Number of replicas."""
     model: InferenceEngineModel
     """Hosted model details."""
     accelerator: InferenceEngineAccelerator

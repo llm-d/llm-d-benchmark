@@ -4,14 +4,16 @@ echo Using experiment result dir: "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 mkdir -p "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 pushd "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" > /dev/null  2>&1
 yq '.storage["local_storage"]["path"] = '\"${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}\" <"${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/inference-perf/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}" -y >${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}
+export LLMDBENCH_HARNESS_ARGS="--config_file $(realpath ./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME})"
 start=$(date +%s.%N)
-inference-perf --config_file "$(realpath ./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME})" > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
+inference-perf $LLMDBENCH_HARNESS_ARGS > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
 stop=$(date +%s.%N)
 
 export LLMDBENCH_HARNESS_START=$(date -d "@${start}" --iso-8601=seconds)
 export LLMDBENCH_HARNESS_STOP=$(date -d "@${stop}" --iso-8601=seconds)
 export LLMDBENCH_HARNESS_DELTA=PT$(echo "$stop - $start" | bc)S
+export LLMDBENCH_HARNESS_VERSION=$(cd /workspace/inference-perf; git rev-parse HEAD)
 
 # If benchmark harness returned with an error, exit here
 if [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC -ne 0 ]]; then
@@ -21,12 +23,31 @@ fi
 echo "Harness completed successfully."
 
 # Convert results into universal format
+export LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC=0
 for result in $(find $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR -maxdepth 1 -name 'stage_*.json'); do
   result_fname=$(echo $result | rev | cut -d '/' -f 1 | rev)
-  benchmark-report $result -w inference-perf $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/benchmark_report,_$result_fname.yaml 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
+
+  echo "Converting $result_fname to Benchmark Report v0.1"
+  benchmark-report $result -b 0.1 -w inference-perf $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/benchmark_report,_$result_fname.yaml 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
+  rc=$?
   # Report errors but don't quit
-  export LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC=$?
-  if [[ $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC -ne 0 ]]; then
-    echo "benchmark-report returned with error $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC converting: $result"
+  if [[ $rc -ne 0 ]]; then
+    echo "benchmark-report returned with error $rc converting: $result"
+    export LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC=$rc
+  fi
+
+  echo "Converting $result_fname to Benchmark Report v0.2"
+  benchmark-report $result -b 0.2 -w inference-perf $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/benchmark_report_v0.2,_$result_fname.yaml 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
+  rc=$?
+  # Report errors but don't quit
+  if [[ $rc -ne 0 ]]; then
+    echo "benchmark-report returned with error $rc converting: $result"
+    export LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC=$rc
   fi
 done
+
+if [[ $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC -ne 0 ]]; then
+  echo "Results data conversion completed with errors."
+  exit $LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC
+fi
+echo "Results data conversion completed successfully."
