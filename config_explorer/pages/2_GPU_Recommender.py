@@ -185,11 +185,21 @@ if enable_per_gpu_config:
 
 # Cost Configuration
 st.sidebar.subheader("💰 Custom GPU Costs (Optional)")
-st.sidebar.caption("⚠️ Default costs are reference values for relative comparison only. Override with your actual infrastructure costs.")
+
+# Cost unit selector
+cost_unit = st.sidebar.radio(
+    "Cost Unit",
+    options=["per_hour", "per_1m_tokens"],
+    format_func=lambda x: "$/hour" if x == "per_hour" else "$/1M tokens",
+    index=0,
+    help="Select the unit for GPU costs. Default values are relative reference values for comparison."
+)
 
 # Import CostManager to get default costs
-from config_explorer.recommender.cost_manager import CostManager
-cost_manager_temp = CostManager()
+from config_explorer.recommender.cost_manager import CostManager, CostUnit
+# Cast cost_unit to CostUnit type for type safety
+cost_unit_typed: CostUnit = cost_unit  # type: ignore
+cost_manager_temp = CostManager(cost_unit=cost_unit_typed)
 
 custom_gpu_costs = {}
 with st.sidebar.expander("⚙️ Set Custom Costs", expanded=False):
@@ -207,17 +217,26 @@ with st.sidebar.expander("⚙️ Set Custom Costs", expanded=False):
         default_cost = cost_manager_temp.get_cost(gpu_name, num_gpus=1)
         default_value = default_cost if default_cost is not None else 0.0
 
+        # Format label based on cost unit
+        unit_label = cost_manager_temp.get_cost_unit_label()
+
         cost = st.number_input(
-            f"{gpu_name} ($/hour)",
+            f"{gpu_name} ({unit_label})",
             min_value=0.0,
             value=default_value,
             step=0.5,
             key=f"cost_{gpu_name}",
-            help=f"Custom cost for {gpu_name} per hour (default: ${default_value:.2f})"
+            help=f"Custom cost for {gpu_name} (default: {default_value:.2f} {unit_label})"
         )
         # Only add to custom costs if different from default
         if cost != default_value:
             custom_gpu_costs[gpu_name] = cost
+
+# Conditional disclaimer based on whether using custom costs
+if custom_gpu_costs:
+    st.sidebar.caption(f"💡 Displaying costs in {cost_manager_temp.get_cost_unit_label()}")
+else:
+    st.sidebar.caption(f"💡 Initial cost values ({cost_manager_temp.get_cost_unit_label()}) are relative reference values for comparison purposes.")
 
 # Run button
 run_analysis = st.sidebar.button("🚀 Run Analysis", type="primary", use_container_width=True)
@@ -237,7 +256,8 @@ if run_analysis:
                 max_ttft=max_ttft,
                 max_itl=max_itl,
                 max_latency=max_latency,
-                custom_gpu_costs=custom_gpu_costs if custom_gpu_costs else None
+                custom_gpu_costs=custom_gpu_costs if custom_gpu_costs else None,
+                cost_unit=cost_unit_typed
             )
 
             # Run recommendation
@@ -256,7 +276,8 @@ if run_analysis:
                 'max_ttft': max_ttft,
                 'max_itl': max_itl,
                 'custom_gpu_costs': custom_gpu_costs if custom_gpu_costs else None,
-                'max_latency': max_latency
+                'max_latency': max_latency,
+                'cost_unit': cost_unit_typed
             }
 
             st.success("✅ Analysis complete!")
@@ -366,7 +387,8 @@ if st.session_state.recommendation_results is not None:
                 num_gpus = recommender.max_gpus_per_type.get(gpu_name, recommender.max_gpus)
                 cost = recommender.cost_manager.get_cost(gpu_name, num_gpus)
                 if cost is not None:
-                    gpu_info['Cost per Hour ($)'] = cost
+                    cost_label = f"Cost ({recommender.cost_manager.get_cost_unit_label()})"
+                    gpu_info[cost_label] = cost
 
                 gpu_comparison_data.append(gpu_info)
             except Exception as e:
@@ -488,8 +510,9 @@ if st.session_state.recommendation_results is not None:
 
             # Sort by cost if enabled
             params = st.session_state.recommender_params
-            if params.get('sort_by_cost', False) and 'Cost per Hour ($)' in df.columns:
-                df = df.sort_values('Cost per Hour ($)')
+            cost_label = f"Cost ({recommender.cost_manager.get_cost_unit_label()})"
+            if params.get('sort_by_cost', False) and cost_label in df.columns:
+                df = df.sort_values(cost_label)
 
             # Combined Summary Section - Best GPUs and Compatibility Status
             st.subheader("⭐ Best GPU Recommendations")
@@ -545,10 +568,11 @@ if st.session_state.recommendation_results is not None:
                 best_cost = recommender.get_gpu_with_lowest_cost()
                 if best_cost:
                     best_gpu, best_val = best_cost
+                    cost_unit_label = recommender.cost_manager.get_cost_unit_label()
                     st.metric(
                         "💰 Lowest Cost",
                         f"{best_gpu}",
-                        f"${best_val:.2f}/hour"
+                        f"${best_val:.2f} {cost_unit_label}"
                     )
 
             # Show summary of excluded GPUs if any
@@ -710,18 +734,24 @@ if st.session_state.recommendation_results is not None:
 
             with tab2:
                 st.markdown("### 💰 Cost Analysis")
-                st.caption("⚠️ Costs shown are reference values for relative comparison only")
+                
+                # Show conditional disclaimer based on whether custom costs are used
+                if recommender.cost_manager.is_using_custom_costs():
+                    st.caption(f"💡 Displaying costs in {recommender.cost_manager.get_cost_unit_label()}")
+                else:
+                    st.caption(f"💡 Initial cost values ({recommender.cost_manager.get_cost_unit_label()}) are relative reference values for comparison purposes.")
 
                 # Cost comparison chart
-                if 'Cost per Hour ($)' in df.columns:
+                cost_label = f"Cost ({recommender.cost_manager.get_cost_unit_label()})"
+                if cost_label in df.columns:
                     st.markdown("#### 💵 Cost Comparison")
-                    df_sorted_cost = df.sort_values('Cost per Hour ($)')
+                    df_sorted_cost = df.sort_values(cost_label)
                     fig_cost = px.bar(
                         df_sorted_cost,
                         x='GPU',
-                        y='Cost per Hour ($)',
-                        title='GPU Cost Comparison (Reference Values)',
-                        text='Cost per Hour ($)'
+                        y=cost_label,
+                        title=f'GPU Cost Comparison ({recommender.cost_manager.get_cost_unit_label()})',
+                        text=cost_label
                     )
                     fig_cost.update_traces(
                         texttemplate='$%{text:.2f}',
@@ -729,7 +759,7 @@ if st.session_state.recommendation_results is not None:
                     )
                     fig_cost.update_layout(
                         xaxis_title="GPU Type",
-                        yaxis_title="Cost per Hour ($)",
+                        yaxis_title=cost_label,
                         showlegend=False,
                         height=500
                     )
@@ -741,11 +771,12 @@ if st.session_state.recommendation_results is not None:
                     st.markdown("#### 📊 Performance Cost Analysis")
                     if 'Throughput (tokens/s)' in df.columns:
                         st.caption("💡 Lower-right quadrant represents better value (high throughput, low latency)")
-                        st.caption("🔵 Bubble size  represents cost per hour (larger bubbles = higher cost)")
+                        st.caption(f"🔵 Bubble size represents cost (larger bubbles = higher cost in {recommender.cost_manager.get_cost_unit_label()})")
                         st.caption("Small bubbles near the lower-right are the most performant and cost-effective solutions.")
 
                         # Filter out rows with NaN cost values
-                        df_cost_perf = df[df['Cost per Hour ($)'].notna()].copy()
+                        cost_label = f"Cost ({recommender.cost_manager.get_cost_unit_label()})"
+                        df_cost_perf = df[df[cost_label].notna()].copy()
 
                         if not df_cost_perf.empty:
                             fig_cost_perf = px.scatter(
@@ -754,7 +785,7 @@ if st.session_state.recommendation_results is not None:
                                 y='E2E Latency (s)',
                                 text='GPU',
                                 title='E2E Latency vs Throughput',
-                                size='Cost per Hour ($)',
+                                size=cost_label,
                                 hover_data=['TTFT (ms)', 'ITL (ms)'] if 'TTFT (ms)' in df_cost_perf.columns else None
                             )
                             fig_cost_perf.update_traces(
@@ -823,10 +854,11 @@ if st.session_state.recommendation_results is not None:
                         cost = recommender.cost_manager.get_cost(gpu_name, num_gpus)
 
                         with cost_col1:
+                            cost_unit_label = recommender.cost_manager.get_cost_unit_label()
                             if cost is not None:
-                                st.write(f"• **Cost per Hour:** `${cost:.2f}`")
+                                st.write(f"• **Cost ({cost_unit_label}):** `${cost:.2f}`")
                             else:
-                                st.write(f"• **Cost per Hour:** `N/A`")
+                                st.write(f"• **Cost ({cost_unit_label}):** `N/A`")
 
                         with cost_col2:
                             st.write(f"• **Number of GPUs:** `{num_gpus}`")

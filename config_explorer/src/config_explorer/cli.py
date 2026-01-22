@@ -248,6 +248,7 @@ def estimate_performance(args):
             max_itl=args.max_itl,
             max_latency=args.max_latency,
             custom_gpu_costs=custom_gpu_costs,
+            cost_unit=args.cost_unit,
         )
 
         # Get results using the recommender's method
@@ -295,8 +296,14 @@ def estimate_performance(args):
             print("\n" + "="*80)
             print("GPU Performance Estimation Results")
             print("="*80)
-            print("\n⚠️  Note: Costs are reference values for relative comparison only.")
-            print("    They do NOT represent actual pricing from any provider.")
+            
+            # Show conditional disclaimer based on whether custom costs are used
+            cost_unit_label = recommender.cost_manager.get_cost_unit_label()
+            if recommender.cost_manager.is_using_custom_costs():
+                print(f"\n💡 Displaying costs in {cost_unit_label}")
+            else:
+                print(f"\n💡 Initial cost values ({cost_unit_label}) are relative reference values for comparison purposes.")
+            
             print("\n📊 Results sorted by cost (lowest to highest)")
             print("    Only showing GPUs that meet performance requirements")
             print("="*80)
@@ -305,7 +312,7 @@ def estimate_performance(args):
             if "lowest_cost" in performance_summary["estimated_best_performance"]:
                 best_cost_info = performance_summary["estimated_best_performance"]["lowest_cost"]
                 print(f"\n🏆 Best Value GPU: {best_cost_info['gpu']}")
-                print(f"   Cost: ${best_cost_info['cost_per_hour']:.2f}/hour")
+                print(f"   Cost: ${best_cost_info['cost']:.2f} {cost_unit_label}")
                 if 'throughput_tps' in best_cost_info:
                     print(f"   Throughput: {best_cost_info['throughput_tps']:.2f} tokens/s")
                 if 'ttft_ms' in best_cost_info:
@@ -313,35 +320,63 @@ def estimate_performance(args):
                 if 'itl_ms' in best_cost_info:
                     print(f"   ITL: {best_cost_info['itl_ms']:.2f} ms")
 
-            # Show sorted results
+            # Show sorted results - only include GPUs with valid performance data
             sorted_results = recommender.get_results_sorted_by_cost()
-            if sorted_results:
-                print(f"\n📋 All Qualifying GPUs ({len(sorted_results)} total):")
+            # Filter to only include GPUs that are in performance_summary (which excludes failed GPUs)
+            valid_sorted_results = [
+                (gpu_name, cost, result)
+                for gpu_name, cost, result in sorted_results
+                if gpu_name in performance_summary["gpu_results"]
+            ]
+
+            if valid_sorted_results:
+                print(f"\n📋 All Qualifying GPUs ({len(valid_sorted_results)} total):")
                 print("-" * 80)
-                for idx, (gpu_name, cost, _) in enumerate(sorted_results, 1):
-                    gpu_data = performance_summary["gpu_results"].get(gpu_name, {})
+                for idx, (gpu_name, cost, _) in enumerate(valid_sorted_results, 1):
+                    gpu_data = performance_summary["gpu_results"][gpu_name]
                     best_config = gpu_data.get("best_latency", {})
 
                     print(f"\n{idx}. {gpu_name}")
-                    print(f"   💰 Cost: ${cost:.2f}/hour")
+                    print(f"   💰 Cost: ${cost:.2f} {cost_unit_label}")
 
                     if best_config:
                         throughput = best_config.get("throughput_tps", "N/A")
                         ttft = best_config.get("ttft_ms", "N/A")
                         itl = best_config.get("itl_ms", "N/A")
-                        num_gpus = best_config.get("num_gpus", "N/A")
+                        num_gpus = gpu_data.get("num_gpus", "N/A")
                         tp = best_config.get("tp", "N/A")
 
                         print(f"   🚀 Throughput: {throughput} tokens/s")
                         print(f"   ⚡ TTFT: {ttft} ms | ITL: {itl} ms")
                         print(f"   🔧 Config: {num_gpus} GPU(s), TP={tp}")
 
-            # Show failed GPUs if verbose
-            if args.verbose and failed_gpus:
-                print(f"\n❌ Failed GPUs ({len(failed_gpus)}):")
+            # Show failed GPUs - always display in pretty mode
+            if failed_gpus:
+                print(f"\n⚠️  Excluded GPUs ({len(failed_gpus)}):")
                 print("-" * 80)
-                for gpu_name, error in failed_gpus.items():
-                    print(f"   • {gpu_name}: {error}")
+
+                if args.verbose:
+                    # Verbose mode: show full error messages
+                    for gpu_name, error in failed_gpus.items():
+                        print(f"   • {gpu_name}: {error}")
+                else:
+                    # Non-verbose mode: group by error type
+                    error_groups = {}
+                    for gpu_name, error in failed_gpus.items():
+                        if error not in error_groups:
+                            error_groups[error] = []
+                        error_groups[error].append(gpu_name)
+
+                    for error, gpu_names in error_groups.items():
+                        print(f"   • {error}:")
+                        print(f"     {', '.join(gpu_names)}")
+
+                print("\n   💡 Use --verbose flag to see detailed error information for each GPU")
+
+            # Show message if no valid results
+            if len(valid_sorted_results) == 0:
+                print("\n⚠️  No GPUs met the performance requirements or had valid configurations.")
+                print("    Try relaxing constraints or selecting different GPUs.")
 
             print("\n" + "="*80)
         else:
@@ -568,10 +603,18 @@ Examples:
 
     # Cost parameters
     estimate_parser.add_argument(
+        '--cost-unit',
+        type=str,
+        choices=['per_hour', 'per_1m_tokens'],
+        default='per_hour',
+        help='Unit for GPU costs: "per_hour" ($/hour) or "per_1m_tokens" ($/1M tokens). Default: per_hour. Note: Initial cost values are relative reference values for comparison.'
+    )
+
+    estimate_parser.add_argument(
         '--custom-gpu-cost',
         type=str,
         action='append',
-        help='Custom GPU cost in format GPU_NAME:COST (e.g., H100:30.5). Can be specified multiple times. Note: Default costs are reference values only for relative comparison.'
+        help='Custom GPU cost in format GPU_NAME:COST (e.g., H100:30.5). Can be specified multiple times. Uses the unit specified by --cost-unit.'
     )
 
     estimate_parser.add_argument(

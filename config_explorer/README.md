@@ -52,12 +52,18 @@ config-explorer estimate --model Qwen/Qwen3-32B --input-len 512 --output-len 128
 # Human-readable output
 config-explorer estimate --model Qwen/Qwen3-32B --input-len 512 --output-len 128 --pretty
 
-# Override GPU costs with custom pricing
+# Override GPU costs with custom pricing (default unit: $/hour)
 config-explorer estimate --model Qwen/Qwen3-32B \
   --input-len 512 --output-len 128 \
   --custom-gpu-cost H100:30.50 \
   --custom-gpu-cost A100:22 \
   --custom-gpu-cost L40:25.00 \
+  --pretty
+
+# Use cost per 1M tokens instead of cost per hour
+config-explorer estimate --model Qwen/Qwen3-32B \
+  --input-len 512 --output-len 128 \
+  --cost-unit per_1m_tokens \
   --pretty
 
 # Start the Streamlit web app
@@ -120,11 +126,14 @@ The GPU Recommender uses BentoML's llm-optimizer roofline algorithm to provide s
 
 ### Cost Information
 
-The GPU Recommender now displays cost information to help you find cost-effective GPU configurations:
+The GPU Recommender displays cost information to help you find cost-effective GPU configurations:
 
-- **Default GPU Costs**: Built-in cost database based on cloud provider pricing (H200: $40/hr, L40S: $32/hr, H100: $35/hr, A100: $25/hr, L40: $28/hr, L4: $8/hr)
+- **Cost Units**: Choose between two cost units:
+  - `$/hour` - Cost per GPU per hour (default)
+  - `$/1M tokens` - Cost per 1 million tokens generated
+- **Default GPU Costs**: Built-in reference costs for common GPUs (H200, H100, A100, L40, etc.) in both units
 - **Custom Cost Override**: Specify your own GPU costs for private infrastructure
-- **Cost-Based Sorting**: Sort results by cost per hour to find the most economical option
+- **Cost-Based Sorting**: Sort results by cost to find the most economical option
 
 **⚠️ IMPORTANT**: The default costs shown are **reference values for relative comparison only**. They do **NOT** represent actual pricing from any cloud provider. These are relative numbers to help compare GPU options. Always use custom costs that reflect your actual infrastructure pricing.
 

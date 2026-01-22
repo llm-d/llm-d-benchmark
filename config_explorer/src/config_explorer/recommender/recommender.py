@@ -30,6 +30,7 @@ class GPURecommender:
         
         # Cost parameters
         custom_gpu_costs: Optional[Dict[str, float]] = None,
+        cost_unit: str = "per_hour",
     ):
         """
         Initialize GPU Recommender.
@@ -46,7 +47,8 @@ class GPURecommender:
             max_ttft: Maximum time to first token constraint (ms)
             max_itl: Maximum inter-token latency constraint (ms)
             max_latency: Maximum end-to-end latency constraint (s)
-            custom_gpu_costs: Optional dict mapping GPU names to custom costs ($/hour)
+            custom_gpu_costs: Optional dict mapping GPU names to custom costs
+            cost_unit: Unit for costs - either "per_hour" ($/hour) or "per_1m_tokens" ($/1M tokens)
         """
 
         # Read HF Token from environment variable
@@ -69,7 +71,7 @@ class GPURecommender:
         self.max_latency = max_latency
 
         # Initialize cost manager
-        self.cost_manager = CostManager(custom_costs=custom_gpu_costs)
+        self.cost_manager = CostManager(custom_costs=custom_gpu_costs, cost_unit=cost_unit)
 
         # Store results after recommendation
         self.gpu_results: Optional[Dict[str, PerformanceEstimationResult]] = None
@@ -126,6 +128,33 @@ class GPURecommender:
 
         return gpu_results, failed_gpus
 
+    def _has_valid_best_latency(self, result: PerformanceEstimationResult) -> bool:
+        """
+        Check if a GPU result has valid best_latency configuration.
+
+        Args:
+            result: Performance estimation result to validate
+
+        Returns:
+            True if result has valid best_latency config, False otherwise
+        """
+        if not (hasattr(result, 'best_configs') and result.best_configs):
+            return False
+
+        best_latency = result.best_configs.get('best_latency') if isinstance(result.best_configs, dict) else None
+        if not best_latency:
+            return False
+
+        # Check if it has actual performance data
+        has_data = (
+            (hasattr(best_latency, 'output_throughput_tps') and best_latency.output_throughput_tps is not None) or
+            (hasattr(best_latency, 'ttft_ms') and best_latency.ttft_ms is not None) or
+            (hasattr(best_latency, 'itl_ms') and best_latency.itl_ms is not None) or
+            (hasattr(best_latency, 'e2e_latency_s') and best_latency.e2e_latency_s is not None)
+        )
+
+        return has_data
+
     def get_gpu_with_highest_throughput(self) -> Optional[Tuple[str, float]]:
         """
         Get the GPU with the highest throughput from results.
@@ -140,14 +169,16 @@ class GPURecommender:
         best_throughput = -float('inf')
 
         for gpu_name, result in self.gpu_results.items():
-            if hasattr(result, 'best_configs') and result.best_configs:
-                best_latency_result = result.best_configs.get('best_latency') if isinstance(result.best_configs, dict) else None
+            # Only consider GPUs with valid best_latency configuration
+            if not self._has_valid_best_latency(result):
+                continue
 
-                if best_latency_result and hasattr(best_latency_result, 'output_throughput_tps') and best_latency_result.output_throughput_tps is not None:
-                    throughput = best_latency_result.output_throughput_tps
-                    if throughput > best_throughput:
-                        best_throughput = throughput
-                        best_gpu = gpu_name
+            best_latency_result = result.best_configs.get('best_latency')
+            if hasattr(best_latency_result, 'output_throughput_tps') and best_latency_result.output_throughput_tps is not None:
+                throughput = best_latency_result.output_throughput_tps
+                if throughput > best_throughput:
+                    best_throughput = throughput
+                    best_gpu = gpu_name
 
         return (best_gpu, best_throughput) if best_gpu else None
 
@@ -165,14 +196,16 @@ class GPURecommender:
         best_ttft = float('inf')
 
         for gpu_name, result in self.gpu_results.items():
-            if hasattr(result, 'best_configs') and result.best_configs:
-                best_latency_result = result.best_configs.get('best_latency') if isinstance(result.best_configs, dict) else None
+            # Only consider GPUs with valid best_latency configuration
+            if not self._has_valid_best_latency(result):
+                continue
 
-                if best_latency_result and hasattr(best_latency_result, 'ttft_ms') and best_latency_result.ttft_ms is not None:
-                    ttft = best_latency_result.ttft_ms
-                    if ttft < best_ttft:
-                        best_ttft = ttft
-                        best_gpu = gpu_name
+            best_latency_result = result.best_configs.get('best_latency')
+            if hasattr(best_latency_result, 'ttft_ms') and best_latency_result.ttft_ms is not None:
+                ttft = best_latency_result.ttft_ms
+                if ttft < best_ttft:
+                    best_ttft = ttft
+                    best_gpu = gpu_name
 
         return (best_gpu, best_ttft) if best_gpu else None
 
@@ -190,14 +223,16 @@ class GPURecommender:
         best_itl = float('inf')
 
         for gpu_name, result in self.gpu_results.items():
-            if hasattr(result, 'best_configs') and result.best_configs:
-                best_latency_result = result.best_configs.get('best_latency') if isinstance(result.best_configs, dict) else None
+            # Only consider GPUs with valid best_latency configuration
+            if not self._has_valid_best_latency(result):
+                continue
 
-                if best_latency_result and hasattr(best_latency_result, 'itl_ms') and best_latency_result.itl_ms is not None:
-                    itl = best_latency_result.itl_ms
-                    if itl < best_itl:
-                        best_itl = itl
-                        best_gpu = gpu_name
+            best_latency_result = result.best_configs.get('best_latency')
+            if hasattr(best_latency_result, 'itl_ms') and best_latency_result.itl_ms is not None:
+                itl = best_latency_result.itl_ms
+                if itl < best_itl:
+                    best_itl = itl
+                    best_gpu = gpu_name
 
         return (best_gpu, best_itl) if best_gpu else None
 
@@ -215,14 +250,16 @@ class GPURecommender:
         best_e2e = float('inf')
 
         for gpu_name, result in self.gpu_results.items():
-            if hasattr(result, 'best_configs') and result.best_configs:
-                best_latency_result = result.best_configs.get('best_latency') if isinstance(result.best_configs, dict) else None
+            # Only consider GPUs with valid best_latency configuration
+            if not self._has_valid_best_latency(result):
+                continue
 
-                if best_latency_result and hasattr(best_latency_result, 'e2e_latency_s') and best_latency_result.e2e_latency_s is not None:
-                    e2e = best_latency_result.e2e_latency_s
-                    if e2e < best_e2e:
-                        best_e2e = e2e
-                        best_gpu = gpu_name
+            best_latency_result = result.best_configs.get('best_latency')
+            if hasattr(best_latency_result, 'e2e_latency_s') and best_latency_result.e2e_latency_s is not None:
+                e2e = best_latency_result.e2e_latency_s
+                if e2e < best_e2e:
+                    best_e2e = e2e
+                    best_gpu = gpu_name
 
         return (best_gpu, best_e2e) if best_gpu else None
 
@@ -231,7 +268,7 @@ class GPURecommender:
         Get the GPU with the lowest cost from results.
 
         Returns:
-            Tuple of (gpu_name, cost_per_hour) or None if no valid data
+            Tuple of (gpu_name, cost) or None if no valid data
         """
         if not self.gpu_results:
             self.get_gpu_results()
@@ -239,11 +276,15 @@ class GPURecommender:
         best_gpu = None
         best_cost = float('inf')
 
-        for gpu_name in self.gpu_results.keys():
+        for gpu_name, result in self.gpu_results.items():
+            # Only consider GPUs with valid best_latency configuration
+            if not self._has_valid_best_latency(result):
+                continue
+
             # Get number of GPUs used for this configuration
             num_gpus = self.max_gpus_per_type.get(gpu_name, self.max_gpus)
             cost = self.cost_manager.get_cost(gpu_name, num_gpus)
-            
+
             if cost is not None and cost < best_cost:
                 best_cost = cost
                 best_gpu = gpu_name
@@ -252,27 +293,31 @@ class GPURecommender:
 
     def get_results_sorted_by_cost(self) -> List[Tuple[str, float, PerformanceEstimationResult]]:
         """
-        Get GPU results sorted by cost (ascending).
+        Get GPU results sorted by cost (ascending). Only includes GPUs with valid performance data.
 
         Returns:
-            List of tuples (gpu_name, cost_per_hour, result) sorted by cost
+            List of tuples (gpu_name, cost, result) sorted by cost
         """
         if not self.gpu_results:
             self.get_gpu_results()
 
         results_with_cost = []
-        
+
         for gpu_name, result in self.gpu_results.items():
+            # Only consider GPUs with valid best_latency configuration
+            if not self._has_valid_best_latency(result):
+                continue
+
             # Get number of GPUs used for this configuration
             num_gpus = self.max_gpus_per_type.get(gpu_name, self.max_gpus)
             cost = self.cost_manager.get_cost(gpu_name, num_gpus)
-            
+
             if cost is not None:
                 results_with_cost.append((gpu_name, cost, result))
 
         # Sort by cost (ascending)
         results_with_cost.sort(key=lambda x: x[1])
-        
+
         return results_with_cost
 
     def get_performance_summary(self, verbose: bool = False) -> dict:
@@ -327,7 +372,8 @@ class GPURecommender:
         if best_cost:
             summary["estimated_best_performance"]["lowest_cost"] = {
                 "gpu": best_cost[0],
-                "cost_per_hour": round(best_cost[1], 2)
+                "cost": round(best_cost[1], 2),
+                "cost_unit": self.cost_manager.cost_unit
             }
 
         # Extract and format detailed results for each GPU from llm-optimizer output
@@ -396,9 +442,9 @@ class GPURecommender:
             num_gpus = self.max_gpus_per_type.get(gpu_name, self.max_gpus)
             cost = self.cost_manager.get_cost(gpu_name, num_gpus)
             if cost is not None:
-                gpu_data["cost_per_hour"] = round(cost, 2)
+                gpu_data["cost"] = round(cost, 2)
+                gpu_data["cost_unit"] = self.cost_manager.cost_unit
                 gpu_data["num_gpus"] = num_gpus
-                gpu_data["total_cost_per_hour"] = round(cost, 2)
 
             summary["gpu_results"][gpu_name] = gpu_data
 
