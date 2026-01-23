@@ -154,16 +154,6 @@ def model_specification():
                 data = get_model_size_df(model_info, model_config)
                 st.dataframe(data, hide_index=True)
 
-                st.write("In addition to model weights, the capacity planner now estimates **peak activation memory** during inference, including:\n"
-                        "- Hidden states for current layer\n"
-                        "- FlashAttention workspace buffers (O(s) not O(s²))\n"
-                        "- Feed-forward network intermediate activations\n"
-                        "- CUDA graph memory overhead (~2 GB)\n"
-                        "- Non-torch memory overhead (~1 GB)\n"
-                        "- Memory fragmentation safety margin (10%)\n\n"
-                        "This provides more accurate capacity planning compared to estimating model weights and KV cache alone. "
-                        "The formulas assume FlashAttention is enabled (vLLM default) and activation recomputation is used.")
-
         else:
             return None
 
@@ -481,7 +471,7 @@ Safety buffer = subtotal x {safety_margin_percent / 100}
             st.write("**Final Activation Memory Estimate:**")
             st.code(f"""
 Total activation memory = subtotal + safety_buffer
-                        = {util.pretty_round(subtotal_gb)} + {util.pretty_round(safety_buffer_gb)}
+                        = {util.pretty_round(subtotal_gb)} GB + {util.pretty_round(safety_buffer_gb)} GB
                         = {util.pretty_round(total_activation_gb)} GB
 """)
 
@@ -602,7 +592,7 @@ def hardware_specification():
             non_torch_mem_per_gpu = estimate_vllm_non_torch_memory()
 
             # Total memory components (for summary and free calculation)
-            # CRITICAL FIX: Activation memory must be multiplied by dp since each data parallel
+            # Activation memory must be multiplied by dp since each data parallel
             # replica needs its own activation memory during inference
             activation_mem_total = activation_mem_per_gpu * dp
             cuda_graph_mem_total = cuda_graph_mem_per_gpu * available_gpu_count
