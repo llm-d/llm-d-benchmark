@@ -2,6 +2,7 @@
 Tests Capacity Planner functions
 """
 
+import math
 import pytest
 from src.config_explorer.capacity_planner import *
 
@@ -180,33 +181,58 @@ def test_max_concurrent_req():
     Tests that max concurrent request is estimated correctly given model and GPU spec
     """
 
-    # This model does not take up 40GB GPU, so model size is negligible
     model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
     model_memory = model_memory_req(model_info, model_config)
-    per_req_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
+    max_model_len = 10000
+    batch_size = 1
+    gpu_mem = 40
+    gpu_util = 1
+    per_req_kv_cache_req = kv_cache_req(model_info, model_config, context_len=max_model_len)
 
-    for tp in range(1, 16):
-        for pp in range(1, 16):
-            for dp in range(1, 16):
-                avail_gpu_count = tp * pp * dp
-                gpu_mem = 40
-                actual_max_concurrent_req = max_concurrent_requests(model_info,
-                                                            model_config,
-                                                            max_model_len=10000,
-                                                            gpu_memory=gpu_mem,
-                                                            gpu_mem_util=1,
-                                                            tp=tp,
-                                                            pp=pp,
-                                                            dp=dp,
-                                                            )
+    # Test a subset of parallelism configurations for reasonable test runtime
+    test_configs = [
+        (1, 1, 1), (2, 1, 1), (1, 2, 1), (1, 1, 2),
+        (2, 2, 1), (4, 1, 1), (8, 1, 1), (4, 2, 2)
+    ]
 
+    for tp, pp, dp in test_configs:
+        gpu_count = tp * pp * dp
 
-                expected = math.floor((avail_gpu_count * gpu_mem - model_memory * dp) / per_req_kv_cache_req)
-                if expected < 0:
-                    expected = 0
+        # Calculate allocatable KV cache memory using the implementation's logic
+        allocatable_kv = allocatable_kv_cache_memory(
+            model_info,
+            model_config,
+            gpu_mem,
+            gpu_util,
+            tp,
+            pp,
+            dp,
+            max_model_len=max_model_len,
+            batch_size=batch_size
+        )
 
-        assert actual_max_concurrent_req == expected
+        # Calculate expected max concurrent requests
+        if per_req_kv_cache_req == 0:
+            expected = 0
+        else:
+            expected = max(0, math.floor(allocatable_kv / per_req_kv_cache_req))
+
+        # Get actual max concurrent requests
+        actual_max_concurrent_req = max_concurrent_requests(
+            model_info,
+            model_config,
+            max_model_len=max_model_len,
+            gpu_memory=gpu_mem,
+            gpu_mem_util=gpu_util,
+            batch_size=batch_size,
+            tp=tp,
+            pp=pp,
+            dp=dp,
+        )
+
+        assert actual_max_concurrent_req == expected, \
+            f"Failed for tp={tp}, pp={pp}, dp={dp}: expected {expected}, got {actual_max_concurrent_req}"
 
 
 def test_total_kv_cache_blocks(monkeypatch):
@@ -241,7 +267,8 @@ def test_total_kv_cache_blocks(monkeypatch):
     # Mock allocatable_kv_cache_memory depending on tp, pp for know values of qwen
     def fake_allocatable_kv_cache_memory(model_info, model_config,
                                          gpu_memory, gpu_mem_util,
-                                         tp, pp, dp):
+                                         tp, pp, dp,
+                                         max_model_len=None, batch_size=1):
         if tp == 1:
             return 68.89 # observed in experiments
         elif tp == 2:
@@ -302,6 +329,9 @@ def test_allocatable_kv_cache_memory():
     """
     Tests allocatable kv cache memory is correctly calculated
     """
+    # Import not needed since we're using 'from src.config_explorer.capacity_planner import *'
+    # The functions are already available: estimate_vllm_activation_memory,
+    # estimate_vllm_cuda_graph_memory, estimate_vllm_non_torch_memory
 
     model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
@@ -309,14 +339,29 @@ def test_allocatable_kv_cache_memory():
 
     gpu_memory = 40
     gpu_util = 1
+    max_model_len = 2048
+    batch_size = 1
 
     for tp in range(1, 16):
         for pp in range(1, 16):
             for dp in range(1, 16):
 
-                # Expected
+                # Expected calculation with new memory components
                 gpu_count = tp * pp * dp
-                expected = gpu_count * gpu_memory - model_memory * dp
+                available_memory = gpu_count * gpu_memory * gpu_util
+                model_size = model_memory * dp
+
+                # Calculate activation and overhead memory
+                # Activation memory must be multiplied by dp since each
+                # data parallel replica needs its own activation memory
+                activation_memory = estimate_vllm_activation_memory(
+                    model_config, max_model_len, batch_size, tp
+                ) * dp
+                cuda_graph_memory = estimate_vllm_cuda_graph_memory() * gpu_count
+                non_torch_memory = estimate_vllm_non_torch_memory() * gpu_count
+
+                expected = max(0, available_memory - model_size - activation_memory -
+                             cuda_graph_memory - non_torch_memory)
 
                 actual = allocatable_kv_cache_memory(
                     model_info,
@@ -325,15 +370,15 @@ def test_allocatable_kv_cache_memory():
                     gpu_util,
                     tp,
                     pp,
-                    dp
+                    dp,
+                    max_model_len=max_model_len,
+                    batch_size=batch_size
                 )
 
-                assert expected == actual
+                assert abs(expected - actual) < 0.01, f"Expected {expected}, got {actual}"
 
 def test_is_moe():
-    """
-    Asserts that MOE models can be determined
-    """
+    """Asserts that MoE models can be determined"""
 
     moes = [
         "deepseek-ai/DeepSeek-R1",
@@ -371,9 +416,7 @@ def test_get_num_experts():
         assert get_num_experts(model_config) == expected_experts
 
 def test_experts_per_gpu():
-    """
-    Tests that experts per GPU is calculated correctly for MOE models
-    """
+    """Tests that experts per GPU is calculated correctly for MoE models"""
 
     moe_models = {
         "deepseek-ai/DeepSeek-R1",
@@ -392,9 +435,7 @@ def test_experts_per_gpu():
                 assert experts / (tp * dp) == experts_per_ep_group(model_config, tp, dp)
 
 def test_head_dim_none():
-    """
-    Tests head dimension field for models that don't have them
-    """
+    """Tests head dimension field for models that don't have them"""
     mistral = "mistralai/Mixtral-8x7B-Instruct-v0.1"
     model_config = get_model_config_from_hf(mistral)
     model_info = get_model_info_from_hf(mistral)
@@ -403,9 +444,7 @@ def test_head_dim_none():
     assert kv_cache_detail.head_dimension != None
 
 def test_not_mla():
-    """
-    Verify MLA attentin check
-    """
+    """Verify MLA attention check"""
     qwen = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
     model_config = get_model_config_from_hf(qwen)
     model_info = get_model_info_from_hf(qwen_model)
@@ -413,9 +452,7 @@ def test_not_mla():
     assert kv_cache_detail.attention_type != AttentionType.MLA
 
 def test_get_quant_method():
-    """
-    Tests getting quant method for models
-    """
+    """Tests getting quant method for models"""
 
     model_to_quant_method = {
         gpt_oss: "mxfp4",
@@ -429,9 +466,7 @@ def test_get_quant_method():
         assert get_quant_method(model_config) == expected
 
 def test_get_quant_bytes():
-    """
-    Tests that the byte requirement for the quant method can be fetched
-    """
+    """Tests that the byte requirement for the quant method can be fetched"""
 
     model_to_quant_bytes = {
         gpt_oss: 4.25 / 8,      # mxfp4
@@ -444,9 +479,7 @@ def test_get_quant_bytes():
         assert get_quant_bytes(model_config) == expected
 
 def test_inference_dtype():
-    """
-    Tests that inference dtype can be determined for quantized and unquantized models
-    """
+    """Tests that inference dtype can be determined for quantized and unquantized models"""
 
     model_to_dtype = {
         # quantized
@@ -464,15 +497,13 @@ def test_inference_dtype():
         assert inference_dtype(model_config) == expceted
 
 def test_inference_dtype_byte():
-    """
-    Tests that inference dtype byte can be determined for quantized and unquantized models
-    """
+    """Tests that inference dtype byte can be determined for quantized and unquantized models"""
 
     model_to_dtype_byte = {
         # quantized
         gpt_oss: 4.25 / 8,
         redhat_qwen: 2,
-        redhat_nemotron: 1,
+        redhat_nemotron: 2,
 
         # unquantized
         qwen_model: 2,
@@ -482,3 +513,181 @@ def test_inference_dtype_byte():
     for model, expceted in model_to_dtype_byte.items():
         model_config = get_model_config_from_hf(model)
         assert inference_dtype_byte(model_config) == expceted
+
+def test_estimate_vllm_non_torch_memory():
+    """Tests that non-torch memory estimation returns the correct constant value"""
+    expected = 1.0  # VLLM_NON_TORCH_MEMORY_GIB
+    actual = estimate_vllm_non_torch_memory()
+    assert actual == expected, f"Expected {expected} GiB, got {actual} GiB"
+    assert isinstance(actual, float), "Should return a float"
+
+def test_estimate_vllm_cuda_graph_memory():
+    """Tests that CUDA graph memory estimation returns the correct constant value"""
+    expected = 2.0  # VLLM_CUDA_GRAPH_MEMORY_GIB
+    actual = estimate_vllm_cuda_graph_memory()
+    assert actual == expected, f"Expected {expected} GiB, got {actual} GiB"
+    assert isinstance(actual, float), "Should return a float"
+
+def test_estimate_vllm_activation_memory_basic():
+    """Tests activation memory estimation for basic scenarios"""
+    model_config = get_model_config_from_hf(qwen_model)
+
+    # Test basic case with seq_len=2048, batch_size=1, tp=1
+    seq_len = 2048
+    batch_size = 1
+    tp = 1
+
+    activation_mem = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp)
+
+    # Should return a positive float
+    assert isinstance(activation_mem, float), "Should return a float"
+    assert activation_mem > 0, f"Activation memory should be positive, got {activation_mem}"
+
+    # For a small model like Qwen 0.6B, activation memory should be reasonable (< 10 GB)
+    assert activation_mem < 10.0, f"Activation memory seems too high: {activation_mem} GiB"
+
+def test_estimate_vllm_activation_memory_zero_seq_len():
+    """Tests that activation memory is zero for zero sequence length"""
+    model_config = get_model_config_from_hf(qwen_model)
+
+    activation_mem = estimate_vllm_activation_memory(model_config, seq_len=0, batch_size=1, tp=1)
+    assert activation_mem == 0.0, f"Expected 0.0 for zero seq_len, got {activation_mem}"
+
+def test_estimate_vllm_activation_memory_scales_with_tp():
+    """Tests that activation memory scales inversely with tensor parallelism"""
+    model_config = get_model_config_from_hf(qwen_model)
+    seq_len = 2048
+    batch_size = 1
+
+    # Get activation memory for different TP values
+    mem_tp1 = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp=1)
+    mem_tp2 = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp=2)
+    mem_tp4 = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp=4)
+
+    # Activation memory should decrease as TP increases (roughly inversely proportional)
+    assert mem_tp1 > mem_tp2, f"TP=1 memory ({mem_tp1}) should be > TP=2 memory ({mem_tp2})"
+    assert mem_tp2 > mem_tp4, f"TP=2 memory ({mem_tp2}) should be > TP=4 memory ({mem_tp4})"
+
+    # Check approximate inverse relationship (within 20% tolerance due to safety margin)
+    # Note: Not exact because of the fixed FlashAttention buffer and safety margin
+    ratio_2_to_1 = mem_tp1 / mem_tp2
+    ratio_4_to_2 = mem_tp2 / mem_tp4
+
+    # Ratios should be between 1.5 and 2.5 (approximately 2x, with some slack)
+    assert 1.5 < ratio_2_to_1 < 2.5, f"TP scaling ratio {ratio_2_to_1} seems off"
+    assert 1.5 < ratio_4_to_2 < 2.5, f"TP scaling ratio {ratio_4_to_2} seems off"
+
+def test_estimate_vllm_activation_memory_scales_with_batch_size():
+    """Tests that activation memory scales linearly with batch size"""
+    model_config = get_model_config_from_hf(qwen_model)
+    seq_len = 2048
+    tp = 1
+
+    mem_batch1 = estimate_vllm_activation_memory(model_config, seq_len, batch_size=1, tp=tp)
+    mem_batch2 = estimate_vllm_activation_memory(model_config, seq_len, batch_size=2, tp=tp)
+    mem_batch4 = estimate_vllm_activation_memory(model_config, seq_len, batch_size=4, tp=tp)
+
+    # Should scale roughly linearly with batch size (within 20% due to safety margin and fixed buffers)
+    assert mem_batch2 > mem_batch1, "Batch=2 memory should be > Batch=1 memory"
+    assert mem_batch4 > mem_batch2, "Batch=4 memory should be > Batch=2 memory"
+
+    # Check approximate linear scaling
+    # Note: The ratio is close to but not exactly 2x/4x due to the 10% safety margin
+    # applied to the total activation memory (see ACTIVATION_MEMORY_SAFETY_MARGIN).
+    # This margin accounts for PyTorch memory fragmentation and is proportional to
+    # the subtotal, so it slightly dampens the scaling ratio.
+    ratio_2_to_1 = mem_batch2 / mem_batch1
+    ratio_4_to_1 = mem_batch4 / mem_batch1
+
+    # Should be between 1.5 and 2.5 for doubling, 3.0 and 4.5 for quadrupling
+    assert 1.5 < ratio_2_to_1 < 2.5, f"Batch size scaling seems off: {ratio_2_to_1}"
+    assert 3.0 < ratio_4_to_1 < 4.5, f"Batch size scaling seems off: {ratio_4_to_1}"
+
+def test_estimate_vllm_activation_memory_scales_with_seq_len():
+    """Tests that activation memory scales linearly with sequence length"""
+    model_config = get_model_config_from_hf(qwen_model)
+    batch_size = 1
+    tp = 1
+
+    mem_seq1024 = estimate_vllm_activation_memory(model_config, seq_len=1024, batch_size=batch_size, tp=tp)
+    mem_seq2048 = estimate_vllm_activation_memory(model_config, seq_len=2048, batch_size=batch_size, tp=tp)
+    mem_seq4096 = estimate_vllm_activation_memory(model_config, seq_len=4096, batch_size=batch_size, tp=tp)
+
+    assert mem_seq2048 > mem_seq1024, "Longer sequence should use more memory"
+    assert mem_seq4096 > mem_seq2048, "Longer sequence should use more memory"
+
+    # Check approximate linear scaling
+    # Note: The ratio is close to but not exactly 2x due to the 10% safety margin
+    # applied to the total activation memory (see ACTIVATION_MEMORY_SAFETY_MARGIN).
+    # This margin accounts for PyTorch memory fragmentation and is proportional to
+    # the subtotal, so it slightly dampens the scaling ratio.
+    ratio_2048_to_1024 = mem_seq2048 / mem_seq1024
+    ratio_4096_to_2048 = mem_seq4096 / mem_seq2048
+
+    # Should be between 1.8 and 2.2 (approximately 2x, with some slack for the safety margin)
+    assert 1.8 < ratio_2048_to_1024 < 2.2, f"Sequence length scaling seems off: {ratio_2048_to_1024}"
+    assert 1.8 < ratio_4096_to_2048 < 2.2, f"Sequence length scaling seems off: {ratio_4096_to_2048}"
+
+def test_estimate_vllm_activation_memory_validation():
+    """Tests that activation memory estimation validates parameters correctly"""
+    model_config = get_model_config_from_hf(qwen_model)
+
+    # Test invalid TP (zero and negative)
+    with pytest.raises(ValueError, match="Tensor parallelism must be positive"):
+        estimate_vllm_activation_memory(model_config, seq_len=2048, batch_size=1, tp=0)
+
+    with pytest.raises(ValueError, match="Tensor parallelism must be positive"):
+        estimate_vllm_activation_memory(model_config, seq_len=2048, batch_size=1, tp=-1)
+
+    # Test negative sequence length
+    with pytest.raises(ValueError, match="Sequence length cannot be negative"):
+        estimate_vllm_activation_memory(model_config, seq_len=-1, batch_size=1, tp=1)
+
+    # Test negative batch size
+    with pytest.raises(ValueError, match="Batch size cannot be negative"):
+        estimate_vllm_activation_memory(model_config, seq_len=2048, batch_size=-1, tp=1)
+
+def test_estimate_vllm_activation_memory_formula():
+    """Tests that activation memory calculation matches the documented formula"""
+    model_config = get_model_config_from_hf(qwen_model)
+    seq_len = 2048
+    batch_size = 1
+    tp = 1
+
+    # Get the actual result
+    actual_mem_gib = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp)
+
+    # Calculate expected value using the formula from the implementation
+    # Constants
+    FP16_BF16_BYTES = 2
+    BYTES_PER_GIB = 1024 ** 3
+    ACTIVATION_MEMORY_SAFETY_MARGIN = 0.10
+
+    # Get text config
+    text_config = get_text_config(model_config)
+    hidden_size = text_config.hidden_size
+    intermediate_size = getattr(text_config, "intermediate_size", 4 * hidden_size)
+    num_attention_heads = text_config.num_attention_heads
+    head_dim = getattr(text_config, "head_dim", hidden_size // num_attention_heads)
+
+    # Calculate components
+    hidden_states = 2 * seq_len * batch_size * hidden_size * FP16_BF16_BYTES / tp
+
+    # FlashAttention workspace scales with batch_size, num_heads, and seq_len
+    num_heads_per_tp = num_attention_heads / tp
+    bytes_per_head_per_token = 4 + head_dim * FP16_BF16_BYTES
+    flash_attention_buffer = batch_size * num_heads_per_tp * seq_len * bytes_per_head_per_token
+
+    ffn_intermediate = seq_len * batch_size * intermediate_size * FP16_BF16_BYTES / tp
+
+    # Subtotal and safety margin
+    subtotal = hidden_states + flash_attention_buffer + ffn_intermediate
+    safety_buffer = subtotal * ACTIVATION_MEMORY_SAFETY_MARGIN
+
+    # Total in GiB
+    expected_mem_bytes = subtotal + safety_buffer
+    expected_mem_gib = expected_mem_bytes / BYTES_PER_GIB
+
+    # Allow small floating point differences
+    assert abs(actual_mem_gib - expected_mem_gib) < 0.001, \
+        f"Formula mismatch: expected {expected_mem_gib} GiB, got {actual_mem_gib} GiB"

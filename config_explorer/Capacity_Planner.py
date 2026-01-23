@@ -154,7 +154,15 @@ def model_specification():
                 data = get_model_size_df(model_info, model_config)
                 st.dataframe(data, hide_index=True)
 
-                st.write("In addition, vLLM [profiles memory](https://github.com/vllm-project/vllm/blob/dcf2f3ec067711ff69e5ab7478fca6ffb4f11daf/vllm/worker/worker.py#L229) by doing a forward pass with `--max-model-len` with dummy data to estimate the non-torch and torch activation peak memory consumption. This means the estimation of the model memory is actually an underestimation. Estimating intermediate memory footprint is currently work in progress.")
+                st.write("In addition to model weights, the capacity planner now estimates **peak activation memory** during inference, including:\n"
+                        "- Hidden states for current layer\n"
+                        "- FlashAttention workspace buffers (O(s) not O(s²))\n"
+                        "- Feed-forward network intermediate activations\n"
+                        "- CUDA graph memory overhead (~2 GB)\n"
+                        "- Non-torch memory overhead (~1 GB)\n"
+                        "- Memory fragmentation safety margin (10%)\n\n"
+                        "This provides more accurate capacity planning compared to estimating model weights and KV cache alone. "
+                        "The formulas assume FlashAttention is enabled (vLLM default) and activation recomputation is used.")
 
         else:
             return None
@@ -301,6 +309,7 @@ Higher max model length means fewer concurrent requests can be served, \
                 user_scenario.max_model_len,
                 gpu_memory=user_scenario.get_gpu_memory(db.gpu_specs),
                 gpu_mem_util=user_scenario.gpu_mem_util,
+                batch_size=user_scenario.concurrency,
                 tp=user_scenario.tp_size,
                 pp=user_scenario.pp_size,
                 dp=user_scenario.dp_size,
@@ -369,6 +378,121 @@ KV cache per request = per_token_memory x context_len x batch_size
 KV cache for max concurrency = kv_cache_per_request x concurrency
                              = {kv_details.per_request_kv_cache_gb} GB x {user_scenario.concurrency}
                              = {kv_details.kv_cache_size_gb} GB
+""")
+
+        # Display details on how activation memory is estimated
+        with st.expander("See how activation memory is calculated below"):
+            st.write(f"""During inference, the model requires temporary memory for activations (hidden states, attention workspace, FFN intermediates). Below shows how peak activation memory is estimated for a single forward pass.
+
+**Model Configuration:**
+- Hidden size: {text_config.hidden_size}
+- Number of layers: {text_config.num_hidden_layers}
+- Intermediate size (FFN): {getattr(text_config, 'intermediate_size', 4 * text_config.hidden_size)}
+- Sequence length: {user_scenario.max_model_len}
+- Batch size: {user_scenario.concurrency}
+- Tensor parallelism: {user_scenario.tp_size}
+- Computational dtype: FP16/BF16 (2 bytes per element)
+
+**Activation Components:**
+""")
+
+            # Calculate each component separately for display
+            hidden_size = text_config.hidden_size
+            num_layers = text_config.num_hidden_layers
+            intermediate_size = getattr(text_config, "intermediate_size", 4 * hidden_size)
+            num_attention_heads = text_config.num_attention_heads
+            head_dim = getattr(text_config, "head_dim", hidden_size // num_attention_heads)
+            seq_len = user_scenario.max_model_len
+            batch_size = user_scenario.concurrency
+            tp = user_scenario.tp_size
+            compute_dtype_bytes = 2  # FP16_BF16_BYTES
+
+            # 1. Hidden states
+            hidden_states_bytes = 2 * seq_len * batch_size * hidden_size * compute_dtype_bytes / tp
+            hidden_states_gb = hidden_states_bytes / (1024 ** 3)
+
+            st.write("**1. Hidden States (input/output buffers for current layer)**")
+            st.write("With activation recomputation, only 2 buffers are kept: input and output of the current layer.")
+            st.code(f"""
+Hidden states memory = 2 x seq_len x batch_size x hidden_size x dtype_bytes / tp
+                     = 2 x {seq_len} x {batch_size} x {hidden_size} x {compute_dtype_bytes} / {tp}
+                     = {hidden_states_bytes:,.0f} bytes
+                     = {util.pretty_round(hidden_states_gb)} GB
+""")
+
+            # 2. FlashAttention workspace
+            num_heads_per_tp = num_attention_heads / tp
+            bytes_per_head_per_token = 4 + head_dim * compute_dtype_bytes
+            flash_attention_buffer_bytes = batch_size * num_heads_per_tp * seq_len * bytes_per_head_per_token
+            flash_attention_buffer_gb = flash_attention_buffer_bytes / (1024 ** 3)
+
+            st.write("**2. FlashAttention Workspace**")
+            st.write("FlashAttention uses O(batch × heads × seq_len) memory (not O(s²)), with workspace buffers sharded across TP ranks.")
+            st.write("The workspace stores intermediate results per attention head: LSE buffer (4 bytes/token) + output accumulator (head_dim × 2 bytes/token).")
+            st.code(f"""
+FlashAttention workspace = batch_size x (num_heads / tp) x seq_len x bytes_per_head_per_token
+                         = {batch_size} x ({num_attention_heads} / {tp}) x {seq_len} x {bytes_per_head_per_token}
+                         = {batch_size} x {num_heads_per_tp} x {seq_len} x {bytes_per_head_per_token}
+                         = {flash_attention_buffer_bytes:,.0f} bytes
+                         = {util.pretty_round(flash_attention_buffer_gb)} GB
+""")
+
+            # 3. FFN intermediate activations
+            ffn_intermediate_bytes = seq_len * batch_size * intermediate_size * compute_dtype_bytes / tp
+            ffn_intermediate_gb = ffn_intermediate_bytes / (1024 ** 3)
+
+            st.write("**3. Feed-Forward Network (FFN) Intermediate Activations**")
+            st.write("With activation recomputation, only one layer's FFN intermediate is stored at a time.")
+            st.code(f"""
+FFN intermediate memory = seq_len x batch_size x intermediate_size x dtype_bytes / tp
+                        = {seq_len} x {batch_size} x {intermediate_size} x {compute_dtype_bytes} / {tp}
+                        = {ffn_intermediate_bytes:,.0f} bytes
+                        = {util.pretty_round(ffn_intermediate_gb)} GB
+""")
+
+            # Subtotal
+            subtotal_bytes = hidden_states_bytes + flash_attention_buffer_bytes + ffn_intermediate_bytes
+            subtotal_gb = subtotal_bytes / (1024 ** 3)
+
+            st.write("**Subtotal (before safety margin):**")
+            st.code(f"""
+Subtotal = hidden_states + flash_attention + ffn_intermediate
+         = {util.pretty_round(hidden_states_gb)} + {util.pretty_round(flash_attention_buffer_gb)} + {util.pretty_round(ffn_intermediate_gb)}
+         = {util.pretty_round(subtotal_gb)} GB
+""")
+
+            # Safety margin for memory fragmentation
+            safety_margin_percent = 10  # ACTIVATION_MEMORY_SAFETY_MARGIN * 100
+            safety_buffer_bytes = subtotal_bytes * 0.10
+            safety_buffer_gb = safety_buffer_bytes / (1024 ** 3)
+
+            st.write("**4. Safety Margin for Memory Fragmentation**")
+            st.write(f"PyTorch's memory allocator uses 2MB blocks, which can lead to fragmentation. We add a {safety_margin_percent}% safety margin.")
+            st.code(f"""
+Safety buffer = subtotal x {safety_margin_percent / 100}
+              = {util.pretty_round(subtotal_gb)} x 0.{safety_margin_percent}
+              = {util.pretty_round(safety_buffer_gb)} GB
+""")
+
+            # Total activation memory
+            total_activation_bytes = subtotal_bytes + safety_buffer_bytes
+            total_activation_gb = total_activation_bytes / (1024 ** 3)
+
+            st.write("**Final Activation Memory Estimate:**")
+            st.code(f"""
+Total activation memory = subtotal + safety_buffer
+                        = {util.pretty_round(subtotal_gb)} + {util.pretty_round(safety_buffer_gb)}
+                        = {util.pretty_round(total_activation_gb)} GB
+""")
+
+            st.info(f"**Peak activation memory for this workload: {util.pretty_round(total_activation_gb)} GB**")
+
+            st.write("""
+**Additional Memory Overheads:**
+- **CUDA graph memory**: ~2 GB per GPU (vLLM captures 40-50 CUDA graphs for different batch sizes)
+- **Non-torch memory**: ~1 GB per GPU (CUDA runtime, Python interpreter overhead)
+
+These overheads are accounted for separately in the total memory calculation.
 """)
 
 
@@ -448,6 +572,8 @@ def hardware_specification():
                                                     tp,
                                                     pp,
                                                     dp,
+                                                    max_model_len=user_scenario.max_model_len,
+                                                    batch_size=user_scenario.concurrency,
                                                     )
 
             kv_details = KVCacheDetail(model_info, model_config,
@@ -463,7 +589,27 @@ def hardware_specification():
             reserved = total_memory - total_available_gpu_mem
             total_model_size = model_size * dp
             kv_cache_available_per_gpu = available_gpu_mem - model_size_per_gpu
-            free = total_available_gpu_mem - total_model_size - all_request_kv_cache_memory
+
+            # Calculate activation and overhead components for accurate free memory calculation
+            # Note: estimate_vllm_activation_memory() returns memory per GPU (already divided by TP)
+            activation_mem_per_gpu = estimate_vllm_activation_memory(
+                model_config,
+                seq_len=user_scenario.max_model_len,
+                batch_size=user_scenario.concurrency,
+                tp=tp
+            )
+            cuda_graph_mem_per_gpu = estimate_vllm_cuda_graph_memory()
+            non_torch_mem_per_gpu = estimate_vllm_non_torch_memory()
+
+            # Total memory components (for summary and free calculation)
+            # CRITICAL FIX: Activation memory must be multiplied by dp since each data parallel
+            # replica needs its own activation memory during inference
+            activation_mem_total = activation_mem_per_gpu * dp
+            cuda_graph_mem_total = cuda_graph_mem_per_gpu * available_gpu_count
+            non_torch_mem_total = non_torch_mem_per_gpu * available_gpu_count
+
+            free = total_available_gpu_mem - total_model_size - all_request_kv_cache_memory - activation_mem_total - cuda_graph_mem_total - non_torch_mem_total
+            kv_cache_available_per_gpu_adjusted = available_gpu_mem - model_size_per_gpu - activation_mem_per_gpu - cuda_graph_mem_per_gpu - non_torch_mem_per_gpu
 
             st.caption(f"GPU memory: {gpu_memory} GB, available: {util.pretty_round(available_gpu_mem)} GB")
 
@@ -472,22 +618,37 @@ def hardware_specification():
 
             col1.info(f"""Memory breakdown per GPU:
 - Model weights: {util.pretty_round(model_size_per_gpu)} GB
-- Free memory available for KV cache: {util.pretty_round(kv_cache_available_per_gpu)} GB
+- Activation memory: {util.pretty_round(activation_mem_per_gpu)} GB
+- CUDA graphs: {util.pretty_round(cuda_graph_mem_per_gpu)} GB
+- Non-torch overhead: {util.pretty_round(non_torch_mem_per_gpu)} GB
+- Available for KV cache: {util.pretty_round(kv_cache_available_per_gpu_adjusted)} GB
 """)
 
             memory_util_chart(col1)
 
             with col1.expander("Total memory breakdown"):
                 st.markdown(f"""
+**Memory Allocation:**
 - Total memory: {gpu_memory * available_gpu_count} GB
-- Reserved: {util.pretty_round(reserved)} GB
+- Reserved (1 - gpu_memory_util): {util.pretty_round(reserved)} GB
 - Total memory available: {available_gpu_mem * available_gpu_count} GB
+
+**Model & Weights:**
 - Single model weights: {util.pretty_round(model_size)} GB
-- Total model weights (for data parallelism): {util.pretty_round(total_model_size)} GB
+- Total model weights (x {dp} data parallel): {util.pretty_round(total_model_size)} GB
+
+**Inference Overheads:**
+- Activation memory (peak): {util.pretty_round(activation_mem_total)} GB
+- CUDA graph memory ({available_gpu_count} GPUs x 2 GB): {util.pretty_round(cuda_graph_mem_total)} GB
+- Non-torch memory ({available_gpu_count} GPUs x 1 GB): {util.pretty_round(non_torch_mem_total)} GB
+
+**KV Cache:**
 - Allocatable KV cache memory: {util.pretty_round(allocatable_kv_cache)} GB
 - KV cache per request: {util.pretty_round(per_request_kv_cache_memory)} GB
 - KV cache for max concurrent requests: {util.pretty_round(all_request_kv_cache_memory)} GB
-- Model + Max request KV cache: {util.pretty_round(total_model_size + all_request_kv_cache_memory)} GB
+
+**Summary:**
+- Model + Activation + Overheads + KV cache: {util.pretty_round(total_model_size + activation_mem_total + cuda_graph_mem_total + non_torch_mem_total + all_request_kv_cache_memory)} GB
 - Free: {util.pretty_round(free)} GB
     """)
 
@@ -520,7 +681,7 @@ def hardware_specification():
 
 def memory_util_chart(st_context):
     """
-    Show memory utilization chart
+    Show memory utilization chart with detailed breakdown
     """
 
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
@@ -534,22 +695,68 @@ def memory_util_chart(st_context):
     pp = user_scenario.pp_size
     dp = user_scenario.dp_size
 
-    # Display GPU + KV pie chart
-    total_memory = gpus_required(tp, pp, dp) * gpu_memory
-    available = gpus_required(tp, pp, dp) * available_gpu_memory(gpu_memory, gpu_memory_util)
+    # Calculate memory components
+    gpu_count = gpus_required(tp, pp, dp)
+    total_memory = gpu_count * gpu_memory
+    available = gpu_count * available_gpu_memory(gpu_memory, gpu_memory_util)
     reserved = total_memory - available
+
+    # Model weights
     model_size = model_memory_req(model_info, model_config) * dp
+
+    # KV cache
     max_concurrency_kv_cache = kv_cache_req(model_info, model_config, user_scenario.max_model_len, concurrency)
-    free = available - model_size - max_concurrency_kv_cache
+
+    # Activation memory: Each data parallel replica needs its own activation memory
+    # CRITICAL FIX: Must multiply by dp since activation memory is needed per replica
+    activation_memory = estimate_vllm_activation_memory(
+        model_config,
+        seq_len=user_scenario.max_model_len,
+        batch_size=concurrency,
+        tp=tp
+    ) * dp
+
+    # CUDA graph memory (per GPU)
+    cuda_graph_memory = estimate_vllm_cuda_graph_memory() * gpu_count
+
+    # Non-torch memory (per GPU)
+    non_torch_memory = estimate_vllm_non_torch_memory() * gpu_count
+
+    # Free memory
+    free = available - model_size - max_concurrency_kv_cache - activation_memory - cuda_graph_memory - non_torch_memory
 
     if free < 0:
         st.warning(f"Memory exceeds available by {abs(util.pretty_round(free))} GB.")
         return None
 
-    # Display chart iff model and cache size are selected
-    labels = ["Model", "KV Cache", "Free", "Reserved"]
-    sizes = [util.pretty_round(model_size), util.pretty_round(max_concurrency_kv_cache), util.pretty_round(free), util.pretty_round(reserved)]
-    colors = ["#ff9999", "#66b3ff", "#99ff99", "#808080"]
+    # Display chart with detailed breakdown
+    labels = [
+        "Model Weights",
+        "KV Cache",
+        "Activation Memory",
+        "CUDA Graphs",
+        "Non-Torch",
+        "Free",
+        "Reserved"
+    ]
+    sizes = [
+        util.pretty_round(model_size),
+        util.pretty_round(max_concurrency_kv_cache),
+        util.pretty_round(activation_memory),
+        util.pretty_round(cuda_graph_memory),
+        util.pretty_round(non_torch_memory),
+        util.pretty_round(free),
+        util.pretty_round(reserved)
+    ]
+    colors = [
+        "#ff9999",  # Model - red
+        "#66b3ff",  # KV Cache - blue
+        "#ffcc99",  # Activation - orange
+        "#cc99ff",  # CUDA Graphs - purple
+        "#ff99cc",  # Non-Torch - pink
+        "#99ff99",  # Free - green
+        "#808080"   # Reserved - gray
+    ]
 
     # Create donut chart
     fig, ax = plt.subplots(figsize=(4, 4))
@@ -574,7 +781,8 @@ def memory_util_chart(st_context):
         legend_labels,
         title="Total GPU Memory Breakdown",
         loc="center left",
-        bbox_to_anchor=(1, 0, 0.5, 1)
+        bbox_to_anchor=(1, 0, 0.5, 1),
+        fontsize=9
     )
 
     # Render in Streamlit

@@ -2223,7 +2223,10 @@ def validate_vllm_params(
                         gpu_memory,
                         gpu_memory_util,
                         tp=tp,
+                        pp=1,
                         dp=dp,
+                        max_model_len=max_model_len,
+                        batch_size=1,
                     )
 
                     if available_kv_cache < 0:
@@ -2248,7 +2251,9 @@ def validate_vllm_params(
                             max_model_len,
                             gpu_memory,
                             gpu_memory_util,
+                            batch_size=1,
                             tp=tp,
+                            pp=1,
                             dp=dp,
                         )
                         announce(
