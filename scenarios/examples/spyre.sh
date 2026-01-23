@@ -8,8 +8,8 @@
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-speech-3.3-8b
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-2b-instruct
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-8b-instruct
-# export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-ai-platform/micro-g3.3-8b-instruct-1b
-export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-8b-instruct
+export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-ai-platform/micro-g3.3-8b-instruct-1b
+#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-8b-instruct
 #export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
@@ -26,8 +26,8 @@ export LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME=spyre-precompiled-model
 #export LLMDBENCH_DEPLOY_METHODS=standalone
 #export LLMDBENCH_DEPLOY_METHODS=modelservice
 
-export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=ibm.com/spyre_pf
-export LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=4
+export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=ibm.com/spyre_vf
+export LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=2
 export LLMDBENCH_VLLM_COMMON_AFFINITY="ibm.com/spyre.product:IBM_Spyre"
 export LLMDBENCH_VLLM_COMMON_MAX_NUM_BATCHED_TOKENS=1024
 export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=32768
@@ -40,6 +40,8 @@ export LLMDBENCH_VLLM_COMMON_REPLICAS=1
 
 export LLMDBENCH_VLLM_COMMON_POD_SCHEDULER=spyre-scheduler
 
+export LLMDBENCH_VLLM_COMMON_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
+
 export LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY=us.icr.io
 export LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO=wxpe-cicd-internal/amd64
 export LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME=aiu-vllm
@@ -50,9 +52,9 @@ export LLMDBENCH_LLMD_IMAGE_REPO=wxpe-cicd-internal/amd64
 export LLMDBENCH_LLMD_IMAGE_NAME=aiu-vllm
 export LLMDBENCH_LLMD_IMAGE_TAG=v1.1.1-rc.3-amd64
 
-
 export LLMDBENCH_VLLM_STANDALONE_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_STANDALONE_ARGS
+REPLACE_ENV_LLMDBENCH_VLLM_COMMON_PREPROCESS; \
 /home/senuser/container-scripts/simple_vllm_serve.sh REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_INFERENCE_PORT \
 --max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
@@ -68,14 +70,16 @@ export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 - name: SERVED_MODEL_NAME
   value: REPLACE_ENV_LLMDBENCH_DEPLOY_MODEL_LIST
-# - name: FLEX_COMPUTE
-#   value: SENTIENT
-# - name: FLEX_DEVICE
-#   value: PF
-# - name: FLEX_HDMA_P2PSIZE
-#   value: '268435456'
-#- name: HF_HUB_DISABLE_XET
-#  value: '1'
+- name: FLEX_COMPUTE
+  value: SENTIENT
+- name: FLEX_DEVICE
+  value: VF
+- name: FLEX_HDMA_P2PSIZE
+  value: '268435456'
+- name: FLEX_HDMA_COLLSIZE
+  value: '268435456'
+- name: HF_HUB_DISABLE_XET
+  value: '1'
 #- name: HF_HUB_OFFLINE
 #  value: '1'
 #- name: HF_HUB_CACHE
@@ -130,7 +134,7 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES
     sizeLimit: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM # roughly 32MB per local DP plus scratch space
 - name: preprocesses
   configMap:
-    defaultMode: 320
+    defaultMode: 0755
     name: llm-d-benchmark-preprocesses
 EOF
 
@@ -152,9 +156,12 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_SHM_MEM=$LLMDBENCH_VLLM_COMMON_SHM_MEM
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ENVVARS_TO_YAML=$LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS=$LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES=$LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS=$LLMDBENCH_VLLM_COMMON_PREPROCESS
+
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
+REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS; \
 /home/senuser/container-scripts/simple_vllm_serve.sh /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL  \
 --served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_METRICS_PORT \
@@ -174,6 +181,7 @@ export LLMDBENCH_HARNESS_NAME=inference-perf # (default is "inference-perf")
 # export LLMDBENCH_HARNESS_NAME=vllm-benchmark # (default is "inference-perf")
 ######export LLMDBENCH_HARNESS_NAME=nop
 #export LLMDBENCH_HARNESS_NAME=vllm-benchmark
+export LLMDBENCH_HARNESS_WAIT_TIMEOUT=36000
 
 export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=sanity_random.yaml # (default is "sanity_random.yaml")
 # export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=fixed_dataset.yaml # (default is "sanity_random.yaml")

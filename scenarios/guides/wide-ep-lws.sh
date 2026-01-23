@@ -98,7 +98,7 @@ export LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL=0.75
 ###### export LLMDBENCH_VLLM_COMMON_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:multi-nic-compute
 export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=auto
 
-export LLMDBENCH_VLLM_COMMON_PREPROCESS="source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
+export LLMDBENCH_VLLM_COMMON_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
 
 # VLLM_NIXL_SIDE_CHANNEL_HOST is automatically exported
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)

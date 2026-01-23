@@ -60,7 +60,7 @@ export LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM=1
 # Uncomment ( ######## ) the following to enable automatic detection of network acceleration (roce/gdr or rdma/ib)
 ######## export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=auto
 
-export LLMDBENCH_VLLM_COMMON_PREPROCESS="source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
+export LLMDBENCH_VLLM_COMMON_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
 
 # VLLM_NIXL_SIDE_CHANNEL_HOST is automatically exported
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)

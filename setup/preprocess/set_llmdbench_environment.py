@@ -3,22 +3,34 @@
 import subprocess
 import ipaddress
 import os
+import json
+
 from pathlib import Path
 
 ip_info={}
 curr_if=''
 hca_info={}
+nccl_list =[]
+nixl_list =[]
 curr_hca=''
 
 deps_checked = True
 for dep in [ 'ip', 'ibstat' ] :
     try :
-        result = subprocess.run(['which', 'ip'], capture_output=True, text=True, check=True)
+        result = subprocess.run(['which', dep], capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as e:
         print(f"WARNING: Dependency '{dep}' not available on the image {e.cmd} returned {e.returncode}.")
         deps_checked = False
 
 disable_acs = True
+
+if os.getenv('FLEX_DEVICE','PF') == 'VF' :
+    env_file_name=f"{Path.home()}/.senlib.json"
+    with open(env_file_name, "r", encoding="utf-8") as senlib_file:
+        senlib_contents = json.load(senlib_file)
+    senlib_contents['RISCV']['DOOM']['enable'] = True
+    with open(env_file_name, 'w') as senlib_file:
+        json.dump(senlib_contents, senlib_file, indent=4)
 
 if deps_checked :
     ip_command_output = subprocess.run(['ip', '-o', 'a', 'list'], capture_output=True, text=True, check=True)
@@ -49,8 +61,6 @@ if deps_checked :
         if line.count('State') :
             hca_info[curr_hca]['status'] = line.split(':')[-1].strip().replace('Active','UP').replace('Down','DOWN')
 
-    nccl_list =[]
-    nixl_list =[]
 
     c1="mlx name"
     c2="node guid"
@@ -109,6 +119,7 @@ env_file_contents.append(f"export START_RANK=\"{sr}\"")
 env_file_contents.append("if [[ -z $LWS_WORKER_INDEX ]]; then")
 env_file_contents.append("  find /dev/shm -type f -delete")
 env_file_contents.append("fi")
+
 if disable_acs :
     env_file_contents.append("if [[ ! -z $UCX_NET_DEVICES && ! -z NCCL_IB_HCA ]]; then")
     env_file_contents.append(" for BDF in $(lspci -d \"*:*:*\" | awk '{print $1}'); do")

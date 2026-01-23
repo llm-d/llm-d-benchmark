@@ -95,12 +95,14 @@ env | grep ^LLMDBENCH | grep -v BASE64 | sort
 
 # Repeat run until success
 echo "Running harness: /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
-while [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC -ne 0 ]]; do
+counter=1
+while [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC -ne 0 && "${counter}" -le 3 ]]; do
   /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}
   ec=$?
   if [[ $ec -ne 0 ]]; then
     echo "execution of /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS} failed, wating 30 seconds and trying again"
     sleep 30
+    counter="$(( ${counter} + 1 ))"
     set -x
   else
     export LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC=0

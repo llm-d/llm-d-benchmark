@@ -1767,18 +1767,19 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
     if port == "auto" :
         port = ev['vllm_common_inference_port']
 
-    while current_attempts <= total_attempts :
-        if not ip :
-            return "empty", "N/A"
+    if not ip :
+        return "empty", "N/A"
 
-        pod_name = f"testinference-pod-{get_rand_string()}"
-        if "http://" not in ip:
-            ip = "http://" + ip
-        if ip.count(":") == 1:
-            ip = ip + ":" + port
-        ip = ip + "/v1/models"
-        curl_command = f"curl --no-progress-meter {ip}"
-        full_command = ["/bin/bash", "-c", f"curl --no-progress-meter {ip}"]
+    pod_name = f"testinference-pod-{get_rand_string()}"
+    if "http://" not in ip:
+        ip = "http://" + ip
+    if ip.count(":") == 1:
+        ip = ip + ":" + port
+    ip = ip + "/v1/models"
+    curl_command = f"curl --no-progress-meter {ip}"
+    full_command = ["/bin/bash", "-c", f"curl --no-progress-meter {ip}"]
+
+    while current_attempts <= total_attempts :
         pod_manifest = client.V1Pod(
             metadata=client.V1ObjectMeta(name=pod_name, namespace=ev['vllm_common_namespace'], labels={"llm-d.ai/id": f"{pod_name}"}),
             spec=client.V1PodSpec(
