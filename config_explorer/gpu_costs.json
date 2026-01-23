@@ -1,6 +1,6 @@
 {
   "_disclaimer": "IMPORTANT: These costs are REFERENCE VALUES ONLY for relative comparison. They do NOT represent actual pricing from any cloud provider. Use custom costs for accurate pricing.",
-  "_cost_description": "Cost values are unitless and intended for relative comparison between GPUs. Interpret these as relative efficiency scores where lower values indicate more cost-effective options.",
+  "_cost_description": "Cost values are intended for relative comparison between GPUs. Interpret these as relative efficiency scores where lower values indicate more cost-effective options.",
   "H100": {
     "cost": 35.0,
     "source": "reference",

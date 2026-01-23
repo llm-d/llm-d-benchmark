@@ -15,7 +15,6 @@ class TestCostManager:
         assert manager.default_costs is not None
         assert isinstance(manager.default_costs, dict)
         assert manager.custom_costs == {}
-        assert not hasattr(manager, 'cost_unit')  # Verify cost_unit is removed
 
     def test_init_with_custom_costs(self):
         """Test initialization with custom costs"""

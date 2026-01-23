@@ -42,7 +42,7 @@ class CostManager:
             num_gpus: Number of GPUs
 
         Returns:
-            Total cost (unitless) or None if cost not available
+            Total cost or None if cost not available
         """
         # Check custom costs first
         if gpu_name in self.custom_costs:
@@ -62,7 +62,7 @@ class CostManager:
         Get all GPU costs (custom overrides defaults)
 
         Returns:
-            Dict mapping GPU names to cost (unitless)
+            Dict mapping GPU names to cost
         """
         costs = {}
 

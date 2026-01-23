@@ -188,7 +188,7 @@ if enable_per_gpu_config:
             max_gpus_per_type[gpu_name] = gpu_max
 
 # Cost Configuration
-st.sidebar.subheader("💰 Custom GPU Costs (Optional)", help="Cost values are unitless and used for relative comparison. Use any positive numbers that make sense for your use case (e.g., your actual $/hour, $/token, or any other pricing). Custom values are compared relative to each other and to any defaults you don't override.")
+st.sidebar.subheader("💰 Custom GPU Costs (Optional)", help="Cost values are used for relative comparison. Use any positive numbers that make sense for your use case (e.g., your actual $/hour, $/token, or any other pricing). Custom values are compared relative to each other and to any defaults you don't override.")
 
 custom_gpu_costs = {}
 with st.sidebar.expander("⚙️ Set Custom Costs", expanded=False):
@@ -221,7 +221,7 @@ with st.sidebar.expander("⚙️ Set Custom Costs", expanded=False):
 if custom_gpu_costs:
     st.sidebar.caption(f"💡 Displaying custom costs")
 else:
-    st.sidebar.caption(f"💡 Default costs are unitless reference values for comparison purposes.")
+    st.sidebar.caption(f"💡 Default costs are reference values for comparison purposes.")
 
 # Run button
 run_analysis = st.sidebar.button("🚀 Run Analysis", type="primary", use_container_width=True)
@@ -719,7 +719,7 @@ if st.session_state.recommendation_results is not None:
                 if recommender.cost_manager.is_using_custom_costs():
                     st.caption(f"💡 Displaying custom costs")
                 else:
-                    st.caption(f"💡 Default costs are unitless reference values for comparison purposes.")
+                    st.caption(f"💡 Default costs are reference values for comparison purposes.")
 
                 # Cost comparison chart
                 if "Cost" in df.columns:

@@ -300,7 +300,7 @@ def estimate_performance(args):
             if recommender.cost_manager.is_using_custom_costs():
                 print(f"\n💡 Displaying custom costs")
             else:
-                print(f"\n💡 Default costs are unitless reference values for comparison purposes.")
+                print(f"\n💡 Default costs are reference values for comparison purposes.")
 
             print("\n📊 Results sorted by cost (lowest to highest)")
             print("    Only showing GPUs that meet performance requirements")
@@ -604,7 +604,7 @@ Examples:
         '--custom-gpu-cost',
         type=str,
         action='append',
-        help='Custom GPU cost in format GPU_NAME:COST (e.g., H100:30.5). Can be specified multiple times. Cost values are unitless - use any numbers for relative comparison (e.g., your actual $/hour or $/token pricing).'
+        help='Custom GPU cost in format GPU_NAME:COST (e.g., H100:30.5). Can be specified multiple times. Use any numbers for relative comparison (e.g., your actual $/hour or $/token pricing).'
     )
 
     estimate_parser.add_argument(

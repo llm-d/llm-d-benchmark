@@ -122,12 +122,11 @@ The GPU Recommender uses BentoML's llm-optimizer roofline algorithm to provide s
 
 The GPU Recommender displays cost information to help you find cost-effective GPU configurations:
 
-- **Cost Values**: Unitless scores on a 0-100+ scale for relative GPU comparison (H100 = 100 baseline)
 - **Default GPU Costs**: Built-in reference costs for common GPUs (H200, H100, A100, L40, etc.)
 - **Custom Cost Override**: Specify your own GPU costs using any numbers you prefer (e.g., your actual $/hour or $/token pricing)
 - **Cost-Based Sorting**: Sort results by cost to find the most economical option
 
-**⚠️ IMPORTANT**: Default costs are **unitless reference values for relative comparison only**. They do **NOT** represent actual pricing from any cloud provider. Lower values indicate better value. Use custom costs that reflect your actual infrastructure pricing.
+**⚠️ IMPORTANT**: Default costs are **reference values for relative comparison only**. They do **NOT** represent actual pricing from any provider. Lower values indicate better value. Use custom costs that reflect your actual infrastructure pricing.
 
 ## Library
 
