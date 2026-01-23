@@ -1,10 +1,7 @@
 """Cost management for GPU recommendations"""
 import json
 from pathlib import Path
-from typing import Dict, Optional, Literal
-
-
-CostUnit = Literal["per_hour", "per_1m_tokens"]
+from typing import Dict, Optional
 
 
 class CostManager:
@@ -12,23 +9,17 @@ class CostManager:
 
     def __init__(
         self,
-        custom_costs: Optional[Dict[str, float]] = None,
-        cost_unit: CostUnit = "per_hour"
+        custom_costs: Optional[Dict[str, float]] = None
     ):
         """
         Initialize cost manager
 
         Args:
             custom_costs: Optional dict mapping GPU names to custom costs
-            cost_unit: Unit for costs - either "per_hour" ($/hour) or "per_1m_tokens" ($/1M tokens)
 
         Raises:
-            ValueError: If custom_costs contains invalid values or cost_unit is invalid
+            ValueError: If custom_costs contains invalid values
         """
-        if cost_unit not in ["per_hour", "per_1m_tokens"]:
-            raise ValueError(f"Invalid cost_unit: {cost_unit}. Must be 'per_hour' or 'per_1m_tokens'")
-
-        self.cost_unit = cost_unit
         self.default_costs = self._load_default_costs()
 
         # Validate custom costs
@@ -51,7 +42,7 @@ class CostManager:
             num_gpus: Number of GPUs
 
         Returns:
-            Total cost (in the configured unit) or None if cost not available
+            Total cost (unitless) or None if cost not available
         """
         # Check custom costs first
         if gpu_name in self.custom_costs:
@@ -61,9 +52,8 @@ class CostManager:
 
         # Fall back to default costs
         if gpu_name in self.default_costs:
-            cost_field = f"cost_{self.cost_unit}"
-            if cost_field in self.default_costs[gpu_name]:
-                return self.default_costs[gpu_name][cost_field] * num_gpus
+            if "cost" in self.default_costs[gpu_name]:
+                return self.default_costs[gpu_name]["cost"] * num_gpus
 
         return None
 
@@ -72,15 +62,14 @@ class CostManager:
         Get all GPU costs (custom overrides defaults)
 
         Returns:
-            Dict mapping GPU names to cost (in the configured unit)
+            Dict mapping GPU names to cost (unitless)
         """
         costs = {}
-        cost_field = f"cost_{self.cost_unit}"
 
-        # Start with defaults (skip non-GPU entries like _disclaimer, _cost_units)
+        # Start with defaults (skip non-GPU entries like _disclaimer, _cost_description)
         for gpu_name, data in self.default_costs.items():
-            if isinstance(data, dict) and cost_field in data:
-                costs[gpu_name] = data[cost_field]
+            if isinstance(data, dict) and "cost" in data:
+                costs[gpu_name] = data["cost"]
 
         # Override with custom costs (filter out None values)
         for gpu_name, cost in self.custom_costs.items():
@@ -100,19 +89,6 @@ class CostManager:
             True if cost data is available, False otherwise
         """
         return gpu_name in self.custom_costs or gpu_name in self.default_costs
-
-    def get_cost_unit_label(self) -> str:
-        """
-        Get human-readable label for the current cost unit
-
-        Returns:
-            Label string (e.g., "$/hour" or "$/1M tokens")
-        """
-        if self.cost_unit == "per_hour":
-            return "/hour"
-        elif self.cost_unit == "per_1m_tokens":
-            return "/1M tokens"
-        return self.cost_unit
 
     def is_using_custom_costs(self) -> bool:
         """

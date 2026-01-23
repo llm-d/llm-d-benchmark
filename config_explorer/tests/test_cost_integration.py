@@ -21,21 +21,21 @@ def test_cost_manager():
     
     # Test getting costs
     h100_cost = cm.get_cost("H100")
-    print(f"✅ H100 cost: ${h100_cost}/hour")
-    
+    print(f"✅ H100 cost: ${h100_cost}")
+
     a100_cost = cm.get_cost("A100")
-    print(f"✅ A100 cost: ${a100_cost}/hour")
-    
+    print(f"✅ A100 cost: ${a100_cost}")
+
     # Test multi-GPU cost
     h100_2gpu = cm.get_cost("H100", num_gpus=2)
-    print(f"✅ H100 (2 GPUs) cost: ${h100_2gpu}/hour")
+    print(f"✅ H100 (2 GPUs) cost: ${h100_2gpu}")
     assert h100_2gpu == h100_cost * 2, "Multi-GPU cost calculation failed"
     
     # Test custom costs
     custom_costs = {"H100": 30.0, "A100": 20.0}
     cm_custom = CostManager(custom_costs=custom_costs)
     h100_custom = cm_custom.get_cost("H100")
-    print(f"✅ H100 custom cost: ${h100_custom}/hour")
+    print(f"✅ H100 custom cost: ${h100_custom}")
     assert h100_custom == 30.0, "Custom cost override failed"
     
     print("\n✅ All CostManager tests passed!\n")
@@ -75,7 +75,7 @@ def test_gpu_recommender():
     # Verify custom costs are set
     h100_cost = recommender_custom.cost_manager.get_cost("H100")
     assert h100_cost == 30.0, "Custom costs not applied"
-    print(f"✅ Custom costs applied correctly: H100 = ${h100_cost}/hour")
+    print(f"✅ Custom costs applied correctly: H100 = ${h100_cost}")
     
     # Test methods exist
     assert hasattr(recommender, 'get_gpu_with_lowest_cost'), "Missing get_gpu_with_lowest_cost method"

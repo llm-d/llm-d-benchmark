@@ -30,7 +30,6 @@ class GPURecommender:
         
         # Cost parameters
         custom_gpu_costs: Optional[Dict[str, float]] = None,
-        cost_unit: str = "per_hour",
     ):
         """
         Initialize GPU Recommender.
@@ -48,7 +47,6 @@ class GPURecommender:
             max_itl: Maximum inter-token latency constraint (ms)
             max_latency: Maximum end-to-end latency constraint (s)
             custom_gpu_costs: Optional dict mapping GPU names to custom costs
-            cost_unit: Unit for costs - either "per_hour" ($/hour) or "per_1m_tokens" ($/1M tokens)
         """
 
         # Read HF Token from environment variable
@@ -71,7 +69,7 @@ class GPURecommender:
         self.max_latency = max_latency
 
         # Initialize cost manager
-        self.cost_manager = CostManager(custom_costs=custom_gpu_costs, cost_unit=cost_unit)
+        self.cost_manager = CostManager(custom_costs=custom_gpu_costs)
 
         # Store results after recommendation
         self.gpu_results: Optional[Dict[str, PerformanceEstimationResult]] = None
@@ -372,8 +370,7 @@ class GPURecommender:
         if best_cost:
             summary["estimated_best_performance"]["lowest_cost"] = {
                 "gpu": best_cost[0],
-                "cost": round(best_cost[1], 2),
-                "cost_unit": self.cost_manager.cost_unit
+                "cost": round(best_cost[1], 2)
             }
 
         # Extract and format detailed results for each GPU from llm-optimizer output
@@ -443,7 +440,6 @@ class GPURecommender:
             cost = self.cost_manager.get_cost(gpu_name, num_gpus)
             if cost is not None:
                 gpu_data["cost"] = round(cost, 2)
-                gpu_data["cost_unit"] = self.cost_manager.cost_unit
                 gpu_data["num_gpus"] = num_gpus
 
             summary["gpu_results"][gpu_name] = gpu_data

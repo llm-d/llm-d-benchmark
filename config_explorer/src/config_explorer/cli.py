@@ -248,7 +248,6 @@ def estimate_performance(args):
             max_itl=args.max_itl,
             max_latency=args.max_latency,
             custom_gpu_costs=custom_gpu_costs,
-            cost_unit=args.cost_unit,
         )
 
         # Get results using the recommender's method
@@ -296,14 +295,13 @@ def estimate_performance(args):
             print("\n" + "="*80)
             print("GPU Performance Estimation Results")
             print("="*80)
-            
+
             # Show conditional disclaimer based on whether custom costs are used
-            cost_unit_label = recommender.cost_manager.get_cost_unit_label()
             if recommender.cost_manager.is_using_custom_costs():
-                print(f"\n💡 Displaying costs in {cost_unit_label}")
+                print(f"\n💡 Displaying custom costs")
             else:
-                print(f"\n💡 Initial cost values ({cost_unit_label}) are relative reference values for comparison purposes.")
-            
+                print(f"\n💡 Default costs are unitless reference values for comparison purposes.")
+
             print("\n📊 Results sorted by cost (lowest to highest)")
             print("    Only showing GPUs that meet performance requirements")
             print("="*80)
@@ -312,7 +310,7 @@ def estimate_performance(args):
             if "lowest_cost" in performance_summary["estimated_best_performance"]:
                 best_cost_info = performance_summary["estimated_best_performance"]["lowest_cost"]
                 print(f"\n🏆 Best Value GPU: {best_cost_info['gpu']}")
-                print(f"   Cost: ${best_cost_info['cost']:.2f} {cost_unit_label}")
+                print(f"   Cost: ${best_cost_info['cost']:.2f}")
                 if 'throughput_tps' in best_cost_info:
                     print(f"   Throughput: {best_cost_info['throughput_tps']:.2f} tokens/s")
                 if 'ttft_ms' in best_cost_info:
@@ -337,7 +335,7 @@ def estimate_performance(args):
                     best_config = gpu_data.get("best_latency", {})
 
                     print(f"\n{idx}. {gpu_name}")
-                    print(f"   💰 Cost: ${cost:.2f} {cost_unit_label}")
+                    print(f"   💰 Cost: ${cost:.2f}")
 
                     if best_config:
                         throughput = best_config.get("throughput_tps", "N/A")
@@ -603,18 +601,10 @@ Examples:
 
     # Cost parameters
     estimate_parser.add_argument(
-        '--cost-unit',
-        type=str,
-        choices=['per_hour', 'per_1m_tokens'],
-        default='per_hour',
-        help='Unit for GPU costs: "per_hour" ($/hour) or "per_1m_tokens" ($/1M tokens). Default: per_hour. Note: Initial cost values are relative reference values for comparison.'
-    )
-
-    estimate_parser.add_argument(
         '--custom-gpu-cost',
         type=str,
         action='append',
-        help='Custom GPU cost in format GPU_NAME:COST (e.g., H100:30.5). Can be specified multiple times. Uses the unit specified by --cost-unit.'
+        help='Custom GPU cost in format GPU_NAME:COST (e.g., H100:30.5). Can be specified multiple times. Cost values are unitless - use any numbers for relative comparison (e.g., your actual $/hour or $/token pricing).'
     )
 
     estimate_parser.add_argument(
