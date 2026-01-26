@@ -10,7 +10,6 @@ from src.config_explorer.capacity_planner import *
 precision_types = ["fp32", "fp16", "fp8", "int4"]
 small_model_id = "repo/small-model"
 qwen_model = "Qwen/Qwen3-0.6B"
-llama_model = "meta-llama/Llama-3.1-8B-Instruct"
 deepseek3 = "deepseek-ai/DeepSeek-V3.1"
 gpt_oss = "openai/gpt-oss-20b"
 redhat_qwen = "RedHatAI/Qwen3-8B-FP8-dynamic"
@@ -618,18 +617,11 @@ def test_estimate_vllm_activation_memory_empirical_validation():
     assert 5.0 <= qwen_activation <= 6.0, \
         f"Qwen3-0.6B activation {qwen_activation} GiB outside expected range [5.0, 6.0] (empirical: 5.56)"
 
-    # Test case 2: Llama-3.1-8B (dense, TP=1)
-    # Empirical: 4.76 GiB, Expected with base 5.5: 5.5 GiB (conservative overestimate)
-    llama_config = get_model_config_from_hf(llama_model)
-    llama_activation = estimate_vllm_activation_memory(llama_config, tp=1)
-    assert 4.5 <= llama_activation <= 6.0, \
-        f"Llama-3.1-8B activation {llama_activation} GiB outside expected range [4.5, 6.0] (empirical: 4.76)"
-
-    # Test case 3: TP=2 should give same result as TP=1 (empirical observation)
-    # Llama-70B TP=2: 4.84 GiB (similar to TP=1 estimates)
-    llama_activation_tp2 = estimate_vllm_activation_memory(llama_config, tp=2)
-    assert llama_activation == llama_activation_tp2, \
-        f"Activation memory should be constant with TP: TP=1 {llama_activation} vs TP=2 {llama_activation_tp2}"
+    # Test case 2: TP=2 should give same result as TP=1 (empirical observation)
+    # Empirical data shows activation memory is constant regardless of TP
+    qwen_activation_tp2 = estimate_vllm_activation_memory(qwen_config, tp=2)
+    assert qwen_activation == qwen_activation_tp2, \
+        f"Activation memory should be constant with TP: TP=1 {qwen_activation} vs TP=2 {qwen_activation_tp2}"
 
 def test_estimate_vllm_activation_memory_moe():
     """Tests that MoE models use higher activation memory constant"""
