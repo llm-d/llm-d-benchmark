@@ -4,7 +4,7 @@ Analysis of vLLM log files for various models tested on H100 GPUs (79.18 GiB tot
 
 ## Summary Table
 
-| Model | Status | Model Weight (GiB) | Peak Activation (GiB) | Non-torch Memory (GiB) | CUDAGraph Memory (GiB) | KV Cache (GiB) | TP Size | Max Model Len |
+| Model | Status | Model Weight (GiB) | Peak Activation (GiB) | Non-torch Memory (GiB) | CUDAGraph Memory (GiB) | Available KV Cache (GiB) | TP Size | Max Model Len |
 |-------|--------|-------------------|----------------------|----------------------|------------------------|----------------|---------|---------------|
 | Deepseek-R1 | FAILED | N/A | N/A | N/A | N/A | N/A | 1 | 16000 |
 | gpt-oss-20b | SUCCESS | 13.47 | 7.38 | 0.13 | 0.39 | 50.28 | 1 | 16000 |
@@ -13,7 +13,8 @@ Analysis of vLLM log files for various models tested on H100 GPUs (79.18 GiB tot
 | Llama-3.1-8B | SUCCESS | 14.99 | 4.76 | 0.13 | -0.45 | 51.38 | 1 | 16000 |
 | Qwen3-0.6B | SUCCESS | 1.12 | 5.56 | 0.13 | 0.10 | 64.45 | 1 | 16000 |
 | Qwen3-0.6B | SUCCESS | 1.12 | 5.56 | 0.13 | 0.10 | 64.45 | 1 | 32000 |
-
+| Qwen3-32B | FAILED | 61.03 | 5.64 | 0.14 | N/A | N/A | 1 | 32000 |
+| Qwen3-32B | SUCCESS | 61.03 | 5.64 | 0.14 | -0.88 | 4.45 | 1 | 16000 |
 ---
 
 ## Detailed Results
