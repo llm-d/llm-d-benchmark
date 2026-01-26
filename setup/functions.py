@@ -63,6 +63,9 @@ try:
         allocatable_kv_cache_memory,
         kv_cache_req,
         max_concurrent_requests,
+        estimate_vllm_activation_memory,
+        estimate_vllm_cuda_graph_memory,
+        estimate_vllm_non_torch_memory,
     )
 except ModuleNotFoundError as e:
     print(f"❌ ERROR: Failed to import config_explorer module: {e}")
@@ -2213,6 +2216,34 @@ def validate_vllm_params(
 
                 model_mem_req = model_memory_req(model_info, model_config)
                 announce(f"ℹ️ {model} requires {model_mem_req} GB of memory")
+
+                # Log intermediate memory components
+                if not skip_gpu_tests:
+                    announce("👉 Estimating intermediate memory requirements....")
+                    # Note: activation memory is constant per model type, not dependent on max_model_len
+                    activation_memory_per_gpu = estimate_vllm_activation_memory(
+                        model_config,
+                        tp=tp
+                    )
+                    cuda_graph_memory_per_gpu = estimate_vllm_cuda_graph_memory()
+                    non_torch_memory_per_gpu = estimate_vllm_non_torch_memory(tp)
+                    total_intermediate_per_gpu = activation_memory_per_gpu + cuda_graph_memory_per_gpu + non_torch_memory_per_gpu
+
+                    announce(
+                        f"ℹ️ Peak activation memory per GPU: {activation_memory_per_gpu:.2f} GB (constant per model type, not affected by max_model_len)"
+                    )
+                    announce(
+                        f"ℹ️ CUDA graph memory per GPU: {cuda_graph_memory_per_gpu:.2f} GB (included in activation profiling)"
+                    )
+                    announce(
+                        f"ℹ️ Non-torch memory (CUDA runtime, Python) per GPU: {non_torch_memory_per_gpu:.2f} GB"
+                    )
+                    announce(
+                        f"ℹ️ Total intermediate memory per GPU: {total_intermediate_per_gpu:.2f} GB"
+                    )
+                    announce(
+                        f"ℹ️ Total intermediate memory across {per_replica_requirement} GPUs: {total_intermediate_per_gpu * per_replica_requirement:.2f} GB"
+                    )
 
                 # Estimate KV cache memory and max number of requests that can be served in worst case scenario
                 if not skip_gpu_tests:

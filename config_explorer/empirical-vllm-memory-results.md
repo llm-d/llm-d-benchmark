@@ -7,11 +7,12 @@ Analysis of vLLM log files for various models tested on H100 GPUs (79.18 GiB tot
 | Model | Status | Model Weight (GiB) | Peak Activation (GiB) | Non-torch Memory (GiB) | CUDAGraph Memory (GiB) | KV Cache (GiB) | TP Size | Max Model Len |
 |-------|--------|-------------------|----------------------|----------------------|------------------------|----------------|---------|---------------|
 | Deepseek-R1 | FAILED | N/A | N/A | N/A | N/A | N/A | 1 | 16000 |
-| GPT-OSS-20B | SUCCESS | 13.47 | 7.38 | 0.13 | 0.39 | 50.28 | 1 | 16000 |
+| gpt-oss-20b | SUCCESS | 13.47 | 7.38 | 0.13 | 0.39 | 50.28 | 1 | 16000 |
 | Llama-3.3-70B-FP8 (TP=2) | SUCCESS | 33.88 | 4.84 | 0.55 | -0.42 | 32.0 | 2 | 16000 |
 | Llama-3.3-70B-FP8 (TP=1) | FAILED | 67.72 | N/A | N/A | N/A | -1.44 | 1 | 16000 |
 | Llama-3.1-8B | SUCCESS | 14.99 | 4.76 | 0.13 | -0.45 | 51.38 | 1 | 16000 |
 | Qwen3-0.6B | SUCCESS | 1.12 | 5.56 | 0.13 | 0.10 | 64.45 | 1 | 16000 |
+| Qwen3-0.6B | SUCCESS | 1.12 | 5.56 | 0.13 | 0.10 | 64.45 | 1 | 32000 |
 
 ---
 
@@ -44,7 +45,7 @@ Model failed to load on a single H100 GPU. Failed during DeepseekV2MoE layer ini
 
 ---
 
-### 2. GPT-OSS-20B (openai/gpt-oss-20b)
+### 2. gpt-oss-20b (openai/gpt-oss-20b)
 
 **Status:** SUCCESS
 
@@ -195,6 +196,35 @@ Model weights loaded successfully but consumed too much memory (67.72 GiB), leav
 #### Recommendations
 - For requested memory: `--kv-cache-memory=68930180199` (64.2 GiB)
 - For full GPU utilization: `--kv-cache-memory=76783070720` (71.51 GiB)
+---
+
+### 6. Qwen3-0.6B (Qwen/Qwen3-0.6B)
+
+**Status:** SUCCESS
+
+#### Model Configuration
+- **Model name:** Qwen/Qwen3-0.6B
+- **max-model-len:** 32000
+- **tensor-parallel-size:** 1
+- **gpu-memory-utilization:** 0.9
+- **enable-prefix-caching:** True
+
+#### Empirical Results
+- **Model loading took:** 1.12 GiB memory and 16.45 seconds
+- **Available KV cache memory:** 64.45 GiB
+- **Free memory on device:** 78.57/79.18 GiB on startup
+
+#### Memory Metrics
+- **Weight memory:** 1.12 GiB
+- **Peak activation memory:** 5.56 GiB
+- **Non-torch memory:** 0.13 GiB
+- **CUDAGraph memory:** 0.10 GiB
+- **KV cache memory:** 64.45 GiB
+- **Desired GPU utilization:** 0.9 (71.26 GiB)
+
+#### Recommendations
+- For requested memory: `--kv-cache-memory=68932277351` (64.2 GiB)
+- For full GPU utilization: `--kv-cache-memory=76785167872` (71.51 GiB)
 
 ---
 
@@ -202,8 +232,8 @@ Model weights loaded successfully but consumed too much memory (67.72 GiB), leav
 
 ### Successful Models
 1. **Qwen3-0.6B**: Smallest memory footprint (1.12 GiB weights), highest KV cache availability (64.45 GiB)
-2. **GPT-OSS-20B**: Moderate size (13.47 GiB weights), good KV cache (50.28 GiB)
-3. **Llama-3.1-8B**: Similar to GPT-OSS-20B (14.99 GiB weights, 51.38 GiB KV cache)
+2. **gpt-oss-20b**: Moderate size (13.47 GiB weights), good KV cache (50.28 GiB)
+3. **Llama-3.1-8B**: Similar to gpt-oss-20b (14.99 GiB weights, 51.38 GiB KV cache)
 4. **Llama-3.3-70B-FP8 (TP=2)**: Large model successful with tensor parallelism (33.88 GiB per GPU)
 
 ### Failed Models
@@ -220,5 +250,5 @@ Model weights loaded successfully but consumed too much memory (67.72 GiB), leav
 - **GPU:** H100 with 79.18 GiB total memory
 - **Typical free memory at startup:** 78.57 GiB
 - **Target utilization:** 0.9 (71.26 GiB)
-- **Largest successful single-GPU model:** Llama-3.1-8B / GPT-OSS-20B (~15 GiB weights)
+- **Largest successful single-GPU model:** Llama-3.1-8B / gpt-oss-20b (~15 GiB weights)
 - **Largest model overall:** Llama-3.3-70B-FP8 with TP=2

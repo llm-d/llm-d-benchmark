@@ -372,17 +372,25 @@ KV cache for max concurrency = kv_cache_per_request x concurrency
 
         # Display details on how activation memory is estimated
         with st.expander("See how activation memory is calculated below"):
-            st.write(f"""During inference, vLLM requires temporary memory for activations (hidden states, attention workspace, FFN intermediates, CUDA graphs).
+            st.write(f"""During inference, vLLM requires memory for activations (hidden states, attention workspace, FFN intermediates, CUDA graphs).
 
-The activation memory estimate uses **empirically-calibrated constants** derived from real vLLM profiling measurements on H100 GPUs, then scales linearly with sequence length and batch size.
+**CRITICAL: Activation memory is CONSTANT per model type, NOT dependent on max_model_len or batch_size!**
 
-**Empirical Calibration Approach:**
+This was empirically validated:
+- Qwen3-0.6B at max_model_len=16000: **5.56 GB**
+- Qwen3-0.6B at max_model_len=32000: **5.56 GB** (SAME!)
 
-vLLM profiles with multiple concurrent prefill requests during warmup, resulting in higher peak memory than theoretical single-request formulas predict. Our constants capture this actual behavior.
+**Why Activation Memory is Constant:**
+
+The "peak activation memory" represents FIXED overhead from vLLM's initialization and warmup:
+1. **CUDA graph compilation**: vLLM pre-captures graphs for fixed batch sizes (1,2,4,8,16,32...) during warmup, regardless of max_model_len
+2. **Profiling phase allocations**: vLLM runs dummy sequences to measure memory, creating fixed-size buffers
+3. **PyTorch allocator overhead**: Pre-allocation and fragmentation independent of max_model_len
+4. **FlashAttention workspace**: Fixed-size buffers allocated during engine initialization
+
+Runtime per-request activation buffers (which DO scale with actual sequence length) are dynamically allocated from the KV cache memory pool, not counted in this fixed overhead.
 """)
 
-            seq_len = user_scenario.max_model_len
-            batch_size = user_scenario.concurrency
             tp = user_scenario.tp_size
 
             # Determine model type and base constant
@@ -390,7 +398,6 @@ vLLM profiles with multiple concurrent prefill requests during warmup, resulting
                 is_moe,
                 ACTIVATION_MEMORY_BASE_DENSE_GIB,
                 ACTIVATION_MEMORY_BASE_MOE_GIB,
-                ACTIVATION_REFERENCE_SEQ_LEN
             )
 
             is_moe_model = is_moe(model_config)
@@ -400,27 +407,23 @@ vLLM profiles with multiple concurrent prefill requests during warmup, resulting
             st.write(f"""
 **Model Type:** {model_type}
 
-**Base Constant (at seq_len={ACTIVATION_REFERENCE_SEQ_LEN}, batch=1):**
-- Dense models: {ACTIVATION_MEMORY_BASE_DENSE_GIB} GB (from empirical measurements: Qwen3-0.6B: 5.56 GB, Llama-8B: 4.76 GB, Llama-70B/TP2: 4.84 GB)
-- MoE models: {ACTIVATION_MEMORY_BASE_MOE_GIB} GB (from empirical measurements: GPT-OSS-20B: 7.38 GB)
+**Fixed Activation Memory Constants:**
+- Dense models: {ACTIVATION_MEMORY_BASE_DENSE_GIB} GB (empirical: Qwen3-0.6B: 5.56 GB, Llama-8B: 4.76 GB, Llama-70B/TP2: 4.84 GB)
+- MoE models: {ACTIVATION_MEMORY_BASE_MOE_GIB} GB (empirical: gpt-oss-20b: 7.38 GB)
 
-**Your Model:** {base_constant} GB base (model type: {model_type})
+**Your Model:** {base_constant} GB (model type: {model_type})
 
-**Scaling Formula:**
+**Formula (Constant, No Scaling):**
 """)
 
-            seq_len_factor = seq_len / ACTIVATION_REFERENCE_SEQ_LEN
-            batch_size_factor = batch_size
-            total_activation_gb = base_constant * seq_len_factor * batch_size_factor
+            total_activation_gb = base_constant
 
             st.code(f"""
-Activation memory = base_constant × (seq_len / reference_seq_len) × batch_size
-                  = {base_constant} × ({seq_len} / {ACTIVATION_REFERENCE_SEQ_LEN}) × {batch_size}
-                  = {base_constant} × {seq_len_factor:.4f} × {batch_size}
-                  = {util.pretty_round(total_activation_gb)} GB
+Activation memory = base_constant (FIXED per model type)
+                  = {base_constant} GB
 """)
 
-            st.info(f"**Peak activation memory for this workload: {util.pretty_round(total_activation_gb)} GB**")
+            st.info(f"**Peak activation memory: {util.pretty_round(total_activation_gb)} GB (constant)**")
 
             st.write("""
 **Note on Tensor Parallelism (TP):**
@@ -540,11 +543,9 @@ def hardware_specification():
             kv_cache_available_per_gpu = available_gpu_mem - model_size_per_gpu
 
             # Calculate activation and overhead components for accurate free memory calculation
-            # Note: estimate_vllm_activation_memory() returns memory per GPU (already divided by TP)
+            # Note: estimate_vllm_activation_memory() returns constant memory per model type
             activation_mem_per_gpu = estimate_vllm_activation_memory(
                 model_config,
-                seq_len=user_scenario.max_model_len,
-                batch_size=user_scenario.concurrency,
                 tp=tp
             )
             cuda_graph_mem_per_gpu = estimate_vllm_cuda_graph_memory()
@@ -657,11 +658,9 @@ def memory_util_chart(st_context):
     max_concurrency_kv_cache = kv_cache_req(model_info, model_config, user_scenario.max_model_len, concurrency)
 
     # Activation memory: Each data parallel replica needs its own activation memory
-    # CRITICAL FIX: Must multiply by dp since activation memory is needed per replica
+    # Note: activation memory is constant per model type (not dependent on max_model_len)
     activation_memory = estimate_vllm_activation_memory(
         model_config,
-        seq_len=user_scenario.max_model_len,
-        batch_size=concurrency,
         tp=tp
     ) * dp
 

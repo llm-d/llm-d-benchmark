@@ -355,8 +355,9 @@ def test_allocatable_kv_cache_memory():
                 # Calculate activation and overhead memory
                 # Activation memory must be multiplied by dp since each
                 # data parallel replica needs its own activation memory
+                # Note: activation memory is constant per model type
                 activation_memory = estimate_vllm_activation_memory(
-                    model_config, max_model_len, batch_size, tp
+                    model_config, tp
                 ) * dp
                 cuda_graph_memory = estimate_vllm_cuda_graph_memory() * gpu_count
                 non_torch_memory = estimate_vllm_non_torch_memory(tp) * gpu_count
@@ -542,37 +543,29 @@ def test_estimate_vllm_activation_memory_basic():
     """Tests activation memory estimation for basic scenarios"""
     model_config = get_model_config_from_hf(qwen_model)
 
-    # Test basic case with seq_len=2048, batch_size=1, tp=1
-    seq_len = 2048
-    batch_size = 1
+    # Test basic case with tp=1
     tp = 1
 
-    activation_mem = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp)
+    activation_mem = estimate_vllm_activation_memory(model_config, tp)
 
     # Should return a positive float
     assert isinstance(activation_mem, float), "Should return a float"
     assert activation_mem > 0, f"Activation memory should be positive, got {activation_mem}"
 
-    # For a small model like Qwen 0.6B, activation memory should be reasonable (< 10 GB)
-    assert activation_mem < 10.0, f"Activation memory seems too high: {activation_mem} GiB"
+    # For a dense model, activation memory should be around 5.5 GB (constant)
+    assert 4.5 <= activation_mem <= 6.0, f"Activation memory should be ~5.5 GB, got {activation_mem} GiB"
 
-def test_estimate_vllm_activation_memory_zero_seq_len():
-    """Tests that activation memory is zero for zero sequence length"""
-    model_config = get_model_config_from_hf(qwen_model)
-
-    activation_mem = estimate_vllm_activation_memory(model_config, seq_len=0, batch_size=1, tp=1)
-    assert activation_mem == 0.0, f"Expected 0.0 for zero seq_len, got {activation_mem}"
+# REMOVED: test_estimate_vllm_activation_memory_zero_seq_len
+# Activation memory is now constant per model type, not dependent on seq_len
 
 def test_estimate_vllm_activation_memory_constant_with_tp():
     """Tests that activation memory does NOT scale with tensor parallelism (empirical behavior)"""
     model_config = get_model_config_from_hf(qwen_model)
-    seq_len = 2048
-    batch_size = 1
 
     # Get activation memory for different TP values
-    mem_tp1 = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp=1)
-    mem_tp2 = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp=2)
-    mem_tp4 = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp=4)
+    mem_tp1 = estimate_vllm_activation_memory(model_config, tp=1)
+    mem_tp2 = estimate_vllm_activation_memory(model_config, tp=2)
+    mem_tp4 = estimate_vllm_activation_memory(model_config, tp=4)
 
     # Empirical observation: activation memory is constant regardless of TP
     # (Llama-70B TP=1 would have ~4.8 GiB, TP=2 shows 4.84 GiB per GPU)
@@ -580,56 +573,13 @@ def test_estimate_vllm_activation_memory_constant_with_tp():
     assert mem_tp1 == mem_tp2, f"TP=1 memory ({mem_tp1}) should equal TP=2 memory ({mem_tp2})"
     assert mem_tp2 == mem_tp4, f"TP=2 memory ({mem_tp2}) should equal TP=4 memory ({mem_tp4})"
 
-def test_estimate_vllm_activation_memory_scales_with_batch_size():
-    """Tests that activation memory scales linearly with batch size"""
-    model_config = get_model_config_from_hf(qwen_model)
-    seq_len = 2048
-    tp = 1
+# REMOVED: test_estimate_vllm_activation_memory_scales_with_batch_size
+# Activation memory is now constant per model type, NOT dependent on batch_size
+# Empirical evidence (Qwen3-0.6B): 16K and 32K both = 5.56 GB
 
-    mem_batch1 = estimate_vllm_activation_memory(model_config, seq_len, batch_size=1, tp=tp)
-    mem_batch2 = estimate_vllm_activation_memory(model_config, seq_len, batch_size=2, tp=tp)
-    mem_batch4 = estimate_vllm_activation_memory(model_config, seq_len, batch_size=4, tp=tp)
-
-    # Should scale roughly linearly with batch size (within 20% due to safety margin and fixed buffers)
-    assert mem_batch2 > mem_batch1, "Batch=2 memory should be > Batch=1 memory"
-    assert mem_batch4 > mem_batch2, "Batch=4 memory should be > Batch=2 memory"
-
-    # Check approximate linear scaling
-    # Note: The ratio is close to but not exactly 2x/4x due to the 10% safety margin
-    # applied to the total activation memory (see ACTIVATION_MEMORY_SAFETY_MARGIN).
-    # This margin accounts for PyTorch memory fragmentation and is proportional to
-    # the subtotal, so it slightly dampens the scaling ratio.
-    ratio_2_to_1 = mem_batch2 / mem_batch1
-    ratio_4_to_1 = mem_batch4 / mem_batch1
-
-    # Should be between 1.5 and 2.5 for doubling, 3.0 and 4.5 for quadrupling
-    assert 1.5 < ratio_2_to_1 < 2.5, f"Batch size scaling seems off: {ratio_2_to_1}"
-    assert 3.0 < ratio_4_to_1 < 4.5, f"Batch size scaling seems off: {ratio_4_to_1}"
-
-def test_estimate_vllm_activation_memory_scales_with_seq_len():
-    """Tests that activation memory scales linearly with sequence length"""
-    model_config = get_model_config_from_hf(qwen_model)
-    batch_size = 1
-    tp = 1
-
-    mem_seq1024 = estimate_vllm_activation_memory(model_config, seq_len=1024, batch_size=batch_size, tp=tp)
-    mem_seq2048 = estimate_vllm_activation_memory(model_config, seq_len=2048, batch_size=batch_size, tp=tp)
-    mem_seq4096 = estimate_vllm_activation_memory(model_config, seq_len=4096, batch_size=batch_size, tp=tp)
-
-    assert mem_seq2048 > mem_seq1024, "Longer sequence should use more memory"
-    assert mem_seq4096 > mem_seq2048, "Longer sequence should use more memory"
-
-    # Check approximate linear scaling
-    # Note: The ratio is close to but not exactly 2x due to the 10% safety margin
-    # applied to the total activation memory (see ACTIVATION_MEMORY_SAFETY_MARGIN).
-    # This margin accounts for PyTorch memory fragmentation and is proportional to
-    # the subtotal, so it slightly dampens the scaling ratio.
-    ratio_2048_to_1024 = mem_seq2048 / mem_seq1024
-    ratio_4096_to_2048 = mem_seq4096 / mem_seq2048
-
-    # Should be between 1.8 and 2.2 (approximately 2x, with some slack for the safety margin)
-    assert 1.8 < ratio_2048_to_1024 < 2.2, f"Sequence length scaling seems off: {ratio_2048_to_1024}"
-    assert 1.8 < ratio_4096_to_2048 < 2.2, f"Sequence length scaling seems off: {ratio_4096_to_2048}"
+# REMOVED: test_estimate_vllm_activation_memory_scales_with_seq_len
+# Activation memory is now constant per model type, NOT dependent on seq_len
+# Empirical evidence (Qwen3-0.6B): 16K and 32K both = 5.56 GB
 
 def test_estimate_vllm_activation_memory_validation():
     """Tests that activation memory estimation validates parameters correctly"""
@@ -637,64 +587,65 @@ def test_estimate_vllm_activation_memory_validation():
 
     # Test invalid TP (zero and negative)
     with pytest.raises(ValueError, match="Tensor parallelism must be positive"):
-        estimate_vllm_activation_memory(model_config, seq_len=2048, batch_size=1, tp=0)
+        estimate_vllm_activation_memory(model_config, tp=0)
 
     with pytest.raises(ValueError, match="Tensor parallelism must be positive"):
-        estimate_vllm_activation_memory(model_config, seq_len=2048, batch_size=1, tp=-1)
+        estimate_vllm_activation_memory(model_config, tp=-1)
 
-    # Test negative sequence length
-    with pytest.raises(ValueError, match="Sequence length cannot be negative"):
-        estimate_vllm_activation_memory(model_config, seq_len=-1, batch_size=1, tp=1)
-
-    # Test negative batch size
-    with pytest.raises(ValueError, match="Batch size cannot be negative"):
-        estimate_vllm_activation_memory(model_config, seq_len=2048, batch_size=-1, tp=1)
-
-def test_estimate_vllm_activation_memory_formula():
-    """Tests that activation memory calculation matches the empirical formula"""
+def test_estimate_vllm_activation_memory_constant():
+    """Tests that activation memory is constant per model type"""
     model_config = get_model_config_from_hf(qwen_model)
-    seq_len = 2048
-    batch_size = 2
     tp = 1
 
     # Get the actual result
-    actual_mem_gib = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp)
+    actual_mem_gib = estimate_vllm_activation_memory(model_config, tp)
 
-    # Calculate expected value using the empirical formula
-    # base_constant * (seq_len / REFERENCE_SEQ_LEN) * batch_size
-    ACTIVATION_MEMORY_BASE_DENSE_GIB = 5.5  # Qwen is a dense model
-    ACTIVATION_REFERENCE_SEQ_LEN = 16000
+    # Qwen is a dense model, should return the dense constant
+    ACTIVATION_MEMORY_BASE_DENSE_GIB = 5.5
 
-    seq_len_factor = seq_len / ACTIVATION_REFERENCE_SEQ_LEN
-    batch_size_factor = batch_size
-    expected_mem_gib = ACTIVATION_MEMORY_BASE_DENSE_GIB * seq_len_factor * batch_size_factor
-
-    # Allow small floating point differences
-    assert abs(actual_mem_gib - expected_mem_gib) < 0.001, \
-        f"Formula mismatch: expected {expected_mem_gib} GiB, got {actual_mem_gib} GiB"
+    # Should be exactly the constant (no scaling)
+    assert actual_mem_gib == ACTIVATION_MEMORY_BASE_DENSE_GIB, \
+        f"Expected {ACTIVATION_MEMORY_BASE_DENSE_GIB} GiB, got {actual_mem_gib} GiB"
 
 def test_estimate_vllm_activation_memory_empirical_validation():
     """Tests activation memory estimates against empirical vLLM measurements"""
-    # Test parameters matching empirical data: seq_len=16000, batch_size=1, tp varies
-    seq_len = 16000
-    batch_size = 1
+    # Activation memory is constant per model type, independent of max_model_len
 
     # Test case 1: Qwen3-0.6B (dense, TP=1)
-    # Empirical: 5.56 GiB, Expected with base 5.5: 5.5 GiB
+    # Empirical: 5.56 GiB at both 16K and 32K, Expected with base 5.5: 5.5 GiB
     qwen_config = get_model_config_from_hf(qwen_model)
-    qwen_activation = estimate_vllm_activation_memory(qwen_config, seq_len, batch_size, tp=1)
+    qwen_activation = estimate_vllm_activation_memory(qwen_config, tp=1)
     assert 5.0 <= qwen_activation <= 6.0, \
         f"Qwen3-0.6B activation {qwen_activation} GiB outside expected range [5.0, 6.0] (empirical: 5.56)"
 
     # Test case 2: Llama-3.1-8B (dense, TP=1)
     # Empirical: 4.76 GiB, Expected with base 5.5: 5.5 GiB (conservative overestimate)
     llama_config = get_model_config_from_hf(llama_model)
-    llama_activation = estimate_vllm_activation_memory(llama_config, seq_len, batch_size, tp=1)
+    llama_activation = estimate_vllm_activation_memory(llama_config, tp=1)
     assert 4.5 <= llama_activation <= 6.0, \
         f"Llama-3.1-8B activation {llama_activation} GiB outside expected range [4.5, 6.0] (empirical: 4.76)"
 
     # Test case 3: TP=2 should give same result as TP=1 (empirical observation)
     # Llama-70B TP=2: 4.84 GiB (similar to TP=1 estimates)
-    llama_activation_tp2 = estimate_vllm_activation_memory(llama_config, seq_len, batch_size, tp=2)
+    llama_activation_tp2 = estimate_vllm_activation_memory(llama_config, tp=2)
     assert llama_activation == llama_activation_tp2, \
         f"Activation memory should be constant with TP: TP=1 {llama_activation} vs TP=2 {llama_activation_tp2}"
+
+def test_estimate_vllm_activation_memory_moe():
+    """Tests that MoE models use higher activation memory constant"""
+    # MoE models have higher activation overhead due to expert routing
+    # Empirical: gpt-oss-20b = 7.38 GiB
+
+    moe_model = gpt_oss
+    moe_config = get_model_config_from_hf(moe_model)
+    moe_activation = estimate_vllm_activation_memory(moe_config, tp=1)
+
+    # Should be around 8.0 GB for MoE models
+    assert 7.0 <= moe_activation <= 9.0, \
+        f"MoE activation {moe_activation} GiB outside expected range [7.0, 9.0] (empirical: 7.38)"
+
+    # Should be higher than dense models
+    dense_config = get_model_config_from_hf(qwen_model)
+    dense_activation = estimate_vllm_activation_memory(dense_config, tp=1)
+    assert moe_activation > dense_activation, \
+        f"MoE activation {moe_activation} should be > dense activation {dense_activation}"

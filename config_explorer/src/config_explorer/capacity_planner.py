@@ -30,7 +30,7 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
 # Source: empirical-test/analysis-results.md
 # Test environment: H100 (79.18 GiB), vLLM with FlashAttention, max_model_len=16000
 ACTIVATION_MEMORY_BASE_DENSE_GIB = 5.5  # Dense models: Qwen3-0.6B (5.56), Llama-8B (4.76), Llama-70B/TP2 (4.84)
-ACTIVATION_MEMORY_BASE_MOE_GIB = 8.0    # MoE models: GPT-OSS-20B (7.38)
+ACTIVATION_MEMORY_BASE_MOE_GIB = 8.0    # MoE models: gpt-oss-20b (7.38)
 ACTIVATION_REFERENCE_SEQ_LEN = 16000    # Reference sequence length for empirical measurements
 VLLM_NON_TORCH_MEMORY_TP1_GIB = 0.15    # TP=1: empirical range 0.13-0.14 GiB
 VLLM_NON_TORCH_MEMORY_TPN_GIB = 0.6     # TP≥2: empirical 0.55 GiB (TP=2)
@@ -251,69 +251,54 @@ def estimate_vllm_cuda_graph_memory() -> float:
     return 0.0
 
 def estimate_vllm_activation_memory(config: AutoConfig,
-                                   seq_len: int,
-                                   batch_size: int = 1,
                                    tp: int = 1) -> float:
     """
     Estimate peak activation memory for vLLM inference in GiB.
 
-    Uses empirically-calibrated base constants that capture vLLM's actual memory
-    allocation during profiling, then scales linearly with sequence length and batch size.
+    CRITICAL: Activation memory is CONSTANT per model type, NOT dependent on
+    max_model_len or batch_size. This was empirically validated:
+    - Qwen3-0.6B at max_model_len=16000: 5.56 GiB
+    - Qwen3-0.6B at max_model_len=32000: 5.56 GiB (SAME!)
 
-    The base constants are derived from vLLM profiling measurements which include:
-    - Hidden states and layer buffers
-    - FlashAttention workspace
-    - FFN intermediate activations
-    - Multiple concurrent prefill requests during warmup
-    - CUDA graph compilation overhead
-    - PyTorch memory allocator fragmentation
+    The activation memory represents FIXED overhead from:
+    - CUDA graph compilation and capture (fixed batch sizes: 1,2,4,8,16,32...)
+    - vLLM's warmup profiling phase with dummy sequences
+    - PyTorch memory allocator pre-allocation and fragmentation
+    - Fixed-size workspace buffers allocated during engine initialization
+    - FlashAttention workspace buffers (pre-allocated)
 
-    Empirical validation (seq_len=16000, batch_size=1):
-    - Dense models: 4.76-5.56 GiB (Qwen3-0.6B, Llama-8B, Llama-70B with TP=2)
-    - MoE models: 7.38 GiB (GPT-OSS-20B with 32 experts)
+    Runtime per-request activation buffers (which DO scale with seq_len) are
+    allocated from the KV cache memory pool, not counted here.
 
-    Source: empirical-test/analysis-results.md
+    Empirical validation:
+    - Dense models: 4.76-5.56 GiB (Qwen3-0.6B, Llama-8B, Llama-70B)
+    - MoE models: 7.38 GiB (gpt-oss-20b with 32 experts)
+
+    Source: config_explorer/empirical-vllm-memory-results.md
 
     Args:
-        config: Model configuration
-        seq_len: Sequence length
-        batch_size: Batch size
+        config: Model configuration (can be full config or text_config)
         tp: Tensor parallelism degree (note: empirical data shows activation
             memory does NOT scale inversely with TP)
 
     Returns:
-        float: Estimated peak activation memory in GiB
+        float: Estimated peak activation memory in GiB (constant per model type)
 
     Raises:
-        ValueError: If tp <= 0 or seq_len < 0 or batch_size < 0
+        ValueError: If tp <= 0
     """
     if tp <= 0:
         raise ValueError(f"Tensor parallelism must be positive, got tp={tp}")
-    if seq_len < 0:
-        raise ValueError(f"Sequence length cannot be negative, got seq_len={seq_len}")
-    if batch_size < 0:
-        raise ValueError(f"Batch size cannot be negative, got batch_size={batch_size}")
 
-    if seq_len == 0:
-        return 0.0
+    # Handle nested text_config if present (some models nest LLM config inside text_config)
+    text_config = get_text_config(config)
 
-    # Select base constant based on model type (at reference seq_len=16000, batch=1)
-    if is_moe(config):
-        base_constant_gib = ACTIVATION_MEMORY_BASE_MOE_GIB
+    # Select base constant based on model type
+    # These are FIXED values, not scaled by seq_len or batch_size
+    if is_moe(text_config):
+        return ACTIVATION_MEMORY_BASE_MOE_GIB
     else:
-        base_constant_gib = ACTIVATION_MEMORY_BASE_DENSE_GIB
-
-    # Scale linearly with sequence length and batch size
-    # All major activation components (hidden states, attention workspace, FFN intermediates)
-    # are proportional to seq_len and batch_size
-    seq_len_factor = seq_len / ACTIVATION_REFERENCE_SEQ_LEN
-    batch_size_factor = batch_size
-
-    # TP scaling: Empirical data shows activation memory does NOT scale inversely with TP
-    # (Llama-70B TP=1 would have ~4.8 GiB, TP=2 shows 4.84 GiB per GPU)
-    # This suggests vLLM's per-GPU allocation doesn't simply divide by TP
-
-    return base_constant_gib * seq_len_factor * batch_size_factor
+        return ACTIVATION_MEMORY_BASE_DENSE_GIB
 
 def precision_to_byte(precision: str) -> float:
     """
@@ -692,10 +677,9 @@ def allocatable_kv_cache_memory(model_info: ModelInfo,
             max_model_len = 2048
 
     # Each data parallel replica needs its own activation memory
+    # Note: activation memory is constant per model type, not dependent on max_model_len
     activation_memory = estimate_vllm_activation_memory(
         model_config,
-        seq_len=max_model_len,
-        batch_size=batch_size,
         tp=tp
     ) * dp
 
