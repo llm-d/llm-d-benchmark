@@ -35,7 +35,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - uses: actions/setup-python@v6
+
+      - name: Install Python 3.11
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -86,7 +88,6 @@ jobs:
       - name: Run install_deps.sh
         run: |
           sudo apt-get update
-          sudo apt install -y libpython3.11-stdlib python3.11-dev
           ./setup/install_deps.sh -y
         shell: bash
 
