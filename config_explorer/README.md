@@ -7,7 +7,7 @@ Features include:
 - **Capacity planning**:
   - Get per-GPU memory requirements to load and serve a model, and compare parallelism strategies.
   - Determine KV cache memory requirements based on workload characteristics.
-  - Estimate peak activation memory, CUDA graph overhead, and non-torch memory for accurate capacity planning.
+  - Estimate peak activation memory, CUDA graph overhead, and non-torch memory for accurate capacity planning (see empirical results for intermediate memory [here](./empirical-vllm-memory-results.md))
 - **GPU recommendation**:
   - Recommend GPU configurations using BentoML's llm-optimizer roofline algorithm.
   - Analyze throughput, latency (TTFT, ITL, E2E), and concurrency trade-offs across different GPU types.

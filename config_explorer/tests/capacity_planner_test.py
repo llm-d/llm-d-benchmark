@@ -10,6 +10,7 @@ from src.config_explorer.capacity_planner import *
 precision_types = ["fp32", "fp16", "fp8", "int4"]
 small_model_id = "repo/small-model"
 qwen_model = "Qwen/Qwen3-0.6B"
+llama_model = "meta-llama/Llama-3.1-8B-Instruct"
 deepseek3 = "deepseek-ai/DeepSeek-V3.1"
 gpt_oss = "openai/gpt-oss-20b"
 redhat_qwen = "RedHatAI/Qwen3-8B-FP8-dynamic"
@@ -358,7 +359,7 @@ def test_allocatable_kv_cache_memory():
                     model_config, max_model_len, batch_size, tp
                 ) * dp
                 cuda_graph_memory = estimate_vllm_cuda_graph_memory() * gpu_count
-                non_torch_memory = estimate_vllm_non_torch_memory() * gpu_count
+                non_torch_memory = estimate_vllm_non_torch_memory(tp) * gpu_count
 
                 expected = max(0, available_memory - model_size - activation_memory -
                              cuda_graph_memory - non_torch_memory)
@@ -515,15 +516,24 @@ def test_inference_dtype_byte():
         assert inference_dtype_byte(model_config) == expceted
 
 def test_estimate_vllm_non_torch_memory():
-    """Tests that non-torch memory estimation returns the correct constant value"""
-    expected = 1.0  # VLLM_NON_TORCH_MEMORY_GIB
-    actual = estimate_vllm_non_torch_memory()
-    assert actual == expected, f"Expected {expected} GiB, got {actual} GiB"
-    assert isinstance(actual, float), "Should return a float"
+    """Tests that non-torch memory estimation returns TP-dependent values"""
+    # TP=1: 0.15 GiB
+    actual_tp1 = estimate_vllm_non_torch_memory(tp=1)
+    expected_tp1 = 0.15
+    assert actual_tp1 == expected_tp1, f"Expected {expected_tp1} GiB for TP=1, got {actual_tp1} GiB"
+    assert isinstance(actual_tp1, float), "Should return a float"
+
+    # TP>=2: 0.6 GiB
+    actual_tp2 = estimate_vllm_non_torch_memory(tp=2)
+    expected_tp2 = 0.6
+    assert actual_tp2 == expected_tp2, f"Expected {expected_tp2} GiB for TP=2, got {actual_tp2} GiB"
+
+    actual_tp4 = estimate_vllm_non_torch_memory(tp=4)
+    assert actual_tp4 == expected_tp2, f"Expected {expected_tp2} GiB for TP=4, got {actual_tp4} GiB"
 
 def test_estimate_vllm_cuda_graph_memory():
-    """Tests that CUDA graph memory estimation returns the correct constant value"""
-    expected = 2.0  # VLLM_CUDA_GRAPH_MEMORY_GIB
+    """Tests that CUDA graph memory returns 0.0 (included in activation memory)"""
+    expected = 0.0  # CUDA graph memory is included in activation profiling
     actual = estimate_vllm_cuda_graph_memory()
     assert actual == expected, f"Expected {expected} GiB, got {actual} GiB"
     assert isinstance(actual, float), "Should return a float"
@@ -553,8 +563,8 @@ def test_estimate_vllm_activation_memory_zero_seq_len():
     activation_mem = estimate_vllm_activation_memory(model_config, seq_len=0, batch_size=1, tp=1)
     assert activation_mem == 0.0, f"Expected 0.0 for zero seq_len, got {activation_mem}"
 
-def test_estimate_vllm_activation_memory_scales_with_tp():
-    """Tests that activation memory scales inversely with tensor parallelism"""
+def test_estimate_vllm_activation_memory_constant_with_tp():
+    """Tests that activation memory does NOT scale with tensor parallelism (empirical behavior)"""
     model_config = get_model_config_from_hf(qwen_model)
     seq_len = 2048
     batch_size = 1
@@ -564,18 +574,11 @@ def test_estimate_vllm_activation_memory_scales_with_tp():
     mem_tp2 = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp=2)
     mem_tp4 = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp=4)
 
-    # Activation memory should decrease as TP increases (roughly inversely proportional)
-    assert mem_tp1 > mem_tp2, f"TP=1 memory ({mem_tp1}) should be > TP=2 memory ({mem_tp2})"
-    assert mem_tp2 > mem_tp4, f"TP=2 memory ({mem_tp2}) should be > TP=4 memory ({mem_tp4})"
-
-    # Check approximate inverse relationship (within 20% tolerance due to safety margin)
-    # Note: Not exact because of the fixed FlashAttention buffer and safety margin
-    ratio_2_to_1 = mem_tp1 / mem_tp2
-    ratio_4_to_2 = mem_tp2 / mem_tp4
-
-    # Ratios should be between 1.5 and 2.5 (approximately 2x, with some slack)
-    assert 1.5 < ratio_2_to_1 < 2.5, f"TP scaling ratio {ratio_2_to_1} seems off"
-    assert 1.5 < ratio_4_to_2 < 2.5, f"TP scaling ratio {ratio_4_to_2} seems off"
+    # Empirical observation: activation memory is constant regardless of TP
+    # (Llama-70B TP=1 would have ~4.8 GiB, TP=2 shows 4.84 GiB per GPU)
+    # The formula uses a constant base value that doesn't scale with TP
+    assert mem_tp1 == mem_tp2, f"TP=1 memory ({mem_tp1}) should equal TP=2 memory ({mem_tp2})"
+    assert mem_tp2 == mem_tp4, f"TP=2 memory ({mem_tp2}) should equal TP=4 memory ({mem_tp4})"
 
 def test_estimate_vllm_activation_memory_scales_with_batch_size():
     """Tests that activation memory scales linearly with batch size"""
@@ -648,46 +651,50 @@ def test_estimate_vllm_activation_memory_validation():
         estimate_vllm_activation_memory(model_config, seq_len=2048, batch_size=-1, tp=1)
 
 def test_estimate_vllm_activation_memory_formula():
-    """Tests that activation memory calculation matches the documented formula"""
+    """Tests that activation memory calculation matches the empirical formula"""
     model_config = get_model_config_from_hf(qwen_model)
     seq_len = 2048
-    batch_size = 1
+    batch_size = 2
     tp = 1
 
     # Get the actual result
     actual_mem_gib = estimate_vllm_activation_memory(model_config, seq_len, batch_size, tp)
 
-    # Calculate expected value using the formula from the implementation
-    # Constants
-    FP16_BF16_BYTES = 2
-    BYTES_PER_GIB = 1024 ** 3
-    ACTIVATION_MEMORY_SAFETY_MARGIN = 0.10
+    # Calculate expected value using the empirical formula
+    # base_constant * (seq_len / REFERENCE_SEQ_LEN) * batch_size
+    ACTIVATION_MEMORY_BASE_DENSE_GIB = 5.5  # Qwen is a dense model
+    ACTIVATION_REFERENCE_SEQ_LEN = 16000
 
-    # Get text config
-    text_config = get_text_config(model_config)
-    hidden_size = text_config.hidden_size
-    intermediate_size = getattr(text_config, "intermediate_size", 4 * hidden_size)
-    num_attention_heads = text_config.num_attention_heads
-    head_dim = getattr(text_config, "head_dim", hidden_size // num_attention_heads)
-
-    # Calculate components
-    hidden_states = 2 * seq_len * batch_size * hidden_size * FP16_BF16_BYTES / tp
-
-    # FlashAttention workspace scales with batch_size, num_heads, and seq_len
-    num_heads_per_tp = num_attention_heads / tp
-    bytes_per_head_per_token = 4 + head_dim * FP16_BF16_BYTES
-    flash_attention_buffer = batch_size * num_heads_per_tp * seq_len * bytes_per_head_per_token
-
-    ffn_intermediate = seq_len * batch_size * intermediate_size * FP16_BF16_BYTES / tp
-
-    # Subtotal and safety margin
-    subtotal = hidden_states + flash_attention_buffer + ffn_intermediate
-    safety_buffer = subtotal * ACTIVATION_MEMORY_SAFETY_MARGIN
-
-    # Total in GiB
-    expected_mem_bytes = subtotal + safety_buffer
-    expected_mem_gib = expected_mem_bytes / BYTES_PER_GIB
+    seq_len_factor = seq_len / ACTIVATION_REFERENCE_SEQ_LEN
+    batch_size_factor = batch_size
+    expected_mem_gib = ACTIVATION_MEMORY_BASE_DENSE_GIB * seq_len_factor * batch_size_factor
 
     # Allow small floating point differences
     assert abs(actual_mem_gib - expected_mem_gib) < 0.001, \
         f"Formula mismatch: expected {expected_mem_gib} GiB, got {actual_mem_gib} GiB"
+
+def test_estimate_vllm_activation_memory_empirical_validation():
+    """Tests activation memory estimates against empirical vLLM measurements"""
+    # Test parameters matching empirical data: seq_len=16000, batch_size=1, tp varies
+    seq_len = 16000
+    batch_size = 1
+
+    # Test case 1: Qwen3-0.6B (dense, TP=1)
+    # Empirical: 5.56 GiB, Expected with base 5.5: 5.5 GiB
+    qwen_config = get_model_config_from_hf(qwen_model)
+    qwen_activation = estimate_vllm_activation_memory(qwen_config, seq_len, batch_size, tp=1)
+    assert 5.0 <= qwen_activation <= 6.0, \
+        f"Qwen3-0.6B activation {qwen_activation} GiB outside expected range [5.0, 6.0] (empirical: 5.56)"
+
+    # Test case 2: Llama-3.1-8B (dense, TP=1)
+    # Empirical: 4.76 GiB, Expected with base 5.5: 5.5 GiB (conservative overestimate)
+    llama_config = get_model_config_from_hf(llama_model)
+    llama_activation = estimate_vllm_activation_memory(llama_config, seq_len, batch_size, tp=1)
+    assert 4.5 <= llama_activation <= 6.0, \
+        f"Llama-3.1-8B activation {llama_activation} GiB outside expected range [4.5, 6.0] (empirical: 4.76)"
+
+    # Test case 3: TP=2 should give same result as TP=1 (empirical observation)
+    # Llama-70B TP=2: 4.84 GiB (similar to TP=1 estimates)
+    llama_activation_tp2 = estimate_vllm_activation_memory(llama_config, seq_len, batch_size, tp=2)
+    assert llama_activation == llama_activation_tp2, \
+        f"Activation memory should be constant with TP: TP=1 {llama_activation} vs TP=2 {llama_activation_tp2}"

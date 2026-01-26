@@ -26,10 +26,15 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
     from transformers import AutoConfig, AutoModel
 
 # Memory Overhead Constants (in GiB)
-# Empirically derived from vLLM production workloads
-VLLM_NON_TORCH_MEMORY_GIB = 1.0  # CUDA runtime, Python interpreter
-VLLM_CUDA_GRAPH_MEMORY_GIB = 2.0  # 40-50 CUDA graphs per device
-ACTIVATION_MEMORY_SAFETY_MARGIN = 0.10  # PyTorch allocator fragmentation
+# Empirically validated against vLLM on H100 GPUs with seq_len=16000, batch_size=1
+# Source: empirical-test/analysis-results.md
+# Test environment: H100 (79.18 GiB), vLLM with FlashAttention, max_model_len=16000
+ACTIVATION_MEMORY_BASE_DENSE_GIB = 5.5  # Dense models: Qwen3-0.6B (5.56), Llama-8B (4.76), Llama-70B/TP2 (4.84)
+ACTIVATION_MEMORY_BASE_MOE_GIB = 8.0    # MoE models: GPT-OSS-20B (7.38)
+ACTIVATION_REFERENCE_SEQ_LEN = 16000    # Reference sequence length for empirical measurements
+VLLM_NON_TORCH_MEMORY_TP1_GIB = 0.15    # TP=1: empirical range 0.13-0.14 GiB
+VLLM_NON_TORCH_MEMORY_TPN_GIB = 0.6     # TP≥2: empirical 0.55 GiB (TP=2)
+# Note: CUDA graph memory is included in activation memory profiling, not a separate constant
 
 # Computational Constants
 BYTES_PER_GIB = 1024 ** 3
@@ -218,13 +223,32 @@ def max_context_len(model_config: AutoConfig) -> int:
     model_config = get_text_config(model_config)
     return model_config.max_position_embeddings
 
-def estimate_vllm_non_torch_memory() -> float:
-    """Estimate non-torch memory (CUDA runtime, Python interpreter) in GiB."""
-    return VLLM_NON_TORCH_MEMORY_GIB
+def estimate_vllm_non_torch_memory(tp: int = 1) -> float:
+    """
+    Estimate non-torch memory (CUDA runtime, Python interpreter) in GiB.
+
+    Non-torch memory increases with TP due to NCCL/communication overhead.
+
+    Args:
+        tp: Tensor parallelism degree
+
+    Returns:
+        Non-torch memory in GiB per GPU
+    """
+    return VLLM_NON_TORCH_MEMORY_TP1_GIB if tp == 1 else VLLM_NON_TORCH_MEMORY_TPN_GIB
 
 def estimate_vllm_cuda_graph_memory() -> float:
-    """Estimate CUDA graph memory overhead per GPU in GiB (40-50 graphs for different batch sizes)."""
-    return VLLM_CUDA_GRAPH_MEMORY_GIB
+    """
+    CUDA graph memory overhead per GPU in GiB.
+
+    Note: Empirical measurements show CUDA graph memory is included in the
+    activation memory profiling (range: -0.45 to +0.39 GiB as separate measurement).
+    Returning 0.0 to avoid double-counting.
+
+    Returns:
+        0.0 (CUDA graph memory already included in activation estimate)
+    """
+    return 0.0
 
 def estimate_vllm_activation_memory(config: AutoConfig,
                                    seq_len: int,
@@ -233,18 +257,29 @@ def estimate_vllm_activation_memory(config: AutoConfig,
     """
     Estimate peak activation memory for vLLM inference in GiB.
 
-    Accounts for temporary tensors during forward pass:
-    - Hidden states (input/output buffers for current layer only)
-    - FlashAttention workspace (O(s) not O(s²))
-    - FFN intermediate activations (one layer at a time)
+    Uses empirically-calibrated base constants that capture vLLM's actual memory
+    allocation during profiling, then scales linearly with sequence length and batch size.
 
-    Assumes FlashAttention enabled, activation recomputation, and FP16/BF16 dtype.
+    The base constants are derived from vLLM profiling measurements which include:
+    - Hidden states and layer buffers
+    - FlashAttention workspace
+    - FFN intermediate activations
+    - Multiple concurrent prefill requests during warmup
+    - CUDA graph compilation overhead
+    - PyTorch memory allocator fragmentation
+
+    Empirical validation (seq_len=16000, batch_size=1):
+    - Dense models: 4.76-5.56 GiB (Qwen3-0.6B, Llama-8B, Llama-70B with TP=2)
+    - MoE models: 7.38 GiB (GPT-OSS-20B with 32 experts)
+
+    Source: empirical-test/analysis-results.md
 
     Args:
         config: Model configuration
         seq_len: Sequence length
         batch_size: Batch size
-        tp: Tensor parallelism degree
+        tp: Tensor parallelism degree (note: empirical data shows activation
+            memory does NOT scale inversely with TP)
 
     Returns:
         float: Estimated peak activation memory in GiB
@@ -262,30 +297,23 @@ def estimate_vllm_activation_memory(config: AutoConfig,
     if seq_len == 0:
         return 0.0
 
-    config = get_text_config(config)
-    hidden_size = config.hidden_size
-    num_layers = config.num_hidden_layers
-    intermediate_size = getattr(config, "intermediate_size", 4 * hidden_size)
-    compute_dtype_bytes = FP16_BF16_BYTES
+    # Select base constant based on model type (at reference seq_len=16000, batch=1)
+    if is_moe(config):
+        base_constant_gib = ACTIVATION_MEMORY_BASE_MOE_GIB
+    else:
+        base_constant_gib = ACTIVATION_MEMORY_BASE_DENSE_GIB
 
-    # 1. Hidden states (2 buffers: input + output of current layer)
-    hidden_states = 2 * seq_len * batch_size * hidden_size * compute_dtype_bytes / tp
+    # Scale linearly with sequence length and batch size
+    # All major activation components (hidden states, attention workspace, FFN intermediates)
+    # are proportional to seq_len and batch_size
+    seq_len_factor = seq_len / ACTIVATION_REFERENCE_SEQ_LEN
+    batch_size_factor = batch_size
 
-    # 2. FlashAttention workspace (LSE buffer + output accumulator)
-    num_attention_heads = config.num_attention_heads
-    head_dim = getattr(config, "head_dim", hidden_size // num_attention_heads)
-    num_heads_per_tp = num_attention_heads / tp
-    bytes_per_head_per_token = 4 + head_dim * compute_dtype_bytes
-    flash_attention_buffer = batch_size * num_heads_per_tp * seq_len * bytes_per_head_per_token
+    # TP scaling: Empirical data shows activation memory does NOT scale inversely with TP
+    # (Llama-70B TP=1 would have ~4.8 GiB, TP=2 shows 4.84 GiB per GPU)
+    # This suggests vLLM's per-GPU allocation doesn't simply divide by TP
 
-    # 3. FFN intermediate activations (one layer at a time)
-    ffn_intermediate = seq_len * batch_size * intermediate_size * compute_dtype_bytes / tp
-
-    subtotal = hidden_states + flash_attention_buffer + ffn_intermediate
-    safety_buffer = subtotal * ACTIVATION_MEMORY_SAFETY_MARGIN
-
-    total_bytes = subtotal + safety_buffer
-    return bytes_to_gib(total_bytes)
+    return base_constant_gib * seq_len_factor * batch_size_factor
 
 def precision_to_byte(precision: str) -> float:
     """
@@ -671,8 +699,11 @@ def allocatable_kv_cache_memory(model_info: ModelInfo,
         tp=tp
     ) * dp
 
-    cuda_graph_memory = estimate_vllm_cuda_graph_memory() * gpu_count
-    non_torch_memory = estimate_vllm_non_torch_memory() * gpu_count
+    # CUDA graph memory is included in activation memory profiling
+    cuda_graph_memory = estimate_vllm_cuda_graph_memory() * gpu_count  # Returns 0.0
+
+    # Non-torch memory scales with TP due to NCCL/communication overhead
+    non_torch_memory = estimate_vllm_non_torch_memory(tp) * gpu_count
 
     total_consumed = model_size + activation_memory + cuda_graph_memory + non_torch_memory
 
