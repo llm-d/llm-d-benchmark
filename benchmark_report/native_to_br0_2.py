@@ -8,6 +8,8 @@ import re
 import ssl
 import sys
 import uuid
+import hashlib
+import json
 from typing import Any
 from datetime import datetime, timezone
 
@@ -22,8 +24,22 @@ from .core import (
     load_benchmark_report,
     update_dict,
 )
-from .schema_v0_2 import BenchmarkReportV02, Distribution, LoadSource
+from .schema_v0_2 import BenchmarkReportV02, Component, Distribution, LoadSource
 from .schema_v0_2_components import HostType
+
+
+def config_hash(config: dict) -> str:
+    """Compute a deterministic hash for a configuration dictionary.
+
+    Args:
+        config (dict): Configuration data.
+
+    Returns:
+        str: Hash of configuration.
+    """
+    # Convert configuration to a JSON string with consistent ordering
+    canonical = json.dumps(config, sort_keys=True)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _populate_run() -> dict:
@@ -50,7 +66,11 @@ def _populate_run() -> dict:
 
     # Use the namespace for "user"
     try:
-        with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", "r") as ff:
+        with open(
+            "/var/run/secrets/kubernetes.io/serviceaccount/namespace",
+            "r",
+            encoding="utf-8",
+        ) as ff:
             namespace = ff.read().strip()
     except FileNotFoundError:
         namespace = os.environ.get("LLMDBENCH_VLLM_COMMON_NAMESPACE")
@@ -156,6 +176,8 @@ def _populate_aggregate_stack() -> dict:
         value = envar_dict.get("value", envar_dict.get("valueFrom"))
         envars[envar_dict["name"]] = value
 
+    # TODO This hash will change if superficial details like argument order are
+    # not preserved.
     cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, cli_args_str + str(envars)))
 
     inference_engine = {
@@ -195,6 +217,39 @@ def _populate_aggregate_stack() -> dict:
         },
     }
     return br_dict
+
+
+def _add_inference_scheduler_component(br_dict: dict) -> None:
+    """Add inference scheduler details to scenario.stack section of a dict
+    following BenchmarkReport format.
+
+    Args:
+        br_dict (dict): Benchmark report dict to amend to.
+    """
+    epp_config_base64 = os.getenv("LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG")
+    if not epp_config_base64:
+        return
+
+    epp_config_str = base64.b64decode(epp_config_base64).decode("utf-8")
+    epp_config = yaml.safe_load(epp_config_str)
+    # Inference scheduler component
+    epp = {
+        "metadata": {
+            "label": "EPP", # TODO
+            "cfg_id": config_hash(epp_config),
+        },
+        "standardized": {
+            "kind": "generic",
+            "tool": "request_router",
+            "tool_version": "", # TODO get version somehow
+        },
+        "native": {
+            "config": epp_config,
+        },
+    }
+
+    stack: list[Component] = br_dict["scenario"]["stack"]
+    stack.append(epp)
 
 
 def _populate_disaggregate_stack() -> dict:
@@ -253,6 +308,8 @@ def _populate_disaggregate_stack() -> dict:
         value = envar_dict.get("value", envar_dict.get("valueFrom"))
         envars[envar_dict["name"]] = value
 
+    # TODO These hashes will change if superficial details like argument order
+    # are not preserved.
     p_cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, p_cli_args_str + str(envars)))
     d_cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, d_cli_args_str + str(envars)))
 
@@ -327,6 +384,9 @@ def _populate_disaggregate_stack() -> dict:
             "stack": stack,
         },
     }
+
+    # Add inference scheduler component to stack
+    _add_inference_scheduler_component(br_dict)
     return br_dict
 
 
@@ -435,11 +495,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
     # schema of BenchmarkReportV02
     br_dict = _populate_benchmark_report_from_envars()
 
-    cfg_id = str(
-        uuid.uuid5(
-            uuid.NAMESPACE_DNS, str(get_nested(br_dict, ["scenario", "load", "native"]))
-        )
-    )
+    cfg_id = config_hash(get_nested(br_dict, ["scenario", "load", "native"]))
 
     # Get CLI arguments, if available
     args: dict[str, str] = get_nested(
@@ -621,11 +677,7 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
     # schema of BenchmarkReportV02
     br_dict = _populate_benchmark_report_from_envars()
 
-    cfg_id = str(
-        uuid.uuid5(
-            uuid.NAMESPACE_DNS, str(get_nested(br_dict, ["scenario", "load", "native"]))
-        )
-    )
+    cfg_id = config_hash(get_nested(br_dict, ["scenario", "load", "native"]))
 
     # Get CLI arguments, if available
     args: dict[str, str] = get_nested(
@@ -816,7 +868,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
     br_dict = _populate_benchmark_report_from_envars()
 
     config = get_nested(br_dict, ["scenario", "load", "native", "config"], {})
-    cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(config)))
+    cfg_id = config_hash(config)
 
     data_type = get_nested(config, ["data", "type"])
     source = LoadSource.UNKNOWN
@@ -1683,7 +1735,7 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
     # If config file was loaded, use that, otherwise extract args from results file
     if not native.get("config"):
         native["config"] = data["args"]
-    cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(native)))
+    cfg_id = config_hash(native)
 
     input_args_list = get_nested(data, ["args", "data"])
     if len(input_args_list) > 1:
