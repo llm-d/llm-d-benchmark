@@ -61,10 +61,10 @@ else
 fi
 
 # Determine Python/pip commands and validate setup
-if [[ -n "${VIRTUAL_ENV:-}" ]] || [[ -n "${CONDA_PREFIX:-}" ]]; then
+if [[ -n "${VIRTUAL_ENV:-${CONDA_PREFIX}}" ]]; then
     PYTHON_CMD="python"
     PIP_CMD="python -m pip"
-    echo "Virtual environment detected: $VIRTUAL_ENV"
+    echo "Virtual environment detected: ${VIRTUAL_ENV:-${CONDA_PREFIX}}"
 elif [[ "$allow_system_python" == "true" ]]; then
     PYTHON_CMD="python3"
     PIP_CMD="python3 -m pip"
@@ -98,7 +98,7 @@ if ! (( major > 3 || (major == 3 && minor >= 11) )); then
     exit 1
 fi
 
-if [[ -z "${VIRTUAL_ENV:-}" ]] && ! $PYTHON_CMD -m pip --version &> /dev/null; then
+if [[ -z "${VIRTUAL_ENV:-${CONDA_PREFIX}}" ]] && ! $PYTHON_CMD -m pip --version &> /dev/null; then
     echo "Installing pip..."
     if [ "$target_os" = "linux" ]; then
         $PKG_MGR python3-pip
