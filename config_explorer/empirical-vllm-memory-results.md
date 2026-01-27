@@ -16,6 +16,7 @@ Analysis of vLLM log files for various models tested on H100 GPUs (79.18 GiB tot
 | Qwen3-0.6B               | SUCCESS | 1.12               | 5.56                  | 0.13                   | 0.10                   | 64.45                    | 1       | 32000         |
 | Qwen3-32B                | FAILED  | 61.03              | 5.64                  | 0.14                   | N/A                    | N/A                      | 1       | 32000         |
 | Qwen3-32B                | SUCCESS | 61.03              | 5.64                  | 0.14                   | -0.88                  | 4.45                     | 1       | 16000         |
+| Qwen3-32B                | SUCCESS | 30.59             | 5.64                  | 0.54                  | -0.33                  | 34.49                     | 2       | 16000         |
 ---
 
 ## Detailed Results
@@ -254,3 +255,141 @@ Model weights loaded successfully but consumed too much memory (67.72 GiB), leav
 - **Target utilization:** 0.9 (71.26 GiB)
 - **Largest successful single-GPU model:** Llama-3.1-8B / gpt-oss-20b (~15 GiB weights)
 - **Largest model overall:** Llama-3.3-70B-FP8 with TP=2
+
+---
+
+## How to Replicate These Results
+
+### Prerequisites
+- Kubernetes cluster with H100 GPU nodes
+- Access to a namespace with GPU resources
+- HuggingFace token stored as a Kubernetes secret (for gated models)
+- vLLM container image: `vllm/vllm-openai:latest`
+
+### Step 1: Create Kubernetes Pod Configuration
+
+Create a pod YAML file based on the following template:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: <pod-name>
+  namespace: <your-namespace>
+spec:
+  restartPolicy: Never
+  containers:
+    - name: vllm
+      image: vllm/vllm-openai:latest
+      command: ["vllm", "serve"]
+      args:
+        - <model-name>  # e.g., Qwen/Qwen3-32B
+        - --tensor-parallel-size=<tp-size>  # 1 or 2
+        - --gpu-memory-utilization=0.90
+        - --max-model-len=<max-len>  # e.g., 16000 or 32000
+        - --block-size=128
+        - --enable-prefix-caching
+        - --host=0.0.0.0
+        - --port=8000
+      ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+      volumeMounts:
+        - name: cache
+          mountPath: /tmp/cache
+      resources:
+        requests:
+          cpu: '32'
+          memory: '128Gi'
+          nvidia.com/gpu: "<gpu-count>"  # Match tensor-parallel-size
+        limits:
+          nvidia.com/gpu: "<gpu-count>"
+          cpu: '32'
+          memory: '128Gi'
+      env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: llm-d-hf-token  # Your HF token secret name
+              key: HF_TOKEN
+        - name: VLLM_LOGGING_LEVEL
+          value: DEBUG
+        - name: HF_HOME
+          value: /tmp/cache
+        - name: TRANSFORMERS_CACHE
+          value: /tmp/cache
+        - name: XDG_CACHE_HOME
+          value: /tmp/cache
+        - name: XDG_CONFIG_HOME
+          value: /tmp/cache
+        - name: HOME
+          value: /tmp/cache
+  volumes:
+    - name: cache
+      emptyDir: {}
+```
+
+### Step 2: Configure for Each Model
+
+Adjust the following parameters for each model you want to test:
+
+1. **Model name** (in args): Use the full HuggingFace model path
+   - Examples: `Qwen/Qwen3-0.6B`, `meta-llama/Llama-3.1-8B-Instruct`, `openai/gpt-oss-20b`
+
+2. **Tensor parallel size**: Set based on model size
+   - Small models (< 20B): `--tensor-parallel-size=1`, `nvidia.com/gpu: "1"`
+   - Large models (70B+): `--tensor-parallel-size=2`, `nvidia.com/gpu: "2"`
+
+3. **Max model length**: Adjust based on your test scenario
+   - Standard: `--max-model-len=16000`
+   - Extended: `--max-model-len=32000`
+
+### Step 3: Deploy and Capture Logs
+
+1. Create the HuggingFace token secret (if not already exists):
+   ```bash
+   kubectl create secret generic llm-d-hf-token \
+     --from-literal=HF_TOKEN=<your-token> \
+     -n <your-namespace>
+   ```
+
+2. Deploy the pod:
+   ```bash
+   kubectl apply -f <your-pod-config>.yaml
+   ```
+
+3. Stream and capture logs:
+   ```bash
+   kubectl logs -f <pod-name> -n <your-namespace> > <model-name>.log
+   ```
+
+4. Wait for the model to either:
+   - Successfully start (logs show "Avg prompt throughput" or server ready)
+   - Fail to initialize (OOM error or insufficient memory error)
+
+### Step 4: Extract Memory Metrics from Logs
+
+Search for the following key information in each log file:
+
+1. **Model Configuration** (search for "non-default args:"):
+   - Model name
+   - max-model-len
+   - tensor-parallel-size
+   - gpu-memory-utilization
+
+2. **Memory Metrics** (search for these exact substrings):
+   - `"Model loading took"`: Extract weight memory (GiB) and loading time
+   - `"Available KV cache memory:"`: Extract KV cache allocation (GiB)
+   - `"Free memory on device"`: Extract free/total GPU memory on startup
+
+3. **Failure Information** (if engine fails):
+   - Error messages containing "Out of memory" or "CUDA out of memory"
+   - `ValueError: No available memory for the cache blocks`
+   - Memory state at failure point
+
+### Notes
+- **VLLM_LOGGING_LEVEL=DEBUG** is critical for capturing detailed memory metrics
+- Log files can be very long (thousands of lines); use grep/search to find relevant sections
+- Some models may require specific quantization settings or may not support certain features
+- Memory values may vary slightly between runs due to caching and initialization differences
