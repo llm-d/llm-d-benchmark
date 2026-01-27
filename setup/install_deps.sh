@@ -61,7 +61,7 @@ else
 fi
 
 # Determine Python/pip commands and validate setup
-if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+if [[ -n "${VIRTUAL_ENV:-}" ]] || [[ -n "${CONDA_PREFIX:-}" ]]; then
     PYTHON_CMD="python"
     PIP_CMD="python -m pip"
     echo "Virtual environment detected: $VIRTUAL_ENV"
