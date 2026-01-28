@@ -10,6 +10,7 @@ import sys
 import uuid
 import hashlib
 import json
+import binascii
 from typing import Any
 from datetime import datetime, timezone
 
@@ -40,6 +41,25 @@ def config_hash(config: dict) -> str:
     # Convert configuration to a JSON string with consistent ordering
     canonical = json.dumps(config, sort_keys=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def b64_decode_envar(envar: str) -> str:
+    """Get base64 encoded contents from an environment variable and decode it.
+
+    Args:
+        envar (str): Environment variable to get data from.
+
+    Returns:
+        str: Decoded data, if it exists and is properly formatted, otherwise
+            return an empty string.
+    """
+    try:
+        return base64.b64decode(
+            os.environ.get("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML", "")
+        ).decode("utf-8")
+    except binascii.Error:
+        sys.stderr.write(f"Malformed base64 data in {envar}\n")
+        return ""
 
 
 def _populate_run() -> dict:
@@ -161,16 +181,13 @@ def _populate_aggregate_stack() -> dict:
     img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO")
     img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME")
     img_tag = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG")
-    cli_args_str = base64.b64decode(
-        os.environ.get("LLMDBENCH_VLLM_STANDALONE_ARGS", "")
-    ).decode("utf-8")
+    cli_args_str = b64_decode_envar("LLMDBENCH_VLLM_STANDALONE_ARGS")
 
     # Parse through environment variables YAML
     envars_list: list[dict[str, Any]] = yaml.safe_load(
-        base64.b64decode(
-            os.environ.get("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML", "")
-        ).decode("utf-8")
+        b64_decode_envar("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML")
     )
+
     envars = {}
     for envar_dict in envars_list:
         value = envar_dict.get("value", envar_dict.get("valueFrom"))
@@ -226,22 +243,21 @@ def _add_inference_scheduler_component(br_dict: dict) -> None:
     Args:
         br_dict (dict): Benchmark report dict to amend to.
     """
-    epp_config_base64 = os.getenv("LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG")
-    if not epp_config_base64:
+    epp_config_str = b64_decode_envar("LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG")
+    if not epp_config_str:
         return
 
-    epp_config_str = base64.b64decode(epp_config_base64).decode("utf-8")
     epp_config = yaml.safe_load(epp_config_str)
     # Inference scheduler component
     epp = {
         "metadata": {
-            "label": "EPP", # TODO
+            "label": "EPP",  # TODO
             "cfg_id": config_hash(epp_config),
         },
         "standardized": {
             "kind": "generic",
             "tool": "request_router",
-            "tool_version": "", # TODO get version somehow
+            "tool_version": "",  # TODO get version somehow
         },
         "native": {
             "config": epp_config,
@@ -290,19 +306,14 @@ def _populate_disaggregate_stack() -> dict:
     img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO")
     img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME")
     img_tag = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG")
-    p_cli_args_str = base64.b64decode(
-        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS", "")
-    ).decode("utf-8")
-    d_cli_args_str = base64.b64decode(
-        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS", "")
-    ).decode("utf-8")
+    p_cli_args_str = b64_decode_envar("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS")
+    d_cli_args_str = b64_decode_envar("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS")
 
     # Parse through environment variables YAML
     envars_list: list[dict[str, Any]] = yaml.safe_load(
-        base64.b64decode(
-            os.environ.get("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML", "")
-        ).decode("utf-8")
+        b64_decode_envar("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML")
     )
+
     envars = {}
     for envar_dict in envars_list:
         value = envar_dict.get("value", envar_dict.get("valueFrom"))
