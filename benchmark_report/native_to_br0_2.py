@@ -184,14 +184,13 @@ def _populate_aggregate_stack() -> dict:
     cli_args_str = b64_decode_envar("LLMDBENCH_VLLM_STANDALONE_ARGS")
 
     # Parse through environment variables YAML
-    envars_list: list[dict[str, Any]] = yaml.safe_load(
-        b64_decode_envar("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML")
-    )
-
     envars = {}
-    for envar_dict in envars_list:
-        value = envar_dict.get("value", envar_dict.get("valueFrom"))
-        envars[envar_dict["name"]] = value
+    envars_yaml_str = b64_decode_envar("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML")
+    if envars_yaml_str:
+        envars_list: list[dict[str, Any]] = yaml.safe_load(envars_yaml_str)
+        for envar_dict in envars_list:
+            value = envar_dict.get("value", envar_dict.get("valueFrom"))
+            envars[envar_dict["name"]] = value
 
     # TODO This hash will change if superficial details like argument order are
     # not preserved.
@@ -310,14 +309,13 @@ def _populate_disaggregate_stack() -> dict:
     d_cli_args_str = b64_decode_envar("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS")
 
     # Parse through environment variables YAML
-    envars_list: list[dict[str, Any]] = yaml.safe_load(
-        b64_decode_envar("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML")
-    )
-
     envars = {}
-    for envar_dict in envars_list:
-        value = envar_dict.get("value", envar_dict.get("valueFrom"))
-        envars[envar_dict["name"]] = value
+    envars_yaml_str = b64_decode_envar("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML")
+    if envars_yaml_str:
+        envars_list: list[dict[str, Any]] = yaml.safe_load(envars_yaml_str)
+        for envar_dict in envars_list:
+            value = envar_dict.get("value", envar_dict.get("valueFrom"))
+            envars[envar_dict["name"]] = value
 
     # TODO These hashes will change if superficial details like argument order
     # are not preserved.
