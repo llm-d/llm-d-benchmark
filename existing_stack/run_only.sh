@@ -39,6 +39,7 @@ Usage: ${_script_name} -c <config-file> [options]
 
   Options:
     -c/--config path to configuration file
+    -o/--output destination for the results. (e.g. local/folder, gs://my-bucket, s3://my-bucket)
     -v/--verbose print the command being executed, and result
     -d/--debug execute harness in "debug-mode"
     -n/--dry-run do not execute commands, just print what would be executed
@@ -84,6 +85,41 @@ function sanitize_dir_name {
   sed -e 's/[^0-9A-Za-z_-][^0-9A-Za-z_-]*/_/g' <<<"$1"
 }
 
+function upload_results {
+  local pod_name=$1
+  local storage_type=$2
+  local destination=$3
+
+  local local_results_dir=$(mktemp -d)
+  if [[ "${storage_type}" == "local" ]]; then
+    local_results_dir="${destination}/${_uid}"
+    local provider="local"
+  else
+    local provider=$(echo "${destination}" | cut -d: -f1)
+  fi
+  mkdir -p ${local_results_dir}
+  announce "📂 Copying results from pod ${pod_name} to directory '${destination}'"
+  $control_kubectl cp "${pod_name}:${RESULTS_DIR_PREFIX}/." "${local_results_dir}" -n "${harness_namespace}"
+
+  case ${provider} in
+    gs)
+      announce "☁️ Uploading results to GCS bucket ${destination}"
+      gcloud storage cp --recursive "${local_results_dir}/" "${destination}/${_uid}/"
+      ;;
+    s3)
+      announce "☁️ Uploading results to S3 bucket ${destination}"
+      aws s3 cp --recursive "${local_results_dir}/" "${destination}/${_uid}/"
+      ;;
+    local)
+      announce "ℹ️ Results saved to local folder."
+      ;;
+    *)
+      announce "❌ ERROR: unknown or unsupported storage provider \"${provider}\"."
+      exit 1
+      ;;
+  esac
+}
+
 # Generate results directory name
 function results_dir_name {
   local stack_name="$1"
@@ -101,15 +137,27 @@ function get_harness_list {
 
 function start_harness_pod {
   local pod_name=$1
-  if [ "${harness_dataset_url:=none}" == "none" ]; then # make sure the variable is defined
-    local is_dataset_url="# "   # used to comment out the dataset_url env var
+  local storage_type=$2 # "pvc", "local" or "cloud"
+
+  if [ "${harness_dataset_url:=none}" == "none" ]; then
+    local is_dataset_url="# "
   else
     local is_dataset_url=""
-  fi  
+  fi
+
+  local volume_def="(.spec.volumes[] | select(.name == \"results\"))"
+  if [[ "$storage_type" == "pvc" ]]; then
+    volume_def="${volume_def}.persistentVolumeClaim.claimName = \"${harness_results_pvc}\"";
+  elif [[ "$storage_type" == "local" ]] || [[ "$storage_type" == "cloud" ]]; then
+    volume_def="${volume_def}.emptyDir = {}";
+  else
+    announce "❌ Error: Unsupport storage type '${storage_type}'."
+    exit 1
+  fi
 
   ${control_kubectl} --namespace ${harness_namespace} delete pod ${pod_name} --ignore-not-found
 
-  cat <<EOF | yq '.spec.containers[0].env = load("'${_config_file}'").env + .spec.containers[0].env' | ${control_kubectl} apply -f -
+  cat <<EOF | yq "${volume_def}" | yq '.spec.containers[0].env = load("'${_config_file}'").env + .spec.containers[0].env' | ${control_kubectl} apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -148,20 +196,18 @@ spec:
     ${is_dataset_url}- name: LLMDBENCH_RUN_DATASET_URL
     ${is_dataset_url}  value: "${harness_dataset_url}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
-      value: "${endpoint_stack_name}"  
+      value: "${endpoint_stack_name}"
     volumeMounts:
     - name: results
       mountPath: ${RESULTS_DIR_PREFIX}
     - name: "${harness_name}-profiles"
-      mountPath: /workspace/profiles/${harness_name}  
+      mountPath: /workspace/profiles/${harness_name}
   volumes:
   - name: results
-    persistentVolumeClaim:
-      claimName: $harness_results_pvc
-  - name: ${harness_name}-profiles    
+  - name: ${harness_name}-profiles
     configMap:
       name: ${harness_name}-profiles
-  restartPolicy: Never    
+  restartPolicy: Never
 EOF
   ${control_kubectl} wait --for=condition=Ready=True pod ${pod_name} -n ${harness_namespace} --timeout="${KUBECTL_TIMEOUT}s"
   if [[ $? != 0 ]]; then
@@ -190,6 +236,13 @@ while [[ $# -gt 0 ]]; do
         ;;
         -c|--config)
         _config_file="$2"
+        shift
+        ;;
+        -o=*|--output=*)
+        _output_destination=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -o|--output)
+        _output_destination="$2"
         shift
         ;;
         -n|--dry-run)
@@ -223,11 +276,60 @@ if ! [[ -f $_config_file  ]]; then
 fi
 eval $( yq -o shell '. | del(.workload)| del (.env)' "$_config_file")
 
+# Verify output destination
+# ========================================================
+announce "🔎 Verifying output destination"
+if [[ -z "${_output_destination:-}" ]]; then
+  _storage_type="pvc"
+  # PVC mode check
+  announce "ℹ️ Verifying results PVC ${harness_results_pvc}"
+  if ! $control_kubectl --namespace=${harness_namespace} describe pvc ${harness_results_pvc} &> /dev/null; then
+    announce "❌ Error: results PVC '${harness_results_pvc}' not found in namespace '${harness_namespace}'. Please ensure it exists."
+    exit 1
+  fi
+else
+  if [[ "${_output_destination}" == *"://"* ]]; then
+    _storage_type="cloud"
+    _scheme=$(echo "${_output_destination}" | cut -d: -f1)
+    case "${_scheme}" in
+      gs)
+        announce "ℹ️ Verifying GCS output destination..."
+        if ! command -v gcloud &> /dev/null; then
+          announce "❌ 'gcloud' command not found, but is required for 'gs://' output."
+          exit 1
+        fi
+        ;;
+      s3)
+        announce "ℹ️ Verifying S3 output destination..."
+        if ! command -v aws &> /dev/null; then
+          announce "❌ 'aws' command not found, but is required for 's3://' output."
+          exit 1
+        fi
+        ;;
+      *)
+        announce "❌ ERROR: Unsupported cloud provider scheme '${_scheme}' for destination '${_output_destination}'."
+        exit 1
+        ;;
+    esac
+  else
+    _storage_type="local"
+    announce "ℹ️ Verifying local output destination '${_output_destination}'"
+    parent_dir=$(dirname "${_output_destination}")
+    mkdir -p "${parent_dir}"
+    if [[ ! -w "${parent_dir}" ]]; then
+      announce "❌ ERROR: Output directory '${parent_dir}' is not writable."
+      exit 1
+    fi
+  fi
+fi
+
 if [[ "$harness_parallelism" != "1" ]]; then
     announce "❌ ERROR: harness_parallelism is set to '$harness_parallelism'. Only parallelism=1 is supported."
     exit 1
 fi  
 #@TODO harness_parallelism=1 only is supported for now!!!
+#@TODO: The 'upload_results' function currently handles only one pod. 
+#       To support parallelism, it must collect results from all harness pods.
 
 _harness_pod_name=$(sanitize_pod_name "${HARNESS_POD_LABEL}")
 
@@ -284,20 +386,13 @@ eval ${cmd[@]}
 announce "ℹ️ ConfigMap '${harness_name}-profiles' created"
 
 
-# Check results PVC
-# ========================================================
-announce "ℹ️ Checking results PVC"
-if ! $control_kubectl --namespace=${harness_namespace} describe pvc ${harness_results_pvc}; then
-  announce "❌ Error checking PVC ${harness_results_pvc}"
-fi
-
 # Create harness pod
 # ========================================================  
 _pod_name="${_harness_pod_name}"    # place holder for parallelism support
 announce "ℹ️ Creating harness pod ${_pod_name}"
 
 set +e
-start_harness_pod ${_pod_name}
+start_harness_pod ${_pod_name} ${_storage_type}
 set -e
 
 # Execute workloads
@@ -325,17 +420,30 @@ RUN_WORKLOAD
       announce "ℹ️ Benchmark workload ${workload} complete."
     elif [ $res -eq 124 ]; then
       announce "⚠️ Warning: workload ${workload} timed out after ${harness_wait_timeout}s."
-    else 
+    else
       announce "❌ ERROR: error happened while running workload ${workload}."
-    fi  
+    fi
   done
 set -e
 
 # Finalization
 # ========================================================
+case "${_storage_type}" in
+  pvc)
+    final_msg="PVC ${harness_results_pvc}.\nPlease use analyze.sh to fetch and analyze results."
+    ;;
+  local|cloud)
+    upload_results "${_pod_name}" "${_storage_type}" "${_output_destination}"
+    if [[ "${_storage_type}" == "local" ]]; then
+        final_msg="Local Directory $(realpath "$_output_destination")."
+    else
+        final_msg="Storage Bucket ${_output_destination}/${_uid}."
+    fi
+    ;;
+esac
+
 announce "✅ 
-   Experiment ID is ${_uid}.
-   All workloads completed. 
-   Results should be available in PVC ${harness_results_pvc}.
-   Please use analyze.sh to fetch and analyze results.
+  Experiment ID is ${_uid}.
+  All workloads completed. 
+  Results should be available in ${final_msg}
 "
