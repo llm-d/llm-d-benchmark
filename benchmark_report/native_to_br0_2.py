@@ -53,12 +53,14 @@ def b64_decode_envar(envar: str) -> str:
         str: Decoded data, if it exists and is properly formatted, otherwise
             return an empty string.
     """
+    envar_value = os.environ.get(envar)
+    if not envar_value:
+        sys.stderr.write(f"Environment variable empty: {envar}\n")
+        return ""
     try:
-        return base64.b64decode(
-            os.environ.get("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML", "")
-        ).decode("utf-8")
+        return base64.b64decode(envar_value).decode("utf-8")
     except binascii.Error:
-        sys.stderr.write(f"Malformed base64 data in {envar}\n")
+        sys.stderr.write(f"Malformed base64 data in environment variable: {envar}\n")
         return ""
 
 
@@ -177,10 +179,10 @@ def _populate_aggregate_stack() -> dict:
     dp = int(os.environ.get("LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM", 1))
     dp_local = int(os.environ.get("LLMDBENCH_VLLM_COMMON_DATA_LOCAL_PARALLELISM", 1))
     workers = int(os.environ.get("LLMDBENCH_VLLM_COMMON_NUM_WORKERS_PARALLELISM", 1))
-    img_reg = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY")
-    img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO")
-    img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME")
-    img_tag = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG")
+    img_reg = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY", "")
+    img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO", "")
+    img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME", "")
+    img_tag = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG", "")
     cli_args_str = b64_decode_envar("LLMDBENCH_VLLM_STANDALONE_ARGS")
 
     # Parse through environment variables YAML
@@ -301,10 +303,10 @@ def _populate_disaggregate_stack() -> dict:
     d_workers = int(
         os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_NUM_WORKERS_PARALLELISM", 1)
     )
-    img_reg = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY")
-    img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO")
-    img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME")
-    img_tag = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG")
+    img_reg = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY", "")
+    img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO", "")
+    img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME", "")
+    img_tag = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG", "")
     p_cli_args_str = b64_decode_envar("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS")
     d_cli_args_str = b64_decode_envar("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS")
 
