@@ -92,14 +92,12 @@ except ModuleNotFoundError as e:
     print(f"  pip install -r {workspace_root / 'config_explorer' / 'requirements.txt'}")
     sys.exit(1)
 
-
 # Allows to properly have blocks in YAMLs
 class LiteralStr(str):
     pass
 def literal_str_representer(dumper, data):
     return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
 yaml.add_representer(LiteralStr, literal_str_representer)
-
 
 def announce(msgcont: str, logfile: str = None, ignore_if_failed: bool = False):
     work_dir = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
@@ -361,6 +359,8 @@ def environment_variable_to_dict(ev: dict = {}):
         "vllm_modelservice_gateway_class_name", ""
     ).lower()
 
+    if isinstance(ev["harness_profile_harness_list"], str):
+        ev["harness_profile_harness_list"] = ev["harness_profile_harness_list"].split()
     ev["current_step_nr"] = ev["current_step"].split('_')[0]
 
 def kubectl_apply(
@@ -873,6 +873,39 @@ def extract_environment(ev):
     with open(env_dir / "variables", "w") as f:
         for var in env_vars:
             f.write(var + "\n")
+
+def propagate_standup_parameters(ev: dict, api: pykube.HTTPClient) :
+
+    file_path = f'{ev["control_work_dir"]}/environment/ev.yaml'
+
+    with open(file_path, "w") as f:
+        yaml.safe_dump(ev, f)
+
+    config_map_name = "llm-d-benchmark-standup-parameters"
+    config_map_data = {}
+    out_dir = Path(ev["control_work_dir"]) / "environment"
+
+    try:
+        file_paths = sorted([p for p in out_dir.rglob("ev.yaml") if p.is_file()])
+        for path in file_paths:
+            config_map_data[path.name] = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        announce(
+            f"Warning: Directory not found at {preprocess_dir}. Creating empty ConfigMap."
+        )
+
+    config_map_name = "llm-d-benchmark-standup-parameters"
+    with open(file_path, 'rb') as f:
+        binary_file_contents = f.read()
+
+    cm_obj = {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {"name": config_map_name, "namespace": ev["harness_namespace"]},
+        "data": config_map_data,
+    }
+
+    kubectl_apply(api=api, manifest_data=cm_obj, dry_run=ev["control_dry_run"])
 
 def get_image(
     image_registry: str,
@@ -1430,6 +1463,8 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
         accelerator_nr, tensor_parallelism, data_local_parallelism
     )
 
+    ev[f"vllm_{identifier}_accelerator_nr"] = accelerator_count
+
     cpu_mem = ev[f"vllm_{identifier}_cpu_mem"]
     cpu_nr = ev[f"vllm_{identifier}_cpu_nr"]
 
@@ -1527,7 +1562,11 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
     if ev[f"vllm_modelservice_{identifier}_accelerator_resource"] == "auto" :
         ev[f"vllm_modelservice_{identifier}_accelerator_resource"] = ev[f"vllm_common_affinity"].split(':')[0].replace(".product",'')
 
-    accelerator_type = ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split('.')[0]
+    if "nvidia" in ev[f"vllm_modelservice_{identifier}_accelerator_resource"] :
+        accelerator_type = "nvidia"
+    else :
+        accelerator_type = ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split('.')[0]
+
     if accelerator_type == "kubernetes" :
         accelerator_type = "cpu"
         acellerator_resource = "cpu"
@@ -1537,6 +1576,7 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
   type: {accelerator_type}
     """
     # rely on hardcoded list (in modelservice) for these resources
+
     if accelerator_type not in ['nvidia', 'intel-i915', 'intel-xe', 'intel-gaudi', 'amd', 'google']:
         accelerator_string = f"""{accelerator_string}
   resources:
@@ -1861,16 +1901,16 @@ def add_scc_to_service_account(
     # check if the service account is already in the list
     if sa_user_name in scc.obj["users"]:
         announce(
-            f'Service Account "{sa_user_name}" already has SCC "{scc_name}". No changes needed'
+            f'ℹ️ Service Account "{sa_user_name}" already has SCC "{scc_name}". No changes needed'
         )
     else:
         if dry_run:
             announce(f'DRY RUN: Would add "{sa_user_name}" to SCC "{scc_name}"')
         else:
-            announce(f'Adding "{sa_user_name}" to SCC "{scc_name}"...')
+            announce(f'🚚 Adding "{sa_user_name}" to SCC "{scc_name}"...')
             scc.obj["users"].append(sa_user_name)
             scc.update()
-            announce(f'Successfully updated SCC "{scc_name}"')
+            announce(f'✅ Successfully updated SCC "{scc_name}"')
 
 
 def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int, component: str) -> int:
@@ -1957,7 +1997,8 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
                                     announce(f'⏳ Waiting for all ({component_nr}) "{component}" pods to be Ready (timeout={int(ev["control_wait_timeout"])}s)...')
                                 pod_running_list.append(pod.metadata.name)
                             if pod.metadata.name not in pod_ready_list and all(cs.ready for cs in pod.status.container_statuses):
-                                announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod ready")
+                                if not silent :
+                                    announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod ready")
                                 pod_ready_list.append(pod.metadata.name)
                                 if len(pod_create_list) == len(pod_ready_list) and len(pod_ready_list) == int(component_nr):
                                     result = 0

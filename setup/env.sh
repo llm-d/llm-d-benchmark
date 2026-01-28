@@ -559,9 +559,10 @@ fi
 
 if [[ -z "${LLMDBENCH_USER_IS_ADMIN:-}" ]]; then # Check if variable was overridden
   export LLMDBENCH_USER_IS_ADMIN=0
+  export LLMDBENCH_USER_CLUSTER_USER_NAME=$($LLMDBENCH_CONTROL_KCMD whoami | rev | cut -d ':' -f 1 | rev)
   if [[ $LLMDBENCH_CONTROL_DEPLOY_IS_OPENSHIFT -eq 1 ]]; then
-    admin_user=$($LLMDBENCH_CONTROL_KCMD get clusterrolebindings -o json | jq '.items[] | select(.roleRef.name=="cluster-admin")' | jq '.subjects[0].name'  | grep $($LLMDBENCH_CONTROL_KCMD whoami) || true)
-    if [[ ! -z ${admin_user} || $($LLMDBENCH_CONTROL_KCMD whoami) == "system:admin" ]]; then
+    admin_user=$($LLMDBENCH_CONTROL_KCMD get clusterrolebindings -o json | jq '.items[] | select(.roleRef.name=="cluster-admin")' | jq '.subjects[0].name'  | grep "\"$LLMDBENCH_USER_CLUSTER_USER_NAME\"" || true)
+    if [[ ! -z ${admin_user} || ${LLMDBENCH_USER_CLUSTER_USER_NAME} == "admin" ]]; then
       export LLMDBENCH_USER_IS_ADMIN=1
     fi
   else
