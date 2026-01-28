@@ -92,14 +92,12 @@ except ModuleNotFoundError as e:
     print(f"  pip install -r {workspace_root / 'config_explorer' / 'requirements.txt'}")
     sys.exit(1)
 
-
 # Allows to properly have blocks in YAMLs
 class LiteralStr(str):
     pass
 def literal_str_representer(dumper, data):
     return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
 yaml.add_representer(LiteralStr, literal_str_representer)
-
 
 def announce(msgcont: str, logfile: str = None, ignore_if_failed: bool = False):
     work_dir = os.getenv("LLMDBENCH_CONTROL_WORK_DIR", ".")
@@ -337,6 +335,9 @@ def environment_variable_to_dict(ev: dict = {}):
 
         ev[mandatory_boolean_key] = bool(int(ev[mandatory_boolean_key]))
 
+    ev["control_wait_timeout"] = int(ev["control_wait_timeout"])
+    ev["control_wait_period"] = int(ev["control_wait_period"])
+
     for mandatory_empty_key in [
         "vllm_common_affinity",
         "vllm_common_network_resource"
@@ -344,6 +345,17 @@ def environment_variable_to_dict(ev: dict = {}):
         if mandatory_empty_key not in ev:
             ev[mandatory_empty_key] = ''
         ev[mandatory_empty_key] = ev[mandatory_empty_key].replace(" ",'')
+
+    for mandatory_integer_key in [
+        "vllm_common_replicas",
+        "vllm_modelservice_decode_replicas",
+        "vllm_modelservice_decode_num_workers_parallelism",
+        "vllm_modelservice_prefill_replicas",
+        "vllm_modelservice_prefill_num_workers_parallelism",
+    ]:
+        if mandatory_integer_key not in ev:
+            ev[mandatory_integer_key] = 0
+        ev[mandatory_integer_key] = int(ev[mandatory_integer_key])
 
     if "discovered" not in ev :
         ev["discovered"] = {}
@@ -361,6 +373,18 @@ def environment_variable_to_dict(ev: dict = {}):
         "vllm_modelservice_gateway_class_name", ""
     ).lower()
 
+    if ev["cluster_url"] == "auto" :
+        file_path = f'{ev["control_work_dir"]}/environment/context.ctx'
+        with open(file_path, "r") as f:
+            ctx_dict = yaml.safe_load(f)
+    if "clusters" in ctx_dict :
+        if ctx_dict["clusters"] :
+            if "cluster" in ctx_dict["clusters"][0] :
+                if "server" in ctx_dict["clusters"][0]["cluster"] :
+                    ev["cluster_url"]  = ctx_dict["clusters"][0]["cluster"]["server"]
+
+    if isinstance(ev["harness_profile_harness_list"], str):
+        ev["harness_profile_harness_list"] = ev["harness_profile_harness_list"].split()
     ev["current_step_nr"] = ev["current_step"].split('_')[0]
 
 def kubectl_apply(
@@ -661,7 +685,7 @@ spec:
     spec:
       containers:
         - name: downloader
-          image: {get_image(ev["image_registry"], ev["image_repo"], ev["image_name"], ev["image_tag"], False, True)}
+          image: {get_image(ev, "image", False, True)}
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -874,11 +898,42 @@ def extract_environment(ev):
         for var in env_vars:
             f.write(var + "\n")
 
+def propagate_standup_parameters(ev: dict, api: pykube.HTTPClient) :
+
+    file_path = f'{ev["control_work_dir"]}/environment/ev.yaml'
+
+    with open(file_path, "w") as f:
+        yaml.safe_dump(ev, f)
+
+    config_map_name = "llm-d-benchmark-standup-parameters"
+    config_map_data = {}
+    out_dir = Path(ev["control_work_dir"]) / "environment"
+
+    try:
+        file_paths = sorted([p for p in out_dir.rglob("ev.yaml") if p.is_file()])
+        for path in file_paths:
+            config_map_data[path.name] = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        announce(
+            f"Warning: Directory not found at {preprocess_dir}. Creating empty ConfigMap."
+        )
+
+    config_map_name = "llm-d-benchmark-standup-parameters"
+    with open(file_path, 'rb') as f:
+        binary_file_contents = f.read()
+
+    cm_obj = {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {"name": config_map_name, "namespace": ev["harness_namespace"]},
+        "data": config_map_data,
+    }
+
+    kubectl_apply(api=api, manifest_data=cm_obj, dry_run=ev["control_dry_run"])
+
 def get_image(
-    image_registry: str,
-    image_repo: str,
-    image_name: str,
-    image_tag: str,
+    ev: dict,
+    image_key: str,
     tag_only: bool = False,
     silent: bool = False
 ) -> str:
@@ -887,16 +942,20 @@ def get_image(
     Equivalent to the bash get_image function.
 
     Args:
-        image_registry: Container registry
-        image_repo: Repository/organization
-        image_name: Image name
-        image_tag: Image tag
+        ev: dictionray containing all parameters
+        image_key: image identifier
         tag_only: If "True", return only the tag
         silent: If "True", do not output \"INFO\" message
 
     Returns:
         Full image reference or just tag
     """
+
+    image_registry = ev[f"{image_key}_registry"]
+    image_repo = ev[f"{image_key}_repo"]
+    image_name = ev[f"{image_key}_name"]
+    image_tag = ev[f"{image_key}_tag"]
+
     is_latest_tag = image_tag
 
     if image_tag == "auto":
@@ -944,6 +1003,7 @@ def get_image(
         if not silent:
             announce(f"INFO: resolved image \"{image_full_name}:{image_tag}\" into \"{image_full_name}:{is_latest_tag}\"")
 
+    ev[f"{image_key}_tag"] = f"{is_latest_tag}"
     if tag_only :
         return is_latest_tag
     else:
@@ -1295,22 +1355,33 @@ def render_string(input_string, ev):
 
     return processed_string
 
-def add_command(model_command: str) -> str:
+def add_command(ev:dict, args_key: str) -> str:
     """
     Generate command section for container based on model_command type.
     """
-    if model_command == "custom":
-        return """command:
+    args_string=ev[args_key]
+
+    if args_string == "vllmServe" :
+        return ""
+
+    if args_string == "imageDefault" :
+        return ""
+
+    if args_string == "custom":
+        ev[args_key] = """command:
       - /bin/sh
       - '-c'"""
-    return ""
+    else :
+        ev[args_key]
+    return ev[args_key]
 
-def add_command_line_options(ev: dict, args_string: str) -> str:
+def add_command_line_options(ev: dict, args_key: str) -> str:
     """
     Generate command line options for container args.
     In case args_string is a file path, open the file and read the contents first
     Equivalent to the bash add_command_line_options function.
     """
+    args_string=ev[args_key]
     if os.access(args_string, os.R_OK):
         with open(args_string, "r") as fp:
             fc = fp.read()
@@ -1344,7 +1415,7 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
                 processed_args[-1] = f"{processed_args[-1]} \\\n            --enable-sleep-mode"
                 processed_args = '\n'.join(processed_args)
 
-            return f"        - |\n          {processed_args}"
+            ev[args_key] =  f"        - |\n          {processed_args}"
         elif ev["current_step_nr"] == "09":
             # For step 09 (modelservice), format as proper YAML list
             if "[" in processed_args and "]" in processed_args:
@@ -1378,12 +1449,11 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
                                 yaml_list.append(f'      - "{cleaned_arg}"')
 
                 #TODO             if ev["vllm_common_enable_sleep_mode"] :
-
-                return "\n".join(yaml_list)
+                ev[args_key] = "\n".join(yaml_list)
             else:
                 processed_args = f"{processed_args.replace('____', ' ')}"
                 args_list = processed_args.split("--")
-                cmd_param_list = ["- |"]
+                cmd_param_list = ["     - |"]
                 for arg in args_list:
                     cmd_param_list.append(f"        --{arg.strip()} \\")
 
@@ -1391,18 +1461,18 @@ def add_command_line_options(ev: dict, args_string: str) -> str:
                 cmd_string = "\n".join(cmd_param_list).replace("--", "", 1)
 
                 #TODO             if ev["vllm_common_enable_sleep_mode"] :
-
-                return cmd_string
+                ev[args_key] = cmd_string
         else:
             # Default case
             processed_args = processed_args.replace("____", " ")
-            return processed_args
+            ev[args_key] = cmd_string
     else:
         # Handle empty args_string
         if ev["current_step_nr"] == "06":
-            return "        - |"
+            ev[args_key] = "        - |"
         else:
-            return ""
+            ev[args_key] = ""
+    return ev[args_key]
 
 def add_resources(ev:dict, identifier: str) -> [str, str]:
     limits_resources = []
@@ -1421,6 +1491,8 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
     if accelerator_resource == "auto":
         accelerator_resource = "nvidia.com/gpu"
 
+    ev[f"vllm_{identifier}_accelerator_resource"] = accelerator_resource
+
     accelerator_nr = ev[f"vllm_{identifier}_accelerator_nr"]
 
     data_local_parallelism = ev[f"vllm_{identifier}_data_local_parallelism"]
@@ -1429,6 +1501,8 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
     accelerator_count = get_accelerator_nr(
         accelerator_nr, tensor_parallelism, data_local_parallelism
     )
+
+    ev[f"vllm_{identifier}_accelerator_nr"] = accelerator_count
 
     cpu_mem = ev[f"vllm_{identifier}_cpu_mem"]
     cpu_nr = ev[f"vllm_{identifier}_cpu_nr"]
@@ -1527,7 +1601,11 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
     if ev[f"vllm_modelservice_{identifier}_accelerator_resource"] == "auto" :
         ev[f"vllm_modelservice_{identifier}_accelerator_resource"] = ev[f"vllm_common_affinity"].split(':')[0].replace(".product",'')
 
-    accelerator_type = ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split('.')[0]
+    if "nvidia" in ev[f"vllm_modelservice_{identifier}_accelerator_resource"] :
+        accelerator_type = "nvidia"
+    else :
+        accelerator_type = ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split('.')[0]
+
     if accelerator_type == "kubernetes" :
         accelerator_type = "cpu"
         acellerator_resource = "cpu"
@@ -1537,6 +1615,7 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
   type: {accelerator_type}
     """
     # rely on hardcoded list (in modelservice) for these resources
+
     if accelerator_type not in ['nvidia', 'intel-i915', 'intel-xe', 'intel-gaudi', 'amd', 'google']:
         accelerator_string = f"""{accelerator_string}
   resources:
@@ -1562,21 +1641,14 @@ def add_pull_secret(ev:dict) -> str:
 
     return pull_secret_string
 
-def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
+def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
     """
     Generate additional environment variables YAML.
     In case env_vars_string is a file path, open the file and read the contents first
     Equivalent to the bash add_additional_env_to_yaml function.
-
-    Args:
-        env_vars_string (str): Comma separated list of environment variable
-            names to be converted to name/value pairs OR a path to a file
-            containing a YAML snippet to be indented but otherwise not
-            interpreted.
-
-    Returns:
-        str: YAML snippet to be inserted to YAML template.
     """
+
+    env_vars_string = ev[env_vars_key]
 
     # Determine indentation based on environment type
     if ev["control_environment_type_standalone_active"] :
@@ -1596,41 +1668,48 @@ def add_additional_env_to_yaml(ev: dict, env_vars_string: str) -> str:
                 if line[0] != "#":
                     line = render_string(line, ev)
                     lines.append(name_indent + line.rstrip())
-        return "\n".join(lines)
+        ev[env_vars_key] = "\n".join(lines)
+    else :
+        # Parse environment variables (comma-separated list)
+        env_lines = []
+        for envvar in env_vars_string.split(","):
+            envvar = envvar.strip()
+            if envvar:
+                # Remove LLMDBENCH_VLLM_STANDALONE_ prefix if present
+                clean_name = envvar
+                if envvar[0] == "_":
+                    clean_name = envvar[1:]
+                clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
+                clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_VLLM_", "VLLM_")
+                clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_VLLM_", "VLLM_")
+                clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_DECODE_VLLM_", "VLLM_")
+                clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_", "")
+                clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
+                env_value = ev[envvar.replace('LLMDBENCH_','',1).lower()]
+    #            env_value = os.environ.get(envvar, "")
 
-    # Parse environment variables (comma-separated list)
-    env_lines = []
-    for envvar in env_vars_string.split(","):
-        envvar = envvar.strip()
-        if envvar:
-            # Remove LLMDBENCH_VLLM_STANDALONE_ prefix if present
-            clean_name = envvar
-            if envvar[0] == "_":
-                clean_name = envvar[1:]
-            clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
-            clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_VLLM_", "VLLM_")
-            clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_VLLM_", "VLLM_")
-            clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_DECODE_VLLM_", "VLLM_")
-            clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_", "")
-            clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
-            env_value = ev[envvar.replace('LLMDBENCH_','',1).lower()]
-#            env_value = os.environ.get(envvar, "")
+                # Process REPLACE_ENV variables in the value (equivalent to bash sed processing)
+                if env_value:
+                    processed_value = render_string(env_value, ev)
+                else:
+                    processed_value = ""
 
-            # Process REPLACE_ENV variables in the value (equivalent to bash sed processing)
-            if env_value:
-                processed_value = render_string(env_value, ev)
-            else:
-                processed_value = ""
+                env_lines.append(f"{name_indent}- name: {clean_name}")
+                env_lines.append(f'{value_indent}value: "{processed_value}"')
+        ev[env_vars_key] = "\n".join(env_lines)
 
-            env_lines.append(f"{name_indent}- name: {clean_name}")
-            env_lines.append(f'{value_indent}value: "{processed_value}"')
+    return ev[env_vars_key]
 
-    return "\n".join(env_lines)
-
-def add_config(obj_or_filename, num_spaces=0, label="", ev={}):
+def add_config(config_key, num_spaces=0, label="", ev={}):
     spaces = " " * num_spaces
     contents = ""
     indented_contents = ""
+
+    #FIXME we should always be passing a key, not a formed string (used by step 8)
+    if config_key in ev :
+        obj_or_filename = ev[config_key]
+    else :
+        obj_or_filename = config_key
 
     contents = obj_or_filename
 
@@ -1646,7 +1725,9 @@ def add_config(obj_or_filename, num_spaces=0, label="", ev={}):
         indented_contents = f"  {label}\n{indented_contents}"
     else:
         indented_contents = ""
-    return indented_contents
+
+    ev[config_key] = indented_contents
+    return ev[config_key]
 
 def is_standalone_deployment(ev: dict) -> bool:
     """
@@ -1765,7 +1846,7 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
     total_attempts = timeout/period
     current_attempts = 0
     valid_model_name = False
-    image = get_image(ev['image_registry'], ev['image_repo'], ev['image_name'], ev['image_tag'], False, True)
+    image = get_image(ev, 'image', False, True)
 
     if port == "auto" :
         port = ev['vllm_common_inference_port']
@@ -1861,16 +1942,16 @@ def add_scc_to_service_account(
     # check if the service account is already in the list
     if sa_user_name in scc.obj["users"]:
         announce(
-            f'Service Account "{sa_user_name}" already has SCC "{scc_name}". No changes needed'
+            f'ℹ️ Service Account "{sa_user_name}" already has SCC "{scc_name}". No changes needed'
         )
     else:
         if dry_run:
             announce(f'DRY RUN: Would add "{sa_user_name}" to SCC "{scc_name}"')
         else:
-            announce(f'Adding "{sa_user_name}" to SCC "{scc_name}"...')
+            announce(f'🚚 Adding "{sa_user_name}" to SCC "{scc_name}"...')
             scc.obj["users"].append(sa_user_name)
             scc.update()
-            announce(f'Successfully updated SCC "{scc_name}"')
+            announce(f'✅ Successfully updated SCC "{scc_name}"')
 
 
 def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int, component: str) -> int:
@@ -1880,12 +1961,11 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
 
     dry_run = ev["control_dry_run"]
     result = 0
-    ev["control_wait_timeout"] = int(ev["control_wait_timeout"])
     if component in [ "both", "decode", "prefill" ] :
         label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}"
         silent = False
     elif component in [ "gateway" ] :
-        label_selector = f"gateway.networking.k8s.io/gateway-name=infra-{ev['vllm_modelservice_release']}-inference-gateway"
+        label_selector = f"app.kubernetes.io/name=llm-d-infra"
         silent = False
     elif component in [ "inferencepool" ] :
         label_selector = f"inferencepool={ev['deploy_current_model_id_label']}-gaie-epp"
@@ -1897,9 +1977,8 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
         announce(f"ERROR: Unknown component ({component})")
         return 10
 
-    if not dry_run and int(component_nr) > 0:
-        delay = int(ev["control_wait_period"])
-        max_retries = int(ev["control_wait_timeout"]/delay)
+    if not dry_run and component_nr > 0:
+        max_retries = int(ev["control_wait_timeout"]/ev["control_wait_period"])
         if not silent :
             announce(
                 f'⏳ Waiting for all ({component_nr}) "{component}" pods serving model to be in "Running" state (timeout={ev["control_wait_timeout"]}s/{max_retries} tries)...'
@@ -1910,11 +1989,11 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
                 w = k8s_watch.Watch()
                 pod_running_list = []
                 pod_ready_list = []
-                for event in w.stream(api_client.list_namespaced_pod, namespace=ev["vllm_common_namespace"], label_selector=label_selector, timeout_seconds=int(ev["control_wait_timeout"])):
+                for event in w.stream(api_client.list_namespaced_pod, namespace=ev["vllm_common_namespace"], label_selector=label_selector, timeout_seconds=ev["control_wait_timeout"]):
                     pod = event['object']
                     event_type = event['type']
                     if event_type in ("ADDED", "MODIFIED") and (pod.status.init_container_statuses or pod.status.container_statuses):
-                        if pod.status.init_container_statuses and (len(pod_running_list) < int(component_nr)):
+                        if pod.status.init_container_statuses and (len(pod_running_list) < component_nr):
                             for init_container_status in pod.status.init_container_statuses:
                                 if init_container_status.state and init_container_status.state.waiting and init_container_status.state.waiting.reason == "CrashLoopBackOff":
                                     if not silent :
@@ -1954,19 +2033,20 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
                             if pod.metadata.name not in pod_running_list and all(cs.state.running for cs in pod.status.container_statuses):
                                 if not silent :
                                     announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod running")
-                                    announce(f'⏳ Waiting for all ({component_nr}) "{component}" pods to be Ready (timeout={int(ev["control_wait_timeout"])}s)...')
+                                    announce(f'⏳ Waiting for all ({component_nr}) "{component}" pods to be Ready (timeout={ev["control_wait_timeout"]}s)...')
                                 pod_running_list.append(pod.metadata.name)
                             if pod.metadata.name not in pod_ready_list and all(cs.ready for cs in pod.status.container_statuses):
-                                announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod ready")
+                                if not silent :
+                                    announce(f"🚀     \"{pod.metadata.name}\" ({component}) pod ready")
                                 pod_ready_list.append(pod.metadata.name)
-                                if len(pod_create_list) == len(pod_ready_list) and len(pod_ready_list) == int(component_nr):
+                                if len(pod_create_list) == len(pod_ready_list) and len(pod_ready_list) == component_nr:
                                     result = 0
                                     return result
             except (Exception, ProtocolError) as e:
                 if "Response ended prematurely" in str(e):
                     if not silent :
-                        announce(f"WARNING: {e}, NOT-FATAL, retrying in {delay} seconds...")
-                    time.sleep(delay)
+                        announce(f"WARNING: {e}, NOT-FATAL, retrying in {ev['control_wait_period']} seconds...")
+                    time.sleep(ev["control_wait_period"])
                 else:
                     if not silent :
                         announce(f"ERROR: Exception occured while waiting for ({component}) pods : {e}")
@@ -2627,6 +2707,48 @@ rules:
         dry_run=dry_run,
         verbose=verbose,
     )
+
+def auto_detect_version(ev, chart, version_key, repo_key, silent = False) -> int:
+    if ev[version_key] == "auto":
+        if not silent :
+            announce(f"🔍 Auto-detecting {chart} chart version...")
+
+        try:
+            #FIXME (USE llmdbench_execute_cmd)
+            helm_search_cmd = f"{ev['control_hcmd']} search repo {ev[repo_key]}"
+            result = subprocess.run(
+                helm_search_cmd,
+                capture_output=True,
+                text=True,
+                shell=True,
+                executable="/bin/bash",
+                check=False
+            )
+
+            if result.returncode == 0 and result.stdout.strip():
+                lines = result.stdout.strip().split('\n')
+                if len(lines) > 1:  # Skip header line
+                    last_line = lines[-1]
+                    version = last_line.split()[1] if len(last_line.split()) > 1 else ""
+                    if version:
+                        ev[version_key] = version
+                        if not silent :
+                            announce(f"📦 Auto-detected chart version: {version}")
+                        return 0
+                    else:
+                        announce("ERROR: Unable to parse version from helm search output")
+                        return 1
+                else:
+                    announce("ERROR: No charts found in helm search output")
+                    return 1
+            else:
+                announce("ERROR: Unable to find a version for model service helm chart!")
+                return 1
+
+        except Exception as e:
+            announce(f"ERROR: Error auto-detecting {chart} chart version: {e}")
+            return 1
+    return 0
 
 
 def install_wva(wva_config, wva_namespace, dry_run=False, verbose=False):

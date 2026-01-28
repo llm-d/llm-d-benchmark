@@ -109,10 +109,8 @@ def main():
 
             # Get image tag
             image_tag = get_image(
-                ev["llmd_inferencescheduler_image_registry"],
-                ev["llmd_inferencescheduler_image_repo"],
-                ev["llmd_inferencescheduler_image_name"],
-                ev["llmd_inferencescheduler_image_tag"],
+                ev,
+                "llmd_inferencescheduler_image",
                 True,
                 True
             )
@@ -150,6 +148,17 @@ def main():
   {hf_token_env}
   pluginsConfigFile: "{ev['vllm_modelservice_gaie_plugins_configfile']}"
 {add_config(plugin_config, 4, "pluginsCustomConfig:", ev)}
+  # Monitoring configuration for EPP
+  monitoring:
+    secret:
+      name: kv-events-gateway-sa-metrics-reader-secret
+    interval: "10s"
+    # Prometheus ServiceMonitor will be created when enabled for EPP metrics collection
+    prometheus:
+      enabled: true
+      auth:
+        # To allow unauthenticated /metrics access (e.g., for debugging with curl), set to false
+        enabled: true
 inferencePool:
   targetPortNumber: {ev['vllm_common_inference_port']}
   modelServerType: vllm
@@ -204,6 +213,7 @@ provider:
             api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
 
             api_client = client.CoreV1Api()
+
             result = wait_for_pods_created_running_ready(
                 api_client, ev, 1, "gateway"
             )

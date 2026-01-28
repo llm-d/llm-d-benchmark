@@ -74,10 +74,8 @@ data:
     ]
 
     image = get_image(
-        ev["image_registry"],
-        ev["image_repo"],
-        ev["image_name"],
-        ev["image_tag"],
+        ev,
+        "image",
         False,
         True
     )

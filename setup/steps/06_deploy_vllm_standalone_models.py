@@ -27,13 +27,13 @@ from functions import (
     add_config, \
     add_affinity, \
     add_pull_secret, \
-    get_accelerator_nr, \
     is_standalone_deployment, \
     kubectl_apply, \
     environment_variable_to_dict, \
     wait_for_pods_created_running_ready, \
     kube_connect, \
-    collect_logs
+    collect_logs, \
+    propagate_standup_parameters
 )
 
 def main():
@@ -160,6 +160,8 @@ def main():
         announce(f"ℹ️ A snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\":")
         kubectl_get_cmd = f"{ev['control_kcmd']} get --namespace {ev['vllm_common_namespace']} {srl}"
         llmdbench_execute_cmd(actual_cmd=kubectl_get_cmd,dry_run=ev["control_dry_run"], verbose=ev["control_verbose"],fatal=False)
+        propagate_standup_parameters(ev, api)
+
     else:
         deploy_methods = ev.get("deploy_methods", "")
         announce(f"⏭️  Environment types are \"{deploy_methods}\". Skipping this step.")
@@ -171,33 +173,31 @@ def generate_deployment_yaml(ev, model, model_label):
 
     # Get image reference
     image = get_image(
-        ev["vllm_standalone_image_registry"],
-        ev["vllm_standalone_image_repo"],
-        ev["vllm_standalone_image_name"],
-        ev["vllm_standalone_image_tag"],
+        ev,
+        "vllm_standalone_image",
         False,
         True
     )
 
     # Generate command line options
-    args = add_command_line_options(ev, ev["vllm_standalone_args"])
+    args = add_command_line_options(ev, "vllm_standalone_args")
 
     # for the launcher remove sleep mode on ev so that it
     # doesn't get added to the uvicorn arguments
     launcher_ev = ev.copy()
     _ = launcher_ev.pop("vllm_common_enable_sleep_mode", None)
-    launcher_args = add_command_line_options(launcher_ev, launcher_ev["vllm_standalone_launcher_args"])
+    launcher_args = add_command_line_options(launcher_ev, "vllm_standalone_launcher_args")
 
     # Generate additional environment variables
-    additional_env = add_additional_env_to_yaml(ev, ev["vllm_standalone_envvars_to_yaml"])
+    additional_env = add_additional_env_to_yaml(ev, "vllm_standalone_envvars_to_yaml")
 
     limits_str, requests_str = add_resources(ev, "common")
 
     # Generate annotations
     annotations = add_annotations(ev, "LLMDBENCH_VLLM_COMMON_ANNOTATIONS")
 
-    extra_volume_mounts = add_config(ev['vllm_standalone_extra_volume_mounts'],8, "", ev)
-    extra_volumes = add_config(ev['vllm_standalone_extra_volumes'],6, "", ev)
+    extra_volume_mounts = add_config('vllm_standalone_extra_volume_mounts',8, "", ev)
+    extra_volumes = add_config('vllm_standalone_extra_volumes',6, "", ev)
 
     deployment_yaml = f"""apiVersion: apps/v1
 kind: Deployment

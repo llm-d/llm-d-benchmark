@@ -17,7 +17,6 @@ sys.path.insert(0, str(project_root))
 
 from functions import announce, \
         environment_variable_to_dict, \
-        get_accelerator_nr, \
         is_standalone_deployment, \
         get_accelerator_type, \
         llmdbench_execute_cmd, \
