@@ -37,7 +37,8 @@ from functions import (
     clear_string,
     install_wva_components,
     kube_connect,
-    kubectl_apply
+    kubectl_apply,
+    propagate_standup_parameters
 )
 
 def conditional_volume_config(
@@ -607,6 +608,7 @@ def main():
       model_number += 1
 
     announce("✅ modelservice completed model deployment")
+    propagate_standup_parameters(ev, api)
     return 0
 
 

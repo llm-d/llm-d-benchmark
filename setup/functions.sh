@@ -516,6 +516,13 @@ function deploy_harness_config {
             ${LLMDBENCH_CONTROL_DRY_RUN} \
             ${LLMDBENCH_CONTROL_VERBOSE}
         announce "✅ Pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" deleted"
+
+      announce "ℹ️ Capturing the current status of all pods in namespace \"$LLMDBENCH_VLLM_COMMON_NAMESPACE\" to ${pod_results_dir}/pod_status.txt..."
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE get pods -o wide > ${pod_results_dir}/pod_status.txt" \
+      ${LLMDBENCH_CONTROL_DRY_RUN} \
+      ${LLMDBENCH_CONTROL_VERBOSE}
+      announce "✅ Pod status captured."
+
     elif [[ $LLMDBENCH_HARNESS_WAIT_TIMEOUT -eq 0 ]]; then
       announce "ℹ️ Harness was started with LLMDBENCH_HARNESS_WAIT_TIMEOUT=0. Will NOT wait for pod \"${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" to be in \"Completed\" state. The pod can be accessed through \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} exec -it pod/<POD_NAME> -- bash\""
       announce "ℹ️ To list pod names \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get pods -l app=${LLMDBENCH_HARNESS_POD_LABEL}\""
@@ -539,6 +546,8 @@ function create_harness_pod {
       announce "❌ PVC \"${LLMDBENCH_HARNESS_PVC_NAME}\" not created on namespace \"${LLMDBENCH_HARNESS_NAMESPACE}\" unable to continue"
       exit 1
   fi
+
+  is_cfgmap=$(${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} get configmap --ignore-not-found | grep llm-d-benchmark-standup-parameters || true)
 
   # Sanitize the stack name to make it a valid k8s/OpenShift resource name
   local LLMDBENCH_HARNESS_SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | $LLMDBENCH_CONTROL_SCMD 's|[/:]|-|g')
@@ -598,6 +607,13 @@ spec:
       mountPath: /requests
 EOF
 
+  if [[ ! -z $is_cfgmap ]]; then
+    cat <<EOF >> $_work_dir/setup/yamls/pod_benchmark-launcher.yaml
+    - name: standup
+      mountPath: /standup
+EOF
+  fi
+
   for profile_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
     cat <<EOF >> $_work_dir/setup/yamls/pod_benchmark-launcher.yaml
     - name: ${profile_type}-profiles
@@ -617,12 +633,17 @@ EOF
       name: ${profile_type}-profiles
 EOF
   done
-  cat <<EOF >> $_work_dir/setup/yamls/pod_benchmark-launcher.yaml
+
+  if [[ ! -z $is_cfgmap ]]; then
+    cat <<EOF >> $_work_dir/setup/yamls/pod_benchmark-launcher.yaml
+  - name: standup
+    configMap:
+      name: llm-d-benchmark-standup-parameters
   restartPolicy: Never
 EOF
+  fi
 }
 export -f create_harness_pod
-
 
 function get_model_name_from_pod {
     local namespace=$1

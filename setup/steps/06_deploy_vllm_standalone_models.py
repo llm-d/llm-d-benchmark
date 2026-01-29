@@ -33,7 +33,8 @@ from functions import (
     environment_variable_to_dict, \
     wait_for_pods_created_running_ready, \
     kube_connect, \
-    collect_logs
+    collect_logs, \
+    propagate_standup_parameters
 )
 
 def main():
@@ -160,6 +161,8 @@ def main():
         announce(f"ℹ️ A snapshot of the relevant (model-specific) resources on namespace \"{ev['vllm_common_namespace']}\":")
         kubectl_get_cmd = f"{ev['control_kcmd']} get --namespace {ev['vllm_common_namespace']} {srl}"
         llmdbench_execute_cmd(actual_cmd=kubectl_get_cmd,dry_run=ev["control_dry_run"], verbose=ev["control_verbose"],fatal=False)
+        propagate_standup_parameters(ev, api)
+
     else:
         deploy_methods = ev.get("deploy_methods", "")
         announce(f"⏭️  Environment types are \"{deploy_methods}\". Skipping this step.")

@@ -150,6 +150,17 @@ def main():
   {hf_token_env}
   pluginsConfigFile: "{ev['vllm_modelservice_gaie_plugins_configfile']}"
 {add_config(plugin_config, 4, "pluginsCustomConfig:", ev)}
+  # Monitoring configuration for EPP
+  monitoring:
+    secret:
+      name: kv-events-gateway-sa-metrics-reader-secret
+    interval: "10s"
+    # Prometheus ServiceMonitor will be created when enabled for EPP metrics collection
+    prometheus:
+      enabled: true
+      auth:
+        # To allow unauthenticated /metrics access (e.g., for debugging with curl), set to false
+        enabled: true
 inferencePool:
   targetPortNumber: {ev['vllm_common_inference_port']}
   modelServerType: vllm
