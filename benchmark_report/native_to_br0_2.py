@@ -7,6 +7,7 @@ import os
 import re
 import ssl
 import sys
+import tempfile
 import uuid
 import hashlib
 import json
@@ -16,6 +17,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 import yaml
+from kubernetes import client, config as k8s_config
 
 from .base import Units, WorkloadGenerator
 from .core import (
@@ -64,8 +66,91 @@ def b64_decode_envar(envar: str) -> str:
         return ""
 
 
-def _populate_run() -> dict:
+def get_context_from_envar(envar: str) -> dict:
+    """Get Kubernetes context from a base64 encoded environment variable.
+
+    Args:
+        envar (str): Environment variable name containing base64 encoded context.
+
+    Returns:
+        dict: Kubernetes context as a dictionary, or empty dict if retrieval fails.
+    """
+    context_yaml = b64_decode_envar(envar)
+    if not context_yaml:
+        sys.stderr.write(
+            f"Failed to get Kubernetes context from environment variable: {envar}\n"
+        )
+        return {}
+
+    try:
+        context_dict = yaml.safe_load(context_yaml)
+        return context_dict
+    except yaml.YAMLError as e:
+        sys.stderr.write(f"Failed to parse Kubernetes context YAML: {e}\n")
+        return {}
+
+
+def get_configmap(
+    context_dict: dict, configmap_name: str, namespace: str = None, timeout: int = 5
+) -> dict:
+    """Get ConfigMap contents using a Kubernetes context dictionary.
+
+    Args:
+        context_dict (dict): Kubernetes context as a dictionary.
+        configmap_name (str): Name of the ConfigMap to retrieve.
+        namespace (str): Namespace of the ConfigMap. If None, try to detect
+            from service account or environment variable.
+        timeout (int): Timeout in seconds for the API call.
+
+    Returns:
+        dict: ConfigMap contents as a dict, or empty dict if retrieval fails.
+    """
+    if not context_dict:
+        sys.stderr.write("Empty context dictionary provided\n")
+        return {}
+
+    try:
+        # Write context to a temporary file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(context_dict, f)
+            kubeconfig_path = f.name
+
+        # Load the Kubernetes config from the temporary file
+        k8s_config.load_kube_config(config_file=kubeconfig_path)
+
+        # Create API client
+        v1 = client.CoreV1Api()
+
+        # Determine namespace if not provided
+        if namespace is None:
+            try:
+                with open(
+                    "/var/run/secrets/kubernetes.io/serviceaccount/namespace",
+                    "r",
+                    encoding="utf-8",
+                ) as ff:
+                    namespace = ff.read().strip()
+            except FileNotFoundError:
+                namespace = os.environ.get("LLMDBENCH_VLLM_COMMON_NAMESPACE", "default")
+
+        # Get the ConfigMap with timeout
+        configmap = v1.read_namespaced_config_map(
+            name=configmap_name, namespace=namespace, _request_timeout=timeout
+        )
+
+        # Convert to dict and return
+        return configmap.to_dict()
+
+    except Exception as e:
+        sys.stderr.write(f"Failed to retrieve ConfigMap '{configmap_name}': {e}\n")
+        return {}
+
+
+def _populate_run(ev_dict: dict) -> dict:
     """Create a benchmark report with run details from environment variables.
+
+    Args:
+        ev_dict (dict): Environment variable values.
 
     Returns:
         dict: dict with run section of BenchmarkReport.
@@ -73,9 +158,7 @@ def _populate_run() -> dict:
     # Unique ID for pod
     pid = os.environ.get("POD_UID")
     # Create an experiment ID from the results directory used (includes a timestamp)
-    eid = str(
-        uuid.uuid5(uuid.NAMESPACE_URL, os.environ.get("LLMDBENCH_RUN_EXPERIMENT_ID"))
-    )
+    eid = str(uuid.uuid5(uuid.NAMESPACE_URL, ev_dict.get("run_experiment_id", "")))
     # Create cluster ID from the API server certificate
     host = os.environ.get("KUBERNETES_SERVICE_HOST")
     port = int(os.environ.get("KUBERNETES_SERVICE_PORT", 0))
@@ -95,7 +178,7 @@ def _populate_run() -> dict:
         ) as ff:
             namespace = ff.read().strip()
     except FileNotFoundError:
-        namespace = os.environ.get("LLMDBENCH_VLLM_COMMON_NAMESPACE")
+        namespace = ev_dict.get("vllm_common_namespace", "")
 
     br_dict = {
         "run": {
@@ -165,25 +248,47 @@ def _populate_load() -> dict:
     return br_dict
 
 
-def _populate_aggregate_stack() -> dict:
+def _populate_aggregate_stack(ev_dict: dict) -> dict:
     """Create a benchmark report with scenario.stack from environment variables
     for aggregate.
+
+    Args:
+        ev_dict (dict): Environment variable values.
 
     Returns:
         dict: dict with scenario.stack part of of BenchmarkReport.
     """
-    model = os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL")
-    accelerator = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY").split(":", 1)[-1]
-    replicas = int(os.environ.get("LLMDBENCH_VLLM_COMMON_REPLICAS", 1))
-    tp = int(os.environ.get("LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM", 1))
-    dp = int(os.environ.get("LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM", 1))
-    dp_local = int(os.environ.get("LLMDBENCH_VLLM_COMMON_DATA_LOCAL_PARALLELISM", 1))
+    model = ev_dict.get("deploy_current_model", "")
+    accelerator = ev_dict.get("vllm_common_affinity", "").rsplit(":", 1)[-1]
+    replicas = int(ev_dict.get("vllm_common_replicas", 1))
+    tp = int(ev_dict.get("vllm_common_tensor_parallelism", 1))
+    dp = int(ev_dict.get("vllm_common_data_parallelism", 1))
+    dp_local = int(ev_dict.get("vllm_common_data_local_parallelism", 1))
     workers = int(os.environ.get("LLMDBENCH_VLLM_COMMON_NUM_WORKERS_PARALLELISM", 1))
-    img_reg = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY", "")
-    img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO", "")
-    img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME", "")
-    img_tag = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG", "")
-    cli_args_str = b64_decode_envar("LLMDBENCH_VLLM_STANDALONE_ARGS")
+    img_reg = ev_dict.get("vllm_standalone_image_registry", "")
+    img_repo = ev_dict.get("vllm_standalone_image_repo", "")
+    img_name = ev_dict.get("vllm_standalone_image_name", "")
+    img_tag = ev_dict.get("vllm_standalone_image_tag", "")
+
+    cli_args_str = ev_dict.get("vllm_standalone_args")
+    # Parse CLI arguments into a dict
+    cli_args_dict = {}
+    if cli_args_str:
+        # Remove line continuations and extra whitespace
+        cleaned_cmd = " ".join(cli_args_str.replace("\\\n", " ").split())
+        # Split by -- to get individual flags
+        parts = [p.strip() for p in cleaned_cmd.split("--") if p.strip()]
+        for part in parts:
+            # Skip the command itself
+            if "vllm serve" in part or part.startswith("python"):
+                continue
+            # Split flag and value
+            if " " in part:
+                flag, value = part.split(" ", 1)
+                cli_args_dict[flag] = value.strip()
+            else:
+                # Flag without value
+                cli_args_dict[part] = None
 
     # Parse through environment variables YAML
     envars = {}
@@ -194,9 +299,7 @@ def _populate_aggregate_stack() -> dict:
             value = envar_dict.get("value", envar_dict.get("valueFrom"))
             envars[envar_dict["name"]] = value
 
-    # TODO This hash will change if superficial details like argument order are
-    # not preserved.
-    cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, cli_args_str + str(envars)))
+    cfg_id = config_hash({"args": cli_args_dict, "envars": envars})
 
     inference_engine = {
         "metadata": {
@@ -222,9 +325,7 @@ def _populate_aggregate_stack() -> dict:
             },
         },
         "native": {
-            "args": {
-                "cmd_str": cli_args_str,  # TODO This is an ugly hack for now
-            },
+            "args": cli_args_dict,
             "envars": envars,
         },
     }
@@ -237,12 +338,13 @@ def _populate_aggregate_stack() -> dict:
     return br_dict
 
 
-def _add_inference_scheduler_component(br_dict: dict) -> None:
+def _add_inference_scheduler_component(br_dict: dict, ev_dict: dict) -> None:
     """Add inference scheduler details to scenario.stack section of a dict
     following BenchmarkReport format.
 
     Args:
         br_dict (dict): Benchmark report dict to amend to.
+        ev_dict (dict): Environment variable values.
     """
     epp_config_str = b64_decode_envar("LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG")
     if not epp_config_str:
@@ -269,60 +371,92 @@ def _add_inference_scheduler_component(br_dict: dict) -> None:
     stack.append(epp)
 
 
-def _populate_disaggregate_stack() -> dict:
+def _populate_disaggregate_stack(ev_dict: dict) -> dict:
     """Create a benchmark report with scenario.stack from environment variables
     for disaggregate.
+
+    Args:
+        ev_dict (dict): Environment variable values.
 
     Returns:
         dict: dict with scenario.stack part of of BenchmarkReport.
     """
 
-    model = os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL")
-    accelerator = os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY").split(":", 1)[-1]
-    p_replicas = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS", 0))
-    d_replicas = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS", 1))
-    p_tp = int(
-        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM", 1)
-    )
-    p_dp = int(
-        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM", 1)
-    )
-    d_tp = int(
-        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM", 1)
-    )
-    d_dp = int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM", 1))
-    p_dp_local = int(
-        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM", 1)
-    )
-    d_dp_local = int(
-        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM", 1)
-    )
-    p_workers = int(
-        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NUM_WORKERS_PARALLELISM", 1)
-    )
-    d_workers = int(
-        os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_NUM_WORKERS_PARALLELISM", 1)
-    )
-    img_reg = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY", "")
-    img_repo = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO", "")
-    img_name = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME", "")
-    img_tag = os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG", "")
-    p_cli_args_str = b64_decode_envar("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS")
-    d_cli_args_str = b64_decode_envar("LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS")
+    model = ev_dict.get("deploy_current_model", "")
+    accelerator = ev_dict.get("vllm_common_affinity", "").rsplit(":", 1)[-1]
+    p_replicas = int(ev_dict.get("vllm_modelservice_prefill_replicas", 0))
+    d_replicas = int(ev_dict.get("vllm_modelservice_decode_replicas", 1))
+    p_tp = int(ev_dict.get("vllm_modelservice_prefill_tensor_parallelism", 1))
+    p_dp = int(ev_dict.get("vllm_modelservice_prefill_data_parallelism", 1))
+    p_dp_local = int(ev_dict.get("vllm_modelservice_prefill_data_local_parallelism", 1))
+    d_tp = int(ev_dict.get("vllm_modelservice_decode_tensor_parallelism", 1))
+    d_dp = int(ev_dict.get("vllm_modelservice_decode_data_parallelism", 1))
+    d_dp_local = int(ev_dict.get("vllm_modelservice_decode_data_local_parallelism", 1))
+    p_workers = int(ev_dict.get("vllm_modelservice_prefill_num_workers_parallelism", 1))
+    d_workers = int(ev_dict.get("vllm_modelservice_decode_num_workers_parallelism", 1))
+    img_reg = ev_dict.get("vllm_standalone_image_registry", "")
+    img_repo = ev_dict.get("vllm_standalone_image_repo", "")
+    img_name = ev_dict.get("vllm_standalone_image_name", "")
+    img_tag = ev_dict.get("vllm_standalone_image_tag", "")
+
+    p_cli_args_str = ev_dict.get("vllm_modelservice_prefill_extra_args")
+    # Parse prefill CLI arguments into a dict
+    p_cli_args_dict = {}
+    if p_cli_args_str:
+        # Remove line continuations and extra whitespace
+        cleaned_cmd = " ".join(p_cli_args_str.replace("\\\n", " ").split())
+        # Split by -- to get individual flags
+        parts = [p.strip() for p in cleaned_cmd.split("--") if p.strip()]
+        for part in parts:
+            # Skip the command itself
+            if "vllm serve" in part or part.startswith("python"):
+                continue
+            # Split flag and value
+            if " " in part:
+                flag, value = part.split(" ", 1)
+                p_cli_args_dict[flag] = value.strip()
+            else:
+                # Flag without value
+                p_cli_args_dict[part] = None
+
+    d_cli_args_str = ev_dict.get("vllm_modelservice_decode_extra_args")
+    # Parse decode CLI arguments into a dict
+    d_cli_args_dict = {}
+    if d_cli_args_str:
+        # Remove line continuations and extra whitespace
+        cleaned_cmd = " ".join(d_cli_args_str.replace("\\\n", " ").split())
+        # Split by -- to get individual flags
+        parts = [p.strip() for p in cleaned_cmd.split("--") if p.strip()]
+        for part in parts:
+            # Skip the command itself
+            if "vllm serve" in part or part.startswith("python"):
+                continue
+            # Split flag and value
+            if " " in part:
+                flag, value = part.split(" ", 1)
+                d_cli_args_dict[flag] = value.strip()
+            else:
+                # Flag without value
+                d_cli_args_dict[part] = None
 
     # Parse through environment variables YAML
-    envars = {}
-    envars_yaml_str = b64_decode_envar("LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML")
+    p_envars = {}
+    envars_yaml_str = ev_dict.get("vllm_modelservice_decode_envvars_to_yaml")
     if envars_yaml_str:
         envars_list: list[dict[str, Any]] = yaml.safe_load(envars_yaml_str)
         for envar_dict in envars_list:
             value = envar_dict.get("value", envar_dict.get("valueFrom"))
-            envars[envar_dict["name"]] = value
+            p_envars[envar_dict["name"]] = value
+    d_envars = {}
+    envars_yaml_str = ev_dict.get("vllm_modelservice_decode_envvars_to_yaml")
+    if envars_yaml_str:
+        envars_list: list[dict[str, Any]] = yaml.safe_load(envars_yaml_str)
+        for envar_dict in envars_list:
+            value = envar_dict.get("value", envar_dict.get("valueFrom"))
+            d_envars[envar_dict["name"]] = value
 
-    # TODO These hashes will change if superficial details like argument order
-    # are not preserved.
-    p_cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, p_cli_args_str + str(envars)))
-    d_cfg_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, d_cli_args_str + str(envars)))
+    p_cfg_id = config_hash({"args": p_cli_args_dict, "envars": p_envars})
+    d_cfg_id = config_hash({"args": d_cli_args_dict, "envars": d_envars})
 
     p_inference_engine = {
         "metadata": {
@@ -348,10 +482,8 @@ def _populate_disaggregate_stack() -> dict:
             },
         },
         "native": {
-            "args": {
-                "cmd_str": p_cli_args_str,  # TODO This is an ugly hack for now
-            },
-            "envars": envars,
+            "args": p_cli_args_dict,
+            "envars": p_envars,
         },
     }
 
@@ -379,10 +511,8 @@ def _populate_disaggregate_stack() -> dict:
             },
         },
         "native": {
-            "args": {
-                "cmd_str": d_cli_args_str,  # TODO This is an ugly hack for now
-            },
-            "envars": envars,
+            "args": d_cli_args_dict,
+            "envars": d_envars,
         },
     }
 
@@ -397,12 +527,15 @@ def _populate_disaggregate_stack() -> dict:
     }
 
     # Add inference scheduler component to stack
-    _add_inference_scheduler_component(br_dict)
+    _add_inference_scheduler_component(br_dict, ev_dict)
     return br_dict
 
 
-def _populate_stack() -> dict:
+def _populate_stack(ev_dict: dict) -> dict:
     """Create a benchmark report with scenario.stack from environment variables.
+
+    Args:
+        ev_dict (dict): Environment variable values.
 
     Returns:
         dict: dict with scenario.stack part of of BenchmarkReport.
@@ -416,11 +549,11 @@ def _populate_stack() -> dict:
 
     if os.environ.get("LLMDBENCH_DEPLOY_METHODS") == "standalone":
         # This is an aggregate serving setup
-        return _populate_aggregate_stack()
+        return _populate_aggregate_stack(ev_dict)
 
     if os.environ.get("LLMDBENCH_DEPLOY_METHODS") == "modelservice":
         # This is a disaggregated serving setup
-        return _populate_disaggregate_stack()
+        return _populate_disaggregate_stack(ev_dict)
 
     sys.stderr.write(
         f"Warning: Unknown deployment method LLMDBENCH_DEPLOY_METHODS={os.environ.get('LLMDBENCH_DEPLOY_METHODS')}\n"
@@ -448,12 +581,20 @@ def _populate_benchmark_report_from_envars() -> dict:
         # We are not in a harness pod
         return br_dict
 
+    # Get Kubernetes context
+    context_dict = get_context_from_envar("LLMDBENCH_BASE64_CONTEXT_CONTENTS")
+    # Get configmap with standup parameters
+    params_cm = get_configmap(context_dict, "llm-d-benchmark-standup-parameters")
+
+    ev_str: str = get_nested(params_cm, ["data", "ev.yaml"])
+    ev_dict = yaml.safe_load(ev_str) if ev_str else {}
+
     # Fill in more run details
-    update_dict(br_dict, _populate_run())
+    update_dict(br_dict, _populate_run(ev_dict))
     # Populate part of scenario.load
     update_dict(br_dict, _populate_load())
     # Populate part of scenario.stack
-    update_dict(br_dict, _populate_stack())
+    update_dict(br_dict, _populate_stack(ev_dict))
 
     return br_dict
 
