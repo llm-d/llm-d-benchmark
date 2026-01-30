@@ -1,0 +1,45 @@
+load:
+  type: concurrent
+  stages:
+    # Stage 1: 1 concurrent user, 32 total requests
+    - concurrency_level: 1
+      num_requests: 32
+    # Stage 2: 2 concurrent users, 64 total requests
+    - concurrency_level: 2
+      num_requests: 64
+    # Stage 3: 4 concurrent users, 128 total requests
+    - concurrency_level: 4
+      num_requests: 128
+    # Stage 4: 8 concurrent users, 256 total requests
+    - concurrency_level: 8
+      num_requests: 256
+api:
+  type: completion
+  streaming: true
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+data:
+  type: random
+  input_distribution:
+    min: 5000           # min length of the synthetic prompts
+    max: 10000          # max length of the synthetic prompts
+    mean: 10000         # mean length of the synthetic prompts
+    std: 500            # standard deviation of the length of the synthetic prompts
+  output_distribution:
+    min: 500            # min length of the output to be generated
+    max: 1000           # max length of the output to be generated
+    mean: 1000          # mean length of the output to be generated
+    std: 100            # standard deviation of the length of the output to be generated
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+storage:
+  local_storage:
+    path: /workspace
