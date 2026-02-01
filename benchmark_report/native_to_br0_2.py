@@ -687,7 +687,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
     update_dict(
         br_dict,
         {
-            "run": {"time": {"start": _vllm_timestamp_to_iso(results.get("date"))}},
+            "run": {"time": {"end": _vllm_timestamp_to_iso(results.get("date"))}},
             "scenario": {
                 "load": {
                     "metadata": {
@@ -871,7 +871,7 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
         {
             "run": {
                 "time": {
-                    "start": _vllm_timestamp_to_iso(results.get("date")),
+                    "end": _vllm_timestamp_to_iso(results.get("date")),
                     "duration": f"PT{results.get('duration')}S",
                 }
             },
