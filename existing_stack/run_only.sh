@@ -311,7 +311,7 @@ fi
 yq '.workload | keys | .[]' "${_config_file}" |
   while IFS= read -r workload; do
     announce "ℹ️ Running benchmark with workload ${workload}"
-    ${_timeout} $control_kubectl exec -i ${_pod_name} -- bash <<RUN_WORKLOAD
+    IFS= read -r -d '' run_workload <<RUN_WORKLOAD
 # redirect to root fds so that kubectl logs can capture output
 exec 1> >(tee /proc/1/fd/1 >&1)
 exec 2> >(tee /proc/1/fd/2 >&2)
@@ -320,6 +320,7 @@ export LLMDBENCH_RUN_EXPERIMENT_ID="${_uid}_${workload}"
 
 ${HARNESS_EXECUTABLE} --harness="${harness_name}" --workload="${workload}"
 RUN_WORKLOAD
+    ${_timeout} $control_kubectl exec -i ${_pod_name} -- bash -c "$run_workload"
     res=$?
     if [ $res -eq 0 ]; then
       announce "ℹ️ Benchmark workload ${workload} complete."
@@ -337,5 +338,4 @@ announce "✅
    Experiment ID is ${_uid}.
    All workloads completed. 
    Results should be available in PVC ${harness_results_pvc}.
-   Please use analyze.sh to fetch and analyze results.
 "
