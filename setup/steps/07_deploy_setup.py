@@ -11,7 +11,7 @@ project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
 # Import from functions.py
-from functions import environment_variable_to_dict, announce, llmdbench_execute_cmd, model_attribute
+from functions import environment_variable_to_dict, announce, llmdbench_execute_cmd, model_attribute, auto_detect_version
 
 def gateway_values(provider : str, host: str, service: str) -> str:
     if provider == "istio":
@@ -55,46 +55,6 @@ provider:
   name: gke"""
     else:
         return ""
-
-def auto_detect_version(ev, chart, version_key, repo_key) -> int:
-    if ev[version_key] == "auto":
-        announce(f"🔍 Auto-detecting {chart} chart version...")
-
-        try:
-            #FIXME (USE llmdbench_execute_cmd)
-            helm_search_cmd = f"{ev['control_hcmd']} search repo {ev[repo_key]}"
-            result = subprocess.run(
-                helm_search_cmd,
-                capture_output=True,
-                text=True,
-                shell=True,
-                executable="/bin/bash",
-                check=False
-            )
-
-            if result.returncode == 0 and result.stdout.strip():
-                lines = result.stdout.strip().split('\n')
-                if len(lines) > 1:  # Skip header line
-                    last_line = lines[-1]
-                    version = last_line.split()[1] if len(last_line.split()) > 1 else ""
-                    if version:
-                        ev[version_key] = version
-                        announce(f"📦 Auto-detected chart version: {version}")
-                        return 0
-                    else:
-                        announce("ERROR: Unable to parse version from helm search output")
-                        return 1
-                else:
-                    announce("ERROR: No charts found in helm search output")
-                    return 1
-            else:
-                announce("ERROR: Unable to find a version for model service helm chart!")
-                return 1
-
-        except Exception as e:
-            announce(f"ERROR: Error auto-detecting {chart} chart version: {e}")
-            return 1
-    return 0
 
 def main():
     """Set up helm repositories and create helmfile configurations for model deployments."""

@@ -2,6 +2,7 @@
 Standardized component classes for v0.2 benchmark reports.
 """
 
+from abc import ABC
 from enum import StrEnum, auto
 from typing import Literal
 
@@ -20,7 +21,7 @@ MODEL_CONFIG = ConfigDict(
 ###############################################################################
 
 
-class ComponentStandardizedBase(BaseModel):
+class ComponentStandardizedBase(BaseModel, ABC):
     """Component configuration details in standardized format.
 
     This class is a base class that should be inherited by the class that
@@ -30,6 +31,8 @@ class ComponentStandardizedBase(BaseModel):
 
     model_config = MODEL_CONFIG.copy()
 
+    kind: Literal["__abstract__"]
+    """This kind field must be replaced in the child with the actual kind name."""
     tool: str
     """Particular tool used for this component."""
     tool_version: str
@@ -44,7 +47,7 @@ class ComponentStandardizedBase(BaseModel):
 ###############################################################################
 
 
-class Generic(BaseModel):
+class Generic(ComponentStandardizedBase):
     """Component configuration for a generic component.
 
     This class  allows for extra attributes to be added without validation.
@@ -55,18 +58,8 @@ class Generic(BaseModel):
     model_config = MODEL_CONFIG.copy()
     model_config["extra"] = "allow"  # Here we allow for extra unvalidated fields
 
-    kind: Literal["generic"] = Field(
-        exclude=True,
-        json_schema_extra={"exclude": True},
-        description=(
-            "Do not populate this field, this is for internal validation and"
-            " will be copied over from the metadata section."
-        ),
-    )
-    tool: str
-    """Particular tool used for this component."""
-    tool_version: str
-    """Version of tool."""
+    kind: Literal["generic"]
+    """The type of component."""
 
 
 ###############################################################################

@@ -212,8 +212,6 @@ scenario:
           token: null
           trust_remote_code: null
 
-# Add optional time series
-# Add confidence interval
 results:
   request_performance: # Stack performance as seen by users
     aggregate: # Statistical summary of results (required)
@@ -347,6 +345,7 @@ results:
           units: s
           mean: 0.0368578234128654
 
+    # NOTE: Time series data is likely to be replaced with links to the actual data
     time_series: # Optional time series data
       throughput:
         input_token_rate:
@@ -406,6 +405,7 @@ results:
             p90: 0.04262634576298297
             p95: 0.045246614259667695
 
+  # NOTE: Observability data is likely to be replaced with links to the actual data
   observability:
     scrape_info:
       interval_seconds: 15
@@ -500,4 +500,22 @@ results:
             value: 6.72e10
 
   profiling:
-    anything_goes: 5
+    anything_goes: 5 # The schema under profiling is currently open-ended
+
+  component_health: # Component health and reliability metrics during benchmark
+    - component_label: vllm-svc-0  # References scenario.stack[0].metadata.label
+      total_restarts: 3 # This includes restarts for all replicas
+      failed_replicas: 1 # Number of replicas that had a restart
+      replica_health:
+        - replica_id: vllm-svc-0-pod-1 # Some unique ID to identify a replica
+          restarts: 1
+          healthy: True # Status at completion of benchmark
+          logs: https://logs.example.com/vllm-svc-0-pod-1
+        - replica_id: vllm-svc-0-pod-2
+          restarts: 2
+          healthy: False
+          logs: /path/to/logs/vllm.log
+        - replica_id: vllm-svc-0-pod-3
+          restarts: 0
+          healthy: True
+          logs: s3://path/to/logs/vllm.log

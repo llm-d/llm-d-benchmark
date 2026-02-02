@@ -37,34 +37,37 @@ from functions import (
     clear_string,
     install_wva_components,
     kube_connect,
-    kubectl_apply
+    kubectl_apply,
+    auto_detect_version,
+    propagate_standup_parameters
 )
 
 def conditional_volume_config(
-    volume_config: str, field_name: str, indent: int = 4, ev: dict = {}
+    volume_config_key: str, field_name: str, indent: int = 4, ev: dict = {}
 ) -> str:
     """
     Generate volume configuration only if the config is not empty.
     Skip the field entirely if the volume config is empty or contains only "[]" or "{}".
     """
-    config_result = add_config(volume_config, indent, "", ev)
+    config_result = add_config(volume_config_key, indent, "", ev)
     if config_result.strip():
         return f"{field_name}: {config_result}"
     return ""
 
 
 def conditional_extra_config(
-    extra_config: str, indent: int = 2, label: str = "extraConfig", ev: dict = {}
+    extra_config_key: str, indent: int = 2, label: str = "extraConfig", ev: dict = {}
 ) -> str:
     """
     Generate extraConfig section only if the config is not empty.
     Skip the field entirely if the config is empty or contains only "{}" or "[]".
     """
+    extra_config = ev[extra_config_key]
     # Check if config is empty before processing
     if not extra_config or extra_config.strip() in ["{}", "[]", "#no____config"]:
         return ""
 
-    config_result = add_config(extra_config, indent + 2, "", ev)  # Add extra indent for content
+    config_result = add_config(extra_config_key, indent + 2, "", ev)  # Add extra indent for content
     if config_result.strip():
         spaces = " " * indent
         return f"{spaces}{label}:\n{config_result}"
@@ -85,140 +88,47 @@ def generate_ms_values_yaml(
     Returns:
         YAML content as string
     """
-    # Get all required environment variables
-    fullname_override = ev.get("deploy_current_model_id_label", "")
-    multinode = ev.get("vllm_modelservice_multinode", "false")
-
-    # Model artifacts section
-    model_uri = ev.get("vllm_modelservice_uri", "")
-    model_size = ev.get("vllm_common_pvc_model_cache_size", "")
-    model_name = ev.get("deploy_current_model", "")
-
-    # Routing section
-    service_port = ev.get("vllm_common_inference_port", "8000")
-    model_id_label = ev.get("deploy_current_model_id_label", "")
-
-    # Image details
-    image_registry = ev.get("llmd_image_registry", "")
-    image_repo = ev.get("llmd_image_repo", "")
-    image_name = ev.get("llmd_image_name", "")
-    image_tag = ev.get("llmd_image_tag", "")
-    main_image = get_image(image_registry, image_repo, image_name, image_tag, False, True)
-
-    # Proxy details
-    proxy_image_registry = ev.get("llmd_routingsidecar_image_registry", "")
-    proxy_image_repo = ev.get("llmd_routingsidecar_image_repo", "")
-    proxy_image_name = ev.get("llmd_routingsidecar_image_name", "")
-    proxy_image_tag = ev.get("llmd_routingsidecar_image_tag", "")
-    proxy_image = get_image(
-        proxy_image_registry, proxy_image_repo, proxy_image_name, proxy_image_tag, False, True
-    )
-    proxy_connector = ev.get("llmd_routingsidecar_connector", "")
-    proxy_debug_level = ev.get("llmd_routingsidecar_debug_level", "")
-
-    # Decode configuration
-    decode_replicas = int(ev.get("vllm_modelservice_decode_replicas", "0"))
-    decode_create = "true" if decode_replicas > 0 else "false"
-    decode_data_parallelism = ev.get("vllm_modelservice_decode_data_parallelism", "1")
-    decode_data_local_parallelism = ev.get("vllm_modelservice_decode_data_local_parallelism", "1")
-    decode_tensor_parallelism = ev.get("vllm_modelservice_decode_tensor_parallelism", "1")
-    decode_num_workers_parallelism = ev.get("vllm_modelservice_decode_num_workers_parallelism", "1")
-    decode_model_command = ev.get("vllm_modelservice_decode_model_command", "")
-    decode_extra_args = ev.get("vllm_modelservice_decode_extra_args", "")
-    decode_inference_port = ev["vllm_modelservice_decode_inference_port"]
-
-    # Prefill configuration
-    prefill_replicas = int(ev.get("vllm_modelservice_prefill_replicas", "0"))
-    prefill_create = "true" if prefill_replicas > 0 else "false"
-    prefill_data_parallelism = ev.get("vllm_modelservice_prefill_data_parallelism", "1")
-    prefill_data_local_parallelism = ev.get("vllm_modelservice_prefill_data_local_parallelism", "1")
-    prefill_tensor_parallelism = ev.get("vllm_modelservice_prefill_tensor_parallelism", "1")
-    prefill_num_workers_parallelism = ev.get("vllm_modelservice_prefill_num_workers_parallelism", "1")
-    prefill_model_command = ev.get("vllm_modelservice_prefill_model_command", "")
-    prefill_extra_args = ev.get("vllm_modelservice_prefill_extra_args", "")
-    prefill_inference_port = ev["vllm_modelservice_prefill_inference_port"]
-
-    # Probe configuration
-    initial_delay_probe = ev.get("vllm_common_initial_delay_probe", "30")
-    common_inference_port = ev.get("vllm_common_inference_port", "8000")
-
-    # Extra configurations
-    decode_extra_pod_config = ev.get("vllm_modelservice_decode_extra_pod_config", "")
-    decode_extra_container_config = ev.get(
-        "vllm_modelservice_decode_extra_container_config", ""
-    )
-    decode_extra_volume_mounts = ev.get(
-        "vllm_modelservice_decode_extra_volume_mounts", ""
-    )
-    decode_extra_volumes = ev.get("vllm_modelservice_decode_extra_volumes", "")
-    decode_envvars_to_yaml = ev.get("vllm_modelservice_decode_envvars_to_yaml", "")
-
-    prefill_extra_pod_config = ev.get("vllm_modelservice_prefill_extra_pod_config", "")
-    prefill_extra_container_config = ev.get(
-        "vllm_modelservice_prefill_extra_container_config", ""
-    )
-    prefill_extra_volume_mounts = ev.get(
-        "vllm_modelservice_prefill_extra_volume_mounts", ""
-    )
-    prefill_extra_volumes = ev.get("vllm_modelservice_prefill_extra_volumes", "")
-    prefill_envvars_to_yaml = ev.get("vllm_modelservice_prefill_envvars_to_yaml", "")
+    decode_create = "true" if ev["vllm_modelservice_decode_replicas"] > 0 else "false"
+    prefill_create = "true" if ev["vllm_modelservice_prefill_replicas"] > 0 else "false"
 
     # Build decode resources section cleanly
     decode_limits_str, decode_requests_str = add_resources(ev, "decode")
     prefill_limits_str, prefill_requests_str = add_resources(ev, "prefill")
 
-    # Handle command sections
-    decode_command_section = (
-        add_command(decode_model_command) if decode_model_command else ""
-    )
-    decode_args_section = (
-        add_command_line_options(ev, decode_extra_args).lstrip()
-        if decode_extra_args
-        else ""
-    )
-    prefill_command_section = (
-        add_command(prefill_model_command) if prefill_model_command else ""
-    )
-    prefill_args_section = (
-        add_command_line_options(ev, prefill_extra_args).lstrip()
-        if prefill_extra_args
-        else ""
-    )
-
     # Build the complete YAML structure with proper handling of empty values
-    yaml_content = f"""fullnameOverride: {fullname_override}
-multinode: {multinode}
+    yaml_content = f"""fullnameOverride: {ev["deploy_current_model_id_label"]}
+multinode: {ev["vllm_modelservice_multinode"]}
 
 schedulerName: {ev['vllm_common_pod_scheduler']}
 
 modelArtifacts:
-  uri: {model_uri}
-  size: {model_size}
+  uri: {ev["vllm_modelservice_uri"]}
+  size: {ev["vllm_common_pvc_model_cache_size"]}
   authSecretName: "llm-d-hf-token"
-  name: {model_name}
+  name: {ev["deploy_current_model"]}
   labels:
     llm-d.ai/inferenceServing: "true"
-    llm-d.ai/model: {model_id_label}
+    llm-d.ai/model: {ev["deploy_current_model_id_label"]}
 
 routing:
-  servicePort: {service_port}
+  servicePort: {ev["vllm_common_inference_port"]}
   proxy:
-    image: "{proxy_image}"
+    image: "{get_image(ev, "llmd_routingsidecar_image", False, True)}"
     secure: false
-    connector: {proxy_connector}
-    debugLevel: {proxy_debug_level}
+    connector: {ev["llmd_routingsidecar_connector"]}
+    debugLevel: {ev["llmd_routingsidecar_debug_level"]}
 
 {add_accelerator(ev)}
 
 decode:
   create: {decode_create}
-  replicas: {decode_replicas}
+  replicas: {ev["vllm_modelservice_decode_replicas"]}
 {add_affinity(ev)}
   parallelism:
-    data: {decode_data_parallelism}
-    dataLocal: {decode_data_local_parallelism}
-    tensor: {decode_tensor_parallelism}
-    workers: {decode_num_workers_parallelism}
+    data: {ev["vllm_modelservice_decode_data_parallelism"]}
+    dataLocal: {ev["vllm_modelservice_decode_data_local_parallelism"]}
+    tensor: {ev["vllm_modelservice_decode_tensor_parallelism"]}
+    workers: {ev["vllm_modelservice_decode_num_workers_parallelism"]}
   annotations:
       {add_annotations(ev, "LLMDBENCH_VLLM_COMMON_ANNOTATIONS").lstrip()}
   podAnnotations:
@@ -226,21 +136,21 @@ decode:
   schedulerName: {ev['vllm_common_pod_scheduler']}
   extraConfig:
 {add_pull_secret(ev)}
-{conditional_extra_config(decode_extra_pod_config, 2, "", ev)}
+{conditional_extra_config("vllm_modelservice_decode_extra_pod_config", 2, "", ev)}
   containers:
   - name: "vllm"
     mountModelVolume: {str(mount_model_volume).lower()}
-    image: "{main_image}"
-    modelCommand: {decode_model_command or '""'}
-    {decode_command_section}
+    image: "{get_image(ev, "llmd_image", False, True)}"
+    modelCommand: {ev["vllm_modelservice_decode_model_command"]}
+    {add_command(ev, "vllm_modelservice_decode_model_command")}
     args:
-      {decode_args_section}
+{add_command_line_options(ev, "vllm_modelservice_decode_extra_args")}
     env:
       - name: VLLM_NIXL_SIDE_CHANNEL_HOST
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      {add_additional_env_to_yaml(ev, decode_envvars_to_yaml).lstrip()}
+      {add_additional_env_to_yaml(ev, "vllm_modelservice_decode_envvars_to_yaml").lstrip()}
     resources:
       limits:
 {decode_limits_str}
@@ -250,35 +160,35 @@ decode:
       startupProbe:
         httpGet:
           path: /health
-          port: {decode_inference_port}
+          port: {ev["vllm_modelservice_decode_inference_port"]}
         failureThreshold: 60
-        initialDelaySeconds: {initial_delay_probe}
+        initialDelaySeconds: {ev["vllm_common_initial_delay_probe"]}
         periodSeconds: 30
         timeoutSeconds: 5
       livenessProbe:
         tcpSocket:
-          port: {decode_inference_port}
+          port: {ev["vllm_modelservice_decode_inference_port"]}
         failureThreshold: 3
         periodSeconds: 5
       readinessProbe:
         httpGet:
           path: /health
-          port: {decode_inference_port}
+          port: {ev["vllm_modelservice_decode_inference_port"]}
         failureThreshold: 3
         periodSeconds: 5
-      {add_config(decode_extra_container_config, 6, "", ev).lstrip()}
-    {conditional_volume_config(decode_extra_volume_mounts, "volumeMounts", 4, ev)}
-  {conditional_volume_config(decode_extra_volumes, "volumes", 2, ev)}
+      {add_config("vllm_modelservice_decode_extra_container_config", 6, "", ev).lstrip()}
+    {conditional_volume_config("vllm_modelservice_decode_extra_volume_mounts", "volumeMounts", 4, ev)}
+  {conditional_volume_config("vllm_modelservice_decode_extra_volumes", "volumes", 2, ev)}
 
 prefill:
   create: {prefill_create}
-  replicas: {prefill_replicas}
+  replicas: {ev["vllm_modelservice_prefill_replicas"]}
 {add_affinity(ev)}
   parallelism:
-    data: {prefill_data_parallelism}
-    dataLocal: {prefill_data_local_parallelism}
-    tensor: {prefill_tensor_parallelism}
-    workers: {prefill_num_workers_parallelism}
+    data: {ev["vllm_modelservice_prefill_data_parallelism"]}
+    dataLocal: {ev["vllm_modelservice_prefill_data_local_parallelism"]}
+    tensor: {ev["vllm_modelservice_prefill_tensor_parallelism"]}
+    workers: {ev["vllm_modelservice_prefill_num_workers_parallelism"]}
   annotations:
       {add_annotations(ev, "LLMDBENCH_VLLM_COMMON_ANNOTATIONS").lstrip()}
   podAnnotations:
@@ -286,15 +196,15 @@ prefill:
   schedulerName: {ev['vllm_common_pod_scheduler']}
   extraConfig:
 {add_pull_secret(ev)}
-{conditional_extra_config(prefill_extra_pod_config, 2, "", ev)}
+{conditional_extra_config("vllm_modelservice_prefill_extra_pod_config", 2, "", ev)}
   containers:
   - name: "vllm"
     mountModelVolume: {str(mount_model_volume).lower()}
-    image: "{main_image}"
-    modelCommand: {prefill_model_command or '""'}
-    {prefill_command_section}
+    image: "{get_image(ev, "llmd_image", False, True)}"
+    modelCommand: {ev["vllm_modelservice_prefill_model_command"]}
+    {add_command(ev, "vllm_modelservice_prefill_model_command")}
     args:
-      {prefill_args_section}
+{add_command_line_options(ev, "vllm_modelservice_prefill_extra_args")}
     env:
       - name: VLLM_IS_PREFILL
         value: "1"
@@ -302,7 +212,7 @@ prefill:
         valueFrom:
           fieldRef:
             fieldPath: status.podIP
-      {add_additional_env_to_yaml(ev, prefill_envvars_to_yaml).lstrip()}
+      {add_additional_env_to_yaml(ev, "vllm_modelservice_prefill_envvars_to_yaml").lstrip()}
     resources:
       limits:
 {prefill_limits_str}
@@ -312,25 +222,25 @@ prefill:
       startupProbe:
         httpGet:
           path: /health
-          port: {prefill_inference_port}
+          port: {ev["vllm_modelservice_prefill_inference_port"]}
         failureThreshold: 60
-        initialDelaySeconds: {initial_delay_probe}
+        initialDelaySeconds: {ev["vllm_common_initial_delay_probe"]}
         periodSeconds: 30
         timeoutSeconds: 5
       livenessProbe:
         tcpSocket:
-          port: {prefill_inference_port}
+          port: {ev["vllm_modelservice_prefill_inference_port"]}
         failureThreshold: 3
         periodSeconds: 5
       readinessProbe:
         httpGet:
           path: /health
-          port: {prefill_inference_port}
+          port: {ev["vllm_modelservice_prefill_inference_port"]}
         failureThreshold: 3
         periodSeconds: 5
-      {add_config(prefill_extra_container_config, 6, "", ev).lstrip()}
-    {conditional_volume_config(prefill_extra_volume_mounts, "volumeMounts", 4, ev)}
-  {conditional_volume_config(prefill_extra_volumes, "volumes", 2, ev)}
+      {add_config("vllm_modelservice_prefill_extra_container_config", 6, "", ev).lstrip()}
+    {conditional_volume_config("vllm_modelservice_prefill_extra_volume_mounts", "volumeMounts", 4, ev)}
+  {conditional_volume_config("vllm_modelservice_prefill_extra_volumes", "volumes", 2, ev)}
 """
 
     return clear_string(yaml_content)
@@ -436,6 +346,16 @@ def main():
     model_list = ev["deploy_model_list"].replace(",", " ").split()
     model_number = 0
 
+    get_image(
+        ev,
+        "llmd_inferencescheduler_image",
+        True,
+        True
+    )
+
+    auto_detect_version(ev, ev['vllm_modelservice_chart_name'], "vllm_modelservice_chart_version", "vllm_modelservice_helm_repository", True)
+    auto_detect_version(ev, ev['vllm_infra_chart_name'], "vllm_infra_chart_version", "vllm_infra_helm_repository", True)
+
     for model in model_list:
       if not model.strip():
           continue
@@ -523,7 +443,7 @@ def main():
 
       expected_num_decode_pods = ev["vllm_modelservice_decode_replicas"]
       if ev["vllm_modelservice_multinode"] :
-          expected_num_decode_pods = int(ev["vllm_modelservice_decode_num_workers_parallelism"]) * int(expected_num_decode_pods)
+          expected_num_decode_pods = ev["vllm_modelservice_decode_num_workers_parallelism"] * expected_num_decode_pods
 
       # Wait for decode pods to be created, running, and ready
       api_client = client.CoreV1Api()
@@ -535,7 +455,7 @@ def main():
 
       expected_num_prefill_pods = ev["vllm_modelservice_prefill_replicas"]
       if ev["vllm_modelservice_multinode"] :
-          expected_num_prefill_pods = int(ev["vllm_modelservice_prefill_num_workers_parallelism"]) * int(expected_num_prefill_pods)
+          expected_num_prefill_pods = ev["vllm_modelservice_prefill_num_workers_parallelism"] * expected_num_prefill_pods
 
       # Wait for prefill pods to be created, running, and ready
       result = wait_for_pods_created_running_ready(
@@ -607,6 +527,7 @@ def main():
       model_number += 1
 
     announce("✅ modelservice completed model deployment")
+    propagate_standup_parameters(ev, api)
     return 0
 
 

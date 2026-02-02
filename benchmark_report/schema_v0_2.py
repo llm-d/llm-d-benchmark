@@ -19,7 +19,6 @@ from .base import (
 )
 from .schema_v0_2_components import COMPONENTS
 
-
 # BenchmarkReport schema version
 VERSION = "0.2"
 
@@ -641,6 +640,41 @@ class Observability(BaseModel):
 
 
 ###############################################################################
+# Component health
+###############################################################################
+
+
+class ReplicaHealth(BaseModel):
+    """Health information for a specific replica."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    replica_id: str
+    """Unique identifier for this replica (e.g., pod name)."""
+    restarts: int | None = Field(None, ge=0)
+    """Number of times this replica restarted during the benchmark."""
+    healthy: bool | None = None
+    """Healthy status at completion of benchmark."""
+    logs: str | None = None
+    """Reference to logs for this specific replica."""
+
+
+class ComponentHealth(BaseModel):
+    """Health and reliability metrics for a component during the benchmark."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    component_label: str
+    """References the component's label from scenario.stack[].metadata.label"""
+    total_restarts: int | None = Field(None, ge=0)
+    """Total restarts across all replicas during benchmark."""
+    failed_replicas: int | None = Field(None, ge=0)
+    """Number of replicas that hand one or more failures during benchmark."""
+    replica_health: list[ReplicaHealth] | None = None
+    """Per-replica health details."""
+
+
+###############################################################################
 # Benchmark Report top-level classes
 ###############################################################################
 
@@ -701,6 +735,9 @@ class Results(BaseModel):
 
     profiling: Any | None = None
     """Profiling results."""
+
+    component_health: list[ComponentHealth] | None = None
+    """Component health and reliability metrics during benchmark."""
 
 
 # ------------------------------------------------------------------------------

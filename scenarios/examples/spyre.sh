@@ -4,15 +4,17 @@
 
 # Model parameters
 #export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic"
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-vision-3.3-2b
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-speech-3.3-8b
+#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-8b-instruct
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-2b-instruct
-#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-8b-instruct
 export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-ai-platform/micro-g3.3-8b-instruct-1b
-#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-8b-instruct
 #export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="deepseek-ai/DeepSeek-R1-0528"
 
 # PVC parameters
 #             Storage class (leave uncommented to automatically detect the "default" storage class)
@@ -25,6 +27,8 @@ export LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME=spyre-precompiled-model
 # Deploy methods
 #export LLMDBENCH_DEPLOY_METHODS=standalone
 #export LLMDBENCH_DEPLOY_METHODS=modelservice
+
+#export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=istio
 
 export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=ibm.com/spyre_vf
 export LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=2
@@ -148,7 +152,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_RESOURCE=$LLMDBENCH_VLLM_
 
 # Decode parameters: 2 decode pods
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1
-export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=4
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=${LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM}
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_RESOURCE=$LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=$LLMDBENCH_VLLM_COMMON_CPU_MEM

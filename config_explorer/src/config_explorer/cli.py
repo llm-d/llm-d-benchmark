@@ -151,7 +151,9 @@ def plan_capacity(args):
             allocatable_kv = allocatable_kv_cache_memory(
                 model_info, model_config,
                 gpu_memory_gb, gpu_mem_util,
-                tp, pp, dp
+                tp, pp, dp,
+                max_model_len=max_model_len,
+                batch_size=batch_size
             )
             result["allocatable_kv_cache_memory_gb"] = round(allocatable_kv, 2)
 
@@ -160,7 +162,8 @@ def plan_capacity(args):
                 model_info, model_config,
                 max_model_len,
                 gpu_memory_gb, gpu_mem_util,
-                tp, pp, dp
+                batch_size=batch_size,
+                tp=tp, pp=pp, dp=dp
             )
             result["max_concurrent_requests"] = max_requests
 

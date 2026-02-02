@@ -4,6 +4,7 @@
 
 # Model parameters
 #export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic"
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-vision-3.3-2b
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-speech-3.3-8b
@@ -13,6 +14,7 @@
 #export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="deepseek-ai/DeepSeek-R1-0528"
 
 # PVC parameters
 #             Storage class (leave uncommented to automatically detect the "default" storage class)
@@ -25,6 +27,9 @@
 # Deploy methods
 ######export LLMDBENCH_DEPLOY_METHODS=standalone
 #export LLMDBENCH_DEPLOY_METHODS=modelservice
+
+#export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=istio
+
 
 #             Affinity to select node with appropriate accelerator (leave uncommented to automatically detect GPU... WILL WORK FOR OpenShift, Kubernetes and GKE)
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3        # OpenShift
@@ -119,6 +124,7 @@ vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 EOF
 
 # llm-d Parameters
+#export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=kgateway
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=$LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM # (default is "1")
 #export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1 # (default is "1")
 #export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS=${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS}

@@ -10,8 +10,15 @@
 
 # Model parameters
 #export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
+export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic"
+#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-vision-3.3-2b
+#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-speech-3.3-8b
+#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-8b-instruct
+#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-3.3-2b-instruct
+#export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-ai-platform/micro-g3.3-8b-instruct-1b
 #export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
-export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="deepseek-ai/DeepSeek-R1-0528"
 
@@ -22,9 +29,58 @@ export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
 #export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=ocs-storagecluster-cephfs
 export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
 
+#export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=istio
+
 # Routing configuration (via gaie)
+export LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG=v0.4.0
 #export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="default-plugins.yaml" (default is "plugins-v2.yaml")
-export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="precise-prefix-cache-aware"
+export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="precise-prefix-cache-config.yaml"
+export LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS=$(mktemp)
+cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS
+precise-prefix-cache-config.yaml: |
+  apiVersion: inference.networking.x-k8s.io/v1alpha1
+  kind: EndpointPickerConfig
+  plugins:
+    - type: single-profile-handler
+    - type: precise-prefix-cache-scorer
+      parameters:
+        indexerConfig:
+          tokenProcessorConfig:
+            blockSize: 64
+            hashSeed: "42"
+          tokenizersPoolConfig:
+            hf:
+              tokenizersCacheDir: "/tmp/tokenizers"
+    - type: kv-cache-utilization-scorer
+    - type: queue-scorer
+    - type: max-score-picker
+  schedulingProfiles:
+    - name: default
+      plugins:
+        - pluginRef: precise-prefix-cache-scorer
+          weight: 3.0
+        - pluginRef: kv-cache-utilization-scorer
+          weight: 2.0
+        - pluginRef: queue-scorer
+          weight: 2.0
+        - pluginRef: max-score-picker
+EOF
+export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG=$(mktemp)
+cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG
+destinationRule:
+  host: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL_ID_LABEL-gaie-epp
+  trafficPolicy:
+    connectionPool:
+      http:
+        http1MaxPendingRequests: 256000
+        maxRequestsPerConnection: 256000
+        http2MaxRequests: 256000
+        idleTimeout: "900s"
+      tcp:
+        maxConnections: 256000
+        maxConnectionDuration: "1800s"
+        connectTimeout: "900s"
+EOF
 
 # Routing configuration (via modelservice)
 #export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true # already the default
