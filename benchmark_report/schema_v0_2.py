@@ -121,7 +121,9 @@ class SequenceLength(BaseModel):
 
     distribution: Distribution
     """Sequence length distribution type."""
-    value: int | float = Field(..., ge=1)
+    # Do not enforce a value of >=1, as vllm bench (for example) uses OSL of -1
+    # to represent not restricting output length.
+    value: int | float
     """Primary value."""
     std_dev: float | None = Field(None, ge=0)
     """Standard deviation (if Gaussian)."""
