@@ -533,10 +533,13 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
     osl_value = None
     for arg, value in args.items():
         if arg.endswith("output-len"):
-            osl_value = int(value)
+            try:
+                osl_value = int(value)
+            except ValueError:
+                osl_value = None
             break
     osl = None
-    if osl_value:
+    if osl_value and osl_value >= 1:
         osl = {
             "value": osl_value,
             "distribution": Distribution.FIXED,
@@ -715,10 +718,13 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
     osl_value = None
     for arg, value in args.items():
         if arg.endswith("output-len"):
-            osl_value = int(value)
+            try:
+                osl_value = int(value)
+            except ValueError:
+                osl_value = None
             break
     osl = None
-    if osl_value:
+    if osl_value and osl_value >= 1:
         osl = {
             "value": osl_value,
             "distribution": Distribution.FIXED,
