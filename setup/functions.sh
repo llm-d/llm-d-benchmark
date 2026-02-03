@@ -509,19 +509,10 @@ function deploy_harness_config {
         announce "✅ Collected analysis for pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\" at: \"${LLMDBENCH_CONTROL_WORK_DIR}/analysis/\""
 
         announce "🗑️ Deleting pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" ..."
-        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l app=${LLMDBENCH_HARNESS_POD_LABEL}" \
-            ${LLMDBENCH_CONTROL_DRY_RUN} \
-            ${LLMDBENCH_CONTROL_VERBOSE}
-        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l app=llm-d-benchmark-harness" \
+        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l function=load_generator" \
             ${LLMDBENCH_CONTROL_DRY_RUN} \
             ${LLMDBENCH_CONTROL_VERBOSE}
         announce "✅ Pods with label \"app=${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" deleted"
-
-      announce "ℹ️ Capturing the current status of all pods in namespace \"$LLMDBENCH_VLLM_COMMON_NAMESPACE\" to ${pod_results_dir}/pod_status.txt..."
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE get pods -o wide > ${pod_results_dir}/pod_status.txt" \
-      ${LLMDBENCH_CONTROL_DRY_RUN} \
-      ${LLMDBENCH_CONTROL_VERBOSE}
-      announce "✅ Pod status captured."
 
     elif [[ $LLMDBENCH_HARNESS_WAIT_TIMEOUT -eq 0 ]]; then
       announce "ℹ️ Harness was started with LLMDBENCH_HARNESS_WAIT_TIMEOUT=0. Will NOT wait for pod \"${LLMDBENCH_HARNESS_POD_LABEL}\" for model \"$model\" to be in \"Completed\" state. The pod can be accessed through \"${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} exec -it pod/<POD_NAME> -- bash\""
@@ -535,6 +526,39 @@ function deploy_harness_config {
     return 0
 }
 export -f deploy_harness_config
+
+function capture_pod_logs {
+    local model=$1
+    local local_results_dir=$2
+
+    local modelid_label=$(model_attribute $model modelid_label)
+
+    for i in $(seq 1 "$LLMDBENCH_HARNESS_LOAD_PARALLELISM"); do
+      pod_results_dir="${local_results_dir}_${i}"
+      pod_analysis_dir="${local_analysis_dir}_${i}"
+
+      announce "ℹ️ Capturing the current status of all pods in namespace \"$LLMDBENCH_VLLM_COMMON_NAMESPACE\" to ${pod_results_dir}/pod_status.txt ..."
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE get pods -o wide > ${pod_results_dir}/pod_status.txt" \
+      ${LLMDBENCH_CONTROL_DRY_RUN} \
+      ${LLMDBENCH_CONTROL_VERBOSE}
+      announce "✅ Pod status captured."
+
+      announce "ℹ️ Capturing logs for all pods in namespace \"$LLMDBENCH_VLLM_COMMON_NAMESPACE\" to ${pod_results_dir}/logs/ ..."
+      mkdir -p ${pod_results_dir}/logs/
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE logs --tail=-1 --prefix=true -l llm-d.ai/model=\"$modelid_label\" > ${pod_results_dir}/logs/modelserving_pods.log"  \
+      ${LLMDBENCH_CONTROL_DRY_RUN} \
+      ${LLMDBENCH_CONTROL_VERBOSE}
+
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE logs --tail=-1 --prefix=true -l inferencepool=\"${modelid_label}-gaie-epp\" > ${pod_results_dir}/logs/epp_pods.log"  \
+      ${LLMDBENCH_CONTROL_DRY_RUN} \
+      ${LLMDBENCH_CONTROL_VERBOSE}
+
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE logs --tail=-1 --prefix=true -l \"app.kubernetes.io/component=inference-gateway\" > ${pod_results_dir}/logs/igw_pods.log"  \
+      ${LLMDBENCH_CONTROL_DRY_RUN} \
+      ${LLMDBENCH_CONTROL_VERBOSE}
+    done
+}
+export -f capture_pod_logs
 
 function create_harness_pod {
 
@@ -560,6 +584,7 @@ metadata:
   namespace: ${LLMDBENCH_HARNESS_NAMESPACE}
   labels:
     app: ${LLMDBENCH_HARNESS_POD_LABEL}
+    function: load_generator
 spec:
   containers:
   - name: harness
@@ -825,14 +850,13 @@ export -f generate_profile_parameter_treatments
 
 function cleanup_pre_execution {
   announce "🗑️ Deleting pods with label \"${LLMDBENCH_HARNESS_POD_LABEL}\"..."
-  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l app=${LLMDBENCH_HARNESS_POD_LABEL} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l app=${LLMDBENCH_HARNESS_POD_LABEL},function=load_generator --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   # Sanitize the stack name to make it a valid K8s/OpenShift resource name
   local LLMDBENCH_HARNESS_SANITIZED_STACK_NAME=$(echo "${LLMDBENCH_HARNESS_STACK_NAME}" | $LLMDBENCH_CONTROL_SCMD 's|[/:]|-|g')
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete job lmbenchmark-evaluate-${LLMDBENCH_HARNESS_SANITIZED_STACK_NAME} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   announce "ℹ️ Done deleting pods with label \"${LLMDBENCH_HARNESS_POD_LABEL}\" (it will be now recreated)"
 
 }
-
 export -f cleanup_pre_execution
 
 function validate_model_name {
