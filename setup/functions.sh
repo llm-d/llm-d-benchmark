@@ -475,6 +475,7 @@ function capture_pod_logs {
     local local_results_dir=$2
 
     local modelid_label=$(model_attribute $model modelid_label)
+
     for i in $(seq 1 "$LLMDBENCH_HARNESS_LOAD_PARALLELISM"); do
       pod_results_dir="${local_results_dir}_${i}"
       pod_analysis_dir="${local_analysis_dir}_${i}"
@@ -486,6 +487,7 @@ function capture_pod_logs {
       announce "✅ Pod status captured to \"${pod_results_dir}/pod_status.txt\""
 
       announce "🏗️ Capturing logs for all pods in namespace \"$LLMDBENCH_VLLM_COMMON_NAMESPACE\" to ${pod_results_dir}/logs/ ..."
+
       mkdir -p ${pod_results_dir}/logs/
       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE logs --tail=-1 --prefix=true -l llm-d.ai/model=\"$modelid_label\" > ${pod_results_dir}/logs/modelserving_pods.log"  \
       ${LLMDBENCH_CONTROL_DRY_RUN} \
