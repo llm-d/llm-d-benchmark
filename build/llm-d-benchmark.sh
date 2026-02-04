@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-export LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC=1
+export LLMDBENCH_RUN_EXPERIMENT_HARNESS_LOADGEN_EC=1
+export LLMDBENCH_RUN_EXPERIMENT_HARNESS_REPORT_EC=1
+
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_NAME_AUTO=1
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_AUTO=1
+export LLMDBENCH_RUN_EXPERIMENT_HARNESS_MAX_TRIES=${LLMDBENCH_RUN_EXPERIMENT_HARNESS_MAX_TRIES:-3}
 
 function show_usage {
     echo -e "Usage: $0 -l/--harness [harness used to generate load (default=$LLMDBENCH_HARNESS_NAME, possible values $(ls $LLMDBENCH_RUN_WORKSPACE_DIR/profiles/ | sed -n ':a;N;$!ba;s/\n/,/g;p')] \n \
@@ -93,10 +96,10 @@ fi
 
 env | grep ^LLMDBENCH | grep -v BASE64 | sort
 
-# Repeat run until success
+
 echo "Running harness: /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
 counter=1
-while [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC -ne 0 && "${counter}" -le 3 ]]; do
+while [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_LOADGEN_EC -ne 0 && "${counter}" -le $LLMDBENCH_RUN_EXPERIMENT_HARNESS_MAX_TRIES ]]; do
   /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}
   ec=$?
   if [[ $ec -ne 0 ]]; then
@@ -105,7 +108,7 @@ while [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC -ne 0 && "${counter}" -le 3 ]]; do
     counter="$(( ${counter} + 1 ))"
     set -x
   else
-    export LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC=0
+    export LLMDBENCH_RUN_EXPERIMENT_HARNESS_LOADGEN_EC=0
   fi
 done
 echo "Harness completed: /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
@@ -115,18 +118,23 @@ if [[ -f ~/fixbashrc ]]; then
 fi
 
 echo "Running analysis: /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}"
-# Try to run analysis twice then give up
+counter=1
+while [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_REPORT_EC -ne 0 && "${counter}" -le $LLMDBENCH_RUN_EXPERIMENT_HARNESS_MAX_TRIES ]]; do
 /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}
 ec=$?
 if [[ $ec -ne 0 ]]; then
-  echo "execution of /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_ANALYZER} failed, wating 120 seconds and trying again"
-  sleep 120
-  set -x
-  /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_ANALYZER}
-fi
+    echo "execution of /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_ANALYZER} failed, wating 30 seconds and trying again"
+    sleep 30
+    counter="$(( ${counter} + 1 ))"
+    set -x
+  else
+    export LLMDBENCH_RUN_EXPERIMENT_HARNESS_REPORT_EC=0
+  fi
+done
+
 
 if [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_NAME_AUTO -eq 0 ]]; then
   echo "Done. Data is available at \"$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR\""
 fi
 # Return with error code of first iteration of experiment analyzer
-exit $ec
+exit $((LLMDBENCH_RUN_EXPERIMENT_HARNESS_LOADGEN_EC + LLMDBENCH_RUN_EXPERIMENT_HARNESS_REPORT_EC))

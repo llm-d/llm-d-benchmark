@@ -15,7 +15,7 @@
 # limitations under the License.
 
 if uname -s | grep -qi darwin; then
-  alias sed=gsed  
+  alias sed=gsed
 fi
 
 # Constants
@@ -71,7 +71,7 @@ function announce {
             ;;
         *)
             echo -e "==> $(date) - ${0} - $message" >> ${logfile}
-            ;;  
+            ;;
     esac
 
 }
@@ -129,7 +129,7 @@ function results_dir_name {
   local workload_name="${4:+_$4}"
 
   sanitize_dir_name "${RESULTS_DIR_PREFIX}/${harness_name}_${experiment_id}${workload_name}_${stack_name}"
-} 
+}
 
 # Retrieve list of available harnesses
 function get_harness_list {
@@ -292,12 +292,15 @@ else
   if [[ "${_output_destination}" == *"://"* ]]; then
     _storage_type="cloud"
     _scheme=$(echo "${_output_destination}" | cut -d: -f1)
+    _bucket=$(echo "${_output_destination}" | cut -d ':' -f 2 | sed -e 's^//^^g' -e 's:/*$::')
     case "${_scheme}" in
       gs)
         announce "ℹ️ Verifying GCS output destination..."
         if ! command -v gcloud &> /dev/null; then
           announce "❌ 'gcloud' command not found, but is required for 'gs://' output."
           exit 1
+        else
+          is_bucket=$(gcloud storage buckets list | grep ${_bucket} || true)
         fi
         ;;
       s3)
@@ -305,6 +308,8 @@ else
         if ! command -v aws &> /dev/null; then
           announce "❌ 'aws' command not found, but is required for 's3://' output."
           exit 1
+        else
+          is_bucket=$(aws s3 ls | grep ${_bucket} || true)
         fi
         ;;
       *)
@@ -312,6 +317,14 @@ else
         exit 1
         ;;
     esac
+
+    if [[ -z $is_bucket ]]; then
+      announce "❌ ERROR: Bucket \"${_bucket}\" ('${_output_destination}') not found."
+      exit1 1
+    else
+      announce "✅ Output destination checked\""
+    fi
+
   else
     _storage_type="local"
     announce "ℹ️ Verifying local output destination '${_output_destination}'"
@@ -327,9 +340,9 @@ fi
 if [[ "$harness_parallelism" != "1" ]]; then
     announce "❌ ERROR: harness_parallelism is set to '$harness_parallelism'. Only parallelism=1 is supported."
     exit 1
-fi  
+fi
 #@TODO harness_parallelism=1 only is supported for now!!!
-#@TODO: The 'upload_results' function currently handles only one pod. 
+#@TODO: The 'upload_results' function currently handles only one pod.
 #       To support parallelism, it must collect results from all harness pods.
 
 _harness_pod_name=$(sanitize_pod_name "${HARNESS_POD_LABEL}")
@@ -345,9 +358,9 @@ _control_dir=$(realpath $(pwd)/)
 # Verify HF token secret exists
 # ========================================================
 announce "🔧 Verifying HF token secret ${endpoint_hf_token_secret} in namespace ${endpoint_namespace}"
-if $control_kubectl --namespace "$endpoint_namespace" get secret "$endpoint_hf_token_secret" 2>&1 > /dev/null; then 
+if $control_kubectl --namespace "$endpoint_namespace" get secret "$endpoint_hf_token_secret" 2>&1 > /dev/null; then
   announce "ℹ️ Using HF token secret $endpoint_hf_token_secret"
-else    
+else
   announce "❌ ERROR: could not fetch HF token secret $endpoint_hf_token_secret"
   exit 1
 fi
@@ -388,7 +401,7 @@ announce "ℹ️ ConfigMap '${harness_name}-profiles' created"
 
 
 # Create harness pod
-# ========================================================  
+# ========================================================
 _pod_name="${_harness_pod_name}"    # place holder for parallelism support
 announce "ℹ️ Creating harness pod ${_pod_name}"
 
@@ -403,7 +416,7 @@ announce "ℹ️
   Running benchmark with Experiment ID ${_uid}.
   Results will be stored in PVC ${harness_results_pvc}.
 
-  Note: 
+  Note:
     Benchmark will continue to run even on time-out or connection failure.
     Can follow progress by checking the logs (${control_kubectl} logs -f ${_pod_name} -n ${harness_namespace}).
 "
@@ -452,8 +465,8 @@ case "${_storage_type}" in
     ;;
 esac
 
-announce "✅ 
+announce "✅
   Experiment ID is ${_uid}.
-  All workloads completed. 
+  All workloads completed.
   Results should be available in ${final_msg}
 "

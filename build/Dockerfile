@@ -44,7 +44,7 @@ RUN cd inference-perf; \
 
 ARG VLLM_BENCHMARK_REPO=https://github.com/vllm-project/vllm.git
 ARG VLLM_BENCHMARK_BRANCH=main
-ARG VLLM_BENCHMARK_COMMIT=e675dda67be278d21c4ec177b2baa8b7a0550920
+ARG VLLM_BENCHMARK_COMMIT=f176443446f659dbab5315e056e605d8984fd976
 RUN git clone --branch ${VLLM_BENCHMARK_BRANCH} ${VLLM_BENCHMARK_REPO}
 RUN cd vllm; git checkout ${VLLM_BENCHMARK_COMMIT}
 # Patch the pyproject.toml to allow "pip install -e ."
@@ -71,7 +71,7 @@ RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install -e . --no-build-isolation
 # GuideLLM also requires torch, installed above
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
 ARG GUIDELLM_BRANCH=main
-ARG GUIDELLM_COMMIT=adfa108ab1df6f2a1452d1037a71817a493303a8
+ARG GUIDELLM_COMMIT=f9f1e3181274b7fecb615158f7bde48b9d20001d
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
