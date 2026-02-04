@@ -424,7 +424,7 @@ yq '.workload | keys | .[]' "${_config_file}" |
 
       ${HARNESS_EXECUTABLE} --harness="${harness_name}" --workload="${workload}"
 RUN_WORKLOAD
-    ${_timeout} $control_kubectl exec -i ${_pod_name} -- bash -c "$run_workload"
+    ${_timeout} $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "$run_workload"
     res=$?
     if [ $res -eq 0 ]; then
       announce "ℹ️ Benchmark workload ${workload} complete."
