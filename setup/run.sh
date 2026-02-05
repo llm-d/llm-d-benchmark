@@ -214,7 +214,7 @@ done
 
 export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=1
 
-source ${LLMDBENCH_CONTROL_DIR}/env.sh
+source "${LLMDBENCH_CONTROL_DIR}/env.sh"
 
 export LLMDBENCH_BASE64_CONTEXT_CONTENTS=$LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
 
@@ -415,7 +415,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         fi
       fi
 
-      rm -rf ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/*
+rm -rf "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/"*
 
       if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
 
@@ -444,18 +444,18 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
       for workload_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
         llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete configmap $workload_type-profiles --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} create configmap $workload_type-profiles --from-file=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} create configmap $workload_type-profiles --from-file=\"${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
       done
 
       export LLMDBENCH_RUN_EXPERIMENT_ID_PREFIX=""
 
-      for treatment in $(ls ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/*.yaml); do
+for treatment in $(ls "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/"*.yaml); do
 
         export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=$(echo $treatment | rev | cut -d '/' -f 1 | rev)
         export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=$(echo $treatment | rev | cut -d '/' -f 1 | rev)
 
         tf=$(cat ${treatment} | grep "#treatment" | tail -1 | $LLMDBENCH_CONTROL_SCMD 's/^#//' || true)
-        if [[ -f ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf ]]; then
+  if [[ -f "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf" ]]; then
           tid=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${tf%.txt}")   # remove non alphanumeric and .txt
           tid=${tid#treatment_}
           if [ -z "${LLMDBENCH_RUN_EXPERIMENT_ID}" ]; then
@@ -482,7 +482,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
           local_results_dir=${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}
           local_analysis_dir=${LLMDBENCH_CONTROL_WORK_DIR}/analysis/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}
-          llmdbench_execute_cmd "mkdir -p ${local_results_dir}_${i} && mkdir -p ${local_analysis_dir}_${i}" \
+  llmdbench_execute_cmd "mkdir -p \"${local_results_dir}_${i}\" && mkdir -p \"${local_analysis_dir}_${i}\"" \
                 ${LLMDBENCH_CONTROL_DRY_RUN} \
                 ${LLMDBENCH_CONTROL_VERBOSE}
 

@@ -82,16 +82,16 @@ function get_image {
 export -f get_image
 
 function prepare_work_dir {
-  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/scenario
-  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls
-  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm
-  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands
-  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/logs
-  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/setup/experiments
-  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/environment
-  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses
-  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles
-  mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/experiments
+  mkdir -p "${LLMDBENCH_CONTROL_WORK_DIR}/setup/scenario"
+  mkdir -p "${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls"
+  mkdir -p "${LLMDBENCH_CONTROL_WORK_DIR}/setup/helm"
+  mkdir -p "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands"
+  mkdir -p "${LLMDBENCH_CONTROL_WORK_DIR}/setup/logs"
+  mkdir -p "${LLMDBENCH_CONTROL_WORK_DIR}/setup/experiments"
+  mkdir -p "${LLMDBENCH_CONTROL_WORK_DIR}/environment"
+  mkdir -p "${LLMDBENCH_CONTROL_WORK_DIR}/workload/harnesses"
+  mkdir -p "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles"
+  mkdir -p "${LLMDBENCH_CONTROL_WORK_DIR}/workload/experiments"
 }
 export -f prepare_work_dir
 
@@ -114,15 +114,15 @@ function llmdbench_execute_cmd {
   if [[ ${dry_run} -eq 1 ]]; then
     _msg="---> would have executed the command \"${actual_cmd}\""
     echo ${_msg}
-    echo ${_msg} > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_command.log
+    echo ${_msg} > "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_command.log"
     return 0
   else
     _msg="---> will execute the command \"${actual_cmd}\""
-    echo ${_msg} > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_command.log
+    echo ${_msg} > "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_command.log"
     while [[ "${counter}" -le "${attempts}" ]]; do
       command_tstamp=$(date +%s%N)
       if [[ ${verbose} -eq 0 && ${silent} -eq 1 ]]; then
-        eval ${actual_cmd} 2> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stderr.log 1> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stdout.log
+        eval ${actual_cmd} 2> "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stderr.log" 1> "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stdout.log"
         local ecode=$?
       elif [[ ${verbose} -eq 0 && ${silent} -eq 0 ]]; then
         eval ${actual_cmd}
@@ -147,13 +147,13 @@ function llmdbench_execute_cmd {
   then
     echo "ERROR while executing command \"${actual_cmd}\""
     echo
-    if [[ -f ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stdout.log ]]; then
-      cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stdout.log
+    if [[ -f "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stdout.log" ]]; then
+      cat "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stdout.log"
     else
       echo "(stdout not captured)"
     fi
-    if [[ -f ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stderr.log ]]; then
-      cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stderr.log
+    if [[ -f "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stderr.log" ]]; then
+      cat "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/${command_tstamp}_stderr.log"
     else
       echo "(stderr not captured)"
     fi
@@ -183,7 +183,7 @@ function extract_environment {
     echo -e "\n\n"
     export LLMDBENCH_CONTROL_ENVVAR_DISPLAYED=1
   fi
-  echo "$envlist" > ${LLMDBENCH_CONTROL_WORK_DIR}/environment/variables
+  echo "$envlist" > "${LLMDBENCH_CONTROL_WORK_DIR}/environment/variables"
 }
 export -f extract_environment
 
@@ -315,8 +315,8 @@ function create_or_update_hf_secret {
   announce "🔐 Creating/updating HF token secret..."
 
   llmdbench_execute_cmd "${kcmd} delete secret ${secret_name} -n ${namespace} --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  llmdbench_execute_cmd "${kcmd} create secret generic \"${secret_name}\" --from-literal=\"${secret_key}=${hf_token}\" --dry-run=client -o yaml > ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_secret.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-  llmdbench_execute_cmd "${kcmd} apply -n "${namespace}" -f ${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_secret.yaml" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  llmdbench_execute_cmd "${kcmd} create secret generic \"${secret_name}\" --from-literal=\"${secret_key}=${hf_token}\" --dry-run=client -o yaml > \"${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_secret.yaml\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+  llmdbench_execute_cmd "${kcmd} apply -n \"${namespace}\" -f \"${LLMDBENCH_CONTROL_WORK_DIR}/setup/yamls/${LLMDBENCH_CURRENT_STEP}_secret.yaml\"" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
   announce "✅ HF token secret created"
 }
 export -f create_or_update_hf_secret
@@ -328,12 +328,12 @@ function run_step {
 
   local script_implementaton=LLMDBENCH_CONTROL_STEP_${step_nr}_IMPLEMENTATION
 
-  if [[ -f $script_name.${!script_implementaton} ]]; then
-    local script_path=$script_name.${!script_implementaton}
+  if [[ -f "$script_name.${!script_implementaton}" ]]; then
+    local script_path="$script_name.${!script_implementaton}"
   else
-    local script_path=$(ls ${LLMDBENCH_STEPS_DIR}/${script_name}*.${!script_implementaton})
+    local script_path=$(ls "${LLMDBENCH_STEPS_DIR}/${script_name}"*.${!script_implementaton})
   fi
-  if [ -f $script_path ]; then
+  if [ -f "$script_path" ]; then
     local step_id=$(basename "$script_path")
     export LLMDBENCH_CURRENT_STEP=${step_nr}
     announce "=== Running step: $step_id ==="
@@ -342,9 +342,9 @@ function run_step {
     fi
 
     if [[ ${!script_implementaton} == sh ]]; then
-      source $script_path
+      source "$script_path"
     elif [[ ${!script_implementaton} == py ]]; then
-      $LLMDBENCH_CONTROL_PCMD $script_path
+      $LLMDBENCH_CONTROL_PCMD "$script_path"
       local ec=$?
       if [[ $ec -ne 0 ]]; then
         exit $ec
@@ -361,7 +361,7 @@ function run_step {
 export -f run_step
 
 function get_harness_list {
-  ls ${LLMDBENCH_MAIN_DIR}/workload/harnesses | $LLMDBENCH_CONTROL_SCMD -e 's^inference-perf^inference_perf^' -e 's^vllm-benchmark^vllm_benchmark^' | cut -d '-' -f 1 | $LLMDBENCH_CONTROL_SCMD -n -e 's^inference_perf^inference-perf^' -e 's^vllm_benchmark^vllm-benchmark^' -e 'H;${x;s/\n/,/g;s/^,//;p;}'
+  ls "${LLMDBENCH_MAIN_DIR}/workload/harnesses" | $LLMDBENCH_CONTROL_SCMD -e 's^inference-perf^inference_perf^' -e 's^vllm-benchmark^vllm_benchmark^' | cut -d '-' -f 1 | $LLMDBENCH_CONTROL_SCMD -n -e 's^inference_perf^inference-perf^' -e 's^vllm_benchmark^vllm-benchmark^' -e 'H;${x;s/\n/,/g;s/^,//;p;}'
 }
 export -f get_harness_list
 
@@ -375,8 +375,8 @@ function add_env_vars_to_pod {
       if [[ ! -z $is_replace ]]; then
         envvalue=$(echo $envvalue | base64 $LLMDBENCH_BASE64_ARGS)
       fi
-      if [[ -f $envvalue ]]; then
-        envvalue=$(cat $envvalue | base64 $LLMDBENCH_BASE64_ARGS)
+      if [[ -f "$envvalue" ]]; then
+        envvalue=$(cat "$envvalue" | base64 $LLMDBENCH_BASE64_ARGS)
       fi
       is_formatted=$(printf '%s' "$envvalue" | grep "{\\\\s}" || true)
       if [[ ! -z $is_formatted ]]; then
@@ -488,8 +488,8 @@ function capture_pod_logs {
 
       announce "🏗️ Capturing logs for all pods in namespace \"$LLMDBENCH_VLLM_COMMON_NAMESPACE\" to ${pod_results_dir}/logs/ ..."
 
-      mkdir -p ${pod_results_dir}/logs/
-      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE logs --tail=-1 --prefix=true -l llm-d.ai/model=\"$modelid_label\" > ${pod_results_dir}/logs/modelserving_pods.log"  \
+      mkdir -p "${pod_results_dir}/logs/"
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE logs --tail=-1 --prefix=true -l llm-d.ai/model=\"$modelid_label\" > \"${pod_results_dir}/logs/modelserving_pods.log\""  \
       ${LLMDBENCH_CONTROL_DRY_RUN} \
       ${LLMDBENCH_CONTROL_VERBOSE}
 
@@ -657,8 +657,8 @@ function render_workload_templates {
       workload_template_list=$(find ${LLMDBENCH_HARNESS_PROFILES_DIR}/ -name "${workload}.yaml.in")
     fi
 
-    rm -f $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
-    touch $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt
+    rm -f "$LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt"
+    touch "$LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt"
     if [[ ! -z $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES ]]; then
       for entry in $(echo $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g'); do
         parm=$(echo $entry | cut -d '=' -f 1)
@@ -671,11 +671,11 @@ function render_workload_templates {
     for workload_template_full_path in $workload_template_list; do
       workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
       workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e "s^\.yaml.in$^^g")
-      workload_output_file=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/$workload_template_file_name
-      mkdir -p ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/
-      treatment_list_dir=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/treatment_list
-      if [[ -d $treatment_list_dir ]]; then
-        for treatment in $(ls $treatment_list_dir); do
+      workload_output_file="${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/$workload_template_file_name"
+      mkdir -p "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/"
+      treatment_list_dir="${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/treatment_list"
+      if [[ -d "$treatment_list_dir" ]]; then
+        for treatment in $(ls "$treatment_list_dir"); do
             workload_output_file_suffix=$(echo ${treatment} | cut -d '.' -f 1)
             render_template $workload_template_full_path ${workload_output_file}_${workload_output_file_suffix}.yaml ${treatment_list_dir}/$treatment 0 0
         done
@@ -692,20 +692,20 @@ function generate_standup_parameter_scenarios {
   local scenario_file=$2
   local standup_parameter_file=${3:-}
 
-  local output_dir=${scenario_dir}/setup/treatment_list
-  rm -rf $output_dir
-  mkdir -p $output_dir
+  local output_dir="${scenario_dir}/setup/treatment_list"
+  rm -rf "$output_dir"
+  mkdir -p "$output_dir"
 
-  if [[ -z $standup_parameter_file || ! -s $standup_parameter_file || $(cat $standup_parameter_file | yq -r .setup.treatments) == "null" ]]; then
-    cp -f $scenario_file ${scenario_dir}/setup/treatment_list/treatment_none.sh
+  if [[ -z $standup_parameter_file || ! -s $standup_parameter_file || $(cat "$standup_parameter_file" | yq -r .setup.treatments) == "null" ]]; then
+    cp -f "$scenario_file" "${scenario_dir}/setup/treatment_list/treatment_none.sh"
     return 0
   fi
 
-  mkdir -p ${scenario_dir}/setup/experiments/
-  cp -f $standup_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/setup/experiments/
+  mkdir -p "${scenario_dir}/setup/experiments/"
+  cp -f "$standup_parameter_file" "${LLMDBENCH_CONTROL_WORK_DIR}/setup/experiments/"
 
   if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
-    touch $output_dir/treatment_run_only.sh
+    touch "$output_dir/treatment_run_only.sh"
     return
   fi
 
@@ -753,12 +753,12 @@ function generate_profile_parameter_treatments {
     return 0
   fi
 
-  local output_dir=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$harness_name/treatment_list
+  local output_dir="${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$harness_name/treatment_list"
 
-  rm -rf $output_dir
-  mkdir -p $output_dir
+  rm -rf "$output_dir"
+  mkdir -p "$output_dir"
 
-  cp -f $run_parameter_file ${LLMDBENCH_CONTROL_WORK_DIR}/workload/experiments/
+  cp -f "$run_parameter_file" "${LLMDBENCH_CONTROL_WORK_DIR}/workload/experiments/"
 
   cat $run_parameter_file | yq -r .run.treatments | while IFS=: read -r name treatment; do
     if [ -z "$treatment" ]; then  # handle list without keys
@@ -848,17 +848,17 @@ function backup_work_dir {
 
   if [[ $backup -eq 1 ]]; then
     # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
-    if [[ -d $backup_target ]]; then
-      rsync -a --inplace --delete $LLMDBENCH_CONTROL_WORK_DIR/ $backup_target/
+    if [[ -d "$backup_target" ]]; then
+      rsync -a --inplace --delete "$LLMDBENCH_CONTROL_WORK_DIR/" "$backup_target/"
     else
-      mv -f $LLMDBENCH_CONTROL_WORK_DIR/ $backup_target/
+      mv -f "$LLMDBENCH_CONTROL_WORK_DIR/" "$backup_target/"
     fi
 
     export LLMDBENCH_CONTROL_WORK_DIR_BACKEDUP=1
     prepare_work_dir
-    if [[ -f $backup_target/environment/context.ctx ]]; then
+    if [[ -f "$backup_target/environment/context.ctx" ]]; then
       # Do not use "llmdbench_execute_cmd" for these commands. Those need to executed even on "dry-run"
-      cp -f $backup_target/environment/context.ctx $LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
+      cp -f "$backup_target/environment/context.ctx" "$LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx"
     fi
     echo
   fi
@@ -983,14 +983,14 @@ function render_template {
   local cmdline_mode=${4:-0}
   local env_var_mode=${5:-0}
 
-  rm -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
-  touch $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+  rm -f "$LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands"
+  touch "$LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands"
 
   if [[ $additional_replace_commands != "none" ]]; then
-    cat $additional_replace_commands >> $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    cat "$additional_replace_commands" >> "$LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands"
   fi
 
-  for entry in $(cat ${template_file_path} | grep -v ^# | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' -e 's^\.^\n^g' -e 's^\/^\n^g' | grep -E "REPLACE_ENV" | uniq); do
+  for entry in $(cat "${template_file_path}" | grep -v ^# | $LLMDBENCH_CONTROL_SCMD -e 's^-^\n^g' -e 's^:^\n^g' -e 's^ ^\n^g' -e 's^ ^^g' -e 's^\.^\n^g' -e 's^\/^\n^g' | grep -E "REPLACE_ENV" | uniq); do
     render_string $entry &>/dev/null
   done
 
@@ -1022,15 +1022,15 @@ function render_template {
   fi
 
   if [[ $output_file_path != "none" ]]; then
-    cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands > $output_file_path
+    cat "${template_file_path}" | $LLMDBENCH_CONTROL_SCMD -f "$LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands" > "$output_file_path"
   fi
 
   if [[ $cmdline_mode -eq 1 ]]; then
-    echo "REPLACE_SPACESC$(cat ${template_file_path})" | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    echo "REPLACE_SPACESC$(cat "${template_file_path}")" | $LLMDBENCH_CONTROL_SCMD -f "$LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands"
   fi
 
   if [[ $env_var_mode -eq 1 ]]; then
-    echo "$(cat ${template_file_path} | $LLMDBENCH_CONTROL_SCMD -e 's^\^^REPLACE_SPACESC^g')" | $LLMDBENCH_CONTROL_SCMD -e '1s^REPLACE_SPACESC^^' | $LLMDBENCH_CONTROL_SCMD -f $LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands
+    echo "$(cat "${template_file_path}" | $LLMDBENCH_CONTROL_SCMD -e 's^\^^REPLACE_SPACESC^g')" | $LLMDBENCH_CONTROL_SCMD -e '1s^REPLACE_SPACESC^^' | $LLMDBENCH_CONTROL_SCMD -f "$LLMDBENCH_CONTROL_WORK_DIR/setup/sed-commands"
   fi
 }
 export -f render_template
