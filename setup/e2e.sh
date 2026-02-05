@@ -3,23 +3,23 @@
 #set -euo pipefail
 
 if [[ $0 != "-bash" ]]; then
-    pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
+    pushd "$(dirname "$(realpath "$0")")" > /dev/null 2>&1
 fi
 
-export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/)
+export LLMDBENCH_CONTROL_DIR=$(realpath "$(pwd)/")
 
 if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
 fi
 
-export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
+export LLMDBENCH_MAIN_DIR=$(realpath "${LLMDBENCH_CONTROL_DIR}/../")
 export LLMDBENCH_CONTROL_CALLER=$(echo $0 | rev | cut -d '/' -f 1 | rev)
 
 if [[ ! -z ${LLMDBENCH_CONTROL_WORK_DIR} ]]; then
   export LLMDBENCH_CONTROL_WORK_DIR_SET=1
 fi
 
-source ${LLMDBENCH_CONTROL_DIR}/env.sh
+source "${LLMDBENCH_CONTROL_DIR}/env.sh"
 
 export LLMDBENCH_STEPS_DIR="$LLMDBENCH_CONTROL_DIR/steps"
 export LLMDBENCH_CONTROL_DEEP_CLEANING=${LLMDBENCH_CONTROL_DEEP_CLEANING:-0}
@@ -30,7 +30,7 @@ export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=
 export LLMDBENCH_HARNESS_SKIP_RUN=0
 export LLMDBENCH_HARNESS_DEBUG=0
 
-LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name "*.sh" | grep -v 11_ | sort | rev | cut -d '/' -f 1 | rev)
+LLMDBENCH_STEP_LIST=$(find "$LLMDBENCH_STEPS_DIR" -name "*.sh" | grep -v 11_ | sort | rev | cut -d '/' -f 1 | rev)
 
 function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e 's/ /,/g') \n \
@@ -220,7 +220,7 @@ done
 
 export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=1
 
-source ${LLMDBENCH_CONTROL_DIR}/env.sh
+source "${LLMDBENCH_CONTROL_DIR}/env.sh"
 
 sweeptmpdir=$(mktemp -d -t sweepXXX)
 
@@ -233,7 +233,7 @@ generate_standup_parameter_scenarios $sweeptmpdir $LLMDBENCH_SCENARIO_FULL_PATH 
 announce "ℹ️ A list of tretaments for standup paramaters was generated at \"${sweeptmpdir}\""
 sleep 5
 
-for scenario in $(ls $sweeptmpdir/setup/treatment_list/); do
+for scenario in $(ls "$sweeptmpdir/setup/treatment_list/"); do
   export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=$sweeptmpdir/setup/treatment_list/$scenario
   sid=$($LLMDBENCH_CONTROL_SCMD -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${scenario%.sh}")  # remove non alphanumeric and .sh
   sid=${sid#treatment_}
