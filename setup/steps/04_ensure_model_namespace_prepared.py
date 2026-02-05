@@ -135,7 +135,7 @@ data:
                 time.sleep(10)
 
     if is_openshift(api) and ev["user_is_admin"]:
-        # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid
+        # vllm workloads may need to run as a specific non-root UID, the default SA needs anyuid
         # some setups might also require privileged access for GPU resources
         add_scc_to_service_account(
             api,

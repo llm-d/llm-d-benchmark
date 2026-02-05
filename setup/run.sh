@@ -52,12 +52,13 @@ function show_usage {
              -k/--pvc [name of the PVC used to store the results (default=$LLMDBENCH_HARNESS_PVC_NAME)] \n \
              -e/--experiments [path of yaml file containing a list of factors and levels for an experiment, useful for parameter sweeping (default=$LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS)] \n \
              -o/--overrides [comma-separated list of workload profile parameters to be overriden (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES)] \n \
+             -r/--output destination for the results. (e.g. default=$LLMDBENCH_HARNESS_OUTPUT, gs://my-bucket, s3://my-bucket)
              -z/--skip [skip the execution of the experiment, and only collect data (default=$LLMDBENCH_HARNESS_SKIP_RUN)] \n \
              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE)] \n \
              -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)] \n \
              -u/--wva [deploy model with Workload Variant Autoscaler (default=$LLMDBENCH_WVA_ENABLED)] \n \
              -j/--parallelism [number of harness pods to be created (default=$LLMDBENCH_HARNESS_LOAD_PARALLELISM)] \n \
-             -s/--wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means "do not wait\""] \n \
+             -s/--wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means \"do not wait\"] \n \
              -g/--envvarspod [list all environment variables which should be propagated to the harness pods (default=$LLMDBENCH_HARNESS_ENVVARS_TO_YAML)] \n \
              -d/--debug [execute harness in \"debug-mode\" (default=$LLMDBENCH_HARNESS_DEBUG)] \n \
              -h/--help (show this help)"
@@ -172,6 +173,13 @@ while [[ $# -gt 0 ]]; do
         export LLMDBENCH_CLIOVERRIDE_RUN_DATASET_URL="$2"
         shift
         ;;
+        -r=*|--output=*)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_OUTPUT=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -r|--output)
+        export LLMDBENCH_CLIOVERRIDE_HARNESS_OUTPUT="$2"
+        shift
+        ;;
         -u|--wva)
         export LLMDBENCH_WVA_ENABLED=1
         ;;
@@ -232,6 +240,8 @@ fi
 set -euo pipefail
 
 export LLMDBENCH_CURRENT_STEP=99
+
+verify_output_destination $LLMDBENCH_HARNESS_OUTPUT
 
 for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
@@ -521,6 +531,8 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         done
 
         deploy_harness_config ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ${LLMDBENCH_DEPLOY_CURRENT_MODELID} ${local_results_dir} ${local_analysis_dir} ${_combined_pod_config}
+
+        capture_pod_logs ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ${local_results_dir}
 
         if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
           exit 0
