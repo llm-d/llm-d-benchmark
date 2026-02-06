@@ -159,6 +159,9 @@ def main():
       auth:
         # To allow unauthenticated /metrics access (e.g., for debugging with curl), set to false
         enabled: true
+  flags:
+    # add additional flags for gaie-epp
+    v: "{ev['vllm_modelservice_gaie_epp_verbosity']}"
 inferencePool:
   targetPortNumber: {ev['vllm_common_inference_port']}
   modelServerType: vllm
