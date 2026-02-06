@@ -36,7 +36,7 @@ WORKDIR /workspace
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
 ARG INFERENCE_PERF_BRANCH=main
-ARG INFERENCE_PERF_COMMIT=a85b31b5de9fde12b5a0ebaaabb2aee1ccb76657
+ARG INFERENCE_PERF_COMMIT=e3e690ba3589cfa422138de696f8b5217a3aa854
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
