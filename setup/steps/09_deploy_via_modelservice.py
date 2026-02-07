@@ -277,7 +277,7 @@ spec:
       name: infra-{release}-inference-gateway
   rules:
     - backendRefs:
-      - group: inference.networking.k8s.io
+      - group: {ev['vllm_modelservice_inferencepool_api'].split('/')[0]}
         kind: InferencePool
         name: {model_id_label}-gaie
         port: {service_port}
@@ -300,7 +300,7 @@ spec:
     if single_model:
       manifest = f"""{manifest}
     - backendRefs:
-      - group: inference.networking.k8s.io
+      - group: {ev['vllm_modelservice_inferencepool_api'].split('/')[0]}
         kind: InferencePool
         name: {model_id_label}-gaie
         port: {service_port}

@@ -621,7 +621,7 @@ function get_model_name_from_pod {
     local url=$3
     local port=$4
 
-    has_protocol=$(echo $url | grep "http://" || true)
+    has_protocol=$(echo $url | grep -E "http://|https://" || true)
     if [[ -z $has_protocol ]]; then
         local url="http://$url"
     fi
@@ -633,7 +633,7 @@ function get_model_name_from_pod {
     # --- END: Corrected Port Logic ---
 
     local url=$url/v1/models
-    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2 0)
+    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl -k --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2 0)
     is_jq=$(echo $response | jq -r . || true)
 
     if [[ -z $is_jq ]]; then

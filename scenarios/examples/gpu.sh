@@ -28,8 +28,10 @@
 ######export LLMDBENCH_DEPLOY_METHODS=standalone
 #export LLMDBENCH_DEPLOY_METHODS=modelservice
 
-#export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=istio
+#export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=data-science-gateway-class
+#export LLMDBENCH_VLLM_MODELSERVICE_INFERENCEPOOL_API=inference.networking.x-k8s.io/v1alpha2
 
+#export LLMDBENCH_VLLM_MODELSERVICE_MULTINODE=true
 
 #             Affinity to select node with appropriate accelerator (leave uncommented to automatically detect GPU... WILL WORK FOR OpenShift, Kubernetes and GKE)
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3        # OpenShift

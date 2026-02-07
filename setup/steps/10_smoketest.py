@@ -8,6 +8,7 @@ from pathlib import Path
 import pykube
 import ipaddress
 
+
 # Add project root to path for imports
 current_file = Path(__file__).resolve()
 project_root = current_file.parents[1]
@@ -44,6 +45,8 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     service_hostname = "N/A"
     service_name = "N/A"
 
+    gateway_port = "80"
+
     if is_standalone_deployment(ev):
         pod_string = "standalone"
         try:
@@ -70,6 +73,15 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
                 plural="gateways"
             )
             for service in gateways['items']:
+
+                for mf in service["metadata"]["managedFields"] :
+                    if 'fieldsV1' in mf :
+                        if 'f:status' in mf['fieldsV1'] :
+                            if 'f:listeners' in mf['fieldsV1']['f:status'] :
+                                for k in mf['fieldsV1']['f:status']['f:listeners'].keys() :
+                                    if k.count('https') :
+                                        gateway_port = "443"
+
                 if service['metadata']['name'] == f"infra-{ev.get('vllm_modelservice_release', '')}-inference-gateway":
                     service_name = service['metadata']['name']
                     if "addresses" in service["status"] :
@@ -151,12 +163,12 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
                 return 1
 
     announce(f"✅ All pods respond successfully")
-    announce(f"🚀 Testing service/gateway \"{service_ip}\" (port 80)...")
+    announce(f"🚀 Testing service/gateway \"{service_ip}\" (port {gateway_port})...")
 
     if dry_run:
         announce(f"✅ [DRY RUN] Service responds successfully ({current_model})")
     else:
-        received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, service_ip, "80")
+        received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, service_ip, gateway_port)
         if received_model_name == current_model:
             announce(f"✅ Service responds successfully ({received_model_name})")
         else:
@@ -187,9 +199,9 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     if ev['control_deploy_is_openshift'] == "1" and route_url:
         announce(f"🚀 Testing external route \"{route_url}\"...")
         if is_standalone_deployment(ev):
-            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, route_url, '80')
+            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, route_url, '443')
         else:
-            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, route_url, '80')
+            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, route_url, '443')
         if received_model_name == current_model:
             announce(f"✅ External route responds successfully ({received_model_name})")
         else:

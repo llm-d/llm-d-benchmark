@@ -23,7 +23,7 @@ from functions import (
 )
 
 def provider(provider: str) -> str:
-    if provider == "gke" or provider == "openshift-default" or provider == "istio":
+    if provider == "gke" or provider == "istio":
         return provider
     return "none"
 
@@ -165,7 +165,7 @@ def main():
 inferencePool:
   targetPortNumber: {ev['vllm_common_inference_port']}
   modelServerType: vllm
-  apiVersion: "inference.networking.k8s.io/v1"
+  apiVersion: "{ev['vllm_modelservice_inferencepool_api']}"
   modelServers:
     matchLabels:
       llm-d.ai/inferenceServing: "true"

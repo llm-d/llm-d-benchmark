@@ -1854,16 +1854,20 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
     if not ip :
         return "empty", "N/A"
 
-    pod_name = f"testinference-pod-{get_rand_string()}"
-    if "http://" not in ip:
-        ip = "http://" + ip
+
+    protocol = 'http'
+    if port == '443' :
+        protocol = 'https'
+    if f"{protocol}://" not in ip:
+        ip = f"{protocol}://" + ip
     if ip.count(":") == 1:
         ip = ip + ":" + port
     ip = ip + "/v1/models"
-    curl_command = f"curl --no-progress-meter {ip}"
-    full_command = ["/bin/bash", "-c", f"curl --no-progress-meter {ip}"]
+    curl_command = f"curl -k --no-progress-meter {ip}"
+    full_command = ["/bin/bash", "-c", f"{curl_command}"]
 
     while current_attempts <= total_attempts :
+        pod_name = f"testinference-pod-{get_rand_string()}"
         pod_manifest = client.V1Pod(
             metadata=client.V1ObjectMeta(name=pod_name, namespace=ev['vllm_common_namespace'], labels={"llm-d.ai/id": f"{pod_name}"}),
             spec=client.V1PodSpec(
@@ -1965,7 +1969,10 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
         label_selector=f"llm-d.ai/model={ev['deploy_current_model_id_label']},llm-d.ai/role={component}"
         silent = False
     elif component in [ "gateway" ] :
-        label_selector = f"app.kubernetes.io/name=llm-d-infra"
+        if ev['vllm_modelservice_gateway_class_name'] == "data-science-gateway-class":
+            label_selector = f"gateway.istio.io/managed=istio.io-gateway-controller"
+        else :
+            label_selector = f"app.kubernetes.io/name=llm-d-infra"
         silent = False
     elif component in [ "inferencepool" ] :
         label_selector = f"inferencepool={ev['deploy_current_model_id_label']}-gaie-epp"
