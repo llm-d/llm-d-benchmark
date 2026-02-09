@@ -82,6 +82,9 @@ destinationRule:
         connectTimeout: "900s"
 EOF
 
+#export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=data-science-gateway-class
+#export LLMDBENCH_VLLM_MODELSERVICE_INFERENCEPOOL_API=inference.networking.x-k8s.io/v1alpha2
+
 # Routing configuration (via modelservice)
 #export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true # already the default
 #export LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR=nixlv2 # already the default
