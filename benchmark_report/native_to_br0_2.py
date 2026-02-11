@@ -236,7 +236,7 @@ def _populate_load() -> dict:
             "load": {
                 "standardized": {
                     "tool_version": os.environ.get("LLMDBENCH_HARNESS_VERSION", ""),
-                    "parallelism": os.environ.get("LLMDBENCH_HARNESS_LOAD_PARALLELISM"),
+                    "parallelism": os.environ.get("LLMDBENCH_HARNESS_LOAD_PARALLELISM", 1),
                 },
                 "native": {
                     "args": args,
