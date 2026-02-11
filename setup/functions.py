@@ -373,6 +373,22 @@ def environment_variable_to_dict(ev: dict = {}):
         "vllm_modelservice_gateway_class_name", ""
     ).lower()
 
+    if "mandatory_vllm_env_vars" not in ev :
+        ev["mandatory_vllm_env_vars"] = [ "LLMDBENCH_VLLM_COMMON_BLOCK_SIZE", \
+                                          "LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN", \
+                                          "LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT", \
+                                          "LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL", \
+                                          "LLMDBENCH_VLLM_COMMON_MAX_NUM_SEQ", \
+                                          "LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM",
+                                          "LLMDBENCH_VLLM_COMMON_MAX_NUM_BATCHED_TOKENS", \
+                                          "LLMDBENCH_VLLM_COMMON_VLLM_WORKER_MULTIPROC_METHOD", \
+                                          "LLMDBENCH_VLLM_COMMON_VLLM_SERVER_DEV_MODE", \
+                                          "LLMDBENCH_VLLM_COMMON_VLLM_LOGGING_LEVEL", \
+                                          "LLMDBENCH_VLLM_COMMON_VLLM_CACHE_ROOT", \
+                                          "LLMDBENCH_VLLM_COMMON_INFERENCE_PORT", \
+                                          "LLMDBENCH_VLLM_COMMON_METRICS_PORT", \
+                                        ]
+
     if ev["cluster_url"] == "auto" :
         file_path = f'{ev["control_work_dir"]}/environment/context.ctx'
         with open(file_path, "r") as f:
@@ -706,6 +722,7 @@ spec:
             - name: model-cache
               mountPath: /cache
       restartPolicy: OnFailure
+{add_pull_secret(ev)}
       volumes:
         - name: model-cache
           persistentVolumeClaim:
@@ -1625,11 +1642,16 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
 
 def add_pull_secret(ev:dict) -> str:
     pull_secret_string = "#noconfig"
-    if ev["control_environment_type_standalone_active"] :
+
+    if ev["current_step_nr"] == "04" :
+        name_indent = "      "
+        value_indent = "    "
+
+    if ev["current_step_nr"] == "06" :
         name_indent = "      "
         value_indent = "  "
 
-    if ev["control_environment_type_modelservice_active"] :
+    if ev["current_step_nr"] == "09" :
         name_indent = "    "
         value_indent = ""
 
@@ -1661,32 +1683,35 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
         name_indent = " " * 8
         value_indent = " " * 10
 
+    env_lines = []
+    env_vars = []
     if os.access(env_vars_string, os.R_OK):
-        lines = []
         with open(env_vars_string, "r") as fp:
             for line in fp:
                 if line[0] != "#":
                     line = render_string(line, ev)
-                    lines.append(name_indent + line.rstrip())
-        ev[env_vars_key] = "\n".join(lines)
+                    if line.count("name:") :
+                        env_var = line.replace('\n','').split(' ')[-1]
+                        if env_var not in env_vars :
+                            env_vars.append(env_var)
+                    env_lines.append(name_indent + line.rstrip())
     else :
         # Parse environment variables (comma-separated list)
-        env_lines = []
-        for envvar in env_vars_string.split(","):
-            envvar = envvar.strip()
-            if envvar:
+        for env_var in env_vars_string.split(","):
+            env_var = env_var.strip()
+            if env_var:
                 # Remove LLMDBENCH_VLLM_STANDALONE_ prefix if present
-                clean_name = envvar
-                if envvar[0] == "_":
-                    clean_name = envvar[1:]
+                clean_name = env_var
+                if env_var[0] == "_":
+                    clean_name = env_var[1:]
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_VLLM_", "VLLM_")
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_VLLM_", "VLLM_")
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_DECODE_VLLM_", "VLLM_")
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_", "")
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
-                env_value = ev[envvar.replace('LLMDBENCH_','',1).lower()]
-    #            env_value = os.environ.get(envvar, "")
+
+                env_value = ev[env_var.replace('LLMDBENCH_','',1).lower()]
 
                 # Process REPLACE_ENV variables in the value (equivalent to bash sed processing)
                 if env_value:
@@ -1694,9 +1719,30 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
                 else:
                     processed_value = ""
 
+                if env_var not in env_vars :
+                    env_vars.append(env_var)
+
                 env_lines.append(f"{name_indent}- name: {clean_name}")
                 env_lines.append(f'{value_indent}value: "{processed_value}"')
-        ev[env_vars_key] = "\n".join(env_lines)
+
+    for mandatory_var in ev["mandatory_vllm_env_vars"] :
+        if mandatory_var not in env_vars :
+            clean_name = mandatory_var
+            clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
+            clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_", "VLLM_")
+
+            env_value = ev[mandatory_var.replace('LLMDBENCH_','',1).lower()]
+
+            # Process REPLACE_ENV variables in the value (equivalent to bash sed processing)
+            if env_value:
+                processed_value = render_string(env_value, ev)
+            else:
+                processed_value = ""
+
+            env_lines.append(f"{name_indent}- name: {clean_name}")
+            env_lines.append(f'{value_indent}value: "{processed_value}"')
+
+    ev[env_vars_key] = "\n".join(env_lines)
 
     return ev[env_vars_key]
 
