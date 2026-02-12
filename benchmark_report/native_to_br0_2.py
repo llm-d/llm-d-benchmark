@@ -17,7 +17,6 @@ from datetime import datetime, timezone
 
 import numpy as np
 import yaml
-from kubernetes import client, config as k8s_config
 
 from .base import Units, WorkloadGenerator
 from .core import (
@@ -110,6 +109,8 @@ def get_configmap(
         return {}
 
     try:
+        from kubernetes import client, config as k8s_config
+
         # Write context to a temporary file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(context_dict, f)
