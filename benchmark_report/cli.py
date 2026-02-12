@@ -62,10 +62,7 @@ def main() -> None:
     parser.add_argument(
         "-j",
         "--json-schema",
-        type=str,
-        nargs="?",
-        const="0.1",
-        default=None,
+        action=argparse.BooleanOptionalAction,
         help="Print JSON Schema for Benchmark Report.",
     )
 
@@ -73,7 +70,7 @@ def main() -> None:
 
     if args.json_schema:
         # Print JSON Schema and exit
-        print(make_json_schema(args.json_schema))
+        print(make_json_schema(args.br_version))
         sys.exit(0)
 
     if args.br_version == "0.1":

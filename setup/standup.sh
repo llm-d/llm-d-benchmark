@@ -3,33 +3,33 @@
 set -euo pipefail
 
 if [[ $0 != "-bash" ]]; then
-    pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
+    pushd "$(dirname "$(realpath "$0")")" > /dev/null 2>&1
 fi
 
-export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/)
+export LLMDBENCH_CONTROL_DIR=$(realpath "$(pwd)/")
 
 if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
 fi
 
-export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
+export LLMDBENCH_MAIN_DIR=$(realpath "${LLMDBENCH_CONTROL_DIR}/../")
 export LLMDBENCH_CONTROL_CALLER=$(echo $0 | rev | cut -d '/' -f 1 | rev)
 
 export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR:-}
 if [[ ! -z ${LLMDBENCH_CONTROL_WORK_DIR} ]]; then
   export LLMDBENCH_CONTROL_WORK_DIR_SET=1
 fi
-source ${LLMDBENCH_CONTROL_DIR}/env.sh
+source "${LLMDBENCH_CONTROL_DIR}/env.sh"
 
 export LLMDBENCH_STEPS_DIR="$LLMDBENCH_CONTROL_DIR/steps"
 export LLMDBENCH_CONTROL_DRY_RUN=${LLMDBENCH_CONTROL_DRY_RUN:-0}
 export LLMDBENCH_CONTROL_VERBOSE=${LLMDBENCH_CONTROL_VERBOSE:-0}
 export LLMDBENCH_DEPLOY_SCENARIO=${LLMDBENCH_DEPLOY_SCENARIO:-}
 export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=
-LLMDBENCH_STEP_LIST=$(find $LLMDBENCH_STEPS_DIR -name "*.sh" -o -name "*.py" | $LLMDBENCH_CONTROL_SCMD -e "s^.sh^^g" -e "s^.py^^g" | grep -v 11_ | sort | rev | cut -d '/' -f 1 | rev | uniq)
+LLMDBENCH_STEP_LIST=$(find "$LLMDBENCH_STEPS_DIR" -name "*.sh" -o -name "*.py" | $LLMDBENCH_CONTROL_SCMD -e "s^.sh^^g" -e "s^.py^^g" | grep -v 11_ | sort | rev | cut -d '/' -f 1 | rev | uniq)
 
 function show_usage {
-    echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e 's/ /,/g') \n \
+    echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD -e "s^${LLMDBENCH_STEPS_DIR}/^^g" -e 's/ /,/g') \n \
             -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
             -m/--models [list the models to be stood up (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
             -p/--namespace [comma separated pair of values indicating where a stack will be stood up and where the benchmark will (later) be run (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE)] \n \
@@ -156,7 +156,7 @@ done
 
 export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=1
 
-source ${LLMDBENCH_CONTROL_DIR}/env.sh
+source "${LLMDBENCH_CONTROL_DIR}/env.sh"
 
 
 _e=$(echo ${LLMDBENCH_STEP_LIST} | grep "[0-9]-[0-9]" | grep -v 11_ || true)
@@ -165,7 +165,7 @@ if [[ ! -z ${_e} ]]; then
 fi
 LLMDBENCH_STEP_LIST=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD 's^,^ ^g')
 
-if [[ $LLMDBENCH_STEP_LIST == $(find $LLMDBENCH_STEPS_DIR -name "*.sh" -o -name "*.py" | $LLMDBENCH_CONTROL_SCMD -e "s^.sh^^g" -e "s^.py^^g" |  sort | rev | cut -d '/' -f 1 | rev | uniq | $LLMDBENCH_CONTROL_SCMD -e ':a;N;$!ba;s/\n/ /g' ) ]]; then
+if [[ $LLMDBENCH_STEP_LIST == $(find "$LLMDBENCH_STEPS_DIR" -name "*.sh" -o -name "*.py" | $LLMDBENCH_CONTROL_SCMD -e "s^.sh^^g" -e "s^.py^^g" |  sort | rev | cut -d '/' -f 1 | rev | uniq | $LLMDBENCH_CONTROL_SCMD -e ':a;N;$!ba;s/\n/ /g' ) ]]; then
   export LLMDBENCH_CONTROL_STANDUP_ALL_STEPS=1
 fi
 

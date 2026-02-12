@@ -3,21 +3,21 @@
 set -euo pipefail
 
 if [[ $0 != "-bash" ]]; then
-    pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
+    pushd "$(dirname "$(realpath "$0")")" > /dev/null 2>&1
 fi
 
-export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/)
+export LLMDBENCH_CONTROL_DIR=$(realpath "$(pwd)/")
 
 if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
 fi
 
-export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
+export LLMDBENCH_MAIN_DIR=$(realpath "${LLMDBENCH_CONTROL_DIR}/../")
 export LLMDBENCH_CONTROL_CALLER=$(echo $0 | rev | cut -d '/' -f 1 | rev)
 
 export LLMDBENCH_STEPS_DIR="$LLMDBENCH_CONTROL_DIR/steps"
 
-source ${LLMDBENCH_CONTROL_DIR}/env.sh
+source "${LLMDBENCH_CONTROL_DIR}/env.sh"
 
 export LLMDBENCH_CONTROL_DEEP_CLEANING=${LLMDBENCH_CONTROL_DEEP_CLEANING:-0}
 export LLMDBENCH_CONTROL_DRY_RUN=${LLMDBENCH_CONTROL_DRY_RUN:-0}
@@ -179,6 +179,10 @@ done
 for workload_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
   llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete ConfigMap $workload_type-profiles --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 done
+
+llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete pod -l app=llmdbench-harness-launcher,function=load_generator  --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete ConfigMap llm-d-benchmark-preprocesses --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete ConfigMap llm-d-benchmark-standup-parameters --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
 
 if [[ $LLMDBENCH_CONTROL_DEEP_CLEANING -eq 0 ]]; then
 

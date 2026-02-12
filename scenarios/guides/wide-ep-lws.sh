@@ -79,6 +79,9 @@ EOF
 # Routing configuration (via modelservice)
 # export LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR=nixlv2 # already the default
 
+#export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=data-science-gateway-class
+#export LLMDBENCH_VLLM_MODELSERVICE_INFERENCEPOOL_API=inference.networking.x-k8s.io/v1alpha2
+
 #             Affinity to select node with appropriate accelerator (leave uncommented to automatically detect GPU... WILL WORK FOR OpenShift, Kubernetes and GKE)
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3        # OpenShift
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=gpu.nvidia.com/model:H200                           # Kubernetes

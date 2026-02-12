@@ -34,6 +34,9 @@ export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
 # Routing configuration (via gaie)
 #export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="default-plugins.yaml" # already the default
 
+#export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=data-science-gateway-class
+#export LLMDBENCH_VLLM_MODELSERVICE_INFERENCEPOOL_API=inference.networking.x-k8s.io/v1alpha2
+
 # Routing configuration (via modelservice)
 export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true # (default is "false")
 

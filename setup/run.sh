@@ -214,7 +214,7 @@ done
 
 export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=1
 
-source ${LLMDBENCH_CONTROL_DIR}/env.sh
+source "${LLMDBENCH_CONTROL_DIR}/env.sh"
 
 export LLMDBENCH_BASE64_CONTEXT_CONTENTS=$LLMDBENCH_CONTROL_WORK_DIR/environment/context.ctx
 
@@ -270,6 +270,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       export LLMDBENCH_HARNESS_STACK_ENDPOINT_LAUNCHER_PORT=
       export LLMDBENCH_HARNESS_STACK_ENDPOINT_LAUNCHER_VLLM_PORT=
       export LLMDBENCH_VLLM_FQDN=".${LLMDBENCH_VLLM_COMMON_NAMESPACE}${LLMDBENCH_VLLM_COMMON_FQDN}"
+      export LLMDBENCH_HARNESS_STACK_ENDPOINT_PROTOCOL=http
 
       if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
         export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="LLMDBENCH_RUN_EXPERIMENT|LLMDBENCH_BASE64_CONTEXT_CONTENTS|^LLMDBENCH_VLLM_COMMON|^LLMDBENCH_VLLM_STANDALONE|^LLMDBENCH_DEPLOY|^LLMDBENCH_HARNESS|^LLMDBENCH_RUN"
@@ -291,6 +292,11 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
             export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}${LLMDBENCH_VLLM_FQDN}
         fi
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
+        _listener_name=$(echo $LLMDBENCH_HARNESS_STACK_ENDPOINT_INFO | jq -r '.items[0].spec.listeners[0].name')
+        if [[ ${_listener_name} == "https" ]]; then
+          export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=443
+          export LLMDBENCH_HARNESS_STACK_ENDPOINT_PROTOCOL=https
+        fi
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_LAUNCHER_PORT=81
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_LAUNCHER_VLLM_PORT=82
       fi
@@ -304,7 +310,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service --no-headers | awk '{print $1}' | grep ${LLMDBENCH_DEPLOY_METHODS} || true)
         if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
-          for i in default http; do
+          for i in default http https; do
             export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(${LLMDBENCH_CONTROL_KCMD} --namespace "$LLMDBENCH_VLLM_COMMON_NAMESPACE" get service/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r ".spec.ports[] | select(.name == \"$i\") | .port")
             if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT ]]; then
               break
@@ -368,7 +374,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         exit 1
       fi
 
-      export LLMDBENCH_HARNESS_STACK_ENDPOINT_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT}"
+      export LLMDBENCH_HARNESS_STACK_ENDPOINT_URL="${LLMDBENCH_HARNESS_STACK_ENDPOINT_PROTOCOL}://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT}"
 
       export LLMDBENCH_HARNESS_STACK_ENDPOINT_LAUNCHER_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_LAUNCHER_PORT}"
       export LLMDBENCH_HARNESS_STACK_ENDPOINT_LAUNCHER_VLLM_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_LAUNCHER_VLLM_PORT}"
@@ -415,7 +421,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
         fi
       fi
 
-      rm -rf ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/*
+      rm -rf "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/"*
 
       if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
 
@@ -443,19 +449,19 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
       fi
 
       for workload_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
-        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete configmap $workload_type-profiles --ignore-not-found" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
-        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} create configmap $workload_type-profiles --from-file=${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}" ${LLMDBENCH_CONTROL_DRY_RUN} ${LLMDBENCH_CONTROL_VERBOSE}
+        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} delete configmap $workload_type-profiles --ignore-not-found" "${LLMDBENCH_CONTROL_DRY_RUN}" "${LLMDBENCH_CONTROL_VERBOSE}"
+        llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} --namespace ${LLMDBENCH_HARNESS_NAMESPACE} create configmap $workload_type-profiles --from-file=\"${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}\"" "${LLMDBENCH_CONTROL_DRY_RUN}" "${LLMDBENCH_CONTROL_VERBOSE}"
       done
 
       export LLMDBENCH_RUN_EXPERIMENT_ID_PREFIX=""
 
-      for treatment in $(ls ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/*.yaml); do
+      for treatment in $(ls "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/"*.yaml); do
 
         export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=$(echo $treatment | rev | cut -d '/' -f 1 | rev)
         export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=$(echo $treatment | rev | cut -d '/' -f 1 | rev)
 
-        tf=$(cat ${treatment} | grep "#treatment" | tail -1 | $LLMDBENCH_CONTROL_SCMD 's/^#//' || true)
-        if [[ -f ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf ]]; then
+        tf=$(cat ${treatment} | grep "#treatment" | tail -1 | "$LLMDBENCH_CONTROL_SCMD" 's/^#//' || true)
+        if [[ -f "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf" ]]; then
           tid=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${tf%.txt}")   # remove non alphanumeric and .txt
           tid=${tid#treatment_}
           if [ -z "${LLMDBENCH_RUN_EXPERIMENT_ID}" ]; then
@@ -482,9 +488,9 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
           local_results_dir=${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}
           local_analysis_dir=${LLMDBENCH_CONTROL_WORK_DIR}/analysis/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}
-          llmdbench_execute_cmd "mkdir -p ${local_results_dir}_${i} && mkdir -p ${local_analysis_dir}_${i}" \
-                ${LLMDBENCH_CONTROL_DRY_RUN} \
-                ${LLMDBENCH_CONTROL_VERBOSE}
+          llmdbench_execute_cmd "mkdir -p \"${local_results_dir}_${i}\" && mkdir -p \"${local_analysis_dir}_${i}\"" \
+                "${LLMDBENCH_CONTROL_DRY_RUN}" \
+                "${LLMDBENCH_CONTROL_VERBOSE}"
 
 
           if [[ -f ${local_analysis_dir}_{i}/summary.txt ]]; then

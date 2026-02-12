@@ -8,7 +8,8 @@ export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="deepseek-ai/DeepSeek-R1-0528"
 
-#export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=istio
+#export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=data-science-gateway-class
+#export LLMDBENCH_VLLM_MODELSERVICE_INFERENCEPOOL_API=inference.networking.x-k8s.io/v1alpha2
 
 export LLMDBENCH_VLLM_COMMON_REPLICAS=1
 

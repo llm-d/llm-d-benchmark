@@ -46,6 +46,49 @@ def gateway_values(provider : str, host: str, service: str) -> str:
     enabled: true
   """
 
+    elif provider == "data-science-gateway-class" :
+        return f"""gateway:
+  gatewayClassName: data-science-gateway-class
+  labels:
+    istio.io/rev: openshift-gateway
+    platform.opendatahub.io/part-of: gatewayconfig
+
+  listeners:
+    - name: https
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: All
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: data-science-gateway-service-tls
+            namespace: openshift-ingress
+
+  destinationRule:
+      enabled: true
+      trafficPolicy:
+        connectionPool:
+          http:
+            http1MaxPendingRequests: 256000
+            maxRequestsPerConnection: 256000
+            http2MaxRequests: 256000
+            idleTimeout: "900s"
+          tcp:
+            maxConnections: 256000
+            maxConnectionDuration: "1800s"
+            connectTimeout: "900s"
+
+  tls:
+    referenceGrant:
+      enabled: true
+      secretNamespace: openshift-ingress
+      secretName: data-science-gateway-service-tls
+  """
+
     elif provider == "gke":
         return f"""gateway:
   gatewayClassName: gke-l7-regional-external-managed

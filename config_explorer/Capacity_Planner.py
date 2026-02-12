@@ -326,7 +326,7 @@ Higher max model length means fewer concurrent requests can be served, \
         with st.expander("See how KV cache is calculated below"):
             st.write(f"""First, the per-token memory requirement is estimated given the following inputs:
 - KV cache data type: `{kv_details.kv_data_type}` = {kv_details.precision_in_bytes} bytes in memory
-- Hidden layers: {model_config.num_hidden_layers}
+- Hidden layers: {text_config.num_hidden_layers}
 
 This model uses _{kv_details.attention_type}_. The relevant parameters are:
 """)
