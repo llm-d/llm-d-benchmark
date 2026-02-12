@@ -1,5 +1,7 @@
 # Guide Converter Mapping Rules
 
+> **Note:** This file is bundled with the convert-guide skill. For default values, always read `setup/env.sh` at runtime as the authoritative source.
+
 This document defines the mappings from llm-d guide Helm values to llm-d-benchmark environment variables.
 
 ## How to Use This Document
@@ -27,7 +29,7 @@ The GAIE Helm chart is deployed via `setup/steps/08_deploy_gaie.py`. The generat
 
 | Helm Path | LLMDBENCH Variable | ev[] Key | Notes |
 |-----------|-------------------|----------|-------|
-| `inferencePool.targetPortNumber` | `LLMDBENCH_VLLM_COMMON_INFERENCE_PORT` | `vllm_common_inference_port` | Default: `8000` |
+| `inferencePool.targetPortNumber` | `LLMDBENCH_VLLM_COMMON_INFERENCE_PORT` | `vllm_common_inference_port` | Service port (default: `8000`). The proxy/sidecar listens here and forwards to vLLM on METRICS_PORT (8200). |
 | `inferencePool.provider` | `LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG` | `vllm_modelservice_inference_pool_provider_config` | Provider-specific config |
 
 ### Gateway/Provider Settings
@@ -152,8 +154,16 @@ The ModelService Helm chart is deployed via `setup/steps/09_deploy_via_modelserv
 
 These are typically found in `decode.containers[0].args` or extracted from command strings:
 
+**Port Architecture Note:**
+The llm-d modelservice uses a proxy/sidecar pattern:
+- `INFERENCE_PORT` (8000): The service port where the proxy/sidecar listens for incoming requests
+- `METRICS_PORT` (8200): The port where vLLM actually listens (use this for `vllm serve --port`)
+
+The proxy forwards requests from port 8000 to vLLM on port 8200. When generating `EXTRA_ARGS`, use `--port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_METRICS_PORT`.
+
 | Argument | LLMDBENCH Variable | ev[] Key | Notes |
 |----------|-------------------|----------|-------|
+| `--port` | `LLMDBENCH_VLLM_COMMON_METRICS_PORT` | `vllm_common_metrics_port` | vLLM listen port (default: 8200) |
 | `--max-model-len` | `LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN` | `vllm_common_max_model_len` | Maximum sequence length |
 | `--block-size` | `LLMDBENCH_VLLM_COMMON_BLOCK_SIZE` | `vllm_common_block_size` | KV cache block size |
 | `--gpu-memory-utilization` | `LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL` | `vllm_common_accelerator_mem_util` | GPU memory fraction (0.0-1.0) |
@@ -178,6 +188,42 @@ These are typically found in `decode.containers[0].args` or extracted from comma
 | `decode.monitoring.podmonitor.enabled` | (not mapped) | Pod monitoring not used in benchmarks |
 | `decode.monitoring.podmonitor.interval` | (not mapped) | Omit from scenario files |
 
+### Container Image Settings
+
+When a guide explicitly specifies container images, these should be mapped to override the framework defaults:
+
+| Helm Path | LLMDBENCH Variable | ev[] Key | Notes |
+|-----------|-------------------|----------|-------|
+| `decode.containers[name='vllm'].image` | See parsing notes below | | Full image reference (registry/repo/name:tag) |
+| `prefill.containers[name='vllm'].image` | See parsing notes below | | Full image reference (registry/repo/name:tag) |
+
+**Image Parsing:**
+
+When a guide specifies an explicit image like `ghcr.io/llm-d/llm-d-cuda:v0.5.0`, parse it into components:
+
+```bash
+# For image: ghcr.io/llm-d/llm-d-cuda:v0.5.0
+export LLMDBENCH_LLMD_IMAGE_REGISTRY="ghcr.io"    # Registry (before first /)
+export LLMDBENCH_LLMD_IMAGE_REPO="llm-d"          # Repository (middle path)
+export LLMDBENCH_LLMD_IMAGE_NAME="llm-d-cuda"     # Image name (after last /, before :)
+export LLMDBENCH_LLMD_IMAGE_TAG="v0.5.0"          # Tag (after :)
+```
+
+**When to Include:**
+
+- **Always include** `LLMDBENCH_LLMD_IMAGE_TAG` if the guide specifies an explicit version tag (not `latest` or unspecified)
+- **Only include** registry/repo/name if they differ from defaults (`ghcr.io/llm-d/llm-d-cuda`)
+- If decode and prefill use different images, use stage-specific variables (see Stage-Specific Image Overrides below)
+
+**Stage-Specific Image Overrides:**
+
+If decode and prefill stages use different images:
+
+| Helm Path | LLMDBENCH Variable | Notes |
+|-----------|-------------------|-------|
+| `decode.containers[name='vllm'].image` | `LLMDBENCH_VLLM_MODELSERVICE_DECODE_IMAGE` | Full image reference for decode |
+| `prefill.containers[name='vllm'].image` | `LLMDBENCH_VLLM_MODELSERVICE_PREFILL_IMAGE` | Full image reference for prefill |
+
 ## Unmappable Values
 
 These Helm values have no direct LLMDBENCH equivalent and should be noted in comments:
@@ -185,7 +231,6 @@ These Helm values have no direct LLMDBENCH equivalent and should be noted in com
 - `modelArtifacts.labels` - Kubernetes labels, automatically set by benchmark framework
 - `modelArtifacts.uri` - Derived from model name with `pvc://` or `hf://` prefix
 - `fullnameOverride` - Derived from model name label
-- `decode.containers[0].image` - Image determined by benchmark framework (`LLMDBENCH_LLMD_IMAGE_*`)
 - `decode.containers[0].livenessProbe` - Probes managed by framework
 - `decode.containers[0].readinessProbe` - Probes managed by framework
 - `decode.containers[0].startupProbe` - Probes managed by framework
@@ -194,7 +239,7 @@ These Helm values have no direct LLMDBENCH equivalent and should be noted in com
 
 ## Default Values Reference
 
-The following defaults are defined in `setup/env.sh`. Only override if the guide specifies different values:
+> **Note:** These are representative defaults for quick reference. Always read `setup/env.sh` at runtime for authoritative current values.
 
 | Variable | ev[] Key | Default | Description |
 |----------|----------|---------|-------------|
@@ -211,8 +256,8 @@ The following defaults are defined in `setup/env.sh`. Only override if the guide
 | `LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL` | `vllm_common_accelerator_mem_util` | `0.95` | GPU memory utilization |
 | `LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR` | `vllm_common_accelerator_nr` | `auto` | GPU count (auto-calculated) |
 | `LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE` | `vllm_common_pvc_model_cache_size` | `300Gi` | PVC size for model cache |
-| `LLMDBENCH_VLLM_COMMON_INFERENCE_PORT` | `vllm_common_inference_port` | `8000` | Inference port |
-| `LLMDBENCH_VLLM_COMMON_METRICS_PORT` | `vllm_common_metrics_port` | `8200` | Metrics port |
+| `LLMDBENCH_VLLM_COMMON_INFERENCE_PORT` | `vllm_common_inference_port` | `8000` | Service port (proxy/sidecar listens here, forwards to vLLM) |
+| `LLMDBENCH_VLLM_COMMON_METRICS_PORT` | `vllm_common_metrics_port` | `8200` | vLLM container port (where vLLM actually listens via `--port`) |
 | `LLMDBENCH_VLLM_MODELSERVICE_MULTINODE` | `vllm_modelservice_multinode` | `false` | Multi-node deployment |
 | `LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME` | `vllm_modelservice_gateway_class_name` | `istio` | Gateway class |
 | `LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE` | `vllm_modelservice_gaie_plugins_configfile` | `default-plugins.yaml` | GAIE plugins config |
