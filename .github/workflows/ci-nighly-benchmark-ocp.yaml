@@ -25,9 +25,21 @@ jobs:
     runs-on: [k8s-util]
     timeout-minutes: 240
 
+    env:
+      LLMDBENCH_IMAGE_TAG: nightly
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Build and push nightly image
+        uses: ./.github/actions/docker-build-and-push
+        with:
+          tag: nightly
+          image-name: llm-d-benchmark
+          registry: ghcr.io/llm-d
+          github-token: ${{ secrets.GHCR_TOKEN }}
+
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'

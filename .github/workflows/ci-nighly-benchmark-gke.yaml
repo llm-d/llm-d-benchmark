@@ -31,10 +31,19 @@ jobs:
       GKE_CLUSTER_ZONE: us-east5
       GATEWAY: gke-l7-regional-external-managed
       GATEWAY_TYPE: gke
+      LLMDBENCH_IMAGE_TAG: nightly
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Build and push nightly image
+        uses: ./.github/actions/docker-build-and-push
+        with:
+          tag: nightly
+          image-name: llm-d-benchmark
+          registry: ghcr.io/llm-d
+          github-token: ${{ secrets.GHCR_TOKEN }}
 
       - name: Install Python 3.11
         uses: actions/setup-python@v6
