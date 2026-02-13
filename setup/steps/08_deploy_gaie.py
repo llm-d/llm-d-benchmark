@@ -129,6 +129,8 @@ def main():
 
             # Generate GAIE values YAML content
             gaie_values_content = f"""inferenceExtension:
+  flags:
+{add_config("vllm_modelservice_gaie_flags", 4, "", ev)}
   replicas: 1
   image:
     name: {ev['llmd_inferencescheduler_image_name']}
