@@ -35,6 +35,7 @@ jobs:
           image-name: llm-d-benchmark
           registry: ghcr.io/llm-d
           github-token: ${{ secrets.GHCR_TOKEN }}
+          platform: linux/amd64
 
   run-benchmark-gke:
     name: CI - Nightly Benchmark on GKE
