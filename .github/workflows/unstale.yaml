@@ -7,6 +7,6 @@ on:
 
 jobs:
   unstale:
-    uses: llm-d/llm-d-infra/.github/workflows/reusable-unstale.yml@2b273d6
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-unstale.yml@main
     permissions:
       issues: write

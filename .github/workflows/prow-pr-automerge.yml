@@ -5,4 +5,4 @@ on:
 
 jobs:
   auto-merge:
-    uses: llm-d/llm-d-infra/.github/workflows/reusable-prow-automerge.yml@2b273d6
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-prow-automerge.yml@main

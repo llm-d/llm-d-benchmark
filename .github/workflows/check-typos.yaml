@@ -5,4 +5,4 @@ on:
 
 jobs:
   typos:
-    uses: llm-d/llm-d-infra/.github/workflows/reusable-typos.yml@2b273d6
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-typos.yml@main

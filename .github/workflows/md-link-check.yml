@@ -8,4 +8,4 @@ on:
 
 jobs:
   links:
-    uses: llm-d/llm-d-infra/.github/workflows/reusable-md-link-check.yml@2b273d6
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-md-link-check.yml@main
