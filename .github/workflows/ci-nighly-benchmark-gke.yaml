@@ -117,6 +117,30 @@ jobs:
         run: ./setup/teardown.sh -c gke_H100_fb -t standalone -d
         shell: bash
 
+      - name: Collect failure diagnostics
+        if: failure()
+        run: |
+          echo "=== Pod status ==="
+          kubectl get pods -n llmdbenchcicd -o wide || true
+          echo ""
+          echo "=== Describe failed pods ==="
+          for pod in $(kubectl get pods -n llmdbenchcicd --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n llmdbenchcicd "$pod" || true
+          done
+          echo ""
+          echo "=== Pod logs (crashed/errored) ==="
+          for pod in $(kubectl get pods -n llmdbenchcicd --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod logs ---"
+            kubectl logs -n llmdbenchcicd "$pod" --tail=200 --all-containers || true
+            echo "--- $pod previous logs ---"
+            kubectl logs -n llmdbenchcicd "$pod" --previous --tail=200 --all-containers 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Recent events ==="
+          kubectl get events -n llmdbenchcicd --sort-by='.lastTimestamp' | tail -30 || true
+        shell: bash
+
       - name: Archive benchmark results as GitHub artifact
         if: success() || failure()
         uses: actions/upload-artifact@v6

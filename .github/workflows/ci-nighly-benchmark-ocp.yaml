@@ -154,6 +154,37 @@ jobs:
           ./setup/e2e.sh -c ocp_fb -t modelservice --deep -l vllm-benchmark
         shell: bash
 
+      - name: Collect failure diagnostics
+        if: failure()
+        run: |
+          echo "=== Pod status ==="
+          kubectl get pods -n llmdbenchcicd -o wide || true
+          echo ""
+          echo "=== Describe failed pods ==="
+          for pod in $(kubectl get pods -n llmdbenchcicd --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n llmdbenchcicd "$pod" || true
+          done
+          echo ""
+          echo "=== Pod logs (crashed/errored) ==="
+          for pod in $(kubectl get pods -n llmdbenchcicd --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod logs ---"
+            kubectl logs -n llmdbenchcicd "$pod" --tail=200 --all-containers || true
+            echo "--- $pod previous logs ---"
+            kubectl logs -n llmdbenchcicd "$pod" --previous --tail=200 --all-containers 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Harness launcher pods ==="
+          kubectl get pods -n llmdbenchcicd -l app=llmdbench-harness-launcher -o wide || true
+          for pod in $(kubectl get pods -n llmdbenchcicd -l app=llmdbench-harness-launcher -o name 2>/dev/null); do
+            echo "--- $pod logs ---"
+            kubectl logs -n llmdbenchcicd "$pod" --tail=200 --all-containers || true
+          done
+          echo ""
+          echo "=== Recent events ==="
+          kubectl get events -n llmdbenchcicd --sort-by='.lastTimestamp' | tail -30 || true
+        shell: bash
+
       - name: Install AWS CLI
         run: |
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
