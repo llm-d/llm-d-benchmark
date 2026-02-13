@@ -20,14 +20,10 @@ on:
     - cron: '0 0 * * *'  # Daily at midnight UTC
 
 jobs:
-  run-benchmark:
-    name: Benchmark Test
-    runs-on: [k8s-util]
-    timeout-minutes: 240
-
-    env:
-      LLMDBENCH_IMAGE_TAG: nightly
-
+  build-image:
+    name: Build Nightly Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,6 +35,19 @@ jobs:
           image-name: llm-d-benchmark
           registry: ghcr.io/llm-d
           github-token: ${{ secrets.GHCR_TOKEN }}
+
+  run-benchmark:
+    name: Benchmark Test
+    needs: build-image
+    runs-on: [k8s-util]
+    timeout-minutes: 240
+
+    env:
+      LLMDBENCH_IMAGE_TAG: nightly
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - uses: actions/setup-python@v6
         with:
