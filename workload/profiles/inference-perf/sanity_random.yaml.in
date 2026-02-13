@@ -3,6 +3,7 @@ load:
   stages:
   - rate: 1
     duration: 30
+  request_timeout: 30
 api:
   type: completion
   streaming: true
