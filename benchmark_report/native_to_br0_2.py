@@ -659,7 +659,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
     source = LoadSource.RANDOM if ds_name == "random" else LoadSource.SAMPLED
 
     # Calculate ISL, as fallback option
-    isl_value = results.get("total_input_tokens", 0) / results.get("completed", -1)
+    isl_value = results.get("total_input_tokens", 0) / (results.get("completed", 0) or 1)
     # Get requested ISL, if it is in arguments from --sonnet-input-len or
     # --random-input-len
     for arg, value in args.items():
@@ -727,7 +727,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                             "output_length": {
                                 "units": Units.COUNT,
                                 "mean": results.get("total_output_tokens", 0)
-                                / results.get("completed", -1),
+                                / (results.get("completed", 0) or 1),
                             },
                         },
                         "latency": {
@@ -844,7 +844,7 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
     source = LoadSource.RANDOM if ds_name == "random" else LoadSource.SAMPLED
 
     # Calculate ISL, as fallback option
-    isl_value = results.get("total_input_tokens", 0) / results.get("completed", -1)
+    isl_value = results.get("total_input_tokens", 0) / (results.get("completed", 0) or 1)
     # Get requested ISL, if it is in arguments from --sonnet-input-len or
     # --random-input-len
     for arg, value in args.items():
