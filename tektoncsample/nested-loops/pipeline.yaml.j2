@@ -1,0 +1,60 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  # Quote + default so YAML stays valid even if the value is missing
+  name: "{{ pipeline_name|default('nested-loops-demo') }}"
+spec:
+  tasks:
+    - name: prep
+      taskRef: { name: prep-env }
+
+    # OUTER loop: per model
+    - loopName: per-model
+      foreach:
+        domain:
+          # Safe default list if 'models' missing in values.yaml
+          modelRef: {{ models|default(['llama-7b','qwen-2.5-7b']) }}
+      tasks:
+        - name: "dl-{{ modelRef|dns }}"
+          taskRef: { name: download-model }
+          runAfter: [ prep ]
+          params:
+            - { name: modelRef, value: "{{ modelRef }}" }
+
+        # INNER loop: per prefix for this model
+        - loopName: per-prefix
+          foreach:
+            domain:
+              # Safe default list if 'prefixes' missing in values.yaml
+              prefix: {{ prefixes|default(['A','B']) }}
+          tasks:
+            - name: "svc-{{ modelRef|dns }}-{{ prefix|slug }}"
+              taskRef: { name: start-service }
+              runAfter: [ "dl-{{ modelRef|dns }}" ]
+              params:
+                - { name: modelRef, value: "{{ modelRef }}" }
+                - { name: prefix,   value: "{{ prefix }}" }
+
+            - name: "job-{{ modelRef|dns }}-{{ prefix|slug }}"
+              taskRef: { name: run-job }
+              runAfter: [ "svc-{{ modelRef|dns }}-{{ prefix|slug }}" ]
+              params:
+                - { name: modelRef, value: "{{ modelRef }}" }
+                - { name: prefix,   value: "{{ prefix }}" }
+
+        # Per-model fan-in: wait for all prefixes to finish their job step
+        - name: "agg-{{ modelRef|dns }}"
+          taskRef: { name: aggregate-results }
+          runAfter:
+            {% for p in prefixes|default(['A','B']) %}
+            - "job-{{ modelRef|dns }}-{{ p|slug }}"
+            {% endfor %}
+
+  finally:
+    # Optional: a global summary after all per-model aggregates
+    - name: global-summary
+      taskRef: { name: global-summarize }
+      runAfter:
+        {% for m in models|default(['llama-7b','qwen-2.5-7b']) %}
+        - "agg-{{ m|dns }}"
+        {% endfor %}
