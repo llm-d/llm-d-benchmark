@@ -184,6 +184,11 @@ spec:
         cpu: "${HARNESS_CPU_NR}"
         memory: ${HARNESS_CPU_MEM}
     env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: "${endpoint_hf_token_secret}"
+          key: HF_TOKEN
     - name: LLMDBENCH_RUN_WORKSPACE_DIR
       value: "/workspace"
     - name: LLMDBENCH_MAGIC_ENVAR
