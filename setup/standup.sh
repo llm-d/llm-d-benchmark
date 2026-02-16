@@ -74,6 +74,7 @@ while [[ $# -gt 0 ]]; do
         ;;
         -p=*|--namespace=*)
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 1)
+        export LLMDBENCH_WVA_NAMESPACE=${LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE}
         export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 2)
         if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
           export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
@@ -81,6 +82,7 @@ while [[ $# -gt 0 ]]; do
         ;;
         -p|--namespace)
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE="$(echo $2 | cut -d ',' -f 1)"
+        export LLMDBENCH_WVA_NAMESPACE=${LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE}
         export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE="$(echo $2 | cut -d ',' -f 2)"
         if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
           export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
