@@ -2619,21 +2619,21 @@ prometheus:
 
 rules:
   external:
-  - seriesQuery: 'inferno_desired_replicas{{variant_name!="",exported_namespace!=""}}'
+  - seriesQuery: 'wva_desired_replicas{{variant_name!="",exported_namespace!=""}}'
     resources:
       overrides:
         exported_namespace: {{resource: "namespace"}}
         variant_name: {{resource: "deployment"}}
     name:
-      matches: "^inferno_desired_replicas"
-      as: "inferno_desired_replicas"
-    metricsQuery: 'inferno_desired_replicas{{<<.LabelMatchers>>}}'
+      matches: "^wva_desired_replicas"
+      as: "wva_desired_replicas"
+    metricsQuery: 'wva_desired_replicas{{<<.LabelMatchers>>}}'
 
 replicas: 2
 logLevel: 4
 
 tls:
-  enable: false
+  enable: false # Inbound TLS (Client → Adapter)
 
 extraVolumes:
   - name: prometheus-ca
@@ -2649,19 +2649,24 @@ extraArguments:
   - --prometheus-ca-file=/etc/prometheus-ca/ca.crt
   - --prometheus-token-file=/var/run/secrets/kubernetes.io/serviceaccount/token
 
-podSecurityContext:
-  fsGroup: null
 
+# k8s 1.21 needs fsGroup to be set for non root deployments
+# ref: https://github.com/kubernetes/kubernetes/issues/70679
+podSecurityContext:
+  fsGroup: null  # this may need to change, depending on the allowed IDs for the OCP project
+
+# SecurityContext of the container
+# ref. https://kubernetes.io/docs/tasks/configure-pod-container/security-context
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop: ["ALL"]
   readOnlyRootFilesystem: true
   runAsNonRoot: true
-  runAsUser: null
+  runAsUser: null   # this may need to change, depending on the allowed IDs for the OCP project
   seccompProfile:
     type: RuntimeDefault
-""".lstrip()
+    """.lstrip()
 
     with open(prometheus_values_path, "w") as f:
         f.write(prometheus_values_content)
