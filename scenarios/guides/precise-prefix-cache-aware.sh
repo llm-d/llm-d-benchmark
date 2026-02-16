@@ -32,38 +32,42 @@ export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
 #export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=istio
 
 # Routing configuration (via gaie)
-export LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG=v0.4.0
 #export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="default-plugins.yaml" (default is "plugins-v2.yaml")
 export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="precise-prefix-cache-config.yaml"
 export LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS
-precise-prefix-cache-config.yaml: |
-  apiVersion: inference.networking.x-k8s.io/v1alpha1
-  kind: EndpointPickerConfig
-  plugins:
-    - type: single-profile-handler
-    - type: precise-prefix-cache-scorer
-      parameters:
-        indexerConfig:
+  precise-prefix-cache-config.yaml: |
+    apiVersion: inference.networking.x-k8s.io/v1alpha1
+    kind: EndpointPickerConfig
+    plugins:
+      - type: single-profile-handler
+      - type: precise-prefix-cache-scorer
+        parameters:
           tokenProcessorConfig:
             blockSize: 64
-            hashSeed: "42"
-          tokenizersPoolConfig:
-            hf:
-              tokenizersCacheDir: "/tmp/tokenizers"
-    - type: kv-cache-utilization-scorer
-    - type: queue-scorer
-    - type: max-score-picker
-  schedulingProfiles:
-    - name: default
-      plugins:
-        - pluginRef: precise-prefix-cache-scorer
-          weight: 3.0
-        - pluginRef: kv-cache-utilization-scorer
-          weight: 2.0
-        - pluginRef: queue-scorer
-          weight: 2.0
-        - pluginRef: max-score-picker
+          indexerConfig:
+            tokenizersPoolConfig:
+              modelName: "Qwen/Qwen3-32B"
+              hf:
+                tokenizersCacheDir: "/tmp/tokenizers"
+          kvEventsConfig:
+            topicFilter: "kv@"
+            concurrency: 4
+            discoverPods: false
+            zmqEndpoint: "tcp://*:5557"
+      - type: kv-cache-utilization-scorer
+      - type: queue-scorer
+      - type: max-score-picker
+    schedulingProfiles:
+      - name: default
+        plugins:
+          - pluginRef: precise-prefix-cache-scorer
+            weight: 3.0
+          - pluginRef: kv-cache-utilization-scorer
+            weight: 2.0
+          - pluginRef: queue-scorer
+            weight: 2.0
+          - pluginRef: max-score-picker
 EOF
 export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG
@@ -120,26 +124,29 @@ export LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM=1
 
 export LLMDBENCH_VLLM_COMMON_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
 
-# VLLM_NIXL_SIDE_CHANNEL_HOST is automatically exported
+# The following variables are automatically populated on the pod: VLLM_BLOCK_SIZE,
+#                                                                 VLLM_MAX_MODEL_LEN,
+#                                                                 VLLM_LOAD_FORMAT,
+#                                                                 VLLM_ACCELERATOR_MEM_UTIL,
+#                                                                 VLLM_MAX_NUM_SEQ,
+#                                                                 VLLM_TENSOR_PARALLELISM,
+#                                                                 VLLM_MAX_NUM_BATCHED_TOKENS,
+#                                                                 VLLM_WORKER_MULTIPROC_METHOD,
+#                                                                 VLLM_SERVER_DEV_MODE,
+#                                                                 VLLM_LOGGING_LEVEL,
+#                                                                 VLLM_CACHE_ROOT,
+#                                                                 VLLM_INFERENCE_PORT,
+#                                                                 VLLM_METRICS_PORT,
+#                                                                 VLLM_ALLOW_LONG_MAX_MODEL_LEN,
+#                                                                 VLLM_NIXL_SIDE_CHANNEL_PORT,
+#                                                                 VLLM_NIXL_SIDE_CHANNEL_HOST,
+#                                                                 UCX_TLS,
+#                                                                 UCX_SOCKADDR_TLS_PRIORITY,
+#                                                                 POD_IP
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 - name: PYTHONHASHSEED
   value: "42"
-- name: POD_IP
-  valueFrom:
-    fieldRef:
-      apiVersion: v1
-      fieldPath: status.podIP
-- name: UCX_TLS
-  value: "sm,cuda_ipc,cuda_copy,tcp"
-- name: UCX_SOCKADDR_TLS_PRIORITY
-  value: "tcp"
-- name: VLLM_NIXL_SIDE_CHANNEL_PORT
-  value: "5557"
-- name: VLLM_LOGGING_LEVEL
-  value: INFO
-- name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
-  value: "1"
 EOF
 
 export LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG=$(mktemp)
@@ -150,6 +157,16 @@ ports:
   - containerPort: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_METRICS_PORT
     name: metrics
     protocol: TCP
+securityContext:
+  capabilities:
+    add:
+    - "IPC_LOCK"
+    - "SYS_RAWIO"
+    - "NET_ADMIN"
+    - "NET_RAW"
+  runAsGroup: 0
+  runAsUser: 0
+imagePullPolicy: Always
 EOF
 
 export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS=$(mktemp)
@@ -196,11 +213,11 @@ REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS; \
 vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --host 0.0.0.0 \
 --served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
---port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_METRICS_PORT \
---block-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE \
---max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
---tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM \
---gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_MEM_UTIL \
+--port \$VLLM_METRICS_PORT \
+--block-size \$VLLM_BLOCK_SIZE \
+--max-model-len \$VLLM_MAX_MODEL_LEN \
+--tensor-parallel-size \$VLLM_TENSOR_PARALLELISM \
+--gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL \
 --prefix-caching-hash-algo sha256_cbor \
 --kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}" \
 --kv-events-config "{\"enable_kv_cache_events\":true,\"publisher\":\"zmq\",\"endpoint\":\"tcp://REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_SERVICE_NAME.REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NAMESPACE.svc.cluster.local:5557\",\"topic\":\"kv@\${POD_IP}@QREPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL\"}" \

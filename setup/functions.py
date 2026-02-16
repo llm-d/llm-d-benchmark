@@ -387,6 +387,10 @@ def environment_variable_to_dict(ev: dict = {}):
                                           "LLMDBENCH_VLLM_COMMON_VLLM_CACHE_ROOT", \
                                           "LLMDBENCH_VLLM_COMMON_INFERENCE_PORT", \
                                           "LLMDBENCH_VLLM_COMMON_METRICS_PORT", \
+                                          "LLMDBENCH_VLLM_COMMON_VLLM_ALLOW_LONG_MAX_MODEL_LEN", \
+                                          "LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT", \
+                                          "LLMDBENCH_VLLM_COMMON_UCX_TLS", \
+                                          "LLMDBENCH_VLLM_COMMON_UCX_SOCKADDR_TLS_PRIORITY"
                                         ]
 
     if ev["cluster_url"] == "auto" :
@@ -1727,9 +1731,11 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
 
     for mandatory_var in ev["mandatory_vllm_env_vars"] :
         if mandatory_var not in env_vars :
+            env_vars.append(mandatory_var)
             clean_name = mandatory_var
             clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
             clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_", "VLLM_")
+            clean_name = clean_name.replace("VLLM_UCX_", "UCX_")
 
             env_value = ev[mandatory_var.replace('LLMDBENCH_','',1).lower()]
 
@@ -1741,6 +1747,18 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
 
             env_lines.append(f"{name_indent}- name: {clean_name}")
             env_lines.append(f'{value_indent}value: "{processed_value}"')
+
+    if "VLLM_NIXL_SIDE_CHANNEL_HOST" not in env_vars :
+        env_lines.append(f"{name_indent}- name: VLLM_NIXL_SIDE_CHANNEL_HOST")
+        env_lines.append(f"{value_indent}valueFrom:")
+        env_lines.append(f"{value_indent}  fieldRef:")
+        env_lines.append(f"{value_indent}    fieldPath: status.podIP")
+
+        env_lines.append(f"{name_indent}- name: POD_IP")
+        env_lines.append(f"{value_indent}valueFrom:")
+        env_lines.append(f"{value_indent}  fieldRef:")
+        env_lines.append(f"{value_indent}    apiVersion: v1")
+        env_lines.append(f"{value_indent}    fieldPath: status.podIP")
 
     ev[env_vars_key] = "\n".join(env_lines)
 

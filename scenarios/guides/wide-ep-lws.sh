@@ -11,6 +11,8 @@
 # Model parameters
 #export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-235B-A22B"
+export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-30B-A3B"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic"
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-vision-3.3-2b
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-speech-3.3-8b
@@ -20,7 +22,7 @@
 #export LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-70B-Instruct"
-export LLMDBENCH_DEPLOY_MODEL_LIST="deepseek-ai/DeepSeek-R1-0528"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="deepseek-ai/DeepSeek-R1-0528"
 
 # PVC parameters
 #             Storage class (leave uncommented to automatically detect the "default" storage class)
@@ -59,6 +61,7 @@ custom-plugins.yaml: |
     - pluginRef: decode-filter
     - pluginRef: random-picker
 EOF
+
 export LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG
 destinationRule:
@@ -91,10 +94,10 @@ EOF
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu.product:NVIDIA-A100-SXM4-80GB        # OpenShift
 #export LLMDBENCH_VLLM_COMMON_AFFINITY=nvidia.com/gpu                                      # ANY GPU (useful for Minikube)
 
-export LLMDBENCH_VLLM_COMMON_POD_SCHEDULER=custom-binpack-scheduler
+#export LLMDBENCH_VLLM_COMMON_POD_SCHEDULER=custom-binpack-scheduler
 
 # Common parameters across standalone and llm-d (prefill and decode) pods
-export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
+export LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=4000
 export LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
 export LLMDBENCH_VLLM_COMMON_CPU_NR=32
 export LLMDBENCH_VLLM_COMMON_CPU_MEM=512Gi
@@ -107,12 +110,30 @@ export LLMDBENCH_VLLM_COMMON_EPHEMERAL_STORAGE=1Ti
 export LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL=0.75
 
 # Uncomment ( ###### ) the following line to enable multi-nic
-###### export LLMDBENCH_VLLM_COMMON_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:multi-nic-compute
+export LLMDBENCH_VLLM_COMMON_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:multi-nic-inference
 export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=auto
 
 export LLMDBENCH_VLLM_COMMON_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
 
-# VLLM_NIXL_SIDE_CHANNEL_HOST is automatically exported
+# The following variables are automatically populated on the pod: VLLM_BLOCK_SIZE,
+#                                                                 VLLM_MAX_MODEL_LEN,
+#                                                                 VLLM_LOAD_FORMAT,
+#                                                                 VLLM_ACCELERATOR_MEM_UTIL,
+#                                                                 VLLM_MAX_NUM_SEQ,
+#                                                                 VLLM_TENSOR_PARALLELISM,
+#                                                                 VLLM_MAX_NUM_BATCHED_TOKENS,
+#                                                                 VLLM_WORKER_MULTIPROC_METHOD,
+#                                                                 VLLM_SERVER_DEV_MODE,
+#                                                                 VLLM_LOGGING_LEVEL,
+#                                                                 VLLM_CACHE_ROOT,
+#                                                                 VLLM_INFERENCE_PORT,
+#                                                                 VLLM_METRICS_PORT,
+#                                                                 VLLM_ALLOW_LONG_MAX_MODEL_LEN,
+#                                                                 VLLM_NIXL_SIDE_CHANNEL_PORT,
+#                                                                 VLLM_NIXL_SIDE_CHANNEL_HOST,
+#                                                                 UCX_TLS,
+#                                                                 UCX_SOCKADDR_TLS_PRIORITY,
+#                                                                 POD_IP
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 - name: TRITON_LIBCUDA_PATH
@@ -127,34 +148,18 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
   value: deepep_high_throughput
 - name: NVIDIA_GDRCOPY
   value: enabled
-- name: NVSHMEM_REMOTE_TRANSPORT
-  value: ibgda
-- name: NVSHMEM_IB_ENABLE_IBGDA
-  value: "true"
-- name: NVSHMEM_BOOTSTRAP_UID_SOCK_IFNAME
-  value: eth0
-- name: GLOO_SOCKET_IFNAME
-  value: eth0
-- name: NCCL_SOCKET_IFNAME
-  value: eth0
-- name: VLLM_LOGGING_LEVEL
-  value: INFO
-- name: CUDA_CACHE_PATH
-  value: /var/cache/vllm/cuda
-- name: CCACHE_DIR
-  value: /var/cache/vllm/ccache
-- name: VLLM_CACHE_ROOT
-  value: /var/cache/vllm/vllm
-- name: FLASHINFER_WORKSPACE_BASE
-  value: /var/cache/vllm/flashinfer
-- name: HF_HUB_CACHE
-  value: /var/cache/huggingface
+- name: NCCL_EXCLUDE_IB_HCA
+  value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
+- name: NVSHMEM_DEBUG
+  value: "INFO"
 - name: HF_HUB_DISABLE_XET
   value: "1"
-- name: NCCL_IB_HCA
-  value: ibp
-- name: NVSHMEM_HCA_PREFIX
-  value: ibp
+- name: NCCL_DEBUG
+  value: "INFO"
+- name: NCCL_DEBUG_SUBSYS
+  value: "INIT,NET"
+- name: NCCL_DEBUG_FILE
+  value: "/tmp/nccl.%h.%p.log"
 EOF
 
 export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS=$(mktemp)
@@ -163,10 +168,6 @@ cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS}
   mountPath: /dev/shm
 - name: preprocesses
   mountPath: /setup/preprocess
-#- name: hf-cache
-#  mountPath: /var/cache/huggingface
-#- name: jit-cache
-#  mountPath: /var/cache/vllm
 EOF
 
 export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES=$(mktemp)
@@ -179,27 +180,19 @@ cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES}
   configMap:
     defaultMode: 0755
     name: llm-d-benchmark-preprocesses
-#- hostPath:
-#    path: /mnt/local/hf-cache
-#    type: DirectoryOrCreate
-#  name: hf-cache
-#- hostPath:
-#    path: /mnt/local/jit-cache
-#    type: DirectoryOrCreate
-#  name: jit-cache
 EOF
 
-#export LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG=$(mktemp)
-#cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG}
-#securityContext:
-#  capabilities:
-#    add:
-#    - IPC_LOCK
-#    - SYS_RAWIO
-#  runAsGroup: 0
-#  runAsUser: 0
-#imagePullPolicy: Always
-#EOF
+export LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG}
+securityContext:
+  capabilities:
+    add:
+    - IPC_LOCK
+    - SYS_RAWIO
+  runAsGroup: 0
+  runAsUser: 0
+imagePullPolicy: Always
+EOF
 
 #             Uncomment to use hostNetwork (onlye ONE PODE PER NODE)
 #export LLMDBENCH_VLLM_MODELSERVICE_EXTRA_POD_CONFIG=$(mktemp)
@@ -213,14 +206,14 @@ EOF
 export LLMDBENCH_VLLM_MODELSERVICE_MULTINODE=true
 
 # Common parameters across standalone and llm-d (prefill and decode) pods
-export LLMDBENCH_VLLM_MODELSERVICE_MOUNT_MODEL_VOLUME_OVERRIDE=true
+export LLMDBENCH_VLLM_MODELSERVICE_MOUNT_MODEL_VOLUME_OVERRIDE=false
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM=$LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM=$LLMDBENCH_VLLM_COMMON_DATA_LOCAL_PARALLELISM
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=$LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NUM_WORKERS_PARALLELISM=$LLMDBENCH_VLLM_COMMON_NUM_WORKERS_PARALLELISM
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR
-export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=LLMDBENCH_VLLM_COMMON_CPU_MEM
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=$LLMDBENCH_VLLM_COMMON_CPU_MEM
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_SHM_MEM=$LLMDBENCH_VLLM_COMMON_SHM_MEM
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ENVVARS_TO_YAML=${LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML}
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS=${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS}
@@ -236,10 +229,9 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS=$LLMDBENCH_VLLM_COMMON_PRE
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS
 REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS; \
-exec vllm serve \
-  REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+exec vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
   --served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
-  --port REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_INFERENCE_PORT \
+  --port \$VLLM_INFERENCE_PORT \
   --trust-remote-code \
   --disable-uvicorn-access-log \
   --data-parallel-hybrid-lb \
@@ -261,7 +253,7 @@ exec vllm serve \
                   "step_interval":"3000",
                   "num_redundant_experts":"32",
                   "log_balancedness":"False"}' \
-  --gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_MEM_UTIL
+  --gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL
 EOF
 
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1
@@ -286,10 +278,9 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS=$LLMDBENCH_VLLM_COMMON_PREP
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
 REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS; \
-exec vllm serve \
-  REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
+exec vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
   --served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
-  --port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_METRICS_PORT \
+  --port \$VLLM_METRICS_PORT \
   --trust-remote-code \
   --disable-uvicorn-access-log \
   --data-parallel-hybrid-lb \

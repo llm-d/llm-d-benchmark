@@ -10,7 +10,7 @@
 
 # Model parameters
 #export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
-export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
 #export LLMDBENCH_DEPLOY_MODEL_LIST="RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic"
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-vision-3.3-2b
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-speech-3.3-8b
@@ -72,27 +72,60 @@ export LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM=1
 
 export LLMDBENCH_VLLM_COMMON_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py; source \$HOME/llmdbench_env.sh"
 
-# VLLM_NIXL_SIDE_CHANNEL_HOST is automatically exported
+# The following variables are automatically populated on the pod: VLLM_BLOCK_SIZE,
+#                                                                 VLLM_MAX_MODEL_LEN,
+#                                                                 VLLM_LOAD_FORMAT,
+#                                                                 VLLM_ACCELERATOR_MEM_UTIL,
+#                                                                 VLLM_MAX_NUM_SEQ,
+#                                                                 VLLM_TENSOR_PARALLELISM,
+#                                                                 VLLM_MAX_NUM_BATCHED_TOKENS,
+#                                                                 VLLM_WORKER_MULTIPROC_METHOD,
+#                                                                 VLLM_SERVER_DEV_MODE,
+#                                                                 VLLM_LOGGING_LEVEL,
+#                                                                 VLLM_CACHE_ROOT,
+#                                                                 VLLM_INFERENCE_PORT,
+#                                                                 VLLM_METRICS_PORT,
+#                                                                 VLLM_ALLOW_LONG_MAX_MODEL_LEN,
+#                                                                 VLLM_NIXL_SIDE_CHANNEL_PORT,
+#                                                                 VLLM_NIXL_SIDE_CHANNEL_HOST,
+#                                                                 UCX_TLS,
+#                                                                 UCX_SOCKADDR_TLS_PRIORITY,
+#                                                                 POD_IP
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
-- name: UCX_TLS
-  value: "sm,cuda_ipc,cuda_copy,tcp"
-- name: UCX_SOCKADDR_TLS_PRIORITY
-  value: "tcp"
-- name: VLLM_NIXL_SIDE_CHANNEL_PORT
-  value: "REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT"
-- name: VLLM_LOGGING_LEVEL
-  value: INFO
-- name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
-  value: "1"
+- name: NCCL_EXCLUDE_IB_HCA
+  value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
+- name: NVSHMEM_DEBUG
+  value: "INFO"
+EOF
+
+export LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG=$(mktemp)
+cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG}
+securityContext:
+  capabilities:
+    add:
+    - "IPC_LOCK"
+    - "SYS_RAWIO"
+    - "NET_ADMIN"
+    - "NET_RAW"
+  runAsGroup: 0
+  runAsUser: 0
+imagePullPolicy: Always
 EOF
 
 export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS=$(mktemp)
 cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS}
+- mountPath: /model-cache
+  name: model-storage
+  readOnly: true
 - name: dshm
   mountPath: /dev/shm
 - name: preprocesses
   mountPath: /setup/preprocess
+- mountPath: /model-cache
+  name: model-storage
+  readOnly: true
+  recursiveReadOnly: Disabled
 EOF
 
 export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES=$(mktemp)
@@ -116,6 +149,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_SHM_MEM=$LLMDBENCH_VLLM_COMMON_SHM_ME
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ENVVARS_TO_YAML=${LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML}
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS=${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS}
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES=${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES}
+export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG=${LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG}
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM)
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS=$LLMDBENCH_VLLM_COMMON_PODANNOTATIONS
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=$LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE
@@ -127,11 +161,11 @@ REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS; \
 vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --host 0.0.0.0 \
 --served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
---port REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_INFERENCE_PORT \
---block-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE \
---max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
---tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM \
---gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_MEM_UTIL \
+--port \$VLLM_INFERENCE_PORT \
+--block-size \$VLLM_BLOCK_SIZE \
+--max-model-len \$VLLM_MAX_MODEL_LEN \
+--tensor-parallel-size \$VLLM_TENSOR_PARALLELISM \
+--gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL \
 --kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}" \
 --disable-log-requests \
 --disable-uvicorn-access-log \
@@ -147,6 +181,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_DECODE_SHM_MEM=$LLMDBENCH_VLLM_COMMON_SHM_MEM
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ENVVARS_TO_YAML=${LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML}
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS=${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS}
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES=${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES}
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG=${LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG}
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_NR=auto # (automatically calculated to be LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM*LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM)
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS=$LLMDBENCH_VLLM_COMMON_PODANNOTATIONS
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=$LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE
@@ -158,11 +193,11 @@ REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS; \
 vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --host 0.0.0.0 \
 --served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
---port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_METRICS_PORT \
---block-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE \
---max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
---tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM \
---gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_MEM_UTIL \
+--port \$VLLM_METRICS_PORT \
+--block-size \$VLLM_BLOCK_SIZE \
+--max-model-len \$VLLM_MAX_MODEL_LEN \
+--tensor-parallel-size \$VLLM_TENSOR_PARALLELISM \
+--gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL \
 --kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}" \
 --disable-log-requests \
 --disable-uvicorn-access-log \

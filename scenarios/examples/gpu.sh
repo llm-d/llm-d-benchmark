@@ -116,6 +116,7 @@ vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --port \$VLLM_INFERENCE_PORT \
 --block-size \$VLLM_BLOCK_SIZE \
 --max-model-len \$VLLM_MAX_MODEL_LEN \
+--max-num-seq \$VLLM_MAX_NUM_SEQ \
 --load-format \$VLLM_LOAD_FORMAT \
 --gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL \
 --max-num-seqs \$VLLM_MAX_NUM_SEQ \
