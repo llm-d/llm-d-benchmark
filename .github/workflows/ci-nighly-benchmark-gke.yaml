@@ -20,8 +20,26 @@ on:
     - cron: '0 0 * * *'
 
 jobs:
+  build-image:
+    name: Build Nightly Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and push nightly image
+        uses: ./.github/actions/docker-build-and-push
+        with:
+          tag: nightly
+          image-name: llm-d-benchmark
+          registry: ghcr.io/llm-d
+          github-token: ${{ secrets.GHCR_TOKEN }}
+          platform: linux/amd64
+
   run-benchmark-gke:
     name: CI - Nightly Benchmark on GKE
+    needs: build-image
     runs-on: [k8s-util]
     timeout-minutes: 240
 
@@ -31,6 +49,7 @@ jobs:
       GKE_CLUSTER_ZONE: us-east5
       GATEWAY: gke-l7-regional-external-managed
       GATEWAY_TYPE: gke
+      LLMDBENCH_IMAGE_TAG: nightly
 
     steps:
       - name: Checkout code
