@@ -150,7 +150,7 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --max-num-seq REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_NUM_SEQ \
 --tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM \
 --gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_MEM_UTIL \
---kv-transfer-config "{\"kv_connector\":\"OffloadingConnector\",\"kv_role\":\"kv_both\",\"kv_connector_extra_config\":{\"num_cpu_blocks\":REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NUM_CPU_BLOCKS}}" \
+--kv-transfer-config "{\"kv_connector\":\"OffloadingConnector\",\"kv_role\":\"kv_both\",\"kv_connector_extra_config\":{\"num_cpu_blocks\":REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NUM_CPU_BLOCKS, \"cpu_bytes_to_use\":REPLACE_ENV_LLMDBENCH_VLLM_COMMON_CPU_BYTES_TO_USE}}" \
 --enforce-eager \
 --disable-log-requests \
 --disable-uvicorn-access-log \

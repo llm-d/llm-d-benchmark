@@ -199,9 +199,9 @@ def check_deployment(api: pykube.HTTPClient, client: any, ev: dict):
     if ev['control_deploy_is_openshift'] == "1" and route_url:
         announce(f"🚀 Testing external route \"{route_url}\"...")
         if is_standalone_deployment(ev):
-            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, route_url, '443')
+            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, route_url, gateway_port)
         else:
-            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, route_url, '443')
+            received_model_name, curl_command_used = get_model_name_from_pod(api, client, ev, route_url, gateway_port)
         if received_model_name == current_model:
             announce(f"✅ External route responds successfully ({received_model_name})")
         else:

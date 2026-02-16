@@ -99,12 +99,12 @@ class InferenceEngineParallelism(BaseModel):
 
     model_config = MODEL_CONFIG.copy()
 
-    tp: int = Field(1, ge=1, description="Tensor parallelism.")
-    dp: int = Field(1, ge=1, description="Data parallelism.")
+    tp: int = Field(1, ge=0, description="Tensor parallelism.")
+    dp: int = Field(1, ge=0, description="Data parallelism.")
     dp_local: int = Field(
-        1, ge=1, description="Local data parallelism for this engine instance."
+        1, ge=0, description="Local data parallelism for this engine instance."
     )
-    workers: int = Field(1, ge=1, description="Number of workers.")
+    workers: int = Field(1, ge=0, description="Number of workers.")
     ep: int = Field(1, ge=1, description="Expert parallelism.")
     pp: int = Field(1, ge=1, description="Pipeline parallelism.")
 
@@ -116,7 +116,7 @@ class InferenceEngineAccelerator(BaseModel):
 
     model: str
     """Hardware model name."""
-    count: int = Field(..., ge=1, description="Total utilized accelerator count.")
+    count: int = Field(..., ge=0, description="Total utilized accelerator count.")
     parallelism: InferenceEngineParallelism
     """Parallelism utilized."""
 

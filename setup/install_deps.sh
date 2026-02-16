@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 
 if [[ $0 != "-bash" ]]; then
-    pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
+    export LLMDBENCH_INSTALLDEPS_DIR=$(realpath "$(dirname "$(realpath "$0")")")
+else
+    export LLMDBENCH_INSTALLDEPS_DIR=$(realpath "$(pwd)")
 fi
 
-export LLMDBENCH_INSTALLDEPS_DIR=$(realpath $(pwd)/)
-
-if [ $0 != "-bash" ] ; then
-    popd  > /dev/null 2>&1
-fi
 
 is_mac=$(uname -s | grep -i darwin || true)
 if [[ ! -z $is_mac ]]; then
@@ -36,7 +33,7 @@ for arg in "$@"; do
 done
 
 if [[ "$reset_cache" == "true" ]]; then
-    rm -f $dependencies_checked_file
+    rm -f "$dependencies_checked_file"
 fi
 
 # common deps
@@ -176,7 +173,7 @@ if [[ $? -eq 0 ]]; then
     tool=$(echo $tool | sed 's/podman//g' )
 fi
 for tool in $tools; do
-    grep -q "$tool already installed." $dependencies_checked_file &> /dev/null
+    grep -q "$tool already installed." "$dependencies_checked_file" &> /dev/null
     if [[ $? -ne 0 ]]; then
         if command -v $tool &> /dev/null; then
             echo "$tool already installed." >> $dependencies_checked_file
@@ -205,7 +202,7 @@ done
 # Check minimum Python version (3.11+) based on new requirements
 #
 
-grep -q "is available on system." $dependencies_checked_file &> /dev/null
+grep -q "is available on system." "$dependencies_checked_file" &> /dev/null
 if [[ $? -ne 0 ]]; then
     python_present=""
     verlist=""
@@ -226,11 +223,11 @@ if [[ $? -ne 0 ]]; then
         echo "ERROR: Python 3.11 and up is required, but only versions \"$(echo ${verlist} | sed 's^,$^^g')\" found."
         exit 1
     else
-        echo "${python_present} is available on system." >> $dependencies_checked_file
+        echo "${python_present} is available on system." >> "$dependencies_checked_file"
     fi
 fi
 
-grep -q "pip3 installed successfully." $dependencies_checked_file &> /dev/null
+grep -q "pip3 installed successfully." "$dependencies_checked_file" &> /dev/null
 if [[ $? -ne 0 ]]; then
     if ! command -v pip3 &> /dev/null; then
         echo "pip3 not found. Attempting to install it..."
@@ -249,7 +246,7 @@ if [[ $? -ne 0 ]]; then
             echo "ERROR: Failed to install pip3. Please install it manually and re-run the script."
             exit 1
         fi
-        echo "pip3 installed successfully." >> $dependencies_checked_file
+        echo "pip3 installed successfully." >> "$dependencies_checked_file"
     fi
 fi
 
@@ -257,22 +254,22 @@ python_deps="kubernetes pykube-ng kubernetes-asyncio GitPython requests PyYAML J
 
 for dep in $python_deps; do
     pkg_name=$(echo "${dep}" | cut -d= -f1)
-    grep -q "$(echo $dep) is already installed." $dependencies_checked_file
+    grep -q "$(echo "$dep") is already installed." "$dependencies_checked_file"
     if [[ $? -ne 0 ]]; then
-        importdep="import $(echo $dep | cut -d '=' -f 1 | tr '[:upper:]' '[:lower:]' | sed -e 's/-ng//g' -e 's/gitpython/git/g' -e 's/pyyaml/yaml/g' -e 's/-/_/g')"
+        importdep="import $(echo "$dep" | cut -d '=' -f 1 | tr '[:upper:]' '[:lower:]' | sed -e 's/-ng//g' -e 's/gitpython/git/g' -e 's/pyyaml/yaml/g' -e 's/-/_/g')"
         if $PIP_CMD show "${pkg_name}" &>/dev/null; then
             # check if a version was specified
             if [[ "${dep}" == *"=="* ]]; then
                 required_version=$(echo "${dep}" | cut -d= -f3)
                 installed_version=$($PIP_CMD show "${pkg_name}" | awk '/Version:/{print $2}')
                 if [[ "${installed_version}" == "${required_version}" ]]; then
-                    echo "${pkg_name}==${installed_version} is already installed." >> $dependencies_checked_file
+                    echo "${pkg_name}==${installed_version} is already installed." >> "$dependencies_checked_file"
                     continue
                 else
                     echo "${pkg_name} installed but version mismatch (${installed_version} != ${required_version}). Upgrading..."
                 fi
             else
-                echo "${pkg_name} is already installed." >> $dependencies_checked_file
+                echo "${pkg_name} is already installed." >> "$dependencies_checked_file"
                 continue
             fi
         fi
@@ -288,16 +285,20 @@ for dep in $python_deps; do
     fi
 done
 
-grep -q "$(echo config_explorer) is already installed." $dependencies_checked_file &> /dev/null
+grep -q "$(echo config_explorer) is already installed." "$dependencies_checked_file" &> /dev/null
 if [[ $? -ne 0 ]]; then
     if ! $PIP_CMD show "config_explorer" &>/dev/null; then
-        pushd $LLMDBENCH_INSTALLDEPS_DIR/../config_explorer/ &> /dev/null
-        $PIP_CMD install .
+        config_explorer_dir="$(dirname "$LLMDBENCH_INSTALLDEPS_DIR")/config_explorer"
+        if [[ ! -d "$config_explorer_dir" ]]; then
+            echo "ERROR: config_explorer directory not found at $config_explorer_dir"
+            exit 1
+        fi
+        $PIP_CMD install "$config_explorer_dir"
         if [[ $? -ne 0 ]]; then
             echo "ERROR: Failed to install Python package config_explorer!"
             exit 1
         fi
-        popd &> /dev/null
+        echo "config_explorer is already installed." >> "$dependencies_checked_file"
     fi
 fi
 

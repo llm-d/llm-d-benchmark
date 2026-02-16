@@ -1,0 +1,45 @@
+# Dependabot configuration for llm-d-benchmark
+# Based on canonical config from llm-d/llm-d-infra
+
+version: 2
+updates:
+
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "release-note-none"
+    commit-message:
+      prefix: "deps(actions)"
+
+  # Docker base image updates
+  - package-ecosystem: "docker"
+    directory: "/build"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps(docker)"
+
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/config_explorer"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps(pip)"
+
+  - package-ecosystem: "pip"
+    directory: "/build"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps(pip)"

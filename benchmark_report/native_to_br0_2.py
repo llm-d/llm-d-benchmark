@@ -17,7 +17,6 @@ from datetime import datetime, timezone
 
 import numpy as np
 import yaml
-from kubernetes import client, config as k8s_config
 
 from .base import Units, WorkloadGenerator
 from .core import (
@@ -110,6 +109,8 @@ def get_configmap(
         return {}
 
     try:
+        from kubernetes import client, config as k8s_config
+
         # Write context to a temporary file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             yaml.dump(context_dict, f)
@@ -236,7 +237,7 @@ def _populate_load() -> dict:
             "load": {
                 "standardized": {
                     "tool_version": os.environ.get("LLMDBENCH_HARNESS_VERSION", ""),
-                    "parallelism": os.environ.get("LLMDBENCH_HARNESS_LOAD_PARALLELISM"),
+                    "parallelism": os.environ.get("LLMDBENCH_HARNESS_LOAD_PARALLELISM", 1),
                 },
                 "native": {
                     "args": args,
@@ -658,7 +659,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
     source = LoadSource.RANDOM if ds_name == "random" else LoadSource.SAMPLED
 
     # Calculate ISL, as fallback option
-    isl_value = results.get("total_input_tokens", 0) / results.get("completed", -1)
+    isl_value = results.get("total_input_tokens", 0) / (results.get("completed", 0) or 1)
     # Get requested ISL, if it is in arguments from --sonnet-input-len or
     # --random-input-len
     for arg, value in args.items():
@@ -726,7 +727,7 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                             "output_length": {
                                 "units": Units.COUNT,
                                 "mean": results.get("total_output_tokens", 0)
-                                / results.get("completed", -1),
+                                / (results.get("completed", 0) or 1),
                             },
                         },
                         "latency": {
@@ -843,7 +844,7 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
     source = LoadSource.RANDOM if ds_name == "random" else LoadSource.SAMPLED
 
     # Calculate ISL, as fallback option
-    isl_value = results.get("total_input_tokens", 0) / results.get("completed", -1)
+    isl_value = results.get("total_input_tokens", 0) / (results.get("completed", 0) or 1)
     # Get requested ISL, if it is in arguments from --sonnet-input-len or
     # --random-input-len
     for arg, value in args.items():
