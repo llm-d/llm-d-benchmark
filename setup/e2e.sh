@@ -36,7 +36,7 @@ function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e 's/ /,/g') \n \
             -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
             -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
-            -p/--namespace [comma separated pair of values indicating where a stack will be stood up and where the benchmark will be run (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE)] \n \
+            -p/--namespace [comma separated pair of values indicating where a stack will be stood up and where the benchmark will (later) be run (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE,$LLMDBENCH_WVA_NAMESPACE)] \n \
             -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\") ] \n \
             -a/--affinity [kubernetes node affinity] (default=$LLMDBENCH_VLLM_COMMON_AFFINITY) \n \
             -l/--harness [harness used to generate load (default=$LLMDBENCH_HARNESS_NAME, possible values $(get_harness_list)] \n \
@@ -101,18 +101,29 @@ while [[ $# -gt 0 ]]; do
         ;;
         -p=*|--namespace=*)
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 1)
-        export LLMDBENCH_WVA_NAMESPACE=${LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE}
         export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 3)
+        
         if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
           export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
+        
+        fi
+
+        if [[ -z ${LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE} ]]; then
+          export LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE=${LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE}
         fi
         ;;
         -p|--namespace)
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE="$(echo $2 | cut -d ',' -f 1)"
-        export LLMDBENCH_WVA_NAMESPACE=${LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE}
         export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE="$(echo $2 | cut -d ',' -f 2)"
+        export LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE="$(echo $2 | cut -d ',' -f 3)"
+
         if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
           export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
+        fi
+
+        if [[ -z ${LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE} ]]; then
+          export LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE=${LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE}
         fi
         shift
         ;;
