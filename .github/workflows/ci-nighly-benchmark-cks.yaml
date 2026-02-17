@@ -1,0 +1,228 @@
+name: CI - Nightly Benchmark on CKS
+
+on:
+  workflow_dispatch:
+    inputs:
+      input_dir:
+        description: 'Input directory for benchmark results'
+        required: false
+        default: '/tmp/cicd/analysis'
+      output_dir:
+        description: 'Output directory name (S3 prefix and artifact name)'
+        required: false
+        default: ''
+
+  schedule:
+    - cron: '0 8 * * *'  # 08:00 UTC daily (staggered from OCP/GKE)
+
+jobs:
+  build-image:
+    name: Build Nightly Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and push nightly image
+        uses: ./.github/actions/docker-build-and-push
+        with:
+          tag: nightly
+          image-name: llm-d-benchmark
+          registry: ghcr.io/llm-d
+          github-token: ${{ secrets.GHCR_TOKEN }}
+          platform: linux/amd64
+
+  run-benchmark:
+    name: Benchmark Test (CKS)
+    needs: build-image
+    runs-on: [self-hosted, linux, waldorf]
+    timeout-minutes: 240
+
+    env:
+      LLMDBENCH_IMAGE_TAG: nightly
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Display OS used
+        run: |
+          cat /etc/*os-*
+        shell: bash
+
+      - name: Set input and output directory environment variables
+        run: |
+          DEFAULT_INPUT_DIR=/tmp/cicd/analysis
+          INPUT_DIR="${{ github.event.inputs.input_dir }}"
+          if [ -z "$INPUT_DIR" ]; then
+            INPUT_DIR="$DEFAULT_INPUT_DIR"
+          fi
+          echo "INPUT_DIR=$INPUT_DIR" >> $GITHUB_ENV
+
+          if [ -z "${{ github.event.inputs.output_dir }}" ]; then
+            timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+            echo "OUTPUT_DIR=benchmark-results-cks-${timestamp}" >> $GITHUB_ENV
+            echo "Using generated output dir: benchmark-results-cks-${timestamp}"
+          else
+            echo "OUTPUT_DIR=${{ github.event.inputs.output_dir }}" >> $GITHUB_ENV
+            echo "Using provided output dir: ${{ github.event.inputs.output_dir }}"
+          fi
+        shell: bash
+
+      - name: Set up kubeconfig from secret
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+        shell: bash
+
+      - name: Run install_deps.sh
+        run: |
+          sudo apt-get update
+          sudo apt install bc
+          ./setup/install_deps.sh -y
+        shell: bash
+
+      - name: Install config explorer dependencies
+        run: pip install ./config_explorer
+        shell: bash
+
+      - name: Install kubectl-view-allocations
+        run: |
+          cd /
+          curl https://raw.githubusercontent.com/davidB/kubectl-view-allocations/master/scripts/getLatest.sh | sudo bash
+          kubectl-view-allocations -h
+        shell: bash
+
+      - name: Cleanup target cloud (modelservice)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: ./setup/teardown.sh -c cks_fb -t modelservice -d
+        shell: bash
+
+      - name: Cleanup target cloud (standalone)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: |
+          ./setup/teardown.sh -c cks_fb -t standalone -d
+        shell: bash
+
+      - name: Standup target cloud (standalone)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: |
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 10.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
+          ./setup/standup.sh -c cks_fb -t standalone
+        shell: bash
+
+      - name: Run benchmark (standalone, inference-perf)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: |
+          ./setup/run.sh -c cks_fb -t standalone
+        shell: bash
+
+      - name: Run benchmark (standalone, guidellm)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: |
+          ./setup/run.sh -c cks_fb -t standalone -l guidellm -w sanity_concurrent
+        shell: bash
+
+      - name: Run benchmark (standalone, vllm-benchmark)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: |
+          ./setup/run.sh -c cks_fb -t standalone -l vllm-benchmark
+        shell: bash
+
+      - name: Cleanup target cloud (standalone)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: |
+          ./setup/teardown.sh -c cks_fb -t standalone -d
+        shell: bash
+
+      - name: E2E target cloud (modelservice, inference-perf)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: |
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
+          ./setup/e2e.sh -c cks_fb -t modelservice --deep
+        shell: bash
+
+      - name: E2E target cloud (modelservice, guidellm)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: |
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
+          ./setup/e2e.sh -c cks_fb -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
+        shell: bash
+
+      - name: E2E target cloud (modelservice, vllm-benchmark)
+        env:
+          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+        run: |
+          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
+          ./setup/e2e.sh -c cks_fb -t modelservice --deep -l vllm-benchmark
+        shell: bash
+
+      - name: Collect failure diagnostics
+        if: failure()
+        run: |
+          echo "=== Pod status ==="
+          kubectl get pods -n llmdbenchcicd -o wide || true
+          echo ""
+          echo "=== Describe failed pods ==="
+          for pod in $(kubectl get pods -n llmdbenchcicd --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n llmdbenchcicd "$pod" || true
+          done
+          echo ""
+          echo "=== Pod logs (crashed/errored) ==="
+          for pod in $(kubectl get pods -n llmdbenchcicd --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod logs ---"
+            kubectl logs -n llmdbenchcicd "$pod" --tail=200 --all-containers || true
+            echo "--- $pod previous logs ---"
+            kubectl logs -n llmdbenchcicd "$pod" --previous --tail=200 --all-containers 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Harness launcher pods ==="
+          kubectl get pods -n llmdbenchcicd -l app=llmdbench-harness-launcher -o wide || true
+          for pod in $(kubectl get pods -n llmdbenchcicd -l app=llmdbench-harness-launcher -o name 2>/dev/null); do
+            echo "--- $pod logs ---"
+            kubectl logs -n llmdbenchcicd "$pod" --tail=200 --all-containers || true
+          done
+          echo ""
+          echo "=== Recent events ==="
+          kubectl get events -n llmdbenchcicd --sort-by='.lastTimestamp' | tail -30 || true
+        shell: bash
+
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install
+          aws --version
+
+      - name: Upload results to IBM COS
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws configure set default.s3.signature_version s3v4
+          aws s3 cp "$INPUT_DIR" "s3://${{ secrets.COS_BUCKET_NAME }}/$OUTPUT_DIR/" \
+            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }} || true
+
+      - name: Archive benchmark results as GitHub artifact
+        if: success() || failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.OUTPUT_DIR }}
+          path: ${{ env.INPUT_DIR }}
+          retention-days: 14
