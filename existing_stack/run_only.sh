@@ -431,7 +431,9 @@ else
   _timeout="timeout ${harness_wait_timeout}s"
 fi
 declare -a workloads
-readarray -t workloads < <(yq '.workload | keys | .[]' "${_config_file}")
+while IFS= read -r workload; do
+  workloads+=("$workload")
+done < <(yq '.workload | keys | .[]' "${_config_file}")
 announce "Workloads in ${_config_file} are ${workloads[*]}"
 for workload in "${workloads[@]}"; do
   announce "ℹ️ Running benchmark with workload ${workload}."
