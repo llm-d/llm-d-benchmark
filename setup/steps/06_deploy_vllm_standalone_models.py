@@ -277,13 +277,6 @@ spec:
           requests:
 {requests_str}
         volumeMounts:
-        - name: preprocesses
-          mountPath: /setup/preprocess
-        - name: cache-volume
-          mountPath: {ev['vllm_standalone_pvc_mountpoint']}
-          readOnly: true
-        - name: shm
-          mountPath: /dev/shm
         {extra_volume_mounts}
 {add_pull_secret(ev)}
 """
@@ -339,30 +332,12 @@ spec:
           requests:
 {requests_str}
         volumeMounts:
-        - name: preprocesses
-          mountPath: /setup/preprocess
-        - name: cache-volume
-          mountPath: {ev['vllm_standalone_pvc_mountpoint']}
-          readOnly: true
-        - name: shm
-          mountPath: /dev/shm
         {extra_volume_mounts}
 {add_pull_secret(ev)}
 """
     deployment_yaml += f"""
       volumes:
-      - name: preprocesses
-        configMap:
-          name: llm-d-benchmark-preprocesses
-          defaultMode: 0500
-      - name: cache-volume
-        persistentVolumeClaim:
-          claimName: {ev['vllm_common_pvc_name']}
       {extra_volumes}
-      - name: shm
-        emptyDir:
-          medium: Memory
-          sizeLimit: {ev['vllm_common_shm_mem']}
 """
     return deployment_yaml
 
