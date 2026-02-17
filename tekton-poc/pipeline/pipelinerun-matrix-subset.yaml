@@ -1,0 +1,120 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: experiment-matrix-run
+spec:
+  taskRunTemplate:
+    serviceAccountName: helm-installer
+  workspaces:
+    - name: data
+      persistentVolumeClaim:
+        claimName: workspace-pvc
+  params:
+    - name: targetNamespacePrefix
+      # This can be anything.
+      value: $(context.pipelineRun.namespace)
+    - name: model-id
+      value: "Qwen/Qwen3-0.6B"
+
+    # Harness / Workload
+    - name: harnessName
+      value: inference-perf
+    - name: harnessProfile
+      value: shared_prefix_synthetic_short.yaml
+
+    # Output Location
+    - name: s3-keys
+      value: ibm-cos-secret
+    - name: s3-bucket
+      value: "cloud-object-storage-cos-standard-ere"
+    - name: s3-endpoint
+      value: "https://s3.us-east.cloud-object-storage.appdomain.cloud"
+
+    # Control
+    - name: debug
+      value: true
+    - name: step-upload-results
+      value: false
+
+  pipelineSpec:
+    workspaces:
+      - name: data
+    tasks:
+      - name: run-experiment
+        taskRef:
+          name: experiment
+        workspaces:
+          - name: data
+            workspace: data
+        params:
+          - name: targetNamespacePrefix
+            value: $(params.targetNamespacePrefix)
+          - name: model-id
+            value: $(params.model-id)
+          - name: stackBaseUrl
+            value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+
+          - name: s3-keys
+            value: $(params.s3-keys)
+          - name: s3-bucket
+            value: $(params.s3-bucket)
+          - name: s3-endpoint
+            value: $(params.s3-endpoint)
+
+          - name: harnessName
+            value: $(params.harnessName)
+          - name: harnessProfile
+            value: $(params.harnessProfile)
+
+          - name: factorMapping
+            value: |
+              {
+                "modelservice": {
+                  "prefillReplicas": "prefill.replicas",
+                  "prefillTensorParallelism":  "prefill.parallelism.tensor",
+                  "decodeReplicas": "decode.replicas",
+                  "decodeTensorParallelism":  "decode.parallelism.tensor"
+                },
+                "gaie": {
+                  "gaiePluginConfig": "inferenceExtension.pluginsConfigFile"
+                },
+                "workload": {
+                  "max-concurrency": "max-concurrency",
+                  "num_prompts": "num-prompts",
+                  "question_len": "data.shared_prefix.question_len",
+                  "output_len": "data.shared_prefix.output_len"
+                }
+              }
+
+          - name: max-concurrency
+            value: "1"
+          - name: num-prompts
+            value: "10"
+
+          - name: debug
+            value: "$(params.debug)"
+          - name: step-upload-results
+            value: "$(params.step-upload-results)"
+          - name: pipelineUID
+            value: "$(context.pipelineRun.uid)"
+        matrix:
+          include:
+            - name: combo-0
+              params:
+                - name: treatment
+                  value: |
+                    {
+                      "gaiePluginConfig": "inf-sche-queue.yaml",
+                      "question_len": 100,
+                      "output_len": 100
+                    }
+            - name: combo-1
+              params:
+                - name: treatment
+                  value: |
+                    {
+                      "gaiePluginConfig": "inf-sche-prefix.yaml",
+                      "question_len": 300,
+                      "output_len": 300
+                    }
+

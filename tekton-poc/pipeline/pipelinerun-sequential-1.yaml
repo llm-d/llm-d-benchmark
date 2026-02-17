@@ -1,0 +1,841 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: experiment-matrix-run
+spec:
+  taskRunTemplate:
+    serviceAccountName: helm-installer
+  workspaces:
+  - name: data
+    persistentVolumeClaim:
+      claimName: workspace-pvc
+  pipelineSpec:
+    workspaces:
+    - name: data
+    tasks:
+    - name: run-experiment-0
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-none.yaml
+      - name: question_len
+        value: '100'
+      - name: output_len
+        value: '100'
+    - name: run-experiment-1
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-none.yaml
+      - name: question_len
+        value: '100'
+      - name: output_len
+        value: '300'
+      runAfter:
+      - run-experiment-0
+    - name: run-experiment-2
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-none.yaml
+      - name: question_len
+        value: '100'
+      - name: output_len
+        value: '1000'
+      runAfter:
+      - run-experiment-1
+    - name: run-experiment-3
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-none.yaml
+      - name: question_len
+        value: '300'
+      - name: output_len
+        value: '100'
+      runAfter:
+      - run-experiment-2
+    - name: run-experiment-4
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-none.yaml
+      - name: question_len
+        value: '300'
+      - name: output_len
+        value: '300'
+      runAfter:
+      - run-experiment-3
+    - name: run-experiment-5
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-none.yaml
+      - name: question_len
+        value: '300'
+      - name: output_len
+        value: '1000'
+      runAfter:
+      - run-experiment-4
+    - name: run-experiment-6
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-none.yaml
+      - name: question_len
+        value: '1000'
+      - name: output_len
+        value: '100'
+      runAfter:
+      - run-experiment-5
+    - name: run-experiment-7
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-none.yaml
+      - name: question_len
+        value: '1000'
+      - name: output_len
+        value: '300'
+      runAfter:
+      - run-experiment-6
+    - name: run-experiment-8
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-none.yaml
+      - name: question_len
+        value: '1000'
+      - name: output_len
+        value: '1000'
+      runAfter:
+      - run-experiment-7
+    - name: run-experiment-9
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-prefix.yaml
+      - name: question_len
+        value: '100'
+      - name: output_len
+        value: '100'
+      runAfter:
+      - run-experiment-8
+    - name: run-experiment-10
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-prefix.yaml
+      - name: question_len
+        value: '100'
+      - name: output_len
+        value: '300'
+      runAfter:
+      - run-experiment-9
+    - name: run-experiment-11
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-prefix.yaml
+      - name: question_len
+        value: '100'
+      - name: output_len
+        value: '1000'
+      runAfter:
+      - run-experiment-10
+    - name: run-experiment-12
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-prefix.yaml
+      - name: question_len
+        value: '300'
+      - name: output_len
+        value: '100'
+      runAfter:
+      - run-experiment-11
+    - name: run-experiment-13
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-prefix.yaml
+      - name: question_len
+        value: '300'
+      - name: output_len
+        value: '300'
+      runAfter:
+      - run-experiment-12
+    - name: run-experiment-14
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-prefix.yaml
+      - name: question_len
+        value: '300'
+      - name: output_len
+        value: '1000'
+      runAfter:
+      - run-experiment-13
+    - name: run-experiment-15
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-prefix.yaml
+      - name: question_len
+        value: '1000'
+      - name: output_len
+        value: '100'
+      runAfter:
+      - run-experiment-14
+    - name: run-experiment-16
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-prefix.yaml
+      - name: question_len
+        value: '1000'
+      - name: output_len
+        value: '300'
+      runAfter:
+      - run-experiment-15
+    - name: run-experiment-17
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-prefix.yaml
+      - name: question_len
+        value: '1000'
+      - name: output_len
+        value: '1000'
+      runAfter:
+      - run-experiment-16
+    - name: run-experiment-18
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-kv.yaml
+      - name: question_len
+        value: '100'
+      - name: output_len
+        value: '100'
+      runAfter:
+      - run-experiment-17
+    - name: run-experiment-19
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-kv.yaml
+      - name: question_len
+        value: '100'
+      - name: output_len
+        value: '300'
+      runAfter:
+      - run-experiment-18
+    - name: run-experiment-20
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-kv.yaml
+      - name: question_len
+        value: '100'
+      - name: output_len
+        value: '1000'
+      runAfter:
+      - run-experiment-19
+    - name: run-experiment-21
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-kv.yaml
+      - name: question_len
+        value: '300'
+      - name: output_len
+        value: '100'
+      runAfter:
+      - run-experiment-20
+    - name: run-experiment-22
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-kv.yaml
+      - name: question_len
+        value: '300'
+      - name: output_len
+        value: '300'
+      runAfter:
+      - run-experiment-21
+    - name: run-experiment-23
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-kv.yaml
+      - name: question_len
+        value: '300'
+      - name: output_len
+        value: '1000'
+      runAfter:
+      - run-experiment-22
+    - name: run-experiment-24
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-kv.yaml
+      - name: question_len
+        value: '1000'
+      - name: output_len
+        value: '100'
+      runAfter:
+      - run-experiment-23
+    - name: run-experiment-25
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-kv.yaml
+      - name: question_len
+        value: '1000'
+      - name: output_len
+        value: '300'
+      runAfter:
+      - run-experiment-24
+    - name: run-experiment-26
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-kv.yaml
+      - name: question_len
+        value: '1000'
+      - name: output_len
+        value: '1000'
+      runAfter:
+      - run-experiment-25
+    - name: run-experiment-27
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-queue.yaml
+      - name: question_len
+        value: '100'
+      - name: output_len
+        value: '100'
+      runAfter:
+      - run-experiment-26
+    - name: run-experiment-28
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-queue.yaml
+      - name: question_len
+        value: '100'
+      - name: output_len
+        value: '300'
+      runAfter:
+      - run-experiment-27
+    - name: run-experiment-29
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-queue.yaml
+      - name: question_len
+        value: '100'
+      - name: output_len
+        value: '1000'
+      runAfter:
+      - run-experiment-28
+    - name: run-experiment-30
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-queue.yaml
+      - name: question_len
+        value: '300'
+      - name: output_len
+        value: '100'
+      runAfter:
+      - run-experiment-29
+    - name: run-experiment-31
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-queue.yaml
+      - name: question_len
+        value: '300'
+      - name: output_len
+        value: '300'
+      runAfter:
+      - run-experiment-30
+    - name: run-experiment-32
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-queue.yaml
+      - name: question_len
+        value: '300'
+      - name: output_len
+        value: '1000'
+      runAfter:
+      - run-experiment-31
+    - name: run-experiment-33
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-queue.yaml
+      - name: question_len
+        value: '1000'
+      - name: output_len
+        value: '100'
+      runAfter:
+      - run-experiment-32
+    - name: run-experiment-34
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-queue.yaml
+      - name: question_len
+        value: '1000'
+      - name: output_len
+        value: '300'
+      runAfter:
+      - run-experiment-33
+    - name: run-experiment-35
+      taskRef:
+        name: experiment
+      workspaces:
+      - name: data
+        workspace: data
+      params:
+      - name: namespace
+        value: kalantar
+      - name: model-id
+        value: Qwen/Qwen3-0.6B
+      - name: stackBaseUrl
+        value: https://raw.githubusercontent.com/kalantar/llm-d-benchmark/refs/heads/tekton-poc/tekton-poc/examples/inference-scheduling/
+      - name: harnessProfile
+        value: shared_prefix_synthetic.yaml
+      - name: gaiePluginConfig
+        value: inf-sche-queue.yaml
+      - name: question_len
+        value: '1000'
+      - name: output_len
+        value: '1000'
+      runAfter:
+      - run-experiment-34

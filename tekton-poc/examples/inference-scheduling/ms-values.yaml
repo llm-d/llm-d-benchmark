@@ -1,0 +1,237 @@
+fullnameOverride: qwen-qwen3-0-6b
+multinode: false
+
+modelArtifacts:
+  uri: pvc://model-pvc/models/Qwen/Qwen3-0.6B
+  size: 300Gi
+  authSecretName: "hf-secret"
+  name: Qwen/Qwen3-0.6B
+
+routing:
+  servicePort: 8000
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: experiment-gateway-inference-gateway
+  proxy:
+    image: "ghcr.io/llm-d/llm-d-routing-sidecar:v0.3.0"
+    secure: false
+    connector: nixlv2
+    debugLevel: 3
+  inferenceModel:
+    create: true
+  inferencePool:
+    create: false
+    name: experiment-gaie
+  httpRoute:
+    create: true
+    rules:
+    - backendRefs:
+      - group: inference.networking.x-k8s.io
+        kind: InferencePool
+        name: experiment-gaie
+        port: 8000
+        weight: 1
+      timeouts:
+        backendRequest: 0s
+        request: 0s
+      matches:
+      - path:
+          type: PathPrefix
+          value: /qwen-qwen3-0-6b/
+      filters:
+      - type: URLRewrite
+        urlRewrite:
+          path:
+            type: ReplacePrefixMatch
+            replacePrefixMatch: /
+    - backendRefs:
+      - group: inference.networking.x-k8s.io
+        kind: InferencePool
+        name: experiment-gaie
+        port: 8000
+        weight: 1
+      timeouts:
+        backendRequest: 0s
+        request: 0s
+
+  epp:
+    create: false
+
+decode:
+  create: true
+  replicas: 2
+  acceleratorTypes:
+      labelKey: nvidia.com/gpu.product
+      labelValues:
+        - NVIDIA-H100-80GB-HBM3
+  parallelism:
+    data: 1
+    tensor: 1
+  annotations:
+      deployed-by: jchen
+      modelservice: llm-d-benchmark
+  podAnnotations:
+      deployed-by: jchen
+      modelservice: llm-d-benchmark
+  #no____config
+  containers:
+  - name: "vllm"
+    mountModelVolume: true
+    image: "ghcr.io/llm-d/llm-d:v0.2.0"
+    modelCommand: vllmServe
+    
+    args:
+      - "--enforce-eager"
+      - "--block-size"
+      - "64"
+      - "--kv-transfer-config"
+      - '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'
+      - "--tensor-parallel-size"
+      - "1"
+      - "--disable-log-requests"
+      - "--disable-uvicorn-access-log"
+      - "--max-model-len"
+      - "16000" 
+    env:
+      - name: UCX_TLS
+        value: "cuda_ipc,cuda_copy,tcp"
+      - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+        value: "5557"
+      - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+        valueFrom:
+          fieldRef:
+            fieldPath: status.podIP
+      - name: VLLM_LOGGING_LEVEL
+        value: DEBUG
+      - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+        value: "1"
+    resources:
+      limits:
+        memory: 64Gi
+        cpu: "16"
+        
+        nvidia.com/gpu: "1"
+        
+      requests:
+        memory: 64Gi
+        cpu: "16"
+        
+        nvidia.com/gpu: "1"
+        
+    extraConfig:
+      startupProbe:
+        httpGet:
+          path: /health
+          port: 8200
+        failureThreshold: 60
+        initialDelaySeconds: 30
+        periodSeconds: 30
+        timeoutSeconds: 5
+      livenessProbe:
+        tcpSocket:
+          port: 8200
+        failureThreshold: 3
+        periodSeconds: 5
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8200
+        failureThreshold: 3
+        periodSeconds: 5
+    
+      ports:
+        - containerPort: 5557
+          protocol: TCP
+        - containerPort: 8200
+          name: metrics
+          protocol: TCP
+    volumeMounts: []
+  volumes: []
+
+prefill:
+  create: false
+  replicas: 0
+  acceleratorTypes:
+      labelKey: nvidia.com/gpu.product
+      labelValues:
+        - NVIDIA-H100-80GB-HBM3
+  parallelism:
+    data: 1
+    tensor: 1
+  annotations:
+      deployed-by: jchen
+      modelservice: llm-d-benchmark
+  podAnnotations:
+      deployed-by: jchen
+      modelservice: llm-d-benchmark
+  #no____config
+  containers:
+  - name: "vllm"
+    mountModelVolume: true
+    image: "ghcr.io/llm-d/llm-d:v0.2.0"
+    modelCommand: vllmServe
+    
+    args:
+      - "--disable-log-requests"
+      - "--max-model-len"
+      - "16000"
+      - "--tensor-parallel-size"
+      - "1" 
+    env:
+      - name: VLLM_IS_PREFILL
+        value: "1"
+      - name: UCX_TLS
+        value: "cuda_ipc,cuda_copy,tcp"
+      - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+        value: "5557"
+      - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+        valueFrom:
+          fieldRef:
+            fieldPath: status.podIP
+      - name: VLLM_LOGGING_LEVEL
+        value: DEBUG
+      - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+        value: "1"
+    resources:
+      limits:
+        memory: 40Gi
+        cpu: "4"
+        
+        nvidia.com/gpu: "0"
+        
+      requests:
+        memory: 40Gi
+        cpu: "4"
+        
+        nvidia.com/gpu: "0"
+        
+    extraConfig:
+      startupProbe:
+        httpGet:
+          path: /health
+          port: 8000
+        failureThreshold: 60
+        initialDelaySeconds: 30
+        periodSeconds: 30
+        timeoutSeconds: 5
+      livenessProbe:
+        tcpSocket:
+          port: 8000
+        failureThreshold: 3
+        periodSeconds: 5
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8000
+        failureThreshold: 3
+        periodSeconds: 5
+    
+      ports:
+        - containerPort: 5557
+          protocol: TCP
+        - containerPort: 8200
+          name: metrics
+          protocol: TCP
+    volumeMounts: []
+  volumes: []

@@ -1,0 +1,755 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: treatment
+spec:
+  description: >
+    Runs an llm-d-benchmark experiment.
+
+  workspaces:
+    - name: data
+
+  params:
+    - name: treatment
+      type: string
+      description: |
+        JSON string of factors and values for one treatment. 
+        Includes both infrastructure and workload factors.
+
+    - name: factorMapping
+      type: string
+      description: |
+        JSON string mapping factor to path in source yaml file sorted by purpose.
+
+    - name: targetNamespacePrefix
+      type: string
+      default: llmdbench
+
+    - name: model-id
+      type: string
+      default: "meta-llama/Llama-3.2-1B-Instruct"
+    - name: inferencePort
+      default: 8000
+
+    # Properties needed to evaluate stack capacity (will it be able to host the model)?
+    - name: validateCapacity
+      default: "true"
+    - name: behaviorOnValidationFailure
+      default: "terminate"
+
+    - name: maxModelLength
+
+    - name: decodeReplicas
+    - name: decodeTensorParallelism
+    - name: decodeDataParallelism
+    - name: decodeNumGpus
+
+    - name: prefillReplicas
+    - name: prefillTensorParallelism
+    - name: prefillDataParallelism
+    - name: prefillNumGpus
+
+    - name: gpuType
+    - name: gpuMemory
+
+    - name: stackBaseUrl
+      type: string
+    - name: experimentName
+      type: string
+      default: "experiment"
+
+    - name: model-pvc-name
+      type: string
+      default: model-pvc
+    - name: model-pvc-size
+      type: string
+      default: 300Gi
+    - name: model-storage-class
+      type: string
+      default: ocs-storagecluster-cephfs
+
+    - name: download-job-name
+      type: string
+      default: download-job
+
+    - default: llm-d-infra
+      description: Name of the Helm repository for the Gateway
+      name: gatewayRepoName
+      type: string
+    - default: https://llm-d-incubation.github.io/llm-d-infra/
+      description: URL of the Helm repository for the Gateway
+      name: gatewayRepoUrl
+      type: string
+    - name: gatewayChartVersion
+      type: string
+      default: ""
+      description: Optional gateway chart version (used with --version)
+
+    - name: gatewayExtraArgs
+      type: string
+      default: ""
+      description: Optional extra args for the gateway (to append to 'helm upgrade --install')
+
+    - name: gaieChartVersion
+      type: string
+      default: "v0.5.1"
+      description: Optional GAIE chart version (used with --version)
+
+    - name: gaieExtraArgs
+      type: string
+      default: ""
+      description: Optional extra args for GAIE (to append to 'helm upgrade --install')
+
+    - default: llm-d-modelservice
+      description: Name of the Helm repository for the model engine
+      name: msRepoName
+      type: string
+    - default: https://llm-d-incubation.github.io/llm-d-modelservice/
+      description: URL of the Helm repository for the model engine
+      name: msRepoUrl
+      type: string
+    - name: msChartVersion
+      type: string
+      default: ""
+      description: Optional modelservice chart version (used with --version)
+
+    - name: msExtraArgs
+      type: string
+      default: ""
+      description: Optional extra args for the model engine (to append to 'helm upgrade --install')
+
+    - name: modelWaitTimeout
+      type: string
+      default: 900
+
+    - name: llmdbenchImageRegistry
+      default: "quay.io"
+    - name: llmdbenchImageRepo
+      default: "namasluk"
+    - name: llmdbenchImageName
+      default: "llm-d-benchmark"
+    - name: llmdbenchImageTag
+      default: "251002.1"
+
+    - name: harnessName
+      type: string
+      default: inference-perf
+    - name: harnessProfile
+      type: string
+      default: sanity_random.yaml
+    - name: stackType
+      type: string
+      default: lld-d
+    - name: pipelineUID
+      type: string
+      default: experiment
+
+    - name: s3-keys
+      type: string
+      default: "s3-keys"
+    - name: s3-bucket
+      type: string
+    - name: s3-endpoint
+      type: string
+
+    - name: debug
+      type: string
+      default: "false"
+    - name: step-upload-results
+      type: string
+      default: "true"
+    - name: dry-run
+      type: string 
+      default: "false"
+
+  results:
+    - name: treatmentAnalysisModelservice
+      value: $(steps.analyze-modelservice-factors.results.treatmentAnalysis)
+    - name: treatmentAnalysisGaie
+      value: $(steps.analyze-gaie-factors.results.treatmentAnalysis)
+    - name: treatmentAnalysisWorkload
+      value: $(steps.analyze-workload-factors.results.treatmentAnalysis)
+
+  steps:
+    - name: log-start
+      image: alpine:3.20
+      script: |
+        #!/bin/sh
+        echo "🔄 Starting sweep step for ..."
+        printf "%s" "$(params.treatment)"
+
+    - name: analyze-modelservice-factors
+      ref:
+        name: analyze-treatment
+      params:
+        - name: factorType
+          value: modelservice
+        - name: factorMapping
+          value: $(params.factorMapping)
+        - name: treatment
+          value: $(params.treatment)
+
+    - name: analyze-gaie-factors
+      ref:
+        name: analyze-treatment
+      params:
+        - name: factorType
+          value: gaie
+        - name: factorMapping
+          value: $(params.factorMapping)
+        - name: treatment
+          value: $(params.treatment)
+
+    - name: analyze-workload-factors
+      ref:
+        name: analyze-treatment
+      params:
+        - name: factorType
+          value: workload
+        - name: factorMapping
+          value: $(params.factorMapping)
+        - name: treatment
+          value: $(params.treatment)
+
+    # - name: display-treatment-analysis
+    #   image: alpine:3.20
+    #   env:
+    #     - name: MODELSERVICE_SET_ARGS
+    #       value: "$(steps.analyze-modelservice-factors.results.treatmentAnalysis)"
+    #     - name: GAIE_SET_ARGS
+    #       value: "$(steps.analyze-gaie-factors.results.treatmentAnalysis)"
+    #     - name: WORKLOAD_SET_ARGS
+    #       value: "$(steps.analyze-workload-factors.results.treatmentAnalysis)"
+
+    #   script: |
+    #     #!/bin/sh
+    #     apk add --no-cache jq yq-go >/dev/null
+    #     jq --version
+
+    #     echo "helm upgrade --install ... $(echo ${MODELSERVICE_SET_ARGS} | jq '.setArgs')"
+    #     echo "helm upgrade --install ...  $(echo ${GAIE_SET_ARGS} | jq '.setArgs')"
+    #     echo "$(echo ${WORKLOAD_SET_ARGS} | jq '.updates')"
+
+    #     printf "%s" "$MODELSERVICE_SET_ARGS"
+
+    # TBD split into individual steps to compute each value?
+    - name: compute-capacity-validation-values
+      ref:
+        name:
+          compute-values
+      params:
+        - name: decodeDataParallelism
+          value: $(params.decodeDataParallelism)
+        - name: decodeTensorParallelism
+          value: $(params.decodeTensorParallelism)
+        - name: decodeReplicas
+          value: $(params.decodeReplicas)
+        - name: prefillDataParallelism
+          value: $(params.prefillDataParallelism)
+        - name: prefillTensorParallelism
+          value: $(params.prefillTensorParallelism)
+        - name: prefillReplicas
+          value: $(params.prefillReplicas)
+
+    # TBD fold into compute-capacity-validation-values ?
+    - name: compute-decode-num-gpus
+      ref:
+        name:
+          compute-num-gpus
+      params:
+        - name: name
+          value: "decodeNumGpus"
+        - name: value
+          value: $(params.decodeNumGpus)
+        - name: dp
+          # value: $(steps.compute-decode-dp.results.value)
+          value: $(steps.compute-capacity-validation-values.results.decodeDataParallelism)
+        - name: tp
+          # value: $(steps.compute-decode-tp.results.value)
+          value: $(steps.compute-capacity-validation-values.results.decodeTensorParallelism)
+
+    # TBD fold into compute-capacity-validation-values ?
+    - name: compute-prefill-num-gpus
+      ref:
+        name:
+          compute-num-gpus
+      params:
+        - name: name
+          value: "prefillNumGpus"
+        - name: value
+          value: $(params.prefillNumGpus)
+        - name: dp
+          # value: $(steps.compute-prefill-dp.results.value)
+          value: $(steps.compute-capacity-validation-values.results.prefillDataParallelism)
+        - name: tp
+          # value: $(steps.compute-prefill-tp.results.value)
+          value: $(steps.compute-capacity-validation-values.results.prefillDataParallelism)
+
+    - name: check-decode-capacity
+      ref:
+        name: check-capacity
+      params:
+        - name: validateCapacity
+          value: $(params.validateCapacity)
+        - name: behaviorOnValidationFailure
+          value: $(params.behaviorOnValidationFailure)
+        - name: model
+          value: $(params.model-id)
+        - name: max_model_len
+          value: $(params.maxModelLength)
+        - name: replicas
+          value: $(steps.compute-capacity-validation-values.results.decodeReplicas)
+        - name: tp
+          value: $(steps.compute-capacity-validation-values.results.decodeTensorParallelism)
+        - name: dp
+          value: $(steps.compute-capacity-validation-values.results.decodeDataParallelism)
+        - name: gpu_memory
+          value: $(params.gpuMemory)
+        - name: user_requested_gpu_count
+          value: $(steps.compute-decode-num-gpus.results.value)
+      when:
+        - input: $(params.validateCapacity)
+          operator: in
+          values: [ "true" ]
+
+    - name: check-prefill-capacity
+      ref:
+        name: check-capacity
+      params:
+        - name: validateCapacity
+          value: $(params.validateCapacity)
+        - name: behaviorOnValidationFailure
+          value: $(params.behaviorOnValidationFailure)
+        - name: model
+          value: $(params.model-id)
+        - name: max_model_len
+          value: $(params.maxModelLength)
+        - name: replicas
+          value: $(steps.compute-capacity-validation-values.results.prefillReplicas)
+        - name: tp
+          value: $(steps.compute-capacity-validation-values.results.prefillTensorParallelism)
+        - name: dp
+          value: $(steps.compute-capacity-validation-values.results.prefillDataParallelism)
+        - name: gpu_memory
+          value: $(params.gpuMemory)
+        - name: user_requested_gpu_count
+          value: $(steps.compute-prefill-num-gpus.results.value)
+      when:
+        - input: $(params.validateCapacity)
+          operator: in
+          values: [ "true" ]
+
+    - name: prepare-namespace
+      image: quay.io/openshift/origin-cli:4.21
+      script: |
+        #!/bin/sh
+
+        NAMESPACE="$(params.targetNamespacePrefix)-$(context.taskRun.name)"
+        DRY_RUN="$(params.dry-run)"
+
+        if [ "${DRY_RUN}" = "true" ]; then
+          echo ">> skipping"
+          exit 0
+        fi
+
+        kubectl create namespace ${NAMESPACE} \
+          --dry-run=client -o yaml | kubectl apply -f -
+        
+        HF_TOKEN=$(
+          kubectl get secret hf-secret \
+          --namespace "$(context.taskRun.namespace)" \
+            -o jsonpath='{.data.HF_TOKEN}' \
+          | tr -d '\n' \
+          | base64 -d
+        )
+
+        kubectl create secret generic hf-secret \
+          --namespace ${NAMESPACE} \
+          --from-literal="HF_TOKEN=${HF_TOKEN}" \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+        # TBD only if OpenShift
+        oc adm policy add-scc-to-user anyuid -z helm-installer -n ${NAMESPACE}
+        # oc adm policy add-scc-to-user privileged -z helm-installer -n ${NAMESPACE}
+
+    # TBD when move from multiple NS to single NS then can move to 
+    # step implementation instead of kubernetes job (replacing the next 2 steps)
+    # Can't do yet because step executes in a different NS from target.
+    - name: model-download
+      ref: 
+        name: helm-upgrade-install
+      params:
+        # Location of helm chart
+        - name: git_url
+          value: "https://github.com/kalantar/llm-d-benchmark"
+        - name: git_revision
+          value: "tekton-poc"
+        - name: checkout_dir
+          value: "/tmp/llm-d-benchmark"
+
+        # Helm arguments
+        - name: releaseName
+          value: $(params.experimentName)-download
+        - name: chart
+          value: /tmp/llm-d-benchmark/charts/model-download        
+        - name: namespace
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
+        - name: timeout
+          value: 15m
+        # - name: valuesYamlUrl
+        #   value: "/tmp/llm-d-benchmark/charts/model-download/values.yaml"
+        - name: extraArgs
+          value: >
+            --set hf_model=$(params.model-id) 
+            --set pvc.create=true 
+            --set pvc.name=$(params.model-pvc-name) 
+            --set pvc.size=$(params.model-pvc-size) 
+            --set pvc.storageClass=$(params.model-storage-class)
+
+        - name: dry-run
+          value: $(params.dry-run)
+
+    - name: wait-for-download
+      image: alpine/kubectl:1.34.1
+      env:
+        - name: JOB_NAME
+          value: "llm-d-benchark-job"
+        - name: NAMESPACE
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
+        - name: TIMEOUT
+          value: "300" # seconds
+        - name: SLEEP_INTERVAL
+          value: "5"   # seconds
+      script : |
+        #!/usr/bin/env sh
+
+        echo "⏳ Wait for model to download"
+
+        elapsed=0
+
+        while [ "$elapsed" -lt "${TIMEOUT}" ]; do
+          status=$(kubectl get job "${JOB_NAME}" -n "${NAMESPACE}" -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')
+          if [ "$status" = "True" ]; then
+            echo "✅ Job succeeded"
+            kubectl delete job "${JOB_NAME}" -n "${NAMESPACE}" --ignore-not-found
+            exit 0
+          fi
+
+          status=$(kubectl get job "${JOB_NAME}" -n "${NAMESPACE}" -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}')
+          if [ "$status" = "True" ]; then
+            echo "❌ Job failed"
+            kubectl delete job "${JOB_NAME}" -n "${NAMESPACE}" --ignore-not-found
+            exit 1
+          fi
+
+          sleep "${SLEEP_INTERVAL}"
+          elapsed=$((elapsed + SLEEP_INTERVAL))
+        done
+
+        echo "❌ Timed out waiting for job to complete or fail"
+        kubectl delete job "${JOB_NAME}" -n "${NAMESPACE}" --ignore-not-found
+        exit 2
+
+    - name: gateway
+      ref: 
+        name: helm-upgrade-install
+      params:
+        - name: releaseName
+          value: $(params.experimentName)-gateway
+        - name: chart
+          value: llm-d-infra/llm-d-infra
+        - name: repoName
+          value: llm-d-infra
+        - name: repoUrl
+          value: https://llm-d-incubation.github.io/llm-d-infra/
+        
+        - name: namespace
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
+        - name: timeout
+          value: 15m
+        - name: valuesYamlUrl
+          value: "$(params.stackBaseUrl)/gateway-values.yaml"
+
+        - name: dry-run
+          value: $(params.dry-run)
+      
+    - name: gaie
+      ref: 
+        name: helm-upgrade-install
+      params:
+        - name: releaseName
+          value: $(params.experimentName)-gaie-NAMESPACE_HASH
+        - name: chart
+          value: oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
+        - name: version
+          value: $(params.gaieChartVersion)
+        
+        - name: namespace
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
+        - name: timeout
+          value: 15m
+        - name: valuesYamlUrl
+          value: "$(params.stackBaseUrl)/gaie-values.yaml"
+        - name: treatmentAnalysis
+          value: "$(steps.analyze-gaie-factors.results.treatmentAnalysis)"
+
+        - name: dry-run
+          value: $(params.dry-run)
+
+    - name: model-engine
+      ref: 
+        name: helm-upgrade-install
+      params:
+        - name: releaseName
+          value: $(params.experimentName)-ms
+        - name: chart
+          value: llm-d-modelservice/llm-d-modelservice
+        - name: repoName
+          value: llm-d-modelservice
+        - name: repoUrl
+          value: https://llm-d-incubation.github.io/llm-d-modelservice/
+        
+        - name: namespace
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
+        - name: timeout
+          value: 15m
+        - name: valuesYamlUrl
+          value: "$(params.stackBaseUrl)/ms-values.yaml"
+        - name: extraArgs
+          value: >
+            --set routing.inferencePool.name=$(params.experimentName)-gaie-NAMESPACE_HASH
+            --set routing.httpRoute.rules[0].backendRefs[0].name=$(params.experimentName)-gaie-NAMESPACE_HASH
+            --set routing.httpRoute.rules[1].backendRefs[0].name=$(params.experimentName)-gaie-NAMESPACE_HASH
+        - name: treatmentAnalysis
+          value: "$(steps.analyze-modelservice-factors.results.treatmentAnalysis)"
+
+        - name: dry-run
+          value: $(params.dry-run)
+
+    - name: wait-for-model
+      env:
+        - name: DECODE_REPLICAS
+          value: $(steps.compute-capacity-validation-values.results.decodeReplicas)
+        - name: PREFILL_REPLICAS
+          value: $(steps.compute-capacity-validation-values.results.prefillReplicas)
+      image: alpine/kubectl:1.34.1
+      script: |
+        #!/bin/sh
+        
+        if [ "$(params.dry-run)" = "true" ]; then
+          echo ">> skipping"
+          exit 0
+        fi
+        NAMESPACE="$(params.targetNamespacePrefix)-$(context.taskRun.name)"
+        MODEL_ID="$(params.model-id)"
+        MODEL_LABEL=$(echo "$MODEL_ID" | tr '[:upper:]' '[:lower:]' | sed 's/[./]/-/g')
+        MODEL_START_TIMEOUT="$(params.modelWaitTimeout)"
+
+        echo "⏳ Waiting for pods serving model ${MODEL_ID} to be 'Running'"
+        echo "Model label = ${MODEL_LABEL}"
+
+        if [ ${DECODE_REPLICAS} -gt 0 ]; then
+          kubectl --namespace ${NAMESPACE} \
+            wait pod \
+              -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=decode \
+              --for=create \
+              --timeout=${MODEL_START_TIMEOUT}s
+          echo "✅ (decode) pods serving model ${MODEL_ID} created"
+        fi
+ 
+        if [ ${PREFILL_REPLICAS} -gt 0 ]; then
+          kubectl --namespace ${NAMESPACE} \
+            wait pod \
+              -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=prefill \
+              --for=create \
+              --timeout=${MODEL_START_TIMEOUT}s
+          echo "✅ prefill pods serving model ${MODEL_ID} created"
+        fi
+
+        if [ ${DECODE_REPLICAS} -gt 0 ]; then
+          kubectl --namespace ${NAMESPACE} \
+            wait pod \
+              -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=decode \
+              --for=condition=Ready=True \
+              --timeout=${MODEL_START_TIMEOUT}s
+          echo "✅ (decode) pods serving model ${MODEL_ID} ready"
+        fi
+
+        if [ ${PREFILL_REPLICAS} -gt 0 ]; then
+         kubectl --namespace ${NAMESPACE} \
+          wait pod \
+            -l llm-d.ai/model=${MODEL_LABEL},llm-d.ai/role=prefill \
+            --for=condition=Ready=True \
+            --timeout=${MODEL_START_TIMEOUT}s
+          echo "✅ prefill pods serving model ${MODEL_ID} ready"
+        fi
+
+    - name: prepare-workload-profile
+      ref: 
+        name: prepare-workload-profile
+      params:
+        - name: harnessName
+          value: $(params.harnessName)
+        - name: harnessProfile
+          value: $(params.harnessProfile)
+        - name: treatmentAnalysis
+          value: $(steps.analyze-workload-factors.results.treatmentAnalysis)
+        - name: model-id
+          value: $(params.model-id)
+        - name: namespace
+          value: $(params.targetNamespacePrefix)-$(context.taskRun.name)
+        - name: pipelineUID
+          value: $(params.pipelineUID)
+
+    - name: inference-perf-run
+      ref:
+        name: inference-perf-run
+      params:
+        - name: harnessName
+          value: $(params.harnessName)
+        - name: harnessProfile
+          value: $(params.harnessProfile)
+        - name: pipelineUID
+          value: $(params.pipelineUID)
+      when:
+        - input: $(params.harnessName)
+          operator: in
+          values: [ "inference-perf" ]
+      # computeResources:
+      #   requests:
+      #     memory: "32Gi"
+      #     cpu: "16"
+      #   limits:
+      #     memory: "32Gi"
+      #     cpu: "16"
+
+    - name: inference-perf-analyze-results
+      ref:
+        name: inference-perf-analyze-results
+      params:
+        - name: harnessName
+          value: $(params.harnessName)
+        - name: pipelineUID
+          value: $(params.pipelineUID)
+      when:
+        - input: $(params.harnessName)
+          operator: in
+          values: [ "inference-perf" ]
+
+    - name: vllm-benchmark-run
+      ref:
+        name: vllm-benchmark-run
+      params:
+        - name: harnessName
+          value: $(params.harnessName)
+        - name: harnessProfile
+          value: $(params.harnessProfile)
+        - name: pipelineUID
+          value: $(params.pipelineUID)
+      when:
+        - input: $(params.harnessName)
+          operator: in
+          values: [ "vllm-benchmark" ]
+      # computeResources:
+      #   requests:
+      #     memory: "32Gi"
+      #     cpu: "16"
+      #   limits:
+      #     memory: "32Gi"
+      #     cpu: "16"
+
+    - name: vllm-benchmark-analyze-results
+      ref:
+        name: vllm-benchmark-analyze-results
+      params:
+        - name: harnessName
+          value: $(params.harnessName)
+        - name: pipelineUID
+          value: $(params.pipelineUID)
+      when:
+        - input: $(params.harnessName)
+          operator: in
+          values: [ "vllm-benchmark" ]
+
+    - name: upload-results
+      image: ubuntu:24.04
+      # Tried amazon/aws-cli:2.31.9 but latest tar available via `dnf install tar -y` is 1.34.
+      # There were sporadic errors "file changed as we read it". It may be caused by the way
+      # tar identifes file changes in v 1.34 (via ctime). A recommended solution to move to 1.35.
+      # See https://stackoverflow.com/a/77765876 and tar release notes https://lists.gnu.org/archive/html/info-gnu/2023-07/msg00005.html)
+      # A smaller image is probably desirable. A restriction is that AWS CLI v2 requires glibc.
+      workingDir: $(workspaces.data.path)
+      env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: $(params.s3-keys)
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: $(params.s3-keys)
+              key: AWS_SECRET_ACCESS_KEY
+        - name: AWS_EC2_METADATA_DISABLED
+          value: "true"
+      script: |
+        #!/usr/bin/env sh
+
+        if [ "$(params.step-upload-results)" = "false" ]; then
+          echo "Upload disabled ... skipping."
+          exit 0
+        fi
+
+        apt-get update && \
+            apt-get install -y --no-install-recommends ca-certificates curl unzip tar gzip && \
+            rm -rf /var/lib/apt/lists/*
+
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip && \
+          unzip /tmp/awscliv2.zip -d /tmp && \
+          /tmp/aws/install && \
+        rm -rf /tmp/aws /tmp/awscliv2.zip
+
+        tar --version && gzip --version && aws --version
+
+        EXPERIMENT_ID="experiment-$(echo -n $(params.pipelineUID) | cut -c1-8)"
+        EXPERIMENT_RESULTS_FOLDER="$(params.harnessName)_${EXPERIMENT_ID}_$(context.taskRun.name)"
+        ARCHIVE_NAME="${EXPERIMENT_RESULTS_FOLDER}.tar.gz"
+
+        tar --version && gzip --version && aws --version
+
+        tar -czf ${ARCHIVE_NAME} \
+            -C "$(workspaces.data.path)" ${EXPERIMENT_RESULTS_FOLDER}
+
+        aws s3 cp ${ARCHIVE_NAME} "s3://$(params.s3-bucket)/${ARCHIVE_NAME}" \
+            --endpoint-url "$(params.s3-endpoint)" \
+            --content-type "application/x-tar" \
+            --content-encoding "gzip" \
+            --no-progress
+            # --recursive \
+
+        rm -rf ${ARCHIVE_NAME}
+
+        echo "✅ Uploaded results to ${ARCHIVE_NAME}"
+
+    - name: delete-namespace
+      image: alpine/kubectl:1.34.1
+      script : |
+        #!/bin/sh
+
+        NAMESPACE="$(params.targetNamespacePrefix)-$(context.taskRun.name)"
+        DEBUG="$(params.debug)"
+
+        if [ "$(params.debug)" = "true" ]; then
+          echo "⚠️ DEBUG=true; leaving namespace ${NAMESPACE} for inspection"
+          echo "⚠️ Manually clean up resources with \"kubectl delete namespace ${NAMESPACE}\""
+          exit 0
+        fi
+
+        kubectl delete namespace ${NAMESPACE}
+        echo "✅ workload namespace ${NAMESPACE} deleted"
+
+    - name: log-completion
+      image: alpine:3.20
+      script: |
+        #!/bin/sh
+        echo "✅ Sweep step complete."

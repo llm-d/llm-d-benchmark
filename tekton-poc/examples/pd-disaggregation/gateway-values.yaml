@@ -1,0 +1,8 @@
+gateway:
+  gatewayClassName: kgateway
+  service:
+    type: NodePort
+  destinationRule:
+    host: experiment-gaie-685a862b-epp.kalantar-is.svc.cluster.local
+  gatewayParameters:
+    enabled: true
