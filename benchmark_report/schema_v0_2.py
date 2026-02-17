@@ -121,7 +121,7 @@ class SequenceLength(BaseModel):
 
     distribution: Distribution
     """Sequence length distribution type."""
-    value: int | float = Field(..., ge=1)
+    value: int | float = Field(..., ge=0)
     """Primary value."""
     std_dev: float | None = Field(None, ge=0)
     """Standard deviation (if Gaussian)."""
