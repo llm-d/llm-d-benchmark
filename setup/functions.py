@@ -407,6 +407,12 @@ def environment_variable_to_dict(ev: dict = {}):
         ev["harness_profile_harness_list"] = ev["harness_profile_harness_list"].split()
     ev["current_step_nr"] = ev["current_step"].split('_')[0]
 
+    for component in [ "vllm_common", "vllm_standalone", "harness", "vllm_modelservice_decode" ] :
+        for additional_env_var in ev[f"{component}_envvars_to_yaml"].split(',') :
+
+            if additional_env_var in dict(os.environ).keys():
+                ev.update({(additional_env_var).lower(): os.environ.get(additional_env_var)})
+
 def kubectl_apply(
     api: pykube.HTTPClient,
     manifest_data: Union[list, dict],
@@ -1527,7 +1533,6 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
 
     cpu_mem = ev[f"vllm_{identifier}_cpu_mem"]
     cpu_nr = ev[f"vllm_{identifier}_cpu_nr"]
-
     ephemeral_storage_resource = ev["vllm_common_ephemeral_storage_resource"]
     ephemeral_storage = ev[f"vllm_{identifier}_ephemeral_storage"]
 
@@ -1708,6 +1713,7 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
                 clean_name = env_var
                 if env_var[0] == "_":
                     clean_name = env_var[1:]
+
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_VLLM_", "VLLM_")
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_VLLM_", "VLLM_")
