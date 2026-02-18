@@ -2884,6 +2884,7 @@ def install_wva_components(ev: dict):
 
     wva_config = {
         "wva": {
+            "controllerInstance": ev["wva_namespace"],
             "enabled": ev["wva_controller_enabled"],
             "image": {
                 "repository": f"{ev['wva_image_repository']}",
