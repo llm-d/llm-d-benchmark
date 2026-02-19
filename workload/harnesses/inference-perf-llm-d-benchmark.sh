@@ -5,10 +5,36 @@ mkdir -p "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 pushd "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" > /dev/null  2>&1
 yq '.storage["local_storage"]["path"] = '\"${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}\" <"${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/inference-perf/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}" -y >${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}
 export LLMDBENCH_HARNESS_ARGS="--config_file $(realpath ./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME})"
+
+# Start metrics collection in background if enabled
+if [[ "${LLMDBENCH_COLLECT_METRICS:-1}" == "1" ]]; then
+  echo "Starting metrics collection..."
+  ${LLMDBENCH_RUN_WORKSPACE_DIR}/harnesses/collect_metrics.sh start &
+  METRICS_COLLECTOR_PID=$!
+  echo "Metrics collector started with PID: $METRICS_COLLECTOR_PID"
+fi
+
 start=$(date +%s.%N)
 inference-perf $LLMDBENCH_HARNESS_ARGS > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
 stop=$(date +%s.%N)
+
+# Stop metrics collection
+if [[ "${LLMDBENCH_COLLECT_METRICS:-1}" == "1" ]] && [[ -n "${METRICS_COLLECTOR_PID:-}" ]]; then
+  echo "Stopping metrics collection..."
+  ${LLMDBENCH_RUN_WORKSPACE_DIR}/harnesses/collect_metrics.sh stop
+  wait $METRICS_COLLECTOR_PID 2>/dev/null || true
+  
+  # Process collected metrics
+  echo "Processing collected metrics..."
+  ${LLMDBENCH_RUN_WORKSPACE_DIR}/harnesses/collect_metrics.sh process
+  
+  # Generate visualizations
+  if command -v python3 &> /dev/null; then
+    echo "Generating metric visualizations..."
+    python3 -m benchmark_report.visualize_metrics "${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/metrics" || echo "Warning: Failed to generate visualizations"
+  fi
+fi
 
 export LLMDBENCH_HARNESS_START=$(date -d "@${start}" --iso-8601=seconds)
 export LLMDBENCH_HARNESS_STOP=$(date -d "@${stop}" --iso-8601=seconds)
