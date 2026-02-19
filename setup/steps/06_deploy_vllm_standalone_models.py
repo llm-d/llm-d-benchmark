@@ -254,10 +254,10 @@ spec:
         - containerPort: {ev['vllm_common_inference_port']}
         startupProbe:
           httpGet:
-            path: /health
+            path: {ev["vllm_standalone_startup_probe_path"]}
             port: {ev['vllm_common_inference_port']}
-          failureThreshold: 200
-          initialDelaySeconds: {ev.get('vllm_common_initial_delay_probe', 60)}
+            failureThreshold: {ev["vllm_standalone_startup_probe_failure_threshold"]}
+            initialDelaySeconds: {ev["vllm_standalone_startup_probe_initial_delay"]}
           periodSeconds: 30
           timeoutSeconds: 5
         livenessProbe:
@@ -267,7 +267,7 @@ spec:
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /health
+            path: {ev["vllm_standalone_readiness_probe_path"]}
             port: {ev['vllm_common_inference_port']}
           failureThreshold: 3
           periodSeconds: 5
