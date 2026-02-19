@@ -113,6 +113,7 @@ modelArtifacts:
 routing:
   servicePort: {ev["vllm_common_inference_port"]}
   proxy:
+    enabled: {ev["llmd_routingsidecar_enabled"]}
     image: "{get_image(ev, "llmd_routingsidecar_image", False, True)}"
     secure: false
     connector: {ev["llmd_routingsidecar_connector"]}
