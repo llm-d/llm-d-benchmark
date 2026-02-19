@@ -68,17 +68,33 @@ The preprocesses configMap volume should be listed FIRST. The preprocesses mount
 
 ## Environment Variables
 
+**CRITICAL RULE**: ALL environment variables defined in the guide's `env:` section MUST be captured in the scenario file. Never silently drop env vars - they are often essential for the guide to function correctly (e.g., accelerator-specific settings, logging paths, feature flags).
+
 For container environment variables:
 
 ```bash
-export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
-cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_ENVVARS_TO_YAML=$(mktemp)
+cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_DECODE_ENVVARS_TO_YAML
 - name: VLLM_LOGGING_LEVEL
   value: INFO
 - name: UCX_TLS
   value: "sm,cuda_ipc,cuda_copy,tcp"
 EOF
 ```
+
+### Mapping
+
+| Guide Section | LLMDBENCH Variable |
+|--------------|-------------------|
+| `decode.containers[].env` | `LLMDBENCH_VLLM_MODELSERVICE_DECODE_ENVVARS_TO_YAML` |
+| `prefill.containers[].env` | `LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ENVVARS_TO_YAML` |
+
+### Verification
+
+After generating the scenario file, verify:
+1. Count the env vars in the source guide's `env:` sections
+2. Count the env vars in the generated `ENVVARS_TO_YAML` blocks
+3. The counts must match (excluding any benchmark-framework-added vars which should be documented)
 
 ## GAIE Custom Plugin Configuration
 
@@ -163,6 +179,93 @@ EOF
 - Skip custom plugin config just because a preset file exists
 - Assume preset files will have the same content as the guide's custom config
 - Omit custom config to avoid "duplication" - the scenario file should be complete
+
+## LeaderWorkerSet / Multinode Patterns
+
+When converting guides that use LeaderWorkerSet (LWS) for multi-node or multi-pod deployment:
+
+### Detection
+
+A guide uses LeaderWorkerSet if:
+- The kustomize manifests contain `kind: LeaderWorkerSet` resources
+- The manifest has fields like `leaderWorkerTemplate`, `workerTemplate`, `size`, or `LWS_*` environment variables
+- The vLLM command uses flags like `--data-parallel-address`, `--data-parallel-start-rank`, `--data-parallel-rpc-port`
+
+### Support
+
+**LeaderWorkerSet IS supported** by the llm-d-benchmark framework via the modelservice Helm chart. Set:
+
+```bash
+export LLMDBENCH_VLLM_MODELSERVICE_MULTINODE=true
+```
+
+This maps to `multinode: true` in the modelservice Helm chart, which enables LeaderWorkerSet-based deployment.
+
+### Configuration Mapping
+
+| LWS Manifest Field | LLMDBENCH Variable | Notes |
+|-------------------|-------------------|-------|
+| `spec.replicas` | `LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS` | Number of LWS groups |
+| `spec.leaderWorkerTemplate.size` | `LLMDBENCH_VLLM_COMMON_NUM_WORKERS_PARALLELISM` | Pods per LWS group |
+| `DP_SIZE_LOCAL` env var | `LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM` | Data parallel per pod |
+| `TP_SIZE` env var | `LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM` | Tensor parallel size |
+
+### Template
+
+```bash
+# =============================================================================
+# LeaderWorkerSet / Multinode Configuration
+# SOURCE: <path-to-lws-manifest>
+# Lines <line-numbers>:
+#   spec.replicas: <value>
+#   spec.leaderWorkerTemplate.size: <value>
+# =============================================================================
+export LLMDBENCH_VLLM_MODELSERVICE_MULTINODE=true
+
+# Number of LWS groups (each group has size workers)
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=<replicas>
+
+# Number of pods per LWS group
+export LLMDBENCH_VLLM_COMMON_NUM_WORKERS_PARALLELISM=<lws-size>
+
+# Data parallelism per pod
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM=<dp_size_local>
+```
+
+### LWS-Specific vLLM Arguments
+
+When multinode is enabled, the modelservice Helm chart automatically handles LWS-specific vLLM arguments. You typically do NOT need to include these in `EXTRA_ARGS`:
+- `--data-parallel-address` (set automatically from LWS leader)
+- `--data-parallel-start-rank` (set automatically per pod)
+- `--data-parallel-rpc-port` (set automatically)
+
+However, DO include these parallelism flags in `EXTRA_ARGS`:
+- `--tensor-parallel-size`
+- `--data-parallel-size-local` (maps to `DP_SIZE_LOCAL`)
+- `--data-parallel-size` (total DP = `LWS_GROUP_SIZE * DP_SIZE_LOCAL`)
+
+### Complete Example
+
+```bash
+# Enable LeaderWorkerSet deployment
+export LLMDBENCH_VLLM_MODELSERVICE_MULTINODE=true
+
+# LWS group configuration
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1      # 1 LWS group
+export LLMDBENCH_VLLM_COMMON_NUM_WORKERS_PARALLELISM=2    # 2 pods per group
+
+# Per-pod parallelism
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1
+export LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM=8  # 8 GPUs per pod
+
+# Total: 1 group × 2 pods × 8 GPUs = 16 GPUs for decode
+```
+
+### DO NOT
+
+- Add comments saying LWS is "not supported" by llm-d-benchmark
+- Skip multinode configuration when converting LWS-based guides
+- Manually set LWS-specific args that are auto-configured by the Helm chart
 
 ## Accelerator Patterns
 

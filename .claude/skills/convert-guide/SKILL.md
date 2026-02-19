@@ -183,6 +183,16 @@ Before displaying or writing files, verify:
 - Volumes include `preprocesses` configMap (should be first in list)
 - If guide has `inferenceExtension.pluginsCustomConfig`, then `LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS` is defined
 - If guide specifies explicit container image version, then `LLMDBENCH_LLMD_IMAGE_TAG` is set
+- If guide uses LeaderWorkerSet (LWS), then `LLMDBENCH_VLLM_MODELSERVICE_MULTINODE=true` is set
+
+**Completeness Checklist (MANDATORY - never omit source configuration):**
+- **Environment variables**: If guide defines `env:` in decode/prefill containers, ALL env vars MUST be captured in `LLMDBENCH_VLLM_MODELSERVICE_DECODE_ENVVARS_TO_YAML` or `LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ENVVARS_TO_YAML`
+- **Volume mounts**: If guide defines `volumeMounts:`, ALL mounts MUST be captured in `EXTRA_VOLUME_MOUNTS`
+- **Volumes**: If guide defines `volumes:`, ALL volumes MUST be captured in `EXTRA_VOLUMES`
+- **vLLM args**: If guide defines `args:`, ALL args MUST be captured in `EXTRA_ARGS`
+- **Container config**: If guide defines resources, securityContext, or other container config, it MUST be captured
+
+**CRITICAL**: The scenario file must be a complete representation of the guide. Configuration from the source guide should NEVER be silently dropped or omitted. If a value cannot be mapped, document it in a comment explaining why.
 
 **Source Documentation Checklist:**
 - Every environment variable has a `# SOURCE:` comment block

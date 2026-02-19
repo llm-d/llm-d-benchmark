@@ -144,8 +144,9 @@ The ModelService Helm chart is deployed via `setup/steps/09_deploy_via_modelserv
 
 | Helm Path | LLMDBENCH Variable | ev[] Key | Notes |
 |-----------|-------------------|----------|-------|
-| `multinode` | `LLMDBENCH_VLLM_MODELSERVICE_MULTINODE` | `vllm_modelservice_multinode` | Multi-node deployment |
+| `multinode` | `LLMDBENCH_VLLM_MODELSERVICE_MULTINODE` | `vllm_modelservice_multinode` | Enable LeaderWorkerSet deployment (set `true` when guide uses LWS CRD) |
 | `routing.servicePort` | `LLMDBENCH_VLLM_COMMON_INFERENCE_PORT` | `vllm_common_inference_port` | Inference service port |
+| `routing.proxy.enabled` | `LLMDBENCH_LLMD_ROUTINGSIDECAR_ENABLED` | `llmd_routingsidecar_enabled` | Routing sidecar enablement flag |
 | `routing.proxy.connector` | `LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR` | `llmd_routingsidecar_connector` | Routing connector type |
 | `routing.proxy.debugLevel` | `LLMDBENCH_LLMD_ROUTINGSIDECAR_DEBUG_LEVEL` | `llmd_routingsidecar_debug_level` | Debug level |
 | `accelerator.type` | `LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE` | `vllm_common_accelerator_resource` | GPU resource type |
@@ -258,7 +259,7 @@ These Helm values have no direct LLMDBENCH equivalent and should be noted in com
 | `LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE` | `vllm_common_pvc_model_cache_size` | `300Gi` | PVC size for model cache |
 | `LLMDBENCH_VLLM_COMMON_INFERENCE_PORT` | `vllm_common_inference_port` | `8000` | Service port (proxy/sidecar listens here, forwards to vLLM) |
 | `LLMDBENCH_VLLM_COMMON_METRICS_PORT` | `vllm_common_metrics_port` | `8200` | vLLM container port (where vLLM actually listens via `--port`) |
-| `LLMDBENCH_VLLM_MODELSERVICE_MULTINODE` | `vllm_modelservice_multinode` | `false` | Multi-node deployment |
+| `LLMDBENCH_VLLM_MODELSERVICE_MULTINODE` | `vllm_modelservice_multinode` | `false` | Enable LeaderWorkerSet (LWS) for multi-pod coordination |
 | `LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME` | `vllm_modelservice_gateway_class_name` | `istio` | Gateway class |
 | `LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE` | `vllm_modelservice_gaie_plugins_configfile` | `default-plugins.yaml` | GAIE plugins config |
 | `LLMDBENCH_HARNESS_NAME` | `harness_name` | `inference-perf` | Default load generator |
