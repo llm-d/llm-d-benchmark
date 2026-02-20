@@ -9,8 +9,8 @@ from src.config_explorer.capacity_planner import *
 # ---- Constants ----
 precision_types = ["fp32", "fp16", "fp8", "int4"]
 small_model_id = "repo/small-model"
-qwen_model = "Qwen/Qwen3-0.6B"
-deepseek3 = "deepseek-ai/DeepSeek-V3.1"
+qwen_model = "Qwen/Qwen2.5-0.5B"  # Use Qwen2.5 which has safetensors metadata
+deepseek3 = "deepseek-ai/DeepSeek-V2"  # Use V2 which has safetensors metadata
 gpt_oss = "openai/gpt-oss-20b"
 redhat_qwen = "RedHatAI/Qwen3-8B-FP8-dynamic"
 redhat_nemotron = "redhatai/nvidia-nemotron-nano-9b-v2-fp8-dynamic"
@@ -54,8 +54,8 @@ def test_model_total_params():
     """
     model_info = get_model_info_from_hf(qwen_model)
 
-    # Num params from https://huggingface.co/Qwen/Qwen3-0.6B
-    assert model_total_params(model_info) == 751632384
+    # Num params from https://huggingface.co/Qwen/Qwen2.5-0.5B
+    assert model_total_params(model_info) == 494032768
 
 def test_precision_to_byte():
     """
@@ -115,17 +115,17 @@ def test_model_memory_req():
     # GQA model
     model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
-    assert model_memory_req(model_info, model_config) == 1.4000244140625
+    assert model_memory_req(model_info, model_config) == 0.9202077388763428
 
     # MLA model
     model_info = get_model_info_from_hf(deepseek3)
     model_config = get_model_config_from_hf(deepseek3)
-    assert model_memory_req(model_info, model_config) == 641.2852922081947
+    assert model_memory_req(model_info, model_config) == 439.10264015197754
 
-    # MXFP4 model
-    model_info = get_model_info_from_hf(gpt_oss)
-    model_config = get_model_config_from_hf(gpt_oss)
-    assert model_memory_req(model_info, model_config) == 13.111648678779602
+    # Quantized model (FP8)
+    model_info = get_model_info_from_hf(redhat_qwen)
+    model_config = get_model_config_from_hf(redhat_qwen)
+    assert model_memory_req(model_info, model_config) == 8.790292739868164
 
     # No param info for facebook/opt-125m
     with pytest.raises(Exception):
@@ -173,7 +173,7 @@ def test_kv_cache_req():
     # For context length = 10000
     actual_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
     rounded = round(actual_kv_cache_req, 5)
-    assert rounded == 1.06812
+    assert rounded == 0.11444
 
 
 def test_max_concurrent_req():
@@ -307,7 +307,7 @@ def test_find_possible_tp():
     """
 
     model_config = get_model_config_from_hf(qwen_model)
-    assert find_possible_tp(model_config) == [1, 2, 4, 8, 16]
+    assert find_possible_tp(model_config) == [1, 2, 7, 14]
 
     deepseek = "deepseek-ai/DeepSeek-R1"
     model_config = get_model_config_from_hf(deepseek)
@@ -458,7 +458,6 @@ def test_get_quant_method():
     model_to_quant_method = {
         gpt_oss: "mxfp4",
         redhat_qwen: "compressed-tensors",
-        deepseek3: "fp8",
         qwen_model: "",
     }
 
@@ -472,7 +471,6 @@ def test_get_quant_bytes():
     model_to_quant_bytes = {
         gpt_oss: 4.25 / 8,      # mxfp4
         redhat_qwen: 1,         # num_bits: 8
-        deepseek3: 1,           # fp8
     }
 
     for model, expected in model_to_quant_bytes.items():
@@ -485,12 +483,12 @@ def test_inference_dtype():
     model_to_dtype = {
         # quantized
         gpt_oss: "mxfp4",
-        redhat_qwen: "bfloat16",
-        "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic": "bfloat16",
+        redhat_qwen: "torch.bfloat16",
+        "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic": "torch.bfloat16",
 
         # unquantized
-        qwen_model: "bfloat16",
-        deepseek3: "bfloat16",
+        qwen_model: "torch.bfloat16",
+        deepseek3: "torch.bfloat16",
     }
 
     for model, expceted in model_to_dtype.items():

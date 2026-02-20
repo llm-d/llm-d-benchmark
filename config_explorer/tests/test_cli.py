@@ -59,7 +59,7 @@ class TestBasicPlan:
 
     def test_basic_plan_with_defaults(self):
         """Test basic capacity planning with default max_model_len"""
-        result = run_cli("plan", "--model", "Qwen/Qwen3-32B")
+        result = run_cli("plan", "--model", "Qwen/Qwen2.5-3B")
 
         assert result.returncode == 0
 
@@ -67,7 +67,7 @@ class TestBasicPlan:
         assert "model_memory_gb" in data
         assert "input_parameters" in data
         assert "kv_cache_detail" in data
-        assert data["input_parameters"]["model"] == "Qwen/Qwen3-32B"
+        assert data["input_parameters"]["model"] == "Qwen/Qwen2.5-3B"
         assert "max_model_len" in data["input_parameters"]
         assert data["input_parameters"]["max_model_len"] > 0
         assert "batch_size" in data["input_parameters"]
@@ -77,7 +77,7 @@ class TestBasicPlan:
         """Test capacity planning with explicit context length"""
         result = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--max-model-len", "8192"
         )
 
@@ -92,7 +92,7 @@ class TestBasicPlan:
         """Test capacity planning with custom batch size"""
         result = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--batch-size", "32"
         )
 
@@ -110,7 +110,7 @@ class TestGPUCalculations:
         """Test capacity planning with GPU memory"""
         result = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--gpu-memory", "80",
             "--max-model-len", "8192"
         )
@@ -133,7 +133,7 @@ class TestGPUCalculations:
         """Test capacity planning with tensor, pipeline, and data parallelism"""
         result = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--gpu-memory", "80",
             "--tp", "2",
             "--pp", "1",
@@ -152,7 +152,7 @@ class TestGPUCalculations:
         """Test capacity planning with custom block size"""
         result = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--gpu-memory", "80",
             "--block-size", "32"
         )
@@ -167,7 +167,7 @@ class TestGPUCalculations:
         """Test capacity planning with custom GPU memory utilization"""
         result = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--gpu-memory", "80",
             "--gpu-mem-util", "0.85"
         )
@@ -185,7 +185,7 @@ class TestTPValidation:
         """Test showing possible TP values"""
         result = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--show-possible-tp"
         )
 
@@ -201,7 +201,7 @@ class TestTPValidation:
         """Test with a valid TP value"""
         result = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--gpu-memory", "80",
             "--tp", "4"
         )
@@ -215,7 +215,7 @@ class TestTPValidation:
         """Test with an invalid TP value"""
         result = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--tp", "11"
         )
 
@@ -232,7 +232,7 @@ class TestOutputFormats:
 
         result = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--output", str(output_file)
         )
 
@@ -246,7 +246,7 @@ class TestOutputFormats:
 
     def test_json_output_format(self):
         """Test that output is valid JSON"""
-        result = run_cli("plan", "--model", "Qwen/Qwen3-32B")
+        result = run_cli("plan", "--model", "Qwen/Qwen2.5-3B")
 
         assert result.returncode == 0, f"Failed: {result.stderr}"
 
@@ -260,7 +260,7 @@ class TestKVCacheDetails:
 
     def test_kv_cache_always_present(self):
         """Test that KV cache details are always calculated"""
-        result = run_cli("plan", "--model", "Qwen/Qwen3-32B")
+        result = run_cli("plan", "--model", "Qwen/Qwen2.5-3B")
 
         assert result.returncode == 0, f"Failed: {result.stderr}"
 
@@ -285,12 +285,12 @@ class TestKVCacheDetails:
         """Test KV cache scales with context length"""
         result_short = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--max-model-len", "2048"
         )
         result_long = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--max-model-len", "8192"
         )
 
@@ -335,7 +335,7 @@ class TestModelInfo:
 
     def test_model_info_present(self):
         """Test that model info is included in output"""
-        result = run_cli("plan", "--model", "Qwen/Qwen3-32B")
+        result = run_cli("plan", "--model", "Qwen/Qwen2.5-3B")
 
         assert result.returncode == 0, f"Failed: {result.stderr}"
 
@@ -352,7 +352,7 @@ class TestIntegration:
         """Test complete deployment planning scenario"""
         result = run_cli(
             "plan",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--gpu-memory", "80",
             "--max-model-len", "8192",
             "--batch-size", "64",
@@ -715,7 +715,7 @@ class TestEstimateCommand:
         """Test estimation with a large model that may fail on some GPUs"""
         result = run_cli(
             "estimate",
-            "--model", "Qwen/Qwen3-32B",
+            "--model", "Qwen/Qwen2.5-3B",
             "--input-len", "512",
             "--output-len", "128",
             "--gpu-list", "L20,H100"  # L20 likely to fail, H100 likely to succeed
