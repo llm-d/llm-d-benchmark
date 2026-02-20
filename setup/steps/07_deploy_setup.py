@@ -32,7 +32,7 @@ def gateway_values(provider : str, host: str, service: str) -> str:
     type: {service}
 """
 
-    elif provider == "kgateway":
+    elif provider == "kgateway" :
         return f"""gateway:
   gatewayClassName: kgateway
   """
@@ -43,6 +43,7 @@ def gateway_values(provider : str, host: str, service: str) -> str:
   service:
     type: {service}
   gatewayParameters:
+    floatingUserId: true
     enabled: true
   """
 

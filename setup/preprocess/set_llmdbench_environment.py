@@ -44,6 +44,13 @@ nvshmem_ib_addr_range = os.getenv('NVSHMEM_IB_ADDR_RANGE', None)
 
 disable_acs = os.getenv("NCCL_ACS_DISABLE","0")
 
+pod_name = os.uname()[1]
+pod_namespace = os.environ.get("LLMDBENCH_POD_NS", "default")
+pod_labels = os.environ.get("LLMDBENCH_POD_LABELS", "")
+kubeconfig_path = os.environ.get("KUBECONFIG", "")
+
+lws_leader_address = os.environ.get("LWS_LEADER_ADDRESS", None)
+
 usage = '''usage: %prog [options] [command]
 '''
 _parser = OptionParser(usage)
@@ -410,12 +417,12 @@ dpsi = int(os.getenv("DP_SIZE_LOCAL", "0"))
 sr = lwswi * dpsi
 env_file_contents.append(f"export START_RANK=\"{sr}\"")
 
-env_file_contents.append("if [[ -z $LWS_WORKER_INDEX ]]; then")
+env_file_contents.append("if [ -z $LWS_WORKER_INDEX ]; then")
 env_file_contents.append("  find /dev/shm -type f -delete")
 env_file_contents.append("fi")
 
 if disable_acs == "1" :
-    env_file_contents.append("if [[ ! -z $UCX_NET_DEVICES && ! -z NCCL_IB_HCA && ! -f ~/acs_disabled ]]; then")
+    env_file_contents.append("if [ ! -z $UCX_NET_DEVICES && ! -z NCCL_IB_HCA && ! -f ~/acs_disabled ]; then")
     env_file_contents.append(" acs_disable_failure=0")
     env_file_contents.append(" for BDF in $(lspci -d \"*:*:*\" | awk '{print $1}'); do")
     env_file_contents.append("    setpci -v -s ${BDF} ECAP_ACS+0x6.w > /dev/null 2>&1")
@@ -439,19 +446,65 @@ if disable_acs == "1" :
 
 env_file_contents.append("echo")
 
-pod_name = os.uname()[1]
-if pod_name.count("decode") :
-    pod_index=eval(pod_name.split('decode-')[-1].replace('-','+'))
-if pod_name.count("prefill") :
-    pod_index=eval(pod_name.split('prefill-')[-1].replace('-','+'))
+pod_index = None
+if lws_leader_address :
+    if pod_name.count("decode") :
+        pod_index=eval(pod_name.split('decode-')[-1].replace('-','+'))
+    if pod_name.count("prefill") :
+        pod_index=eval(pod_name.split('prefill-')[-1].replace('-','+'))
+
+print(f"DEBUG: Pod index is \"{pod_index}\"")
 
 for key in dict(os.environ).keys():
     if "VLLM_" in key:
         value = os.environ.get(key)
         if value.count(',,') :
-            newvalue = value.split(',,')[pod_index]
+            if pod_index :
+                if len(value.split(',,')) >= pod_index :
+                    newvalue = value.split(',,')[pod_index]
+                else :
+                    newvalue = value.split(',,')[0]
+            else :
+                newvalue = value.split(',,')[0]
             print(f"INFO: Variable \"{key}\" with value \"{value}\" will be re-exported with \"{newvalue}\" ({pod_index})")
             env_file_contents.append(f"export {key}={newvalue}")
+
+if pod_labels.count(',') and kubeconfig_path :
+    try:
+        import pykube
+        from pykube.exceptions import PyKubeError, ObjectDoesNotExist
+    except ModuleNotFoundError as e:
+        print("DEBUG: Attempting to install pykube")
+        try :
+            result = subprocess.run(['pip', 'install', 'pykube'], capture_output=True, text=True, check=True)
+            import pykube
+            from pykube.exceptions import PyKubeError, ObjectDoesNotExist
+        except subprocess.CalledProcessError as e:
+            print(f"ERROR: Unable to install pykube: {e}")
+            sys.exit(1)
+
+    try:
+        #config = pykube.KubeConfig.from_service_account()
+        config = pykube.KubeConfig.from_file(kubeconfig_path)
+        api = pykube.HTTPClient(config)
+
+        pod = pykube.Pod.objects(api).filter(namespace=pod_namespace).get(name=pod_name)
+        if "labels" not in pod.obj["metadata"]:
+            pod.obj["metadata"]["labels"] = {}
+
+        if len(pod_labels.split(',')) >= pod_index :
+            pod_label = pod_labels.split(',')[pod_index]
+        else :
+            pod_label = pod_labels.split(',')[0]
+        pod_label_name, pod_label_value = pod_label.split("_eq_")
+        pod.obj["metadata"]["labels"][pod_label_name] = pod_label_value
+        pod.update()
+        print(f"INFO: Added label \"{pod_label_name}={pod_label_value}\" to this pod")
+
+    except ObjectDoesNotExist:
+        print(f"ERROR: Pod {pod_name} not found in namespace {pod_namespace}")
+        sys.exit(1)
+
 
 env_file_contents.append("echo \"Defined NCCL environment variables\"")
 env_file_contents.append("env | grep -E \"^NCCL|^UCX|^CUDA|^OMP|^NPROC|^SMOKETEST|^NVSHMEM|START|WORLD_SIZE|RANK|^MASTER\" | sort")
