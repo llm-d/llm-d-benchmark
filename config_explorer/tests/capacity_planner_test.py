@@ -480,20 +480,25 @@ def test_get_quant_bytes():
 def test_inference_dtype():
     """Tests that inference dtype can be determined for quantized and unquantized models"""
 
+    def normalize_dtype(dtype: str) -> str:
+        """Normalize dtype string (handles 'torch.bfloat16' vs 'bfloat16' across PyTorch versions)"""
+        return dtype.replace("torch.", "")
+
     model_to_dtype = {
         # quantized
         gpt_oss: "mxfp4",
-        redhat_qwen: "torch.bfloat16",
-        "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic": "torch.bfloat16",
+        redhat_qwen: "bfloat16",
+        "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic": "bfloat16",
 
         # unquantized
-        qwen_model: "torch.bfloat16",
-        deepseek3: "torch.bfloat16",
+        qwen_model: "bfloat16",
+        deepseek3: "bfloat16",
     }
 
-    for model, expceted in model_to_dtype.items():
+    for model, expected in model_to_dtype.items():
         model_config = get_model_config_from_hf(model)
-        assert inference_dtype(model_config) == expceted
+        actual = normalize_dtype(inference_dtype(model_config))
+        assert actual == expected, f"{model}: expected {expected}, got {actual}"
 
 def test_inference_dtype_byte():
     """Tests that inference dtype byte can be determined for quantized and unquantized models"""
