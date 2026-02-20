@@ -1936,12 +1936,18 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
     curl_command = f"curl -k --no-progress-meter {ip}"
     full_command = ["/bin/bash", "-c", f"{curl_command}"]
 
+    pull_secret_ref = None
+    if ev["vllm_common_pull_secret"] :
+        pull_secret_ref = client.V1LocalObjectReference(name=ev["vllm_common_pull_secret"])
+
     while current_attempts <= total_attempts :
         pod_name = f"testinference-pod-{get_rand_string()}"
+
         pod_manifest = client.V1Pod(
             metadata=client.V1ObjectMeta(name=pod_name, namespace=ev['vllm_common_namespace'], labels={"llm-d.ai/id": f"{pod_name}"}),
             spec=client.V1PodSpec(
                 restart_policy="Never",
+                image_pull_secrets=[pull_secret_ref],
                 containers=[
                     client.V1Container(name="model", image=image, command=full_command)
                 ],
@@ -2579,7 +2585,7 @@ def get_validation_param(ev: dict, type: str = COMMON) -> ValidationParam:
             user_accelerator_nr, tp_size, dp_size
         ),
         gpu_memory_util=float(ev[f"{prefix}_accelerator_mem_util"]),
-        max_model_len=int(ev["vllm_common_max_model_len"]),
+        max_model_len=int(ev["vllm_common_max_model_len"].split(',,')[0]),
     )
 
     return validation_param

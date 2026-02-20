@@ -405,9 +405,9 @@ if nixl_list :
         if is_infiniband :
             env_file_contents.append(f"export NVSHMEM_IB_ENABLE_IBGDA=\"{is_infiniband}\"")
 
-lwswi = os.getenv("LWS_WORKER_INDEX", "0")
-dpsi = os.getenv("DP_SIZE_LOCAL", "0")
-sr = int(lwswi) * int(dpsi)
+lwswi = int(os.getenv("LWS_WORKER_INDEX", "0"))
+dpsi = int(os.getenv("DP_SIZE_LOCAL", "0"))
+sr = lwswi * dpsi
 env_file_contents.append(f"export START_RANK=\"{sr}\"")
 
 env_file_contents.append("if [[ -z $LWS_WORKER_INDEX ]]; then")
@@ -438,6 +438,21 @@ if disable_acs == "1" :
     env_file_contents.append("fi")
 
 env_file_contents.append("echo")
+
+pod_name = os.uname()[1]
+if pod_name.count("decode") :
+    pod_index=eval(pod_name.split('decode-')[-1].replace('-','+'))
+if pod_name.count("prefill") :
+    pod_index=eval(pod_name.split('prefill-')[-1].replace('-','+'))
+
+for key in dict(os.environ).keys():
+    if "VLLM_" in key:
+        value = os.environ.get(key)
+        if value.count(',,') :
+            newvalue = value.split(',,')[pod_index]
+            print(f"INFO: Variable \"{key}\" with value \"{value}\" will be re-exported with \"{newvalue}\" ({pod_index})")
+            env_file_contents.append(f"export {key}={newvalue}")
+
 env_file_contents.append("echo \"Defined NCCL environment variables\"")
 env_file_contents.append("env | grep -E \"^NCCL|^UCX|^CUDA|^OMP|^NPROC|^SMOKETEST|^NVSHMEM|START|WORLD_SIZE|RANK|^MASTER\" | sort")
 env_file_contents.append("echo")
