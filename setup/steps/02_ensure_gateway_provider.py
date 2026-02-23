@@ -348,7 +348,7 @@ releases:
             announce(f"ERROR: Failed while running \"{install_cmd}\" (exit code: {ecode})")
         announce(f"✅ istio ({ev['gateway_provider_istio_chart_version']}) installed")
     else :
-        announce(f"✅ isto (unknown version) already installed (*.istio.io CRDs found)")
+        announce(f"✅ istio (unknown version) already installed (*.istio.io CRDs found)")
 
     return ecode
 
