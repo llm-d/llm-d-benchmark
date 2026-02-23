@@ -85,7 +85,7 @@ except Exception as e:
 try:
     from transformers import AutoConfig
     from huggingface_hub import ModelInfo
-    from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
+    from huggingface_hub.errors import GatedRepoError, HfHubHTTPError, NotASafetensorsRepoError
 except ModuleNotFoundError as e:
     print(f"❌ ERROR: Required dependency not installed: {e}")
     print("Please install the required dependencies:")
@@ -2538,7 +2538,7 @@ def validate_vllm_params(
                             f"ℹ️ The vLLM server can process up to {total_concurrent_reqs} number of requests at the same time, assuming the worst case scenario that each request takes --max-model-len"
                         )
 
-            except AttributeError as e:
+            except (AttributeError, NotASafetensorsRepoError) as e:
                 # Model might not have safetensors data on parameters
                 announce(
                     f"{msgtag} Does not have enough information about model to estimate model memory or KV cache: {e}"
