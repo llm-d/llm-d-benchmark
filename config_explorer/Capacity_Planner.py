@@ -245,7 +245,6 @@ def workload_specification():
     """
 
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
-    model_info = user_scenario.model_info
     model_config = user_scenario.model_config
     text_config = user_scenario.text_config
 
@@ -254,13 +253,6 @@ def workload_specification():
         st.write("**Workload Characteristics**")
         if model_config is None:
             st.warning("Model config not found.")
-            return None
-
-        if model_info is None:
-            st.warning("Model information not yet selected")
-            return None
-        if model_config is None:
-            st.warning("Model config not available, cannot estimate KV cache size.")
             return None
 
 
@@ -294,7 +286,7 @@ Higher max model length means fewer concurrent requests can be served, \
 
         try:
             max_concurrent_requests_num = max_concurrent_requests(
-                model_info,
+                user_scenario.model_name,
                 model_config,
                 user_scenario.max_model_len,
                 gpu_memory=user_scenario.get_gpu_memory(db.gpu_specs),
@@ -311,7 +303,7 @@ Higher max model length means fewer concurrent requests can be served, \
 
         try:
             kv_details = KVCacheDetail(
-                model_info,
+                user_scenario.model_name,
                 model_config,
                 user_scenario.max_model_len,
                 user_scenario.concurrency,
