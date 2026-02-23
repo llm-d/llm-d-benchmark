@@ -58,6 +58,7 @@ venv.bak/
 environment/
 
 .idea/
+.worktrees/
 
 scenarios/none.sh
 
