@@ -447,7 +447,6 @@ def hardware_specification():
     """
 
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
-    model_info = user_scenario.model_info
     model_config = user_scenario.model_config
     text_config = user_scenario.text_config
 
