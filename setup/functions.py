@@ -1699,7 +1699,7 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
 
     if env_vars_string.count("KUBECONFIG") :
         env_lines.append(f"{name_indent}- name: KUBECONFIG")
-        env_lines.append(f"{value_indent}value: /etc/kubeconfig/llmdbench-context")
+        env_lines.append(f"{value_indent}value: /etc/kubeconfig/{ev['vllm_common_context_secret_name']}")
 
     plk = f'{env_vars_key.replace("_envvars_to_yaml","")}_pod_labels'
 
@@ -2168,7 +2168,7 @@ def add_context_as_secret(api_client, ev: dict) -> int:
     secret_yaml = f"""apiVersion: v1
 kind: Secret
 metadata:
-  name: llmdbench-context
+  name: {ev["vllm_common_context_secret_name"]}
   namespace: {ev["vllm_common_namespace"]}
 type: Opaque
 data:

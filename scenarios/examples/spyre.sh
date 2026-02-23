@@ -64,7 +64,7 @@ export LLMDBENCH_LLMD_IMAGE_TAG=v1.1.1-rc.3-amd64
 export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
 - name: KUBECONFIG
-  value: /etc/kubeconfig/llmdbench-context
+  value: /etc/kubeconfig/${LLMDBENCH_VLLM_COMMON_CONTEXT_SECRET_NAME}
 - name: SERVED_MODEL_NAME
   value: REPLACE_ENV_LLMDBENCH_DEPLOY_MODEL_LIST
 - name: FLEX_COMPUTE
@@ -101,7 +101,7 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS
   mountPath: /dev/shm
 - name: preprocesses
   mountPath: /setup/preprocess
-- name: k8s-llmdbench-context
+- name: k8s-${LLMDBENCH_VLLM_COMMON_CONTEXT_SECRET_NAME}
   mountPath: /etc/kubeconfig
   readOnly: true
 EOF
@@ -119,9 +119,9 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES
   configMap:
     defaultMode: 0755
     name: llm-d-benchmark-preprocesses
-- name: k8s-llmdbench-context
+- name: k8s-${LLMDBENCH_VLLM_COMMON_CONTEXT_SECRET_NAME}
   secret:
-    secretName: llmdbench-context
+    secretName: ${LLMDBENCH_VLLM_COMMON_CONTEXT_SECRET_NAME}
 EOF
 
 export LLMDBENCH_VLLM_STANDALONE_PREPROCESS=$LLMDBENCH_VLLM_COMMON_PREPROCESS

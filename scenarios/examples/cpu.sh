@@ -62,7 +62,7 @@ cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS}
   mountPath: /dev/shm
 - name: preprocesses
   mountPath: /setup/preprocess
-- name: k8s-llmdbench-context
+- name: k8s-${LLMDBENCH_VLLM_COMMON_CONTEXT_SECRET_NAME}
   mountPath: /etc/kubeconfig
   readOnly: true
 EOF
@@ -77,9 +77,9 @@ cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES}
   emptyDir:
     medium: Memory
     sizeLimit: REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM
-- name: k8s-llmdbench-context
+- name: k8s-${LLMDBENCH_VLLM_COMMON_CONTEXT_SECRET_NAME}
   secret:
-    secretName: llmdbench-context
+    secretName: ${LLMDBENCH_VLLM_COMMON_CONTEXT_SECRET_NAME}
 EOF
 
 export LLMDBENCH_VLLM_COMMON_PREPROCESS="python3 /setup/preprocess/set_llmdbench_environment.py && . \$HOME/llmdbench_env.sh"
