@@ -1681,6 +1681,8 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
 
     env_vars_string = ev[env_vars_key]
 
+    pod_function = env_vars_key.replace("vllm_",'').replace("modelservice_",'').replace("_envvars_to_yaml",'')
+
     # Determine indentation based on environment type
     if ev["control_environment_type_standalone_active"] :
         name_indent = " " * 8
@@ -1694,6 +1696,20 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
 
     env_lines = []
     env_vars = []
+
+    if env_vars_string.count("KUBECONFIG") :
+        env_lines.append(f"{name_indent}- name: KUBECONFIG")
+        env_lines.append(f"{value_indent}value: /etc/kubeconfig/{ev['vllm_common_context_secret_name']}")
+
+    plk = f'{env_vars_key.replace("_envvars_to_yaml","")}_pod_labels'
+
+    env_lines.append(f"{name_indent}- name: LLMDBENCH_POD_LABELS")
+    env_lines.append(f"{value_indent}value: {ev[plk]}")
+    env_lines.append(f"{name_indent}- name: LLMDBENCH_POD_NS")
+    env_lines.append(f"{value_indent}value: {ev['vllm_common_namespace']}")
+
+    env_vars_string = env_vars_string.replace("KUBECONFIG",'').replace(",,",',')
+
     if os.access(env_vars_string, os.R_OK):
         with open(env_vars_string, "r") as fp:
             for line in fp:
@@ -2138,6 +2154,27 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
             finally:
                 w.stop()
     return result
+
+def add_context_as_secret(api_client, ev: dict) -> int:
+
+    ns = ev["vllm_common_namespace"]
+
+    if ev["current_step_nr"] == "05" :
+        ns = ev["vllm_harness_namespace"]
+
+    with open(f'{ev["control_work_dir"]}/environment/context.ctx', 'rb') as ctxfh:
+        binary_ctx_data = ctxfh.read()
+    secret_data = base64.b64encode(binary_ctx_data).decode('utf-8')
+    secret_yaml = f"""apiVersion: v1
+kind: Secret
+metadata:
+  name: {ev["vllm_common_context_secret_name"]}
+  namespace: {ev["vllm_common_namespace"]}
+type: Opaque
+data:
+  llmdbench-context: {secret_data}
+"""
+    kubectl_apply(api=api_client, manifest_data=secret_yaml, dry_run=ev["control_dry_run"])
 
 # FIXME (USE PYKUBE)
 def collect_logs(ev: dict, component_nr: int, component: str) -> int:
