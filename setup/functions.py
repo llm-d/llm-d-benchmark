@@ -2372,12 +2372,12 @@ def validate_vllm_params(
 
         # # Calculate model memory requirement
         announce("👉 Collecting model information....")
-        if model_info is not None and model_config is not None:
+        if model_config is not None:
             try:
-                model_params = model_total_params(model_info)
+                model_params = model_total_params(model)
                 announce(f"ℹ️ {model} has a total of {model_params} parameters")
 
-                model_mem_req = model_memory_req(model_info, model_config)
+                model_mem_req = model_memory_req(model, model_config)
                 announce(f"ℹ️ {model} requires {model_mem_req} GB of memory")
 
                 # Log intermediate memory components
@@ -2412,7 +2412,7 @@ def validate_vllm_params(
                 if not skip_gpu_tests:
                     announce("👉 Estimating available KV cache....")
                     available_kv_cache = allocatable_kv_cache_memory(
-                        model_info,
+                        model,
                         model_config,
                         gpu_memory,
                         gpu_memory_util,
@@ -2425,7 +2425,7 @@ def validate_vllm_params(
 
                     # Calculate KV cache requirement per request
                     kv_details = KVCacheDetail(
-                        model_info, model_config, max_model_len, batch_size=1
+                        model, model_config, max_model_len, batch_size=1
                     )
                     per_request_kv_cache = kv_details.per_request_kv_cache_gb
 
@@ -2524,7 +2524,7 @@ def validate_vllm_params(
                         )
 
                         total_concurrent_reqs = max_concurrent_requests(
-                            model_info,
+                            model,
                             model_config,
                             max_model_len,
                             gpu_memory,
