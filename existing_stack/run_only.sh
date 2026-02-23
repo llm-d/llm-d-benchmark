@@ -61,7 +61,7 @@ function announce {
     case ${logfile} in
         none|""|"1")
             echo
-            echo "===> $(date) - ${0}:${LINENO}"
+            echo "===> $(date) - ${0}" #:${LINENO}
             echo -e "$message"
             echo -ne "\033[01;33m";   # br yellow
             echo "------------------------------------------------------------"
@@ -184,6 +184,11 @@ spec:
         cpu: "${HARNESS_CPU_NR}"
         memory: ${HARNESS_CPU_MEM}
     env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: "${endpoint_hf_token_secret}"
+          key: HF_TOKEN
     - name: LLMDBENCH_RUN_WORKSPACE_DIR
       value: "/workspace"
     - name: LLMDBENCH_MAGIC_ENVAR
@@ -300,7 +305,7 @@ else
           announce "❌ 'gcloud' command not found, but is required for 'gs://' output."
           exit 1
         else
-          is_bucket=$(gcloud storage buckets list | grep ${_bucket} || true)
+          is_bucket=$(gcloud storage buckets describe "gs://${_bucket}" 2>/dev/null && echo "exists" || true)
         fi
         ;;
       s3)
@@ -309,7 +314,7 @@ else
           announce "❌ 'aws' command not found, but is required for 's3://' output."
           exit 1
         else
-          is_bucket=$(aws s3 ls | grep ${_bucket} || true)
+          is_bucket=$(aws s3 ls "s3://${_bucket}/" 2>/dev/null && echo "exists" || true)
         fi
         ;;
       *)
@@ -319,10 +324,10 @@ else
     esac
 
     if [[ -z $is_bucket ]]; then
-      announce "❌ ERROR: Bucket \"${_bucket}\" ('${_output_destination}') not found."
-      exit1 1
+      announce "❌ ERROR: Bucket \"${_bucket}\" ('${_output_destination}') not found or not accessible."
+      exit 1
     else
-      announce "✅ Output destination checked\""
+      announce "✅ Output destination checked"
     fi
 
   else
@@ -425,35 +430,45 @@ if [ "${harness_wait_timeout}" -eq 0 ]; then
 else
   _timeout="timeout ${harness_wait_timeout}s"
 fi
-yq '.workload | keys | .[]' "${_config_file}" |
-  while IFS= read -r workload; do
-    announce "ℹ️ Running benchmark with workload ${workload}."
-    IFS= read -r -d '' run_workload <<RUN_WORKLOAD
-      # redirect to root fds so that kubectl logs can capture output
-      exec 1> >(tee /proc/1/fd/1 >&1)
-      exec 2> >(tee /proc/1/fd/2 >&2)
+declare -a workloads
+while IFS= read -r workload; do
+  workloads+=("$workload")
+done < <(yq '.workload | keys | .[]' "${_config_file}")
+announce "Workloads in ${_config_file} are ${workloads[*]}"
+for workload in "${workloads[@]}"; do
+  announce "ℹ️ Running benchmark with workload ${workload}."
+  run_workload=$(cat <<RUN_WORKLOAD
+    # redirect to root fds so that kubectl logs can capture output
+    exec 1> >(tee /proc/1/fd/1 >&1)
+    exec 2> >(tee /proc/1/fd/2 >&2)
 
-      export LLMDBENCH_RUN_EXPERIMENT_ID="${_uid}_${workload}"
+    export LLMDBENCH_RUN_EXPERIMENT_ID="${_uid}_${workload}"
 
-      ${HARNESS_EXECUTABLE} --harness="${harness_name}" --workload="${workload}"
+    ${HARNESS_EXECUTABLE} --harness="${harness_name}" --workload="${workload}"
 RUN_WORKLOAD
-    ${_timeout} $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "$run_workload"
-    res=$?
-    if [ $res -eq 0 ]; then
-      announce "ℹ️ Benchmark workload ${workload} complete."
-    elif [ $res -eq 124 ]; then
-      announce "⚠️ Warning: workload ${workload} timed out after ${harness_wait_timeout}s."
-    else
-      announce "❌ ERROR: error happened while running workload ${workload}."
-    fi
-  done
+  )
+  : | ${_timeout} $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "$run_workload"
+  res=$?
+  if [ $res -eq 0 ]; then
+    announce "ℹ️ Benchmark workload ${workload} complete."
+  elif [ $res -eq 124 ]; then
+    announce "⚠️ Warning: workload ${workload} timed out after ${harness_wait_timeout}s."
+  else
+    announce "❌ ERROR: error happened while running workload ${workload}."
+  fi
+done
 set -e
 
 # Finalization
 # ========================================================
 case "${_storage_type}" in
   pvc)
-    final_msg="PVC ${harness_results_pvc}.\nPlease use analyze.sh to fetch and analyze results."
+    final_msg=$(cat <<EOM
+PVC ${harness_results_pvc}.
+  Please use $control_kubectl  -n ${harness_namespace} exec -it ${_pod_name} -- ls -lrt "${RESULTS_DIR_PREFIX}" to list results folders.
+  Then, use $control_kubectl cp ${harness_namespace}/${_pod_name}:${RESULTS_DIR_PREFIX}/<result dir> <local dir> to copy to local machine.
+EOM
+    )
     ;;
   local|cloud)
     upload_results "${_pod_name}" "${_storage_type}" "${_output_destination}"

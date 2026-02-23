@@ -187,4 +187,4 @@ The environment variables to set are:
 | LLMDBENCH_VLLM_STANDALONE_LAUNCHER_VLLM_PORT |  8002 etc | default is 8002, the vLLM server started byt the launcher will wait on this port |
 
 When using the launcher, the `nop` harness will create a report with both the standalone vLLM server and the launched vLLM server metrics.
-The launcher image with vLLM will be used in both cases as well as all the env. variables to ensure they run under the same scenario.
+The launcher image with vLLM will be used in both cases as well as all the env. variables to ensure they run under the same scenario. 

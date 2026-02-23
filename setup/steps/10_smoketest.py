@@ -8,7 +8,6 @@ from pathlib import Path
 import pykube
 import ipaddress
 
-
 # Add project root to path for imports
 current_file = Path(__file__).resolve()
 project_root = current_file.parents[1]

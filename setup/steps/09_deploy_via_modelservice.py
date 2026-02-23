@@ -34,6 +34,7 @@ from functions import (
     add_resources,
     add_accelerator,
     add_affinity,
+    add_scc_to_service_account,
     clear_string,
     install_wva_components,
     kube_connect,
@@ -147,10 +148,8 @@ decode:
     args:
 {add_command_line_options(ev, "vllm_modelservice_decode_extra_args")}
     env:
-      - name: VLLM_NIXL_SIDE_CHANNEL_HOST
-        valueFrom:
-          fieldRef:
-            fieldPath: status.podIP
+      - name: VLLM_IS_DECODE
+        value: "1"
       {add_additional_env_to_yaml(ev, "vllm_modelservice_decode_envvars_to_yaml").lstrip()}
     resources:
       limits:
@@ -160,10 +159,10 @@ decode:
     extraConfig:
       startupProbe:
         httpGet:
-          path: /health
+          path: {ev["vllm_modelservice_decode_startup_probe_path"]}
           port: {ev["vllm_modelservice_decode_inference_port"]}
-        failureThreshold: 60
-        initialDelaySeconds: {ev["vllm_common_initial_delay_probe"]}
+        failureThreshold: {ev["vllm_modelservice_decode_startup_probe_failure_threshold"]}
+        initialDelaySeconds: {ev["vllm_modelservice_decode_startup_probe_initial_delay"]}
         periodSeconds: 30
         timeoutSeconds: 5
       livenessProbe:
@@ -173,7 +172,7 @@ decode:
         periodSeconds: 5
       readinessProbe:
         httpGet:
-          path: /health
+          path: {ev["vllm_modelservice_decode_readiness_probe_path"]}
           port: {ev["vllm_modelservice_decode_inference_port"]}
         failureThreshold: 3
         periodSeconds: 5
@@ -209,10 +208,6 @@ prefill:
     env:
       - name: VLLM_IS_PREFILL
         value: "1"
-      - name: VLLM_NIXL_SIDE_CHANNEL_HOST
-        valueFrom:
-          fieldRef:
-            fieldPath: status.podIP
       {add_additional_env_to_yaml(ev, "vllm_modelservice_prefill_envvars_to_yaml").lstrip()}
     resources:
       limits:
@@ -222,10 +217,10 @@ prefill:
     extraConfig:
       startupProbe:
         httpGet:
-          path: /health
+          path: {ev["vllm_modelservice_prefill_startup_probe_path"]}
           port: {ev["vllm_modelservice_prefill_inference_port"]}
-        failureThreshold: 60
-        initialDelaySeconds: {ev["vllm_common_initial_delay_probe"]}
+        failureThreshold: {ev["vllm_modelservice_prefill_startup_probe_failure_threshold"]}
+        initialDelaySeconds: {ev["vllm_modelservice_prefill_startup_probe_initial_delay"]}
         periodSeconds: 30
         timeoutSeconds: 5
       livenessProbe:
@@ -235,7 +230,7 @@ prefill:
         periodSeconds: 5
       readinessProbe:
         httpGet:
-          path: /health
+          path: {ev["vllm_modelservice_prefill_readiness_probe_path"]}
           port: {ev["vllm_modelservice_prefill_inference_port"]}
         failureThreshold: 3
         periodSeconds: 5
@@ -411,6 +406,25 @@ def main():
       # Clean up temp file
       rules_file.unlink()
 
+      api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
+
+      # Pods are created on the service account named after model_id_label
+      if values_content.count("runAsGroup: 0") or values_content.count("runAsUser: 0") :
+        add_scc_to_service_account(
+            api,
+            "anyuid",
+            ev["deploy_current_model_id_label"],
+            ev["vllm_common_namespace"],
+            ev["control_dry_run"],
+        )
+        add_scc_to_service_account(
+            api,
+            "privileged",
+            ev["deploy_current_model_id_label"],
+            ev["vllm_common_namespace"],
+            ev["control_dry_run"],
+        )
+
       # Deploy via helmfile
       announce(f'🚀 Installing helm chart "ms-{release}" via helmfile...')
       context_path = work_dir / "environment" / "context.ctx"
@@ -435,7 +449,6 @@ def main():
           f"✅ {ev['vllm_common_namespace']}-{ev['deploy_current_model_id_label']}-ms helm chart deployed successfully"
       )
 
-      api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
       httproute_spec = define_httproute(ev, single_model = len([m for m in model_list if m.strip()]) == 1)
       with open(f'{ev["control_work_dir"]}/setup/yamls/{ev["current_step_nr"]}_httproute.yaml', "w") as f:
           f.write(httproute_spec)

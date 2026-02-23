@@ -1,4 +1,4 @@
-name: CI - Nightly Run Benchmark on OCP
+name: CI - Nightly Benchmark on CKS
 
 on:
   workflow_dispatch:
@@ -12,12 +12,8 @@ on:
         required: false
         default: ''
 
-#  push:
-#    branches:
-#      - main
-
   schedule:
-    - cron: '0 0 * * *'  # Daily at midnight UTC
+    - cron: '0 8 * * *'  # 08:00 UTC daily (staggered from OCP/GKE)
 
 jobs:
   build-image:
@@ -38,9 +34,9 @@ jobs:
           platform: linux/amd64
 
   run-benchmark:
-    name: Benchmark Test
+    name: Benchmark Test (CKS)
     needs: build-image
-    runs-on: [k8s-util]
+    runs-on: [self-hosted, linux, waldorf]
     timeout-minutes: 240
 
     env:
@@ -70,8 +66,8 @@ jobs:
 
           if [ -z "${{ github.event.inputs.output_dir }}" ]; then
             timestamp=$(date -u +%Y%m%dT%H%M%SZ)
-            echo "OUTPUT_DIR=benchmark-results-${timestamp}" >> $GITHUB_ENV
-            echo "Using generated output dir: benchmark-results-${timestamp}"
+            echo "OUTPUT_DIR=benchmark-results-cks-${timestamp}" >> $GITHUB_ENV
+            echo "Using generated output dir: benchmark-results-cks-${timestamp}"
           else
             echo "OUTPUT_DIR=${{ github.event.inputs.output_dir }}" >> $GITHUB_ENV
             echo "Using provided output dir: ${{ github.event.inputs.output_dir }}"
@@ -81,7 +77,7 @@ jobs:
       - name: Set up kubeconfig from secret
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
+          echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
         shell: bash
 
@@ -103,77 +99,93 @@ jobs:
           kubectl-view-allocations -h
         shell: bash
 
+      - name: Count preemptible GPUs (negative-priority pods)
+        run: |
+          # Count GPUs held by Running pods with priority < 0 (e.g. hpc-verification at -1).
+          # Our benchmark pods (default priority 0) will preempt these, so they
+          # should count as "available" for the simulator-fallback decision.
+          PREEMPTABLE_GPUS=$(kubectl get pods --all-namespaces -o json | \
+            jq '[.items[] | select((.spec.priority // 0) < 0 and .status.phase == "Running") |
+              (.spec.containers[]?.resources.limits["nvidia.com/gpu"] // "0" | tonumber)] | add // 0')
+          echo "PREEMPTABLE_GPUS=$PREEMPTABLE_GPUS" >> $GITHUB_ENV
+          echo "Preemptible GPUs (held by negative-priority Running pods): $PREEMPTABLE_GPUS"
+        shell: bash
+
       - name: Cleanup target cloud (modelservice)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c ocp_fb -t modelservice -d
+        run: ./setup/teardown.sh -c cks_fb -t modelservice -d
         shell: bash
 
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          ./setup/teardown.sh -c ocp_fb -t standalone -d
+          ./setup/teardown.sh -c cks_fb -t standalone -d
         shell: bash
 
       - name: Standup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 10.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
-          ./setup/standup.sh -c ocp_fb -t standalone
+          AVAIL=$(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) + ${PREEMPTABLE_GPUS:-0}" | bc)
+          if [[ $(echo "$AVAIL - 10.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR (available+preemptible=$AVAIL < 10)"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
+          ./setup/standup.sh -c cks_fb -t standalone
         shell: bash
 
       - name: Run benchmark (standalone, inference-perf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          ./setup/run.sh -c ocp_fb -t standalone
+          ./setup/run.sh -c cks_fb -t standalone
         shell: bash
 
       - name: Run benchmark (standalone, guidellm)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          ./setup/run.sh -c ocp_fb -t standalone -l guidellm -w sanity_concurrent
+          ./setup/run.sh -c cks_fb -t standalone -l guidellm -w sanity_concurrent
         shell: bash
 
       - name: Run benchmark (standalone, vllm-benchmark)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          ./setup/run.sh -c ocp_fb -t standalone -l vllm-benchmark
+          ./setup/run.sh -c cks_fb -t standalone -l vllm-benchmark
         shell: bash
 
       - name: Cleanup target cloud (standalone)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          ./setup/teardown.sh -c ocp_fb -t standalone -d
+          ./setup/teardown.sh -c cks_fb -t standalone -d
         shell: bash
 
       - name: E2E target cloud (modelservice, inference-perf)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
-          ./setup/e2e.sh -c ocp_fb -t modelservice --deep
+          AVAIL=$(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) + ${PREEMPTABLE_GPUS:-0}" | bc)
+          if [[ $(echo "$AVAIL - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR (available+preemptible=$AVAIL < 20)"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
+          ./setup/e2e.sh -c cks_fb -t modelservice --deep
         shell: bash
 
       - name: E2E target cloud (modelservice, guidellm)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
-          ./setup/e2e.sh -c ocp_fb -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
+          AVAIL=$(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) + ${PREEMPTABLE_GPUS:-0}" | bc)
+          if [[ $(echo "$AVAIL - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR (available+preemptible=$AVAIL < 20)"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
+          ./setup/e2e.sh -c cks_fb -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
         shell: bash
 
       - name: E2E target cloud (modelservice, vllm-benchmark)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/ocp_fb.sh; fi
-          ./setup/e2e.sh -c ocp_fb -t modelservice --deep -l vllm-benchmark
+          AVAIL=$(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) + ${PREEMPTABLE_GPUS:-0}" | bc)
+          if [[ $(echo "$AVAIL - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR (available+preemptible=$AVAIL < 20)"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
+          ./setup/e2e.sh -c cks_fb -t modelservice --deep -l vllm-benchmark
         shell: bash
 
       - name: Collect failure diagnostics

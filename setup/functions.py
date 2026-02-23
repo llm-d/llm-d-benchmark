@@ -387,6 +387,10 @@ def environment_variable_to_dict(ev: dict = {}):
                                           "LLMDBENCH_VLLM_COMMON_VLLM_CACHE_ROOT", \
                                           "LLMDBENCH_VLLM_COMMON_INFERENCE_PORT", \
                                           "LLMDBENCH_VLLM_COMMON_METRICS_PORT", \
+                                          "LLMDBENCH_VLLM_COMMON_VLLM_ALLOW_LONG_MAX_MODEL_LEN", \
+                                          "LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT", \
+                                          "LLMDBENCH_VLLM_COMMON_UCX_TLS", \
+                                          "LLMDBENCH_VLLM_COMMON_UCX_SOCKADDR_TLS_PRIORITY"
                                         ]
 
     if ev["cluster_url"] == "auto" :
@@ -402,6 +406,12 @@ def environment_variable_to_dict(ev: dict = {}):
     if isinstance(ev["harness_profile_harness_list"], str):
         ev["harness_profile_harness_list"] = ev["harness_profile_harness_list"].split()
     ev["current_step_nr"] = ev["current_step"].split('_')[0]
+
+    for component in [ "vllm_common", "vllm_standalone", "harness", "vllm_modelservice_decode" ] :
+        for additional_env_var in ev[f"{component}_envvars_to_yaml"].split(',') :
+
+            if additional_env_var in dict(os.environ).keys():
+                ev.update({(additional_env_var).lower(): os.environ.get(additional_env_var)})
 
 def kubectl_apply(
     api: pykube.HTTPClient,
@@ -1523,7 +1533,6 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
 
     cpu_mem = ev[f"vllm_{identifier}_cpu_mem"]
     cpu_nr = ev[f"vllm_{identifier}_cpu_nr"]
-
     ephemeral_storage_resource = ev["vllm_common_ephemeral_storage_resource"]
     ephemeral_storage = ev[f"vllm_{identifier}_ephemeral_storage"]
 
@@ -1704,6 +1713,7 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
                 clean_name = env_var
                 if env_var[0] == "_":
                     clean_name = env_var[1:]
+
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_VLLM_", "VLLM_")
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_VLLM_", "VLLM_")
@@ -1727,9 +1737,11 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
 
     for mandatory_var in ev["mandatory_vllm_env_vars"] :
         if mandatory_var not in env_vars :
+            env_vars.append(mandatory_var)
             clean_name = mandatory_var
             clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
             clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_", "VLLM_")
+            clean_name = clean_name.replace("VLLM_UCX_", "UCX_")
 
             env_value = ev[mandatory_var.replace('LLMDBENCH_','',1).lower()]
 
@@ -1741,6 +1753,18 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
 
             env_lines.append(f"{name_indent}- name: {clean_name}")
             env_lines.append(f'{value_indent}value: "{processed_value}"')
+
+    if "VLLM_NIXL_SIDE_CHANNEL_HOST" not in env_vars :
+        env_lines.append(f"{name_indent}- name: VLLM_NIXL_SIDE_CHANNEL_HOST")
+        env_lines.append(f"{value_indent}valueFrom:")
+        env_lines.append(f"{value_indent}  fieldRef:")
+        env_lines.append(f"{value_indent}    fieldPath: status.podIP")
+
+        env_lines.append(f"{name_indent}- name: POD_IP")
+        env_lines.append(f"{value_indent}valueFrom:")
+        env_lines.append(f"{value_indent}  fieldRef:")
+        env_lines.append(f"{value_indent}    apiVersion: v1")
+        env_lines.append(f"{value_indent}    fieldPath: status.podIP")
 
     ev[env_vars_key] = "\n".join(env_lines)
 
@@ -1912,12 +1936,18 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
     curl_command = f"curl -k --no-progress-meter {ip}"
     full_command = ["/bin/bash", "-c", f"{curl_command}"]
 
+    pull_secret_ref = None
+    if ev["vllm_common_pull_secret"] :
+        pull_secret_ref = client.V1LocalObjectReference(name=ev["vllm_common_pull_secret"])
+
     while current_attempts <= total_attempts :
         pod_name = f"testinference-pod-{get_rand_string()}"
+
         pod_manifest = client.V1Pod(
             metadata=client.V1ObjectMeta(name=pod_name, namespace=ev['vllm_common_namespace'], labels={"llm-d.ai/id": f"{pod_name}"}),
             spec=client.V1PodSpec(
                 restart_policy="Never",
+                image_pull_secrets=[pull_secret_ref],
                 containers=[
                     client.V1Container(name="model", image=image, command=full_command)
                 ],
@@ -2555,7 +2585,7 @@ def get_validation_param(ev: dict, type: str = COMMON) -> ValidationParam:
             user_accelerator_nr, tp_size, dp_size
         ),
         gpu_memory_util=float(ev[f"{prefix}_accelerator_mem_util"]),
-        max_model_len=int(ev["vllm_common_max_model_len"]),
+        max_model_len=int(ev["vllm_common_max_model_len"].split(',,')[0]),
     )
 
     return validation_param
@@ -2665,21 +2695,21 @@ prometheus:
 
 rules:
   external:
-  - seriesQuery: 'inferno_desired_replicas{{variant_name!="",exported_namespace!=""}}'
+  - seriesQuery: 'wva_desired_replicas{{variant_name!="",exported_namespace!=""}}'
     resources:
       overrides:
         exported_namespace: {{resource: "namespace"}}
         variant_name: {{resource: "deployment"}}
     name:
-      matches: "^inferno_desired_replicas"
-      as: "inferno_desired_replicas"
-    metricsQuery: 'inferno_desired_replicas{{<<.LabelMatchers>>}}'
+      matches: "^wva_desired_replicas"
+      as: "wva_desired_replicas"
+    metricsQuery: 'wva_desired_replicas{{<<.LabelMatchers>>}}'
 
 replicas: 2
 logLevel: 4
 
 tls:
-  enable: false
+  enable: false # Inbound TLS (Client → Adapter)
 
 extraVolumes:
   - name: prometheus-ca
@@ -2695,19 +2725,24 @@ extraArguments:
   - --prometheus-ca-file=/etc/prometheus-ca/ca.crt
   - --prometheus-token-file=/var/run/secrets/kubernetes.io/serviceaccount/token
 
-podSecurityContext:
-  fsGroup: null
 
+# k8s 1.21 needs fsGroup to be set for non root deployments
+# ref: https://github.com/kubernetes/kubernetes/issues/70679
+podSecurityContext:
+  fsGroup: null  # this may need to change, depending on the allowed IDs for the OCP project
+
+# SecurityContext of the container
+# ref. https://kubernetes.io/docs/tasks/configure-pod-container/security-context
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop: ["ALL"]
   readOnlyRootFilesystem: true
   runAsNonRoot: true
-  runAsUser: null
+  runAsUser: null   # this may need to change, depending on the allowed IDs for the OCP project
   seccompProfile:
     type: RuntimeDefault
-""".lstrip()
+    """.lstrip()
 
     with open(prometheus_values_path, "w") as f:
         f.write(prometheus_values_content)
@@ -2861,6 +2896,7 @@ def install_wva_components(ev: dict):
 
     wva_config = {
         "wva": {
+            "controllerInstance": ev["wva_namespace"],
             "enabled": ev["wva_controller_enabled"],
             "image": {
                 "repository": f"{ev['wva_image_repository']}",
