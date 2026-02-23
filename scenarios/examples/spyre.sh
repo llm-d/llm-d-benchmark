@@ -31,7 +31,7 @@ export LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME=spyre-precompiled-model
 #export LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=istio
 
 ########export LLMDBENCH_VLLM_MODELSERVICE_MULTINODE=true
-########export LLMDBENCH_VLLM_COMMON_POD_LABELS=context-length-range_eq_0-8000,context-length-range_eq_8000-32000
+########export LLMDBENCH_VLLM_COMMON_POD_LABELS=llm-d.ai/context-length-range_eq_0-8000,llm-d.ai/context-length-range_eq_8000-32000
 
 export LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=ibm.com/spyre_vf
 export LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=4
