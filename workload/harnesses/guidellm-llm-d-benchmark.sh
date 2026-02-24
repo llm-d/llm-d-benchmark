@@ -8,7 +8,7 @@ export LLMDBENCH_HARNESS_ARGS="--scenario ${LLMDBENCH_RUN_WORKSPACE_DIR}/profile
 # Start metrics collection in background if enabled
 if [[ "${LLMDBENCH_COLLECT_METRICS:-1}" == "1" ]]; then
   echo "Starting metrics collection..."
-  ${LLMDBENCH_RUN_WORKSPACE_DIR}/harnesses/collect_metrics.sh start &
+  /usr/local/bin/collect_metrics.sh start &
   METRICS_COLLECTOR_PID=$!
   echo "Metrics collector started with PID: $METRICS_COLLECTOR_PID"
 fi
@@ -21,12 +21,12 @@ stop=$(date +%s.%N)
 # Stop metrics collection
 if [[ "${LLMDBENCH_COLLECT_METRICS:-1}" == "1" ]] && [[ -n "${METRICS_COLLECTOR_PID:-}" ]]; then
   echo "Stopping metrics collection..."
-  ${LLMDBENCH_RUN_WORKSPACE_DIR}/harnesses/collect_metrics.sh stop
+  /usr/local/bin/collect_metrics.sh stop
   wait $METRICS_COLLECTOR_PID 2>/dev/null || true
   
   # Process collected metrics
   echo "Processing collected metrics..."
-  ${LLMDBENCH_RUN_WORKSPACE_DIR}/harnesses/collect_metrics.sh process
+  /usr/local/bin/collect_metrics.sh process
   
   # Generate visualizations
   if command -v python3 &> /dev/null; then
