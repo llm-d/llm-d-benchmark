@@ -81,6 +81,7 @@ Read these reference files to understand the mapping rules and defaults:
 
 **For Helm Values-Based Guides:**
 - Fetch `ms-*/values.yaml` (ModelService) and `gaie-*/values.yaml` (GAIE InferenceExtension)
+- Fetch `helmfile.yaml.gotmpl` or `helmfile.yaml` if present - contains Helm chart versions
 - For GitHub URLs, first fetch directory listing to identify subdirectories
 
 **For Kustomize-Based Guides:**
@@ -103,6 +104,12 @@ Parse the YAML and extract key configuration sections. See [references/mappings.
 - InferenceExtension settings (image, flags, plugins)
 - **CRITICAL**: If `pluginsCustomConfig` exists, extract the ENTIRE YAML content
 - InferencePool settings (ports, labels)
+
+**From Helmfile (`helmfile.yaml.gotmpl` or `helmfile.yaml`):**
+- Chart versions from `releases[].version` for each release:
+  - `llm-d-infra` release → `LLMDBENCH_VLLM_INFRA_CHART_VERSION`
+  - `llm-d-modelservice` release → `LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION`
+  - `inferencepool` (GAIE) release → `LLMDBENCH_VLLM_GAIE_CHART_VERSION`
 
 ### Step 5: Map to LLMDBENCH Variables
 
@@ -184,6 +191,9 @@ Before displaying or writing files, verify:
 - If guide has `inferenceExtension.pluginsCustomConfig`, then `LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS` is defined
 - If guide specifies explicit container image version, then `LLMDBENCH_LLMD_IMAGE_TAG` is set
 - If guide uses LeaderWorkerSet (LWS), then `LLMDBENCH_VLLM_MODELSERVICE_MULTINODE=true` is set
+- If helmfile specifies `llm-d-infra` version, then `LLMDBENCH_VLLM_INFRA_CHART_VERSION` is set
+- If helmfile specifies `llm-d-modelservice` version, then `LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION` is set
+- If helmfile specifies `inferencepool` (GAIE) version, then `LLMDBENCH_VLLM_GAIE_CHART_VERSION` is set
 
 **Completeness Checklist (MANDATORY - never omit source configuration):**
 - **Environment variables**: If guide defines `env:` in decode/prefill containers, ALL env vars MUST be captured in `LLMDBENCH_VLLM_MODELSERVICE_DECODE_ENVVARS_TO_YAML` or `LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ENVVARS_TO_YAML`

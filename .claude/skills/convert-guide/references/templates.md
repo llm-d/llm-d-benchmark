@@ -104,6 +104,33 @@ export LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL=<value>
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=<value>
 
 # =============================================================================
+# SOURCE: helmfile.yaml.gotmpl
+# Lines <N-M>:
+#   - name: infra
+#     chart: llm-d-infra/llm-d-infra
+#     version: <version>
+# =============================================================================
+export LLMDBENCH_VLLM_INFRA_CHART_VERSION="<version>"
+
+# =============================================================================
+# SOURCE: helmfile.yaml.gotmpl
+# Lines <N-M>:
+#   - name: ms
+#     chart: llm-d-modelservice/llm-d-modelservice
+#     version: <version>
+# =============================================================================
+export LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION="<version>"
+
+# =============================================================================
+# SOURCE: helmfile.yaml.gotmpl
+# Lines <N-M>:
+#   - name: gaie
+#     chart: oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
+#     version: <version>
+# =============================================================================
+export LLMDBENCH_VLLM_GAIE_CHART_VERSION="<version>"
+
+# =============================================================================
 # SOURCE: <path-to-source-file>
 # Lines <N-M>:
 #   - "--tensor-parallel-size"
