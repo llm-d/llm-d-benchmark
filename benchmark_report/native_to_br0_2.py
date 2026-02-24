@@ -604,17 +604,8 @@ def _populate_benchmark_report_from_envars() -> dict:
     params_cm = get_configmap(
         context_dict, "llm-d-benchmark-standup-parameters")
 
-    if params_cm:
-        ev_str: str = get_nested(params_cm, ["data", "ev.yaml"])
-        ev_dict = yaml.safe_load(ev_str) if ev_str else {}
-    else:
-        # Could not get parameters from ConfigMap, try /standup/ev.yaml
-        try:
-            ev_file = "/standup/ev.yaml"
-            ev_dict = import_yaml(ev_file)
-        except Exception as e:
-            sys.stderr.write(f"Failed to retrieve {ev_file}: {e}\n")
-            ev_dict = {}
+    ev_str: str = get_nested(params_cm, ["data", "ev.yaml"])
+    ev_dict = yaml.safe_load(ev_str) if ev_str else {}
 
     # Fill in more run details
     update_dict(br_dict, _populate_run(ev_dict))
@@ -801,8 +792,6 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                                 "p5": results.get("p5_itl_ms"),
                                 "p10": results.get("p10_itl_ms"),
                                 "P25": results.get("p25_itl_ms"),
-                                "p50": results.get("median_itl_ms"),
-                                "p75": results.get("p75_itl_ms"),
                                 "p90": results.get("p90_itl_ms"),
                                 "p95": results.get("p95_itl_ms"),
                                 "p99": results.get("p99_itl_ms"),
@@ -817,8 +806,6 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
                                 "p5": results.get("p5_e2el_ms"),
                                 "p10": results.get("p10_e2el_ms"),
                                 "P25": results.get("p25_e2el_ms"),
-                                "p50": results.get("median_e2el_ms"),
-                                "p75": results.get("p75_e2el_ms"),
                                 "p90": results.get("p90_e2el_ms"),
                                 "p95": results.get("p95_e2el_ms"),
                                 "p99": results.get("p99_e2el_ms"),
@@ -1203,36 +1190,52 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                 "failures": failures,
                 "input_length": {
                     "units": Units.COUNT,
-                    "mean": get_nested(results, ["successes", "prompt_len", "mean"]),
+                    "mean": get_nested(
+                        results, ["successes", "prompt_len", "mean"]
+                    ),
                     "min": get_nested(results, ["successes", "prompt_len", "min"]),
-                    "p0p1": get_nested(results, ["successes", "prompt_len", "p0.1"]),
+                    "p0p1": get_nested(
+                        results, ["successes", "prompt_len", "p0.1"]
+                    ),
                     "p1": get_nested(results, ["successes", "prompt_len", "p1"]),
                     "p5": get_nested(results, ["successes", "prompt_len", "p5"]),
                     "p10": get_nested(results, ["successes", "prompt_len", "p10"]),
                     "p25": get_nested(results, ["successes", "prompt_len", "p25"]),
-                    "p50": get_nested(results, ["successes", "prompt_len", "median"]),
+                    "p50": get_nested(
+                        results, ["successes", "prompt_len", "median"]
+                    ),
                     "p75": get_nested(results, ["successes", "prompt_len", "p75"]),
                     "p90": get_nested(results, ["successes", "prompt_len", "p90"]),
                     "p95": get_nested(results, ["successes", "prompt_len", "p95"]),
                     "p99": get_nested(results, ["successes", "prompt_len", "p99"]),
-                    "p99p9": get_nested(results, ["successes", "prompt_len", "p99.9"]),
+                    "p99p9": get_nested(
+                        results, ["successes", "prompt_len", "p99.9"]
+                    ),
                     "max": get_nested(results, ["successes", "prompt_len", "max"]),
                 },
                 "output_length": {
                     "units": Units.COUNT,
-                    "mean": get_nested(results, ["successes", "output_len", "mean"]),
+                    "mean": get_nested(
+                        results, ["successes", "output_len", "mean"]
+                    ),
                     "min": get_nested(results, ["successes", "output_len", "min"]),
-                    "p0p1": get_nested(results, ["successes", "output_len", "p0.1"]),
+                    "p0p1": get_nested(
+                        results, ["successes", "output_len", "p0.1"]
+                    ),
                     "p1": get_nested(results, ["successes", "output_len", "p1"]),
                     "p5": get_nested(results, ["successes", "output_len", "p5"]),
                     "p10": get_nested(results, ["successes", "output_len", "p10"]),
                     "p25": get_nested(results, ["successes", "output_len", "p25"]),
-                    "p50": get_nested(results, ["successes", "output_len", "median"]),
+                    "p50": get_nested(
+                        results, ["successes", "output_len", "median"]
+                    ),
                     "p75": get_nested(results, ["successes", "output_len", "p75"]),
                     "p90": get_nested(results, ["successes", "output_len", "p90"]),
                     "p95": get_nested(results, ["successes", "output_len", "p95"]),
                     "p99": get_nested(results, ["successes", "output_len", "p99"]),
-                    "p99p9": get_nested(results, ["successes", "output_len", "p99.9"]),
+                    "p99p9": get_nested(
+                        results, ["successes", "output_len", "p99.9"]
+                    ),
                     "max": get_nested(results, ["successes", "output_len", "max"]),
                 },
             },
