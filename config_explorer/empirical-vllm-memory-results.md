@@ -17,6 +17,7 @@ Analysis of vLLM log files for various models tested on H100 GPUs (79.18 GiB tot
 | Qwen3-32B                | FAILED  | 61.03              | 5.64                  | 0.14                   | N/A                    | N/A                      | 1       | 32000         |
 | Qwen3-32B                | SUCCESS | 61.03              | 5.64                  | 0.14                   | -0.88                  | 4.45                     | 1       | 16000         |
 | Qwen3-32B                | SUCCESS | 30.59             | 5.64                  | 0.54                  | -0.33                  | 34.49                     | 2       | 16000         |
+| Mistral-Small-3.2-24B    | SUCCESS | 44.76              | 2.12                  | 0.14                   | -0.76                  | 28.20                    | 1       | 16000         |
 ---
 
 ## Detailed Results
@@ -231,6 +232,43 @@ Model weights loaded successfully but consumed too much memory (67.72 GiB), leav
 
 ---
 
+### 10. Mistral-Small-3.2-24B-Instruct-2506 (mistralai/Mistral-Small-3.2-24B-Instruct-2506)
+
+**Status:** SUCCESS
+
+#### Model Configuration
+- **Model name:** mistralai/Mistral-Small-3.2-24B-Instruct-2506
+- **max-model-len:** 16000
+- **tensor-parallel-size:** 1
+- **gpu-memory-utilization:** 0.95
+- **dtype:** bfloat16
+- **tokenizer-mode:** mistral
+- **config-format:** mistral
+- **load-format:** mistral
+- **enable-prefix-caching:** True
+
+#### Empirical Results
+- **Model loading took:** 44.76 GiB memory and 45.07 seconds
+- **Available KV cache memory:** 28.20 GiB
+- **Free memory on device:** 78.59/79.19 GiB on startup
+
+#### Memory Metrics
+- **Weight memory:** 44.76 GiB
+- **Peak activation memory:** 2.12 GiB
+- **Non-torch memory:** 0.14 GiB
+- **CUDAGraph memory:** -0.76 GiB
+- **KV cache memory:** 28.20 GiB
+- **Desired GPU utilization:** 0.95 (75.23 GiB)
+
+#### Recommendations
+- For requested memory: `--kv-cache-memory=30941080576` (28.82 GiB)
+- For full GPU utilization: `--kv-cache-memory=34545658880` (32.17 GiB)
+
+#### Notes
+This is a multimodal (vision) model using Mistral's custom tokenizer and config format. Despite being a 24B model, the BF16 weights are large at 44.76 GiB. The gpu-memory-utilization was set to 0.95 (higher than the typical 0.9 used for other models). Peak activation memory is notably low (2.12 GiB) compared to other models.
+
+---
+
 ## Key Insights
 
 ### Successful Models
@@ -238,6 +276,7 @@ Model weights loaded successfully but consumed too much memory (67.72 GiB), leav
 2. **gpt-oss-20b**: Moderate size (13.47 GiB weights), good KV cache (50.28 GiB)
 3. **Llama-3.1-8B**: Similar to gpt-oss-20b (14.99 GiB weights, 51.38 GiB KV cache)
 4. **Llama-3.3-70B-FP8 (TP=2)**: Large model successful with tensor parallelism (33.88 GiB per GPU)
+5. **Mistral-Small-3.2-24B**: BF16 multimodal model (44.76 GiB weights), moderate KV cache (28.20 GiB) with 0.95 utilization
 
 ### Failed Models
 1. **Deepseek-R1**: OOM during model loading with FP8 quantization

@@ -11,8 +11,8 @@ import traceback
 from pathlib import Path
 
 from config_explorer.capacity_planner import (
-    get_model_info_from_hf,
     get_model_config_from_hf,
+    model_total_params,
     model_memory_req,
     max_concurrent_requests,
     allocatable_kv_cache_memory,
@@ -59,7 +59,6 @@ def plan_capacity(args):
     try:
         # Fetch model information
         print(f"Fetching model information for {args.model}...")
-        model_info = get_model_info_from_hf(args.model, hf_token)
         model_config = get_model_config_from_hf(args.model, hf_token)
 
         # Prepare result dictionary
@@ -68,12 +67,12 @@ def plan_capacity(args):
                 "model": args.model,
             },
             "model_info": {
-                "total_parameters": model_info.safetensors.total,
+                "total_parameters": model_total_params(args.model, hf_token),
             },
         }
 
         # Calculate model memory requirement
-        model_memory = model_memory_req(model_info, model_config)
+        model_memory = model_memory_req(args.model, model_config, hf_token)
         result["model_memory_gb"] = round(model_memory, 2)
 
         # Set max_model_len: use provided value or default from model's max context length
@@ -97,7 +96,7 @@ def plan_capacity(args):
 
         # Calculate KV cache details (always calculate with max_model_len)
         kv_cache_detail = KVCacheDetail(
-            model_info,
+            args.model,
             model_config,
             max_model_len,
             batch_size
@@ -140,7 +139,7 @@ def plan_capacity(args):
             result["input_parameters"]["gpu_mem_util"] = gpu_mem_util
 
             # Calculate per-GPU model memory
-            per_gpu_memory = per_gpu_model_memory_required(model_info, model_config, tp, pp)
+            per_gpu_memory = per_gpu_model_memory_required(args.model, model_config, tp, pp, hf_token)
             result["per_gpu_model_memory_gb"] = round(per_gpu_memory, 2)
 
             # Calculate total GPUs required
@@ -149,33 +148,36 @@ def plan_capacity(args):
 
             # Calculate allocatable KV cache memory
             allocatable_kv = allocatable_kv_cache_memory(
-                model_info, model_config,
+                args.model, model_config,
                 gpu_memory_gb, gpu_mem_util,
                 tp, pp, dp,
                 max_model_len=max_model_len,
-                batch_size=batch_size
+                batch_size=batch_size,
+                hf_token=hf_token
             )
             result["allocatable_kv_cache_memory_gb"] = round(allocatable_kv, 2)
 
             # Calculate max concurrent requests
             max_requests = max_concurrent_requests(
-                model_info, model_config,
+                args.model, model_config,
                 max_model_len,
                 gpu_memory_gb, gpu_mem_util,
                 batch_size=batch_size,
-                tp=tp, pp=pp, dp=dp
+                tp=tp, pp=pp, dp=dp,
+                hf_token=hf_token
             )
             result["max_concurrent_requests"] = max_requests
 
             # Calculate total KV cache blocks (use default block_size of 16 if not provided)
             block_size = args.block_size or 16
             total_blocks = total_kv_cache_blocks(
-                model_info, model_config,
+                args.model, model_config,
                 max_model_len,
                 gpu_memory_gb, gpu_mem_util,
                 batch_size,
                 block_size,
-                tp, pp, dp
+                tp, pp, dp,
+                hf_token=hf_token
             )
             result["total_kv_cache_blocks"] = int(total_blocks)
             # Always record the effective block_size used (including defaults)

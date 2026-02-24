@@ -32,9 +32,13 @@ def register_new_accelerator():
             }
             st.rerun()
 
-def get_model_size_df(model_info: ModelInfo, model_config: AutoConfig) -> dict:
+def get_model_size_df(model_name: str, model_config: AutoConfig) -> dict:
     """
     Returns dataframe for displaying how model size is calculated
+
+    Args:
+        model_name: HuggingFace model ID
+        model_config: Model configuration from AutoConfig
     """
 
     data_types = []
@@ -53,7 +57,8 @@ def get_model_size_df(model_info: ModelInfo, model_config: AutoConfig) -> dict:
         # Model doesn't contain quant config
         pass
 
-    for d_type, param in model_info.safetensors.parameters.items():
+    model_params = model_params_by_dtype(model_name)
+    for d_type, param in model_params.items():
         param_bytes = 0
         try:
             param_bytes = precision_to_byte(d_type)
@@ -92,7 +97,6 @@ def model_specification():
     """
 
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
-    model_info = None
 
     # Model
     with st.container(border=True):
@@ -106,15 +110,6 @@ def model_specification():
         hf_token = None
 
         if selected_model and selected_model != "":
-            # Fetch model info
-            try:
-                model_info = get_model_info_from_hf(selected_model)
-                user_scenario.model_info = model_info
-            except Exception as e:
-                st.warning("Cannot access model information, see error below.")
-                st.warning(e)
-                return None
-
             # Fetch model config
             try:
                 model_config = get_model_config_from_hf(selected_model, hf_token=hf_token)
@@ -135,7 +130,7 @@ def model_specification():
                     return None
 
             try:
-                model_gpu_memory_req = util.pretty_round(model_memory_req(model_info, model_config))
+                model_gpu_memory_req = util.pretty_round(model_memory_req(selected_model, model_config, hf_token))
             except Exception as e:
                 st.warning(f"Cannot retrieve relevant information about the model, {e}. The Capacity Planner only has partial information and functionality.")
                 return None
@@ -151,7 +146,7 @@ def model_specification():
                     quant_method = get_quant_method(model_config)
                     st.write(f"This model contains a quantization config. The quantization method is: `{quant_method}`")
 
-                data = get_model_size_df(model_info, model_config)
+                data = get_model_size_df(selected_model, model_config)
                 st.dataframe(data, hide_index=True)
 
         else:
@@ -245,7 +240,6 @@ def workload_specification():
     """
 
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
-    model_info = user_scenario.model_info
     model_config = user_scenario.model_config
     text_config = user_scenario.text_config
 
@@ -254,13 +248,6 @@ def workload_specification():
         st.write("**Workload Characteristics**")
         if model_config is None:
             st.warning("Model config not found.")
-            return None
-
-        if model_info is None:
-            st.warning("Model information not yet selected")
-            return None
-        if model_config is None:
-            st.warning("Model config not available, cannot estimate KV cache size.")
             return None
 
 
@@ -294,7 +281,7 @@ Higher max model length means fewer concurrent requests can be served, \
 
         try:
             max_concurrent_requests_num = max_concurrent_requests(
-                model_info,
+                user_scenario.model_name,
                 model_config,
                 user_scenario.max_model_len,
                 gpu_memory=user_scenario.get_gpu_memory(db.gpu_specs),
@@ -311,7 +298,7 @@ Higher max model length means fewer concurrent requests can be served, \
 
         try:
             kv_details = KVCacheDetail(
-                model_info,
+                user_scenario.model_name,
                 model_config,
                 user_scenario.max_model_len,
                 user_scenario.concurrency,
@@ -455,7 +442,6 @@ def hardware_specification():
     """
 
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
-    model_info = user_scenario.model_info
     model_config = user_scenario.model_config
     text_config = user_scenario.text_config
 
@@ -509,15 +495,16 @@ def hardware_specification():
             gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
             available_gpu_count = gpus_required(tp, pp, dp)
             available_gpu_mem = available_gpu_memory(gpu_memory, user_scenario.gpu_mem_util)
+            model_name = user_scenario.model_name
 
             try:
-                model_size = model_memory_req(model_info, model_config)
+                model_size = model_memory_req(model_name, model_config)
             except Exception:
                 st.warning("Model does not have safetensor data available, cannot estimate model memory.")
                 return None
 
-            model_size_per_gpu = per_gpu_model_memory_required(model_info, model_config, tp, pp)
-            allocatable_kv_cache = allocatable_kv_cache_memory(model_info,
+            model_size_per_gpu = per_gpu_model_memory_required(model_name, model_config, tp, pp)
+            allocatable_kv_cache = allocatable_kv_cache_memory(model_name,
                                                     model_config,
                                                     gpu_memory,
                                                     user_scenario.gpu_mem_util,
@@ -528,7 +515,7 @@ def hardware_specification():
                                                     batch_size=user_scenario.concurrency,
                                                     )
 
-            kv_details = KVCacheDetail(model_info, model_config,
+            kv_details = KVCacheDetail(model_name, model_config,
                                     user_scenario.max_model_len,
                                     user_scenario.concurrency,
                                     )
@@ -635,7 +622,7 @@ def memory_util_chart(st_context):
     """
 
     user_scenario = st.session_state[util.USER_SCENARIO_KEY]
-    model_info = user_scenario.model_info
+    model_name = user_scenario.model_name
     model_config = user_scenario.model_config
     text_config = user_scenario.text_config
     gpu_memory = user_scenario.get_gpu_memory(db.gpu_specs)
@@ -652,10 +639,10 @@ def memory_util_chart(st_context):
     reserved = total_memory - available
 
     # Model weights
-    model_size = model_memory_req(model_info, model_config) * dp
+    model_size = model_memory_req(model_name, model_config) * dp
 
     # KV cache
-    max_concurrency_kv_cache = kv_cache_req(model_info, model_config, user_scenario.max_model_len, concurrency)
+    max_concurrency_kv_cache = kv_cache_req(model_name, model_config, user_scenario.max_model_len, concurrency)
 
     # Activation memory: Each data parallel replica needs its own activation memory
     # Note: activation memory is constant per model type (not dependent on max_model_len)
