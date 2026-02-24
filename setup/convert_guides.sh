@@ -24,14 +24,18 @@ convert() {
 # inference-scheduling (modelservice)
 GUIDE='https://github.com/llm-d/llm-d/tree/main/guides/inference-scheduling'
 # convert ${GUIDE}
-# convert ${GUIDE} for guadi
+# convert ${GUIDE} for amd
 # convert ${GUIDE} for cpu
+# convert ${GUIDE} for hpu
 # convert ${GUIDE} for tpu
 # convert ${GUIDE} for xpu
 
 # pd-disaggregation (modelservice)
 GUIDE='https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation'
 # convert ${GUIDE}
+# convert ${GUIDE} for gke rdma
+# convert ${GUIDE} for hpu
+# convert ${GUIDE} for tpu
 # convert ${GUIDE} for xpu
 
 # precise-prefix-cache-aware
@@ -50,17 +54,24 @@ GUIDE='https://github.com/llm-d/llm-d/tree/main/guides/simulated-accelerators'
 
 # tiered-prefix-cache (kustomize)
 GUIDE='https://github.com/llm-d/llm-d/tree/main/guides/tiered-prefix-cache'
-convert ${GUIDE}
-convert ${GUIDE} for lmcache-connector
-convert ${GUIDE} for offloading-connector
-convert ${GUIDE} for tpu
+# convert ${GUIDE}
+# convert ${GUIDE} for cpu and lmcache-connector
+# convert ${GUIDE} for cpu and offloading-connector
+# convert ${GUIDE} for storage and llm-d-fs-connector
+# convert ${GUIDE} for storage and lmcache-connector
 
 # wide-ep-lws (kustomize)
 GUIDE='https://github.com/llm-d/llm-d/tree/main/guides/wide-ep-lws'
 # convert ${GUIDE} for base
 # convert ${GUIDE} for coreweave
-convert ${GUIDE} for gke-a4
-convert ${GUIDE} for gke
+# convert ${GUIDE} for gke-a4
+# convert ${GUIDE} for gke
+
+GUIDE='https://github.com/llm-d/llm-d/tree/main/guides/wide-ep-lws/dp-aware'
+# convert ${GUIDE} for base
+# convert ${GUIDE} for coreweave
+# convert ${GUIDE} for base with random values
+# convert ${GUIDE} for coreweave random values
 
 # workload-autoscaling
 GUIDE='https://github.com/llm-d/llm-d/tree/main/guides/workload-autoscaling'
