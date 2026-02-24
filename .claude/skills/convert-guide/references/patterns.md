@@ -30,9 +30,15 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --port REPLACE_ENV_LLMDBENCH_VLLM_COMMON_METRICS_PORT \
 --max-model-len REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN \
+--block-size REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE \
+--gpu-memory-utilization REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL \
 --tensor-parallel-size REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM
 EOF
 ```
+
+**Note**: Not all flags appear in every scenario. Only include flags the guide
+specifies. But when a flag IS included, always use the REPLACE_ENV placeholder
+for its value, never a literal.
 
 The preprocess command and vllm serve are REQUIRED and must come first, regardless of what the guide specifies.
 

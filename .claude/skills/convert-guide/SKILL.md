@@ -158,6 +158,25 @@ Using [references/mappings.md](references/mappings.md):
        name: llm-d-benchmark-preprocesses
    ```
 
+5. **Always use REPLACE_ENV placeholders in heredoc blocks**:
+   Inside `EXTRA_ARGS`, `EXTRA_VOLUMES`, and `EXTRA_VOLUME_MOUNTS` heredocs,
+   any value that has a corresponding `REPLACE_ENV_*` placeholder (see
+   `references/mappings.md > Common REPLACE_ENV Placeholders`) MUST use the
+   placeholder, never a hardcoded literal. This enables experiment-level
+   overrides and parameter sweeps.
+
+   Examples of values that MUST use placeholders:
+   - `--port` → `REPLACE_ENV_LLMDBENCH_VLLM_COMMON_METRICS_PORT`
+   - `--max-model-len` → `REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN`
+   - `--block-size` → `REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE`
+   - `--gpu-memory-utilization` → `REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_{STAGE}_ACCELERATOR_MEM_UTIL` (or `REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL` when common)
+   - `--tensor-parallel-size` → `REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_{STAGE}_TENSOR_PARALLELISM`
+   - `sizeLimit:` in dshm volumes → `REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM` (or stage-specific `_DECODE_SHM_MEM`/`_PREFILL_SHM_MEM`)
+
+   The **only exception** is values with NO corresponding LLMDBENCH variable
+   (e.g., `--kv-transfer-config` JSON, `--enable-prefix-caching` boolean flags,
+   custom env var names/values). These stay as literals.
+
 See [references/patterns.md](references/patterns.md) for complete patterns including volumes, environment variables, GAIE plugins, and accelerator-specific configurations.
 
 ### Step 7: Generate Output Files
@@ -194,6 +213,7 @@ Before displaying or writing files, verify:
 - If helmfile specifies `llm-d-infra` version, then `LLMDBENCH_VLLM_INFRA_CHART_VERSION` is set
 - If helmfile specifies `llm-d-modelservice` version, then `LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION` is set
 - If helmfile specifies `inferencepool` (GAIE) version, then `LLMDBENCH_VLLM_GAIE_CHART_VERSION` is set
+- Inside all heredoc blocks (`EXTRA_ARGS`, `EXTRA_VOLUMES`, `EXTRA_VOLUME_MOUNTS`), no literal values appear where a `REPLACE_ENV_*` placeholder exists in the `references/mappings.md` table
 
 **Completeness Checklist (MANDATORY - never omit source configuration):**
 - **Environment variables**: If guide defines `env:` in decode/prefill containers, ALL env vars MUST be captured in `LLMDBENCH_VLLM_MODELSERVICE_DECODE_ENVVARS_TO_YAML` or `LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ENVVARS_TO_YAML`

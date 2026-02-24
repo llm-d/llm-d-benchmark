@@ -97,7 +97,7 @@ The ModelService Helm chart is deployed via `setup/steps/09_deploy_via_modelserv
 | `decode.containers[0].resources.requests.cpu` | `LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR` | `vllm_modelservice_decode_cpu_nr` | CPU cores requested |
 | `decode.containers[0].resources.requests.memory` | `LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM` | `vllm_modelservice_decode_cpu_mem` | Memory requested |
 | `decode.containers[0].resources.limits.<network-resource>` | `LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR` | `vllm_modelservice_decode_network_nr` | Network resource count (use with `DECODE_NETWORK_RESOURCE`) |
-| (network resource type) | `LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE` | `vllm_modelservice_decode_network_resource` | Network resource type override |
+| (network resource type) | `LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE` | `vllm_modelservice_decode_network_resource` | **Always use `"auto"`** - ignore guide value, enable runtime auto-detection |
 | `decode.schedulerName` | `LLMDBENCH_VLLM_COMMON_POD_SCHEDULER` | `vllm_common_pod_scheduler` | Pod scheduler name |
 | `decode.annotations` | `LLMDBENCH_VLLM_COMMON_ANNOTATIONS` | `vllm_common_annotations` | Deployment annotations |
 | `decode.podAnnotations` | `LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS` | `vllm_modelservice_decode_podannotations` | Pod annotations |
@@ -127,7 +127,7 @@ The ModelService Helm chart is deployed via `setup/steps/09_deploy_via_modelserv
 | `prefill.containers[0].resources.requests.cpu` | `LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR` | `vllm_modelservice_prefill_cpu_nr` | CPU cores requested |
 | `prefill.containers[0].resources.requests.memory` | `LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM` | `vllm_modelservice_prefill_cpu_mem` | Memory requested |
 | `prefill.containers[0].resources.limits.<network-resource>` | `LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR` | `vllm_modelservice_prefill_network_nr` | Network resource count (use with `PREFILL_NETWORK_RESOURCE`) |
-| (network resource type) | `LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE` | `vllm_modelservice_prefill_network_resource` | Network resource type override |
+| (network resource type) | `LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE` | `vllm_modelservice_prefill_network_resource` | **Always use `"auto"`** - ignore guide value, enable runtime auto-detection |
 | `prefill.schedulerName` | `LLMDBENCH_VLLM_COMMON_POD_SCHEDULER` | `vllm_common_pod_scheduler` | Pod scheduler name |
 | `prefill.annotations` | `LLMDBENCH_VLLM_COMMON_ANNOTATIONS` | `vllm_common_annotations` | Deployment annotations |
 | `prefill.podAnnotations` | `LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS` | `vllm_modelservice_prefill_podannotations` | Pod annotations |
@@ -154,7 +154,7 @@ The ModelService Helm chart is deployed via `setup/steps/09_deploy_via_modelserv
 | `routing.proxy.connector` | `LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR` | `llmd_routingsidecar_connector` | Routing connector type |
 | `routing.proxy.debugLevel` | `LLMDBENCH_LLMD_ROUTINGSIDECAR_DEBUG_LEVEL` | `llmd_routingsidecar_debug_level` | Debug level |
 | `accelerator.type` | `LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE` | `vllm_common_accelerator_resource` | GPU resource type |
-| `network.type` | `LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE` | `vllm_common_network_resource` | Network resource type (e.g., `rdma/hca`, `nvidia.com/rdma_shared_device_a`) |
+| `network.type` | `LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE` | `vllm_common_network_resource` | **Always use `"auto"`** - ignore guide value, enable runtime auto-detection |
 | `network.count` | `LLMDBENCH_VLLM_COMMON_NETWORK_NR` | `vllm_common_network_nr` | Number of network resources to request |
 
 ## vLLM Launch Arguments
@@ -313,6 +313,7 @@ EOF
 | `REPLACE_ENV_LLMDBENCH_VLLM_COMMON_INFERENCE_PORT` | Inference port |
 | `REPLACE_ENV_LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT` | NIXL side channel port |
 | `REPLACE_ENV_LLMDBENCH_VLLM_COMMON_SHM_MEM` | Shared memory size |
+| `REPLACE_ENV_LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL` | GPU memory utilization (common) |
 | `REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM` | Decode tensor parallelism |
 | `REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_MEM_UTIL` | Decode GPU memory utilization |
 | `REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_INFERENCE_PORT` | Decode inference port |
