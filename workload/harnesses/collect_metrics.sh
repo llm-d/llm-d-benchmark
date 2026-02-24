@@ -33,46 +33,65 @@ get_pod_names() {
     fi
 }
 
-# Function to collect metrics from a single pod via localhost
-collect_metrics_from_pod() {
+# Function to collect logs from a single pod
+collect_logs_from_pod() {
     local pod="$1"
     local namespace="$2"
     local timestamp="$3"
     local output_file="$4"
     
-    # Use kubectl exec to curl metrics from within the pod
-    if kubectl exec -n "$namespace" "$pod" -- curl -s http://localhost:${METRICS_PORT}/metrics >> "$output_file" 2>/dev/null; then
-        echo "# Timestamp: $timestamp" >> "$output_file"
-        echo "# Pod: $pod" >> "$output_file"
-        echo "" >> "$output_file"
-        return 0
-    else
-        echo "Warning: Failed to collect metrics from pod $pod" >&2
-        return 1
-    fi
+    # Use kubectl/oc logs to get pod logs
+    local kubectl_cmd="${KUBECTL_CMD:-kubectl}"
+    
+    {
+        echo "# Timestamp: $timestamp"
+        echo "# Pod: $pod"
+        echo "# Namespace: $namespace"
+        echo ""
+        $kubectl_cmd logs -n "$namespace" "$pod" --tail=100 2>/dev/null || echo "# Warning: Failed to collect logs from pod $pod"
+        echo ""
+    } >> "$output_file"
+    
+    return 0
 }
 
-# Function to collect metrics snapshot
+# Function to collect logs snapshot
 collect_metrics_snapshot() {
     local namespace="${LLMDBENCH_VLLM_COMMON_NAMESPACE:-default}"
-    local label_selector="${LLMDBENCH_METRICS_LABEL_SELECTOR:-}"
+    local pod_pattern="${LLMDBENCH_METRICS_POD_PATTERN:-decode}"
     local timestamp=$(date +%s)
     local iso_timestamp=$(date --iso-8601=seconds)
     
-    echo "Collecting metrics at $iso_timestamp"
+    echo "Collecting logs at $iso_timestamp"
+    echo "Namespace: $namespace"
+    echo "Pod pattern: $pod_pattern"
     
-    # Get pod names
-    local pods=$(get_pod_names "$namespace" "$label_selector")
+    # Get pod names using simple grep pattern
+    local kubectl_cmd="${KUBECTL_CMD:-kubectl}"
+    echo "Using kubectl command: $kubectl_cmd"
     
-    if [[ -z "$pods" ]]; then
-        echo "Warning: No pods found in namespace $namespace" >&2
+    # Get pods using grep pattern - simpler approach that doesn't require label selectors
+    local pods=$($kubectl_cmd get pods -n "$namespace" 2>&1 | grep "$pod_pattern" | grep "Running" | awk '{print $1}')
+    local rc=$?
+    
+    if [[ $rc -ne 0 ]]; then
+        echo "Error getting pods: $pods" >&2
         return 1
     fi
     
+    if [[ -z "$pods" ]]; then
+        echo "Warning: No running pods found in namespace $namespace matching pattern '$pod_pattern'" >&2
+        echo "Trying to list all pods for debugging..." >&2
+        $kubectl_cmd get pods -n "$namespace" 2>&1 | head -10 >&2
+        return 1
+    fi
+    
+    echo "Found pods: $pods"
+    
     # Collect from each pod
     for pod in $pods; do
-        local pod_metrics_file="$METRICS_DIR/raw/${pod}_${timestamp}.txt"
-        collect_metrics_from_pod "$pod" "$namespace" "$iso_timestamp" "$pod_metrics_file"
+        local pod_log_file="$METRICS_DIR/raw/${pod}_${timestamp}.log"
+        collect_logs_from_pod "$pod" "$namespace" "$iso_timestamp" "$pod_log_file"
     done
 }
 
@@ -121,102 +140,168 @@ stop_continuous_collection() {
     fi
 }
 
-# Function to parse and aggregate collected metrics
+# Function to parse and aggregate collected logs
 process_collected_metrics() {
-    echo "Processing collected metrics..."
+    echo "Processing collected logs..."
     
-    # Call Python script to process metrics
+    # Call Python script to process vLLM logs
     python3 - <<'PYTHON_SCRIPT'
 import os
 import re
 import json
 import glob
 from collections import defaultdict
-from datetime import datetime
 import statistics
 
 metrics_dir = os.environ.get('METRICS_DIR', 'metrics')
 raw_dir = os.path.join(metrics_dir, 'raw')
 processed_dir = os.path.join(metrics_dir, 'processed')
 
-# Metrics of interest
-METRICS_OF_INTEREST = [
-    'vllm:kv_cache_usage_perc',
-    'vllm:gpu_cache_usage_perc',
-    'vllm:cpu_cache_usage_perc',
-    'vllm:gpu_memory_usage_bytes',
-    'vllm:cpu_memory_usage_bytes',
-    'container_memory_usage_bytes',
-    'container_cpu_usage_seconds_total',
-    'DCGM_FI_DEV_GPU_UTIL',
-    'DCGM_FI_DEV_FB_USED',
-    'DCGM_FI_DEV_POWER_USAGE',
-]
-
-def parse_prometheus_metrics(file_path):
-    """Parse Prometheus metrics from a file."""
-    metrics = {}
+def parse_vllm_log(file_path):
+    """Parse vLLM logs to extract metrics."""
+    metrics = defaultdict(list)
     timestamp = None
     pod_name = None
+    namespace = None
     
     with open(file_path, 'r') as f:
         for line in f:
             line = line.strip()
             
-            # Extract timestamp
+            # Extract metadata
             if line.startswith('# Timestamp:'):
                 timestamp = line.split(':', 1)[1].strip()
-            
-            # Extract pod name
-            if line.startswith('# Pod:'):
+            elif line.startswith('# Pod:'):
                 pod_name = line.split(':', 1)[1].strip()
+            elif line.startswith('# Namespace:'):
+                namespace = line.split(':', 1)[1].strip()
             
-            # Skip comments and empty lines
-            if line.startswith('#') or not line:
-                continue
-            
-            # Parse metric line
-            match = re.match(r'([a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^}]*\})?) ([\d.eE+-]+)', line)
+            # Parse KV cache usage: "GPU KV cache usage: 45.2%"
+            match = re.search(r'GPU KV cache usage:\s*([\d.]+)%', line)
             if match:
-                metric_name = match.group(1)
-                value = float(match.group(2))
-                
-                # Extract base metric name (without labels)
-                base_name = metric_name.split('{')[0]
-                
-                if base_name in METRICS_OF_INTEREST:
-                    if base_name not in metrics:
-                        metrics[base_name] = []
-                    metrics[base_name].append(value)
+                metrics['kv_cache_usage_percent'].append(float(match.group(1)))
+            
+            # Parse KV cache hit rate: "Prefix cache hit rate: 51.0%"
+            match = re.search(r'Prefix cache hit rate:\s*([\d.]+)%', line)
+            if match:
+                hit_rate = float(match.group(1))
+                metrics['cache_hit_rate_percent'].append(hit_rate)
+            
+            # Parse cache hits and misses: "Cache hits: 1234, misses: 56"
+            match = re.search(r'Cache hits:\s*(\d+)(?:,\s*misses:\s*(\d+))?', line)
+            if match:
+                hits = int(match.group(1))
+                metrics['cache_hits'].append(hits)
+                if match.group(2):
+                    misses = int(match.group(2))
+                    metrics['cache_misses'].append(misses)
+                    # Calculate hit rate
+                    total = hits + misses
+                    if total > 0:
+                        metrics['cache_hit_rate_percent'].append((hits / total) * 100)
+            
+            # Parse GPU memory: "GPU memory usage: 12.5 GB / 80.0 GB"
+            match = re.search(r'GPU memory usage:\s*([\d.]+)\s*GB\s*/\s*([\d.]+)\s*GB', line)
+            if match:
+                used_gb = float(match.group(1))
+                total_gb = float(match.group(2))
+                metrics['gpu_memory_used_gb'].append(used_gb)
+                metrics['gpu_memory_total_gb'].append(total_gb)
+                metrics['gpu_memory_usage_percent'].append((used_gb / total_gb) * 100 if total_gb > 0 else 0)
+            
+            # Parse CPU memory: "CPU memory usage: 2.3 GB"
+            match = re.search(r'CPU memory usage:\s*([\d.]+)\s*GB', line)
+            if match:
+                metrics['cpu_memory_used_gb'].append(float(match.group(1)))
+            
+            # Parse GPU utilization: "GPU utilization: 87%"
+            match = re.search(r'GPU utilization:\s*([\d.]+)%', line)
+            if match:
+                metrics['gpu_utilization_percent'].append(float(match.group(1)))
+            
+            # Parse requests: "Avg prompt throughput: 123.4 tokens/s, Avg generation throughput: 456.7 tokens/s"
+            match = re.search(r'Avg prompt throughput:\s*([\d.]+)\s*tokens/s', line)
+            if match:
+                metrics['prompt_throughput_tokens_per_sec'].append(float(match.group(1)))
+            
+            match = re.search(r'Avg generation throughput:\s*([\d.]+)\s*tokens/s', line)
+            if match:
+                metrics['generation_throughput_tokens_per_sec'].append(float(match.group(1)))
+            
+            # Parse running requests: "Running: 5 reqs"
+            match = re.search(r'Running:\s*(\d+)\s*reqs?', line)
+            if match:
+                metrics['running_requests'].append(int(match.group(1)))
+            
+            # Parse waiting requests: "Waiting: 12 reqs"
+            match = re.search(r'Waiting:\s*(\d+)\s*reqs?', line)
+            if match:
+                metrics['waiting_requests'].append(int(match.group(1)))
     
-    return timestamp, pod_name, metrics
+    return timestamp, pod_name, namespace, dict(metrics)
 
-def aggregate_metrics():
-    """Aggregate metrics across all collected snapshots."""
+def aggregate_logs():
+    """Aggregate metrics from all collected log files."""
     # Structure: {pod_name: {metric_name: [values]}}
     pod_metrics = defaultdict(lambda: defaultdict(list))
+    pod_metadata = {}
     
-    # Process all raw metric files
-    for file_path in glob.glob(os.path.join(raw_dir, '*.txt')):
-        timestamp, pod_name, metrics = parse_prometheus_metrics(file_path)
+    # Process all raw log files
+    log_files = glob.glob(os.path.join(raw_dir, '*.log'))
+    
+    if not log_files:
+        print("Warning: No raw log files found to process")
+        print(f"Checked directory: {raw_dir}")
+        # Create an informative empty result
+        results = {
+            '_info': {
+                'status': 'no_data',
+                'message': 'No metrics collected - no raw log files found',
+                'raw_dir': raw_dir,
+                'possible_reasons': [
+                    'Metrics collection could not find any pods',
+                    'kubectl/oc command may not have access to the cluster',
+                    'Label selector may not match any pods',
+                    'Namespace may be incorrect'
+                ]
+            }
+        }
+        output_file = os.path.join(processed_dir, 'metrics_summary.json')
+        with open(output_file, 'w') as f:
+            json.dump(results, f, indent=2)
+        print(f"Empty metrics summary saved to: {output_file}")
+        return results
+    
+    print(f"Processing {len(log_files)} log files...")
+    
+    for file_path in log_files:
+        timestamp, pod_name, namespace, metrics = parse_vllm_log(file_path)
         
         if pod_name:
+            if pod_name not in pod_metadata:
+                pod_metadata[pod_name] = {'namespace': namespace, 'log_files': []}
+            pod_metadata[pod_name]['log_files'].append(os.path.basename(file_path))
+            
             for metric_name, values in metrics.items():
                 pod_metrics[pod_name][metric_name].extend(values)
     
     # Calculate statistics for each metric
     results = {}
     for pod_name, metrics in pod_metrics.items():
-        results[pod_name] = {}
+        results[pod_name] = {
+            'metadata': pod_metadata.get(pod_name, {}),
+            'metrics': {}
+        }
+        
         for metric_name, values in metrics.items():
             if values:
-                results[pod_name][metric_name] = {
+                results[pod_name]['metrics'][metric_name] = {
                     'mean': statistics.mean(values),
                     'stddev': statistics.stdev(values) if len(values) > 1 else 0,
                     'min': min(values),
                     'max': max(values),
                     'count': len(values),
-                    'raw_data_file': f'raw/{pod_name}_*.txt'
+                    'unit': get_metric_unit(metric_name)
                 }
     
     # Save aggregated results
@@ -225,10 +310,30 @@ def aggregate_metrics():
         json.dump(results, f, indent=2)
     
     print(f"Metrics summary saved to: {output_file}")
+    print(f"Processed metrics from {len(results)} pods")
     return results
 
+def get_metric_unit(metric_name):
+    """Get the unit for a metric."""
+    units = {
+        'kv_cache_usage_percent': '%',
+        'cache_hit_rate_percent': '%',
+        'cache_hits': 'count',
+        'cache_misses': 'count',
+        'gpu_memory_used_gb': 'GB',
+        'gpu_memory_total_gb': 'GB',
+        'gpu_memory_usage_percent': '%',
+        'cpu_memory_used_gb': 'GB',
+        'gpu_utilization_percent': '%',
+        'prompt_throughput_tokens_per_sec': 'tokens/s',
+        'generation_throughput_tokens_per_sec': 'tokens/s',
+        'running_requests': 'count',
+        'waiting_requests': 'count',
+    }
+    return units.get(metric_name, '')
+
 if __name__ == '__main__':
-    aggregate_metrics()
+    aggregate_logs()
 PYTHON_SCRIPT
 }
 

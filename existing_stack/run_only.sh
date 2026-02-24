@@ -167,6 +167,7 @@ metadata:
   labels:
     app: ${HARNESS_POD_LABEL}
 spec:
+  serviceAccountName: llmdbench-harness-sa
   containers:
   - name: harness
     image: ${harness_image}
@@ -359,6 +360,42 @@ announce "ℹ️ Using harness_name=$harness_name, with _harness_pod_name=$_harn
 # ========================================================
 announce "🔧 Ensuring harness namespace is prepared"
 _control_dir=$(realpath $(pwd)/)
+
+# Create ServiceAccount and RBAC for metrics collection
+# ========================================================
+announce "🔧 Creating ServiceAccount for metrics collection"
+cat <<RBAC_EOF | $control_kubectl apply -f -
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: llmdbench-harness-sa
+  namespace: ${harness_namespace}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: llmdbench-metrics-reader
+  namespace: ${harness_namespace}
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: llmdbench-harness-metrics
+  namespace: ${harness_namespace}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: llmdbench-metrics-reader
+subjects:
+- kind: ServiceAccount
+  name: llmdbench-harness-sa
+  namespace: ${harness_namespace}
+RBAC_EOF
+announce "✅ ServiceAccount and RBAC created"
 
 # Verify HF token secret exists
 # ========================================================

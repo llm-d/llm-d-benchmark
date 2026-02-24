@@ -14,6 +14,12 @@ RUN apt-get update; \
     wget \
     && apt-get clean && rm -rf /var/cache/apt
 
+# Install OpenShift CLI (oc)
+RUN curl -sLO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz && \
+    tar -xzf openshift-client-linux.tar.gz -C /usr/local/bin/ oc && \
+    rm openshift-client-linux.tar.gz && \
+    chmod +x /usr/local/bin/oc
+
 RUN echo "# /etc/rsyncd: configuration file for rsync daemon mode" > /etc/rsyncd.conf; echo -e "\
 \n\
 [global]\n\

@@ -12,6 +12,7 @@ The following metrics are collected from each pod in the deployment:
 
 ### Cache Metrics
 - **KV Cache Usage** (`vllm:kv_cache_usage_perc`) - Percentage of KV cache utilized
+- **Cache Hit Rate** (`cache_hit_rate_percent`) - Prefix cache hit rate percentage (parsed from vLLM logs)
 - **GPU Cache Usage** (`vllm:gpu_cache_usage_perc`) - GPU cache utilization percentage
 - **CPU Cache Usage** (`vllm:cpu_cache_usage_perc`) - CPU cache utilization percentage
 
@@ -139,6 +140,12 @@ results:
             stddev: 8.3
             min: 32.1
             max: 68.9
+          cache_hit_rate:
+            units: percent
+            mean: 65.5
+            stddev: 12.1
+            min: 48.0
+            max: 82.3
           gpu_memory_usage:
             units: GiB
             mean: 42.5
@@ -157,6 +164,18 @@ results:
             stddev: 45.2
             min: 180.0
             max: 350.0
+          running_requests:
+            units: count
+            mean: 12.5
+            stddev: 3.2
+            min: 5
+            max: 20
+          waiting_requests:
+            units: count
+            mean: 2.1
+            stddev: 1.8
+            min: 0
+            max: 8
         raw_data_path: metrics/raw/vllm-pod-1_*.txt
 ```
 
@@ -237,14 +256,65 @@ If matplotlib is not available, metrics will still be collected and processed, b
 
 ### No Metrics Collected
 
-1. **Check pod accessibility**: Ensure `kubectl exec` works for target pods
+1. **Check pod accessibility**: Ensure `kubectl` or `oc` commands work for target pods
 2. **Verify metrics endpoint**: Confirm pods expose metrics on the configured port
 3. **Check namespace**: Ensure `LLMDBENCH_VLLM_COMMON_NAMESPACE` is set correctly
+4. **Verify RBAC permissions**: Ensure the harness pod has permissions to list pods and read logs
 
 ```bash
 # Test metrics endpoint manually
 kubectl exec -n <namespace> <pod-name> -- curl http://localhost:8000/metrics
+
+# Check if oc command is available (for OpenShift)
+oc version
+
+# Verify pod discovery
+oc get pods -n <namespace> | grep <pod-pattern>
 ```
+
+### RBAC Permission Issues
+
+If you see "Forbidden" errors when collecting metrics:
+
+1. **For existing_stack/run_only.sh**: The script automatically creates a ServiceAccount with minimal required permissions
+2. **For custom deployments**: Ensure your harness pod has a ServiceAccount with these permissions:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: llmdbench-metrics-reader
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list"]
+```
+
+### Empty Raw Folder
+
+If `metrics/raw/` is empty after a benchmark run:
+
+1. **Check OpenShift CLI**: Ensure `oc` command is installed in the harness container
+2. **Verify pod pattern**: Confirm `LLMDBENCH_METRICS_POD_PATTERN` matches your vLLM pods
+3. **Check logs**: Review `metrics_collection.log` for errors
+4. **Test pod discovery**: Run `oc get pods -n <namespace> | grep <pattern>` manually
+
+### Empty metrics_summary.json
+
+If `metrics/processed/metrics_summary.json` contains only `{}`:
+
+1. **Check raw data**: Verify that raw metric files exist in `metrics/raw/`
+2. **Verify log parsing**: Ensure vLLM logs contain expected metrics (e.g., "Prefix cache hit rate: X.X%")
+3. **Check regex patterns**: The collection script uses specific patterns to parse metrics from logs
+4. **Review processing logs**: Check for errors during the processing phase
+
+### Incorrect Benchmark Report Filename
+
+If benchmark report files have commas in their names (e.g., `benchmark_report_v0.2,_stage_0...`):
+
+This was a bug in the analysis scripts that has been fixed. Ensure you're using the latest version of:
+- `analysis/inference-perf-analyze_results.sh`
+- `analysis/guidellm-analyze_results.sh`
 
 ### Missing Specific Metrics
 
@@ -260,6 +330,56 @@ If graph generation fails:
 2. Check for sufficient data points in raw metrics
 3. Verify timestamp parsing in metric files
 
+## Running Against Existing Stacks
+
+When running benchmarks against existing inference deployments (e.g., using `existing_stack/run_only.sh`):
+
+### Prerequisites
+
+1. **OpenShift CLI**: Ensure the harness container image includes `oc` command
+2. **RBAC Permissions**: The script automatically creates a ServiceAccount with minimal permissions
+3. **Pod Pattern**: Configure `LLMDBENCH_METRICS_POD_PATTERN` to match your vLLM pods
+
+### Configuration Example
+
+```yaml
+harness:
+  image: your-registry/llm-d-benchmark-metrics:v0.9.1-amd64
+  env:
+    LLMDBENCH_COLLECT_METRICS: "1"
+    LLMDBENCH_METRICS_POD_PATTERN: "vllm"  # or "decode" for disaggregated
+    LLMDBENCH_VLLM_COMMON_NAMESPACE: "your-namespace"
+    METRICS_COLLECTION_INTERVAL: "5"
+```
+
+### Workload Configuration for Cache Hit Testing
+
+To test prefix cache hit rates, use workloads with shared prefixes:
+
+```yaml
+workload:
+  profile: shared_prefix_test
+  data:
+    shared_prefix: "You are a helpful AI assistant. Please answer the following question: "
+    num_requests: 100
+    request_rate: 10
+```
+
+### Verification Steps
+
+After running a benchmark:
+
+```bash
+# Check raw logs were collected
+ls -la results/metrics/raw/
+
+# Verify metrics summary
+cat results/metrics/processed/metrics_summary.json | jq '.[] | .metrics.cache_hit_rate_percent'
+
+# Check benchmark report filename (should not contain commas)
+ls -la results/benchmark_report*.yaml
+```
+
 ## Best Practices
 
 1. **Collection Interval**: Use 5-10 second intervals for most workloads. Shorter intervals increase overhead.
@@ -271,6 +391,10 @@ If graph generation fails:
 4. **Comparison**: When comparing benchmarks, ensure consistent collection intervals and pod configurations.
 
 5. **Production**: In production environments, consider using dedicated monitoring solutions (Prometheus, Grafana) alongside this feature.
+
+6. **Cache Hit Testing**: Use workloads with shared prefixes to generate meaningful cache hit rate metrics (50-80% is typical for well-configured prefix caching).
+
+7. **RBAC**: Always use minimal required permissions. The auto-created ServiceAccount only has `get` and `list` permissions for pods and logs.
 
 ## Future Enhancements
 
