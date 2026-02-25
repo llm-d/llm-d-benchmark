@@ -36,6 +36,9 @@ from kubernetes_asyncio import (
     watch as k8s_async_watch,
 )
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 import asyncio
 
 import logging
@@ -1673,6 +1676,76 @@ def add_pull_secret(ev:dict) -> str:
 
     return pull_secret_string
 
+def create_monitoring_configmap() -> dict:
+    """
+    Create OpenShift monitoring ConfigMap using native Python dict structure.
+
+    Returns:
+        dict: ConfigMap structure for enabling user workload monitoring
+    """
+    return {
+        'apiVersion': 'v1',
+        'kind': 'ConfigMap',
+        'metadata': {
+            'name': 'cluster-monitoring-config',
+            'namespace': 'openshift-monitoring'
+        },
+        'data': {
+            'config.yaml': 'enableUserWorkload: true'
+        }
+    }
+
+def ensure_user_workload_monitoring(
+    api: pykube.HTTPClient,
+    ev: dict,
+    work_dir: str,
+    current_step: str,
+    kubectl_cmd: str,
+    dry_run: bool,
+    verbose: bool
+) -> int:
+    """
+    Ensure OpenShift user workload monitoring is configured using native Python.
+
+    Args:
+        api: pykube.HTTPClient
+        ev: Environment variables dictionary
+        work_dir: Working directory for file creation
+        current_step: Current step name for file naming
+        kubectl_cmd: kubectl or oc command to use
+        dry_run: If True, only print what would be executed
+        verbose: If True, print detailed output
+
+    Returns:
+        int: 0 for success, non-zero for failure
+    """
+    announce("🔍 Checking for OpenShift user workload monitoring enablement...")
+
+    if is_openshift(api) :
+        if ev["deploy_methods"] != "modelservice" :
+            announce("⏭️ Standup method is not \"modelservice\", skipping user workload monitoring enablement")
+    else :
+        announce("⏭️ Not an OpenShift Cluster, skipping user workload monitoring enablement")
+        return 0
+
+    try:
+        # Create ConfigMap structure using native Python
+        configmap = create_monitoring_configmap()
+
+        # Determine output file path using pathlib
+        work_path = Path(work_dir)
+        yaml_dir = work_path / "setup" / "yamls"
+        yaml_file = yaml_dir / f"{current_step}_cluster-monitoring-config_configmap.yaml"
+
+        kubectl_apply(api=api, manifest_data=configmap, dry_run=ev["control_dry_run"])
+
+        announce("✅ OpenShift user workload monitoring enabled")
+        return 0
+
+    except Exception as e:
+        announce(f"❌ Error setting up user workload monitoring: {e}")
+        return 1
+
 def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
     """
     Generate additional environment variables YAML.
@@ -1966,6 +2039,7 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
         pod_manifest = client.V1Pod(
             metadata=client.V1ObjectMeta(name=pod_name, namespace=ev['vllm_common_namespace'], labels={"llm-d.ai/id": f"{pod_name}"}),
             spec=client.V1PodSpec(
+                service_account_name=ev["vllm_common_service_account"],
                 restart_policy="Never",
                 image_pull_secrets=[pull_secret_ref],
                 containers=[
@@ -2052,7 +2126,6 @@ def add_scc_to_service_account(
             scc.obj["users"].append(sa_user_name)
             scc.update()
             announce(f'✅ Successfully updated SCC "{scc_name}"')
-
 
 def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int, component: str) -> int:
     """

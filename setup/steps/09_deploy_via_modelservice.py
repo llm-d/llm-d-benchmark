@@ -55,7 +55,6 @@ def conditional_volume_config(
         return f"{field_name}: {config_result}"
     return ""
 
-
 def conditional_extra_config(
     extra_config_key: str, indent: int = 2, label: str = "extraConfig", ev: dict = {}
 ) -> str:

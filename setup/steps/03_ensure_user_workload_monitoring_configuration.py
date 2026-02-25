@@ -2,8 +2,6 @@ import os
 import sys
 import yaml
 from pathlib import Path
-import pykube
-from pykube.exceptions import PyKubeError
 
 # Add project root to path for imports
 current_file = Path(__file__).resolve()
@@ -19,27 +17,8 @@ from functions import (announce,
                         environment_variable_to_dict,
                         kube_connect,
                         kubectl_apply,
+                        ensure_user_workload_monitoring,
                         is_openshift)
-
-def create_monitoring_configmap() -> dict:
-    """
-    Create OpenShift monitoring ConfigMap using native Python dict structure.
-
-    Returns:
-        dict: ConfigMap structure for enabling user workload monitoring
-    """
-    return {
-        'apiVersion': 'v1',
-        'kind': 'ConfigMap',
-        'metadata': {
-            'name': 'cluster-monitoring-config',
-            'namespace': 'openshift-monitoring'
-        },
-        'data': {
-            'config.yaml': 'enableUserWorkload: true'
-        }
-    }
-
 
 def write_configmap_yaml(configmap: dict, output_path: Path, dry_run: bool, verbose: bool) -> bool:
     """
@@ -83,58 +62,6 @@ def write_configmap_yaml(configmap: dict, output_path: Path, dry_run: bool, verb
     except yaml.YAMLError as e:
         announce(f"❌ Failed to generate YAML: {e}")
         return False
-
-
-def ensure_user_workload_monitoring(
-    api: pykube.HTTPClient,
-    ev: dict,
-    work_dir: str,
-    current_step: str,
-    kubectl_cmd: str,
-    dry_run: bool,
-    verbose: bool
-) -> int:
-    """
-    Ensure OpenShift user workload monitoring is configured using native Python.
-
-    Args:
-        api: pykube.HTTPClient
-        ev: Environment variables dictionary
-        work_dir: Working directory for file creation
-        current_step: Current step name for file naming
-        kubectl_cmd: kubectl or oc command to use
-        dry_run: If True, only print what would be executed
-        verbose: If True, print detailed output
-
-    Returns:
-        int: 0 for success, non-zero for failure
-    """
-    announce("🔍 Checking for OpenShift user workload monitoring enablement...")
-
-    if is_openshift(api) :
-        if ev["deploy_methods"] != "modelservice" :
-            announce("⏭️ Standup method is not \"modelservice\", skipping user workload monitoring enablement")
-    else :
-        announce("⏭️ Not an OpenShift Cluster, skipping user workload monitoring enablement")
-        return 0
-
-    try:
-        # Create ConfigMap structure using native Python
-        configmap = create_monitoring_configmap()
-
-        # Determine output file path using pathlib
-        work_path = Path(work_dir)
-        yaml_dir = work_path / "setup" / "yamls"
-        yaml_file = yaml_dir / f"{current_step}_cluster-monitoring-config_configmap.yaml"
-
-        kubectl_apply(api=api, manifest_data=configmap, dry_run=ev["control_dry_run"])
-
-        announce("✅ OpenShift user workload monitoring enabled")
-        return 0
-
-    except Exception as e:
-        announce(f"❌ Error setting up user workload monitoring: {e}")
-        return 1
 
 
 def main():
