@@ -34,10 +34,11 @@ LLMDBENCH_STEP_LIST=$(find "$LLMDBENCH_STEPS_DIR" -name "*.sh" | grep -v 11_ | s
 
 function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD -e s^${LLMDBENCH_STEPS_DIR}/^^g -e 's/ /,/g') \n \
-            -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
-            -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
-            -p/--namespace [comma separated pair of values indicating where a stack will be stood up and where the benchmark will be run (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE,$LLMDBENCH_WVA_NAMESPACE)] \n \
-            -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\") ] \n \
+            -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO)] \n \
+            -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST)] \n \
+            -p/--namespace [comma separated list of namespaces indicating, respectively, where a stack will be stood up, where will the benchmark run and where will wva operate (defaults=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE,$LLMDBENCH_WVA_NAMESPACE)] \n \
+            -q/--serviceaccount [service account used when standing up the stack (default=$LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT)] \n \
+            -t/--methods [list the methods employed to carry out the deployment (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\")] \n \
             -a/--affinity [kubernetes node affinity] (default=$LLMDBENCH_VLLM_COMMON_AFFINITY) \n \
             -l/--harness [harness used to generate load (default=$LLMDBENCH_HARNESS_NAME, possible values $(get_harness_list)] \n \
             -w/--workload [workload to be used by the harness (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE, possible values (check \"workload/profiles\" dir)] \n \
@@ -45,15 +46,15 @@ function show_usage {
             -e/--experiments [path of yaml file containing a list of factors and levels for an experiment, useful for parameter sweeping (default=$LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS)] \n \
             -o/--overrides [comma-separated list of workload profile parameters to be overriden (default=$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES)] \n \
             -z/--skip [skip the execution of the experiment, and only collect data (default=$LLMDBENCH_HARNESS_SKIP_RUN)] \n \
-            --wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means "do not wait\""] \n \
+            --wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means \"do not wait\"] \n \
             -j/--parallelism [number of harness pods to be created (default=$LLMDBENCH_HARNESS_LOAD_PARALLELISM)] \n \
-            -g/--envvarspod [list all environment variables which should be propagated to the harness pods (default=$LLMDBENCH_HARNESS_ENVVARS_TO_YAML)] \n \
-            -b/--annotations [kubernetes pod annotations] (default=$LLMDBENCH_VLLM_COMMON_ANNOTATIONS) \n \
+            -g/--envvarspod [list all environment variables which should be propagated to the harness and vllm pods (default=$LLMDBENCH_HARNESS_ENVVARS_TO_YAML)] \n \
+            -b/--annotations [kubernetes pod annotations] (default=$LLMDBENCH_VLLM_COMMON_ANNOTATIONS)] \n \
             -r/--release [modelservice helm chart release name (default=$LLMDBENCH_VLLM_MODELSERVICE_RELEASE)] \n \
             -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)] \n \
             -u/--wva [deploy model with Workload Variant Autoscaler (default=$LLMDBENCH_WVA_ENABLED)] \n \
-            -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
-            -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
+            -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN)] \n \
+            -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE)] \n \
             --deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING) ] \n \
             -h/--help (show this help)\n \
 
@@ -94,19 +95,21 @@ while [[ $# -gt 0 ]]; do
         ;;
         -g=*|-envvarspod=*)
         export LLMDBENCH_CLIOVERRIDE_HARNESS_ENVVARS_TO_YAML=$(echo $key | cut -d '=' -f 2)
+        export LLMDBENCH_CLIOVERRIDE_COMMON_ENVVARS_TO_YAML=$(echo $key | cut -d '=' -f 2)
         ;;
         -g|--envvarspod)
         export LLMDBENCH_CLIOVERRIDE_HARNESS_ENVVARS_TO_YAML="$2"
+        export LLMDBENCH_CLIOVERRIDE_COMMON_ENVVARS_TO_YAML="$2"
         shift
         ;;
         -p=*|--namespace=*)
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 1)
         export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 2)
         export LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 3)
-        
+
         if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
           export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
-        
+
         fi
 
         if [[ -z ${LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE} ]]; then
@@ -125,6 +128,13 @@ while [[ $# -gt 0 ]]; do
         if [[ -z ${LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE} ]]; then
           export LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE=${LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE}
         fi
+        shift
+        ;;
+        -q=*|-serviceaccount=*)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_SERVICE_ACCOUNT=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -q|--serviceaccount)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_SERVICE_ACCOUNT="$2"
         shift
         ;;
         --wait=*)

@@ -531,6 +531,7 @@ metadata:
     app: ${LLMDBENCH_HARNESS_POD_LABEL}
     function: load_generator
 spec:
+  serviceAccountName: ${LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT}
   containers:
   - name: harness
     image: $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG})
@@ -633,7 +634,8 @@ function get_model_name_from_pod {
     # --- END: Corrected Port Logic ---
 
     local url=$url/v1/models
-    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl -k --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2 0)
+
+    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run --overrides='{\"spec\": { \"serviceAccountName\": \"${LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT}\" } }' testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl -k --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2 0)
     is_jq=$(echo $response | jq -r . || true)
 
     if [[ -z $is_jq ]]; then

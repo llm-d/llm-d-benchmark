@@ -28,14 +28,15 @@ export LLMDBENCH_CURRENT_STEP=
 
 function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -t/--type [list of environment types targeted for cleaning (default=$LLMDBENCH_DEPLOY_METHODS)) \n \
-              -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
-              -d/--deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING) ] \n \
-              -p/--namespace [comma separated pair of values indicating where a stack will be stood up and where the benchmark was run (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE,$LLMDBENCH_WVA_NAMESPACE)] \n \
+              -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO)] \n \
+              -d/--deep [\"deep cleaning\"] (default=$LLMDBENCH_CONTROL_DEEP_CLEANING)] \n \
+              -p/--namespace [comma separated list of namespaces indicating, respectively, where a stack was stood up, where the benchmark was run and where wva operates (defaults=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE,$LLMDBENCH_WVA_NAMESPACE)] \n \
+              -q/--serviceaccount [service account used when standing up the stack (default=$LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT)] \n \
               -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
               -r/--release [modelservice helm chart release name (default=$LLMDBENCH_VLLM_MODELSERVICE_RELEASE)] \n \
-              -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
-              -t/--methods [list of standup methods (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\") ] \n \
-              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
+              -m/--models [list the models to be deployed (default=$LLMDBENCH_DEPLOY_MODEL_LIST)] \n \
+              -t/--methods [list of standup methods (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\")] \n \
+              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE)] \n \
               -i/--non-admin [run the teardown script as a non-cluster-level admin user] \n \
               -h/--help (show this help)"
 }
@@ -77,6 +78,13 @@ while [[ $# -gt 0 ]]; do
         if [[ -z ${LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE} ]]; then
           export LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE=${LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE}
         fi
+        shift
+        ;;
+        -q=*|-serviceaccount=*)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_SERVICE_ACCOUNT=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -q|--serviceaccount)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_SERVICE_ACCOUNT="$2"
         shift
         ;;
         -c=*|--scenario=*)
