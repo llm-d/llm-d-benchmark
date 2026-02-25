@@ -114,6 +114,7 @@ modelArtifacts:
 routing:
   servicePort: {ev["vllm_common_inference_port"]}
   proxy:
+    enabled: {ev["llmd_routingsidecar_enabled"]}
     image: "{get_image(ev, "llmd_routingsidecar_image", False, True)}"
     secure: false
     connector: {ev["llmd_routingsidecar_connector"]}
@@ -158,10 +159,10 @@ decode:
     extraConfig:
       startupProbe:
         httpGet:
-          path: /health
+          path: {ev["vllm_modelservice_decode_startup_probe_path"]}
           port: {ev["vllm_modelservice_decode_inference_port"]}
-        failureThreshold: 60
-        initialDelaySeconds: {ev["vllm_common_initial_delay_probe"]}
+        failureThreshold: {ev["vllm_modelservice_decode_startup_probe_failure_threshold"]}
+        initialDelaySeconds: {ev["vllm_modelservice_decode_startup_probe_initial_delay"]}
         periodSeconds: 30
         timeoutSeconds: 5
       livenessProbe:
@@ -171,7 +172,7 @@ decode:
         periodSeconds: 5
       readinessProbe:
         httpGet:
-          path: /health
+          path: {ev["vllm_modelservice_decode_readiness_probe_path"]}
           port: {ev["vllm_modelservice_decode_inference_port"]}
         failureThreshold: 3
         periodSeconds: 5
@@ -216,10 +217,10 @@ prefill:
     extraConfig:
       startupProbe:
         httpGet:
-          path: /health
+          path: {ev["vllm_modelservice_prefill_startup_probe_path"]}
           port: {ev["vllm_modelservice_prefill_inference_port"]}
-        failureThreshold: 60
-        initialDelaySeconds: {ev["vllm_common_initial_delay_probe"]}
+        failureThreshold: {ev["vllm_modelservice_prefill_startup_probe_failure_threshold"]}
+        initialDelaySeconds: {ev["vllm_modelservice_prefill_startup_probe_initial_delay"]}
         periodSeconds: 30
         timeoutSeconds: 5
       livenessProbe:
@@ -229,7 +230,7 @@ prefill:
         periodSeconds: 5
       readinessProbe:
         httpGet:
-          path: /health
+          path: {ev["vllm_modelservice_prefill_readiness_probe_path"]}
           port: {ev["vllm_modelservice_prefill_inference_port"]}
         failureThreshold: 3
         periodSeconds: 5

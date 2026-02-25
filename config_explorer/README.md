@@ -45,16 +45,16 @@ After installation, the `config-explorer` command will become available:
 
 ```bash
 # Run capacity planning
-config-explorer plan --model Qwen/Qwen3-32B --gpu-memory 80 --max-model-len 16000
+config-explorer plan --model Qwen/Qwen2.5-3B --gpu-memory 80 --max-model-len 16000
 
 # Run GPU recommendation and performance estimation (BentoML's roofline model)
-config-explorer estimate --model Qwen/Qwen3-32B --input-len 512 --output-len 128 --max-gpus 8
+config-explorer estimate --model Qwen/Qwen2.5-3B --input-len 512 --output-len 128 --max-gpus 8
 
 # Human-readable output
-config-explorer estimate --model Qwen/Qwen3-32B --input-len 512 --output-len 128 --pretty
+config-explorer estimate --model Qwen/Qwen2.5-3B --input-len 512 --output-len 128 --pretty
 
 # Override GPU costs with custom pricing
-config-explorer estimate --model Qwen/Qwen3-32B \
+config-explorer estimate --model Qwen/Qwen2.5-3B \
   --input-len 512 --output-len 128 \
   --custom-gpu-cost H100:30.50 \
   --custom-gpu-cost A100:22 \
