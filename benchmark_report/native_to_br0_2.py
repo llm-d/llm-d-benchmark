@@ -590,8 +590,17 @@ def _populate_benchmark_report_from_envars() -> dict:
     # Get configmap with standup parameters
     params_cm = get_configmap(context_dict, "llm-d-benchmark-standup-parameters")
 
-    ev_str: str = get_nested(params_cm, ["data", "ev.yaml"])
-    ev_dict = yaml.safe_load(ev_str) if ev_str else {}
+    if params_cm:
+        ev_str: str = get_nested(params_cm, ["data", "ev.yaml"])
+        ev_dict = yaml.safe_load(ev_str) if ev_str else {}
+    else:
+        # Could not get parameters from ConfigMap, try /standup/ev.yaml
+        try:
+            ev_file = "/standup/ev.yaml"
+            ev_dict = import_yaml(ev_file)
+        except Exception as e:
+            sys.stderr.write(f"Failed to retrieve {ev_file}: {e}\n")
+            ev_dict = {}
 
     # Fill in more run details
     update_dict(br_dict, _populate_run(ev_dict))
