@@ -728,6 +728,7 @@ spec:
               value: /tmp
             - name: MOUNT_PATH
               value: /cache
+            {add_additional_env_to_yaml(ev, "vllm_common_envvars_to_yaml").lstrip()}
           volumeMounts:
             - name: model-cache
               mountPath: /cache
@@ -1632,7 +1633,7 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
     else :
         accelerator_type = ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split('.')[0]
 
-    if accelerator_type == "kubernetes" :
+    if accelerator_type == "kubernetes" or str(ev[f"vllm_modelservice_{identifier}_accelerator_nr"] == 0) :
         accelerator_type = "cpu"
         acellerator_resource = "cpu"
 
@@ -1684,15 +1685,18 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
     pod_function = env_vars_key.replace("vllm_",'').replace("modelservice_",'').replace("_envvars_to_yaml",'')
 
     # Determine indentation based on environment type
-    if ev["control_environment_type_standalone_active"] :
+    if ev["current_step_nr"] == "04" :
+        name_indent = " " * 12
+        value_indent = " " * 14
+    elif ev["control_environment_type_standalone_active"] :
         name_indent = " " * 8
         value_indent = " " * 10
     elif ev["control_environment_type_modelservice_active"] :
         name_indent = " " * 6
         value_indent = " " * 8
     else:
-        name_indent = " " * 8
-        value_indent = " " * 10
+        name_indent = " " * 10
+        value_indent = " " * 12
 
     env_lines = []
     env_vars = []
