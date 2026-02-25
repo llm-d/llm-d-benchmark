@@ -85,7 +85,7 @@ except Exception as e:
 try:
     from transformers import AutoConfig
     from huggingface_hub import ModelInfo
-    from huggingface_hub.errors import GatedRepoError, HfHubHTTPError
+    from huggingface_hub.errors import GatedRepoError, HfHubHTTPError, NotASafetensorsRepoError
 except ModuleNotFoundError as e:
     print(f"❌ ERROR: Required dependency not installed: {e}")
     print("Please install the required dependencies:")
@@ -406,6 +406,12 @@ def environment_variable_to_dict(ev: dict = {}):
     if isinstance(ev["harness_profile_harness_list"], str):
         ev["harness_profile_harness_list"] = ev["harness_profile_harness_list"].split()
     ev["current_step_nr"] = ev["current_step"].split('_')[0]
+
+    for component in [ "vllm_common", "vllm_standalone", "harness", "vllm_modelservice_decode" ] :
+        for additional_env_var in ev[f"{component}_envvars_to_yaml"].split(',') :
+
+            if additional_env_var in dict(os.environ).keys():
+                ev.update({(additional_env_var).lower(): os.environ.get(additional_env_var)})
 
 def kubectl_apply(
     api: pykube.HTTPClient,
@@ -1527,7 +1533,6 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
 
     cpu_mem = ev[f"vllm_{identifier}_cpu_mem"]
     cpu_nr = ev[f"vllm_{identifier}_cpu_nr"]
-
     ephemeral_storage_resource = ev["vllm_common_ephemeral_storage_resource"]
     ephemeral_storage = ev[f"vllm_{identifier}_ephemeral_storage"]
 
@@ -1676,6 +1681,8 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
 
     env_vars_string = ev[env_vars_key]
 
+    pod_function = env_vars_key.replace("vllm_",'').replace("modelservice_",'').replace("_envvars_to_yaml",'')
+
     # Determine indentation based on environment type
     if ev["control_environment_type_standalone_active"] :
         name_indent = " " * 8
@@ -1689,6 +1696,20 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
 
     env_lines = []
     env_vars = []
+
+    if env_vars_string.count("KUBECONFIG") :
+        env_lines.append(f"{name_indent}- name: KUBECONFIG")
+        env_lines.append(f"{value_indent}value: /etc/kubeconfig/{ev['vllm_common_context_secret_name']}")
+
+    plk = f'{env_vars_key.replace("_envvars_to_yaml","")}_pod_labels'
+
+    env_lines.append(f"{name_indent}- name: LLMDBENCH_POD_LABELS")
+    env_lines.append(f"{value_indent}value: {ev[plk]}")
+    env_lines.append(f"{name_indent}- name: LLMDBENCH_POD_NS")
+    env_lines.append(f"{value_indent}value: {ev['vllm_common_namespace']}")
+
+    env_vars_string = env_vars_string.replace("KUBECONFIG",'').replace(",,",',')
+
     if os.access(env_vars_string, os.R_OK):
         with open(env_vars_string, "r") as fp:
             for line in fp:
@@ -1708,6 +1729,7 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
                 clean_name = env_var
                 if env_var[0] == "_":
                     clean_name = env_var[1:]
+
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_COMMON_VLLM_", "VLLM_")
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_STANDALONE_VLLM_", "VLLM_")
                 clean_name = clean_name.replace("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_VLLM_", "VLLM_")
@@ -1930,12 +1952,18 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
     curl_command = f"curl -k --no-progress-meter {ip}"
     full_command = ["/bin/bash", "-c", f"{curl_command}"]
 
+    pull_secret_ref = None
+    if ev["vllm_common_pull_secret"] :
+        pull_secret_ref = client.V1LocalObjectReference(name=ev["vllm_common_pull_secret"])
+
     while current_attempts <= total_attempts :
         pod_name = f"testinference-pod-{get_rand_string()}"
+
         pod_manifest = client.V1Pod(
             metadata=client.V1ObjectMeta(name=pod_name, namespace=ev['vllm_common_namespace'], labels={"llm-d.ai/id": f"{pod_name}"}),
             spec=client.V1PodSpec(
                 restart_policy="Never",
+                image_pull_secrets=[pull_secret_ref],
                 containers=[
                     client.V1Container(name="model", image=image, command=full_command)
                 ],
@@ -2126,6 +2154,27 @@ def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int,
             finally:
                 w.stop()
     return result
+
+def add_context_as_secret(api_client, ev: dict) -> int:
+
+    ns = ev["vllm_common_namespace"]
+
+    if ev["current_step_nr"] == "05" :
+        ns = ev["vllm_harness_namespace"]
+
+    with open(f'{ev["control_work_dir"]}/environment/context.ctx', 'rb') as ctxfh:
+        binary_ctx_data = ctxfh.read()
+    secret_data = base64.b64encode(binary_ctx_data).decode('utf-8')
+    secret_yaml = f"""apiVersion: v1
+kind: Secret
+metadata:
+  name: {ev["vllm_common_context_secret_name"]}
+  namespace: {ev["vllm_common_namespace"]}
+type: Opaque
+data:
+  llmdbench-context: {secret_data}
+"""
+    kubectl_apply(api=api_client, manifest_data=secret_yaml, dry_run=ev["control_dry_run"])
 
 # FIXME (USE PYKUBE)
 def collect_logs(ev: dict, component_nr: int, component: str) -> int:
@@ -2360,12 +2409,12 @@ def validate_vllm_params(
 
         # # Calculate model memory requirement
         announce("👉 Collecting model information....")
-        if model_info is not None and model_config is not None:
+        if model_config is not None:
             try:
-                model_params = model_total_params(model_info)
+                model_params = model_total_params(model)
                 announce(f"ℹ️ {model} has a total of {model_params} parameters")
 
-                model_mem_req = model_memory_req(model_info, model_config)
+                model_mem_req = model_memory_req(model, model_config)
                 announce(f"ℹ️ {model} requires {model_mem_req} GB of memory")
 
                 # Log intermediate memory components
@@ -2400,7 +2449,7 @@ def validate_vllm_params(
                 if not skip_gpu_tests:
                     announce("👉 Estimating available KV cache....")
                     available_kv_cache = allocatable_kv_cache_memory(
-                        model_info,
+                        model,
                         model_config,
                         gpu_memory,
                         gpu_memory_util,
@@ -2413,7 +2462,7 @@ def validate_vllm_params(
 
                     # Calculate KV cache requirement per request
                     kv_details = KVCacheDetail(
-                        model_info, model_config, max_model_len, batch_size=1
+                        model, model_config, max_model_len, batch_size=1
                     )
                     per_request_kv_cache = kv_details.per_request_kv_cache_gb
 
@@ -2512,7 +2561,7 @@ def validate_vllm_params(
                         )
 
                         total_concurrent_reqs = max_concurrent_requests(
-                            model_info,
+                            model,
                             model_config,
                             max_model_len,
                             gpu_memory,
@@ -2526,7 +2575,7 @@ def validate_vllm_params(
                             f"ℹ️ The vLLM server can process up to {total_concurrent_reqs} number of requests at the same time, assuming the worst case scenario that each request takes --max-model-len"
                         )
 
-            except AttributeError as e:
+            except (AttributeError, NotASafetensorsRepoError) as e:
                 # Model might not have safetensors data on parameters
                 announce(
                     f"{msgtag} Does not have enough information about model to estimate model memory or KV cache: {e}"
@@ -2573,7 +2622,7 @@ def get_validation_param(ev: dict, type: str = COMMON) -> ValidationParam:
             user_accelerator_nr, tp_size, dp_size
         ),
         gpu_memory_util=float(ev[f"{prefix}_accelerator_mem_util"]),
-        max_model_len=int(ev["vllm_common_max_model_len"]),
+        max_model_len=int(ev["vllm_common_max_model_len"].split(',,')[0]),
     )
 
     return validation_param
@@ -2884,6 +2933,7 @@ def install_wva_components(ev: dict):
 
     wva_config = {
         "wva": {
+            "controllerInstance": ev["wva_namespace"],
             "enabled": ev["wva_controller_enabled"],
             "image": {
                 "repository": f"{ev['wva_image_repository']}",

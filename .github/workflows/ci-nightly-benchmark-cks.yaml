@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build and push nightly image
         uses: ./.github/actions/docker-build-and-push
@@ -44,7 +44,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - uses: actions/setup-python@v6
         with:
@@ -99,6 +99,18 @@ jobs:
           kubectl-view-allocations -h
         shell: bash
 
+      - name: Count preemptible GPUs (negative-priority pods)
+        run: |
+          # Count GPUs held by Running pods with priority < 0 (e.g. hpc-verification at -1).
+          # Our benchmark pods (default priority 0) will preempt these, so they
+          # should count as "available" for the simulator-fallback decision.
+          PREEMPTABLE_GPUS=$(kubectl get pods --all-namespaces -o json | \
+            jq '[.items[] | select((.spec.priority // 0) < 0 and .status.phase == "Running") |
+              (.spec.containers[]?.resources.limits["nvidia.com/gpu"] // "0" | tonumber)] | add // 0')
+          echo "PREEMPTABLE_GPUS=$PREEMPTABLE_GPUS" >> $GITHUB_ENV
+          echo "Preemptible GPUs (held by negative-priority Running pods): $PREEMPTABLE_GPUS"
+        shell: bash
+
       - name: Cleanup target cloud (modelservice)
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
@@ -116,7 +128,8 @@ jobs:
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 10.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
+          AVAIL=$(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) + ${PREEMPTABLE_GPUS:-0}" | bc)
+          if [[ $(echo "$AVAIL - 10.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR (available+preemptible=$AVAIL < 10)"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
           ./setup/standup.sh -c cks_fb -t standalone
         shell: bash
 
@@ -152,7 +165,8 @@ jobs:
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
+          AVAIL=$(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) + ${PREEMPTABLE_GPUS:-0}" | bc)
+          if [[ $(echo "$AVAIL - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR (available+preemptible=$AVAIL < 20)"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
           ./setup/e2e.sh -c cks_fb -t modelservice --deep
         shell: bash
 
@@ -160,7 +174,8 @@ jobs:
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
+          AVAIL=$(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) + ${PREEMPTABLE_GPUS:-0}" | bc)
+          if [[ $(echo "$AVAIL - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR (available+preemptible=$AVAIL < 20)"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
           ./setup/e2e.sh -c cks_fb -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
         shell: bash
 
@@ -168,7 +183,8 @@ jobs:
         env:
           LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
         run: |
-          if [[ $(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
+          AVAIL=$(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) + ${PREEMPTABLE_GPUS:-0}" | bc)
+          if [[ $(echo "$AVAIL - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR (available+preemptible=$AVAIL < 20)"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
           ./setup/e2e.sh -c cks_fb -t modelservice --deep -l vllm-benchmark
         shell: bash
 

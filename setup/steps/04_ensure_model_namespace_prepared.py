@@ -26,7 +26,8 @@ from functions import (
     is_openshift,
     kubectl_apply,
     SecurityContextConstraints,
-    add_scc_to_service_account
+    add_scc_to_service_account,
+    add_context_as_secret
 )
 
 def main():
@@ -69,6 +70,10 @@ data:
   {ev["vllm_common_hf_token_key"]}: {secret_data}
 """
         kubectl_apply(api=api, manifest_data=secret_yaml, dry_run=ev["control_dry_run"])
+
+    add_context_as_secret(api, ev)
+
+    kubectl_apply(api=api, manifest_data=secret_yaml, dry_run=ev["control_dry_run"])
 
     models = [
         model.strip() for model in ev["deploy_model_list"].split(",") if model.strip()

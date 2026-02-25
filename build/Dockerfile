@@ -1,4 +1,4 @@
-FROM python:3.12.9-slim-bookworm
+FROM python:3.13-slim-bookworm
 
 RUN apt-get update; \
     apt-get install -y \
@@ -11,6 +11,7 @@ RUN apt-get update; \
     patch \
     curl \
     yq \
+    cmake \
     wget \
     && apt-get clean && rm -rf /var/cache/apt
 
@@ -70,7 +71,7 @@ RUN cd vllm; printf '%s\n' \
     | git apply
 # Install some pre-reqs
 RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
-RUN pip install setuptools-scm
+RUN pip install setuptools-scm scikit-build-core
 # Install
 RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install -e . --no-build-isolation
 
