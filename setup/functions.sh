@@ -367,7 +367,7 @@ export -f get_harness_list
 
 function add_env_vars_to_pod {
     local varpattern=$1
-    varlist=$(env | grep -E "$varpattern" | grep -Ev "LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD|LLMDBENCH_HARNESS_STACK_ENDPOINT_INFO" | cut -d "=" -f 1 | sort | uniq)
+    varlist=$(env | grep -E "$varpattern" | grep -Ev "LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD|LLMDBENCH_HARNESS_STACK_ENDPOINT_INFO|LLMDBENCH_VLLM_STANDALONE_PREPROCESS|LLMDBENCH_VLLM_COMMON_PREPROCESS|LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS|LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS" | cut -d "=" -f 1 | sort | uniq)
     echo "#    "
     for envvar in $varlist; do
       envvalue=${!envvar}
