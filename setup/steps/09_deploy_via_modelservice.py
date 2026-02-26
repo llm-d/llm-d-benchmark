@@ -244,6 +244,41 @@ prefill:
 
     return clear_string(yaml_content)
 
+def generate_podmonitor_yaml(ev: dict) -> str:
+    """Generate a PodMonitor CRD for Prometheus to scrape vLLM model serving pods.
+
+    Args:
+        ev: Environment variables dictionary
+
+    Returns:
+        PodMonitor YAML manifest as string
+    """
+    model_id_label = ev.get("deploy_current_model_id_label", "")
+    namespace = ev.get("vllm_common_namespace", "")
+    scrape_interval = ev.get("vllm_monitoring_scrape_interval", "30s")
+    metrics_path = ev.get("vllm_monitoring_metrics_path", "/metrics")
+    metrics_port = ev.get("vllm_common_metrics_port", "8200")
+
+    return f"""apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: vllm-{model_id_label}
+  namespace: {namespace}
+  labels:
+    stood-up-by: "{ev.get('control_username', '')}"
+    stood-up-from: llm-d-benchmark
+    stood-up-via: "{ev.get('deploy_methods', '')}"
+spec:
+  selector:
+    matchLabels:
+      llm-d.ai/inferenceServing: "true"
+      llm-d.ai/model: {model_id_label}
+  podMetricsEndpoints:
+  - port: "{metrics_port}"
+    path: {metrics_path}
+    interval: {scrape_interval}
+"""
+
 def define_httproute(
     ev: dict,
     single_model: bool = True
@@ -490,6 +525,15 @@ def main():
       )
       if result != 0:
           return result
+
+      # Optional PodMonitor for Prometheus scraping of vLLM pods
+      if ev.get("vllm_monitoring_podmonitor_enabled") == "true":
+          podmonitor_yaml = generate_podmonitor_yaml(ev)
+          podmonitor_file = work_dir / "setup" / "yamls" / f"{ev['current_step_nr']}_podmonitor_{ev['deploy_current_model_id_label']}.yaml"
+          podmonitor_file.parent.mkdir(parents=True, exist_ok=True)
+          podmonitor_file.write_text(podmonitor_yaml)
+          kubectl_apply(api=api, manifest_data=podmonitor_yaml, dry_run=ev["control_dry_run"])
+          announce(f"📊 PodMonitor for \"{model}\" created for Prometheus scraping")
 
       # Collect decode logs
       collect_logs(ev, ev["vllm_modelservice_decode_replicas"], "decode")

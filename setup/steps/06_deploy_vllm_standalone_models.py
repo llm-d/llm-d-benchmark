@@ -107,6 +107,17 @@ def main():
             kubectl_service_cmd = f"{ev['control_kcmd']} apply -f {service_file}"
             llmdbench_execute_cmd(actual_cmd=kubectl_service_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], fatal=True)
 
+            # Optional PodMonitor for Prometheus scraping
+            if ev.get("vllm_monitoring_podmonitor_enabled") == "true":
+                podmonitor_yaml = generate_podmonitor_yaml(ev, model, model_label)
+                podmonitor_file = yamls_dir / f"{ev['current_step']}_c_podmonitor_{modelfn}.yaml"
+                with open(podmonitor_file, 'w') as f:
+                    f.write(podmonitor_yaml)
+
+                kubectl_podmonitor_cmd = f"{ev['control_kcmd']} apply -f {podmonitor_file}"
+                llmdbench_execute_cmd(actual_cmd=kubectl_podmonitor_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], fatal=False)
+                announce(f"📊 PodMonitor for \"{model}\" created for Prometheus scraping")
+
             # Optional HTTPRoute for OpenShift
             srl = "deployment,service,pods,secrets"
             if ev["control_deploy_is_openshift"] == "1" :
@@ -259,6 +270,7 @@ spec:
 {additional_env}
         ports:
         - containerPort: {ev['vllm_common_inference_port']}
+          name: metrics
         startupProbe:
           httpGet:
             path: {ev["vllm_standalone_startup_probe_path"]}
@@ -381,6 +393,29 @@ spec:
   type: ClusterIP
 """
     return service_yaml
+
+def generate_podmonitor_yaml(ev, model, model_label):
+    """Generate Kubernetes PodMonitor YAML for Prometheus to scrape vLLM standalone model metrics."""
+
+    podmonitor_yaml = f"""apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: vllm-standalone-{model_label}
+  namespace: {ev['vllm_common_namespace']}
+  labels:
+    stood-up-by: "{ev['control_username']}"
+    stood-up-from: llm-d-benchmark
+    stood-up-via: "{ev['deploy_methods']}"
+spec:
+  selector:
+    matchLabels:
+      app: vllm-standalone-{model_label}
+  podMetricsEndpoints:
+  - port: metrics
+    path: {ev.get('vllm_monitoring_metrics_path', '/metrics')}
+    interval: {ev.get('vllm_monitoring_scrape_interval', '30s')}
+"""
+    return podmonitor_yaml
 
 def generate_httproute_yaml(ev, model, model_label):
     """Generate HTTPRoute YAML for vLLM standalone model."""
