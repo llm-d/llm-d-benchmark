@@ -238,19 +238,36 @@ Model weights loaded successfully but consumed too much memory (67.72 GiB), leav
 
 #### Model Configuration
 - **Model name:** mistralai/Mistral-Small-3.2-24B-Instruct-2506
+- **Architecture:** Mistral3ForConditionalGeneration (multimodal / vision-language)
+- **vLLM version:** 0.11.0 (V1 engine)
 - **max-model-len:** 16000
 - **tensor-parallel-size:** 1
 - **gpu-memory-utilization:** 0.95
 - **dtype:** bfloat16
+- **block-size:** 128
 - **tokenizer-mode:** mistral
 - **config-format:** mistral
 - **load-format:** mistral
 - **enable-prefix-caching:** True
+- **chunked-prefill:** enabled (max_num_batched_tokens=8192)
+
+#### Model Architecture
+- **Attention type:** GQA (Grouped-query attention)
+- **Hidden layers:** 40
+- **Attention heads:** 32
+- **KV heads:** 8
+- **Head dimension:** 128
+- **Hidden size:** 5120
+- **Vocab size:** 131,072
+- **Max position embeddings:** 131,072
 
 #### Empirical Results
-- **Model loading took:** 44.76 GiB memory and 45.07 seconds
+- **Model loading took:** 44.76 GiB memory and 49.79 seconds
+- **Weight download time:** 41.89 seconds
 - **Available KV cache memory:** 28.20 GiB
 - **Free memory on device:** 78.59/79.19 GiB on startup
+- **GPU KV cache size:** 184,832 tokens (1,444 blocks x 128 tokens/block)
+- **Maximum concurrency for 16,000 tokens per request:** 11.55x
 
 #### Memory Metrics
 - **Weight memory:** 44.76 GiB
@@ -258,14 +275,49 @@ Model weights loaded successfully but consumed too much memory (67.72 GiB), leav
 - **Non-torch memory:** 0.14 GiB
 - **CUDAGraph memory:** -0.76 GiB
 - **KV cache memory:** 28.20 GiB
+- **Total non-KV cache memory:** 47.02 GiB
 - **Desired GPU utilization:** 0.95 (75.23 GiB)
+
+#### KV Cache Validation
+Per-token KV cache formula validated against vLLM block allocation:
+
+```
+Per-token KV cache = num_layers × 2 × head_dim × num_kv_heads × dtype_bytes
+                   = 40 × 2 × 128 × 8 × 2
+                   = 163,840 bytes (160 KB/token)
+
+Empirical: 28.20 GiB / 184,832 tokens = 163,840 bytes/token ✓ (exact match)
+```
+
+Live request validation (15,049 total tokens):
+- **Peak KV cache usage:** 8.18% (from Prometheus /metrics endpoint)
+- **Blocks allocated:** 118 (= ceil(15,049 / 128))
+- **Expected usage:** 118 / 1,444 = 8.17% ✓
+- **Prompt throughput:** ~1,481 tokens/s
+- **Generation throughput:** ~23.7 tokens/s
+- **Prefix cache hit rate:** 30% (after 3 requests with overlapping content)
+
+Extrapolated to 16,000 tokens:
+- **Blocks needed:** 125 (= 16,000 / 128)
+- **KV cache per request:** 125 / 1,444 × 28.20 GiB = **2.44 GiB**
+- **Max concurrent requests:** 28.20 / 2.44 = **11.55x** ✓ (matches vLLM startup log)
+
+#### Capacity Planner Accuracy
+| Metric | Planner (before) | Planner (after) | vLLM Empirical |
+| ------ | ---------------- | --------------- | -------------- |
+| Activation memory | 5.5 GiB | 2.5 GiB | 2.12 GiB |
+| Available KV cache | 24.82 GiB | 27.82 GiB | 28.20 GiB |
+| KV cache error | -3.38 GiB | -0.38 GiB | -- |
+| Max concurrent @16K | 10.2x | 11.4x | 11.55x |
+
+The validated activation profile (2.5 GiB) reduced the estimation error from 3.38 GiB to 0.38 GiB (9x more accurate).
 
 #### Recommendations
 - For requested memory: `--kv-cache-memory=30941080576` (28.82 GiB)
 - For full GPU utilization: `--kv-cache-memory=34545658880` (32.17 GiB)
 
 #### Notes
-This is a multimodal (vision) model using Mistral's custom tokenizer and config format. Despite being a 24B model, the BF16 weights are large at 44.76 GiB. The gpu-memory-utilization was set to 0.95 (higher than the typical 0.9 used for other models). Peak activation memory is notably low (2.12 GiB) compared to other models.
+This is a multimodal (vision) model using Mistral's custom tokenizer and config format. Despite being a 24B model, the BF16 weights are large at 44.76 GiB. The gpu-memory-utilization was set to 0.95 (higher than the typical 0.9 used for other models). Peak activation memory is notably low (2.12 GiB) compared to other dense models (4.76-5.64 GiB), likely because the vision encoder does not participate in CUDA graph capture. The CUDAGraph memory is -0.76 GiB (memory freed during graph capture), which is consistent with other large dense models (Qwen3-32B: -0.88 GiB).
 
 ---
 
@@ -284,8 +336,11 @@ This is a multimodal (vision) model using Mistral's custom tokenizer and config 
 
 ### Memory Pattern Observations
 - **Non-torch memory:** Consistently around 0.13-0.55 GiB across models
-- **Peak activation memory:** Ranges from 4.76-7.38 GiB for successful models
-- **CUDAGraph memory:** Small or negative (optimization), ranging from -0.45 to 0.39 GiB
+- **Peak activation memory:** Ranges from 2.12-7.38 GiB for successful models
+  - Multimodal models: 2.12 GiB (Mistral-Small-3.2-24B) — significantly lower than text-only models
+  - Dense text-only models: 4.76-5.64 GiB (Llama-8B, Llama-70B, Qwen3-0.6B, Qwen3-32B)
+  - MoE models: 7.38 GiB (gpt-oss-20b)
+- **CUDAGraph memory:** Small or negative (optimization), ranging from -0.88 to 0.39 GiB
 - **Tensor Parallelism benefit:** Llama-3.3-70B requires TP=2 to fit in H100 (33.88 GiB per GPU vs 67.72 GiB for TP=1)
 
 ### Hardware Utilization
