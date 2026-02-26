@@ -17,11 +17,11 @@
 set -euo pipefail
 
 if [[ $0 != "-bash" ]]; then
-    pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
+    pushd "`dirname "$(realpath $0)"`" > /dev/null 2>&1
 fi
 
 export LLMDBENCH_ENV_VAR_LIST=$(env | grep ^LLMDBENCH | cut -d '=' -f 1)
-export LLMDBENCH_CONTROL_DIR=$(realpath $(pwd)/)
+export LLMDBENCH_CONTROL_DIR=$(realpath "$(pwd)/")
 export LLMDBENCH_CONTROL_CALLER=$(echo $0 | rev | cut -d '/' -f 1 | rev)
 export LLMDBENCH_STEPS_DIR="$LLMDBENCH_CONTROL_DIR/steps"
 
@@ -29,9 +29,9 @@ if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
 fi
 
-export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
+export LLMDBENCH_MAIN_DIR=$(realpath "${LLMDBENCH_CONTROL_DIR}/../")
 
-source ${LLMDBENCH_CONTROL_DIR}/env.sh
+source "${LLMDBENCH_CONTROL_DIR}/env.sh"
 
 export LLMDBENCH_CONTROL_DRY_RUN=${LLMDBENCH_CONTROL_DRY_RUN:-0}
 export LLMDBENCH_CONTROL_VERBOSE=${LLMDBENCH_CONTROL_VERBOSE:-0}
@@ -243,12 +243,12 @@ if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_
   fi
 fi
 
-$LLMDBENCH_CONTROL_PCMD ${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.py 2> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log 1> ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
+$LLMDBENCH_CONTROL_PCMD "${LLMDBENCH_STEPS_DIR}/05_ensure_harness_namespace_prepared.py" 2> "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log" 1> "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log"
 if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
-  cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log
+  cat "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log"
   echo "---------------------------"
-  cat ${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
+  cat "${LLMDBENCH_CONTROL_WORK_DIR}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log"
   exit 1
 fi
 set -euo pipefail
@@ -448,17 +448,17 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
         generate_profile_parameter_treatments ${LLMDBENCH_HARNESS_NAME} ${LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS}
 
-        workload_template_full_path=$(find ${LLMDBENCH_HARNESS_PROFILES_DIR}/${LLMDBENCH_HARNESS_NAME}/ | grep ${LLMDBENCH_HARNESS_EXPERIMENT_PROFILE} | head -n 1 || true)
+        workload_template_full_path=$(find "${LLMDBENCH_HARNESS_PROFILES_DIR}/${LLMDBENCH_HARNESS_NAME}/"  | grep ${LLMDBENCH_HARNESS_EXPERIMENT_PROFILE} | head -n 1 || true)
         if [[ -z $workload_template_full_path ]]; then
-          announce "❌ Could not find workload template \"$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE\" inside directory \"${LLMDBENCH_HARNESS_PROFILES_DIR}/${LLMDBENCH_HARNESS_NAME}/\" (variable $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE)"
+    announce "❌ Could not find workload template \"$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE\" inside directory \"${LLMDBENCH_HARNESS_PROFILES_DIR}/${LLMDBENCH_HARNESS_NAME}/\" (variable \$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE)"
           exit 1
         fi
 
         render_workload_templates ${LLMDBENCH_HARNESS_EXPERIMENT_PROFILE}
         export LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST=$LLMDBENCH_HARNESS_NAME
 
-        export LLMDBENCH_RUN_EXPERIMENT_HARNESS=$(find ${LLMDBENCH_MAIN_DIR}/workload/harnesses -name ${LLMDBENCH_HARNESS_NAME}* | rev | cut -d '/' -f1 | rev)
-        export LLMDBENCH_RUN_EXPERIMENT_ANALYZER=$(find ${LLMDBENCH_MAIN_DIR}/analysis/ -name ${LLMDBENCH_HARNESS_NAME}* | rev | cut -d '/' -f1 | rev)
+        export LLMDBENCH_RUN_EXPERIMENT_HARNESS=$(find "${LLMDBENCH_MAIN_DIR}/workload/harnesses" -name ${LLMDBENCH_HARNESS_NAME}* | rev | cut -d '/' -f1 | rev)
+        export LLMDBENCH_RUN_EXPERIMENT_ANALYZER=$(find "${LLMDBENCH_MAIN_DIR}/analysis/" -name ${LLMDBENCH_HARNESS_NAME}* | rev | cut -d '/' -f1 | rev)
 
       fi
 
@@ -469,13 +469,13 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
       export LLMDBENCH_RUN_EXPERIMENT_ID_PREFIX=""
 
-      for treatment in $(ls "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/"*.yaml); do
+  for treatment in $(ls "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/"*.yaml 2>/dev/null); do
 
         export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=$(echo $treatment | rev | cut -d '/' -f 1 | rev)
         export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=$(echo $treatment | rev | cut -d '/' -f 1 | rev)
 
         tf=$(cat ${treatment} | grep "#treatment" | tail -1 | "$LLMDBENCH_CONTROL_SCMD" 's/^#//' || true)
-        if [[ -f "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf" ]]; then
+        if [[ -f "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf" ]];  then
           tid=$(sed -e 's/[^[:alnum:]][^[:alnum:]]*/_/g' <<<"${tf%.txt}")   # remove non alphanumeric and .txt
           tid=${tid#treatment_}
           if [ -z "${LLMDBENCH_RUN_EXPERIMENT_ID}" ]; then
@@ -488,7 +488,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           fi
 
           echo
-          cat ${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf | grep -v ^1i# | cut -d '^' -f 3
+          cat "${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/${workload_type}/treatment_list/$tf" | grep -v ^1i# | cut -d '^' -f 3
           echo
         fi
 
@@ -500,8 +500,8 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
           export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX=${LLMDBENCH_HARNESS_NAME}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${LLMDBENCH_HARNESS_STACK_NAME}
           export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR=${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX}/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}_${i}
 
-          local_results_dir=${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}
-          local_analysis_dir=${LLMDBENCH_CONTROL_WORK_DIR}/analysis/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}
+          local_results_dir="${LLMDBENCH_CONTROL_WORK_DIR}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}"
+          local_analysis_dir="${LLMDBENCH_CONTROL_WORK_DIR}/analysis/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}"
           llmdbench_execute_cmd "mkdir -p \"${local_results_dir}_${i}\" && mkdir -p \"${local_analysis_dir}_${i}\"" \
                 "${LLMDBENCH_CONTROL_DRY_RUN}" \
                 "${LLMDBENCH_CONTROL_VERBOSE}"
@@ -518,7 +518,7 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
             if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE" == /* ]]; then
               potential_gaie_path=$(echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
             else
-              potential_gaie_path=$(echo ${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+              potential_gaie_path=$(echo "${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE".yaml | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
             fi
 
             if [[ -f $potential_gaie_path ]]; then
