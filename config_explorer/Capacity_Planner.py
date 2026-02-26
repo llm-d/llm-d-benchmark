@@ -380,34 +380,64 @@ Runtime per-request activation buffers (which DO scale with actual sequence leng
 
             tp = user_scenario.tp_size
 
-            # Determine model type and base constant
+            # Determine model type and activation memory source
             from src.config_explorer.capacity_planner import (
                 is_moe,
+                is_multimodal,
                 ACTIVATION_MEMORY_BASE_DENSE_GIB,
                 ACTIVATION_MEMORY_BASE_MOE_GIB,
+                ACTIVATION_MEMORY_BASE_MULTIMODAL_GIB,
+                VALIDATED_ACTIVATION_PROFILES,
             )
 
-            is_moe_model = is_moe(model_config)
-            base_constant = ACTIVATION_MEMORY_BASE_MOE_GIB if is_moe_model else ACTIVATION_MEMORY_BASE_DENSE_GIB
-            model_type = "MoE" if is_moe_model else "Dense"
+            text_config = get_text_config(model_config)
+            is_moe_model = is_moe(text_config)
+            is_multimodal_model = is_multimodal(model_config)
+
+            # Check if model has a validated profile
+            arch = None
+            validated = False
+            if hasattr(model_config, 'architectures') and model_config.architectures:
+                arch = model_config.architectures[0]
+                validated = arch in VALIDATED_ACTIVATION_PROFILES
+
+            if validated:
+                base_constant = VALIDATED_ACTIVATION_PROFILES[arch]
+                source_label = f"Validated profile for `{arch}`"
+            elif is_moe_model:
+                base_constant = ACTIVATION_MEMORY_BASE_MOE_GIB
+                source_label = "MoE default"
+            elif is_multimodal_model:
+                base_constant = ACTIVATION_MEMORY_BASE_MULTIMODAL_GIB
+                source_label = "Multimodal default"
+            else:
+                base_constant = ACTIVATION_MEMORY_BASE_DENSE_GIB
+                source_label = "Dense default"
+
+            model_type = "MoE" if is_moe_model else ("Multimodal" if is_multimodal_model else "Dense")
 
             st.write(f"""
-**Model Type:** {model_type}
+**Model Type:** {model_type} | **Architecture:** `{arch or 'unknown'}`
 
-**Fixed Activation Memory Constants:**
-- Dense models: {ACTIVATION_MEMORY_BASE_DENSE_GIB} GB (empirical: Qwen3-0.6B: 5.56 GB, Llama-8B: 4.76 GB, Llama-70B/TP2: 4.84 GB)
+**Activation Memory Constants:**
+- Dense models (default): {ACTIVATION_MEMORY_BASE_DENSE_GIB} GB (empirical: Qwen3-0.6B: 5.56 GB, Llama-8B: 4.76 GB, Llama-70B/TP2: 4.84 GB)
 - MoE models: {ACTIVATION_MEMORY_BASE_MOE_GIB} GB (empirical: gpt-oss-20b: 7.38 GB)
+- Multimodal models: {ACTIVATION_MEMORY_BASE_MULTIMODAL_GIB} GB (empirical: Mistral-Small-3.2-24B: 2.12 GB)
 
-**Your Model:** {base_constant} GB (model type: {model_type})
+**Validated Profiles** (architecture-specific empirical measurements):
+""")
+            for profile_arch, profile_mem in VALIDATED_ACTIVATION_PROFILES.items():
+                marker = " **<-- your model**" if profile_arch == arch else ""
+                st.write(f"- `{profile_arch}`: {profile_mem} GB{marker}")
 
-**Formula (Constant, No Scaling):**
+            st.write(f"""
+**Your Model:** {base_constant} GB ({source_label})
 """)
 
             total_activation_gb = base_constant
 
             st.code(f"""
-Activation memory = base_constant (FIXED per model type)
-                  = {base_constant} GB
+Activation memory = {base_constant} GB ({source_label})
 """)
 
             st.info(f"**Peak activation memory: {util.pretty_round(total_activation_gb)} GB (constant)**")
