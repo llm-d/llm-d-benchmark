@@ -41,78 +41,78 @@ def _get_llmd_benchmark_envars() -> dict:
         )
         return {}
 
-    if os.environ["LLMDBENCH_DEPLOY_METHODS"] == "standalone":
+    if os.environ.get("LLMDBENCH_DEPLOY_METHODS", "") == "standalone":
         # Given a 'standalone' deployment, we expect the following environment
         # variables to be available
         return {
             "scenario": {
-                "model": {"name": os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL"]},
+                "model": {"name": os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL", "")},
                 "host": {
                     "type": ["replica"]
-                    * int(os.environ["LLMDBENCH_VLLM_COMMON_REPLICAS"]),
+                    * int(os.environ.get("LLMDBENCH_VLLM_COMMON_REPLICAS", "-1")),
                     "accelerator": [
                         {
-                            "model": os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"].split(
+                            "model": os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY", "").split(
                                 ":", 1
                             )[-1],
                             "count": int(
-                                os.environ["LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM"]
+                                os.environ.get("LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM", "-1")
                             )
-                            * int(os.environ["LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM"]),
+                            * int(os.environ.get("LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM", "-1")),
                             "parallelism": {
                                 "tp": int(
-                                    os.environ[
-                                        "LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM"
-                                    ]
+                                    os.environ.get(
+                                        "LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM", "-1"
+                                    )
                                 ),
                                 "dp": int(
-                                    os.environ["LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM"]
+                                    os.environ.get("LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM", "-1")
                                 ),
                             },
                         }
                     ]
-                    * int(os.environ["LLMDBENCH_VLLM_COMMON_REPLICAS"]),
+                    * int(os.environ.get("LLMDBENCH_VLLM_COMMON_REPLICAS", "-1")),
                 },
                 "platform": {
                     "engine": [
                         {
-                            "name": os.environ[
-                                "LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY"
-                            ]
+                            "name": os.environ.get(
+                                "LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY", ""
+                            )
                             + "/"
-                            + os.environ["LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO"]
+                            + os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO", "")
                             + "/"
-                            + os.environ["LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME"]
+                            + os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME", "")
                             + ":"
-                            + os.environ["LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG"],
+                            + os.environ.get("LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG", ""),
                         }
                     ]
-                    * int(os.environ["LLMDBENCH_VLLM_COMMON_REPLICAS"])
+                    * int(os.environ.get("LLMDBENCH_VLLM_COMMON_REPLICAS", "-1"))
                 },
                 "load": {
                     "metadata": {
-                        "load_parallel": os.environ[
-                            "LLMDBENCH_HARNESS_LOAD_PARALLELISM"
-                        ],
+                        "load_parallel": os.environ.get(
+                            "LLMDBENCH_HARNESS_LOAD_PARALLELISM", ""
+                        ),
                     },
                 },
                 "metadata": {
-                    "load_format": os.environ["LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT"],
-                    "logging_level": os.environ[
-                        "LLMDBENCH_VLLM_COMMON_VLLM_LOGGING_LEVEL"
-                    ],
-                    "vllm_server_dev_mode": os.environ[
-                        "LLMDBENCH_VLLM_COMMON_VLLM_SERVER_DEV_MODE"
-                    ],
-                    "preprocess": os.environ["LLMDBENCH_VLLM_STANDALONE_PREPROCESS"],
+                    "load_format": os.environ.get("LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT", ""),
+                    "logging_level": os.environ.get(
+                        "LLMDBENCH_VLLM_COMMON_VLLM_LOGGING_LEVEL", ""
+                    ),
+                    "vllm_server_dev_mode": os.environ.get(
+                        "LLMDBENCH_VLLM_COMMON_VLLM_SERVER_DEV_MODE", ""
+                    ),
+                    "preprocess": os.environ.get("LLMDBENCH_VLLM_STANDALONE_PREPROCESS", ""),
                 },
             },
             "metadata": {
-                "eid": os.environ["LLMDBENCH_RUN_EXPERIMENT_ID"],
+                "eid": os.environ.get("LLMDBENCH_RUN_EXPERIMENT_ID", ""),
             },
         }
 
-    if os.environ["LLMDBENCH_DEPLOY_METHODS"] == "modelservice":
+    if os.environ.get("LLMDBENCH_DEPLOY_METHODS", "") == "modelservice":
         # Given a 'modelservice' deployment, we expect the following environment
         # variables to be available
 
@@ -147,92 +147,92 @@ def _get_llmd_benchmark_envars() -> dict:
 
         return {
             "scenario": {
-                "model": {"name": os.environ["LLMDBENCH_DEPLOY_CURRENT_MODEL"]},
+                "model": {"name": os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL", "")},
                 "host": {
                     "type": ["prefill"]
-                    * int(os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS"])
+                    * int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS", "-1"))
                     + ["decode"]
-                    * int(os.environ["LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS"]),
+                    * int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS", "-1")),
                     "accelerator": [
                         {
-                            "model": os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"].split(
+                            "model": os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY", "").split(
                                 ":", 1
                             )[-1],
                             "count": int(
-                                os.environ[
-                                    "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM"
-                                ]
+                                os.environ.get(
+                                    "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM", "-1"
+                                )
                             )
                             * int(
-                                os.environ[
-                                    "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM"
-                                ]
+                                os.environ.get(
+                                    "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM", "-1"
+                                )
                             ),
                             "parallelism": {
                                 "tp": int(
-                                    os.environ[
-                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM"
-                                    ]
+                                    os.environ.get(
+                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM", "-1"
+                                    )
                                 ),
                                 "dp": int(
-                                    os.environ[
-                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM"
-                                    ]
+                                    os.environ.get(
+                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM", "-1"
+                                    )
                                 ),
                                 "dpLocal": int(
-                                    os.environ[
-                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM"
-                                    ]
+                                    os.environ.get(
+                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM", "-1"
+                                    )
                                 ),
                                 "workers": int(
-                                    os.environ[
-                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NUM_WORKERS_PARALLELISM"
-                                    ]
+                                    os.environ.get(
+                                        "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NUM_WORKERS_PARALLELISM", "-1"
+                                    )
                                 ),
                             },
                         }
                     ]
-                    * int(os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS"])
+                    * int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS", "-1"))
                     + [
                         {
-                            "model": os.environ["LLMDBENCH_VLLM_COMMON_AFFINITY"].split(
+                            "model": os.environ.get("LLMDBENCH_VLLM_COMMON_AFFINITY", "").split(
                                 ":", 1
                             )[-1],
                             "count": int(
-                                os.environ[
-                                    "LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM"
-                                ]
+                                os.environ.get(
+                                    "LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM", "-1"
+                                )
                             )
                             * int(
-                                os.environ[
-                                    "LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM"
-                                ]
+                                os.environ.get(
+                                    "LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM", "-1"
+                                )
                             ),
                             "parallelism": {
                                 "tp": int(
-                                    os.environ[
-                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM"
-                                    ]
+                                    os.environ.get(
+                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM", "-1"
+                                    )
                                 ),
                                 "dp": int(
-                                    os.environ[
-                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM"
-                                    ]
+                                    os.environ.get(
+                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM", "-1"
+                                    )
                                 ),
                                 "dpLocal": int(
-                                    os.environ[
-                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM"
-                                    ]
+                                    os.environ.get(
+                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM", "-1"
+                                    )
                                 ),
                                 "workers": int(
-                                    os.environ[
-                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_NUM_WORKERS_PARALLELISM"
-                                    ]
+                                    os.environ.get(
+                                        "LLMDBENCH_VLLM_MODELSERVICE_DECODE_NUM_WORKERS_PARALLELISM", "-1"
+                                    )
                                 ),
                             },
                         }
                     ]
-                    * int(os.environ["LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS"]),
+                    * int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS", "-1")),
                 },
                 "platform": {
                     "metadata": {
@@ -240,30 +240,30 @@ def _get_llmd_benchmark_envars() -> dict:
                     },
                     "load": {
                         "metadata": {
-                            "load_parallel": os.environ[
-                                "LLMDBENCH_HARNESS_LOAD_PARALLELISM"
-                            ],
+                            "load_parallel": os.environ.get(
+                                "LLMDBENCH_HARNESS_LOAD_PARALLELISM", ""
+                            ),
                         },
                     },
                     "engine": [
                         {
-                            "name": os.environ["LLMDBENCH_LLMD_IMAGE_REGISTRY"]
+                            "name": os.environ.get("LLMDBENCH_LLMD_IMAGE_REGISTRY", "")
                             + "/"
-                            + os.environ["LLMDBENCH_LLMD_IMAGE_REPO"]
+                            + os.environ.get("LLMDBENCH_LLMD_IMAGE_REPO", "")
                             + "/"
-                            + os.environ["LLMDBENCH_LLMD_IMAGE_NAME"]
+                            + os.environ.get("LLMDBENCH_LLMD_IMAGE_NAME", "")
                             + ":"
-                            + os.environ["LLMDBENCH_LLMD_IMAGE_TAG"],
+                            + os.environ.get("LLMDBENCH_LLMD_IMAGE_TAG", ""),
                         }
                     ]
                     * (
-                        int(os.environ["LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS"])
-                        + int(os.environ["LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS"])
+                        int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS", "-1"))
+                        + int(os.environ.get("LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS", "-1"))
                     ),
                 },
             },
             "metadata": {
-                "eid": os.environ["LLMDBENCH_RUN_EXPERIMENT_ID"],
+                "eid": os.environ.get("LLMDBENCH_RUN_EXPERIMENT_ID", ""),
             },
         }
 
