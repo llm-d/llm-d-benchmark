@@ -1628,7 +1628,7 @@ def add_priority_class_name(ev: dict) -> str:
     """
     Generate priorityClassName YAML if LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME is set.
     """
-    priority_class = ev.get("vllm_common_priority_class_name", "")
+    priority_class = ev.get("vllm_common_priority_class_name")
     
     # This is mostly because standalone will crash otherwise,
     # modelservice would handle this already... 
