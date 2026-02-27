@@ -26,6 +26,8 @@ from functions import (
     add_resources, \
     add_config, \
     add_affinity, \
+    check_priority_class, \
+    add_priority_class_name, \
     add_pull_secret, \
     is_standalone_deployment, \
     kubectl_apply, \
@@ -60,6 +62,10 @@ def main():
 
         if not check_network(ev):
             announce("ERROR: Failed to check network")
+            return 1
+
+        if not check_priority_class(ev):
+            announce("ERROR: Failed to check priority class")
             return 1
 
         # Create yamls directory
@@ -225,6 +231,7 @@ spec:
 {annotations}
     spec:
       schedulerName: {ev['vllm_common_pod_scheduler']}
+{add_priority_class_name(ev)}
 {add_affinity(ev)}
       containers:
       - name: vllm-standalone-{model_label}

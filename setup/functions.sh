@@ -532,6 +532,7 @@ metadata:
     function: load_generator
 spec:
   serviceAccountName: ${LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT}
+  $(if [[ -n "${LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME}" && "$(echo ${LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME} | tr '[:upper:]' '[:lower:]')" != "none" ]]; then echo "priorityClassName: ${LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME}"; fi)
   containers:
   - name: harness
     image: $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG})

@@ -34,6 +34,8 @@ from functions import (
     add_resources,
     add_accelerator,
     add_affinity,
+    check_priority_class,
+    add_priority_class_name,
     add_scc_to_service_account,
     clear_string,
     install_wva_components,
@@ -135,6 +137,7 @@ decode:
   podAnnotations:
       {add_annotations(ev, "LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS").lstrip()}
   schedulerName: {ev['vllm_common_pod_scheduler']}
+{add_priority_class_name(ev)}
   extraConfig:
 {add_pull_secret(ev)}
 {conditional_extra_config("vllm_modelservice_decode_extra_pod_config", 2, "", ev)}
@@ -193,6 +196,7 @@ prefill:
   podAnnotations:
       {add_annotations(ev, "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS").lstrip()}
   schedulerName: {ev['vllm_common_pod_scheduler']}
+{add_priority_class_name(ev)}
   extraConfig:
 {add_pull_secret(ev)}
 {conditional_extra_config("vllm_modelservice_prefill_extra_pod_config", 2, "", ev)}
@@ -335,6 +339,10 @@ def main():
 
     if not check_network(ev):
         announce("ERROR: Failed to check network")
+        return 1
+
+    if not check_priority_class(ev):
+        announce("ERROR: Failed to check priority class")
         return 1
 
     # Deploy models
