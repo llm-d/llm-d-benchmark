@@ -58,6 +58,7 @@ function show_usage {
              -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE)] \n \
              -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)] \n \
              -u/--wva [deploy model with Workload Variant Autoscaler (default=$LLMDBENCH_WVA_ENABLED)] \n \
+             -f/--monitoring [enable vLLM /metrics scraping before and after each benchmark run (default=$LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED)] \n \
              -j/--parallelism [number of harness pods to be created (default=$LLMDBENCH_HARNESS_LOAD_PARALLELISM)] \n \
              -s/--wait [time to wait until the benchmark run is complete (default=$LLMDBENCH_HARNESS_WAIT_TIMEOUT, value \"0\" means \"do not wait\"] \n \
              -g/--envvarspod [list all environment variables which should be propagated to the harness pods (default=$LLMDBENCH_HARNESS_ENVVARS_TO_YAML)] \n \
@@ -196,6 +197,9 @@ while [[ $# -gt 0 ]]; do
         ;;
         -u|--wva)
         export LLMDBENCH_WVA_ENABLED=1
+        ;;
+        -f|--monitoring)
+        export LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED=true
         ;;
         -z|--skip)
         export LLMDBENCH_CLIOVERRIDE_HARNESS_SKIP_RUN=1

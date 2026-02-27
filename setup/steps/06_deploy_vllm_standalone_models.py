@@ -73,7 +73,7 @@ def main():
         yamls_dir.mkdir(parents=True, exist_ok=True)
 
         # Process each model - First pass: Deploy resources
-        model_list = ev.get("deploy_model_list", "").replace(",", " ").split()
+        model_list = ev["deploy_model_list"].replace(",", " ").split()
         for model in model_list:
             # Generate filename-safe model name
             modelfn = model.replace("/", "___")
@@ -106,6 +106,17 @@ def main():
             # Apply service
             kubectl_service_cmd = f"{ev['control_kcmd']} apply -f {service_file}"
             llmdbench_execute_cmd(actual_cmd=kubectl_service_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], fatal=True)
+
+            # Optional PodMonitor for Prometheus scraping
+            if ev["vllm_monitoring_podmonitor_enabled"] == "true":
+                podmonitor_yaml = generate_podmonitor_yaml(ev, model, model_label)
+                podmonitor_file = yamls_dir / f"{ev['current_step']}_c_podmonitor_{modelfn}.yaml"
+                with open(podmonitor_file, 'w') as f:
+                    f.write(podmonitor_yaml)
+
+                kubectl_podmonitor_cmd = f"{ev['control_kcmd']} apply -f {podmonitor_file}"
+                llmdbench_execute_cmd(actual_cmd=kubectl_podmonitor_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], fatal=False)
+                announce(f"📊 PodMonitor for \"{model}\" created for Prometheus scraping")
 
             # Optional HTTPRoute for OpenShift
             srl = "deployment,service,pods,secrets"
@@ -169,7 +180,7 @@ def main():
         propagate_standup_parameters(ev, api)
 
     else:
-        deploy_methods = ev.get("deploy_methods", "")
+        deploy_methods = ev["deploy_methods"]
         announce(f"⏭️  Environment types are \"{deploy_methods}\". Skipping this step.")
 
     return 0
@@ -254,11 +265,12 @@ spec:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
-              name: {ev.get('vllm_common_hf_token_name', '')}
+              name: {ev['vllm_common_hf_token_name']}
               key: HF_TOKEN
 {additional_env}
         ports:
         - containerPort: {ev['vllm_common_inference_port']}
+          name: metrics
         startupProbe:
           httpGet:
             path: {ev["vllm_standalone_startup_probe_path"]}
@@ -309,7 +321,7 @@ spec:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
-              name: {ev.get('vllm_common_hf_token_name', '')}
+              name: {ev['vllm_common_hf_token_name']}
               key: HF_TOKEN
 {additional_env}
         ports:
@@ -382,11 +394,34 @@ spec:
 """
     return service_yaml
 
+def generate_podmonitor_yaml(ev, model, model_label):
+    """Generate Kubernetes PodMonitor YAML for Prometheus to scrape vLLM standalone model metrics."""
+
+    podmonitor_yaml = f"""apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: vllm-standalone-{model_label}
+  namespace: {ev['vllm_common_namespace']}
+  labels:
+    stood-up-by: "{ev['control_username']}"
+    stood-up-from: llm-d-benchmark
+    stood-up-via: "{ev['deploy_methods']}"
+spec:
+  selector:
+    matchLabels:
+      app: vllm-standalone-{model_label}
+  podMetricsEndpoints:
+  - port: metrics
+    path: {ev['vllm_monitoring_metrics_path']}
+    interval: {ev['vllm_monitoring_scrape_interval']}
+"""
+    return podmonitor_yaml
+
 def generate_httproute_yaml(ev, model, model_label):
     """Generate HTTPRoute YAML for vLLM standalone model."""
 
     # Extract cluster URL for hostname
-    cluster_url = ev.get("cluster_url", "").replace("https://api.", "")
+    cluster_url = ev["cluster_url"].replace("https://api.", "")
 
     # Get model attributes for backend reference
     model_parameters = model_attribute(model, "parameters")

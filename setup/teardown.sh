@@ -246,6 +246,7 @@ else
   hpa
   va
   servicemonitor
+  podmonitor
   pod
   pvc
 )
