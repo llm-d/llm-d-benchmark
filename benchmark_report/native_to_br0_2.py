@@ -1176,7 +1176,6 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
         }
     else:
         aggregate = {
-<<<<<<< HEAD
             "requests": {
                 "total": total_reqs,
                 "failures": failures,
@@ -1196,61 +1195,6 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                     "p99": get_nested(results, ["successes", "prompt_len", "p99"]),
                     "p99p9": get_nested(results, ["successes", "prompt_len", "p99.9"]),
                     "max": get_nested(results, ["successes", "prompt_len", "max"]),
-=======
-                "requests": {
-                    "total": total_reqs,
-                    "failures": failures,
-                    "input_length": {
-                        "units": Units.COUNT,
-                        "mean": get_nested(
-                            results, ["successes", "prompt_len", "mean"]
-                        ),
-                        "min": get_nested(results, ["successes", "prompt_len", "min"]),
-                        "p0p1": get_nested(
-                            results, ["successes", "prompt_len", "p0.1"]
-                        ),
-                        "p1": get_nested(results, ["successes", "prompt_len", "p1"]),
-                        "p5": get_nested(results, ["successes", "prompt_len", "p5"]),
-                        "p10": get_nested(results, ["successes", "prompt_len", "p10"]),
-                        "p25": get_nested(results, ["successes", "prompt_len", "p25"]),
-                        "p50": get_nested(
-                            results, ["successes", "prompt_len", "median"]
-                        ),
-                        "p75": get_nested(results, ["successes", "prompt_len", "p75"]),
-                        "p90": get_nested(results, ["successes", "prompt_len", "p90"]),
-                        "p95": get_nested(results, ["successes", "prompt_len", "p95"]),
-                        "p99": get_nested(results, ["successes", "prompt_len", "p99"]),
-                        "p99p9": get_nested(
-                            results, ["successes", "prompt_len", "p99.9"]
-                        ),
-                        "max": get_nested(results, ["successes", "prompt_len", "max"]),
-                    },
-                    "output_length": {
-                        "units": Units.COUNT,
-                        "mean": get_nested(
-                            results, ["successes", "output_len", "mean"]
-                        ),
-                        "min": get_nested(results, ["successes", "output_len", "min"]),
-                        "p0p1": get_nested(
-                            results, ["successes", "output_len", "p0.1"]
-                        ),
-                        "p1": get_nested(results, ["successes", "output_len", "p1"]),
-                        "p5": get_nested(results, ["successes", "output_len", "p5"]),
-                        "p10": get_nested(results, ["successes", "output_len", "p10"]),
-                        "p25": get_nested(results, ["successes", "output_len", "p25"]),
-                        "p50": get_nested(
-                            results, ["successes", "output_len", "median"]
-                        ),
-                        "p75": get_nested(results, ["successes", "output_len", "p75"]),
-                        "p90": get_nested(results, ["successes", "output_len", "p90"]),
-                        "p95": get_nested(results, ["successes", "output_len", "p95"]),
-                        "p99": get_nested(results, ["successes", "output_len", "p99"]),
-                        "p99p9": get_nested(
-                            results, ["successes", "output_len", "p99.9"]
-                        ),
-                        "max": get_nested(results, ["successes", "output_len", "max"]),
-                    },
->>>>>>> 27a53e6 (add pod monitor support and collect metrics data)
                 },
                 "output_length": {
                     "units": Units.COUNT,
@@ -1269,7 +1213,6 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                     "p99p9": get_nested(results, ["successes", "output_len", "p99.9"]),
                     "max": get_nested(results, ["successes", "output_len", "max"]),
                 },
-<<<<<<< HEAD
             },
             "latency": {
                 "time_to_first_token": {
@@ -1886,9 +1829,6 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                 },
             },
         }
-=======
-            }
->>>>>>> 27a53e6 (add pod monitor support and collect metrics data)
 
     update_dict(
         br_dict,
