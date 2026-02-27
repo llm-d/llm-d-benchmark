@@ -35,6 +35,7 @@ from functions import (
     add_accelerator,
     add_affinity,
     add_priority_class_name,
+    check_priority_class,
     add_scc_to_service_account,
     clear_string,
     install_wva_components,
@@ -339,6 +340,9 @@ def main():
     if not check_network(ev):
         announce("ERROR: Failed to check network")
         return 1
+
+    if not check_priority_class(ev):
+        announce("WARNING: PriorityClass validation failed, continuing anyway")
 
     # Deploy models
     model_list = ev["deploy_model_list"].replace(",", " ").split()

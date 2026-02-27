@@ -27,6 +27,7 @@ from functions import (
     add_config, \
     add_affinity, \
     add_priority_class_name, \
+    check_priority_class, \
     add_pull_secret, \
     is_standalone_deployment, \
     kubectl_apply, \
@@ -62,6 +63,9 @@ def main():
         if not check_network(ev):
             announce("ERROR: Failed to check network")
             return 1
+
+        if not check_priority_class(ev):
+            announce("WARNING: PriorityClass validation failed, continuing anyway")
 
         # Create yamls directory
         yamls_dir = Path(ev["control_work_dir"]) / "setup" / "yamls"

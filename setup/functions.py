@@ -1592,6 +1592,39 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
 
     return limits_resources, requests_resources
 
+def check_priority_class(ev: dict) -> bool:
+    """
+    Validate that the configured priorityClassName exists on the cluster.
+    Skips validation if the value is empty or 'none'.
+    Returns True if valid or skipped, False if the priority class does not exist.
+    """
+    priority_class = ev.get("vllm_common_priority_class_name", "")
+    if not priority_class or priority_class.lower() == "none":
+        return True
+
+    try:
+        api, client = kube_connect(f"{ev['control_work_dir']}/environment/context.ctx")
+
+        PriorityClass = pykube.object_factory(
+            api, "scheduling.k8s.io/v1", "PriorityClass"
+        )
+
+        existing = [pc.name for pc in PriorityClass.objects(api)]
+        if priority_class in existing:
+            announce(f'ℹ️ PriorityClass "{priority_class}" found on cluster')
+            return True
+        else:
+            announce(
+                f'WARNING: PriorityClass "{priority_class}" does not exist on this cluster. '
+                f'Available priority classes: {", ".join(existing) if existing else "(none)"}. '
+                f'Pods will fail to schedule. Set LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME=none to disable.'
+            )
+            return False
+
+    except Exception as e:
+        announce(f"WARNING: Unable to validate PriorityClass: {e}")
+        return True  # Don't block deployment on validation failure
+
 def add_priority_class_name(ev: dict) -> str:
     """
     Generate priorityClassName YAML if LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME is set.
