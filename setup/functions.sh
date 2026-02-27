@@ -657,9 +657,9 @@ function render_workload_templates {
 
     local workload=$(echo $workload | $LLMDBENCH_CONTROL_SCMD 's^\.yaml^^g' )
     if [[ $workload == "all" ]]; then
-      workload_template_list=$(find ${LLMDBENCH_HARNESS_PROFILES_DIR}/ -name "*.yaml.in")
+      workload_template_list=$(find "${LLMDBENCH_HARNESS_PROFILES_DIR}/" -name "*.yaml.in")
     else
-      workload_template_list=$(find ${LLMDBENCH_HARNESS_PROFILES_DIR}/ -name "${workload}.yaml.in")
+      workload_template_list=$(find "${LLMDBENCH_HARNESS_PROFILES_DIR}/" -name "${workload}.yaml.in")
     fi
 
     rm -f "$LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt"
@@ -673,7 +673,7 @@ function render_workload_templates {
     fi
 
     announce "🛠️ Rendering \"$workload\" workload profile templates under \"${LLMDBENCH_HARNESS_PROFILES_DIR}\"..."
-    for workload_template_full_path in $workload_template_list; do
+    while IFS= read -r workload_template_full_path; do
       workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
       workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e "s^\.yaml.in$^^g")
       workload_output_file="${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/$workload_template_file_name"
@@ -682,12 +682,12 @@ function render_workload_templates {
       if [[ -d "$treatment_list_dir" ]]; then
         for treatment in $(ls "$treatment_list_dir"); do
             workload_output_file_suffix=$(echo ${treatment} | cut -d '.' -f 1)
-            render_template $workload_template_full_path ${workload_output_file}_${workload_output_file_suffix}.yaml ${treatment_list_dir}/$treatment 0 0
+            render_template "$workload_template_full_path" "${workload_output_file}_${workload_output_file_suffix}.yaml" "${treatment_list_dir}/$treatment" 0 0
         done
       else
-        render_template $workload_template_full_path $workload_output_file.yaml $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt 0 0
+        render_template "$workload_template_full_path" "$workload_output_file.yaml" "$LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt" 0 0
       fi
-    done
+    done < <(echo "$workload_template_list")
     announce "✅ Done rendering \"$workload\" workload profile templates to \"${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/\""
 }
 export -f render_workload_templates
