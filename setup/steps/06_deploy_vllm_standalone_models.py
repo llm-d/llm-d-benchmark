@@ -65,7 +65,8 @@ def main():
             return 1
 
         if not check_priority_class(ev):
-            announce("WARNING: PriorityClass validation failed, continuing anyway")
+            announce("ERROR: Failed to check priority class")
+            return 1
 
         # Create yamls directory
         yamls_dir = Path(ev["control_work_dir"]) / "setup" / "yamls"

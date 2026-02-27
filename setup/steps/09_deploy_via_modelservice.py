@@ -342,7 +342,8 @@ def main():
         return 1
 
     if not check_priority_class(ev):
-        announce("WARNING: PriorityClass validation failed, continuing anyway")
+        announce("ERROR: Failed to check priority class")
+        return 1
 
     # Deploy models
     model_list = ev["deploy_model_list"].replace(",", " ").split()

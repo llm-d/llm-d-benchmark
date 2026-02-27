@@ -1615,11 +1615,9 @@ def check_priority_class(ev: dict) -> bool:
             return True
         else:
             announce(
-                f'WARNING: PriorityClass "{priority_class}" does not exist on this cluster. '
-                f'Available priority classes: {", ".join(existing) if existing else "(none)"}. '
-                f'Resetting to "none" (priorityClassName will be omitted from pod spec).'
+                f'ERROR: PriorityClass "{priority_class}" does not exist on this cluster. '
+                f'Available priority classes: {", ".join(existing) if existing else "(none)"}.'
             )
-            ev["vllm_common_priority_class_name"] = "none"
             return False
 
     except Exception as e:
