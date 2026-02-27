@@ -1617,8 +1617,9 @@ def check_priority_class(ev: dict) -> bool:
             announce(
                 f'WARNING: PriorityClass "{priority_class}" does not exist on this cluster. '
                 f'Available priority classes: {", ".join(existing) if existing else "(none)"}. '
-                f'Pods will fail to schedule. Set LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME=none to disable.'
+                f'Resetting to "none" (priorityClassName will be omitted from pod spec).'
             )
+            ev["vllm_common_priority_class_name"] = "none"
             return False
 
     except Exception as e:
