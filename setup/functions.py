@@ -1592,6 +1592,26 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
 
     return limits_resources, requests_resources
 
+def add_priority_class_name(ev: dict) -> str:
+    """
+    Generate priorityClassName YAML if LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME is set.
+    """
+    priority_class = ev.get("vllm_common_priority_class_name", "")
+    
+    # This is mostly because standalone will crash otherwise,
+    # modelservice would handle this already... 
+    if not priority_class or priority_class.lower() == "none":
+        return ""
+
+    if ev.get("control_environment_type_standalone_active"):
+        indent = " " * 6
+    elif ev.get("control_environment_type_modelservice_active"):
+        indent = " " * 2
+    else:
+        indent = " " * 6
+
+    return f"{indent}priorityClassName: {priority_class}"
+
 def add_affinity(ev:dict) -> str:
 
     affinity = ev["vllm_common_affinity"]

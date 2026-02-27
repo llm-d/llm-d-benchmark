@@ -26,6 +26,7 @@ from functions import (
     add_resources, \
     add_config, \
     add_affinity, \
+    add_priority_class_name, \
     add_pull_secret, \
     is_standalone_deployment, \
     kubectl_apply, \
@@ -225,6 +226,7 @@ spec:
 {annotations}
     spec:
       schedulerName: {ev['vllm_common_pod_scheduler']}
+{add_priority_class_name(ev)}
 {add_affinity(ev)}
       containers:
       - name: vllm-standalone-{model_label}
