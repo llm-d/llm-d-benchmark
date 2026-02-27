@@ -26,8 +26,8 @@ from functions import (
     add_resources, \
     add_config, \
     add_affinity, \
-    add_priority_class_name, \
     check_priority_class, \
+    add_priority_class_name, \
     add_pull_secret, \
     is_standalone_deployment, \
     kubectl_apply, \
