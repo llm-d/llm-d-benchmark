@@ -38,7 +38,6 @@ def import_csv_with_header(file_path: str) -> dict[str, list[Any]]:
     Returns:
         dict: Imported data where the header provides key names.
     """
-    check_file(file_path)
     with open(file_path, "r", encoding="UTF-8") as file:
         for ii, line in enumerate(file):
             if ii == 0:
@@ -124,7 +123,6 @@ def import_yaml(file_path: str) -> dict[Any, Any]:
     Returns:
         dict: Imported data.
     """
-    check_file(file_path)
     with open(file_path, "r", encoding="UTF-8") as file:
         data = yaml.safe_load(file)
     return data
@@ -159,8 +157,6 @@ def import_benchmark_report(br_file: str) -> BenchmarkReport:
     Returns:
         BenchmarkReport: Imported benchmark report supplemented with run data.
     """
-    check_file(br_file)
-
     # Import benchmark report as a dict following the schema of BenchmarkReport
     br_dict = import_yaml(br_file)
 

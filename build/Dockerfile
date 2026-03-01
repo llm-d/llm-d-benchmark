@@ -1,4 +1,4 @@
-FROM python:3.13-slim-bookworm
+FROM python:3.12.9-slim-bookworm
 
 RUN apt-get update; \
     apt-get install -y \
@@ -13,6 +13,8 @@ RUN apt-get update; \
     yq \
     cmake \
     wget \
+    ca-certificates \
+    gnupg \
     && apt-get clean && rm -rf /var/cache/apt
 
 # Install OpenShift CLI (oc)
@@ -20,6 +22,15 @@ RUN curl -sLO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/o
     tar -xzf openshift-client-linux.tar.gz -C /usr/local/bin/ oc && \
     rm openshift-client-linux.tar.gz && \
     chmod +x /usr/local/bin/oc
+
+RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+
+RUN apt-get update; \
+    apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
+# Install kubectl for in-pod cluster operations (e.g. vLLM metrics scraping)
+RUN curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
 
 RUN echo "# /etc/rsyncd: configuration file for rsync daemon mode" > /etc/rsyncd.conf; echo -e "\
 \n\
@@ -111,6 +122,8 @@ RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
 COPY build/requirements-analysis.txt .
 RUN pip install --no-cache-dir -r requirements-analysis.txt
 RUN pip install -e /opt
+
+ADD ../setup/preprocess /preprocess
 
 COPY build/llm-d-benchmark.sh /usr/local/bin/llm-d-benchmark.sh
 

@@ -4,9 +4,6 @@ import time
 import base64
 from pathlib import Path
 
-import pykube
-from pykube.exceptions import PyKubeError
-
 import asyncio
 
 # Add project root to path for imports
@@ -149,13 +146,13 @@ data:
             ev["vllm_common_namespace"],
             ev["control_dry_run"],
         )
-        add_scc_to_service_account(
-            api,
-            "privileged",
-            ev["vllm_common_service_account"],
-            ev["vllm_common_namespace"],
-            ev["control_dry_run"],
-        )
+#        add_scc_to_service_account(
+#            api,
+#            "privileged",
+#            ev["vllm_common_service_account"],
+#            ev["vllm_common_namespace"],
+#            ev["control_dry_run"],
+#        )
 
     announce(
         f"🚚 Creating configmap with contents of all files under workload/preprocesses..."

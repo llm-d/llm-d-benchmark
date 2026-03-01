@@ -34,6 +34,8 @@ from functions import (
     add_resources,
     add_accelerator,
     add_affinity,
+    check_priority_class,
+    add_priority_class_name,
     add_scc_to_service_account,
     clear_string,
     install_wva_components,
@@ -54,7 +56,6 @@ def conditional_volume_config(
     if config_result.strip():
         return f"{field_name}: {config_result}"
     return ""
-
 
 def conditional_extra_config(
     extra_config_key: str, indent: int = 2, label: str = "extraConfig", ev: dict = {}
@@ -136,6 +137,7 @@ decode:
   podAnnotations:
       {add_annotations(ev, "LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS").lstrip()}
   schedulerName: {ev['vllm_common_pod_scheduler']}
+{add_priority_class_name(ev)}
   extraConfig:
 {add_pull_secret(ev)}
 {conditional_extra_config("vllm_modelservice_decode_extra_pod_config", 2, "", ev)}
@@ -194,6 +196,7 @@ prefill:
   podAnnotations:
       {add_annotations(ev, "LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS").lstrip()}
   schedulerName: {ev['vllm_common_pod_scheduler']}
+{add_priority_class_name(ev)}
   extraConfig:
 {add_pull_secret(ev)}
 {conditional_extra_config("vllm_modelservice_prefill_extra_pod_config", 2, "", ev)}
@@ -241,6 +244,41 @@ prefill:
 
     return clear_string(yaml_content)
 
+def generate_podmonitor_yaml(ev: dict) -> str:
+    """Generate a PodMonitor CRD for Prometheus to scrape vLLM model serving pods.
+
+    Args:
+        ev: Environment variables dictionary
+
+    Returns:
+        PodMonitor YAML manifest as string
+    """
+    model_id_label = ev["deploy_current_model_id_label"]
+    namespace = ev["vllm_common_namespace"]
+    scrape_interval = ev["vllm_monitoring_scrape_interval"]
+    metrics_path = ev["vllm_monitoring_metrics_path"]
+    metrics_port = ev["vllm_common_metrics_port"]
+
+    return f"""apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: vllm-{model_id_label}
+  namespace: {namespace}
+  labels:
+    stood-up-by: "{ev['control_username']}"
+    stood-up-from: llm-d-benchmark
+    stood-up-via: "{ev['deploy_methods']}"
+spec:
+  selector:
+    matchLabels:
+      llm-d.ai/inferenceServing: "true"
+      llm-d.ai/model: {model_id_label}
+  podMetricsEndpoints:
+  - port: "{metrics_port}"
+    path: {metrics_path}
+    interval: {scrape_interval}
+"""
+
 def define_httproute(
     ev: dict,
     single_model: bool = True
@@ -257,9 +295,9 @@ def define_httproute(
         YAML manifest for HTTPRoute
 """
     release = ev["vllm_modelservice_release"]
-    namespace = ev.get("vllm_common_namespace", "")
-    model_id_label = ev.get("deploy_current_model_id_label", "")
-    service_port = ev.get("vllm_common_inference_port", "8000")
+    namespace = ev["vllm_common_namespace"]
+    model_id_label = ev["deploy_current_model_id_label"]
+    service_port = ev["vllm_common_inference_port"]
 
     manifest=f"""apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -338,6 +376,10 @@ def main():
         announce("ERROR: Failed to check network")
         return 1
 
+    if not check_priority_class(ev):
+        announce("ERROR: Failed to check priority class")
+        return 1
+
     # Deploy models
     model_list = ev["deploy_model_list"].replace(",", " ").split()
     model_number = 0
@@ -388,7 +430,7 @@ def main():
       # Create directory structure (Do not use "llmdbench_execute_cmd" for these commands)
       model_num = f"{model_number:02d}"
       release = ev["vllm_modelservice_release"]
-      work_dir = Path(ev.get("control_work_dir", ""))
+      work_dir = Path(ev["control_work_dir"])
       helm_dir = work_dir / "setup" / "helm" / release / model_num
 
       # Always create directory structure (even in dry-run)
@@ -483,6 +525,15 @@ def main():
       )
       if result != 0:
           return result
+
+      # Optional PodMonitor for Prometheus scraping of vLLM pods
+      if ev["vllm_monitoring_podmonitor_enabled"] == "true":
+          podmonitor_yaml = generate_podmonitor_yaml(ev)
+          podmonitor_file = work_dir / "setup" / "yamls" / f"{ev['current_step_nr']}_podmonitor_{ev['deploy_current_model_id_label']}.yaml"
+          podmonitor_file.parent.mkdir(parents=True, exist_ok=True)
+          podmonitor_file.write_text(podmonitor_yaml)
+          kubectl_apply(api=api, manifest_data=podmonitor_yaml, dry_run=ev["control_dry_run"])
+          announce(f"📊 PodMonitor for \"{model}\" created for Prometheus scraping")
 
       # Collect decode logs
       collect_logs(ev, ev["vllm_modelservice_decode_replicas"], "decode")
