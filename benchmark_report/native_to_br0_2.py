@@ -28,6 +28,7 @@ from .core import (
 )
 from .schema_v0_2 import BenchmarkReportV02, Component, Distribution, LoadSource
 from .schema_v0_2_components import HostType
+from .metrics_processor import add_metrics_to_benchmark_report
 
 
 def config_hash(config: dict) -> str:
@@ -61,7 +62,8 @@ def b64_decode_envar(envar: str) -> str:
     try:
         return base64.b64decode(envar_value).decode("utf-8")
     except binascii.Error:
-        sys.stderr.write(f"Malformed base64 data in environment variable: {envar}\n")
+        sys.stderr.write(
+            f"Malformed base64 data in environment variable: {envar}\n")
         return ""
 
 
@@ -132,7 +134,8 @@ def get_configmap(
                 ) as ff:
                     namespace = ff.read().strip()
             except FileNotFoundError:
-                namespace = os.environ.get("LLMDBENCH_VLLM_COMMON_NAMESPACE", "default")
+                namespace = os.environ.get(
+                    "LLMDBENCH_VLLM_COMMON_NAMESPACE", "default")
 
         # Get the ConfigMap with timeout
         configmap = v1.read_namespaced_config_map(
@@ -143,7 +146,8 @@ def get_configmap(
         return configmap.to_dict()
 
     except Exception as e:
-        sys.stderr.write(f"Failed to retrieve ConfigMap '{configmap_name}': {e}\n")
+        sys.stderr.write(
+            f"Failed to retrieve ConfigMap '{configmap_name}': {e}\n")
         return {}
 
 
@@ -159,7 +163,8 @@ def _populate_run(ev_dict: dict) -> dict:
     # Unique ID for pod
     pid = os.environ.get("POD_UID")
     # Create an experiment ID from the results directory used (includes a timestamp)
-    eid = str(uuid.uuid5(uuid.NAMESPACE_URL, ev_dict.get("run_experiment_id", "")))
+    eid = str(uuid.uuid5(uuid.NAMESPACE_URL,
+              ev_dict.get("run_experiment_id", "")))
     # Create cluster ID from the API server certificate
     host = os.environ.get("KUBERNETES_SERVICE_HOST")
     port = int(os.environ.get("KUBERNETES_SERVICE_PORT", 0))
@@ -225,7 +230,8 @@ def _populate_load() -> dict:
         args[key] = value
 
     # Import config file, if it exists
-    config_file = os.environ.get("LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME", "")
+    config_file = os.environ.get(
+        "LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME", "")
     try:
         with open(config_file, "r", encoding="UTF-8") as file:
             config = yaml.safe_load(file)
@@ -267,7 +273,8 @@ def _populate_aggregate_stack(ev_dict: dict) -> dict:
     tp = int(ev_dict.get("vllm_common_tensor_parallelism", 1))
     dp = int(ev_dict.get("vllm_common_data_parallelism", 1))
     dp_local = int(ev_dict.get("vllm_common_data_local_parallelism", 1))
-    workers = int(os.environ.get("LLMDBENCH_VLLM_COMMON_NUM_WORKERS_PARALLELISM", 1))
+    workers = int(os.environ.get(
+        "LLMDBENCH_VLLM_COMMON_NUM_WORKERS_PARALLELISM", 1))
     img_reg = ev_dict.get("vllm_standalone_image_registry", "")
     img_repo = ev_dict.get("vllm_standalone_image_repo", "")
     img_name = ev_dict.get("vllm_standalone_image_name", "")
@@ -349,7 +356,8 @@ def _add_inference_scheduler_component(br_dict: dict, ev_dict: dict) -> None:
         br_dict (dict): Benchmark report dict to amend to.
         ev_dict (dict): Environment variable values.
     """
-    epp_config_str = b64_decode_envar("LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG")
+    epp_config_str = b64_decode_envar(
+        "LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG")
     if not epp_config_str:
         return
 
@@ -391,12 +399,16 @@ def _populate_disaggregate_stack(ev_dict: dict) -> dict:
     d_replicas = int(ev_dict.get("vllm_modelservice_decode_replicas", 1))
     p_tp = int(ev_dict.get("vllm_modelservice_prefill_tensor_parallelism", 1))
     p_dp = int(ev_dict.get("vllm_modelservice_prefill_data_parallelism", 1))
-    p_dp_local = int(ev_dict.get("vllm_modelservice_prefill_data_local_parallelism", 1))
+    p_dp_local = int(ev_dict.get(
+        "vllm_modelservice_prefill_data_local_parallelism", 1))
     d_tp = int(ev_dict.get("vllm_modelservice_decode_tensor_parallelism", 1))
     d_dp = int(ev_dict.get("vllm_modelservice_decode_data_parallelism", 1))
-    d_dp_local = int(ev_dict.get("vllm_modelservice_decode_data_local_parallelism", 1))
-    p_workers = int(ev_dict.get("vllm_modelservice_prefill_num_workers_parallelism", 1))
-    d_workers = int(ev_dict.get("vllm_modelservice_decode_num_workers_parallelism", 1))
+    d_dp_local = int(ev_dict.get(
+        "vllm_modelservice_decode_data_local_parallelism", 1))
+    p_workers = int(ev_dict.get(
+        "vllm_modelservice_prefill_num_workers_parallelism", 1))
+    d_workers = int(ev_dict.get(
+        "vllm_modelservice_decode_num_workers_parallelism", 1))
     img_reg = ev_dict.get("vllm_standalone_image_registry", "")
     img_repo = ev_dict.get("vllm_standalone_image_repo", "")
     img_name = ev_dict.get("vllm_standalone_image_name", "")
@@ -520,7 +532,8 @@ def _populate_disaggregate_stack(ev_dict: dict) -> dict:
     }
 
     stack = (
-        [p_inference_engine, d_inference_engine] if p_replicas else [d_inference_engine]
+        [p_inference_engine, d_inference_engine] if p_replicas else [
+            d_inference_engine]
     )
 
     br_dict = {
@@ -588,7 +601,8 @@ def _populate_benchmark_report_from_envars() -> dict:
     # Get Kubernetes context
     context_dict = get_context_from_envar("LLMDBENCH_BASE64_CONTEXT_CONTENTS")
     # Get configmap with standup parameters
-    params_cm = get_configmap(context_dict, "llm-d-benchmark-standup-parameters")
+    params_cm = get_configmap(
+        context_dict, "llm-d-benchmark-standup-parameters")
 
     if params_cm:
         ev_str: str = get_nested(params_cm, ["data", "ev.yaml"])
@@ -682,7 +696,8 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
             break
 
     isl_dist = (
-        Distribution.FIXED if ds_name in ["random", "sonnet"] else Distribution.OTHER
+        Distribution.FIXED if ds_name in [
+            "random", "sonnet"] else Distribution.OTHER
     )
 
     # See if OSL is in args
@@ -873,7 +888,8 @@ def import_inference_max(results_file: str) -> BenchmarkReportV02:
             break
 
     isl_dist = (
-        Distribution.FIXED if ds_name in ["random", "sonnet"] else Distribution.OTHER
+        Distribution.FIXED if ds_name in [
+            "random", "sonnet"] else Distribution.OTHER
     )
 
     # See if OSL is in args
@@ -1113,7 +1129,8 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                                     results,
                                     ["successes", "prompt_len", "mean"],
                                     get_nested(
-                                        results, ["failures", "prompt_len", "mean"]
+                                        results, ["failures",
+                                                  "prompt_len", "mean"]
                                     ),
                                 ),
                             ),
@@ -1123,12 +1140,14 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                             "min": get_nested(
                                 config,
                                 ["data", "input_distribution", "min"],
-                                get_nested(results, ["successes", "prompt_len", "min"]),
+                                get_nested(
+                                    results, ["successes", "prompt_len", "min"]),
                             ),
                             "max": get_nested(
                                 config,
                                 ["data", "input_distribution", "max"],
-                                get_nested(results, ["successes", "prompt_len", "max"]),
+                                get_nested(
+                                    results, ["successes", "prompt_len", "max"]),
                             ),
                         },
                         "output_seq_len": {
@@ -1137,7 +1156,8 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                                 config,
                                 ["data", "output_distribution", "mean"],
                                 get_nested(
-                                    results, ["successes", "output_len", "mean"], 0
+                                    results, ["successes",
+                                              "output_len", "mean"], 0
                                 ),
                             ),
                             "std_dev": get_nested(
@@ -1146,12 +1166,14 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                             "min": get_nested(
                                 config,
                                 ["data", "output_distribution", "min"],
-                                get_nested(results, ["successes", "output_len", "min"]),
+                                get_nested(
+                                    results, ["successes", "output_len", "min"]),
                             ),
                             "max": get_nested(
                                 config,
                                 ["data", "output_distribution", "max"],
-                                get_nested(results, ["successes", "output_len", "max"]),
+                                get_nested(
+                                    results, ["successes", "output_len", "max"]),
                             ),
                         },
                         "prefix": prefix,
@@ -1990,10 +2012,12 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                                 results, ["metrics", "request_totals", "total"]
                             ),
                             "failures": get_nested(
-                                results, ["metrics", "request_totals", "errored"]
+                                results, ["metrics",
+                                          "request_totals", "errored"]
                             ),
                             "incomplete": get_nested(
-                                results, ["metrics", "request_totals", "incomplete"]
+                                results, ["metrics",
+                                          "request_totals", "incomplete"]
                             ),
                             "input_length": {
                                 "units": Units.COUNT,
@@ -2818,7 +2842,8 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                                 ),
                                 "min": get_nested(
                                     results,
-                                    ["metrics", "request_latency", "successful", "min"],
+                                    ["metrics", "request_latency",
+                                        "successful", "min"],
                                 ),
                                 "p0p1": get_nested(
                                     results,
@@ -2932,7 +2957,8 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV02:
                                 ),
                                 "max": get_nested(
                                     results,
-                                    ["metrics", "request_latency", "successful", "max"],
+                                    ["metrics", "request_latency",
+                                        "successful", "max"],
                                 ),
                             },
                         },
