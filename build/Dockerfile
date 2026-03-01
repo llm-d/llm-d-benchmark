@@ -17,6 +17,12 @@ RUN apt-get update; \
     gnupg \
     && apt-get clean && rm -rf /var/cache/apt
 
+# Install OpenShift CLI (oc)
+RUN curl -sLO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz && \
+    tar -xzf openshift-client-linux.tar.gz -C /usr/local/bin/ oc && \
+    rm openshift-client-linux.tar.gz && \
+    chmod +x /usr/local/bin/oc
+
 RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
 
@@ -76,7 +82,7 @@ RUN cd vllm; printf '%s\n' \
     | git apply
 # Install some pre-reqs
 RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
-RUN pip install setuptools-scm scikit-build-core
+RUN pip install setuptools-scm scikit-build-core nanobind
 # Install
 RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install -e . --no-build-isolation
 
