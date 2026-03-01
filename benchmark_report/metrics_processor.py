@@ -140,32 +140,57 @@ def create_component_observability(
 
     # Map metric names to ResourceMetrics fields
     metric_mapping = {
+        # Cache metrics
         'vllm:kv_cache_usage_perc': ('kv_cache_usage', Units.PERCENT),
+        'kv_cache_usage_percent': ('kv_cache_usage', Units.PERCENT),
+        'cache_hit_rate_percent': ('cache_hit_rate', Units.PERCENT),
         'vllm:gpu_cache_usage_perc': ('gpu_cache_usage', Units.PERCENT),
         'vllm:cpu_cache_usage_perc': ('cpu_cache_usage', Units.PERCENT),
+        # Memory metrics
         'vllm:gpu_memory_usage_bytes': ('gpu_memory_usage', Units.GIB),
+        'DCGM_FI_DEV_FB_USED': ('gpu_memory_usage', Units.GIB),
+        'gpu_memory_used_gb': ('gpu_memory_usage', Units.GIB),
         'vllm:cpu_memory_usage_bytes': ('cpu_memory_usage', Units.GIB),
         'container_memory_usage_bytes': ('cpu_memory_usage', Units.GIB),
+        'cpu_memory_used_gb': ('cpu_memory_usage', Units.GIB),
+        # Compute metrics
         'DCGM_FI_DEV_GPU_UTIL': ('gpu_utilization', Units.PERCENT),
+        'gpu_utilization_percent': ('gpu_utilization', Units.PERCENT),
         'container_cpu_usage_seconds_total': ('cpu_utilization', Units.PERCENT),
+        # Performance metrics
         'DCGM_FI_DEV_POWER_USAGE': ('power_consumption', Units.WATTS),
+        # Queue metrics
+        'vllm:num_requests_running': ('running_requests', Units.COUNT),
+        'running_requests': ('running_requests', Units.COUNT),
+        'vllm:num_requests_waiting': ('waiting_requests', Units.COUNT),
+        'waiting_requests': ('waiting_requests', Units.COUNT),
+        'vllm:num_requests_swapped': ('swapped_requests', Units.COUNT),
+        'swapped_requests': ('swapped_requests', Units.COUNT),
     }
 
     for metric_name, metric_data in metrics_summary.items():
         if metric_name in metric_mapping:
             field_name, units = metric_mapping[metric_name]
 
-            # Convert bytes to GiB if needed
-            mean_value = metric_data['mean']
-            stddev_value = metric_data['stddev']
-            min_value = metric_data['min']
-            max_value = metric_data['max']
+            # Get values from metric_data
+            mean_value = metric_data.get('mean', 0.0)
+            stddev_value = metric_data.get('stddev', 0.0)
+            min_value = metric_data.get('min', 0.0)
+            max_value = metric_data.get('max', 0.0)
 
-            if 'bytes' in metric_name and units == Units.GIB:
+            # Convert bytes to GiB if needed
+            if 'bytes' in metric_name.lower() and units == Units.GIB:
                 mean_value = mean_value / (1024 ** 3)
                 stddev_value = stddev_value / (1024 ** 3)
                 min_value = min_value / (1024 ** 3)
                 max_value = max_value / (1024 ** 3)
+            # Convert GB to GiB if metric is already in GB
+            elif metric_name.endswith('_gb') and units == Units.GIB:
+                # Already in GB, convert to GiB
+                mean_value = mean_value * (1000 ** 3) / (1024 ** 3)
+                stddev_value = stddev_value * (1000 ** 3) / (1024 ** 3)
+                min_value = min_value * (1000 ** 3) / (1024 ** 3)
+                max_value = max_value * (1000 ** 3) / (1024 ** 3)
 
             stats = Statistics(
                 units=units,

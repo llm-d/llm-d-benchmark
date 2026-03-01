@@ -637,6 +637,8 @@ class ResourceMetrics(BaseModel):
 
     kv_cache_usage: Statistics | None = None
     """KV cache usage percentage."""
+    cache_hit_rate: Statistics | None = None
+    """Prefix cache hit rate percentage."""
     gpu_cache_usage: Statistics | None = None
     """GPU cache usage percentage."""
     cpu_cache_usage: Statistics | None = None
@@ -653,12 +655,23 @@ class ResourceMetrics(BaseModel):
     """CPU utilization percentage."""
     power_consumption: Statistics | None = None
     """Power consumption."""
+    running_requests: Statistics | None = None
+    """Number of currently running requests."""
+    waiting_requests: Statistics | None = None
+    """Number of requests waiting in queue."""
+    swapped_requests: Statistics | None = None
+    """Number of swapped out requests."""
 
     @model_validator(mode="after")
     def check_units(self):
         if self.kv_cache_usage and self.kv_cache_usage.units not in UNITS_PORTION:
             raise ValueError(
                 f'Invalid units "{self.kv_cache_usage.units}", must be one of:'
+                f" {' '.join(UNITS_PORTION)}"
+            )
+        if self.cache_hit_rate and self.cache_hit_rate.units not in UNITS_PORTION:
+            raise ValueError(
+                f'Invalid units "{self.cache_hit_rate.units}", must be one of:'
                 f" {' '.join(UNITS_PORTION)}"
             )
         if self.gpu_cache_usage and self.gpu_cache_usage.units not in UNITS_PORTION:
@@ -700,6 +713,21 @@ class ResourceMetrics(BaseModel):
             raise ValueError(
                 f'Invalid units "{self.power_consumption.units}", must be one of:'
                 f" {' '.join(UNITS_POWER)}"
+            )
+        if self.running_requests and self.running_requests.units not in UNITS_QUANTITY:
+            raise ValueError(
+                f'Invalid units "{self.running_requests.units}", must be one of:'
+                f" {' '.join(UNITS_QUANTITY)}"
+            )
+        if self.waiting_requests and self.waiting_requests.units not in UNITS_QUANTITY:
+            raise ValueError(
+                f'Invalid units "{self.waiting_requests.units}", must be one of:'
+                f" {' '.join(UNITS_QUANTITY)}"
+            )
+        if self.swapped_requests and self.swapped_requests.units not in UNITS_QUANTITY:
+            raise ValueError(
+                f'Invalid units "{self.swapped_requests.units}", must be one of:'
+                f" {' '.join(UNITS_QUANTITY)}"
             )
         return self
 

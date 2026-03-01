@@ -71,7 +71,7 @@ RUN cd vllm; printf '%s\n' \
     | git apply
 # Install some pre-reqs
 RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
-RUN pip install setuptools-scm scikit-build-core
+RUN pip install setuptools-scm scikit-build-core nanobind
 # Install
 RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install -e . --no-build-isolation
 
