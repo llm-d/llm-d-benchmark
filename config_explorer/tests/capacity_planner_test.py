@@ -14,6 +14,7 @@ deepseek3 = "deepseek-ai/DeepSeek-V2"  # Use V2 which has safetensors metadata
 gpt_oss = "openai/gpt-oss-20b"
 redhat_qwen = "RedHatAI/Qwen3-8B-FP8-dynamic"
 redhat_nemotron = "redhatai/nvidia-nemotron-nano-9b-v2-fp8-dynamic"
+mistral_small = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
 
 def test_get_model_info_and_config_from_hf():
     """
@@ -612,12 +613,12 @@ def test_estimate_vllm_activation_memory_constant():
     # Get the actual result
     actual_mem_gib = estimate_vllm_activation_memory(model_config, tp)
 
-    # Qwen is a dense model, should return the dense constant
-    ACTIVATION_MEMORY_BASE_DENSE_GIB = 5.5
+    # Qwen2.5-0.5B has architecture Qwen2ForCausalLM, which has a validated profile of 5.6
+    expected = VALIDATED_ACTIVATION_PROFILES.get("Qwen2ForCausalLM", ACTIVATION_MEMORY_BASE_DENSE_GIB)
 
-    # Should be exactly the constant (no scaling)
-    assert actual_mem_gib == ACTIVATION_MEMORY_BASE_DENSE_GIB, \
-        f"Expected {ACTIVATION_MEMORY_BASE_DENSE_GIB} GiB, got {actual_mem_gib} GiB"
+    # Should be exactly the validated profile value (no scaling)
+    assert actual_mem_gib == expected, \
+        f"Expected {expected} GiB, got {actual_mem_gib} GiB"
 
 def test_estimate_vllm_activation_memory_empirical_validation():
     """Tests activation memory estimates against empirical vLLM measurements"""
@@ -654,6 +655,65 @@ def test_estimate_vllm_activation_memory_moe():
     dense_activation = estimate_vllm_activation_memory(dense_config, tp=1)
     assert moe_activation > dense_activation, \
         f"MoE activation {moe_activation} should be > dense activation {dense_activation}"
+
+def test_is_multimodal():
+    """Tests that multimodal models are correctly detected"""
+    # Mistral-Small-3.2-24B is multimodal (PixtralForConditionalGeneration)
+    mistral_config = get_model_config_from_hf(mistral_small)
+    assert is_multimodal(mistral_config), \
+        f"Mistral-Small-3.2-24B should be detected as multimodal, architectures: {mistral_config.architectures}"
+
+    # Qwen is NOT multimodal
+    qwen_config = get_model_config_from_hf(qwen_model)
+    assert not is_multimodal(qwen_config), \
+        f"Qwen should not be detected as multimodal, architectures: {qwen_config.architectures}"
+
+    # MoE model is NOT multimodal
+    moe_config = get_model_config_from_hf(gpt_oss)
+    assert not is_multimodal(moe_config), \
+        f"gpt-oss should not be detected as multimodal"
+
+def test_estimate_vllm_activation_memory_validated_lookup():
+    """Tests that validated profiles return architecture-specific activation memory"""
+    # Mistral-Small-3.2-24B has architecture PixtralForConditionalGeneration
+    # which is in VALIDATED_ACTIVATION_PROFILES at 2.5 GiB
+    mistral_config = get_model_config_from_hf(mistral_small)
+    mistral_activation = estimate_vllm_activation_memory(mistral_config, tp=1)
+
+    expected = VALIDATED_ACTIVATION_PROFILES["PixtralForConditionalGeneration"]
+    assert mistral_activation == expected, \
+        f"Mistral-Small activation should be {expected} GiB (validated), got {mistral_activation} GiB"
+
+    # Should be much less than the generic dense constant
+    assert mistral_activation < ACTIVATION_MEMORY_BASE_DENSE_GIB, \
+        f"Mistral multimodal ({mistral_activation}) should be < dense default ({ACTIVATION_MEMORY_BASE_DENSE_GIB})"
+
+    # Qwen2.5-0.5B has architecture Qwen2ForCausalLM, validated at 5.6 GiB
+    qwen_config = get_model_config_from_hf(qwen_model)
+    qwen_activation = estimate_vllm_activation_memory(qwen_config, tp=1)
+    expected_qwen = VALIDATED_ACTIVATION_PROFILES["Qwen2ForCausalLM"]
+    assert qwen_activation == expected_qwen, \
+        f"Qwen activation should be {expected_qwen} GiB (validated), got {qwen_activation} GiB"
+
+def test_estimate_vllm_activation_memory_multimodal_fallback():
+    """Tests that unknown multimodal architectures fall back to multimodal constant"""
+    # Use a simple class instead of MagicMock to avoid hasattr() issues
+    # (MagicMock responds True to all hasattr checks, which triggers is_moe)
+    class FakeMultimodalConfig:
+        architectures = ["LlavaForConditionalGeneration"]
+
+    activation = estimate_vllm_activation_memory(FakeMultimodalConfig(), tp=1)
+    assert activation == ACTIVATION_MEMORY_BASE_MULTIMODAL_GIB, \
+        f"Unknown multimodal should return {ACTIVATION_MEMORY_BASE_MULTIMODAL_GIB} GiB, got {activation} GiB"
+
+def test_estimate_vllm_activation_memory_unknown_dense_fallback():
+    """Tests that unknown dense architectures fall back to dense constant"""
+    class FakeDenseConfig:
+        architectures = ["SomeNewModelForCausalLM"]
+
+    activation = estimate_vllm_activation_memory(FakeDenseConfig(), tp=1)
+    assert activation == ACTIVATION_MEMORY_BASE_DENSE_GIB, \
+        f"Unknown dense model should return {ACTIVATION_MEMORY_BASE_DENSE_GIB} GiB, got {activation} GiB"
 
 
 # ---- Comprehensive Tests for Various Models ----

@@ -4,11 +4,6 @@ import time
 import base64
 from pathlib import Path
 
-import pykube
-from pykube.exceptions import PyKubeError
-
-import asyncio
-
 # Add project root to path for imports
 current_file = Path(__file__).resolve()
 project_root = current_file.parents[1]
@@ -42,6 +37,25 @@ def main():
         exit(result)
 
     api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
+
+    ev["user_is_admin"] = True
+    if is_openshift(api) and ev["user_is_admin"]:
+        # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid
+        # some setups might also require privileged access for GPU resources
+        add_scc_to_service_account(
+            api,
+            "anyuid",
+            ev["vllm_common_service_account"],
+            ev["vllm_common_namespace"],
+            ev["control_dry_run"],
+        )
+        add_scc_to_service_account(
+            api,
+            "privileged",
+            ev["vllm_common_service_account"],
+            ev["vllm_common_namespace"],
+            ev["control_dry_run"],
+        )
 
     if ev["control_dry_run"]:
         announce("DRY RUN enabled. No actual changes will be made.")
@@ -101,6 +115,7 @@ metadata:
     app: llm-d-benchmark-harness
     role: llm-d-benchmark-data-access
   namespace: {ev["harness_namespace"]}
+  serviceAccountName: {ev["vllm_common_service_account"]}
 spec:
   containers:
   - name: rsync
@@ -142,24 +157,6 @@ spec:
   type: ClusterIP
 """
           kubectl_apply(api=api, manifest_data=service_yaml, dry_run=ev["control_dry_run"])
-
-    if is_openshift(api) and ev["user_is_admin"]:
-        # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid
-        # some setups might also require privileged access for GPU resources
-        add_scc_to_service_account(
-            api,
-            "anyuid",
-            ev["vllm_common_service_account"],
-            ev["vllm_common_namespace"],
-            ev["control_dry_run"],
-        )
-        add_scc_to_service_account(
-            api,
-            "privileged",
-            ev["vllm_common_service_account"],
-            ev["vllm_common_namespace"],
-            ev["control_dry_run"],
-        )
 
     announce(
         f"🚚 Creating configmap with contents of all files under workload/preprocesses..."

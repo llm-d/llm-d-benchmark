@@ -367,7 +367,7 @@ export -f get_harness_list
 
 function add_env_vars_to_pod {
     local varpattern=$1
-    varlist=$(env | grep -E "$varpattern" | grep -Ev "LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD|LLMDBENCH_HARNESS_STACK_ENDPOINT_INFO" | cut -d "=" -f 1 | sort | uniq)
+    varlist=$(env | grep -E "$varpattern" | grep -Ev "LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD|LLMDBENCH_HARNESS_STACK_ENDPOINT_INFO|LLMDBENCH_VLLM_STANDALONE_PREPROCESS|LLMDBENCH_VLLM_COMMON_PREPROCESS|LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS|LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS|LLMDBENCH_HARNESS_INFERENCE_PERF_RAYON_NUM_THREADS" | cut -d "=" -f 1 | sort | uniq)
     echo "#    "
     for envvar in $varlist; do
       envvalue=${!envvar}
@@ -531,6 +531,8 @@ metadata:
     app: ${LLMDBENCH_HARNESS_POD_LABEL}
     function: load_generator
 spec:
+  serviceAccountName: ${LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT}
+  $(if [[ -n "${LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME}" && "$(echo ${LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME} | tr '[:upper:]' '[:lower:]')" != "none" ]]; then echo "priorityClassName: ${LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME}"; fi)
   containers:
   - name: harness
     image: $(get_image ${LLMDBENCH_IMAGE_REGISTRY} ${LLMDBENCH_IMAGE_REPO} ${LLMDBENCH_IMAGE_NAME} ${LLMDBENCH_IMAGE_TAG})
@@ -557,6 +559,8 @@ spec:
     - name: LLMDBENCH_MAGIC_ENVAR
       value: "harness_pod"
     $(add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD)
+    - name: RAYON_NUM_THREADS
+      value: "${LLMDBENCH_HARNESS_INFERENCE_PERF_RAYON_NUM_THREADS}"
     - name: HF_TOKEN_SECRET
       value: "${LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME}"
     - name: HUGGING_FACE_HUB_TOKEN
@@ -633,7 +637,8 @@ function get_model_name_from_pod {
     # --- END: Corrected Port Logic ---
 
     local url=$url/v1/models
-    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl -k --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2 0)
+
+    local response=$(llmdbench_execute_cmd "${LLMDBENCH_CONTROL_KCMD} run --overrides='{\"spec\": { \"serviceAccountName\": \"${LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT}\" } }' testinference-pod-$(get_rand_string) -n $namespace --attach --restart=Never --rm --image=$image --quiet --command -- bash -c \"curl -k --no-progress-meter $url\"" ${LLMDBENCH_CONTROL_DRY_RUN} 0 0 2 0)
     is_jq=$(echo $response | jq -r . || true)
 
     if [[ -z $is_jq ]]; then
@@ -652,9 +657,9 @@ function render_workload_templates {
 
     local workload=$(echo $workload | $LLMDBENCH_CONTROL_SCMD 's^\.yaml^^g' )
     if [[ $workload == "all" ]]; then
-      workload_template_list=$(find ${LLMDBENCH_HARNESS_PROFILES_DIR}/ -name "*.yaml.in")
+      workload_template_list=$(find "${LLMDBENCH_HARNESS_PROFILES_DIR}/" -name "*.yaml.in")
     else
-      workload_template_list=$(find ${LLMDBENCH_HARNESS_PROFILES_DIR}/ -name "${workload}.yaml.in")
+      workload_template_list=$(find "${LLMDBENCH_HARNESS_PROFILES_DIR}/" -name "${workload}.yaml.in")
     fi
 
     rm -f "$LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt"
@@ -668,7 +673,7 @@ function render_workload_templates {
     fi
 
     announce "🛠️ Rendering \"$workload\" workload profile templates under \"${LLMDBENCH_HARNESS_PROFILES_DIR}\"..."
-    for workload_template_full_path in $workload_template_list; do
+    while IFS= read -r workload_template_full_path; do
       workload_template_type=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 2 | rev)
       workload_template_file_name=$(echo ${workload_template_full_path} | rev | cut -d '/' -f 1 | rev | $LLMDBENCH_CONTROL_SCMD -e "s^\.yaml.in$^^g")
       workload_output_file="${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/$workload_template_type/$workload_template_file_name"
@@ -677,12 +682,12 @@ function render_workload_templates {
       if [[ -d "$treatment_list_dir" ]]; then
         for treatment in $(ls "$treatment_list_dir"); do
             workload_output_file_suffix=$(echo ${treatment} | cut -d '.' -f 1)
-            render_template $workload_template_full_path ${workload_output_file}_${workload_output_file_suffix}.yaml ${treatment_list_dir}/$treatment 0 0
+            render_template "$workload_template_full_path" "${workload_output_file}_${workload_output_file_suffix}.yaml" "${treatment_list_dir}/$treatment" 0 0
         done
       else
-        render_template $workload_template_full_path $workload_output_file.yaml $LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt 0 0
+        render_template "$workload_template_full_path" "$workload_output_file.yaml" "$LLMDBENCH_CONTROL_WORK_DIR/workload/profiles/overrides.txt" 0 0
       fi
-    done
+    done < <(echo "$workload_template_list")
     announce "✅ Done rendering \"$workload\" workload profile templates to \"${LLMDBENCH_CONTROL_WORK_DIR}/workload/profiles/\""
 }
 export -f render_workload_templates

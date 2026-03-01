@@ -30,20 +30,22 @@ LLMDBENCH_STEP_LIST=$(find "$LLMDBENCH_STEPS_DIR" -name "*.sh" -o -name "*.py" |
 
 function show_usage {
     echo -e "Usage: ${LLMDBENCH_CONTROL_CALLER} -s/--step [step list] (default=$(echo $LLMDBENCH_STEP_LIST | $LLMDBENCH_CONTROL_SCMD -e "s^${LLMDBENCH_STEPS_DIR}/^^g" -e 's/ /,/g') \n \
-            -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO) ] \n \
-            -m/--models [list the models to be stood up (default=$LLMDBENCH_DEPLOY_MODEL_LIST) ] \n \
-            -p/--namespace [comma separated pair of values indicating where a stack will be stood up and where the benchmark will (later) be run (default=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE,$LLMDBENCH_WVA_NAMESPACE)] \n \
+            -c/--scenario [take environment variables from a scenario file (default=$LLMDBENCH_DEPLOY_SCENARIO)] \n \
+            -m/--models [list the models to be stood up (default=$LLMDBENCH_DEPLOY_MODEL_LIST)] \n \
+            -p/--namespace [comma separated list of namespaces indicating, respectively, where a stack will be stood up, where will the benchmark run and where will wva operate (defaults=$LLMDBENCH_VLLM_COMMON_NAMESPACE,$LLMDBENCH_HARNESS_NAMESPACE,$LLMDBENCH_WVA_NAMESPACE)] \n \
+            -q/--serviceaccount [service account used when standing up the stack (default=$LLMDBENCH_VLLM_COMMON_SERVICE_ACCOUNT)] \n \
             -t/--methods [list of standup methods (default=$LLMDBENCH_DEPLOY_METHODS, possible values \"standalone\" and \"modelservice\") ] \n \
             -a/--affinity [kubernetes node affinity] (default=$LLMDBENCH_VLLM_COMMON_AFFINITY) \n \
             -b/--annotations [kubernetes pod annotations] (default=$LLMDBENCH_VLLM_COMMON_ANNOTATIONS) \n \
             -r/--release [modelservice helm chart release name (default=$LLMDBENCH_VLLM_MODELSERVICE_RELEASE)] \n \
             -x/--dataset [url for dataset to be replayed (default=$LLMDBENCH_RUN_DATASET_URL)] \n \
             -u/--wva [deploy model with Workload Variant Autoscaler (default=$LLMDBENCH_WVA_ENABLED)] \n \
+            -f/--monitoring [enable PodMonitor for Prometheus and vLLM /metrics scraping (default=$LLMDBENCH_VLLM_MONITORING_PODMONITOR_ENABLED)] \n \
             -n/--dry-run [just print the command which would have been executed (default=$LLMDBENCH_CONTROL_DRY_RUN) ] \n \
             -v/--verbose [print the command being executed, and result (default=$LLMDBENCH_CONTROL_VERBOSE) ] \n \
             -i/--non-admin [run the setup script as a non-cluster-level admin user] \n \
+            -g/--envvarspod [list all environment variables which should be propagated to the vllm pods (default=$LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML)] \n \
             -h/--help (show this help)\n \
-
             * [step list] can take of form of comma-separated single/double digits (e.g. \"-s 0,1,5\") or ranges (e.g. \"-s 1-7\")"
 }
 
@@ -76,10 +78,9 @@ while [[ $# -gt 0 ]]; do
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 1)
         export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 2)
         export LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE=$(echo $key | cut -d '=' -f 2 | cut -d ',' -f 3)
-        
+
         if [[ -z $LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE ]]; then
           export LLMDBENCH_CLIOVERRIDE_HARNESS_NAMESPACE=$LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE
-        
         fi
 
         if [[ -z ${LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE} ]]; then
@@ -98,6 +99,13 @@ while [[ $# -gt 0 ]]; do
         if [[ -z ${LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE} ]]; then
           export LLMDBENCH_CLIOVERRIDE_WVA_NAMESPACE=${LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_NAMESPACE}
         fi
+        shift
+        ;;
+        -q=*|-serviceaccount=*)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_SERVICE_ACCOUNT=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -q|--serviceaccount)
+        export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_SERVICE_ACCOUNT="$2"
         shift
         ;;
         -t=*|--methods=*)
@@ -135,8 +143,19 @@ while [[ $# -gt 0 ]]; do
         export LLMDBENCH_CLIOVERRIDE_VLLM_COMMON_ANNOTATIONS="$2"
         shift
         ;;
+        -g=*|-envvarspod=*)
+        export LLMDBENCH_CLIOVERRIDE_COMMON_ENVVARS_TO_YAML=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -g|--envvarspod)
+        export LLMDBENCH_CLIOVERRIDE_COMMON_ENVVARS_TO_YAML="$2"
+        shift
+        ;;
         -u|--wva)
         export LLMDBENCH_WVA_ENABLED=1
+        ;;
+        -f|--monitoring)
+        export LLMDBENCH_VLLM_MONITORING_PODMONITOR_ENABLED=true
+        export LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED=true
         ;;
         -n|--dry-run)
         export LLMDBENCH_CLIOVERRIDE_CONTROL_DRY_RUN=1
