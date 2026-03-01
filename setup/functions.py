@@ -36,6 +36,9 @@ from kubernetes_asyncio import (
     watch as k8s_async_watch,
 )
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 import asyncio
 
 import logging
@@ -728,6 +731,7 @@ spec:
               value: /tmp
             - name: MOUNT_PATH
               value: /cache
+            {add_additional_env_to_yaml(ev, "vllm_common_envvars_to_yaml").lstrip()}
           volumeMounts:
             - name: model-cache
               mountPath: /cache
@@ -1588,6 +1592,58 @@ def add_resources(ev:dict, identifier: str) -> [str, str]:
 
     return limits_resources, requests_resources
 
+def check_priority_class(ev: dict) -> bool:
+    """
+    Validate that the configured priorityClassName exists on the cluster.
+    Skips validation if the value is empty or 'none'.
+    Returns True if valid or skipped, False if the priority class does not exist.
+    """
+    priority_class = ev.get("vllm_common_priority_class_name", "")
+    if not priority_class or priority_class.lower() == "none":
+        return True
+
+    try:
+        api, client = kube_connect(f"{ev['control_work_dir']}/environment/context.ctx")
+
+        PriorityClass = pykube.object_factory(
+            api, "scheduling.k8s.io/v1", "PriorityClass"
+        )
+
+        existing = [pc.name for pc in PriorityClass.objects(api)]
+        if priority_class in existing:
+            announce(f'ℹ️ PriorityClass "{priority_class}" found on cluster')
+            return True
+        else:
+            announce(
+                f'ERROR: PriorityClass "{priority_class}" does not exist on this cluster. '
+                f'Available priority classes: {", ".join(existing) if existing else "(none)"}.'
+            )
+            return False
+
+    except Exception as e:
+        announce(f"WARNING: Unable to validate PriorityClass: {e}")
+        return True  # Don't block deployment on validation failure
+
+def add_priority_class_name(ev: dict) -> str:
+    """
+    Generate priorityClassName YAML if LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME is set.
+    """
+    priority_class = ev.get("vllm_common_priority_class_name")
+    
+    # This is mostly because standalone will crash otherwise,
+    # modelservice would handle this already... 
+    if not priority_class or priority_class.lower() == "none":
+        return ""
+
+    if ev.get("control_environment_type_standalone_active"):
+        indent = " " * 6
+    elif ev.get("control_environment_type_modelservice_active"):
+        indent = " " * 2
+    else:
+        indent = " " * 6
+
+    return f"{indent}priorityClassName: {priority_class}"
+
 def add_affinity(ev:dict) -> str:
 
     affinity = ev["vllm_common_affinity"]
@@ -1632,7 +1688,7 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
     else :
         accelerator_type = ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split('.')[0]
 
-    if accelerator_type == "kubernetes" :
+    if accelerator_type == "kubernetes" or str(ev[f"vllm_modelservice_{identifier}_accelerator_nr"] == 0) :
         accelerator_type = "cpu"
         acellerator_resource = "cpu"
 
@@ -1672,6 +1728,76 @@ def add_pull_secret(ev:dict) -> str:
 
     return pull_secret_string
 
+def create_monitoring_configmap() -> dict:
+    """
+    Create OpenShift monitoring ConfigMap using native Python dict structure.
+
+    Returns:
+        dict: ConfigMap structure for enabling user workload monitoring
+    """
+    return {
+        'apiVersion': 'v1',
+        'kind': 'ConfigMap',
+        'metadata': {
+            'name': 'cluster-monitoring-config',
+            'namespace': 'openshift-monitoring'
+        },
+        'data': {
+            'config.yaml': 'enableUserWorkload: true'
+        }
+    }
+
+def ensure_user_workload_monitoring(
+    api: pykube.HTTPClient,
+    ev: dict,
+    work_dir: str,
+    current_step: str,
+    kubectl_cmd: str,
+    dry_run: bool,
+    verbose: bool
+) -> int:
+    """
+    Ensure OpenShift user workload monitoring is configured using native Python.
+
+    Args:
+        api: pykube.HTTPClient
+        ev: Environment variables dictionary
+        work_dir: Working directory for file creation
+        current_step: Current step name for file naming
+        kubectl_cmd: kubectl or oc command to use
+        dry_run: If True, only print what would be executed
+        verbose: If True, print detailed output
+
+    Returns:
+        int: 0 for success, non-zero for failure
+    """
+    announce("🔍 Checking for OpenShift user workload monitoring enablement...")
+
+    if is_openshift(api) :
+        if ev["deploy_methods"] != "modelservice" :
+            announce("⏭️ Standup method is not \"modelservice\", skipping user workload monitoring enablement")
+    else :
+        announce("⏭️ Not an OpenShift Cluster, skipping user workload monitoring enablement")
+        return 0
+
+    try:
+        # Create ConfigMap structure using native Python
+        configmap = create_monitoring_configmap()
+
+        # Determine output file path using pathlib
+        work_path = Path(work_dir)
+        yaml_dir = work_path / "setup" / "yamls"
+        yaml_file = yaml_dir / f"{current_step}_cluster-monitoring-config_configmap.yaml"
+
+        kubectl_apply(api=api, manifest_data=configmap, dry_run=ev["control_dry_run"])
+
+        announce("✅ OpenShift user workload monitoring enabled")
+        return 0
+
+    except Exception as e:
+        announce(f"❌ Error setting up user workload monitoring: {e}")
+        return 1
+
 def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
     """
     Generate additional environment variables YAML.
@@ -1684,15 +1810,18 @@ def add_additional_env_to_yaml(ev: dict, env_vars_key: str) -> str:
     pod_function = env_vars_key.replace("vllm_",'').replace("modelservice_",'').replace("_envvars_to_yaml",'')
 
     # Determine indentation based on environment type
-    if ev["control_environment_type_standalone_active"] :
+    if ev["current_step_nr"] == "04" :
+        name_indent = " " * 12
+        value_indent = " " * 14
+    elif ev["control_environment_type_standalone_active"] :
         name_indent = " " * 8
         value_indent = " " * 10
     elif ev["control_environment_type_modelservice_active"] :
         name_indent = " " * 6
         value_indent = " " * 8
     else:
-        name_indent = " " * 8
-        value_indent = " " * 10
+        name_indent = " " * 10
+        value_indent = " " * 12
 
     env_lines = []
     env_vars = []
@@ -1962,6 +2091,7 @@ def get_model_name_from_pod(api: pykube.HTTPClient,
         pod_manifest = client.V1Pod(
             metadata=client.V1ObjectMeta(name=pod_name, namespace=ev['vllm_common_namespace'], labels={"llm-d.ai/id": f"{pod_name}"}),
             spec=client.V1PodSpec(
+                service_account_name=ev["vllm_common_service_account"],
                 restart_policy="Never",
                 image_pull_secrets=[pull_secret_ref],
                 containers=[
@@ -2048,7 +2178,6 @@ def add_scc_to_service_account(
             scc.obj["users"].append(sa_user_name)
             scc.update()
             announce(f'✅ Successfully updated SCC "{scc_name}"')
-
 
 def wait_for_pods_created_running_ready(api_client, ev: dict, component_nr: int, component: str) -> int:
     """

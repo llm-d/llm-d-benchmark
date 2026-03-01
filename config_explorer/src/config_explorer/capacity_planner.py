@@ -31,10 +31,32 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
 # Test environment: H100 (79.18 GiB), vLLM with FlashAttention, max_model_len=16000
 ACTIVATION_MEMORY_BASE_DENSE_GIB = 5.5  # Dense models: Qwen3-0.6B (5.56), Llama-8B (4.76), Llama-70B/TP2 (4.84)
 ACTIVATION_MEMORY_BASE_MOE_GIB = 8.0    # MoE models: gpt-oss-20b (7.38)
+ACTIVATION_MEMORY_BASE_MULTIMODAL_GIB = 2.5  # Multimodal models: Mistral-Small-3.2-24B (2.12)
 ACTIVATION_REFERENCE_SEQ_LEN = 16000    # Reference sequence length for empirical measurements
 VLLM_NON_TORCH_MEMORY_TP1_GIB = 0.15    # TP=1: empirical range 0.13-0.14 GiB
 VLLM_NON_TORCH_MEMORY_TPN_GIB = 0.6     # TP≥2: empirical 0.55 GiB (TP=2)
 # Note: CUDA graph memory is included in activation memory profiling, not a separate constant
+
+# Tier 1: Validated activation profiles from empirical vLLM measurements on H100.
+# Key = architecture string from model_config.architectures[0]
+# Value = activation memory in GiB (torch peak memory increase from vLLM profiling)
+# Source: config_explorer/empirical-vllm-memory-results.md
+VALIDATED_ACTIVATION_PROFILES = {
+    "LlamaForCausalLM": 4.8,                   # Empirical: Llama-8B (4.76), Llama-70B/TP2 (4.84)
+    "Qwen2ForCausalLM": 5.6,                   # Empirical: same family as Qwen3
+    "Qwen3ForCausalLM": 5.6,                   # Empirical: Qwen3-0.6B (5.56), Qwen3-32B (5.64)
+    "PixtralForConditionalGeneration": 2.5,     # Empirical: Mistral-Small-3.2-24B (2.12)
+    "Mistral3ForConditionalGeneration": 2.5,    # Same architecture family as Pixtral
+}
+
+# Tier 2: Multimodal architectures typically have lower activation memory
+# because the vision encoder does not participate in CUDA graph capture
+MULTIMODAL_ARCHITECTURES = [
+    "PixtralForConditionalGeneration",
+    "Mistral3ForConditionalGeneration",
+    "LlavaForConditionalGeneration",
+    "LlavaNextForConditionalGeneration",
+]
 
 # Computational Constants
 BYTES_PER_GIB = 1024 ** 3
@@ -314,6 +336,10 @@ def estimate_vllm_activation_memory(config: AutoConfig,
     """
     Estimate peak activation memory for vLLM inference in GiB.
 
+    Uses a tiered estimation strategy:
+    1. Validated profiles: exact empirical measurements for known architectures
+    2. Model type fallback: constants for MoE, multimodal, or dense models
+
     CRITICAL: Activation memory is CONSTANT per model type, NOT dependent on
     max_model_len or batch_size. This was empirically validated:
     - Qwen3-0.6B at max_model_len=16000: 5.56 GiB
@@ -332,6 +358,7 @@ def estimate_vllm_activation_memory(config: AutoConfig,
     Empirical validation:
     - Dense models: 4.76-5.56 GiB (Qwen3-0.6B, Llama-8B, Llama-70B)
     - MoE models: 7.38 GiB (gpt-oss-20b with 32 experts)
+    - Multimodal models: 2.12 GiB (Mistral-Small-3.2-24B)
 
     Source: config_explorer/empirical-vllm-memory-results.md
 
@@ -349,15 +376,19 @@ def estimate_vllm_activation_memory(config: AutoConfig,
     if tp <= 0:
         raise ValueError(f"Tensor parallelism must be positive, got tp={tp}")
 
-    # Handle nested text_config if present (some models nest LLM config inside text_config)
-    text_config = get_text_config(config)
+    # Tier 1: Check validated profiles by architecture
+    if hasattr(config, 'architectures') and config.architectures:
+        arch = config.architectures[0]
+        if arch in VALIDATED_ACTIVATION_PROFILES:
+            return VALIDATED_ACTIVATION_PROFILES[arch]
 
-    # Select base constant based on model type
-    # These are FIXED values, not scaled by seq_len or batch_size
+    # Tier 2: Detect model type and use appropriate constant
+    text_config = get_text_config(config)
     if is_moe(text_config):
         return ACTIVATION_MEMORY_BASE_MOE_GIB
-    else:
-        return ACTIVATION_MEMORY_BASE_DENSE_GIB
+    if is_multimodal(config):
+        return ACTIVATION_MEMORY_BASE_MULTIMODAL_GIB
+    return ACTIVATION_MEMORY_BASE_DENSE_GIB
 
 def precision_to_byte(precision: str) -> float:
     """
@@ -823,6 +854,17 @@ def is_moe(model_config: AutoConfig) -> bool:
     for indicator in indicators:
         if hasattr(model_config, indicator):
             return True
+    return False
+
+def is_multimodal(model_config: AutoConfig) -> bool:
+    """
+    Returns true if model uses a multimodal (vision-language) architecture.
+
+    Multimodal models typically have lower activation memory because the
+    vision encoder does not participate in CUDA graph capture.
+    """
+    if hasattr(model_config, 'architectures') and model_config.architectures:
+        return any(arch in MULTIMODAL_ARCHITECTURES for arch in model_config.architectures)
     return False
 
 def get_num_experts(model_config: AutoConfig) -> int | None:

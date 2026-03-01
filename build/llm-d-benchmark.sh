@@ -96,6 +96,72 @@ fi
 
 env | grep ^LLMDBENCH | grep -v BASE64 | sort
 
+# Scrape vLLM /metrics from all serving pods in the namespace.
+# Usage: scrape_vllm_metrics <phase>  (phase = "pre" or "post")
+function scrape_vllm_metrics {
+  local phase=$1
+  local namespace=${LLMDBENCH_VLLM_COMMON_NAMESPACE:-llmdbench}
+  local metrics_port=${LLMDBENCH_VLLM_COMMON_METRICS_PORT:-8200}
+  local inference_port=${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT:-8000}
+  local metrics_path=${LLMDBENCH_VLLM_MONITORING_METRICS_PATH:-/metrics}
+  local metrics_dir="${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/vllm_metrics"
+  local timestamp
+  timestamp=$(date --iso-8601=seconds 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%S%z")
+
+  mkdir -p "${metrics_dir}"
+  echo "Scraping vLLM ${phase} metrics (namespace=${namespace}, port=${metrics_port}, fallback_port=${inference_port})..."
+
+  # Try modelservice labels first, then standalone
+  local pod_info
+  pod_info=$(kubectl --namespace "$namespace" get pods \
+    -l llm-d.ai/inferenceServing=true \
+    --field-selector=status.phase=Running \
+    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.podIP}{" "}{.metadata.labels.llm-d\.ai/role}{"\n"}{end}' 2>/dev/null || true)
+
+  if [[ -z "$pod_info" ]]; then
+    pod_info=$(kubectl --namespace "$namespace" get pods \
+      -l stood-up-via=standalone \
+      --field-selector=status.phase=Running \
+      -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.podIP}{" "}{"standalone"}{"\n"}{end}' 2>/dev/null || true)
+  fi
+
+  if [[ -z "$pod_info" ]]; then
+    echo "WARNING: No vLLM pods found for metrics scraping in namespace ${namespace}"
+    return 0
+  fi
+
+  echo "$pod_info" | while read -r pod_name pod_ip role; do
+    [[ -z "$pod_ip" || -z "$pod_name" ]] && continue
+    local outfile="${metrics_dir}/${phase}_${pod_name}.log"
+    echo "  Scraping ${pod_name} (${pod_ip}:${metrics_port}, role=${role})..."
+    curl -s --connect-timeout 5 --max-time 30 \
+      "http://${pod_ip}:${metrics_port}${metrics_path}" > "$outfile" 2>/dev/null
+    # If metrics port fails or returns empty, fall back to inference port (standalone vLLM serves /metrics on --port)
+    if [[ ! -s "$outfile" && "$metrics_port" != "$inference_port" ]]; then
+      echo "  Retrying ${pod_name} on inference port (${pod_ip}:${inference_port})..."
+      curl -s --connect-timeout 5 --max-time 30 \
+        "http://${pod_ip}:${inference_port}${metrics_path}" > "$outfile" 2>/dev/null || \
+        echo "  WARNING: Failed to scrape metrics from ${pod_name}"
+    fi
+  done
+
+  cat > "${metrics_dir}/${phase}_metadata.json" <<METAEOF
+{
+  "phase": "${phase}",
+  "timestamp": "${timestamp}",
+  "namespace": "${namespace}",
+  "metrics_port": ${metrics_port},
+  "metrics_path": "${metrics_path}"
+}
+METAEOF
+
+  echo "vLLM ${phase} metrics scraping complete. Files saved to ${metrics_dir}/"
+}
+
+# Scrape vLLM /metrics before benchmark run
+if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
+  scrape_vllm_metrics "pre" || echo "WARNING: Pre-benchmark metrics scrape failed"
+fi
 
 echo "Running harness: /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
 counter=1
@@ -112,6 +178,11 @@ while [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_LOADGEN_EC -ne 0 && "${counter}" -le 
   fi
 done
 echo "Harness completed: /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
+
+# Scrape vLLM /metrics after benchmark run
+if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
+  scrape_vllm_metrics "post" || echo "WARNING: Post-benchmark metrics scrape failed"
+fi
 
 if [[ -f ~/fixbashrc ]]; then
   mv -f ~/fixbashrc ~/.bashrc
