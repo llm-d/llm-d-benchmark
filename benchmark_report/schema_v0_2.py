@@ -12,10 +12,13 @@ from .base import (
     BenchmarkReport,
     Units,
     UNITS_QUANTITY,
+    UNITS_PORTION,
     UNITS_TIME,
+    UNITS_MEMORY,
     UNITS_GEN_LATENCY,
     UNITS_GEN_THROUGHPUT,
     UNITS_REQUEST_THROUGHPUT,
+    UNITS_POWER,
 )
 from .schema_v0_2_components import COMPONENTS
 
@@ -90,7 +93,7 @@ class LoadMetadata(BaseModel):
     """Version of workload description schema."""
     cfg_id: str | None = None
     """Configuration ID, a hash of the workload configuration."""
-    description: str = None
+    description: str | None = None
     """Descriptin of workload."""
 
 
@@ -627,6 +630,173 @@ class RequestPerformance(BaseModel):
 ###############################################################################
 
 
+class ResourceMetrics(BaseModel):
+    """Resource utilization metrics for a component."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    kv_cache_usage: Statistics | None = None
+    """KV cache usage percentage."""
+    gpu_cache_usage: Statistics | None = None
+    """GPU cache usage percentage."""
+    cpu_cache_usage: Statistics | None = None
+    """CPU cache usage percentage."""
+    gpu_memory_usage: Statistics | None = None
+    """GPU memory usage."""
+    cpu_memory_usage: Statistics | None = None
+    """CPU/RAM memory usage."""
+    storage_usage: Statistics | None = None
+    """Storage usage."""
+    gpu_utilization: Statistics | None = None
+    """GPU compute utilization percentage."""
+    cpu_utilization: Statistics | None = None
+    """CPU utilization percentage."""
+    power_consumption: Statistics | None = None
+    """Power consumption."""
+
+    @model_validator(mode="after")
+    def check_units(self):
+        if self.kv_cache_usage and self.kv_cache_usage.units not in UNITS_PORTION:
+            raise ValueError(
+                f'Invalid units "{self.kv_cache_usage.units}", must be one of:'
+                f" {' '.join(UNITS_PORTION)}"
+            )
+        if self.gpu_cache_usage and self.gpu_cache_usage.units not in UNITS_PORTION:
+            raise ValueError(
+                f'Invalid units "{self.gpu_cache_usage.units}", must be one of:'
+                f" {' '.join(UNITS_PORTION)}"
+            )
+        if self.cpu_cache_usage and self.cpu_cache_usage.units not in UNITS_PORTION:
+            raise ValueError(
+                f'Invalid units "{self.cpu_cache_usage.units}", must be one of:'
+                f" {' '.join(UNITS_PORTION)}"
+            )
+        if self.gpu_memory_usage and self.gpu_memory_usage.units not in UNITS_MEMORY:
+            raise ValueError(
+                f'Invalid units "{self.gpu_memory_usage.units}", must be one of:'
+                f" {' '.join(UNITS_MEMORY)}"
+            )
+        if self.cpu_memory_usage and self.cpu_memory_usage.units not in UNITS_MEMORY:
+            raise ValueError(
+                f'Invalid units "{self.cpu_memory_usage.units}", must be one of:'
+                f" {' '.join(UNITS_MEMORY)}"
+            )
+        if self.storage_usage and self.storage_usage.units not in UNITS_MEMORY:
+            raise ValueError(
+                f'Invalid units "{self.storage_usage.units}", must be one of:'
+                f" {' '.join(UNITS_MEMORY)}"
+            )
+        if self.gpu_utilization and self.gpu_utilization.units not in UNITS_PORTION:
+            raise ValueError(
+                f'Invalid units "{self.gpu_utilization.units}", must be one of:'
+                f" {' '.join(UNITS_PORTION)}"
+            )
+        if self.cpu_utilization and self.cpu_utilization.units not in UNITS_PORTION:
+            raise ValueError(
+                f'Invalid units "{self.cpu_utilization.units}", must be one of:'
+                f" {' '.join(UNITS_PORTION)}"
+            )
+        if self.power_consumption and self.power_consumption.units not in UNITS_POWER:
+            raise ValueError(
+                f'Invalid units "{self.power_consumption.units}", must be one of:'
+                f" {' '.join(UNITS_POWER)}"
+            )
+        return self
+
+
+class TimeSeriesResourceMetrics(BaseModel):
+    """Time series resource utilization metrics."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    kv_cache_usage: TimeSeriesData | None = None
+    """KV cache usage percentage over time."""
+    gpu_cache_usage: TimeSeriesData | None = None
+    """GPU cache usage percentage over time."""
+    cpu_cache_usage: TimeSeriesData | None = None
+    """CPU cache usage percentage over time."""
+    gpu_memory_usage: TimeSeriesData | None = None
+    """GPU memory usage over time."""
+    cpu_memory_usage: TimeSeriesData | None = None
+    """CPU/RAM memory usage over time."""
+    storage_usage: TimeSeriesData | None = None
+    """Storage usage over time."""
+    gpu_utilization: TimeSeriesData | None = None
+    """GPU compute utilization percentage over time."""
+    cpu_utilization: TimeSeriesData | None = None
+    """CPU utilization percentage over time."""
+    power_consumption: TimeSeriesData | None = None
+    """Power consumption over time."""
+
+    @model_validator(mode="after")
+    def check_units(self):
+        if self.kv_cache_usage and self.kv_cache_usage.units not in UNITS_PORTION:
+            raise ValueError(
+                f'Invalid units "{self.kv_cache_usage.units}", must be one of:'
+                f" {' '.join(UNITS_PORTION)}"
+            )
+        if self.gpu_cache_usage and self.gpu_cache_usage.units not in UNITS_PORTION:
+            raise ValueError(
+                f'Invalid units "{self.gpu_cache_usage.units}", must be one of:'
+                f" {' '.join(UNITS_PORTION)}"
+            )
+        if self.cpu_cache_usage and self.cpu_cache_usage.units not in UNITS_PORTION:
+            raise ValueError(
+                f'Invalid units "{self.cpu_cache_usage.units}", must be one of:'
+                f" {' '.join(UNITS_PORTION)}"
+            )
+        if self.gpu_memory_usage and self.gpu_memory_usage.units not in UNITS_MEMORY:
+            raise ValueError(
+                f'Invalid units "{self.gpu_memory_usage.units}", must be one of:'
+                f" {' '.join(UNITS_MEMORY)}"
+            )
+        if self.cpu_memory_usage and self.cpu_memory_usage.units not in UNITS_MEMORY:
+            raise ValueError(
+                f'Invalid units "{self.cpu_memory_usage.units}", must be one of:'
+                f" {' '.join(UNITS_MEMORY)}"
+            )
+        if self.storage_usage and self.storage_usage.units not in UNITS_MEMORY:
+            raise ValueError(
+                f'Invalid units "{self.storage_usage.units}", must be one of:'
+                f" {' '.join(UNITS_MEMORY)}"
+            )
+        if self.gpu_utilization and self.gpu_utilization.units not in UNITS_PORTION:
+            raise ValueError(
+                f'Invalid units "{self.gpu_utilization.units}", must be one of:'
+                f" {' '.join(UNITS_PORTION)}"
+            )
+        if self.cpu_utilization and self.cpu_utilization.units not in UNITS_PORTION:
+            raise ValueError(
+                f'Invalid units "{self.cpu_utilization.units}", must be one of:'
+                f" {' '.join(UNITS_PORTION)}"
+            )
+        if self.power_consumption and self.power_consumption.units not in UNITS_POWER:
+            raise ValueError(
+                f'Invalid units "{self.power_consumption.units}", must be one of:'
+                f" {' '.join(UNITS_POWER)}"
+            )
+        return self
+
+
+class ComponentObservability(BaseModel):
+    """Observability metrics for a specific component."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    component_label: str
+    """References the component's label from scenario.stack[].metadata.label"""
+    replica_id: str | None = None
+    """Specific replica/pod identifier (optional, for per-replica metrics)."""
+    aggregate: ResourceMetrics | None = None
+    """Aggregate resource metrics."""
+    time_series: TimeSeriesResourceMetrics | None = None
+    """Time series resource metrics."""
+    raw_data_path: str | None = None
+    """Path to raw metrics data files."""
+    graph_path: str | None = None
+    """Path to visualization/graph of metrics."""
+
+
 # ------------------------------------------------------------------------------
 # Root for observability
 # ------------------------------------------------------------------------------
@@ -636,7 +806,20 @@ class Observability(BaseModel):
     """Observability metrics."""
 
     model_config = MODEL_CONFIG.copy()
-    model_config["extra"] = "allow"  # TODO keep as permissive until schema defined
+
+    components: list[ComponentObservability] | None = None
+    """Per-component observability metrics."""
+    drop_rate: Statistics | None = None
+    """Request drop rate."""
+
+    @model_validator(mode="after")
+    def check_units(self):
+        if self.drop_rate and self.drop_rate.units not in UNITS_PORTION:
+            raise ValueError(
+                f'Invalid units "{self.drop_rate.units}", must be one of:'
+                f" {' '.join(UNITS_PORTION)}"
+            )
+        return self
 
 
 ###############################################################################
