@@ -12,8 +12,9 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  contents: write      # Copilot SWE agent needs write to create branches
   issues: write
-  pull-requests: read
+  pull-requests: write # Copilot SWE agent needs write to create PRs
 
 jobs:
   assign-copilot:
