@@ -12,9 +12,8 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write      # Copilot SWE agent needs write to create branches
   issues: write
-  pull-requests: write # Copilot SWE agent needs write to create PRs
+  pull-requests: read
 
 jobs:
   assign-copilot:
@@ -30,7 +29,7 @@ jobs:
           script: |
             // Skip if Copilot is already assigned
             const assignees = context.payload.issue.assignees.map(a => a.login);
-            if (assignees.includes('copilot-swe-agent[bot]')) {
+            if (assignees.includes('copilot-swe-agent[bot]') || assignees.includes('Copilot')) {
               core.info('Copilot already assigned, skipping');
               core.setOutput('skip', 'true');
               return;
@@ -57,13 +56,12 @@ jobs:
 
             core.setOutput('skip', 'false');
 
-      - name: Add instructions and assign Copilot
+      - name: Add instructions comment
         if: steps.check.outputs.skip != 'true'
         uses: actions/github-script@v7
         with:
           script: |
             const issue = context.payload.issue;
-            const repo = `${context.repo.owner}/${context.repo.repo}`;
             const marker = '## 🤖 Auto-Fix Instructions';
 
             // Check existing comments to avoid posting duplicate instructions
@@ -79,7 +77,6 @@ jobs:
             );
 
             if (!hasInstructions) {
-              // Post update instructions for Copilot
               const instructions = [
                 `${marker}\n`,
                 'Copilot, please update the version pin for the dependency described in this issue.\n',
@@ -108,7 +105,15 @@ jobs:
               core.info(`Instructions already present on #${issue.number}, not posting again`);
             }
 
-            // Assign Copilot SWE agent (same pattern as kubestellar/console auto-qa)
+      - name: Assign Copilot SWE agent
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.COPILOT_PAT }}
+          script: |
+            const issue = context.payload.issue;
+            const repo = `${context.repo.owner}/${context.repo.repo}`;
+
             try {
               await github.request('POST /repos/{owner}/{repo}/issues/{issue_number}/assignees', {
                 owner: context.repo.owner,
@@ -123,7 +128,6 @@ jobs:
               core.info(`Assigned Copilot to #${issue.number}`);
             } catch (e) {
               core.warning(`Could not assign Copilot to #${issue.number}: ${e.message}`);
-              // Add label so maintainers know manual action is needed
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
