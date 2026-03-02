@@ -21,9 +21,9 @@ RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
 
 RUN apt-get update; \
-    apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin
+    apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin || true
 # Install kubectl for in-pod cluster operations (e.g. vLLM metrics scraping)
-RUN curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+RUN curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/$(dpkg --print-architecture)/kubectl" \
     -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
 
 RUN echo "# /etc/rsyncd: configuration file for rsync daemon mode" > /etc/rsyncd.conf; echo -e "\

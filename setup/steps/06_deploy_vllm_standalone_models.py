@@ -44,6 +44,14 @@ def main():
     ev = {'current_step_name': os.path.splitext(os.path.basename(__file__))[0] }
     environment_variable_to_dict(ev)
 
+    # Get image reference
+    image = get_image(
+        ev,
+        "vllm_standalone_image",
+        False,
+        True
+    )
+
     # Check if standalone environment is active
     if is_standalone_deployment(ev):
 
@@ -187,14 +195,6 @@ def main():
 
 def generate_deployment_yaml(ev, model, model_label):
     """Generate Kubernetes Deployment YAML for vLLM standalone model."""
-
-    # Get image reference
-    image = get_image(
-        ev,
-        "vllm_standalone_image",
-        False,
-        True
-    )
 
     # Generate command line options
     args = add_command_line_options(ev, "vllm_standalone_args")

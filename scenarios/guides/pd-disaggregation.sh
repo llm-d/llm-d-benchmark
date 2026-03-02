@@ -122,10 +122,6 @@ cat << EOF > ${LLMDBENCH_VLLM_COMMON_EXTRA_VOLUME_MOUNTS}
   mountPath: /dev/shm
 - name: preprocesses
   mountPath: /setup/preprocess
-- mountPath: /model-cache
-  name: model-storage
-  readOnly: true
-  recursiveReadOnly: Disabled
 EOF
 
 export LLMDBENCH_VLLM_COMMON_EXTRA_VOLUMES=$(mktemp)
