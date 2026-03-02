@@ -3,16 +3,19 @@
 > This file is the source of truth for the [upstream dependency monitor](../.github/workflows/upstream-monitor.md) workflow.
 > Add your project's key upstream dependencies below. The monitor runs daily and creates GitHub issues when breaking changes are detected.
 
+> **Pin type conventions:** Entries with `auto`, `latest`, `stable`, or `unpinned` track floating (unversioned) references
+> that resolve at install/build time. The monitor workflow treats these differently from exact pins.
+
 ## Helm Charts
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |-----------|-------------|----------|---------------|---------------|
-| **llm-d-modelservice** | `auto` | chart version | `setup/env.sh` (`LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION`) | [llm-d/llm-d-incubation](https://github.com/llm-d/llm-d-incubation) |
-| **llm-d-infra** | `v1.3.8` | chart version | `setup/env.sh` (`LLMDBENCH_VLLM_INFRA_CHART_VERSION`) | [llm-d/llm-d-incubation](https://github.com/llm-d/llm-d-incubation) |
+| **llm-d-modelservice** | `auto` | chart version | `setup/env.sh` (`LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) |
+| **llm-d-infra** | `v1.3.8` | chart version | `setup/env.sh` (`LLMDBENCH_VLLM_INFRA_CHART_VERSION`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) |
 | **GAIE InferencePool** | `v1.3.0` | chart version | `setup/env.sh` (`LLMDBENCH_VLLM_GAIE_CHART_VERSION`) | [kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) |
 | **kgateway** | `v2.1.1` | chart version | `setup/env.sh` (`LLMDBENCH_GATEWAY_PROVIDER_KGATEWAY_CHART_VERSION`) | [kgateway-dev/kgateway](https://github.com/kgateway-dev/kgateway) |
 | **Istio** | `1.28.1` | chart version | `setup/env.sh` (`LLMDBENCH_GATEWAY_PROVIDER_ISTIO_CHART_VERSION`) | [istio/istio](https://github.com/istio/istio) |
-| **Workload Variant Autoscaler** | `0.5.1-rc.2` | chart version | `setup/env.sh` (`LLMDBENCH_WVA_CHART_VERSION`) | [llm-d/workload-variant-autoscaler](https://github.com/llm-d/workload-variant-autoscaler) |
+| **Workload Variant Autoscaler** | `0.5.1-rc.2` | chart version | `setup/env.sh` (`LLMDBENCH_WVA_CHART_VERSION`) | [llm-d/llm-d-workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) |
 | **Gateway API CRDs** | `v1.4.0` | tag | `setup/env.sh` (`LLMDBENCH_GATEWAY_API_CRD_REVISION`) | [kubernetes-sigs/gateway-api](https://github.com/kubernetes-sigs/gateway-api) |
 
 ## Container Images
@@ -24,7 +27,7 @@
 | **llm-d-inference-scheduler** | `auto` | image tag | `setup/env.sh` (`LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG`) | [llm-d/llm-d](https://github.com/llm-d/llm-d) |
 | **llm-d-routing-sidecar** | `auto` | image tag | `setup/env.sh` (`LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG`) | [llm-d/llm-d](https://github.com/llm-d/llm-d) |
 | **vllm-openai** | `auto` | image tag | `setup/env.sh` (`LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) |
-| **llm-d-workload-variant-autoscaler** | `v0.5.1-rc.2` | image tag | `setup/env.sh` (`LLMDBENCH_WVA_IMAGE_TAG`) | [llm-d/workload-variant-autoscaler](https://github.com/llm-d/workload-variant-autoscaler) |
+| **llm-d-workload-variant-autoscaler** | `v0.5.1-rc.2` | image tag | `setup/env.sh` (`LLMDBENCH_WVA_IMAGE_TAG`) | [llm-d/llm-d-workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) |
 
 ## Harness Tools (Dockerfile pins)
 
@@ -48,7 +51,7 @@
 | **scipy** | `>=1.16.1` | minimum version | `config_explorer/pyproject.toml` | [scipy/scipy](https://github.com/scipy/scipy) |
 | **matplotlib** | `>=3.10.5` | minimum version | `config_explorer/pyproject.toml` | [matplotlib/matplotlib](https://github.com/matplotlib/matplotlib) |
 | **PyYAML** | `>=6.0.2` | minimum version | `config_explorer/pyproject.toml` | [yaml/pyyaml](https://github.com/yaml/pyyaml) |
-| **llm-optimizer** | `git+main` | git branch | `config_explorer/pyproject.toml` | [bentoml/llm-optimizer](https://github.com/bentoml/llm-optimizer) |
+| **llm-optimizer** | `main` | git branch | `config_explorer/pyproject.toml` | [bentoml/llm-optimizer](https://github.com/bentoml/llm-optimizer) |
 
 ## Python Dependencies (analysis)
 
@@ -76,7 +79,7 @@
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |-----------|-------------|----------|---------------|---------------|
 | **kubernetes** | unpinned | pip install | `setup/install_deps.sh` | [kubernetes-client/python](https://github.com/kubernetes-client/python) |
-| **pykube-ng** | unpinned | pip install | `setup/install_deps.sh` | [hjacobs/pykube](https://github.com/hjacobs/pykube) |
+| **pykube-ng** | unpinned | pip install | `setup/install_deps.sh` | [hjacobs/pykube-ng](https://codeberg.org/hjacobs/pykube-ng) |
 | **kubernetes-asyncio** | unpinned | pip install | `setup/install_deps.sh` | [tomplus/kubernetes_asyncio](https://github.com/tomplus/kubernetes_asyncio) |
 | **GitPython** | unpinned | pip install | `setup/install_deps.sh` | [gitpython-developers/GitPython](https://github.com/gitpython-developers/GitPython) |
 | **requests** | unpinned | pip install | `setup/install_deps.sh` | [psf/requests](https://github.com/psf/requests) |
