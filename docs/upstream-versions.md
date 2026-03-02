@@ -9,4 +9,4 @@
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |-----------|-------------|----------|---------------|---------------|
-<!-- | **example-lib** | `v1.2.3` | tag | `go.mod` line 10 | example-org/example-lib | -->
+| **helm** | `v3.16.4` | tag | `scripts/setup_clients.sh` | helm/helm |
