@@ -191,7 +191,7 @@ def main():
 
             # Generate helmfile YAML content
             non_admin_defaults = ""
-            if not ev['user_is_admin'] == "0": # Avoid default namespace creation for non cluster-level admin users
+            if not ev['user_is_admin']:  # Avoid default namespace creation for non cluster-level admin users
                 non_admin_defaults = "helmDefaults:\n  createNamespace: false\n---\n\n"
 
             helmfile_content = f"""{non_admin_defaults}repositories:

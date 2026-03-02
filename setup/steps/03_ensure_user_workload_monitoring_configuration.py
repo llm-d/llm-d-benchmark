@@ -8,19 +8,24 @@ current_file = Path(__file__).resolve()
 project_root = current_file.parents[1]
 sys.path.insert(0, str(project_root))
 
-from functions import (announce,
-                        capacity_planner_sanity_check,
-                        check_accelerator,
-                        check_network,
-                        discover_node_resources,
-                        llmdbench_execute_cmd,
-                        environment_variable_to_dict,
-                        kube_connect,
-                        kubectl_apply,
-                        ensure_user_workload_monitoring,
-                        is_openshift)
+from functions import (
+    announce,
+    capacity_planner_sanity_check,
+    check_accelerator,
+    check_network,
+    discover_node_resources,
+    llmdbench_execute_cmd,
+    environment_variable_to_dict,
+    kube_connect,
+    kubectl_apply,
+    ensure_user_workload_monitoring,
+    is_openshift,
+)
 
-def write_configmap_yaml(configmap: dict, output_path: Path, dry_run: bool, verbose: bool) -> bool:
+
+def write_configmap_yaml(
+    configmap: dict, output_path: Path, dry_run: bool, verbose: bool
+) -> bool:
     """
     Write ConfigMap to YAML file using Python yaml library.
 
@@ -48,7 +53,7 @@ def write_configmap_yaml(configmap: dict, output_path: Path, dry_run: bool, verb
             announce(f"---> writing ConfigMap YAML to {output_path}")
 
         # Write YAML using Python yaml library instead of heredoc
-        with open(output_path, 'w') as f:
+        with open(output_path, "w") as f:
             yaml.dump(configmap, f, default_flow_style=False)
 
         if verbose:
@@ -67,19 +72,21 @@ def write_configmap_yaml(configmap: dict, output_path: Path, dry_run: bool, verb
 def main():
     """Main function following the pattern from other Python steps"""
 
-    ev = {'current_step_name': os.path.splitext(os.path.basename(__file__))[0] }
+    ev = {"current_step_name": os.path.splitext(os.path.basename(__file__))[0]}
     environment_variable_to_dict(ev)
 
-    env_cmd=f'source "{ev["control_dir"]}/env.sh"'
-    result = llmdbench_execute_cmd(actual_cmd=env_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"])
+    env_cmd = f'source "{ev["control_dir"]}/env.sh"'
+    result = llmdbench_execute_cmd(
+        actual_cmd=env_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"]
+    )
     if result != 0:
-        announce(f"❌ Failed while running \"{env_cmd}\" (exit code: {result})")
+        announce(f'❌ Failed while running "{env_cmd}" (exit code: {result})')
         exit(result)
 
     environment_variable_to_dict(ev)
 
-    api, client  = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
-    if ev["control_dry_run"] :
+    api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
+    if ev["control_dry_run"]:
         announce("DRY RUN enabled. No actual changes will be made.")
 
     if not discover_node_resources(ev):
@@ -98,10 +105,9 @@ def main():
 
     if not ev["control_environment_type_modelservice_active"]:
         deploy_methods = ev.get("deploy_methods", "unknown")
-        announce(f"⏭️ Environment types are \"{deploy_methods}\". Skipping this step.")
+        announce(f'⏭️ Environment types are "{deploy_methods}". Skipping this step.')
         return 0
 
-    # Execute the main logic
     return ensure_user_workload_monitoring(
         api=api,
         ev=ev,
@@ -109,8 +115,9 @@ def main():
         current_step=ev["current_step"],
         kubectl_cmd=ev["control_kcmd"],
         dry_run=ev["control_dry_run"],
-        verbose=ev["control_verbose"]
+        verbose=ev["control_verbose"],
     )
+
 
 if __name__ == "__main__":
     sys.exit(main())
