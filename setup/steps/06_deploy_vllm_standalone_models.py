@@ -94,7 +94,7 @@ def main():
             model_label = model_attribute(model, "label", ev)
 
             # Generate Deployment YAML
-            deployment_yaml = generate_deployment_yaml(ev, model, model_label)
+            deployment_yaml = generate_deployment_yaml(ev, model, model_label, image)
             deployment_file = yamls_dir / f"{ev['current_step']}_a_deployment_{modelfn}.yaml"
             with open(deployment_file, 'w') as f:
                 f.write(deployment_yaml)
@@ -193,7 +193,7 @@ def main():
 
     return 0
 
-def generate_deployment_yaml(ev, model, model_label):
+def generate_deployment_yaml(ev, model, model_label, image):
     """Generate Kubernetes Deployment YAML for vLLM standalone model."""
 
     # Generate command line options
