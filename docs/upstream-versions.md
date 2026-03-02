@@ -9,4 +9,5 @@
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |-----------|-------------|----------|---------------|---------------|
+| **yq** | `v4.45.5` | release tag | `setup/install_deps.sh` (`install_yq_linux`) | mikefarah/yq |
 <!-- | **example-lib** | `v1.2.3` | tag | `go.mod` line 10 | example-org/example-lib | -->

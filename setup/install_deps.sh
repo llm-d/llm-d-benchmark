@@ -107,7 +107,7 @@ fi
 
 function install_yq_linux {
     set -euo pipefail
-    local version=v4.45.4
+    local version=v4.45.5
     local binary=yq_linux_amd64
     curl -L https://github.com/mikefarah/yq/releases/download/${version}/${binary} -o ${binary}
     chmod +x ${binary}
