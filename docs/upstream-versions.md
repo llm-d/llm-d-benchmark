@@ -3,14 +3,15 @@
 > This file is the source of truth for the [upstream dependency monitor](../.github/workflows/upstream-monitor.md) workflow.
 > Add your project's key upstream dependencies below. The monitor runs daily and creates GitHub issues when breaking changes are detected.
 
-> **Pin type conventions:** Entries with `auto`, `latest`, `stable`, or `unpinned` track floating (unversioned) references
-> that resolve at install/build time. The monitor workflow treats these differently from exact pins.
+> **Pin type conventions:** Entries with `auto`, `latest`, `stable`, or `unpinned` use floating (unversioned) references
+> that resolve to the latest available version at deploy/install time. The `auto` pin resolves to the latest
+> tag at the moment of deployment. The monitor workflow skips these when checking for version drift.
 
 ## Helm Charts
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |-----------|-------------|----------|---------------|---------------|
-| **llm-d-modelservice** | `auto` | chart version | `setup/env.sh` (`LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) |
+| **llm-d-modelservice** | `auto` | floating (chart) | `setup/env.sh` (`LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) |
 | **llm-d-infra** | `v1.3.8` | chart version | `setup/env.sh` (`LLMDBENCH_VLLM_INFRA_CHART_VERSION`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) |
 | **GAIE InferencePool** | `v1.3.0` | chart version | `setup/env.sh` (`LLMDBENCH_VLLM_GAIE_CHART_VERSION`) | [kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) |
 | **kgateway** | `v2.1.1` | chart version | `setup/env.sh` (`LLMDBENCH_GATEWAY_PROVIDER_KGATEWAY_CHART_VERSION`) | [kgateway-dev/kgateway](https://github.com/kgateway-dev/kgateway) |
@@ -22,11 +23,11 @@
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |-----------|-------------|----------|---------------|---------------|
-| **llm-d-cuda** | `auto` | image tag | `setup/env.sh` (`LLMDBENCH_LLMD_IMAGE_TAG`) | [llm-d/llm-d](https://github.com/llm-d/llm-d) |
-| **llm-d-model-service** | `auto` | image tag | `setup/env.sh` (`LLMDBENCH_LLMD_MODELSERVICE_IMAGE_TAG`) | [llm-d/llm-d](https://github.com/llm-d/llm-d) |
-| **llm-d-inference-scheduler** | `auto` | image tag | `setup/env.sh` (`LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG`) | [llm-d/llm-d](https://github.com/llm-d/llm-d) |
-| **llm-d-routing-sidecar** | `auto` | image tag | `setup/env.sh` (`LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG`) | [llm-d/llm-d](https://github.com/llm-d/llm-d) |
-| **vllm-openai** | `auto` | image tag | `setup/env.sh` (`LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) |
+| **llm-d-cuda** | `auto` | floating (image) | `setup/env.sh` (`LLMDBENCH_LLMD_IMAGE_TAG`) | [llm-d/llm-d](https://github.com/llm-d/llm-d) |
+| **llm-d-model-service** | `auto` | floating (image) | `setup/env.sh` (`LLMDBENCH_LLMD_MODELSERVICE_IMAGE_TAG`) | [llm-d/llm-d](https://github.com/llm-d/llm-d) |
+| **llm-d-inference-scheduler** | `auto` | floating (image) | `setup/env.sh` (`LLMDBENCH_LLMD_INFERENCESCHEDULER_IMAGE_TAG`) | [llm-d/llm-d](https://github.com/llm-d/llm-d) |
+| **llm-d-routing-sidecar** | `auto` | floating (image) | `setup/env.sh` (`LLMDBENCH_LLMD_ROUTINGSIDECAR_IMAGE_TAG`) | [llm-d/llm-d](https://github.com/llm-d/llm-d) |
+| **vllm-openai** | `auto` | floating (image) | `setup/env.sh` (`LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) |
 | **llm-d-workload-variant-autoscaler** | `v0.5.1-rc.2` | image tag | `setup/env.sh` (`LLMDBENCH_WVA_IMAGE_TAG`) | [llm-d/llm-d-workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) |
 
 ## Harness Tools (Dockerfile pins)
@@ -71,16 +72,16 @@
 |-----------|-------------|----------|---------------|---------------|
 | **yq** | `v4.45.4` | release tag | `setup/install_deps.sh` (`install_yq_linux`) | [mikefarah/yq](https://github.com/mikefarah/yq) |
 | **helmfile** | `v1.1.3` | release tag | `setup/install_deps.sh` (`install_helmfile_linux`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
-| **helm** | `latest` | install script | `setup/install_deps.sh` (`install_helm_linux`) | [helm/helm](https://github.com/helm/helm) |
-| **kubectl** | `stable` | install script | `build/Dockerfile` | [kubernetes/kubernetes](https://github.com/kubernetes/kubernetes) |
+| **helm** | `latest` | floating | `setup/install_deps.sh` (`install_helm_linux`) | [helm/helm](https://github.com/helm/helm) |
+| **kubectl** | `stable` | floating | `build/Dockerfile` | [kubernetes/kubernetes](https://github.com/kubernetes/kubernetes) |
 
 ## Runtime Python Dependencies
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |-----------|-------------|----------|---------------|---------------|
-| **kubernetes** | unpinned | pip install | `setup/install_deps.sh` | [kubernetes-client/python](https://github.com/kubernetes-client/python) |
-| **pykube-ng** | unpinned | pip install | `setup/install_deps.sh` | [hjacobs/pykube-ng](https://codeberg.org/hjacobs/pykube-ng) |
-| **kubernetes-asyncio** | unpinned | pip install | `setup/install_deps.sh` | [tomplus/kubernetes_asyncio](https://github.com/tomplus/kubernetes_asyncio) |
-| **GitPython** | unpinned | pip install | `setup/install_deps.sh` | [gitpython-developers/GitPython](https://github.com/gitpython-developers/GitPython) |
-| **requests** | unpinned | pip install | `setup/install_deps.sh` | [psf/requests](https://github.com/psf/requests) |
-| **Jinja2** | unpinned | pip install | `setup/install_deps.sh` | [pallets/jinja](https://github.com/pallets/jinja) |
+| **kubernetes** | unpinned | floating | `setup/install_deps.sh` | [kubernetes-client/python](https://github.com/kubernetes-client/python) |
+| **pykube-ng** | unpinned | floating | `setup/install_deps.sh` | [hjacobs/pykube-ng](https://codeberg.org/hjacobs/pykube-ng) |
+| **kubernetes-asyncio** | unpinned | floating | `setup/install_deps.sh` | [tomplus/kubernetes_asyncio](https://github.com/tomplus/kubernetes_asyncio) |
+| **GitPython** | unpinned | floating | `setup/install_deps.sh` | [gitpython-developers/GitPython](https://github.com/gitpython-developers/GitPython) |
+| **requests** | unpinned | floating | `setup/install_deps.sh` | [psf/requests](https://github.com/psf/requests) |
+| **Jinja2** | unpinned | floating | `setup/install_deps.sh` | [pallets/jinja](https://github.com/pallets/jinja) |
