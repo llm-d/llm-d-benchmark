@@ -24,12 +24,13 @@ from functions import (
     kubectl_apply,
     SecurityContextConstraints,
     add_scc_to_service_account,
-    add_context_as_secret
+    add_context_as_secret,
 )
+
 
 def main():
 
-    ev = {'current_step_name': os.path.splitext(os.path.basename(__file__))[0] }
+    ev = {"current_step_name": os.path.splitext(os.path.basename(__file__))[0]}
     environment_variable_to_dict(ev)
 
     env_cmd = f'source "{ev["control_dir"]}/env.sh"'
@@ -84,9 +85,7 @@ data:
             model_artifact_uri = (
                 f'pvc://{ev["vllm_common_pvc_name"]}/models/{download_model}'
             )
-            _, pvc_and_model_path = model_artifact_uri.split(
-                "://"
-            )
+            _, pvc_and_model_path = model_artifact_uri.split("://")
             pvc_name, model_path = pvc_and_model_path.split(
                 "/", 1
             )  # split from first occurence
@@ -99,8 +98,8 @@ data:
                 pvc_name=ev["vllm_common_pvc_name"],
                 pvc_size=ev["vllm_common_pvc_model_cache_size"],
                 pvc_class=ev["vllm_common_pvc_storage_class"],
-                pvc_access_mode=ev['vllm_common_pvc_access_mode'],
-                dry_run=ev["control_dry_run"]
+                pvc_access_mode=ev["vllm_common_pvc_access_mode"],
+                dry_run=ev["control_dry_run"],
             )
 
             validate_and_create_pvc(
@@ -111,16 +110,13 @@ data:
                 pvc_name=ev["vllm_common_extra_pvc_name"],
                 pvc_size=ev["vllm_common_extra_pvc_size"],
                 pvc_class=ev["vllm_common_pvc_storage_class"],
-                pvc_access_mode=ev['vllm_common_pvc_access_mode'],
+                pvc_access_mode=ev["vllm_common_pvc_access_mode"],
                 dry_run=ev["control_dry_run"],
             )
 
             announce(f'🔽 Launching download job for model: "{model_name}"')
             launch_download_job(
-                api=api,
-                ev=ev,
-                download_model=download_model,
-                model_path=model_path
+                api=api, ev=ev, download_model=download_model, model_path=model_path
             )
 
             job_successful = False
@@ -131,28 +127,10 @@ data:
                         namespace=ev["vllm_common_namespace"],
                         timeout=ev["vllm_common_pvc_download_timeout"],
                         dry_run=ev["control_dry_run"],
-                        ev=ev
+                        ev=ev,
                     )
                 )
                 time.sleep(10)
-
-    if is_openshift(api) and ev["user_is_admin"]:
-        # vllm workloads may need to run as a specific non-root UID, the default SA needs anyuid
-        # some setups might also require privileged access for GPU resources
-        add_scc_to_service_account(
-            api,
-            "anyuid",
-            ev["vllm_common_service_account"],
-            ev["vllm_common_namespace"],
-            ev["control_dry_run"],
-        )
-#        add_scc_to_service_account(
-#            api,
-#            "privileged",
-#            ev["vllm_common_service_account"],
-#            ev["vllm_common_namespace"],
-#            ev["control_dry_run"],
-#        )
 
     announce(
         f"🚚 Creating configmap with contents of all files under workload/preprocesses..."
