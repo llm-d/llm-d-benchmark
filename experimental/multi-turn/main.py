@@ -5,12 +5,16 @@ import os
 import sys
 from dataclasses import dataclass
 from typing import Generator, List, Optional, Tuple, Dict, Any
+from pydantic import ConfigDict, Field
 
 from inference_perf.apis.base import InferenceAPIData, LazyLoadInferenceAPIData
 from inference_perf.apis.completion import CompletionAPIData
 from inference_perf.apis.user_session import LocalUserSession, UserSessionCompletionAPIData
+from inference_perf.apis.base import InferenceAPIData, LazyLoadInferenceAPIData, InferenceInfo
 from inference_perf.client.modelserver.vllm_client import vLLMModelServerClient
 from inference_perf.client.requestdatacollector.local import LocalRequestDataCollector
+from aiohttp import ClientResponse
+import random
 from inference_perf.config import (
     APIConfig,
     APIType,
@@ -26,7 +30,9 @@ from inference_perf.config import (
     TraceConfig,
     TraceFormat,
     Config,
+    StorageConfigBase,
 )
+from inference_perf.client.filestorage import LocalStorageClient
 from inference_perf.datagen.base import DataGenerator, LazyLoadDataMixin
 from inference_perf.loadgen.load_generator import LoadGenerator
 from inference_perf.loadgen.load_timer import LoadTimer
@@ -53,6 +59,97 @@ class TraceEntry:
     turn: int
 
 
+class TokenBasedLocalUserSession:
+    user_session_id: str
+    contexts: List[int]
+
+    def __init__(self, user_session_id: str, context: List[int] = None):
+        self.user_session_id = user_session_id
+        self.contexts = context if context else []
+        self._current_round = 0
+        self._in_flight: asyncio.Lock = asyncio.Lock()
+        self._waiting_rounds: asyncio.Queue[asyncio.Future[bool]] = asyncio.Queue()
+
+    async def get_context(self, round: int) -> List[int]:
+        if not self._waiting_rounds.empty() or self._in_flight.locked():
+            # entering waiting queue
+            future: asyncio.Future[bool] = asyncio.Future()
+            self._waiting_rounds.put_nowait(future)
+            await future
+        await self._in_flight.acquire()
+        self._current_round += 1
+        return self.contexts
+
+    def update_context(self, response: List[int]) -> None:
+        self.contexts = response
+
+        if not self._waiting_rounds.empty():
+            future = self._waiting_rounds.get_nowait()
+            future.set_result(True)
+
+        self._in_flight.release()
+
+
+class UserSessionTokenCompletionAPIData(CompletionAPIData):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    user_session: TokenBasedLocalUserSession = Field(exclude=True)
+    target_round: int
+    prompt_token_ids: Optional[List[int]] = None
+    _session_context: List[int] = []
+
+    async def to_payload(
+        self, effective_model_name: str, max_tokens: int, ignore_eos: bool, streaming: bool
+    ) -> Dict[str, Any]:
+        self._session_context = await self.user_session.get_context(self.target_round)
+        # Concatenate session context (list) and current prompt (list)
+        # We assume self.prompt_token_ids is populated
+        full_prompt = self._session_context + (self.prompt_token_ids or [])
+        
+        if self.max_tokens == 0:
+            self.max_tokens = max_tokens
+            
+        return {
+            "model": effective_model_name,
+            "prompt": full_prompt, # vLLM supports list of ints
+            "max_tokens": self.max_tokens,
+            "ignore_eos": ignore_eos,
+            "stream": streaming,
+            **({"stream_options": {"include_usage": "true"}} if streaming else {}),
+        }
+
+    def update_inference_info(self, inference_info: InferenceInfo) -> None:
+        inference_info.extra_info["user_session"] = self.user_session.user_session_id
+        inference_info.extra_info["chat_round"] = self.user_session._current_round
+
+    async def process_response(
+        self, response: ClientResponse, config: APIConfig, tokenizer: CustomTokenizer, lora_adapter: Optional[str] = None
+    ) -> InferenceInfo:
+        inference_info = await super().process_response(response, config, tokenizer)
+        self.update_inference_info(inference_info)
+        
+        # Tokenize response to append to context
+        output_ids = tokenizer.tokenizer.encode(self.model_response)
+        full_context = self._session_context + (self.prompt_token_ids or []) + output_ids
+        self.user_session.update_context(full_context)
+        
+        return inference_info
+
+    async def process_failure(
+        self,
+        response: Optional[ClientResponse],
+        config: APIConfig,
+        tokenizer: CustomTokenizer,
+        exception: Exception,
+        lora_adapter: Optional[str] = None,
+    ) -> Optional[InferenceInfo]:
+        inference_info = InferenceInfo()
+        self.update_inference_info(inference_info)
+        # On failure, maybe keep context as is? Or should we append partial?
+        # Reverting to session context (state before this turn)
+        self.user_session.update_context(self._session_context)
+        return inference_info
+
+
 class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
     def __init__(
         self,
@@ -65,10 +162,23 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
         super().__init__(api_config, config, tokenizer)
         self.limit = limit
         self.trace_entries: List[TraceEntry] = []
-        self.user_sessions: Dict[str, LocalUserSession] = {}
+        self.user_sessions: Dict[str, TokenBasedLocalUserSession] = {}
         # Stores (chat_id, turn_index_in_trace) -> entry mapping or similar if needed
         # Actually load_lazy_data needs to access entry by index
         self._load_trace(trace_file)
+
+    def _hash_to_tokens(self, hash_id: int) -> List[int]:
+        # Deterministically map hash_id to 16 tokens
+        # We assume vocab size is at least 32000
+        # Use random.Random(hash_id)
+        r = random.Random(hash_id)
+        return [r.randint(100, 32000) for _ in range(16)]
+
+    def _block_ids_to_tokens(self, block_ids: List[int]) -> List[int]:
+        tokens = []
+        for bid in block_ids:
+            tokens.extend(self._hash_to_tokens(bid))
+        return tokens
 
     def _load_trace(self, trace_file: str):
         logger.info(f"Loading trace from {trace_file}")
@@ -88,25 +198,25 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
                 raw_entries = raw_entries[:self.limit]
 
             for i, data in enumerate(raw_entries):
-                input_ids = data.get("hash_ids", [])
+                hash_ids = data.get("hash_ids", [])
+                
+                # Convert hash_ids to input_ids (tokens)
+                input_ids = self._block_ids_to_tokens(hash_ids)
+                
                 chat_id = int(data.get("chat_id", -1))
                 parent_chat_id = int(data.get("parent_chat_id", -1))
                 
                 # Determine correct session ID
-                # If parent_chat_id is -1, this is a new session (or single turn)
-                # If parent_chat_id is set, it belongs to that session
-                # In this specific trace format, let's assume if parent_chat_id != -1, 
-                # it's the session ID. If -1, chat_id is the session ID.
                 session_id = str(chat_id) if parent_chat_id == -1 else str(parent_chat_id)
                 
                 if session_id not in self.user_sessions:
-                    self.user_sessions[session_id] = LocalUserSession(user_session_id=session_id)
+                    self.user_sessions[session_id] = TokenBasedLocalUserSession(user_session_id=session_id)
 
                 self.trace_entries.append(
                     TraceEntry(
                         timestamp=float(data.get("timestamp", 0.0)),
                         input_ids=input_ids,
-                        input_length=int(data.get("input_length", len(input_ids))),
+                        input_length=len(input_ids), # Use actual token length
                         output_length=int(data.get("output_length", 10)),
                         chat_id=chat_id,
                         parent_chat_id=parent_chat_id,
@@ -118,15 +228,11 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
         except Exception as e:
             logger.error(f"Failed to load trace file: {e}")
             raise
-
+    
     def get_data(self) -> Generator[InferenceAPIData, None, None]:
         # Yield LazyLoadInferenceAPIData for each entry
         for i, entry in enumerate(self.trace_entries):
-            # We want to assign the same worker to the same session_id to ensure
-            # they are processed on the same worker if we were using multi-processing with strict affinity,
-            # but inference-perf LoadGenerator uses prefered_worker_id to route requests.
             session_id = str(entry.chat_id) if entry.parent_chat_id == -1 else str(entry.parent_chat_id)
-            # Use hash of session_id to pick a worker
             prefered_worker_id = hash(session_id)
             yield LazyLoadInferenceAPIData(data_index=i, prefered_worker_id=prefered_worker_id)
     
@@ -134,17 +240,11 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
         entry = self.trace_entries[data.data_index]
         session_id = str(entry.chat_id) if entry.parent_chat_id == -1 else str(entry.parent_chat_id)
         
-        # We need to determine the 'target_round' for this specific request.
-        # We can calculate it on the fly or pre-calculate it.
-        # Since we are iterating sequentially in _load_trace, we could rely on order.
-        # But 'turn' field in json might be useful.
-        # However, LocalUserSession expects strict 0, 1, 2... indexing for rounds.
-        # Let's trust the 'turn' field from JSON if it's 1-based, convert to 0-based.
         target_round = entry.turn - 1
         
-        return UserSessionCompletionAPIData(
+        return UserSessionTokenCompletionAPIData(
             prompt_token_ids=entry.input_ids,
-            prompt="", # Token IDs take precedence
+            prompt="", # Token IDs take precedence (or dealt with in to_payload)
             sampling_params={
                 "max_tokens": entry.output_length,
                 "ignore_eos": True,
@@ -239,7 +339,7 @@ async def main():
         config=data_config,
         trace_file=trace_file,
         tokenizer=tokenizer,
-        limit=1000
+        limit=10
     )
     
     loadgen = TraceLoadGenerator(datagen=datagen, load_config=load_config)
@@ -303,7 +403,18 @@ async def main():
         else:
             logger.info(f"Report: {report.name}")
             # logger.info(json.dumps(report.contents, indent=2))
+            # logger.info(json.dumps(report.contents, indent=2))
 
+    # Identify output directory
+    output_dir = os.path.join(os.getcwd(), "reports")
+    
+    # Save reports to local storage
+    storage_config = StorageConfigBase(path=output_dir)
+    storage_client = LocalStorageClient(config=storage_config)
+    
+    # Save reports
+    storage_client.save_report(reports)
+    logger.info(f"Reports saved to: {output_dir}")
 if __name__ == "__main__":
     asyncio.run(main())
 
