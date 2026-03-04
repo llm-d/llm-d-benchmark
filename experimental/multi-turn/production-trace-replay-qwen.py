@@ -41,6 +41,7 @@ from inference_perf.loadgen.load_timer import LoadTimer
 from inference_perf.utils.custom_tokenizer import CustomTokenizer
 from inference_perf.reportgen.base import ReportGenerator
 from inference_perf.client.metricsclient.base import StageRuntimeInfo
+from inference_perf.client.metricsclient import PerfRuntimeParameters
 
 # Configure logging
 logging.basicConfig(
@@ -185,8 +186,7 @@ class UserSessionTokenCompletionAPIData(CompletionAPIData):
     ) -> Optional[InferenceInfo]:
         inference_info = InferenceInfo()
         self.update_inference_info(inference_info)
-        # On failure, maybe keep context as is? Or should we append partial?
-        # Reverting to session context (state before this turn)
+        # On failure, reverting to session context (state before this turn)
         self.user_session.update_context(self._session_context)
         return inference_info
 
@@ -413,11 +413,6 @@ async def main():
     logger.info("Benchmark finished. Generating Report...")
     
     # Generate Report
-    # Update stage info in runtime parameters for report generation
-    # loadgen.stage_runtime_info is populated after run
-    runtime_parameters = Any # Mocking it or reconstructing it?
-    # Actually ReportGenerator expects PerfRuntimeParameters which contains stages
-    from inference_perf.client.metricsclient import PerfRuntimeParameters
     
     runtime_params = PerfRuntimeParameters(
         start_time=0.0,
@@ -430,6 +425,7 @@ async def main():
         request_lifecycle=RequestLifecycleMetricsReportConfig(
             summary=True,
             per_stage=True,
+            per_request=True,
             percentiles=[50, 90, 99],
         )
     )
@@ -451,8 +447,6 @@ async def main():
             continue
         else:
             logger.info(f"Report: {report.name}")
-            # logger.info(json.dumps(report.contents, indent=2))
-            # logger.info(json.dumps(report.contents, indent=2))
 
     # Identify output directory
     output_dir = os.path.join(os.getcwd(), "reports")
