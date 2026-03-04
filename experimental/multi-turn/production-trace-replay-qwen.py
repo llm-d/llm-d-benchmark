@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import sys
+import argparse
 from dataclasses import dataclass
 from typing import Generator, List, Optional, Tuple, Dict, Any
 from pydantic import ConfigDict, Field
@@ -68,27 +69,49 @@ class TokenBasedLocalUserSession:
         self.user_session_id = user_session_id
         self.contexts = context if context else []
         self._current_round = 0
-        self._in_flight: asyncio.Lock = asyncio.Lock()
-        self._waiting_rounds: asyncio.Queue[asyncio.Future[bool]] = asyncio.Queue()
+        self._in_flight = None
+        self._waiting_rounds = None
+
+    @property
+    def in_flight(self) -> asyncio.Lock:
+        if self._in_flight is None:
+            self._in_flight = asyncio.Lock()
+        return self._in_flight
+
+    @property
+    def waiting_rounds(self) -> asyncio.Queue:
+        if self._waiting_rounds is None:
+            self._waiting_rounds = asyncio.Queue()
+        return self._waiting_rounds
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["_in_flight"] = None
+        state["_waiting_rounds"] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # Primitives will be initialized lazily on first access
 
     async def get_context(self, round: int) -> List[int]:
-        if not self._waiting_rounds.empty() or self._in_flight.locked():
+        if not self.waiting_rounds.empty() or self.in_flight.locked():
             # entering waiting queue
             future: asyncio.Future[bool] = asyncio.Future()
-            self._waiting_rounds.put_nowait(future)
+            self.waiting_rounds.put_nowait(future)
             await future
-        await self._in_flight.acquire()
+        await self.in_flight.acquire()
         self._current_round += 1
         return self.contexts
 
     def update_context(self, response: List[int]) -> None:
         self.contexts = response
 
-        if not self._waiting_rounds.empty():
-            future = self._waiting_rounds.get_nowait()
+        if not self.waiting_rounds.empty():
+            future = self.waiting_rounds.get_nowait()
             future.set_result(True)
 
-        self._in_flight.release()
+        self.in_flight.release()
 
 
 class UserSessionTokenCompletionAPIData(CompletionAPIData):
@@ -317,25 +340,34 @@ class TraceLoadGenerator(LoadGenerator):
 
 async def main():
     # Configuration
+    parser = argparse.ArgumentParser(description="Multi-turn Trace Replay Benchmark")
+    parser.add_argument("--model-name", type=str, default=os.environ.get("MODEL_NAME", "google/gemma-3-1b-it"), help="Model name")
+    parser.add_argument("--base-url", type=str, default=os.environ.get("ENDPOINT_BASE_URL", "http://localhost:8000"), help="Base URL of the inference server")
+    parser.add_argument("--limit", type=int, default=1000, help="Limit the number of trace entries to replay")
+    
+    args = parser.parse_args()
+
+    # Environment variables or defaults for server
+    model_name = args.model_name
+    base_url = args.base_url
+    limit = args.limit
+    
     trace_file = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "qwen_traceA_blksz_16.jsonl"
     )
     
-    # Environment variables or defaults for server
-    model_name = os.environ.get("LLMDBENCH_DEPLOY_CURRENT_MODEL", "google/gemma-3-1b-it")
-    base_url = os.environ.get("LLMDBENCH_HARNESS_STACK_ENDPOINT_URL", "http://localhost:8000")
-    
     logger.info(f"Starting Multi-turn Benchmark")
     logger.info(f"Model: {model_name}")
     logger.info(f"Base URL: {base_url}")
+    logger.info(f"Limit: {limit}")
     
     # configs
     api_config = APIConfig(type=APIType.Completion, streaming=True)
     load_config = LoadConfig(
         type=LoadType.CONSTANT,
         stages=[StandardLoadStage(duration=3600, rate=1.0)],
-        num_workers=1 # Force single worker for now if debugging, or strictly rely on affinity
+        num_workers=os.cpu_count() or 1
     )
     # Note: load_config.num_workers will be effectively used by LoadGenerator.
     # If we want to use multiple workers, we need to ensure affinity works.
@@ -355,7 +387,7 @@ async def main():
         config=data_config,
         trace_file=trace_file,
         tokenizer=tokenizer,
-        limit=1000
+        limit=limit
     )
     
     loadgen = TraceLoadGenerator(datagen=datagen, load_config=load_config)
