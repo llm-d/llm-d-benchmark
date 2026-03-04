@@ -12,9 +12,10 @@ from inference_perf.apis.completion import CompletionAPIData
 from inference_perf.apis.user_session import LocalUserSession, UserSessionCompletionAPIData
 from inference_perf.apis.base import InferenceAPIData, LazyLoadInferenceAPIData, InferenceInfo
 from inference_perf.client.modelserver.vllm_client import vLLMModelServerClient
-from inference_perf.client.requestdatacollector.local import LocalRequestDataCollector
+from inference_perf.client.requestdatacollector.multiprocess import MultiprocessRequestDataCollector
 from aiohttp import ClientResponse
 import random
+import time
 from inference_perf.config import (
     APIConfig,
     APIType,
@@ -96,6 +97,9 @@ class UserSessionTokenCompletionAPIData(CompletionAPIData):
     target_round: int
     prompt_token_ids: Optional[List[int]] = None
     _session_context: List[int] = []
+    # These fields are in CompletionAPIData, but we need to ensure they are populated
+    max_tokens: int = 0
+    ignore_eos: bool = True
 
     async def to_payload(
         self, effective_model_name: str, max_tokens: int, ignore_eos: bool, streaming: bool
@@ -107,6 +111,9 @@ class UserSessionTokenCompletionAPIData(CompletionAPIData):
         
         if self.max_tokens == 0:
             self.max_tokens = max_tokens
+        
+        # Override ignore_eos if set in self
+        ignore_eos = self.ignore_eos
             
         return {
             "model": effective_model_name,
@@ -114,7 +121,7 @@ class UserSessionTokenCompletionAPIData(CompletionAPIData):
             "max_tokens": self.max_tokens,
             "ignore_eos": ignore_eos,
             "stream": streaming,
-            **({"stream_options": {"include_usage": "true"}} if streaming else {}),
+            **({"stream_options": {"include_usage": True}} if streaming else {}),
         }
 
     def update_inference_info(self, inference_info: InferenceInfo) -> None:
@@ -124,9 +131,20 @@ class UserSessionTokenCompletionAPIData(CompletionAPIData):
     async def process_response(
         self, response: ClientResponse, config: APIConfig, tokenizer: CustomTokenizer, lora_adapter: Optional[str] = None
     ) -> InferenceInfo:
-        inference_info = await super().process_response(response, config, tokenizer)
+        # We need to manually calculate input_tokens because we sent token IDs and
+        # the default implementation might rely on tokenizer.count_tokens(self.prompt) where self.prompt is empty.
+        
+        # Capture start time for manual TTFT/TPOT if needed, but the base implementation does streaming parsing
+        # We'll call super() to handle streaming parsing, but we might need to patch input_tokens afterwards
+        
+        inference_info = await super().process_response(response, config, tokenizer, lora_adapter)
         self.update_inference_info(inference_info)
         
+        # Calculate input tokens ensuring we account for the full context if that's what was sent
+        # The prompt was: self._session_context + (self.prompt_token_ids or [])
+        full_context_len = len(self._session_context) + len(self.prompt_token_ids or [])
+        inference_info.input_tokens = full_context_len
+
         # Tokenize response to append to context
         output_ids = tokenizer.tokenizer.encode(self.model_response)
         full_context = self._session_context + (self.prompt_token_ids or []) + output_ids
@@ -245,10 +263,8 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
         return UserSessionTokenCompletionAPIData(
             prompt_token_ids=entry.input_ids,
             prompt="", # Token IDs take precedence (or dealt with in to_payload)
-            sampling_params={
-                "max_tokens": entry.output_length,
-                "ignore_eos": True,
-            },
+            max_tokens=entry.output_length,
+            ignore_eos=True,
             stream=True,
             user_session=self.user_sessions[session_id],
             target_round=target_round,
@@ -339,13 +355,13 @@ async def main():
         config=data_config,
         trace_file=trace_file,
         tokenizer=tokenizer,
-        limit=10
+        limit=1000
     )
     
     loadgen = TraceLoadGenerator(datagen=datagen, load_config=load_config)
     
     # Instantiate client with explicit args
-    metrics_collector = LocalRequestDataCollector()
+    metrics_collector = MultiprocessRequestDataCollector()
     client = vLLMModelServerClient(
         metrics_collector=metrics_collector,
         api_config=api_config,
@@ -359,7 +375,8 @@ async def main():
     )
     
     logger.info("Starting load generation...")
-    await loadgen.run(client)
+    async with metrics_collector.start():
+        await loadgen.run(client)
     
     logger.info("Benchmark finished. Generating Report...")
     
