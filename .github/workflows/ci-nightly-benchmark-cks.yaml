@@ -237,7 +237,7 @@ jobs:
 
       - name: Archive benchmark results as GitHub artifact
         if: success() || failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.0
         with:
           name: ${{ env.OUTPUT_DIR }}
           path: ${{ env.INPUT_DIR }}
