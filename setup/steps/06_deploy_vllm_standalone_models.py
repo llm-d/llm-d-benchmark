@@ -58,23 +58,23 @@ def main():
         # Check storage class
         if not check_storage_class(ev):
             announce("ERROR: Failed to check storage class")
-            return 1
+            sys.exit(1)
 
         if not discover_node_resources(ev):
             announce("ERROR: Failed to discover resources on nodes")
-            return 1
+            sys.exit(1)
 
         if not check_accelerator(ev):
             announce("ERROR: Failed to check accelerator")
-            return 1
+            sys.exit(1)
 
         if not check_network(ev):
             announce("ERROR: Failed to check network")
-            return 1
+            sys.exit(1)
 
         if not check_priority_class(ev):
             announce("ERROR: Failed to check priority class")
-            return 1
+            sys.exit(1)
 
         # Create yamls directory
         yamls_dir = Path(ev["control_work_dir"]) / "setup" / "yamls"
@@ -155,7 +155,7 @@ def main():
             api_client = client.CoreV1Api()
             result = wait_for_pods_created_running_ready(api_client, ev, ev["vllm_common_replicas"], "both")
             if result != 0:
-                return result
+                sys.exit(result)
 
             # Collect decode logs
             collect_logs(ev, ev["vllm_common_replicas"], "both")
@@ -176,7 +176,9 @@ def main():
                         f"--target-port={ev['vllm_common_inference_port']} "
                         f"--name=vllm-standalone-{model_label}-route"
                     )
-                    llmdbench_execute_cmd(actual_cmd=kubectl_expose_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], fatal=True)
+                    result = llmdbench_execute_cmd(actual_cmd=kubectl_expose_cmd, dry_run=ev["control_dry_run"], verbose=ev["control_verbose"], fatal=True)
+                    if result != 0:
+                        sys.exit(result)
                     announce(f"✅ Service for pods service model {model} created")
 
                 announce(f"✅ Model \"{model}\" and associated service deployed.")

@@ -33,6 +33,13 @@ export LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
 
 # Routing configuration (via gaie)
 #export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="default-plugins.yaml" (default is "plugins-v2.yaml")
+export LLMDBENCH_VLLM_MODELSERVICE_GAIE_SIDECAR_ENABLED=true
+export LLMDBENCH_VLLM_MODELSERVICE_GAIE_FLAGS=$(mktemp)
+cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_GAIE_FLAGS
+kv-cache-usage-percentage-metric: "vllm:kv_cache_usage_perc"
+v: 4  # log verbosity
+EOF
+
 export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="precise-prefix-cache-config.yaml"
 export LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS=$(mktemp)
 cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS
@@ -47,9 +54,11 @@ cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS
             blockSize: 64
           indexerConfig:
             tokenizersPoolConfig:
-              modelName: "Qwen/Qwen3-32B"
-              hf:
-                tokenizersCacheDir: "/tmp/tokenizers"
+              modelName: Qwen/Qwen3-32B
+              local: null
+              hf: null
+              uds:
+                socketFile: /tmp/tokenizer/tokenizer-uds.socket
           kvEventsConfig:
             topicFilter: "kv@"
             concurrency: 4
@@ -194,6 +203,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
 
 # Decode parameters
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
+export LLMDBENCH_LLMD_ROUTINGSIDECAR_ENABLED=false
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=$LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=$LLMDBENCH_VLLM_COMMON_CPU_MEM
@@ -213,7 +223,7 @@ REPLACE_ENV_LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS; \
 vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --host 0.0.0.0 \
 --served-model-name REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
---port \$VLLM_METRICS_PORT \
+--port \$VLLM_INFERENCE_PORT \
 --block-size \$VLLM_BLOCK_SIZE \
 --max-model-len \$VLLM_MAX_MODEL_LEN \
 --tensor-parallel-size \$VLLM_TENSOR_PARALLELISM \

@@ -108,10 +108,17 @@ def main():
                     )
 
             # Get image tag
-            image_tag = get_image(
+            inference_scheduler_image_tag = get_image(
                 ev,
                 "llmd_inferencescheduler_image",
                 True,
+                True
+            )
+
+            uds_tokenizer_image = get_image(
+                ev,
+                "llmd_uds_tokenizer_image",
+                False,
                 True
             )
             hf_token_env = ""
@@ -135,7 +142,7 @@ def main():
   image:
     name: {ev['llmd_inferencescheduler_image_name']}
     hub: {ev['llmd_inferencescheduler_image_registry']}/{ev['llmd_inferencescheduler_image_repo']}
-    tag: {image_tag}
+    tag: {inference_scheduler_image_tag}
     pullPolicy: Always
   extProcPort: 9002
   extraContainerPorts:
@@ -148,6 +155,29 @@ def main():
       targetPort: 5557
       protocol: TCP
   {hf_token_env}
+  sidecar:
+    enabled: {ev["vllm_modelservice_gaie_sidecar_enabled"]}
+    image: {uds_tokenizer_image}
+    imagePullPolicy: IfNotPresent
+    name: tokenizer-uds
+    env:
+      - name: TOKENIZERS_DIR
+        value: /tokenizers
+      - name: HF_HOME
+        value: /tokenizers
+    volumeMounts:
+      - mountPath: /tokenizers
+        name: tokenizers
+      - mountPath: /tmp/tokenizer
+        name: tokenizer-uds
+  volumes:
+    - name: tokenizers
+      emptyDir: {{}}
+    - name: tokenizer-uds
+      emptyDir: {{}}
+  volumeMounts:
+    - mountPath: /tmp/tokenizer
+      name: tokenizer-uds
   pluginsConfigFile: "{ev['vllm_modelservice_gaie_plugins_configfile']}"
 {add_config(plugin_config, 4, "pluginsCustomConfig:", ev)}
   # Monitoring configuration for EPP
@@ -223,7 +253,7 @@ provider:
                 api_client, ev, 1, "gateway"
             )
             if result != 0:
-                return result
+                sys.exit(result)
 
             # List relevant resources
             resource_list = "deployment,service,pods,secrets,inferencepools"
@@ -253,7 +283,7 @@ provider:
     else:
         announce(f"⏭️ Environment types are \"{ev['deploy_methods']}\". Skipping this step.")
 
-    return 0
+    sys.exit(0)
 
 if __name__ == "__main__":
     sys.exit(main())

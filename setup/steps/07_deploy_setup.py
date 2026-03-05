@@ -264,7 +264,7 @@ releases:
         deploy_methods = ev["deploy_methods"]
         announce(f"⏭️ Environment types are \"{deploy_methods}\". Skipping this step.")
 
-    return 0
+    sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -331,7 +331,8 @@ def environment_variable_to_dict(ev: dict = {}):
         "control_environment_type_modelservice_active",
         "wva_enabled",
         "vllm_modelservice_multinode",
-        "vllm_standalone_launcher"
+        "vllm_standalone_launcher",
+        "vllm_modelservice_gaie_sidecar_enabled"
     ]:
         if mandatory_boolean_key not in ev:
             ev[mandatory_boolean_key] = 0
@@ -1598,7 +1599,7 @@ def check_priority_class(ev: dict) -> bool:
     Skips validation if the value is empty or 'none'.
     Returns True if valid or skipped, False if the priority class does not exist.
     """
-    priority_class = ev.get("vllm_common_priority_class_name", "")
+    priority_class = ev["vllm_common_priority_class_name"]
     if not priority_class or priority_class.lower() == "none":
         return True
 
@@ -1629,9 +1630,9 @@ def add_priority_class_name(ev: dict) -> str:
     Generate priorityClassName YAML if LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME is set.
     """
     priority_class = ev.get("vllm_common_priority_class_name")
-    
+
     # This is mostly because standalone will crash otherwise,
-    # modelservice would handle this already... 
+    # modelservice would handle this already...
     if not priority_class or priority_class.lower() == "none":
         return ""
 

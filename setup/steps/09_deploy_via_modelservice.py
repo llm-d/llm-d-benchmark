@@ -391,6 +391,13 @@ def main():
         True
     )
 
+    image = get_image(
+        ev,
+        "vllm_standalone_image",
+        False,
+        True
+    )
+
     auto_detect_version(ev, ev['vllm_modelservice_chart_name'], "vllm_modelservice_chart_version", "vllm_modelservice_helm_repository", True)
     auto_detect_version(ev, ev['vllm_infra_chart_name'], "vllm_infra_chart_version", "vllm_infra_helm_repository", True)
 
@@ -485,7 +492,7 @@ def main():
           announce(
               f"ERROR: Failed to deploy helm chart for model {ev['deploy_current_model']}"
           )
-          return result
+          sys.exit(result)
 
       announce(
           f"✅ {ev['vllm_common_namespace']}-{ev['deploy_current_model_id_label']}-ms helm chart deployed successfully"
@@ -507,7 +514,7 @@ def main():
           api_client, ev, expected_num_decode_pods, "decode"
       )
       if result != 0:
-          return result
+          sys.exit(result)
 
       expected_num_prefill_pods = ev["vllm_modelservice_prefill_replicas"]
       if ev["vllm_modelservice_multinode"] :
@@ -518,13 +525,13 @@ def main():
           api_client, ev, expected_num_prefill_pods, "prefill"
       )
       if result != 0:
-          return result
+          sys.exit(result)
 
       result = wait_for_pods_created_running_ready(
           api_client, ev, 1, "inferencepool"
       )
       if result != 0:
-          return result
+          sys.exit(result)
 
       # Optional PodMonitor for Prometheus scraping of vLLM pods
       if ev["vllm_monitoring_podmonitor_enabled"] == "true":
@@ -593,8 +600,7 @@ def main():
 
     announce("✅ modelservice completed model deployment")
     propagate_standup_parameters(ev, api)
-    return 0
-
+    sys.exit(0)
 
 if __name__ == "__main__":
     sys.exit(main())
