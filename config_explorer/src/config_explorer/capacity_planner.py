@@ -872,20 +872,19 @@ def auto_max_model_len(
     Returns:
         int: Largest max_model_len that fits, or 0 if model doesn't fit at all
     """
-    model_info = get_model_info_from_hf(model_name, hf_token)
-
     allocatable_kv = allocatable_kv_cache_memory(
-        model_info, model_config,
+        model_name, model_config,
         gpu_memory, gpu_mem_util,
         tp, pp, dp,
         max_model_len=1,
         batch_size=1,
+        hf_token=hf_token,
     )
 
     if allocatable_kv <= 0:
         return 0
 
-    kv_detail = KVCacheDetail(model_info, model_config, context_len=1, batch_size=1)
+    kv_detail = KVCacheDetail(model_name, model_config, context_len=1, batch_size=1)
     per_token_bytes = kv_detail.per_token_memory_bytes / (tp * pp)
 
     if per_token_bytes <= 0:
