@@ -16,6 +16,7 @@ SELECTED_GPU_MEMORY_UTIL_KEY = "selected_gpu_memory_util"
 SELECTED_GPU_PER_NODE_KEY = "selected_gpu_per_node"
 SELECTED_NODE_COUNT_KEY = "selected_node_count"
 SELECTED_MAX_MODEL_LEN_KEY = "selected_max_model_len"
+SELECTED_AUTO_MAX_MODEL_LEN_KEY = "selected_auto_max_model_len"
 SELECTED_CONCURRENCY_KEY = "selected_concurrency"
 
 ## Parallelism strategy keys
@@ -146,6 +147,13 @@ def on_update_max_model_len():
     """
     scenario = st.session_state[USER_SCENARIO_KEY]
     scenario.max_model_len = st.session_state[SELECTED_MAX_MODEL_LEN_KEY]
+    scenario.concurrency = 1
+
+def on_update_auto_max_model_len():
+    """
+    Toggle auto max model length calculation
+    """
+    scenario = st.session_state[USER_SCENARIO_KEY]
     scenario.concurrency = 1
 
 def pretty_round(num):
