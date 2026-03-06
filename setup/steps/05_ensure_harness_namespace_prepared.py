@@ -21,11 +21,12 @@ from functions import (
     SecurityContextConstraints,
     add_scc_to_service_account,
     get_image,
-    kubectl_apply
+    kubectl_apply,
 )
 
+
 def main():
-    ev = {'current_step_name': os.path.splitext(os.path.basename(__file__))[0] }
+    ev = {"current_step_name": os.path.splitext(os.path.basename(__file__))[0]}
     environment_variable_to_dict(ev)
 
     env_cmd = f'source "{ev["control_dir"]}/env.sh"'
@@ -37,25 +38,6 @@ def main():
         exit(result)
 
     api, client = kube_connect(f'{ev["control_work_dir"]}/environment/context.ctx')
-
-    ev["user_is_admin"] = True
-    if is_openshift(api) and ev["user_is_admin"]:
-        # vllm workloads may need to run as a specific non-root UID , the  default SA needs anyuid
-        # some setups might also require privileged access for GPU resources
-        add_scc_to_service_account(
-            api,
-            "anyuid",
-            ev["vllm_common_service_account"],
-            ev["vllm_common_namespace"],
-            ev["control_dry_run"],
-        )
-        add_scc_to_service_account(
-            api,
-            "privileged",
-            ev["vllm_common_service_account"],
-            ev["vllm_common_namespace"],
-            ev["control_dry_run"],
-        )
 
     if ev["control_dry_run"]:
         announce("DRY RUN enabled. No actual changes will be made.")
@@ -87,27 +69,22 @@ data:
         model.strip() for model in ev["harness_pvc_name"].split(",") if model.strip()
     ]
 
-    image = get_image(
-        ev,
-        "image",
-        False,
-        True
-    )
+    image = get_image(ev, "image", False, True)
 
     for volume in volumes:
-          validate_and_create_pvc(
-              api=api,
-              client=client,
-              namespace=ev["harness_namespace"],
-              download_model='',
-              pvc_name=volume,
-              pvc_size=ev["harness_pvc_size"],
-              pvc_class=ev["vllm_common_pvc_storage_class"],
-              pvc_access_mode=ev['vllm_common_pvc_access_mode'],
-              dry_run=ev["control_dry_run"]
-          )
+        validate_and_create_pvc(
+            api=api,
+            client=client,
+            namespace=ev["harness_namespace"],
+            download_model="",
+            pvc_name=volume,
+            pvc_size=ev["harness_pvc_size"],
+            pvc_class=ev["vllm_common_pvc_storage_class"],
+            pvc_access_mode=ev["vllm_common_pvc_access_mode"],
+            dry_run=ev["control_dry_run"],
+        )
 
-          pod_yaml = f"""apiVersion: v1
+        pod_yaml = f"""apiVersion: v1
 kind: Pod
 metadata:
   name: access-to-harness-data-{volume}
@@ -138,9 +115,9 @@ spec:
 #      claimName: {ev["vllm_standalone_pvc_mountpoint"]}
 """
 
-          kubectl_apply(api=api, manifest_data=pod_yaml, dry_run=ev["control_dry_run"])
+        kubectl_apply(api=api, manifest_data=pod_yaml, dry_run=ev["control_dry_run"])
 
-          service_yaml = f"""apiVersion: v1
+        service_yaml = f"""apiVersion: v1
 apiVersion: v1
 kind: Service
 metadata:
@@ -156,7 +133,9 @@ spec:
     app: llm-d-benchmark-harness
   type: ClusterIP
 """
-          kubectl_apply(api=api, manifest_data=service_yaml, dry_run=ev["control_dry_run"])
+        kubectl_apply(
+            api=api, manifest_data=service_yaml, dry_run=ev["control_dry_run"]
+        )
 
     announce(
         f"🚚 Creating configmap with contents of all files under workload/preprocesses..."
