@@ -9,3 +9,4 @@ percentile-metrics: "ttft,tpot,itl,e2el"
 metric-percentiles: "99,100"
 ignore-eos: none
 custom-output-len: -1
+save-detailed: none
