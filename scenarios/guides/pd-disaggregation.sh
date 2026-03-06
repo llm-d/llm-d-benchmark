@@ -160,7 +160,7 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --tensor-parallel-size \$VLLM_TENSOR_PARALLELISM \
 --gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL \
 --kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}" \
---disable-log-requests \
+--no-enable-log-requests \
 --disable-uvicorn-access-log \
 --no-enable-prefix-caching
 EOF
@@ -192,7 +192,7 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --tensor-parallel-size \$VLLM_TENSOR_PARALLELISM \
 --gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL \
 --kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}" \
---disable-log-requests \
+--no-enable-log-requests \
 --disable-uvicorn-access-log \
 --no-enable-prefix-caching
 EOF

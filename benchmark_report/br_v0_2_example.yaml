@@ -46,7 +46,7 @@ scenario:
       args: # Arguments sent to executable
         --block-size: 1024
         --kv-transfer-config: {"kv_connector":"NixlConnector", "kv_role":"kv_both"}
-        --disable-log-requests: null
+        --no-enable-log-requests: null
         --disable-uvicorn-access-log: null
         --max-model-len: 1024
         --tensor-parallel-size: 8
@@ -60,7 +60,7 @@ scenario:
         VLLM_LOGGING_LEVEL: DEBUG
         VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
 
-  - metadata: 
+  - metadata:
       schema_version: 0.0.1
       label: epp-0
       cfg_id: 47000e70c655e88198e0dc4e57d41d5f
@@ -417,7 +417,7 @@ results:
       - name: series.tokens_total.vllm0                # 1) unique per file
         metric_ref:                                    # 3) explicit type; registry ref is optional and can be omitted everywhere
           id: tokens_total
-          version: 1 
+          version: 1
         component_id: vllm-svc-0
         type: counter
         unit: token                                    # 4) unit separate
@@ -440,7 +440,7 @@ results:
         labels: { gpu: "0", uuid: "GPU-1111" }
         samples:
           - ts: 2025-11-05T18:05:00Z
-            value: 73.2 
+            value: 73.2
           - ts: 2025-11-05T18:05:15Z
             value: 78.9
 
@@ -468,7 +468,7 @@ results:
           count: 30120
 
       - name: series.latency.gateway0
-        metric_ref: 
+        metric_ref:
           id: request_latency_seconds
           version: 1
         component_id: "gateway-0"

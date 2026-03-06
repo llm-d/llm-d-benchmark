@@ -109,7 +109,7 @@ vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --max-num-seq \$VLLM_MAX_NUM_SEQ \
 --load-format \$VLLM_LOAD_FORMAT \
 --tensor-parallel-size \$VLLM_TENSOR_PARALLELISM
---disable-log-requests \
+--no-enable-log-requests \
 --disable-uvicorn-access-log \
 --no-enable-prefix-caching
 EOF
@@ -148,7 +148,7 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --max-model-len \$VLLM_MAX_MODEL_LEN \
 --max-num-seq \$VLLM_MAX_NUM_SEQ \
 --tensor-parallel-size \$VLLM_TENSOR_PARALLELISM \
---disable-log-requests \
+--no-enable-log-requests \
 --disable-uvicorn-access-log \
 --no-enable-prefix-caching
 EOF

@@ -1,6 +1,6 @@
 # Upstream Dependency Version Tracking
 
-> This file is the source of truth for the [upstream dependency monitor](../.github/workflows/upstream-monitor.md) workflow.
+> This file is the source of truth for the `upstream dependency monitor` workflow.
 > Add your project's key upstream dependencies below. The monitor runs daily and creates GitHub issues when breaking changes are detected.
 
 > **Pin type conventions:** Entries with `auto`, `latest`, `stable`, or `unpinned` use floating (unversioned) references

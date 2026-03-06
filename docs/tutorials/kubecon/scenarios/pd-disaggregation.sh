@@ -39,7 +39,7 @@ export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=128Gi
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS="[\
 --block-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE____\
 --kv-transfer-config____'{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}'____\
---disable-log-requests____\
+--no-enable-log-requests____\
 --disable-uvicorn-access-log____\
 --no-enable-prefix-caching____\
 --max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN\
@@ -68,7 +68,7 @@ EOF
 export LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS="[\
 --block-size____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_BLOCK_SIZE____\
 --kv-transfer-config____'{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}'____\
---disable-log-requests____\
+--no-enable-log-requests____\
 --disable-uvicorn-access-log____\
 --no-enable-prefix-caching____\
 --max-model-len____REPLACE_ENV_LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN\

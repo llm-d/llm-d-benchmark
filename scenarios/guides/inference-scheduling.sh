@@ -156,7 +156,7 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL \
 --kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}" \
 --enforce-eager \
---disable-log-requests \
+--no-enable-log-requests \
 --disable-uvicorn-access-log
 EOF
 
