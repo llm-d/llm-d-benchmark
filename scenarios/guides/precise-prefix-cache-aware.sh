@@ -54,7 +54,7 @@ cat << EOF > $LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS
             blockSize: 64
           indexerConfig:
             tokenizersPoolConfig:
-              modelName: Qwen/Qwen3-32B
+              modelName: $LLMDBENCH_DEPLOY_MODEL_LIST
               local: null
               hf: null
               uds:
