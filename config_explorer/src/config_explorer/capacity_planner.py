@@ -841,6 +841,67 @@ def allocatable_kv_cache_memory(model_name: str,
 
     return max(0, available_memory - total_consumed)
 
+def auto_max_model_len(
+    model_name: str,
+    model_config: AutoConfig,
+    gpu_memory: int,
+    gpu_mem_util: float = 0.9,
+    tp: int = 1,
+    pp: int = 1,
+    dp: int = 1,
+    hf_token: str | None = None,
+) -> int:
+    """
+    Calculate the maximum possible max_model_len that fits in available GPU memory
+    while allowing at least 1 concurrent request.
+
+    Solves the memory equation backwards:
+        max_model_len = floor(allocatable_kv_bytes / per_token_kv_bytes)
+    Then caps at model's max_position_embeddings.
+
+    Args:
+        model_name: HuggingFace model ID
+        model_config: Model configuration
+        gpu_memory: GPU memory per device in GiB
+        gpu_mem_util: GPU memory utilization factor (default 0.9)
+        tp: Tensor parallelism degree
+        pp: Pipeline parallelism degree
+        dp: Data parallelism degree
+        hf_token: Optional HuggingFace token for gated models
+
+    Returns:
+        int: Largest max_model_len that fits, or 0 if model doesn't fit at all
+    """
+    allocatable_kv = allocatable_kv_cache_memory(
+        model_name, model_config,
+        gpu_memory, gpu_mem_util,
+        tp, pp, dp,
+        max_model_len=1,
+        batch_size=1,
+        hf_token=hf_token,
+    )
+
+    if allocatable_kv <= 0:
+        return 0
+
+    kv_detail = KVCacheDetail(model_name, model_config, context_len=1, batch_size=1)
+    per_token_bytes = kv_detail.per_token_memory_bytes / (tp * pp)
+
+    if per_token_bytes <= 0:
+        return 0
+
+    max_tokens = int(gib_to_bytes(allocatable_kv) // per_token_bytes)
+
+    if max_tokens <= 0:
+        return 0
+
+    try:
+        model_max = max_context_len(model_config)
+    except AttributeError:
+        model_max = max_tokens
+
+    return min(max_tokens, model_max)
+
 def is_moe(model_config: AutoConfig) -> bool:
     """
     Returns true if model is MoE
