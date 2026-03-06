@@ -21,6 +21,7 @@ from config_explorer.capacity_planner import (
     find_possible_tp,
     gpus_required,
     per_gpu_model_memory_required,
+    auto_max_model_len,
 )
 from config_explorer.recommender.recommender import GPURecommender
 from llm_optimizer.predefined.gpus import GPU_SPECS
@@ -75,8 +76,28 @@ def plan_capacity(args):
         model_memory = model_memory_req(args.model, model_config, hf_token)
         result["model_memory_gb"] = round(model_memory, 2)
 
-        # Set max_model_len: use provided value or default from model's max context length
-        if args.max_model_len:
+        # Set max_model_len: use provided value, auto-calculate, or default from model config
+        max_model_len_auto = False
+        if args.max_model_len == -1:
+            if not args.gpu_memory:
+                sys.exit("Error: --max-model-len -1 requires --gpu-memory to be specified for auto-calculation")
+            tp = args.tp or 1
+            pp = args.pp or 1
+            dp = args.dp or 1
+            gpu_mem_util = args.gpu_mem_util or 0.9
+            max_model_len = auto_max_model_len(
+                args.model, model_config,
+                gpu_memory=args.gpu_memory,
+                gpu_mem_util=gpu_mem_util,
+                tp=tp, pp=pp, dp=dp,
+                hf_token=hf_token,
+            )
+            max_model_len_auto = True
+            if max_model_len == 0:
+                sys.exit("Error: Model does not fit in available GPU memory. Try increasing --gpu-memory, --tp, or --pp.")
+            if max_model_len < 128:
+                print(f"Warning: Auto-calculated max-model-len is {max_model_len} tokens, which may be too small for practical use.", file=sys.stderr)
+        elif args.max_model_len:
             max_model_len = args.max_model_len
         else:
             from config_explorer.capacity_planner import max_context_len
@@ -92,6 +113,8 @@ def plan_capacity(args):
 
         # Add parameters to input_parameters
         result["input_parameters"]["max_model_len"] = max_model_len
+        if max_model_len_auto:
+            result["input_parameters"]["max_model_len_auto"] = True
         result["input_parameters"]["batch_size"] = batch_size
 
         # Calculate KV cache details (always calculate with max_model_len)
@@ -474,7 +497,7 @@ Examples:
     plan_parser.add_argument(
         '--max-model-len',
         type=int,
-        help='Maximum model context length in tokens (default: model\'s max_position_embeddings)'
+        help='Maximum model context length in tokens. Use -1 to auto-calculate based on available GPU memory (requires --gpu-memory). Default: model\'s max_position_embeddings'
     )
 
     plan_parser.add_argument(
