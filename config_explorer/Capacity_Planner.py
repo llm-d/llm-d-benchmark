@@ -256,19 +256,45 @@ def workload_specification():
         col1, col2 = st.columns(2)
 
         model_max_context_len = max_context_len(text_config)
-        col1.number_input(
-            f"Max model len (max model context length is: {model_max_context_len})",
-            min_value=1,
-            max_value=model_max_context_len,
-            value=user_scenario.max_model_len,
-            key=util.SELECTED_MAX_MODEL_LEN_KEY,
-            on_change=util.on_update_max_model_len,
+
+        auto_max_model_len_checked = col1.checkbox(
+            "Auto-calculate max model len",
+            key=util.SELECTED_AUTO_MAX_MODEL_LEN_KEY,
+            on_change=util.on_update_auto_max_model_len,
+        )
+
+        if auto_max_model_len_checked:
+            from src.config_explorer.capacity_planner import auto_max_model_len as calc_auto_max_model_len
+            auto_val = calc_auto_max_model_len(
+                user_scenario.model_name,
+                model_config,
+                gpu_memory=user_scenario.get_gpu_memory(db.gpu_specs),
+                gpu_mem_util=user_scenario.gpu_mem_util,
+                tp=user_scenario.tp_size,
+                pp=user_scenario.pp_size,
+                dp=user_scenario.dp_size,
             )
-        col1.caption("Maximum model length for the model: how many tokens (input + output) the model can process. \
-Higher max model length means fewer concurrent requests can be served, \
-                because for the same GPU memory available for KV cache, \
-                each request requires more memory allocation. \
-")
+            if auto_val == 0:
+                col1.error("Model does not fit in available GPU memory. Increase GPU memory, TP, or PP.")
+            elif auto_val < 128:
+                col1.warning(f"Auto-calculated max model len is {auto_val} tokens, which may be too small.")
+            else:
+                col1.info(f"Auto-calculated max model len: **{auto_val:,}** tokens")
+            user_scenario.max_model_len = max(auto_val, 1)
+        else:
+            col1.number_input(
+                f"Max model len (max model context length is: {model_max_context_len})",
+                min_value=1,
+                max_value=model_max_context_len,
+                value=user_scenario.max_model_len,
+                key=util.SELECTED_MAX_MODEL_LEN_KEY,
+                on_change=util.on_update_max_model_len,
+            )
+        col1.caption("Maximum model length for the model: how many tokens (input + output) the model can process. "
+            "Higher max model length means fewer concurrent requests can be served, "
+            "because for the same GPU memory available for KV cache, "
+            "each request requires more memory allocation. "
+        )
 
         col2.number_input("Input the max number of concurrent requests to process",
             min_value=0,
