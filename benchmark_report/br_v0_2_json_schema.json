@@ -423,6 +423,85 @@
       "title": "ComponentNative",
       "type": "object"
     },
+    "ComponentObservability": {
+      "additionalProperties": false,
+      "description": "Observability metrics for a specific component.",
+      "properties": {
+        "component_label": {
+          "description": "References the component's label from scenario.stack[].metadata.label",
+          "title": "Component Label",
+          "type": "string"
+        },
+        "replica_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Specific replica/pod identifier (optional, for per-replica metrics).",
+          "title": "Replica Id"
+        },
+        "aggregate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aggregate resource metrics."
+        },
+        "time_series": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesResourceMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Time series resource metrics."
+        },
+        "raw_data_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to raw metrics data files.",
+          "title": "Raw Data Path"
+        },
+        "graph_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to visualization/graph of metrics.",
+          "title": "Graph Path"
+        }
+      },
+      "required": [
+        "component_label"
+      ],
+      "title": "ComponentObservability",
+      "type": "object"
+    },
     "Distribution": {
       "description": "Distribution type.\n\nAttributes\n    FIXED: str\n        Length is a fixed value.\n    GAUSSIAN: str\n        Gaussian distribution, with a mean and standard deviation.\n    UNIFORM: str\n        Uniform distribution between a minimum and maximum value.\n    OTHER: str\n        An otherwise undefined distribution.",
       "enum": [
@@ -533,7 +612,7 @@
         },
         "count": {
           "description": "Total utilized accelerator count.",
-          "minimum": 1,
+          "minimum": 0,
           "title": "Count",
           "type": "integer"
         },
@@ -573,28 +652,28 @@
         "tp": {
           "default": 1,
           "description": "Tensor parallelism.",
-          "minimum": 1,
+          "minimum": 0,
           "title": "Tp",
           "type": "integer"
         },
         "dp": {
           "default": 1,
           "description": "Data parallelism.",
-          "minimum": 1,
+          "minimum": 0,
           "title": "Dp",
           "type": "integer"
         },
         "dp_local": {
           "default": 1,
           "description": "Local data parallelism for this engine instance.",
-          "minimum": 1,
+          "minimum": 0,
           "title": "Dp Local",
           "type": "integer"
         },
         "workers": {
           "default": 1,
           "description": "Number of workers.",
-          "minimum": 1,
+          "minimum": 0,
           "title": "Workers",
           "type": "integer"
         },
@@ -662,10 +741,17 @@
           "title": "Cfg Id"
         },
         "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
           "default": null,
           "description": "Descriptin of workload.",
-          "title": "Description",
-          "type": "string"
+          "title": "Description"
         }
       },
       "title": "LoadMetadata",
@@ -908,9 +994,38 @@
       "type": "object"
     },
     "Observability": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "description": "Observability metrics.",
-      "properties": {},
+      "properties": {
+        "components": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ComponentObservability"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-component observability metrics.",
+          "title": "Components"
+        },
+        "drop_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Request drop rate."
+        }
+      },
       "title": "Observability",
       "type": "object"
     },
@@ -1000,6 +1115,170 @@
         }
       },
       "title": "RequestPerformance",
+      "type": "object"
+    },
+    "ResourceMetrics": {
+      "additionalProperties": false,
+      "description": "Resource utilization metrics for a component.",
+      "properties": {
+        "kv_cache_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "KV cache usage percentage."
+        },
+        "cache_hit_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Prefix cache hit rate percentage."
+        },
+        "gpu_cache_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GPU cache usage percentage."
+        },
+        "cpu_cache_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CPU cache usage percentage."
+        },
+        "gpu_memory_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GPU memory usage."
+        },
+        "cpu_memory_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CPU/RAM memory usage."
+        },
+        "storage_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Storage usage."
+        },
+        "gpu_utilization": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GPU compute utilization percentage."
+        },
+        "cpu_utilization": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CPU utilization percentage."
+        },
+        "power_consumption": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Power consumption."
+        },
+        "running_requests": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of currently running requests."
+        },
+        "waiting_requests": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of requests waiting in queue."
+        },
+        "swapped_requests": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of swapped out requests."
+        }
+      },
+      "title": "ResourceMetrics",
       "type": "object"
     },
     "Results": {
@@ -1244,7 +1523,7 @@
             }
           ],
           "description": "Primary value.",
-          "ge": 1,
+          "ge": 0,
           "title": "Value"
         },
         "std_dev": {
@@ -1934,6 +2213,122 @@
         }
       },
       "title": "TimeSeriesRequestPerformance",
+      "type": "object"
+    },
+    "TimeSeriesResourceMetrics": {
+      "additionalProperties": false,
+      "description": "Time series resource utilization metrics.",
+      "properties": {
+        "kv_cache_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "KV cache usage percentage over time."
+        },
+        "gpu_cache_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GPU cache usage percentage over time."
+        },
+        "cpu_cache_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CPU cache usage percentage over time."
+        },
+        "gpu_memory_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GPU memory usage over time."
+        },
+        "cpu_memory_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CPU/RAM memory usage over time."
+        },
+        "storage_usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Storage usage over time."
+        },
+        "gpu_utilization": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GPU compute utilization percentage over time."
+        },
+        "cpu_utilization": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CPU utilization percentage over time."
+        },
+        "power_consumption": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Power consumption over time."
+        }
+      },
+      "title": "TimeSeriesResourceMetrics",
       "type": "object"
     },
     "TimeSeriesThroughput": {
