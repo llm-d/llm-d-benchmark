@@ -1,6 +1,6 @@
 # Metrics Collection for Benchmarking
 
-This document describes the metrics collection feature added to llm-d-benchmark, which captures system and application metrics during benchmark runs.
+This document describes the metrics collection feature, which captures system and application metrics during benchmark runs.
 
 ## Overview
 
