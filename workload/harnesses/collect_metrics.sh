@@ -49,7 +49,59 @@ collect_prometheus_metrics_from_pod() {
         echo "# Namespace: $namespace"
         echo "# Source: prometheus_metrics"
         echo ""
-        $kubectl_cmd exec -n "$namespace" "$pod" -- curl -s "http://localhost:${METRICS_PORT}/metrics" 2>/dev/null || echo "# Warning: Failed to collect Prometheus metrics from pod $pod"
+        
+        # Try multiple methods to collect metrics
+        local metrics_collected=false
+        
+        # Method 1: Try curl with the configured port
+        if $kubectl_cmd exec -n "$namespace" "$pod" -- sh -c "command -v curl >/dev/null 2>&1" 2>/dev/null; then
+            if metrics=$($kubectl_cmd exec -n "$namespace" "$pod" -- curl -s -m 5 "http://localhost:${METRICS_PORT}/metrics" 2>/dev/null); then
+                if [ -n "$metrics" ] && echo "$metrics" | grep -q "^[a-zA-Z_]"; then
+                    echo "$metrics"
+                    metrics_collected=true
+                fi
+            fi
+        fi
+        
+        # Method 2: Try wget if curl failed
+        if [ "$metrics_collected" = false ]; then
+            if $kubectl_cmd exec -n "$namespace" "$pod" -- sh -c "command -v wget >/dev/null 2>&1" 2>/dev/null; then
+                if metrics=$($kubectl_cmd exec -n "$namespace" "$pod" -- wget -q -O - -T 5 "http://localhost:${METRICS_PORT}/metrics" 2>/dev/null); then
+                    if [ -n "$metrics" ] && echo "$metrics" | grep -q "^[a-zA-Z_]"; then
+                        echo "$metrics"
+                        metrics_collected=true
+                    fi
+                fi
+            fi
+        fi
+        
+        # Method 3: Try alternative common ports if default failed
+        if [ "$metrics_collected" = false ]; then
+            for port in 8080 9090 3000; do
+                if $kubectl_cmd exec -n "$namespace" "$pod" -- sh -c "command -v curl >/dev/null 2>&1" 2>/dev/null; then
+                    if metrics=$($kubectl_cmd exec -n "$namespace" "$pod" -- curl -s -m 5 "http://localhost:${port}/metrics" 2>/dev/null); then
+                        if [ -n "$metrics" ] && echo "$metrics" | grep -q "^[a-zA-Z_]"; then
+                            echo "# Note: Metrics found on port $port instead of ${METRICS_PORT}"
+                            echo "$metrics"
+                            metrics_collected=true
+                            break
+                        fi
+                    fi
+                fi
+            done
+        fi
+        
+        # If all methods failed, log detailed error
+        if [ "$metrics_collected" = false ]; then
+            echo "# Warning: Failed to collect Prometheus metrics from pod $pod"
+            echo "# Attempted ports: ${METRICS_PORT}, 8080, 9090, 3000"
+            echo "# Troubleshooting:"
+            echo "#   1. Verify metrics endpoint is enabled in vLLM"
+            echo "#   2. Check if curl/wget is available in pod"
+            echo "#   3. Verify correct metrics port (default: 8000)"
+            echo "#   4. Check pod logs for vLLM startup messages"
+        fi
+        
         echo ""
     } >> "$output_file"
     
@@ -79,12 +131,65 @@ collect_logs_from_pod() {
     return 0
 }
 
+# Function to collect cluster-wide Prometheus metrics for specific pods
+collect_cluster_prometheus_metrics() {
+    local pod="$1"
+    local namespace="$2"
+    local timestamp="$3"
+    local output_file="$4"
+    
+    # Check if we have oc command and can query Prometheus
+    if ! command -v oc &> /dev/null; then
+        return 0
+    fi
+    
+    # Get authentication token
+    local token=$(oc whoami -t 2>/dev/null || echo "")
+    if [[ -z "$token" ]]; then
+        return 0
+    fi
+    
+    local prometheus_url="https://thanos-querier-openshift-monitoring.apps.pokprod001.ete14.res.ibm.com"
+    
+    # Define metrics to collect from cluster Prometheus
+    local metrics=(
+        "container_memory_usage_bytes{pod=\"$pod\",namespace=\"$namespace\",container=\"vllm\"}"
+        "container_memory_working_set_bytes{pod=\"$pod\",namespace=\"$namespace\",container=\"vllm\"}"
+        "container_cpu_usage_seconds_total{pod=\"$pod\",namespace=\"$namespace\",container=\"vllm\"}"
+        "container_network_receive_bytes_total{pod=\"$pod\",namespace=\"$namespace\"}"
+        "container_network_transmit_bytes_total{pod=\"$pod\",namespace=\"$namespace\"}"
+    )
+    
+    {
+        echo "# Timestamp: $timestamp"
+        echo "# Pod: $pod"
+        echo "# Namespace: $namespace"
+        echo "# Source: cluster_prometheus"
+        echo ""
+        
+        for metric_query in "${metrics[@]}"; do
+            # Query Prometheus
+            local result=$(curl -k -s -H "Authorization: Bearer $token" \
+                "${prometheus_url}/api/v1/query?query=${metric_query}" 2>/dev/null)
+            
+            # Parse and output in Prometheus format
+            if [[ -n "$result" ]]; then
+                echo "$result" | jq -r '.data.result[]? | "\(.metric.__name__){pod=\"\(.metric.pod)\",namespace=\"\(.metric.namespace)\",container=\"\(.metric.container // "")\"} \(.value[1])"' 2>/dev/null || true
+            fi
+        done
+        
+        echo ""
+    } >> "$output_file"
+    
+    return 0
+}
+
 # Function to collect metrics snapshot (both Prometheus and logs)
 collect_metrics_snapshot() {
     local namespace="${LLMDBENCH_VLLM_COMMON_NAMESPACE:-default}"
     local pod_pattern="${LLMDBENCH_METRICS_POD_PATTERN:-decode}"
     local timestamp=$(date +%s)
-    local iso_timestamp=$(date --iso-8601=seconds)
+    local iso_timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S%z")
     
     echo "Collecting metrics at $iso_timestamp"
     echo "Namespace: $namespace"
@@ -117,8 +222,11 @@ collect_metrics_snapshot() {
         local pod_metrics_file="$METRICS_DIR/raw/${pod}_${timestamp}_metrics.txt"
         local pod_log_file="$METRICS_DIR/raw/${pod}_${timestamp}_logs.txt"
         
-        # Collect Prometheus metrics
+        # Collect Prometheus metrics from pod
         collect_prometheus_metrics_from_pod "$pod" "$namespace" "$iso_timestamp" "$pod_metrics_file"
+        
+        # Collect cluster-wide Prometheus metrics
+        collect_cluster_prometheus_metrics "$pod" "$namespace" "$iso_timestamp" "$pod_metrics_file"
         
         # Collect logs for additional context
         collect_logs_from_pod "$pod" "$namespace" "$iso_timestamp" "$pod_log_file"
@@ -213,15 +321,25 @@ def parse_prometheus_metrics(file_path):
             if line.startswith('#') or not line:
                 continue
             
-            # Parse Prometheus metric line: metric_name{labels} value
+            # Parse Prometheus metric line: metric_name{labels} value timestamp
             # Example: vllm:kv_cache_usage_perc 45.2
-            match = re.match(r'([a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^}]*\})?) ([\d.eE+-]+)', line)
+            # Or cluster metrics: container_memory_usage_bytes{...} 1234567890 1234567890
+            match = re.match(r'([a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^}]*\})?) ([\d.eE+-]+)(?:\s+\d+)?', line)
             if match:
                 metric_name = match.group(1)
                 value = float(match.group(2))
                 
                 # Extract base metric name (without labels)
                 base_name = metric_name.split('{')[0]
+                
+                # For cluster metrics, convert bytes to GB for readability
+                if base_name in ['container_memory_usage_bytes', 'container_memory_working_set_bytes']:
+                    value = value / (1024**3)  # Convert to GB
+                    base_name = base_name.replace('_bytes', '_gb')
+                elif base_name in ['container_network_receive_bytes_total', 'container_network_transmit_bytes_total']:
+                    value = value / (1024**2)  # Convert to MB
+                    base_name = base_name.replace('_bytes_total', '_mb_total')
+                
                 metrics[base_name].append(value)
     
     return timestamp, pod_name, namespace, dict(metrics)
@@ -245,7 +363,7 @@ def parse_vllm_log(file_path):
             elif line.startswith('# Namespace:'):
                 namespace = line.split(':', 1)[1].strip()
             
-            # Parse KV cache usage: "GPU KV cache usage: 45.2%"
+            # Parse KV cache usage: "GPU KV cache usage: 45.2%" or "GPU KV cache usage: 0.0%"
             match = re.search(r'GPU KV cache usage:\s*([\d.]+)%', line)
             if match:
                 metrics['kv_cache_usage_percent'].append(float(match.group(1)))
@@ -311,6 +429,28 @@ def parse_vllm_log(file_path):
             match = re.search(r'Swapped:\s*(\d+)\s*reqs?', line)
             if match:
                 metrics['swapped_requests'].append(int(match.group(1)))
+            
+            # Additional patterns for vLLM metrics logs
+            # Parse: "KV cache usage: 45.2%" (alternative format)
+            if 'kv_cache_usage_percent' not in metrics or not metrics['kv_cache_usage_percent']:
+                match = re.search(r'KV cache usage:\s*([\d.]+)%', line, re.IGNORECASE)
+                if match:
+                    metrics['kv_cache_usage_percent'].append(float(match.group(1)))
+            
+            # Parse: "cache_hit_rate=0.512" or "cache_hit_rate: 51.2%"
+            match = re.search(r'cache[_\s]hit[_\s]rate[=:]\s*([\d.]+)', line, re.IGNORECASE)
+            if match:
+                value = float(match.group(1))
+                # If value is between 0 and 1, convert to percentage
+                if value <= 1.0:
+                    value = value * 100
+                if 'cache_hit_rate_percent' not in metrics or value not in metrics['cache_hit_rate_percent']:
+                    metrics['cache_hit_rate_percent'].append(value)
+            
+            # Parse power consumption: "Power: 285W" or "Power usage: 285 W"
+            match = re.search(r'Power(?:\s+usage)?:\s*([\d.]+)\s*W', line, re.IGNORECASE)
+            if match:
+                metrics['power_consumption_watts'].append(float(match.group(1)))
     
     return timestamp, pod_name, namespace, dict(metrics)
 
