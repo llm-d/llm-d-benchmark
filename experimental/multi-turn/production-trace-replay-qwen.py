@@ -402,7 +402,7 @@ async def main():
     ) # Placeholder
 
     # Initialize components
-    tokenizer = None 
+    tokenizer = CustomTokenizer(tokenizer_config)
     
     datagen = TraceDataGenerator(
         api_config=api_config,
@@ -417,13 +417,13 @@ async def main():
     # Instantiate client with explicit args
     metrics_collector = MultiprocessRequestDataCollector()
     
-    # Mock Client for Verification
-    from custom_mock_client import CustomMockClient
-
-    client = CustomMockClient(
+    client = vLLMModelServerClient(
         metrics_collector=metrics_collector,
         api_config=api_config,
-        mock_latency=0.01
+        config=ModelServerClientConfig(
+            type=ModelServerType.vLLM,
+            base_url=base_url
+        )
     )
     
     logger.info("Starting load generation...")
