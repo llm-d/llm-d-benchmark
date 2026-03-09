@@ -7,8 +7,6 @@ import argparse
 import functools
 import numpy as np
 
-# Add local inference-perf-ref to path
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "inference-perf-ref"))
 from dataclasses import dataclass
 from typing import Generator, List, Optional, Tuple, Dict, Any
 from pydantic import ConfigDict, Field
@@ -169,7 +167,7 @@ class UserSessionTokenCompletionAPIData(CompletionAPIData):
         inference_info = await super().process_response(response, config, tokenizer, lora_adapter)
         self.update_inference_info(inference_info)
         
-        # Calculate input tokens ensuring we account for the full context if that's what was sent
+        # Calculate input tokens ensuring we account for the full context
         # The prompt was: self._session_context + (self.prompt_token_ids or [])
         full_context_len = len(self._session_context) + len(self.prompt_token_ids or [])
         inference_info.input_tokens = full_context_len
@@ -209,8 +207,6 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
         self.limit = limit
         self.trace_entries: List[TraceEntry] = []
         self.user_sessions: Dict[str, TokenBasedLocalUserSession] = {}
-        # Stores (chat_id, turn_index_in_trace) -> entry mapping or similar if needed
-        # Actually load_lazy_data needs to access entry by index
         self._load_trace(trace_file)
 
     @functools.lru_cache(maxsize=10000)
@@ -366,6 +362,12 @@ async def main():
     parser.add_argument("--model-name", type=str, default=os.environ.get("MODEL_NAME", "google/gemma-3-1b-it"), help="Model name")
     parser.add_argument("--base-url", type=str, default=os.environ.get("ENDPOINT_BASE_URL", "http://localhost:8000"), help="Base URL of the inference server")
     parser.add_argument("--limit", type=int, default=1000, help="Limit the number of trace entries to replay")
+    parser.add_argument(
+        "--trace-file",
+        type=str,
+        default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "qwen_traceA_blksz_16.jsonl"),
+        help="Path to the trace file"
+    )
     
     args = parser.parse_args()
 
@@ -373,11 +375,7 @@ async def main():
     model_name = args.model_name
     base_url = args.base_url
     limit = args.limit
-    
-    trace_file = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "qwen_traceA_blksz_16.jsonl"
-    )
+    trace_file = args.trace_file
     
     logger.info(f"Starting Multi-turn Benchmark")
     logger.info(f"Model: {model_name}")
@@ -391,9 +389,6 @@ async def main():
         stages=[StandardLoadStage(duration=3600, rate=1.0)],
         num_workers=os.cpu_count() or 1
     )
-    # Note: load_config.num_workers will be effectively used by LoadGenerator.
-    # If we want to use multiple workers, we need to ensure affinity works.
-    # Our TraceDataGenerator sets is_prefered_worker_requested=True, so it should be fine.
     
     tokenizer_config = CustomTokenizerConfig(pretrained_model_name_or_path=model_name)
     data_config = DataConfig(
@@ -420,10 +415,13 @@ async def main():
     client = vLLMModelServerClient(
         metrics_collector=metrics_collector,
         api_config=api_config,
-        config=ModelServerClientConfig(
-            type=ModelServerType.vLLM,
-            base_url=base_url
-        )
+        uri=base_url,
+        model_name=model_name,
+        tokenizer_config=tokenizer_config,
+        max_tcp_connections=100,
+        additional_filters=[],
+        ignore_eos=True,
+        api_key=None
     )
     
     logger.info("Starting load generation...")
@@ -504,24 +502,17 @@ def generate_ttft_report_by_turns(metrics: List[Any]):
         # Skip failed requests or those without TTFT info
         if metric.error is not None:
             continue
-            
-        # TTFT is the time to receive the first token. 
-        # In InferenceInfo, output_token_times[0] is the timestamp of the first token.
-        # TTFT = output_token_times[0] - start_time
+
         if not metric.info.output_token_times:
             continue
             
         ttft = metric.info.output_token_times[0] - metric.start_time
         
         # Get turn number
-        # extra_info["chat_round"] was populated with _current_round
-        # Logic in TokenBasedLocalUserSession: _current_round starts at 0, increments to 1 on first get_context call
-        # So it is 1-based.
         turn = metric.info.extra_info.get("chat_round", 0)
         
         if turn == 0:
             # Fallback if chat_round is missing or 0 (should correspond to pre-fill or error state if not set)
-            # However, our logic sets it.
             continue
             
         # Assign to bucket
