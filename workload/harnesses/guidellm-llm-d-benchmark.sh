@@ -28,11 +28,7 @@ if [[ "${LLMDBENCH_COLLECT_METRICS:-1}" == "1" ]] && [[ -n "${METRICS_COLLECTOR_
   echo "Processing collected metrics..."
   /usr/local/bin/collect_metrics.sh process
   
-  # Generate visualizations
-  if command -v python3 &> /dev/null; then
-    echo "Generating metric visualizations..."
-    python3 -m benchmark_report.visualize_metrics "${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/metrics" || echo "Warning: Failed to generate visualizations"
-  fi
+  echo "Metrics collection complete. Check metrics_collection.log for details."
 fi
 
 export LLMDBENCH_HARNESS_START=$(date -d "@${start}" --iso-8601=seconds)
