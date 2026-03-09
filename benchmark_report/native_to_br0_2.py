@@ -28,7 +28,6 @@ from .core import (
 )
 from .schema_v0_2 import BenchmarkReportV02, Component, Distribution, LoadSource
 from .schema_v0_2_components import HostType
-from .metrics_processor import add_metrics_to_benchmark_report
 
 
 def config_hash(config: dict) -> str:

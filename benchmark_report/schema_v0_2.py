@@ -834,7 +834,8 @@ class Observability(BaseModel):
     """Observability metrics."""
 
     model_config = MODEL_CONFIG.copy()
-
+    # TODO keep as permissive until schema defined
+    model_config["extra"] = "allow"
     components: list[ComponentObservability] | None = None
     """Per-component observability metrics."""
     drop_rate: Statistics | None = None
