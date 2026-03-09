@@ -4,6 +4,8 @@ import logging
 import sys
 import os
 import argparse
+import functools
+import numpy as np
 
 # Add local inference-perf-ref to path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "inference-perf-ref"))
@@ -211,12 +213,12 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
         # Actually load_lazy_data needs to access entry by index
         self._load_trace(trace_file)
 
+    @functools.lru_cache(maxsize=10000)
     def _hash_to_tokens(self, hash_id: int) -> List[int]:
         # Deterministically map hash_id to 16 tokens
-        # We assume vocab size is at least 32000
-        # Use random.Random(hash_id)
-        r = random.Random(hash_id)
-        return [r.randint(100, 32000) for _ in range(16)]
+        # Using numpy.random.default_rng for better performance in batch generation
+        rng = np.random.default_rng(hash_id)
+        return rng.integers(100, 32000, size=16).tolist()
 
     def _block_ids_to_tokens(self, block_ids: List[int]) -> List[int]:
         tokens = []
@@ -467,7 +469,6 @@ def generate_ttft_report_by_turns(metrics: List[Any]):
     """
     Generates and prints a report of TTFT percentiles grouped by turn number buckets.
     """
-    import numpy as np
     
     # Define buckets: (min_turn, max_turn, label)
     # max_turn is inclusive. None means infinity.
