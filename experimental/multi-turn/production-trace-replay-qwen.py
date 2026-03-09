@@ -243,6 +243,10 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
                 logger.info(f"Limiting trace to first {self.limit} requests")
                 raw_entries = raw_entries[:self.limit]
 
+            turns_per_session_map = {}
+            prompt_lengths = []
+            output_lengths = []
+
             for i, data in enumerate(raw_entries):
                 hash_ids = data.get("hash_ids", [])
                 
@@ -257,13 +261,17 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
                 
                 if session_id not in self.user_sessions:
                     self.user_sessions[session_id] = TokenBasedLocalUserSession(user_session_id=session_id)
+                
+                turns_per_session_map[session_id] = turns_per_session_map.get(session_id, 0) + 1
+                prompt_lengths.append(len(input_ids))
+                output_lengths.append(int(data.get("output_length", 10)))
 
                 self.trace_entries.append(
                     TraceEntry(
                         timestamp=float(data.get("timestamp", 0.0)),
                         input_ids=input_ids,
                         input_length=len(input_ids), # Use actual token length
-                        output_length=int(data.get("output_length", 10)),
+                        output_length=output_lengths[-1],
                         chat_id=chat_id,
                         parent_chat_id=parent_chat_id,
                         turn=int(data.get("turn", 1)), # explicit turn number if available
@@ -271,6 +279,15 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
                 )
 
             logger.info(f"Loaded {len(self.trace_entries)} trace entries across {len(self.user_sessions)} sessions")
+            
+            # Additional Trace Statistics
+            turns_per_session = list(turns_per_session_map.values())
+            if turns_per_session:
+                logger.info("--- Trace Session Statistics ---")
+                logger.info(f"Turns per Session: min={np.min(turns_per_session)}, p50={np.percentile(turns_per_session, 50):.1f}, p90={np.percentile(turns_per_session, 90):.1f}, max={np.max(turns_per_session)}")
+                logger.info(f"Prompt Lengths:    min={np.min(prompt_lengths)}, p50={np.percentile(prompt_lengths, 50):.1f}, p90={np.percentile(prompt_lengths, 90):.1f}, max={np.max(prompt_lengths)}")
+                logger.info(f"Output Lengths:    min={np.min(output_lengths)}, p50={np.percentile(output_lengths, 50):.1f}, p90={np.percentile(output_lengths, 90):.1f}, max={np.max(output_lengths)}")
+                logger.info("--------------------------------")
         except Exception as e:
             logger.error(f"Failed to load trace file: {e}")
             raise
