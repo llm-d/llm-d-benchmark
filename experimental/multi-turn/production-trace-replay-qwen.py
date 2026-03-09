@@ -1,9 +1,12 @@
 import asyncio
 import json
 import logging
-import os
 import sys
+import os
 import argparse
+
+# Add local inference-perf-ref to path
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "inference-perf-ref"))
 from dataclasses import dataclass
 from typing import Generator, List, Optional, Tuple, Dict, Any
 from pydantic import ConfigDict, Field
@@ -394,16 +397,14 @@ async def main():
     
     # Instantiate client with explicit args
     metrics_collector = MultiprocessRequestDataCollector()
-    client = vLLMModelServerClient(
+    
+    # Mock Client for Verification
+    from custom_mock_client import CustomMockClient
+
+    client = CustomMockClient(
         metrics_collector=metrics_collector,
         api_config=api_config,
-        uri=base_url,
-        model_name=model_name,
-        tokenizer_config=tokenizer_config,
-        max_tcp_connections=100, 
-        additional_filters=[],
-        ignore_eos=True,
-        api_key=None
+        mock_latency=0.01
     )
     
     logger.info("Starting load generation...")
@@ -458,6 +459,75 @@ async def main():
     # Save reports
     storage_client.save_report(reports)
     logger.info(f"Reports saved to: {output_dir}")
+
+    # Generate and print TTFT by Turn Buckets
+    generate_ttft_report_by_turns(metrics_collector.get_metrics())
+
+def generate_ttft_report_by_turns(metrics: List[Any]):
+    """
+    Generates and prints a report of TTFT percentiles grouped by turn number buckets.
+    """
+    import numpy as np
+    
+    # Define buckets: (min_turn, max_turn, label)
+    # max_turn is inclusive. None means infinity.
+    buckets = [
+        (1, 1, "Turn 1"),
+        (2, 5, "Turns 2-5"),
+        (6, 10, "Turns 6-10"),
+        (11, None, "Turns 11+"),
+    ]
+    
+    bucket_data = {label: [] for _, _, label in buckets}
+    
+    logger.info("Processing metrics for TTFT by Turn Buckets...")
+    
+    for metric in metrics:
+        # Skip failed requests or those without TTFT info
+        if metric.error is not None:
+            continue
+            
+        # TTFT is the time to receive the first token. 
+        # In InferenceInfo, output_token_times[0] is the timestamp of the first token.
+        # TTFT = output_token_times[0] - start_time
+        if not metric.info.output_token_times:
+            continue
+            
+        ttft = metric.info.output_token_times[0] - metric.start_time
+        
+        # Get turn number
+        # extra_info["chat_round"] was populated with _current_round
+        # Logic in TokenBasedLocalUserSession: _current_round starts at 0, increments to 1 on first get_context call
+        # So it is 1-based.
+        turn = metric.info.extra_info.get("chat_round", 0)
+        
+        if turn == 0:
+            # Fallback if chat_round is missing or 0 (should correspond to pre-fill or error state if not set)
+            # However, our logic sets it.
+            continue
+            
+        # Assign to bucket
+        for min_t, max_t, label in buckets:
+            if turn >= min_t and (max_t is None or turn <= max_t):
+                bucket_data[label].append(ttft)
+                break
+    
+    logger.info("\n=== TTFT by Turn Buckets (seconds) ===")
+    logger.info(f"{'Bucket':<15} | {'Count':<5} | {'P50':<8} | {'P90':<8} | {'P99':<8}")
+    logger.info("-" * 55)
+    
+    for _, _, label in buckets:
+        data = bucket_data[label]
+        count = len(data)
+        if count > 0:
+            p50 = np.percentile(data, 50)
+            p90 = np.percentile(data, 90)
+            p99 = np.percentile(data, 99)
+            logger.info(f"{label:<15} | {count:<5} | {p50:<8.4f} | {p90:<8.4f} | {p99:<8.4f}")
+        else:
+            logger.info(f"{label:<15} | {count:<5} | {'N/A':<8} | {'N/A':<8} | {'N/A':<8}")
+    logger.info("======================================\n")
+
 if __name__ == "__main__":
     asyncio.run(main())
 
