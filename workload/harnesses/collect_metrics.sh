@@ -110,69 +110,6 @@ collect_prometheus_metrics_from_pod() {
 }
 
 
-# Function to collect cluster-wide Prometheus metrics for specific pods
-collect_cluster_prometheus_metrics() {
-    local pod="$1"
-    local namespace="$2"
-    local timestamp="$3"
-    local output_file="$4"
-    
-    # Check if we have oc command and can query Prometheus
-    if ! command -v oc &> /dev/null; then
-        return 0
-    fi
-    
-    # Get authentication token
-    local token=$(oc whoami -t 2>/dev/null || echo "")
-    if [[ -z "$token" ]]; then
-        return 0
-    fi
-    # Get Prometheus URL from environment or try to detect it dynamically
-    local prometheus_url="${LLMDBENCH_WVA_PROM_BASE_URL:-}"
-    if [[ -z "$prometheus_url" ]]; then
-        # Try to get the route for thanos-querier in openshift-monitoring namespace
-        prometheus_url=$(oc get route thanos-querier -n openshift-monitoring -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
-        if [[ -n "$prometheus_url" ]]; then
-            prometheus_url="https://${prometheus_url}"
-        else
-            # Fallback to service URL
-            prometheus_url="https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
-        fi
-    fi
-    
-    
-    # Define metrics to collect from cluster Prometheus
-    local metrics=(
-        "container_memory_usage_bytes{pod=\"$pod\",namespace=\"$namespace\",container=\"vllm\"}"
-        "container_memory_working_set_bytes{pod=\"$pod\",namespace=\"$namespace\",container=\"vllm\"}"
-        "container_cpu_usage_seconds_total{pod=\"$pod\",namespace=\"$namespace\",container=\"vllm\"}"
-        "container_network_receive_bytes_total{pod=\"$pod\",namespace=\"$namespace\"}"
-        "container_network_transmit_bytes_total{pod=\"$pod\",namespace=\"$namespace\"}"
-    )
-    
-    {
-        echo "# Timestamp: $timestamp"
-        echo "# Pod: $pod"
-        echo "# Namespace: $namespace"
-        echo "# Source: cluster_prometheus"
-        echo ""
-        
-        for metric_query in "${metrics[@]}"; do
-            # Query Prometheus
-            local result=$(curl -k -s -H "Authorization: Bearer $token" \
-                "${prometheus_url}/api/v1/query?query=${metric_query}" 2>/dev/null)
-            
-            # Parse and output in Prometheus format
-            if [[ -n "$result" ]]; then
-                echo "$result" | jq -r '.data.result[]? | "\(.metric.__name__){pod=\"\(.metric.pod)\",namespace=\"\(.metric.namespace)\",container=\"\(.metric.container // "")\"} \(.value[1])"' 2>/dev/null || true
-            fi
-        done
-        
-        echo ""
-    } >> "$output_file"
-    
-    return 0
-}
 
 # Function to collect metrics snapshot (both Prometheus and logs)
 collect_metrics_snapshot() {
@@ -213,9 +150,6 @@ collect_metrics_snapshot() {
         
         # Collect Prometheus metrics from pod
         collect_prometheus_metrics_from_pod "$pod" "$namespace" "$iso_timestamp" "$pod_metrics_file"
-        
-        # Collect cluster-wide Prometheus metrics
-        collect_cluster_prometheus_metrics "$pod" "$namespace" "$iso_timestamp" "$pod_metrics_file"
     done
 }
 

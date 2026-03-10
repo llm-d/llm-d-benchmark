@@ -18,15 +18,6 @@ The following metrics collection capabilities are fully implemented and operatio
 4. **RBAC Setup** - Automatic ServiceAccount creation with required permissions
 5. **Metrics Storage** - Raw and processed metrics saved to results directory
 
-### Implemented but Requires Additional Setup
-
-The following capability is implemented but requires cluster-admin permissions to function:
-
-1. **Cluster-Level Prometheus Metrics** - Queries cluster Prometheus/Thanos for container resource metrics
-   - **Status**: Code implemented and deployed
-   - **Requirement**: Cluster-admin must grant ClusterRole permissions
-   - **Impact**: Without permissions, 117+ pod-level metrics still work normally
-
 ### Not Yet Implemented
 
 The following features from the original design are not yet implemented:
@@ -43,7 +34,7 @@ The following features from the original design are not yet implemented:
 
 ## Collected Metrics
 
-The metrics collection system gathers metrics from three sources:
+The metrics collection system gathers metrics from two sources:
 
 ### 1. Pod-Level Metrics (vLLM Prometheus Endpoint) Working
 
@@ -85,18 +76,7 @@ Collected from each vLLM pod's `/metrics` endpoint (default port 8000):
 - **`python_gc_objects_uncollectable_total`** - Uncollectable objects found during GC
 - **`python_info`** - Python version information
 
-### 2. Cluster-Level Metrics (Prometheus/Thanos) 🔧 Implemented, Needs Permissions
-
-These metrics are collected from the cluster-wide Prometheus/Thanos querier. The collection code is implemented and deployed, but requires cluster-admin to grant additional RBAC permissions:
-
-#### Container Resource Metrics
-- **`container_memory_usage_gb`** - Container memory usage (converted from bytes)
-- **`container_memory_working_set_gb`** - Container working set memory (converted from bytes)
-- **`container_cpu_usage_seconds_total`** - Cumulative CPU usage in seconds
-- **`container_network_receive_mb_total`** - Total network bytes received (converted to MB)
-- **`container_network_transmit_mb_total`** - Total network bytes transmitted (converted to MB)
-
-### 3. Log-Parsed Metrics Working
+### 2. Log-Parsed Metrics ✅ Working
 
 Additional metrics extracted from vLLM pod logs:
 
