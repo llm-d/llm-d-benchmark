@@ -149,8 +149,19 @@ collect_cluster_prometheus_metrics() {
     if [[ -z "$token" ]]; then
         return 0
     fi
+    # Get Prometheus URL from environment or try to detect it dynamically
+    local prometheus_url="${LLMDBENCH_WVA_PROM_BASE_URL:-}"
+    if [[ -z "$prometheus_url" ]]; then
+        # Try to get the route for thanos-querier in openshift-monitoring namespace
+        prometheus_url=$(oc get route thanos-querier -n openshift-monitoring -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+        if [[ -n "$prometheus_url" ]]; then
+            prometheus_url="https://${prometheus_url}"
+        else
+            # Fallback to service URL
+            prometheus_url="https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
+        fi
+    fi
     
-    local prometheus_url="https://thanos-querier-openshift-monitoring.apps.pokprod001.ete14.res.ibm.com"
     
     # Define metrics to collect from cluster Prometheus
     local metrics=(
