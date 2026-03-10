@@ -109,28 +109,6 @@ collect_prometheus_metrics_from_pod() {
     return 0
 }
 
-# Function to collect logs from a single pod
-collect_logs_from_pod() {
-    local pod="$1"
-    local namespace="$2"
-    local timestamp="$3"
-    local output_file="$4"
-    
-    # Use kubectl/oc logs to get pod logs
-    local kubectl_cmd="${KUBECTL_CMD:-kubectl}"
-    
-    {
-        echo "# Timestamp: $timestamp"
-        echo "# Pod: $pod"
-        echo "# Namespace: $namespace"
-        echo "# Source: pod_logs"
-        echo ""
-        $kubectl_cmd logs -n "$namespace" "$pod" --tail=100 2>/dev/null || echo "# Warning: Failed to collect logs from pod $pod"
-        echo ""
-    } >> "$output_file"
-    
-    return 0
-}
 
 # Function to collect cluster-wide Prometheus metrics for specific pods
 collect_cluster_prometheus_metrics() {
@@ -232,16 +210,12 @@ collect_metrics_snapshot() {
     # Collect from each pod
     for pod in $pods; do
         local pod_metrics_file="$METRICS_DIR/raw/${pod}_${timestamp}_metrics.txt"
-        local pod_log_file="$METRICS_DIR/raw/${pod}_${timestamp}_logs.txt"
         
         # Collect Prometheus metrics from pod
         collect_prometheus_metrics_from_pod "$pod" "$namespace" "$iso_timestamp" "$pod_metrics_file"
         
         # Collect cluster-wide Prometheus metrics
         collect_cluster_prometheus_metrics "$pod" "$namespace" "$iso_timestamp" "$pod_metrics_file"
-        
-        # Collect logs for additional context
-        collect_logs_from_pod "$pod" "$namespace" "$iso_timestamp" "$pod_log_file"
     done
 }
 
