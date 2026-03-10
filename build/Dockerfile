@@ -18,7 +18,7 @@ RUN apt-get update; \
     && apt-get clean && rm -rf /var/cache/apt
 
 # Install OpenShift CLI (oc)
-RUN curl -sLO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz && \
+RUN wget -N https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/openshift-client-linux$(echo "-$(uname -m)" | sed -e 's/-x86_64//g' -e 's/-amd64//g').tar.gz && \
     tar -xzf openshift-client-linux.tar.gz -C /usr/local/bin/ oc && \
     rm openshift-client-linux.tar.gz && \
     chmod +x /usr/local/bin/oc
@@ -128,3 +128,4 @@ ADD ../setup/preprocess /preprocess
 COPY build/llm-d-benchmark.sh /usr/local/bin/llm-d-benchmark.sh
 
 ENTRYPOINT ["llm-d-benchmark.sh"]
+
