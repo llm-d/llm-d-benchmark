@@ -11,7 +11,8 @@ set -euo pipefail
 # Configuration
 METRICS_DIR="${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/metrics"
 COLLECTION_INTERVAL="${METRICS_COLLECTION_INTERVAL:-5}"  # seconds between collections
-METRICS_PORT="${METRICS_PORT:-8000}"  # Default vLLM metrics port
+# Use LLMDBENCH_VLLM_COMMON_METRICS_PORT (8200) for model services, LLMDBENCH_VLLM_COMMON_INFERENCE_PORT (8000) for standalone
+METRICS_PORT="${LLMDBENCH_VLLM_COMMON_METRICS_PORT:-${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT:-8000}}"
 
 # Function to initialize metrics directory
 init_metrics_dir() {
