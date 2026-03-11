@@ -17,7 +17,7 @@
 | **llm-d-infra** | `v1.3.8` | chart version | `setup/env.sh` (`LLMDBENCH_VLLM_INFRA_CHART_VERSION`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) |
 | **GAIE InferencePool** | `v1.3.0` | chart version | `setup/env.sh` (`LLMDBENCH_VLLM_GAIE_CHART_VERSION`) | [kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) |
 | **kgateway** | `v2.1.1` | chart version | `setup/env.sh` (`LLMDBENCH_GATEWAY_PROVIDER_KGATEWAY_CHART_VERSION`) | [kgateway-dev/kgateway](https://github.com/kgateway-dev/kgateway) |
-| **Istio** | `1.28.1` | chart version | `setup/env.sh` (`LLMDBENCH_GATEWAY_PROVIDER_ISTIO_CHART_VERSION`) | [istio/istio](https://github.com/istio/istio) |
+| **Istio** | `1.29.1` | chart version | `setup/env.sh` (`LLMDBENCH_GATEWAY_PROVIDER_ISTIO_CHART_VERSION`) | [istio/istio](https://github.com/istio/istio) |
 | **Workload Variant Autoscaler** | `0.5.1-rc.2` | chart version | `setup/env.sh` (`LLMDBENCH_WVA_CHART_VERSION`) | [llm-d/llm-d-workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) |
 | **Gateway API CRDs** | `v1.4.0` | tag | `setup/env.sh` (`LLMDBENCH_GATEWAY_API_CRD_REVISION`) | [kubernetes-sigs/gateway-api](https://github.com/kubernetes-sigs/gateway-api) |
 
