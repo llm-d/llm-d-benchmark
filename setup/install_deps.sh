@@ -117,7 +117,7 @@ function install_yq_linux {
 
 function install_helmfile_linux {
     set -euo pipefail
-    local version=1.1.3
+    local version=1.4.1
     local pkg=helmfile_${version}_linux_amd64
 
     curl -L https://github.com/helmfile/helmfile/releases/download/v${version}/${pkg}.tar.gz -o ${pkg}.tar.gz
