@@ -65,8 +65,8 @@ RUN cd inference-perf; \
     pip install .
 
 ARG VLLM_BENCHMARK_REPO=https://github.com/vllm-project/vllm.git
-ARG VLLM_BENCHMARK_BRANCH=main
-ARG VLLM_BENCHMARK_COMMIT=f176443446f659dbab5315e056e605d8984fd976
+ARG VLLM_BENCHMARK_BRANCH=v0.17.1
+ARG VLLM_BENCHMARK_COMMIT=95c0f928cdeeaa21c4906e73cee6a156e1b3b995
 RUN git clone --branch ${VLLM_BENCHMARK_BRANCH} ${VLLM_BENCHMARK_REPO}
 RUN cd vllm; git checkout ${VLLM_BENCHMARK_COMMIT}
 # Patch the pyproject.toml to allow "pip install -e ."
