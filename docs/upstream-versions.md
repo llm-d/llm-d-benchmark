@@ -38,7 +38,7 @@
 |-----------|-------------|----------|---------------|---------------|
 | **inference-perf** | `e3e690ba3589cfa422138de696f8b5217a3aa854` | commit SHA | `build/Dockerfile` (`INFERENCE_PERF_COMMIT`) | [kubernetes-sigs/inference-perf](https://github.com/kubernetes-sigs/inference-perf) |
 | **vllm (benchmarks)** | `f176443446f659dbab5315e056e605d8984fd976` | commit SHA | `build/Dockerfile` (`VLLM_BENCHMARK_COMMIT`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) |
-| **guidellm** | `f9f1e3181274b7fecb615158f7bde48b9d20001d` | commit SHA | `build/Dockerfile` (`GUIDELLM_COMMIT`) | [vllm-project/guidellm](https://github.com/vllm-project/guidellm) |
+| **guidellm** | `v0.5.3` | tag | `build/Dockerfile` (`GUIDELLM_COMMIT`) | [vllm-project/guidellm](https://github.com/vllm-project/guidellm) |
 | **inferencemax (bench_serving)** | `499c0b171b499b02a1fd546fb2326d2175a5d66e` | commit SHA | `build/Dockerfile` (`INFERENCEMAX_COMMIT`) | [kimbochen/bench_serving](https://github.com/kimbochen/bench_serving) |
 | **Python base image** | `3.12.9-slim-bookworm` | image tag | `build/Dockerfile` (`FROM`) | [python (Docker Hub)](https://hub.docker.com/_/python) |
 
