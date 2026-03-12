@@ -65,8 +65,8 @@ RUN cd inference-perf; \
     pip install .
 
 ARG VLLM_BENCHMARK_REPO=https://github.com/vllm-project/vllm.git
-ARG VLLM_BENCHMARK_BRANCH=main
-ARG VLLM_BENCHMARK_COMMIT=f176443446f659dbab5315e056e605d8984fd976
+ARG VLLM_BENCHMARK_BRANCH=v0.17.1
+ARG VLLM_BENCHMARK_COMMIT=95c0f928cdeeaa21c4906e73cee6a156e1b3b995
 RUN git clone --branch ${VLLM_BENCHMARK_BRANCH} ${VLLM_BENCHMARK_REPO}
 RUN cd vllm; git checkout ${VLLM_BENCHMARK_COMMIT}
 # Patch the pyproject.toml to allow "pip install -e ."
@@ -101,7 +101,7 @@ RUN cd guidellm; \
 
 ARG INFERENCEMAX_REPO=https://github.com/kimbochen/bench_serving.git
 ARG INFERENCEMAX_BRANCH=main
-ARG INFERENCEMAX_COMMIT=499c0b171b499b02a1fd546fb2326d2175a5d66e
+ARG INFERENCEMAX_COMMIT=ee867231de0b268e2810a6e31751b23cf5903fc5
 RUN git clone --branch ${INFERENCEMAX_BRANCH} ${INFERENCEMAX_REPO}
 RUN cd bench_serving; \
     git checkout ${INFERENCEMAX_COMMIT}
