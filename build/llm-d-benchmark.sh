@@ -96,20 +96,10 @@ fi
 
 env | grep ^LLMDBENCH | grep -v BASE64 | sort
 
-# Scrape vLLM /metrics from all serving pods in the namespace.
-# Usage: scrape_vllm_metrics <phase>  (phase = "pre" or "post")
-function scrape_vllm_metrics {
-  local phase=$1
+# Discover vLLM serving pods in the namespace.
+# Outputs lines of "pod_name pod_ip role" to stdout.
+function discover_vllm_pods {
   local namespace=${LLMDBENCH_VLLM_COMMON_NAMESPACE:-llmdbench}
-  local metrics_port=${LLMDBENCH_VLLM_COMMON_METRICS_PORT:-8200}
-  local inference_port=${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT:-8000}
-  local metrics_path=${LLMDBENCH_VLLM_MONITORING_METRICS_PATH:-/metrics}
-  local metrics_dir="${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/vllm_metrics"
-  local timestamp
-  timestamp=$(date --iso-8601=seconds 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%S%z")
-
-  mkdir -p "${metrics_dir}"
-  echo "Scraping vLLM ${phase} metrics (namespace=${namespace}, port=${metrics_port}, fallback_port=${inference_port})..."
 
   # Try modelservice labels first, then standalone
   local pod_info
@@ -125,27 +115,78 @@ function scrape_vllm_metrics {
       -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.podIP}{" "}{"standalone"}{"\n"}{end}' 2>/dev/null || true)
   fi
 
+  echo "$pod_info"
+}
+
+# Convert a scrape interval string (e.g. "30s", "1m", "60") to integer seconds.
+function parse_interval_to_seconds {
+  local val="$1"
+  if [[ "$val" =~ ^([0-9]+)s$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+  elif [[ "$val" =~ ^([0-9]+)m$ ]]; then
+    echo $(( ${BASH_REMATCH[1]} * 60 ))
+  elif [[ "$val" =~ ^[0-9]+$ ]]; then
+    echo "$val"
+  else
+    echo "30"
+  fi
+}
+
+# Scrape vLLM /metrics from all serving pods in the namespace.
+# Usage: scrape_vllm_metrics <phase> [cached_pod_info]
+function scrape_vllm_metrics {
+  local phase=$1
+  local cached_pod_info="$2"
+  local namespace=${LLMDBENCH_VLLM_COMMON_NAMESPACE:-llmdbench}
+  local metrics_port=${LLMDBENCH_VLLM_COMMON_METRICS_PORT:-8200}
+  local inference_port=${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT:-8000}
+  local metrics_path=${LLMDBENCH_VLLM_MONITORING_METRICS_PATH:-/metrics}
+  local metrics_dir="${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/vllm_metrics"
+  local raw_dir="${metrics_dir}/raw_data"
+  local timestamp
+  timestamp=$(date --iso-8601=seconds 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%S%z")
+
+  mkdir -p "${raw_dir}"
+  echo "Scraping vLLM ${phase} metrics (namespace=${namespace}, port=${metrics_port}, fallback_port=${inference_port})..."
+
+  local pod_info
+  if [[ -n "$cached_pod_info" ]]; then
+    pod_info="$cached_pod_info"
+  else
+    pod_info=$(discover_vllm_pods)
+  fi
+
   if [[ -z "$pod_info" ]]; then
     echo "WARNING: No vLLM pods found for metrics scraping in namespace ${namespace}"
     return 0
   fi
 
+  # Filter to vllm and process_resident_memory metrics (the only ones used by
+  # the benchmark report) and gzip to reduce disk I/O during long runs.
+  # We scrape to an intermediate plain-text file first so that the empty-check
+  # for the fallback path works correctly (an empty gzip stream is still ~20
+  # bytes, which would fool `test -s`).
   echo "$pod_info" | while read -r pod_name pod_ip role; do
     [[ -z "$pod_ip" || -z "$pod_name" ]] && continue
-    local outfile="${metrics_dir}/${phase}_${pod_name}.log"
+    local outfile="${raw_dir}/${phase}_${pod_name}.log.gz"
+    local tmpfile="${raw_dir}/.tmp_${phase}_${pod_name}.log"
     echo "  Scraping ${pod_name} (${pod_ip}:${metrics_port}, role=${role})..."
     curl -s --connect-timeout 5 --max-time 30 \
-      "http://${pod_ip}:${metrics_port}${metrics_path}" > "$outfile" 2>/dev/null
+      "http://${pod_ip}:${metrics_port}${metrics_path}" 2>/dev/null | \
+      grep -E '(vllm|process_resident_memory)' > "$tmpfile"
     # If metrics port fails or returns empty, fall back to inference port (standalone vLLM serves /metrics on --port)
-    if [[ ! -s "$outfile" && "$metrics_port" != "$inference_port" ]]; then
+    if [[ ! -s "$tmpfile" && "$metrics_port" != "$inference_port" ]]; then
       echo "  Retrying ${pod_name} on inference port (${pod_ip}:${inference_port})..."
       curl -s --connect-timeout 5 --max-time 30 \
-        "http://${pod_ip}:${inference_port}${metrics_path}" > "$outfile" 2>/dev/null || \
+        "http://${pod_ip}:${inference_port}${metrics_path}" 2>/dev/null | \
+        grep -E '(vllm|process_resident_memory)' > "$tmpfile" || \
         echo "  WARNING: Failed to scrape metrics from ${pod_name}"
     fi
+    gzip -c "$tmpfile" > "$outfile"
+    rm -f "$tmpfile"
   done
 
-  cat > "${metrics_dir}/${phase}_metadata.json" <<METAEOF
+  cat > "${raw_dir}/${phase}_metadata.json" <<METAEOF
 {
   "phase": "${phase}",
   "timestamp": "${timestamp}",
@@ -155,12 +196,44 @@ function scrape_vllm_metrics {
 }
 METAEOF
 
-  echo "vLLM ${phase} metrics scraping complete. Files saved to ${metrics_dir}/"
+  echo "vLLM ${phase} metrics scraping complete. Files saved to ${raw_dir}/"
+}
+
+# Background loop that periodically scrapes vLLM metrics during the benchmark run.
+# Usage: scrape_vllm_metrics_during_loop <interval_seconds> <pod_info>
+function scrape_vllm_metrics_during_loop {
+  local interval_seconds=$1
+  local pod_info="$2"
+  local counter=0
+  local _running=true
+
+  trap '_running=false' TERM
+
+  while $_running; do
+    # Sleep first (pre-scrape already covers t=0), using background sleep for clean shutdown
+    sleep "$interval_seconds" &
+    wait $! 2>/dev/null || true
+    if ! $_running; then
+      break
+    fi
+    scrape_vllm_metrics "during_${counter}" "$pod_info" || true
+    counter=$((counter + 1))
+  done
 }
 
 # Scrape vLLM /metrics before benchmark run
+DURING_SCRAPE_PID=""
 if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
   scrape_vllm_metrics "pre" || echo "WARNING: Pre-benchmark metrics scrape failed"
+
+  # Discover pods once and start background scraping loop
+  DURING_POD_INFO=$(discover_vllm_pods)
+  if [[ -n "$DURING_POD_INFO" ]]; then
+    DURING_INTERVAL=$(parse_interval_to_seconds "${LLMDBENCH_VLLM_MONITORING_SCRAPE_INTERVAL:-30s}")
+    scrape_vllm_metrics_during_loop "$DURING_INTERVAL" "$DURING_POD_INFO" &
+    DURING_SCRAPE_PID=$!
+    echo "Started during-run metrics scraping (PID=${DURING_SCRAPE_PID}, interval=${DURING_INTERVAL}s)"
+  fi
 fi
 
 echo "Running harness: /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
@@ -178,6 +251,14 @@ while [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_LOADGEN_EC -ne 0 && "${counter}" -le 
   fi
 done
 echo "Harness completed: /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS}"
+
+# Stop background scraping loop before post-scrape
+if [[ -n "$DURING_SCRAPE_PID" ]]; then
+  echo "Stopping during-run metrics scraping (PID=${DURING_SCRAPE_PID})..."
+  kill -TERM "$DURING_SCRAPE_PID" 2>/dev/null || true
+  wait "$DURING_SCRAPE_PID" 2>/dev/null || true
+  DURING_SCRAPE_PID=""
+fi
 
 # Scrape vLLM /metrics after benchmark run
 if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then

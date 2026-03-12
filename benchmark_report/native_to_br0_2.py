@@ -844,6 +844,15 @@ def import_vllm_benchmark(results_file: str) -> BenchmarkReportV02:
         },
     )
 
+    # Populate observability from scraped vLLM metrics (if available)
+    metrics_dir = os.path.join(os.path.dirname(results_file), "vllm_metrics")
+    if os.path.isdir(metrics_dir):
+        from .prometheus_metrics import parse_vllm_metrics_dir
+
+        observability_data = parse_vllm_metrics_dir(metrics_dir)
+        if observability_data:
+            update_dict(br_dict, {"results": {"observability": observability_data}})
+
     return load_benchmark_report(br_dict)
 
 
