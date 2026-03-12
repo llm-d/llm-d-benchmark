@@ -131,7 +131,7 @@ This will workload profile will generate synthetic data - there is still a PR op
 #### Standup
 
 - For all options see the `manual` via `-h/--help`
-- Ensures gateway provider is installed, otherwise it will install it (`istio` is the default, and what is used here in the experiments (1.28.1))
+- Ensures gateway provider is installed, otherwise it will install it (`istio` is the default, and what is used here in the experiments (1.29.1))
 - Ensures workload monitoring is prepared and configured
 - Ensures the model namespace is prepared and configured
 - Ensures harness namespace is prepared and configured
