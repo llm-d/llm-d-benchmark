@@ -37,7 +37,7 @@
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |-----------|-------------|----------|---------------|---------------|
 | **inference-perf** | `e3e690ba3589cfa422138de696f8b5217a3aa854` | commit SHA | `build/Dockerfile` (`INFERENCE_PERF_COMMIT`) | [kubernetes-sigs/inference-perf](https://github.com/kubernetes-sigs/inference-perf) |
-| **vllm (benchmarks)** | `95c0f928cdeeaa21c4906e73cee6a156e1b3b995` | commit SHA | `build/Dockerfile` (`VLLM_BENCHMARK_COMMIT`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) |
+| **vllm (benchmarks)** | `v0.17.1` | tag | `build/Dockerfile` (`VLLM_BENCHMARK_BRANCH`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) |
 | **guidellm** | `f9f1e3181274b7fecb615158f7bde48b9d20001d` | commit SHA | `build/Dockerfile` (`GUIDELLM_COMMIT`) | [vllm-project/guidellm](https://github.com/vllm-project/guidellm) |
 | **inferencemax (bench_serving)** | `ee867231de0b268e2810a6e31751b23cf5903fc5` | commit SHA | `build/Dockerfile` (`INFERENCEMAX_COMMIT`) | [kimbochen/bench_serving](https://github.com/kimbochen/bench_serving) |
 | **Python base image** | `3.12.9-slim-bookworm` | image tag | `build/Dockerfile` (`FROM`) | [python (Docker Hub)](https://hub.docker.com/_/python) |
