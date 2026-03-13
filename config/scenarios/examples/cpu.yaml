@@ -1,0 +1,178 @@
+# CPU Example Scenario for LLM-D Deployment
+# Migrated from bash environment variables to YAML format
+# Based on scenarios/examples/cpu.sh
+#
+# This scenario deploys a model on CPU-only nodes without GPU accelerators.
+# Uses the vLLM CPU release image with large shared memory and CPU allocation.
+#
+# IMPORTANT NOTE:
+# All parameters not defined here will use the default values from defaults.yaml.
+# Many commonly defined values were left blank (default) so that this scenario
+# is applicable to as many environments as possible.
+#
+# The model parameter is left commented — uncomment the model you want to deploy.
+# Uncommenting a model here will override the default model from defaults.yaml.
+
+scenario:
+  # ============================================================================
+  # CPU Example - CPU-only deployment with no GPU accelerators
+  # ============================================================================
+  - name: "cpu-example-ms"
+
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST (commented — user selects)
+    # -------------------------------------------------------------------------
+    # Uncomment ONE of the following models:
+    # model:
+    #   name: Qwen/Qwen3-0.6B
+    #   name: Qwen/Qwen3-32B
+    #   name: RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic
+    #   name: ibm-granite/granite-3.3-8b-instruct
+    #   name: ibm-granite/granite-3.3-2b-instruct
+    #   name: ibm-ai-platform/micro-g3.3-8b-instruct-1b
+    #   name: facebook/opt-125m
+    #   name: meta-llama/Llama-3.1-8B-Instruct
+    #   name: meta-llama/Llama-3.1-70B-Instruct
+    #   name: deepseek-ai/DeepSeek-R1-0528
+
+    # -------------------------------------------------------------------------
+    # CPU-only Affinity
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY=kubernetes.io/os:linux
+    # -------------------------------------------------------------------------
+    affinity:
+      enabled: true
+      nodeSelector:
+        kubernetes.io/os: linux
+
+    # -------------------------------------------------------------------------
+    # Accelerator Configuration — no GPUs
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR=0
+    # -------------------------------------------------------------------------
+    accelerator:
+      count: 0
+
+    # -------------------------------------------------------------------------
+    # vLLM Common Configuration (shared across standalone and modelservice)
+    # -------------------------------------------------------------------------
+    vllmCommon:
+      tensorParallelism: 2
+      maxModelLen: 2048
+      maxNumSeq: 32
+      shmMemory: 2Gi
+
+      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
+
+      # Shared volumes for CPU scenarios
+      volumes:
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+        - name: preprocesses
+          type: configMap
+          configMap:
+            name: llm-d-benchmark-preprocesses
+            defaultMode: 0755
+
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        - name: preprocesses
+          mountPath: /setup/preprocess
+
+      flags:
+        disableLogRequests: true
+        disableUvicornAccessLog: true
+        noPrefixCaching: true
+
+    # -------------------------------------------------------------------------
+    # Standalone Deployment Configuration
+    # Corresponds to: LLMDBENCH_VLLM_STANDALONE_*
+    # -------------------------------------------------------------------------
+    standalone:
+      enabled: true
+      replicas: 1
+
+      image:
+        repository: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
+        tag: v0.11.2
+        pullPolicy: IfNotPresent
+
+      # No GPU parallelism for CPU-only deployment
+      parallelism:
+        tensor: 0
+
+      resources:
+        limits:
+          memory: 8Gi
+          cpu: "4"
+        requests:
+          memory: 8Gi
+          cpu: "4"
+
+      vllm:
+        customCommand: null
+
+    # -------------------------------------------------------------------------
+    # Model GPU memory — disabled for CPU-only
+    # Ensures --gpu-memory-utilization is NOT rendered in vllm serve command
+    # -------------------------------------------------------------------------
+    model:
+      gpuMemoryUtilization: 0
+      maxModelLen: 2048
+
+    # -------------------------------------------------------------------------
+    # Override images for modelservice (CPU vLLM image)
+    # Corresponds to: LLMDBENCH_LLMD_IMAGE_*
+    # -------------------------------------------------------------------------
+    images:
+      vllm:
+        repository: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
+        tag: v0.11.2
+
+    # -------------------------------------------------------------------------
+    # Prefill Configuration — disabled (0 prefill pods)
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: false
+      replicas: 0
+      accelerator:
+        count: 0
+
+    # -------------------------------------------------------------------------
+    # Decode Configuration — 2 decode pods on CPU
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
+    # -------------------------------------------------------------------------
+    decode:
+      replicas: 2
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 8Gi
+          cpu: "4"
+        requests:
+          memory: 8Gi
+          cpu: "4"
+
+      accelerator:
+        count: 0
+
+      vllm:
+        customCommand: null
+
+    # -------------------------------------------------------------------------
+    # Workload/Harness Configuration
+    # Corresponds to: LLMDBENCH_HARNESS_NAME=inference-perf
+    # -------------------------------------------------------------------------
+    harness:
+      name: inference-perf
+      experimentProfile: sanity_random.yaml

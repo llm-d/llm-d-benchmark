@@ -1,0 +1,118 @@
+{% if standalone.enabled is defined and not standalone.enabled %}
+inferenceExtension:
+  replicas: {{ inferenceExtension.replicas }}
+  image:
+    name: llm-d-inference-scheduler
+    hub: {{ images.inferenceScheduler.repository | replace('/llm-d-inference-scheduler', '') }}
+    tag: {{ images.inferenceScheduler.tag }}
+    pullPolicy: {{ images.inferenceScheduler.pullPolicy }}
+  extProcPort: {{ inferenceExtension.extProcPort }}
+  extraContainerPorts:
+    - name: zmq
+      containerPort: {{ inferenceExtension.zmqPort }}
+      protocol: TCP
+  extraServicePorts:
+    - name: zmq
+      port: {{ inferenceExtension.zmqPort }}
+      targetPort: {{ inferenceExtension.zmqPort }}
+      protocol: TCP
+{% if huggingface is defined and huggingface.secretName is defined and huggingface.secretName %}
+  env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: {{ huggingface.secretName }}
+          key: {{ huggingface.tokenKey }}
+{% endif %}
+  pluginsConfigFile: "{{ inferenceExtension.pluginsConfigFile }}"
+{% if inferenceExtension.pluginsCustomConfig is defined and inferenceExtension.pluginsCustomConfig %}
+  pluginsCustomConfig:
+{% for filename, content in inferenceExtension.pluginsCustomConfig.items() %}
+    {{ filename }}: |
+{{ content | indent(6, true) }}
+{% endfor %}
+{% endif %}
+  monitoring:
+    secret:
+      name: {{ inferenceExtension.monitoring.secretName | default('kv-events-gateway-sa-metrics-reader-secret') }}
+    interval: "{{ inferenceExtension.monitoring.interval | default('10s') }}"
+    prometheus:
+      enabled: {{ inferenceExtension.monitoring.prometheus.enabled | default(true) | lower }}
+      auth:
+        enabled: {{ inferenceExtension.monitoring.prometheus.auth.enabled | default(true) | lower }}
+  flags:
+{% if inferenceExtension.flags is defined and inferenceExtension.flags %}
+{% for key, value in inferenceExtension.flags.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% else %}
+    v: "{{ inferenceExtension.verbosity | default('1') }}"
+{% endif %}
+{% if inferenceExtension.sidecar is defined and inferenceExtension.sidecar.enabled is defined and inferenceExtension.sidecar.enabled %}
+  sidecar:
+    enabled: true
+    image: "{{ images.udsTokenizer.repository }}:{{ images.udsTokenizer.tag }}"
+    imagePullPolicy: {{ inferenceExtension.sidecar.imagePullPolicy | default('IfNotPresent') }}
+    name: {{ inferenceExtension.sidecar.name | default('tokenizer-uds') }}
+{% if inferenceExtension.sidecar.env is defined and inferenceExtension.sidecar.env %}
+    env:
+{% for env_var in inferenceExtension.sidecar.env %}
+      - name: {{ env_var.name }}
+        value: "{{ env_var.value }}"
+{% endfor %}
+{% endif %}
+{% if inferenceExtension.sidecar.volumeMounts is defined and inferenceExtension.sidecar.volumeMounts %}
+    volumeMounts:
+{% for vm in inferenceExtension.sidecar.volumeMounts %}
+      - mountPath: {{ vm.mountPath }}
+        name: {{ vm.name }}
+{% endfor %}
+{% endif %}
+  volumes:
+    - name: tokenizers
+      emptyDir: {}
+    - name: tokenizer-uds
+      emptyDir: {}
+  volumeMounts:
+    - mountPath: /tmp/tokenizer
+      name: tokenizer-uds
+{% elif inferenceExtension.volumes is defined and inferenceExtension.volumes %}
+  volumes:
+{% for vol in inferenceExtension.volumes %}
+    - name: {{ vol.name }}
+{% if vol.emptyDir is defined %}
+      emptyDir: {{ vol.emptyDir | toyaml | trim }}
+{% elif vol.configMap is defined %}
+      configMap:
+        name: {{ vol.configMap.name }}
+{% endif %}
+{% endfor %}
+{% if inferenceExtension.volumeMounts is defined and inferenceExtension.volumeMounts %}
+  volumeMounts:
+{% for vm in inferenceExtension.volumeMounts %}
+    - mountPath: {{ vm.mountPath }}
+      name: {{ vm.name }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+inferencePool:
+  targetPortNumber: {{ decode.vllm.servicePort }}
+  modelServerType: vllm
+  apiVersion: "inference.networking.k8s.io/v1"
+  modelServers:
+    matchLabels:
+      llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
+      llm-d.ai/model: {{ model.shortName }}
+{% if inferenceExtension.inferencePoolProviderConfig is defined and inferenceExtension.inferencePoolProviderConfig %}
+  provider:
+    {{ gateway.className | default('istio') }}:
+{{ inferenceExtension.inferencePoolProviderConfig | toyaml | indent(6, false) }}
+{% endif %}
+
+{% set gw_provider = gateway.provider | default(gateway.className | default('istio')) %}
+{% if gw_provider in ['gke', 'istio'] %}
+provider:
+  name: {{ gw_provider }}
+{% endif %}
+{% endif %}

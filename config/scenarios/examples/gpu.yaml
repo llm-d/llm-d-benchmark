@@ -1,0 +1,117 @@
+# GPU Example Scenario for LLM-D Deployment
+# Migrated from bash environment variables to YAML format
+# Based on scenarios/examples/gpu.sh
+#
+# This scenario deploys a model on GPU-accelerated nodes.
+# Uses the standard vLLM image with GPU memory utilization.
+#
+# IMPORTANT NOTE:
+# All parameters not defined here will use the default values from defaults.yaml.
+# Many commonly defined values were left blank (default) so that this scenario
+# is applicable to as many environments as possible.
+#
+# The model parameter and affinity are left commented — uncomment the model and
+# GPU affinity appropriate for your cluster.
+
+scenario:
+  # ============================================================================
+  # GPU Example - Standard GPU deployment
+  # ============================================================================
+  - name: "gpu-example"
+
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST (commented — user selects)
+    # -------------------------------------------------------------------------
+    # Uncomment ONE of the following models:
+    # model:
+    #   name: Qwen/Qwen3-0.6B
+    #   name: Qwen/Qwen3-32B
+    #   name: RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic
+    #   name: ibm-granite/granite-3.3-8b-instruct
+    #   name: ibm-granite/granite-3.3-2b-instruct
+    #   name: ibm-ai-platform/micro-g3.3-8b-instruct-1b
+    #   name: facebook/opt-125m
+    #   name: meta-llama/Llama-3.1-8B-Instruct
+    #   name: meta-llama/Llama-3.1-70B-Instruct
+    #   name: deepseek-ai/DeepSeek-R1-0528
+
+    # -------------------------------------------------------------------------
+    # PVC Configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS (left for auto-detect)
+    # -------------------------------------------------------------------------
+    # Uncomment to override storage class:
+    # storage:
+    #   modelPvc:
+    #     storageClassName: standard-rwx       # GKE
+    #     # storageClassName: shared-vast       # Kubernetes
+    #     # storageClassName: ocs-storagecluster-cephfs  # OpenShift
+    #     size: 1Ti
+
+    # -------------------------------------------------------------------------
+    # Affinity Configuration — GPU selection
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left for auto-detect)
+    # Leave commented for automatic GPU detection. Works for OpenShift, Kubernetes, and GKE.
+    # -------------------------------------------------------------------------
+    # Uncomment ONE of the following GPU affinities:
+    # affinity:
+    #   enabled: true
+    #   nodeSelector:
+    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3        # OpenShift
+    #     # gpu.nvidia.com/model: H200                          # Kubernetes
+    #     # cloud.google.com/gke-accelerator: nvidia-tesla-a100 # GKE
+    #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
+    #     # nvidia.com/gpu.product: NVIDIA-L40S                 # OpenShift
+    #     # nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB       # OpenShift
+    #     # nvidia.com/gpu: ""                                  # ANY GPU (Minikube)
+
+    # -------------------------------------------------------------------------
+    # vLLM Common Configuration
+    # -------------------------------------------------------------------------
+    vllmCommon:
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM (default 1)
+      # tensorParallelism: 2
+
+      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
+
+      flags:
+        disableLogRequests: true
+        disableUvicornAccessLog: true
+        noPrefixCaching: true
+
+    # -------------------------------------------------------------------------
+    # Standalone Deployment Configuration
+    # -------------------------------------------------------------------------
+    standalone:
+      enabled: true
+      replicas: 1
+
+      vllm:
+        customCommand: null
+
+    # -------------------------------------------------------------------------
+    # Prefill Configuration
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: true
+      # replicas: 1  # default
+
+      vllm:
+        customCommand: null
+
+    # -------------------------------------------------------------------------
+    # Decode Configuration
+    # -------------------------------------------------------------------------
+    decode:
+      # replicas: 1  # default
+
+      vllm:
+        customCommand: null
+
+    # -------------------------------------------------------------------------
+    # Workload/Harness Configuration
+    # Corresponds to: LLMDBENCH_HARNESS_NAME=inference-perf
+    # -------------------------------------------------------------------------
+    harness:
+      name: inference-perf
+      experimentProfile: sanity_random.yaml

@@ -1,25 +1,71 @@
 """
-Capacity planner provides functionality to estimate the minimum number of GPUs required for loading model and KV cache
+Capacity planner for LLM inference memory estimation.
+
+This module implements memory estimation formulas for LLM inference with vLLM:
+- Model weight memory requirements
+- KV cache memory for different attention mechanisms (MHA, GQA, MQA, MLA)
+- Activation memory during forward pass
+- CUDA graph and system overhead
+
+Calculates minimum GPU requirements based on model architecture, parallelism
+configuration, and workload characteristics.
 """
 
 from dataclasses import dataclass
 from enum import StrEnum
 import math
-from functools import reduce
+from functools import reduce, lru_cache
 import re
 from typing import List
-from huggingface_hub import HfApi, ModelInfo
+from huggingface_hub import HfApi
+from huggingface_hub.hf_api import ModelInfo, SafetensorsRepoMetadata
 
 import contextlib
 import io
 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
     from transformers import AutoConfig, AutoModel
 
-class AttentionType(StrEnum):
-    """
-    AttentionType describe the attention mechanism used by the model
-    """
+# Memory Overhead Constants (in GiB)
+# Empirically validated against vLLM on H100 GPUs with seq_len=16000, batch_size=1
+# Source: empirical-test/analysis-results.md
+# Test environment: H100 (79.18 GiB), vLLM with FlashAttention, max_model_len=16000
+ACTIVATION_MEMORY_BASE_DENSE_GIB = 5.5  # Dense models: Qwen3-0.6B (5.56), Llama-8B (4.76), Llama-70B/TP2 (4.84)
+ACTIVATION_MEMORY_BASE_MOE_GIB = 8.0    # MoE models: gpt-oss-20b (7.38)
+ACTIVATION_MEMORY_BASE_MULTIMODAL_GIB = 2.5  # Multimodal models: Mistral-Small-3.2-24B (2.12)
+ACTIVATION_REFERENCE_SEQ_LEN = 16000    # Reference sequence length for empirical measurements
+VLLM_NON_TORCH_MEMORY_TP1_GIB = 0.15    # TP=1: empirical range 0.13-0.14 GiB
+VLLM_NON_TORCH_MEMORY_TPN_GIB = 0.6     # TP≥2: empirical 0.55 GiB (TP=2)
+# Note: CUDA graph memory is included in activation memory profiling, not a separate constant
 
+# Tier 1: Validated activation profiles from empirical vLLM measurements on H100.
+# Key = architecture string from model_config.architectures[0]
+# Value = activation memory in GiB (torch peak memory increase from vLLM profiling)
+# Source: config_explorer/empirical-vllm-memory-results.md
+VALIDATED_ACTIVATION_PROFILES = {
+    "LlamaForCausalLM": 4.8,                   # Empirical: Llama-8B (4.76), Llama-70B/TP2 (4.84)
+    "Qwen2ForCausalLM": 5.6,                   # Empirical: same family as Qwen3
+    "Qwen3ForCausalLM": 5.6,                   # Empirical: Qwen3-0.6B (5.56), Qwen3-32B (5.64)
+    "PixtralForConditionalGeneration": 2.5,     # Empirical: Mistral-Small-3.2-24B (2.12)
+    "Mistral3ForConditionalGeneration": 2.5,    # Same architecture family as Pixtral
+}
+
+# Tier 2: Multimodal architectures typically have lower activation memory
+# because the vision encoder does not participate in CUDA graph capture
+MULTIMODAL_ARCHITECTURES = [
+    "PixtralForConditionalGeneration",
+    "Mistral3ForConditionalGeneration",
+    "LlavaForConditionalGeneration",
+    "LlavaNextForConditionalGeneration",
+]
+
+# Computational Constants
+BYTES_PER_GIB = 1024 ** 3
+FP16_BF16_BYTES = 2  # Computational dtype for most inference workloads
+HIGH_PRECISION_THRESHOLD_BYTES = 2  # Distinguish quantized vs full-precision
+DEFAULT_KV_CACHE_DTYPE_BYTES = 1  # FP8 KV cache default
+
+class AttentionType(StrEnum):
+    """Attention mechanism types supported by the capacity planner."""
     MLA = "Multi-head latent attention"
     MHA = "Multi-head attention"
     GQA = "Grouped-query attention"
@@ -54,11 +100,17 @@ class KVCacheDetail:
     kv_lora_rank: int | None = None
     qk_rope_head_dim: int | None = None
 
-    def __init__(self, model_info: ModelInfo, model_config: AutoConfig, context_len: int=1, batch_size: int=1):
+    def __init__(self, model_name: str, model_config: AutoConfig, context_len: int=1, batch_size: int=1):
         """
         KVCacheDetail stores information that are relevant to calculating KV cache memory requirement
+
+        Args:
+            model_name: HuggingFace model ID
+            model_config: Model configuration from AutoConfig
+            context_len: Context length (max tokens per request)
+            batch_size: Batch size for KV cache calculation
         """
-        self.model = model_info.id
+        self.model = model_name
         self.kv_data_type = inference_dtype(model_config)
         self.precision_in_bytes = inference_dtype_byte(model_config)
         self.model_architecture = model_config.architectures[0]
@@ -111,15 +163,28 @@ class KVCacheDetail:
     def __recalculate(self):
         """"
         Recalculates per token memory, kv cache size in bytes, and in GB
+
+        KV Cache Memory Formulas:
+        - Standard Attention (MHA, GQA, MQA):
+          num_layers * 2 * num_kv_heads * head_dim * precision_bytes
+          Factor of 2 for separate K and V caches
+
+        - Multi-head Latent Attention (MLA):
+          num_layers * (kv_lora_rank + qk_rope_head_dim) * precision_bytes
+          Uses compressed KV representation (DeepSeek-V2/V3)
+
+        Attention Types:
+        - MHA: num_kv_heads == num_attention_heads (all heads have dedicated K,V)
+        - GQA: 1 < num_kv_heads < num_attention_heads (multiple Q heads share K,V)
+        - MQA: num_kv_heads == 1 (single K,V pair shared across all Q heads)
+        - MLA: Compressed KV with low-rank projection
         """
-        # Calculate per token memory bytes depending on attention type
         if self.attention_type == AttentionType.MLA:
             self.per_token_memory_bytes = self.num_hidden_layers * (self.kv_lora_rank + self.qk_rope_head_dim) * self.precision_in_bytes
         else:
             self.num_attention_group = int(self.num_attention_heads / self.num_key_value_heads)
             self.per_token_memory_bytes = int(self.num_hidden_layers * 2 * self.head_dimension * self.num_key_value_heads * self.precision_in_bytes)
 
-        # Calculate kv cache size in bytes and in gb
         self.per_request_kv_cache_bytes = self.per_token_memory_bytes * self.context_len
         self.per_request_kv_cache_gb = bytes_to_gib(self.per_request_kv_cache_bytes)
         self.kv_cache_size_gb = self.per_request_kv_cache_gb * self.batch_size
@@ -145,6 +210,49 @@ def get_model_config_from_hf(model_name: str, hf_token: str=None) -> AutoConfig:
     )
 
     return model_config
+
+@lru_cache(maxsize=128)
+def _get_safetensors_metadata_cached(model_name: str, hf_token: str | None = None) -> SafetensorsRepoMetadata:
+    """Cached internal function for fetching safetensors metadata."""
+    api = HfApi(token=hf_token)
+    return api.get_safetensors_metadata(model_name)
+
+
+def get_safetensors_metadata_from_hf(model_name: str, hf_token: str | None = None) -> SafetensorsRepoMetadata:
+    """
+    Fetches safetensors metadata directly from HuggingFace Hub.
+
+    This uses HfApi.get_safetensors_metadata which parses safetensor headers
+    directly, providing reliable parameter counts. Results are cached to avoid
+    repeated API calls.
+
+    Args:
+        model_name: HuggingFace model ID (e.g., "meta-llama/Llama-3.3-70B")
+        hf_token: Optional HuggingFace token for gated models
+
+    Returns:
+        SafetensorsRepoMetadata with parameter_count, sharded status, etc.
+
+    Raises:
+        NotASafetensorsRepoError: If model doesn't have safetensors files
+    """
+    return _get_safetensors_metadata_cached(model_name, hf_token)
+
+def model_params_by_dtype(model_name: str, hf_token: str | None = None) -> dict[str, int]:
+    """
+    Returns parameter counts broken down by dtype.
+
+    Example return: {"BF16": 70553706496} or {"BF16": 2109382656, "F8_E4M3": 68451041280}
+
+    Args:
+        model_name: HuggingFace model ID
+        hf_token: Optional HuggingFace token for gated models
+
+    Returns:
+        Dict mapping dtype string to parameter count
+    """
+    metadata = get_safetensors_metadata_from_hf(model_name, hf_token)
+    return dict(metadata.parameter_count)
 
 def get_text_config(model_config: AutoConfig) -> dict:
     """
@@ -173,11 +281,21 @@ def is_quantized(model_config: AutoConfig) -> bool:
 
     return hasattr(model_config, 'quantization_config')
 
-def model_total_params(model_info: ModelInfo) -> int:
+def model_total_params(model_name: str, hf_token: str | None = None) -> int:
     """
-    Returns the total parameters of the model
+    Returns the total parameters of the model.
+
+    Uses HfApi.get_safetensors_metadata for reliable parameter counting.
+
+    Args:
+        model_name: HuggingFace model ID
+        hf_token: Optional HuggingFace token for gated models
+
+    Returns:
+        Total number of parameters across all dtypes
     """
-    return model_info.safetensors.total
+    metadata = get_safetensors_metadata_from_hf(model_name, hf_token)
+    return sum(metadata.parameter_count.values())
 
 def max_context_len(model_config: AutoConfig) -> int:
     """
@@ -186,35 +304,91 @@ def max_context_len(model_config: AutoConfig) -> int:
     model_config = get_text_config(model_config)
     return model_config.max_position_embeddings
 
-def __estimate_vllm_non_torch_memory() -> int:
+def estimate_vllm_non_torch_memory(tp: int = 1) -> float:
     """
-    Estimate non-torch memory consumption.
-    Dummy function for now.
+    Estimate non-torch memory (CUDA runtime, Python interpreter) in GiB.
+
+    Non-torch memory increases with TP due to NCCL/communication overhead.
+
+    Args:
+        tp: Tensor parallelism degree
+
+    Returns:
+        Non-torch memory in GiB per GPU
     """
+    return VLLM_NON_TORCH_MEMORY_TP1_GIB if tp == 1 else VLLM_NON_TORCH_MEMORY_TPN_GIB
 
-    return 1
-
-def __estimate_vllm_peak_memory(config: AutoConfig,
-                              seq_len: int,
-                              batch_size=1,
-                              include_hidden=True):
+def estimate_vllm_cuda_graph_memory() -> float:
     """
-    Estimate peak activation memory for vLLM inference in bytes without running PyTorch.
+    CUDA graph memory overhead per GPU in GiB.
+
+    Note: Empirical measurements show CUDA graph memory is included in the
+    activation memory profiling (range: -0.45 to +0.39 GiB as separate measurement).
+    Returning 0.0 to avoid double-counting.
+
+    Returns:
+        0.0 (CUDA graph memory already included in activation estimate)
     """
-    num_layers = config.num_hidden_layers
-    hidden_size = config.hidden_size
-    num_heads = config.num_attention_heads
-    head_dim = hidden_size // num_heads
-    dtype_bytes = precision_to_byte(str(config.torch_dtype))
+    return 0.0
 
-    # KV cache
-    kv_bytes = 2 * num_layers * batch_size * num_heads * head_dim * seq_len * dtype_bytes
+def estimate_vllm_activation_memory(config: AutoConfig,
+                                   tp: int = 1) -> float:
+    """
+    Estimate peak activation memory for vLLM inference in GiB.
 
-    # Hidden states
-    hidden_bytes = batch_size * seq_len * hidden_size * dtype_bytes if include_hidden else 0
+    Uses a tiered estimation strategy:
+    1. Validated profiles: exact empirical measurements for known architectures
+    2. Model type fallback: constants for MoE, multimodal, or dense models
 
-    total_bytes = kv_bytes + hidden_bytes
-    return total_bytes
+    CRITICAL: Activation memory is CONSTANT per model type, NOT dependent on
+    max_model_len or batch_size. This was empirically validated:
+    - Qwen3-0.6B at max_model_len=16000: 5.56 GiB
+    - Qwen3-0.6B at max_model_len=32000: 5.56 GiB (SAME!)
+
+    The activation memory represents FIXED overhead from:
+    - CUDA graph compilation and capture (fixed batch sizes: 1,2,4,8,16,32...)
+    - vLLM's warmup profiling phase with dummy sequences
+    - PyTorch memory allocator pre-allocation and fragmentation
+    - Fixed-size workspace buffers allocated during engine initialization
+    - FlashAttention workspace buffers (pre-allocated)
+
+    Runtime per-request activation buffers (which DO scale with seq_len) are
+    allocated from the KV cache memory pool, not counted here.
+
+    Empirical validation:
+    - Dense models: 4.76-5.56 GiB (Qwen3-0.6B, Llama-8B, Llama-70B)
+    - MoE models: 7.38 GiB (gpt-oss-20b with 32 experts)
+    - Multimodal models: 2.12 GiB (Mistral-Small-3.2-24B)
+
+    Source: config_explorer/empirical-vllm-memory-results.md
+
+    Args:
+        config: Model configuration (can be full config or text_config)
+        tp: Tensor parallelism degree (note: empirical data shows activation
+            memory does NOT scale inversely with TP)
+
+    Returns:
+        float: Estimated peak activation memory in GiB (constant per model type)
+
+    Raises:
+        ValueError: If tp <= 0
+    """
+    if tp <= 0:
+        raise ValueError(f"Tensor parallelism must be positive, got tp={tp}")
+
+    # Tier 1: Check validated profiles by architecture
+    if hasattr(config, 'architectures') and config.architectures:
+        arch = config.architectures[0]
+        if arch in VALIDATED_ACTIVATION_PROFILES:
+            return VALIDATED_ACTIVATION_PROFILES[arch]
+
+    # Tier 2: Detect model type and use appropriate constant
+    text_config = get_text_config(config)
+    if is_moe(text_config):
+        return ACTIVATION_MEMORY_BASE_MOE_GIB
+    if is_multimodal(config):
+        return ACTIVATION_MEMORY_BASE_MULTIMODAL_GIB
+    return ACTIVATION_MEMORY_BASE_DENSE_GIB
 
 def precision_to_byte(precision: str) -> float:
     """
@@ -326,17 +500,33 @@ def get_quant_bytes(model_config: AutoConfig) -> float:
         return 0.0
 
 
-def model_memory_req(model_info: ModelInfo, model_config: AutoConfig) -> float:
+def model_memory_req(model_name: str, model_config: AutoConfig, hf_token: str | None = None) -> float:
     """
-    Calculates the GPU memory (in GiB) required for loading the model
-    """
+    Calculates the GPU memory (in GiB) required for loading the model.
 
-    model_params = model_info.safetensors.parameters
+    Args:
+        model_name: HuggingFace model ID
+        model_config: Model configuration from AutoConfig
+        hf_token: Optional HuggingFace token for gated models
+
+    Returns:
+        Memory requirement in GiB
+    """
+    model_params = model_params_by_dtype(model_name, hf_token)
     memory = 0
 
     # Check if model is quantized
     quantization_byte = None
-    if is_quantized(model_config):
+    quant_method = get_quant_method(model_config) if is_quantized(model_config) else ""
+
+    # MXFP4 (gpt-oss): safetensor metadata already reflects actual storage bytes.
+    # U8 tensors contain packed 4-bit blocks and scales — use storage dtype directly.
+    if quant_method == "mxfp4":
+        for precision, num_params in model_params.items():
+            memory += parameter_memory_req(num_params, precision)
+        return memory
+
+    if quant_method:
         quantization_byte = get_quant_bytes(model_config)
 
     for precision, num_params in model_params.items():
@@ -354,50 +544,54 @@ def model_memory_req(model_info: ModelInfo, model_config: AutoConfig) -> float:
 
     return memory
 
+def _extract_dtype_from_config(model_config: AutoConfig) -> str | None:
+    """
+    Extract dtype from model config, checking common attribute names.
+
+    Returns:
+        Dtype string if found, None otherwise
+    """
+    for attr in ["torch_dtype", "dtype"]:
+        if hasattr(model_config, attr):
+            dtype = getattr(model_config, attr)
+            if dtype is not None:
+                return str(dtype)
+    return None
+
 def inference_dtype(model_config: AutoConfig) -> str:
     """
-    Returns the inference KV cache data type used
+    Returns the inference KV cache data type used.
+
+    Checks model config dtype attributes first, falls back to quantization
+    method if available, returns empty string if neither found.
     """
-
-    dtype = None
-
-    if hasattr(model_config, "dtype"):
-        dtype = model_config.dtype
-
-    if hasattr(model_config, "torch_dtype"):
-        dtype = model_config.torch_dtype
-
-    # It is possible that the model config sets this field to None
+    dtype = _extract_dtype_from_config(model_config)
     if dtype is not None:
-        return str(dtype)
+        return dtype
 
-    # At this point, it can be a quantized model, so use dtype in quantization_config
     if is_quantized(model_config):
         return get_quant_method(model_config)
 
     return ""
 
-def inference_dtype_byte(model_config: AutoConfig) -> int:
+def inference_dtype_byte(model_config: AutoConfig) -> float:
     """
-    Returns the precision for the inference KV cache data type used.
-    For most models it can be determined from the inference_dtype like fp32
-    For other models where inference_dtype is compressed-tensors, we need to read from quant_method
-    """
+    Returns the precision for the inference KV cache data type in bytes.
 
+    For standard dtypes (fp32, bf16, etc.), converts directly.
+    For compressed formats (compressed-tensors), extracts from quantization config.
+    Falls back to FP8 (1 byte) as default.
+    """
     native_kv_dtype = inference_dtype(model_config)
+
     try:
         return precision_to_byte(native_kv_dtype)
-
-    # Cannot determine the precision because it is something like compressed-tensors
-    # In this case, find the quant method
     except ValueError:
-        pass
+        # Cannot determine from dtype string (e.g., "compressed-tensors")
+        if is_quantized(model_config):
+            return get_quant_bytes(model_config)
 
-    if is_quantized(model_config):
-        return get_quant_bytes(model_config)
-
-    # Return fp8 for kv-cache-dtype as default
-    return 1
+        return DEFAULT_KV_CACHE_DTYPE_BYTES
 
 def use_mla(model_architecture: str) -> bool:
     """
@@ -411,18 +605,26 @@ def use_mla(model_architecture: str) -> bool:
 
     return any(deepseek in model_architecture for deepseek in deepseek_mla_models)
 
-def kv_cache_req(model_info: ModelInfo,
+def kv_cache_req(model_name: str,
                     model_config: AutoConfig,
                     context_len: int,
                     batch_size: int = 1,
                     ) -> float:
     """
-    Calculates the KV cache requirement in GiB
+    Calculates the KV cache requirement in GiB.
+
+    Args:
+        model_name: HuggingFace model ID
+        model_config: Model configuration
+        context_len: Context length (max tokens per request)
+        batch_size: Batch size for KV cache calculation
+
+    Returns:
+        KV cache requirement in GiB
     """
+    return KVCacheDetail(model_name, model_config, context_len, batch_size).kv_cache_size_gb
 
-    return KVCacheDetail(model_info, model_config, context_len, batch_size).kv_cache_size_gb
-
-def total_kv_cache_blocks(model_info: ModelInfo,
+def total_kv_cache_blocks(model_name: str,
                     model_config: AutoConfig,
                     context_len: int,
                     gpu_memory: int,
@@ -432,58 +634,101 @@ def total_kv_cache_blocks(model_info: ModelInfo,
                     tp: int=1,
                     pp: int=1,
                     dp: int=1,
+                    hf_token: str | None = None,
                     ) -> int:
     """
-    Calculate the total number of KV cache blocks that can fit in GPU memory.
-    """
+    Calculate total number of KV cache blocks that can fit in GPU memory.
 
-    # Compute per-token and per-block memory
-    kv_cache_detail = KVCacheDetail(model_info, model_config, context_len, batch_size)
+    Implements vLLM's block-based memory management. KV cache is divided into
+    fixed-size blocks (default 16 tokens) for dynamic allocation and efficient
+    memory sharing across requests.
+
+    Args:
+        model_name: HuggingFace model ID
+        model_config: Model configuration
+        context_len: Context length
+        gpu_memory: GPU memory per device in GiB
+        gpu_mem_util: GPU memory utilization factor
+        batch_size: Batch size
+        block_size: KV cache block size in tokens
+        tp: Tensor parallelism degree
+        pp: Pipeline parallelism degree
+        dp: Data parallelism degree
+        hf_token: Optional HuggingFace token for gated models
+
+    Returns:
+        Total number of KV cache blocks
+    """
+    kv_cache_detail = KVCacheDetail(model_name, model_config, context_len, batch_size)
     per_token_memory = kv_cache_detail.per_token_memory_bytes / (tp * pp)
     per_block_memory = per_token_memory * block_size
 
-    # Compute allocatable KV cache memory
     kv_cache_allocatable = allocatable_kv_cache_memory(
-        model_info, model_config,
+        model_name, model_config,
         gpu_memory, gpu_mem_util,
-        tp, pp, dp
+        tp, pp, dp,
+        max_model_len=context_len,
+        batch_size=batch_size,
+        hf_token=hf_token
     )
 
-    # Compute total KV cache blocks
     total_kv_blocks = gib_to_bytes(kv_cache_allocatable) // per_block_memory
-
     return total_kv_blocks
 
-def max_concurrent_requests(model_info: ModelInfo,
+def max_concurrent_requests(model_name: str,
                         model_config: AutoConfig,
                         max_model_len: int,
                         gpu_memory: int,
                         gpu_mem_util: float=0.9,
+                        batch_size: int=1,
                         tp: int=1,
                         pp: int=1,
                         dp: int=1,
+                        hf_token: str | None = None,
                     ) -> int:
+    """
+    Calculate maximum number of concurrent requests that can be served.
 
+    Args:
+        model_name: HuggingFace model ID
+        model_config: Model configuration
+        max_model_len: Maximum sequence length per request
+        gpu_memory: GPU memory per device in GiB
+        gpu_mem_util: GPU memory utilization factor
+        batch_size: Batch size for activation memory estimation
+        tp: Tensor parallelism degree
+        pp: Pipeline parallelism degree
+        dp: Data parallelism degree
+        hf_token: Optional HuggingFace token for gated models
+
+    Returns:
+        int: Maximum number of concurrent requests
+    """
     # Find allocatable memory for KV cache
     kv_cache_allocatable = allocatable_kv_cache_memory(
-        model_info, model_config,
+        model_name, model_config,
         gpu_memory, gpu_mem_util,
-        tp, pp, dp
+        tp, pp, dp,
+        max_model_len=max_model_len,
+        batch_size=batch_size,
+        hf_token=hf_token
     )
 
     # Find kv cache requirement for one request of max-model-len
-    per_request_kv_cache_req = kv_cache_req(model_info, model_config, max_model_len)
-    if per_request_kv_cache_req == 0:
+    per_request_kv_cache_req = kv_cache_req(model_name, model_config, max_model_len)
+    # MEDIUM FIX: Check if allocatable_kv is non-positive to prevent division by zero
+    if per_request_kv_cache_req == 0 or kv_cache_allocatable <= 0:
         return 0
     return max(0, math.floor(kv_cache_allocatable / per_request_kv_cache_req))
 
 def find_possible_tp(model_config: AutoConfig) -> List[int]:
     """
-    Finds possible values for tp for the given model
+    Find possible tensor parallelism values for the model.
+
+    TP must be a divisor of num_attention_heads to ensure each TP rank has
+    an integer number of heads. For example, 32 heads supports TP ∈ {1,2,4,8,16,32}.
     """
-
     model_config = get_text_config(model_config)
-
     num_attention_heads = model_config.num_attention_heads
 
     factors = set(reduce(
@@ -508,33 +753,93 @@ def gpus_required(tp: int=1, pp: int=1, dp: int=1) -> int:
 
     return tp * pp * dp
 
-def per_gpu_model_memory_required(model_info: ModelInfo,
+def per_gpu_model_memory_required(model_name: str,
                                   model_config: AutoConfig,
                                   tp: int = 1,
-                                  pp: int = 1) -> int:
+                                  pp: int = 1,
+                                  hf_token: str | None = None) -> float:
     """
-    Calculates model memory requirement for each GPU
-    """
+    Calculate model memory requirement per GPU.
 
-    model_memory = model_memory_req(model_info, model_config)
+    With parallelism: TP shards layers horizontally, PP distributes layers vertically.
+    Memory per GPU = Total_model_memory / (TP × PP)
+
+    Args:
+        model_name: HuggingFace model ID
+        model_config: Model configuration
+        tp: Tensor parallelism degree
+        pp: Pipeline parallelism degree
+        hf_token: Optional HuggingFace token for gated models
+
+    Returns:
+        Memory requirement per GPU in GiB
+    """
+    model_memory = model_memory_req(model_name, model_config, hf_token)
     return model_memory / (tp * pp)
 
-def allocatable_kv_cache_memory(model_info: ModelInfo,
+def allocatable_kv_cache_memory(model_name: str,
                             model_config: AutoConfig,
                             gpu_memory: int,
                             gpu_util: float = 0.9,
                             tp: int = 1,
                             pp: int = 1,
                             dp: int = 1,
+                            max_model_len: int | None = None,
+                            batch_size: int = 1,
+                            hf_token: str | None = None,
                             ) -> float:
+    """
+    Calculate allocatable memory for KV cache after accounting for model weights,
+    activation memory, CUDA graphs, and system overhead.
+
+    Memory Formula:
+    Available = (GPU_memory × utilization × num_GPUs)
+              - (Model_weights × DP)
+              - (Activation_memory × DP)
+              - CUDA_graph_overhead
+              - Non_torch_overhead
+
+    Args:
+        model_name: HuggingFace model ID
+        model_config: Model configuration
+        gpu_memory: GPU memory per device in GiB
+        gpu_util: GPU memory utilization factor (default 0.9)
+        tp: Tensor parallelism degree
+        pp: Pipeline parallelism degree
+        dp: Data parallelism degree
+        max_model_len: Maximum sequence length (defaults to model's max_position_embeddings)
+        batch_size: Batch size for activation memory estimation
+        hf_token: Optional HuggingFace token for gated models
+
+    Returns:
+        float: Available memory for KV cache in GiB
+    """
     gpu_count = tp * pp * dp
     available_memory = available_gpu_memory(gpu_memory, gpu_util) * gpu_count
-    model_size = model_memory_req(model_info, model_config) * dp
+    model_size = model_memory_req(model_name, model_config, hf_token) * dp
 
-    # TODO: non torch memory
-    # TOOD: peak activation memory
+    if max_model_len is None:
+        try:
+            max_model_len = max_context_len(model_config)
+        except AttributeError:
+            max_model_len = 2048
 
-    return available_memory - model_size
+    # Each data parallel replica needs its own activation memory
+    # Note: activation memory is constant per model type, not dependent on max_model_len
+    activation_memory = estimate_vllm_activation_memory(
+        model_config,
+        tp=tp
+    ) * dp
+
+    # CUDA graph memory is included in activation memory profiling
+    cuda_graph_memory = estimate_vllm_cuda_graph_memory() * gpu_count  # Returns 0.0
+
+    # Non-torch memory scales with TP due to NCCL/communication overhead
+    non_torch_memory = estimate_vllm_non_torch_memory(tp) * gpu_count
+
+    total_consumed = model_size + activation_memory + cuda_graph_memory + non_torch_memory
+
+    return max(0, available_memory - total_consumed)
 
 def is_moe(model_config: AutoConfig) -> bool:
     """
@@ -549,6 +854,17 @@ def is_moe(model_config: AutoConfig) -> bool:
     for indicator in indicators:
         if hasattr(model_config, indicator):
             return True
+    return False
+
+def is_multimodal(model_config: AutoConfig) -> bool:
+    """
+    Returns true if model uses a multimodal (vision-language) architecture.
+
+    Multimodal models typically have lower activation memory because the
+    vision encoder does not participate in CUDA graph capture.
+    """
+    if hasattr(model_config, 'architectures') and model_config.architectures:
+        return any(arch in MULTIMODAL_ARCHITECTURES for arch in model_config.architectures)
     return False
 
 def get_num_experts(model_config: AutoConfig) -> int | None:
@@ -573,9 +889,12 @@ def experts_per_ep_group(model_config: AutoConfig,
                    dp: int=1,
                    ) -> float:
     """
-    Calculates the number of experts to handle on each GPU
-    """
+    Calculate number of experts per GPU for MoE models.
 
+    Expert Parallelism distributes expert FFN layers across GPUs.
+    EP size = TP × DP, and experts are evenly sharded across the EP group.
+    Each GPU stores (total_experts / EP_size) expert parameters.
+    """
     num_experts = get_num_experts(model_config)
     ep_size = get_ep_size(tp, dp)
     if num_experts is None:
@@ -590,16 +909,14 @@ def bits_to_bytes(bits: int) -> int:
 
     return int(bits / 8)
 
-def bytes_to_gib(bytes: int) -> float:
+def bytes_to_gib(num_bytes: int) -> float:
     """
-    Convert number of bytes to GiB
+    Convert bytes to gibibytes (GiB)
     """
+    return num_bytes / BYTES_PER_GIB
 
-    return bytes / (1024 ** 3)
-
-def gib_to_bytes(gib: int) -> float:
+def gib_to_bytes(gib: float) -> float:
     """
-    Convert number of GiB to bytes
+    Convert gibibytes (GiB) to bytes
     """
-
-    return gib * (1024 ** 3)
+    return gib * BYTES_PER_GIB

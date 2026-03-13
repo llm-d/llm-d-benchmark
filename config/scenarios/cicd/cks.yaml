@@ -1,0 +1,50 @@
+# CKS (Cloud Kubernetes Service) CI/CD Scenario
+# Migrated from bash environment variables to YAML format
+# Based on scenarios/cicd/cks_fb.sh
+#
+# CI/CD scenario for CKS clusters with H200 GPUs.
+# Uses facebook/opt-125m for fast validation.
+
+scenario:
+  - name: "cks-cicd"
+
+    # Model
+    model:
+      name: facebook/opt-125m
+      shortName: facebook-opt-125m
+      path: models/facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
+
+    # Namespace — dedicated CI/CD namespace
+    namespace:
+      name: llmdbenchcicd
+
+    # Harness namespace matches model namespace
+    harnessNamespace:
+      name: llmdbenchcicd
+
+    # GPU affinity for H200
+    affinity:
+      enabled: true
+      nodeSelector:
+        gpu.nvidia.com/class: H200
+
+    # Accelerator configuration
+    accelerator:
+      memory: 143
+
+    # Storage
+    storage:
+      modelPvc:
+        storageClassName: shared-vast
+
+    # Deployment
+    deploy:
+      replicas: 1
+      release: llmdbenchcicd
+
+    # Workload
+    harness:
+      name: vllm-benchmark
+      experimentProfile: sanity_random.yaml
+      workDir: /tmp/cicd/

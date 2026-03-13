@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 200" font-family="'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <marker id="a1" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#94a3b8"/>
+    </marker>
+    <marker id="a2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#10b981"/>
+    </marker>
+    <linearGradient id="priorityGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#fcd34d" stop-opacity="0.5"/>
+      <stop offset="50%" stop-color="#94a3b8" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#6ee7b7" stop-opacity="0.6"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1000" height="200" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="500" y="30" text-anchor="middle" font-size="16" font-weight="600" fill="#0f172a" letter-spacing="0.3">Config Override Chain</text>
+  <line x1="380" y1="40" x2="620" y2="40" stroke="#e2e8f0" stroke-width="1"/>
+
+  <!-- defaults.yaml -->
+  <rect x="20" y="56" width="155" height="54" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="20" y="56" width="4" height="54" rx="2" fill="#f59e0b"/>
+  <text x="101" y="80" text-anchor="middle" font-size="13" font-weight="500" fill="#92400e">defaults.yaml</text>
+  <text x="101" y="98" text-anchor="middle" font-size="11" font-weight="400" fill="#b45309">base values</text>
+
+  <!-- Arrow 1 -->
+  <line x1="175" y1="83" x2="212" y2="83" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a1)"/>
+  <text x="193" y="74" text-anchor="middle" font-size="10" font-weight="400" fill="#64748b">merge</text>
+
+  <!-- scenario.yaml -->
+  <rect x="220" y="56" width="155" height="54" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="220" y="56" width="4" height="54" rx="2" fill="#f59e0b"/>
+  <text x="301" y="80" text-anchor="middle" font-size="13" font-weight="500" fill="#92400e">scenario.yaml</text>
+  <text x="301" y="98" text-anchor="middle" font-size="11" font-weight="400" fill="#b45309">overrides</text>
+
+  <!-- Arrow 2 -->
+  <line x1="375" y1="83" x2="412" y2="83" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a1)"/>
+  <text x="393" y="74" text-anchor="middle" font-size="10" font-weight="400" fill="#64748b">merge</text>
+
+  <!-- Environment variables -->
+  <rect x="420" y="56" width="155" height="54" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="420" y="56" width="4" height="54" rx="2" fill="#3b82f6"/>
+  <text x="501" y="76" text-anchor="middle" font-size="13" font-weight="500" fill="#1e40af">LLMDBENCH_*</text>
+  <text x="501" y="94" text-anchor="middle" font-size="11" font-weight="400" fill="#2563eb">env var overrides</text>
+
+  <!-- Arrow 3 -->
+  <line x1="575" y1="83" x2="612" y2="83" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a1)"/>
+  <text x="593" y="74" text-anchor="middle" font-size="10" font-weight="400" fill="#64748b">merge</text>
+
+  <!-- CLI args -->
+  <rect x="620" y="56" width="155" height="54" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="620" y="56" width="4" height="54" rx="2" fill="#64748b"/>
+  <text x="701" y="80" text-anchor="middle" font-size="13" font-weight="500" fill="#334155">CLI args</text>
+  <text x="701" y="98" text-anchor="middle" font-size="11" font-weight="400" fill="#64748b">highest priority</text>
+
+  <!-- Arrow 4 -->
+  <line x1="775" y1="83" x2="832" y2="83" stroke="#10b981" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- config.yaml (output) -->
+  <rect x="840" y="52" width="140" height="62" rx="6" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="840" y="52" width="4" height="62" rx="2" fill="#10b981"/>
+  <text x="914" y="78" text-anchor="middle" font-size="13" font-weight="600" fill="#065f46">config.yaml</text>
+  <text x="914" y="96" text-anchor="middle" font-size="10" font-weight="400" fill="#059669">single source</text>
+  <text x="914" y="108" text-anchor="middle" font-size="10" font-weight="400" fill="#059669">of truth</text>
+
+  <!-- Priority bar -->
+  <rect x="20" y="140" width="755" height="6" rx="3" fill="url(#priorityGrad)"/>
+  <text x="20" y="164" font-size="10" font-weight="400" fill="#b45309">Lowest priority</text>
+  <text x="775" y="164" text-anchor="end" font-size="10" font-weight="400" fill="#334155">Highest priority</text>
+</svg>

@@ -1,0 +1,148 @@
+{# Macro to build kv-transfer-config JSON #}
+{% macro build_kv_transfer_config() -%}
+{"kv_connector":"{{ vllmCommon.kvTransfer.connector }}","kv_role":"{{ vllmCommon.kvTransfer.role }}"}
+{%- endmacro %}
+
+{# Macro to build kv-events-config JSON #}
+{% macro build_kv_events_config() -%}
+{% set default_service_name = model.shortName ~ '-gaie-epp' -%}
+{% set service_name = vllmCommon.kvEvents.serviceName | default(default_service_name) -%}
+{% set ns = namespace.name -%}
+{% set port = vllmCommon.kvEvents.port | default(5557) -%}
+{% set publisher = vllmCommon.kvEvents.publisher | default('zmq') -%}
+{% set topic_prefix = vllmCommon.kvEvents.topicPrefix | default('kv') -%}
+{"enable_kv_cache_events":true,"publisher":"{{ publisher }}","endpoint":"tcp://{{ service_name }}.{{ ns }}.svc.cluster.local:{{ port }}","topic":"{{ topic_prefix }}@${POD_IP}@{{ model.name }}"}
+{%- endmacro %}
+
+{# Macro to build vLLM serve command with templated arguments #}
+{% macro build_vllm_command(mode='decode') -%}
+{% if mode == 'decode' -%}
+{% set config = decode -%}
+{% else -%}
+{% set config = prefill -%}
+{% endif -%}
+
+{# Determine preprocess script to use #}
+{% if config.vllm.customPreprocessCommand is defined and config.vllm.customPreprocessCommand is not none -%}
+{% set preprocess_script = config.vllm.customPreprocessCommand -%}
+{% else -%}
+{% set preprocess_script = vllmCommon.preprocessScript -%}
+{% endif -%}
+
+{# Pre-calculate which optional flags are enabled #}
+{% set has_enforce_eager = vllmCommon.flags.enforceEager | default(false) -%}
+{% set has_disable_log_requests = vllmCommon.flags.disableLogRequests | default(false) -%}
+{% set has_disable_uvicorn = vllmCommon.flags.disableUvicornAccessLog | default(false) -%}
+{% set has_no_prefix_caching = vllmCommon.flags.noPrefixCaching | default(false) -%}
+{% set has_kv_transfer = vllmCommon.kvTransfer is defined and vllmCommon.kvTransfer.enabled -%}
+{% set has_kv_events = vllmCommon.kvEvents is defined and vllmCommon.kvEvents.enabled -%}
+{% set gpu_mem_util = model.gpuMemoryUtilization | default(0) | float -%}
+
+{# Custom command provided #}
+{% if config.vllm.customCommand is defined and config.vllm.customCommand is not none -%}
+{{ preprocess_script }}; {{ config.vllm.customCommand | trim }}
+{%- if has_kv_transfer %} \
+  --kv-transfer-config '{{ build_kv_transfer_config() }}'
+{%- endif %}
+{%- if has_kv_events %} \
+  --kv-events-config '{{ build_kv_events_config() }}'
+{%- endif %}
+{%- else -%}
+{# Use default vllm serve command #}
+{% set effective_max_model_len = vllmCommon.maxModelLen | default(model.maxModelLen) -%}
+{% set effective_block_size = vllmCommon.blockSize | default(model.blockSize) -%}
+{{ preprocess_script }}; vllm serve {{ model.cacheBase }}/{{ model.path }} \
+  --host {{ vllmCommon.host }} \
+  --served-model-name {{ model.name }} \
+  --port {{ config.vllm.port }} \
+  --block-size {{ effective_block_size }} \
+  --max-model-len {{ effective_max_model_len }}
+{%- set tp_size = config.parallelism.tensor | int %}
+{%- if tp_size > 0 %} \
+  --tensor-parallel-size {{ tp_size }}
+{%- endif %}
+{%- if gpu_mem_util > 0 %} \
+  --gpu-memory-utilization {{ model.gpuMemoryUtilization }}
+{%- endif %}
+{%- if has_enforce_eager %} \
+  --enforce-eager
+{%- endif %}
+{%- if has_disable_log_requests %} \
+  --no-enable-log-requests
+{%- endif %}
+{%- if has_disable_uvicorn %} \
+  --disable-uvicorn-access-log
+{%- endif %}
+{%- if has_no_prefix_caching %} \
+  --no-enable-prefix-caching
+{%- endif %}
+{%- if has_kv_transfer %} \
+  --kv-transfer-config '{{ build_kv_transfer_config() }}'
+{%- endif %}
+{%- if has_kv_events %} \
+  --kv-events-config '{{ build_kv_events_config() }}'
+{%- endif %}
+{%- if config.vllm.additionalFlags is defined %}
+{% for flag in config.vllm.additionalFlags %} \
+  {{ flag }}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- endmacro %}
+
+
+{# Macro to build standalone vLLM serve command #}
+{% macro build_standalone_vllm_command() -%}
+{# Determine preprocess script to use #}
+{% if standalone.vllm.customPreprocessCommand is defined and standalone.vllm.customPreprocessCommand is not none -%}
+{% set preprocess_script = standalone.vllm.customPreprocessCommand -%}
+{% elif vllmCommon.preprocessScript is defined -%}
+{% set preprocess_script = vllmCommon.preprocessScript -%}
+{% else -%}
+{% set preprocess_script = standalone.vllm.preprocessCommand | default('/bin/true') -%}
+{% endif -%}
+
+{# Pre-calculate which optional flags are enabled #}
+{% set has_kv_transfer = vllmCommon.kvTransfer is defined and vllmCommon.kvTransfer.enabled -%}
+{% set has_kv_events = vllmCommon.kvEvents is defined and vllmCommon.kvEvents.enabled -%}
+{% set gpu_mem_util = model.gpuMemoryUtilization | default(0) | float -%}
+
+{# Custom command provided #}
+{% if standalone.vllm.customCommand is defined and standalone.vllm.customCommand is not none -%}
+{{ preprocess_script }}; {{ standalone.vllm.customCommand }}
+{%- if has_kv_transfer %} \
+  --kv-transfer-config '{{ build_kv_transfer_config() }}'
+{%- endif %}
+{%- if has_kv_events %} \
+  --kv-events-config '{{ build_kv_events_config() }}'
+{%- endif %}
+{%- else -%}
+{# Use default vllm serve command #}
+{% set effective_max_model_len = vllmCommon.maxModelLen | default(model.maxModelLen) -%}
+{{ preprocess_script }}; vllm serve {{ model.name }} \
+  --no-enable-prefix-caching \
+  --load-format {{ standalone.vllm.loadFormat | default('auto') }} \
+  --port {{ standalone.vllm.port | default(8000) }} \
+  --max-model-len {{ effective_max_model_len }} \
+  --no-enable-log-requests
+{%- if gpu_mem_util > 0 %} \
+  --gpu-memory-utilization {{ model.gpuMemoryUtilization }}
+{%- endif %}
+{%- set tp_size = standalone.parallelism.tensor | default(decode.parallelism.tensor) | int %}
+{%- if tp_size > 0 %} \
+  --tensor-parallel-size {{ tp_size }}
+{%- endif %} \
+  --model-loader-extra-config "$LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG"
+{%- if has_kv_transfer %} \
+  --kv-transfer-config '{{ build_kv_transfer_config() }}'
+{%- endif %}
+{%- if has_kv_events %} \
+  --kv-events-config '{{ build_kv_events_config() }}'
+{%- endif %}
+{%- if standalone.vllm.additionalFlags is defined %}
+{% for flag in standalone.vllm.additionalFlags %} \
+  {{ flag }}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- endmacro %}

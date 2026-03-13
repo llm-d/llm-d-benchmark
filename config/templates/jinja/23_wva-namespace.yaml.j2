@@ -1,0 +1,17 @@
+{# ============================================================================
+   23_wva-namespace.yaml.j2
+
+   Namespace manifest for WVA with the OpenShift user-monitoring label.
+   This label is required so that user-workload-monitoring can discover
+   and scrape WVA metrics in this namespace.
+
+   Only rendered when wva.enabled is true.
+   ============================================================================ #}
+{% if wva is defined and wva.enabled | default(false) %}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ wva.namespace | default(namespace.name) }}
+  labels:
+    openshift.io/user-monitoring: "true"
+{% endif %}

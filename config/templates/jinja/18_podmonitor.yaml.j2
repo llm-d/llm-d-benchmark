@@ -1,0 +1,30 @@
+{# ============================================================================
+   18_podmonitor.yaml.j2
+
+   PodMonitor for Prometheus to scrape vLLM model serving pods deployed via
+   modelservice (decode/prefill).  Only rendered when
+   monitoring.podmonitor.enabled is true.  Matches bash step 09
+   generate_podmonitor_yaml().
+   ============================================================================ #}
+{% if monitoring is defined and monitoring.podmonitor is defined and monitoring.podmonitor.enabled | default(false) %}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: vllm-{{ model.shortName }}
+  namespace: {{ namespace.name }}
+  labels:
+{% if annotations is defined and annotations.common is defined and annotations.common %}
+{% for key, value in annotations.common.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+spec:
+  selector:
+    matchLabels:
+      llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
+      llm-d.ai/model: {{ model.shortName }}
+  podMetricsEndpoints:
+  - port: "{{ vllmCommon.metricsPort | default(8200) }}"
+    path: {{ monitoring.metricsPath | default('/metrics') }}
+    interval: {{ monitoring.scrapeInterval | default('30s') }}
+{% endif %}

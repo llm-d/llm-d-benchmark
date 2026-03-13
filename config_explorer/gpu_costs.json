@@ -1,0 +1,44 @@
+{
+  "_disclaimer": "IMPORTANT: These costs are REFERENCE VALUES ONLY for relative comparison. They do NOT represent actual pricing from any cloud provider. Use custom costs for accurate pricing.",
+  "_cost_description": "Cost values are intended for relative comparison between GPUs. Interpret these as relative efficiency scores where lower values indicate more cost-effective options.",
+  "H100": {
+    "cost": 35.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "H200": {
+    "cost": 40.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "A100": {
+    "cost": 25.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "A100-40GB": {
+    "cost": 20.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "L20": {
+    "cost": 15.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "L40": {
+    "cost": 28.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "B100": {
+    "cost": 50.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  },
+  "B200": {
+    "cost": 60.0,
+    "source": "reference",
+    "note": "Reference value for comparison"
+  }
+}

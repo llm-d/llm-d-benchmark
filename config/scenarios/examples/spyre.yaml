@@ -1,0 +1,254 @@
+# IBM Spyre Accelerator Example Scenario for LLM-D Deployment
+# Migrated from bash environment variables to YAML format
+# Based on scenarios/examples/spyre.sh
+#
+# This scenario deploys a model on IBM Spyre accelerator hardware.
+# Uses the AIU vLLM image with Spyre-specific configuration including
+# precompiled model PVC, custom environment variables, and Spyre scheduler.
+#
+# IMPORTANT NOTE:
+# All parameters not defined here will use the default values from defaults.yaml.
+
+scenario:
+  # ============================================================================
+  # Spyre Example - IBM Spyre accelerator deployment
+  # ============================================================================
+  - name: "spyre-example"
+
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST
+    # -------------------------------------------------------------------------
+    model:
+      name: ibm-ai-platform/micro-g3.3-8b-instruct-1b
+      shortName: micro-g3.3-8b-instruct-1b
+      path: models/ibm-ai-platform/micro-g3.3-8b-instruct-1b
+      huggingfaceId: ibm-ai-platform/micro-g3.3-8b-instruct-1b
+      maxModelLen: 32768
+      maxNumSeq: 32
+      maxNumBatchedTokens: 1024
+      tensorParallelSize: 4
+
+    # -------------------------------------------------------------------------
+    # Affinity Configuration — IBM Spyre
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY="ibm.com/spyre.product:IBM_Spyre"
+    # -------------------------------------------------------------------------
+    affinity:
+      enabled: true
+      nodeSelector:
+        ibm.com/spyre.product: IBM_Spyre
+
+    # -------------------------------------------------------------------------
+    # Accelerator Configuration — IBM Spyre VF
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=ibm.com/spyre_vf
+    # -------------------------------------------------------------------------
+    accelerator:
+      resourceName: ibm.com/spyre_vf
+
+    # -------------------------------------------------------------------------
+    # vLLM Common Configuration
+    # -------------------------------------------------------------------------
+    vllmCommon:
+      tensorParallelism: 4
+      maxModelLen: 32768
+      maxNumSeq: 32
+      maxNumBatchedTokens: 1024
+      shmMemory: 64Gi
+      podScheduler: spyre-scheduler
+
+      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
+
+      flags:
+        enablePrefixCaching: true
+        enableAutoToolChoice: true
+        toolCallParser: granite
+
+      # Spyre-specific volumes
+      volumes:
+        - name: spyre-precompiled-model
+          type: persistentVolumeClaim
+          persistentVolumeClaim:
+            claimName: spyre-precompiled-model
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Gi
+        - name: preprocesses
+          type: configMap
+          configMap:
+            name: llm-d-benchmark-preprocesses
+            defaultMode: 493  # 0755
+
+      volumeMounts:
+        - name: spyre-precompiled-model
+          mountPath: /mnt/spyre-precompiled-model
+        - name: dshm
+          mountPath: /dev/shm
+        - name: preprocesses
+          mountPath: /setup/preprocess
+
+    # -------------------------------------------------------------------------
+    # Standalone Deployment Configuration
+    # Corresponds to: LLMDBENCH_VLLM_STANDALONE_*
+    # -------------------------------------------------------------------------
+    standalone:
+      enabled: true
+      replicas: 1
+
+      image:
+        repository: us.icr.io/wxpe-cicd-internal/amd64/aiu-vllm
+        tag: v1.1.1-rc.3-amd64
+        pullPolicy: IfNotPresent
+
+      resources:
+        limits:
+          memory: 750Gi
+          cpu: "100"
+        requests:
+          memory: 750Gi
+          cpu: "100"
+
+      vllm:
+        customCommand: |
+          /home/senuser/container-scripts/simple_vllm_serve.sh ibm-ai-platform/micro-g3.3-8b-instruct-1b \
+          --port $VLLM_INFERENCE_PORT \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
+          --enable-auto-tool-choice \
+          --tool-call-parser granite \
+          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+          --enable-prefix-caching
+
+      # Spyre-specific environment variables
+      extraEnvVars:
+        - name: SERVED_MODEL_NAME
+          value: "ibm-ai-platform/micro-g3.3-8b-instruct-1b"
+        - name: FLEX_COMPUTE
+          value: SENTIENT
+        - name: FLEX_DEVICE
+          value: VF
+        - name: VLLM_SPYRE_PERF_METRIC_LOGGING_ENABLED
+          value: "1"
+        - name: FLEX_HDMA_P2PSIZE
+          value: "268435456"
+        - name: FLEX_HDMA_COLLSIZE
+          value: "268435456"
+        - name: HF_HUB_DISABLE_XET
+          value: "1"
+        - name: TORCH_SENDNN_CACHE_ENABLE
+          value: "1"
+        - name: TORCH_SENDNN_CACHE_DIR
+          value: /mnt/spyre-precompiled-model
+        - name: VLLM_SPYRE_DYNAMO_BACKEND
+          value: sendnn
+        - name: VLLM_SPYRE_USE_CB
+          value: "1"
+        - name: VLLM_SPYRE_USE_CHUNKED_PREFILL
+          value: "1"
+        - name: VLLM_DT_CHUNK_LEN
+          value: "1024"
+
+    # -------------------------------------------------------------------------
+    # Override images for modelservice (Spyre AIU vLLM image)
+    # Corresponds to: LLMDBENCH_LLMD_IMAGE_*
+    # -------------------------------------------------------------------------
+    images:
+      vllm:
+        repository: us.icr.io/wxpe-cicd-internal/amd64/aiu-vllm
+        tag: v1.1.1-rc.3-amd64
+
+    # -------------------------------------------------------------------------
+    # Prefill Configuration — disabled (0 prefill pods)
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: false
+      replicas: 0
+      accelerator:
+        resourceName: ibm.com/spyre_vf
+
+    # -------------------------------------------------------------------------
+    # Decode Configuration — 2 decode pods on Spyre
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
+    # -------------------------------------------------------------------------
+    decode:
+      replicas: 2
+
+      parallelism:
+        tensor: 4
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 750Gi
+          cpu: "100"
+        requests:
+          memory: 750Gi
+          cpu: "100"
+
+      accelerator:
+        resourceName: ibm.com/spyre_vf
+
+      vllm:
+        customCommand: |
+          /home/senuser/container-scripts/simple_vllm_serve.sh /model-cache/models/ibm-ai-platform/micro-g3.3-8b-instruct-1b \
+          --served-model-name ibm-ai-platform/micro-g3.3-8b-instruct-1b \
+          --port $VLLM_METRICS_PORT \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --enable-auto-tool-choice \
+          --tool-call-parser granite \
+          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+          --enable-prefix-caching
+
+      # Same Spyre-specific env vars as standalone
+      extraEnvVars:
+        - name: SERVED_MODEL_NAME
+          value: "ibm-ai-platform/micro-g3.3-8b-instruct-1b"
+        - name: FLEX_COMPUTE
+          value: SENTIENT
+        - name: FLEX_DEVICE
+          value: VF
+        - name: VLLM_SPYRE_PERF_METRIC_LOGGING_ENABLED
+          value: "1"
+        - name: FLEX_HDMA_P2PSIZE
+          value: "268435456"
+        - name: FLEX_HDMA_COLLSIZE
+          value: "268435456"
+        - name: HF_HUB_DISABLE_XET
+          value: "1"
+        - name: TORCH_SENDNN_CACHE_ENABLE
+          value: "1"
+        - name: TORCH_SENDNN_CACHE_DIR
+          value: /mnt/spyre-precompiled-model
+        - name: VLLM_SPYRE_DYNAMO_BACKEND
+          value: sendnn
+        - name: VLLM_SPYRE_USE_CB
+          value: "1"
+        - name: VLLM_SPYRE_USE_CHUNKED_PREFILL
+          value: "1"
+        - name: VLLM_DT_CHUNK_LEN
+          value: "1024"
+
+    # -------------------------------------------------------------------------
+    # Storage Configuration
+    # -------------------------------------------------------------------------
+    storage:
+      extraPvc:
+        name: spyre-precompiled-model
+
+    # -------------------------------------------------------------------------
+    # Workload/Harness Configuration
+    # Corresponds to: LLMDBENCH_HARNESS_NAME=inference-perf
+    #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=sanity_random.yaml
+    #                 LLMDBENCH_HARNESS_WAIT_TIMEOUT=36000
+    # -------------------------------------------------------------------------
+    harness:
+      name: inference-perf
+      experimentProfile: sanity_random.yaml
+      waitTimeout: 36000

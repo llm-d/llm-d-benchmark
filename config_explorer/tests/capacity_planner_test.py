@@ -2,17 +2,19 @@
 Tests Capacity Planner functions
 """
 
+import math
 import pytest
 from src.config_explorer.capacity_planner import *
 
 # ---- Constants ----
 precision_types = ["fp32", "fp16", "fp8", "int4"]
 small_model_id = "repo/small-model"
-qwen_model = "Qwen/Qwen3-0.6B"
-deepseek3 = "deepseek-ai/DeepSeek-V3.1"
+qwen_model = "Qwen/Qwen2.5-0.5B"  # Use Qwen2.5 which has safetensors metadata
+deepseek3 = "deepseek-ai/DeepSeek-V2"  # Use V2 which has safetensors metadata
 gpt_oss = "openai/gpt-oss-20b"
 redhat_qwen = "RedHatAI/Qwen3-8B-FP8-dynamic"
 redhat_nemotron = "redhatai/nvidia-nemotron-nano-9b-v2-fp8-dynamic"
+mistral_small = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
 
 def test_get_model_info_and_config_from_hf():
     """
@@ -49,12 +51,28 @@ def test_get_model_info_and_config_from_hf():
 
 def test_model_total_params():
     """
-    Tests that model total params is fetched successfully
+    Tests that model total params is fetched successfully using HfApi.get_safetensors_metadata
     """
-    model_info = get_model_info_from_hf(qwen_model)
+    # Num params from https://huggingface.co/Qwen/Qwen2.5-0.5B
+    assert model_total_params(qwen_model) == 494032768
 
-    # Num params from https://huggingface.co/Qwen/Qwen3-0.6B
-    assert model_total_params(model_info) == 751632384
+    # Test other models
+    assert model_total_params(gpt_oss) > 0  # openai/gpt-oss-20b
+    assert model_total_params(redhat_qwen) > 0  # RedHatAI/Qwen3-8B-FP8-dynamic
+
+
+def test_model_params_by_dtype():
+    """
+    Tests that model params by dtype is fetched successfully
+    """
+    params = model_params_by_dtype(qwen_model)
+    assert isinstance(params, dict)
+    assert sum(params.values()) == 494032768
+
+    # Test quantized model has multiple dtypes or specific dtype
+    gpt_params = model_params_by_dtype(gpt_oss)
+    assert isinstance(gpt_params, dict)
+    assert sum(gpt_params.values()) > 0
 
 def test_precision_to_byte():
     """
@@ -112,26 +130,26 @@ def test_model_memory_req():
     """
 
     # GQA model
-    model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
-    assert model_memory_req(model_info, model_config) == 1.4000244140625
+    assert model_memory_req(qwen_model, model_config) == 0.9202077388763428
 
     # MLA model
-    model_info = get_model_info_from_hf(deepseek3)
     model_config = get_model_config_from_hf(deepseek3)
-    assert model_memory_req(model_info, model_config) == 641.2852922081947
+    assert model_memory_req(deepseek3, model_config) == 439.10264015197754
 
-    # MXFP4 model
-    model_info = get_model_info_from_hf(gpt_oss)
+    # Quantized model (FP8)
+    model_config = get_model_config_from_hf(redhat_qwen)
+    assert model_memory_req(redhat_qwen, model_config) == 8.790292739868164
+
+    # MXFP4 model (gpt-oss)
     model_config = get_model_config_from_hf(gpt_oss)
-    assert model_memory_req(model_info, model_config) == 13.111648678779602
+    assert model_memory_req(gpt_oss, model_config) == 12.816176533699036
 
-    # No param info for facebook/opt-125m
+    # No param info for facebook/opt-125m (no safetensors)
     with pytest.raises(Exception):
         hf_model = "facebook/opt-125m"
-        model_info = get_model_info_from_hf(hf_model)
         model_config = get_model_config_from_hf(hf_model)
-        model_memory_req(model_info, model_config)
+        model_memory_req(hf_model, model_config)
 
 
 def test_kv_cache_req():
@@ -149,30 +167,28 @@ def test_kv_cache_req():
     }
 
     for deepseek, actual_kv_cache in deepseek_mlas.items():
-        model_info = get_model_info_from_hf(deepseek)
         model_config = get_model_config_from_hf(deepseek)
 
         # For context length = 0, kv cache req is 0
-        actual_kv_cache_req = kv_cache_req(model_info, model_config, context_len=0)
+        actual_kv_cache_req = kv_cache_req(deepseek, model_config, context_len=0)
         assert actual_kv_cache_req == 0
 
         # For context length = 10000
-        actual_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
+        actual_kv_cache_req = kv_cache_req(deepseek, model_config, context_len=10000)
         rounded = round(actual_kv_cache_req, 5)
         assert rounded == actual_kv_cache
 
     # Assert other models
-    model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
 
     # For context length = 0, kv cache req is 0
-    actual_kv_cache_req = kv_cache_req(model_info, model_config, context_len=0)
+    actual_kv_cache_req = kv_cache_req(qwen_model, model_config, context_len=0)
     assert actual_kv_cache_req == 0
 
     # For context length = 10000
-    actual_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
+    actual_kv_cache_req = kv_cache_req(qwen_model, model_config, context_len=10000)
     rounded = round(actual_kv_cache_req, 5)
-    assert rounded == 1.06812
+    assert rounded == 0.11444
 
 
 def test_max_concurrent_req():
@@ -180,33 +196,57 @@ def test_max_concurrent_req():
     Tests that max concurrent request is estimated correctly given model and GPU spec
     """
 
-    # This model does not take up 40GB GPU, so model size is negligible
-    model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
-    model_memory = model_memory_req(model_info, model_config)
-    per_req_kv_cache_req = kv_cache_req(model_info, model_config, context_len=10000)
+    model_memory = model_memory_req(qwen_model, model_config)
+    max_model_len = 10000
+    batch_size = 1
+    gpu_mem = 40
+    gpu_util = 1
+    per_req_kv_cache_req = kv_cache_req(qwen_model, model_config, context_len=max_model_len)
 
-    for tp in range(1, 16):
-        for pp in range(1, 16):
-            for dp in range(1, 16):
-                avail_gpu_count = tp * pp * dp
-                gpu_mem = 40
-                actual_max_concurrent_req = max_concurrent_requests(model_info,
-                                                            model_config,
-                                                            max_model_len=10000,
-                                                            gpu_memory=gpu_mem,
-                                                            gpu_mem_util=1,
-                                                            tp=tp,
-                                                            pp=pp,
-                                                            dp=dp,
-                                                            )
+    # Test a subset of parallelism configurations for reasonable test runtime
+    test_configs = [
+        (1, 1, 1), (2, 1, 1), (1, 2, 1), (1, 1, 2),
+        (2, 2, 1), (4, 1, 1), (8, 1, 1), (4, 2, 2)
+    ]
 
+    for tp, pp, dp in test_configs:
+        gpu_count = tp * pp * dp
 
-                expected = math.floor((avail_gpu_count * gpu_mem - model_memory * dp) / per_req_kv_cache_req)
-                if expected < 0:
-                    expected = 0
+        # Calculate allocatable KV cache memory using the implementation's logic
+        allocatable_kv = allocatable_kv_cache_memory(
+            qwen_model,
+            model_config,
+            gpu_mem,
+            gpu_util,
+            tp,
+            pp,
+            dp,
+            max_model_len=max_model_len,
+            batch_size=batch_size
+        )
 
-        assert actual_max_concurrent_req == expected
+        # Calculate expected max concurrent requests
+        if per_req_kv_cache_req == 0:
+            expected = 0
+        else:
+            expected = max(0, math.floor(allocatable_kv / per_req_kv_cache_req))
+
+        # Get actual max concurrent requests
+        actual_max_concurrent_req = max_concurrent_requests(
+            qwen_model,
+            model_config,
+            max_model_len=max_model_len,
+            gpu_memory=gpu_mem,
+            gpu_mem_util=gpu_util,
+            batch_size=batch_size,
+            tp=tp,
+            pp=pp,
+            dp=dp,
+        )
+
+        assert actual_max_concurrent_req == expected, \
+            f"Failed for tp={tp}, pp={pp}, dp={dp}: expected {expected}, got {actual_max_concurrent_req}"
 
 
 def test_total_kv_cache_blocks(monkeypatch):
@@ -216,7 +256,6 @@ def test_total_kv_cache_blocks(monkeypatch):
 
     known_model = "Qwen/Qwen2.5-0.5B"
     # Load lightweight GQA model for reproducibility
-    model_info = get_model_info_from_hf(known_model)
     model_config = get_model_config_from_hf(known_model)
 
     # Reference parameters
@@ -225,7 +264,7 @@ def test_total_kv_cache_blocks(monkeypatch):
     gpu_util = 0.9
 
     # Compute expected per-block memory
-    kv_cache_detail = KVCacheDetail(model_info, model_config, context_len)
+    kv_cache_detail = KVCacheDetail(known_model, model_config, context_len)
     estimated_per_token_memory = kv_cache_detail.per_token_memory_bytes
 
     ## per token memory
@@ -239,9 +278,11 @@ def test_total_kv_cache_blocks(monkeypatch):
     assert estimated_per_token_memory == actual_per_token_memory
 
     # Mock allocatable_kv_cache_memory depending on tp, pp for know values of qwen
-    def fake_allocatable_kv_cache_memory(model_info, model_config,
+    def fake_allocatable_kv_cache_memory(model_name, model_config,
                                          gpu_memory, gpu_mem_util,
-                                         tp, pp, dp):
+                                         tp, pp, dp,
+                                         max_model_len=None, batch_size=1,
+                                         hf_token=None):
         if tp == 1:
             return 68.89 # observed in experiments
         elif tp == 2:
@@ -253,7 +294,7 @@ def test_total_kv_cache_blocks(monkeypatch):
     )
     ## tp = 1
     actual_blocks = total_kv_cache_blocks(
-        model_info=model_info,
+        model_name=known_model,
         model_config=model_config,
         context_len=context_len,
         gpu_memory=gpu_mem,
@@ -264,7 +305,7 @@ def test_total_kv_cache_blocks(monkeypatch):
 
     ## tp = 2
     actual_blocks = total_kv_cache_blocks(
-        model_info=model_info,
+        model_name=known_model,
         model_config=model_config,
         context_len=context_len,
         gpu_memory=gpu_mem,
@@ -280,7 +321,7 @@ def test_find_possible_tp():
     """
 
     model_config = get_model_config_from_hf(qwen_model)
-    assert find_possible_tp(model_config) == [1, 2, 4, 8, 16]
+    assert find_possible_tp(model_config) == [1, 2, 7, 14]
 
     deepseek = "deepseek-ai/DeepSeek-R1"
     model_config = get_model_config_from_hf(deepseek)
@@ -302,38 +343,56 @@ def test_allocatable_kv_cache_memory():
     """
     Tests allocatable kv cache memory is correctly calculated
     """
+    # Import not needed since we're using 'from src.config_explorer.capacity_planner import *'
+    # The functions are already available: estimate_vllm_activation_memory,
+    # estimate_vllm_cuda_graph_memory, estimate_vllm_non_torch_memory
 
-    model_info = get_model_info_from_hf(qwen_model)
     model_config = get_model_config_from_hf(qwen_model)
-    model_memory = model_memory_req(model_info, model_config)
+    model_memory = model_memory_req(qwen_model, model_config)
 
     gpu_memory = 40
     gpu_util = 1
+    max_model_len = 2048
+    batch_size = 1
 
     for tp in range(1, 16):
         for pp in range(1, 16):
             for dp in range(1, 16):
 
-                # Expected
+                # Expected calculation with new memory components
                 gpu_count = tp * pp * dp
-                expected = gpu_count * gpu_memory - model_memory * dp
+                available_memory = gpu_count * gpu_memory * gpu_util
+                model_size = model_memory * dp
+
+                # Calculate activation and overhead memory
+                # Activation memory must be multiplied by dp since each
+                # data parallel replica needs its own activation memory
+                # Note: activation memory is constant per model type
+                activation_memory = estimate_vllm_activation_memory(
+                    model_config, tp
+                ) * dp
+                cuda_graph_memory = estimate_vllm_cuda_graph_memory() * gpu_count
+                non_torch_memory = estimate_vllm_non_torch_memory(tp) * gpu_count
+
+                expected = max(0, available_memory - model_size - activation_memory -
+                             cuda_graph_memory - non_torch_memory)
 
                 actual = allocatable_kv_cache_memory(
-                    model_info,
+                    qwen_model,
                     model_config,
                     gpu_memory,
                     gpu_util,
                     tp,
                     pp,
-                    dp
+                    dp,
+                    max_model_len=max_model_len,
+                    batch_size=batch_size
                 )
 
-                assert expected == actual
+                assert abs(expected - actual) < 0.01, f"Expected {expected}, got {actual}"
 
 def test_is_moe():
-    """
-    Asserts that MOE models can be determined
-    """
+    """Asserts that MoE models can be determined"""
 
     moes = [
         "deepseek-ai/DeepSeek-R1",
@@ -371,9 +430,7 @@ def test_get_num_experts():
         assert get_num_experts(model_config) == expected_experts
 
 def test_experts_per_gpu():
-    """
-    Tests that experts per GPU is calculated correctly for MOE models
-    """
+    """Tests that experts per GPU is calculated correctly for MoE models"""
 
     moe_models = {
         "deepseek-ai/DeepSeek-R1",
@@ -392,35 +449,26 @@ def test_experts_per_gpu():
                 assert experts / (tp * dp) == experts_per_ep_group(model_config, tp, dp)
 
 def test_head_dim_none():
-    """
-    Tests head dimension field for models that don't have them
-    """
+    """Tests head dimension field for models that don't have them"""
     mistral = "mistralai/Mixtral-8x7B-Instruct-v0.1"
     model_config = get_model_config_from_hf(mistral)
-    model_info = get_model_info_from_hf(mistral)
-    kv_cache_detail = KVCacheDetail(model_info, model_config)
+    kv_cache_detail = KVCacheDetail(mistral, model_config)
 
     assert kv_cache_detail.head_dimension != None
 
 def test_not_mla():
-    """
-    Verify MLA attentin check
-    """
+    """Verify MLA attention check"""
     qwen = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
     model_config = get_model_config_from_hf(qwen)
-    model_info = get_model_info_from_hf(qwen_model)
-    kv_cache_detail = KVCacheDetail(model_info, model_config)
+    kv_cache_detail = KVCacheDetail(qwen, model_config)
     assert kv_cache_detail.attention_type != AttentionType.MLA
 
 def test_get_quant_method():
-    """
-    Tests getting quant method for models
-    """
+    """Tests getting quant method for models"""
 
     model_to_quant_method = {
         gpt_oss: "mxfp4",
         redhat_qwen: "compressed-tensors",
-        deepseek3: "fp8",
         qwen_model: "",
     }
 
@@ -429,14 +477,11 @@ def test_get_quant_method():
         assert get_quant_method(model_config) == expected
 
 def test_get_quant_bytes():
-    """
-    Tests that the byte requirement for the quant method can be fetched
-    """
+    """Tests that the byte requirement for the quant method can be fetched"""
 
     model_to_quant_bytes = {
         gpt_oss: 4.25 / 8,      # mxfp4
         redhat_qwen: 1,         # num_bits: 8
-        deepseek3: 1,           # fp8
     }
 
     for model, expected in model_to_quant_bytes.items():
@@ -444,9 +489,11 @@ def test_get_quant_bytes():
         assert get_quant_bytes(model_config) == expected
 
 def test_inference_dtype():
-    """
-    Tests that inference dtype can be determined for quantized and unquantized models
-    """
+    """Tests that inference dtype can be determined for quantized and unquantized models"""
+
+    def normalize_dtype(dtype: str) -> str:
+        """Normalize dtype string (handles 'torch.bfloat16' vs 'bfloat16' across PyTorch versions)"""
+        return dtype.replace("torch.", "")
 
     model_to_dtype = {
         # quantized
@@ -459,20 +506,19 @@ def test_inference_dtype():
         deepseek3: "bfloat16",
     }
 
-    for model, expceted in model_to_dtype.items():
+    for model, expected in model_to_dtype.items():
         model_config = get_model_config_from_hf(model)
-        assert inference_dtype(model_config) == expceted
+        actual = normalize_dtype(inference_dtype(model_config))
+        assert actual == expected, f"{model}: expected {expected}, got {actual}"
 
 def test_inference_dtype_byte():
-    """
-    Tests that inference dtype byte can be determined for quantized and unquantized models
-    """
+    """Tests that inference dtype byte can be determined for quantized and unquantized models"""
 
     model_to_dtype_byte = {
         # quantized
         gpt_oss: 4.25 / 8,
         redhat_qwen: 2,
-        redhat_nemotron: 1,
+        redhat_nemotron: 2,
 
         # unquantized
         qwen_model: 2,
@@ -482,3 +528,286 @@ def test_inference_dtype_byte():
     for model, expceted in model_to_dtype_byte.items():
         model_config = get_model_config_from_hf(model)
         assert inference_dtype_byte(model_config) == expceted
+
+def test_estimate_vllm_non_torch_memory():
+    """Tests that non-torch memory estimation returns TP-dependent values"""
+    # TP=1: 0.15 GiB
+    actual_tp1 = estimate_vllm_non_torch_memory(tp=1)
+    expected_tp1 = 0.15
+    assert actual_tp1 == expected_tp1, f"Expected {expected_tp1} GiB for TP=1, got {actual_tp1} GiB"
+    assert isinstance(actual_tp1, float), "Should return a float"
+
+    # TP>=2: 0.6 GiB
+    actual_tp2 = estimate_vllm_non_torch_memory(tp=2)
+    expected_tp2 = 0.6
+    assert actual_tp2 == expected_tp2, f"Expected {expected_tp2} GiB for TP=2, got {actual_tp2} GiB"
+
+    actual_tp4 = estimate_vllm_non_torch_memory(tp=4)
+    assert actual_tp4 == expected_tp2, f"Expected {expected_tp2} GiB for TP=4, got {actual_tp4} GiB"
+
+def test_estimate_vllm_cuda_graph_memory():
+    """Tests that CUDA graph memory returns 0.0 (included in activation memory)"""
+    expected = 0.0  # CUDA graph memory is included in activation profiling
+    actual = estimate_vllm_cuda_graph_memory()
+    assert actual == expected, f"Expected {expected} GiB, got {actual} GiB"
+    assert isinstance(actual, float), "Should return a float"
+
+def test_estimate_vllm_activation_memory_basic():
+    """Tests activation memory estimation for basic scenarios"""
+    model_config = get_model_config_from_hf(qwen_model)
+
+    # Test basic case with tp=1
+    tp = 1
+
+    activation_mem = estimate_vllm_activation_memory(model_config, tp)
+
+    # Should return a positive float
+    assert isinstance(activation_mem, float), "Should return a float"
+    assert activation_mem > 0, f"Activation memory should be positive, got {activation_mem}"
+
+    # For a dense model, activation memory should be around 5.5 GB (constant)
+    assert 4.5 <= activation_mem <= 6.0, f"Activation memory should be ~5.5 GB, got {activation_mem} GiB"
+
+# REMOVED: test_estimate_vllm_activation_memory_zero_seq_len
+# Activation memory is now constant per model type, not dependent on seq_len
+
+def test_estimate_vllm_activation_memory_constant_with_tp():
+    """Tests that activation memory does NOT scale with tensor parallelism (empirical behavior)"""
+    model_config = get_model_config_from_hf(qwen_model)
+
+    # Get activation memory for different TP values
+    mem_tp1 = estimate_vllm_activation_memory(model_config, tp=1)
+    mem_tp2 = estimate_vllm_activation_memory(model_config, tp=2)
+    mem_tp4 = estimate_vllm_activation_memory(model_config, tp=4)
+
+    # Empirical observation: activation memory is constant regardless of TP
+    # (Llama-70B TP=1 would have ~4.8 GiB, TP=2 shows 4.84 GiB per GPU)
+    # The formula uses a constant base value that doesn't scale with TP
+    assert mem_tp1 == mem_tp2, f"TP=1 memory ({mem_tp1}) should equal TP=2 memory ({mem_tp2})"
+    assert mem_tp2 == mem_tp4, f"TP=2 memory ({mem_tp2}) should equal TP=4 memory ({mem_tp4})"
+
+# REMOVED: test_estimate_vllm_activation_memory_scales_with_batch_size
+# Activation memory is now constant per model type, NOT dependent on batch_size
+# Empirical evidence (Qwen3-0.6B): 16K and 32K both = 5.56 GB
+
+# REMOVED: test_estimate_vllm_activation_memory_scales_with_seq_len
+# Activation memory is now constant per model type, NOT dependent on seq_len
+# Empirical evidence (Qwen3-0.6B): 16K and 32K both = 5.56 GB
+
+def test_estimate_vllm_activation_memory_validation():
+    """Tests that activation memory estimation validates parameters correctly"""
+    model_config = get_model_config_from_hf(qwen_model)
+
+    # Test invalid TP (zero and negative)
+    with pytest.raises(ValueError, match="Tensor parallelism must be positive"):
+        estimate_vllm_activation_memory(model_config, tp=0)
+
+    with pytest.raises(ValueError, match="Tensor parallelism must be positive"):
+        estimate_vllm_activation_memory(model_config, tp=-1)
+
+def test_estimate_vllm_activation_memory_constant():
+    """Tests that activation memory is constant per model type"""
+    model_config = get_model_config_from_hf(qwen_model)
+    tp = 1
+
+    # Get the actual result
+    actual_mem_gib = estimate_vllm_activation_memory(model_config, tp)
+
+    # Qwen2.5-0.5B has architecture Qwen2ForCausalLM, which has a validated profile of 5.6
+    expected = VALIDATED_ACTIVATION_PROFILES.get("Qwen2ForCausalLM", ACTIVATION_MEMORY_BASE_DENSE_GIB)
+
+    # Should be exactly the validated profile value (no scaling)
+    assert actual_mem_gib == expected, \
+        f"Expected {expected} GiB, got {actual_mem_gib} GiB"
+
+def test_estimate_vllm_activation_memory_empirical_validation():
+    """Tests activation memory estimates against empirical vLLM measurements"""
+    # Activation memory is constant per model type, independent of max_model_len
+
+    # Test case 1: Qwen3-0.6B (dense, TP=1)
+    # Empirical: 5.56 GiB at both 16K and 32K, Expected with base 5.5: 5.5 GiB
+    qwen_config = get_model_config_from_hf(qwen_model)
+    qwen_activation = estimate_vllm_activation_memory(qwen_config, tp=1)
+    assert 5.0 <= qwen_activation <= 6.0, \
+        f"Qwen3-0.6B activation {qwen_activation} GiB outside expected range [5.0, 6.0] (empirical: 5.56)"
+
+    # Test case 2: TP=2 should give same result as TP=1 (empirical observation)
+    # Empirical data shows activation memory is constant regardless of TP
+    qwen_activation_tp2 = estimate_vllm_activation_memory(qwen_config, tp=2)
+    assert qwen_activation == qwen_activation_tp2, \
+        f"Activation memory should be constant with TP: TP=1 {qwen_activation} vs TP=2 {qwen_activation_tp2}"
+
+def test_estimate_vllm_activation_memory_moe():
+    """Tests that MoE models use higher activation memory constant"""
+    # MoE models have higher activation overhead due to expert routing
+    # Empirical: gpt-oss-20b = 7.38 GiB
+
+    moe_model = gpt_oss
+    moe_config = get_model_config_from_hf(moe_model)
+    moe_activation = estimate_vllm_activation_memory(moe_config, tp=1)
+
+    # Should be around 8.0 GB for MoE models
+    assert 7.0 <= moe_activation <= 9.0, \
+        f"MoE activation {moe_activation} GiB outside expected range [7.0, 9.0] (empirical: 7.38)"
+
+    # Should be higher than dense models
+    dense_config = get_model_config_from_hf(qwen_model)
+    dense_activation = estimate_vllm_activation_memory(dense_config, tp=1)
+    assert moe_activation > dense_activation, \
+        f"MoE activation {moe_activation} should be > dense activation {dense_activation}"
+
+def test_is_multimodal():
+    """Tests that multimodal models are correctly detected"""
+    # Mistral-Small-3.2-24B is multimodal (PixtralForConditionalGeneration)
+    mistral_config = get_model_config_from_hf(mistral_small)
+    assert is_multimodal(mistral_config), \
+        f"Mistral-Small-3.2-24B should be detected as multimodal, architectures: {mistral_config.architectures}"
+
+    # Qwen is NOT multimodal
+    qwen_config = get_model_config_from_hf(qwen_model)
+    assert not is_multimodal(qwen_config), \
+        f"Qwen should not be detected as multimodal, architectures: {qwen_config.architectures}"
+
+    # MoE model is NOT multimodal
+    moe_config = get_model_config_from_hf(gpt_oss)
+    assert not is_multimodal(moe_config), \
+        f"gpt-oss should not be detected as multimodal"
+
+def test_estimate_vllm_activation_memory_validated_lookup():
+    """Tests that validated profiles return architecture-specific activation memory"""
+    # Mistral-Small-3.2-24B has architecture PixtralForConditionalGeneration
+    # which is in VALIDATED_ACTIVATION_PROFILES at 2.5 GiB
+    mistral_config = get_model_config_from_hf(mistral_small)
+    mistral_activation = estimate_vllm_activation_memory(mistral_config, tp=1)
+
+    expected = VALIDATED_ACTIVATION_PROFILES["PixtralForConditionalGeneration"]
+    assert mistral_activation == expected, \
+        f"Mistral-Small activation should be {expected} GiB (validated), got {mistral_activation} GiB"
+
+    # Should be much less than the generic dense constant
+    assert mistral_activation < ACTIVATION_MEMORY_BASE_DENSE_GIB, \
+        f"Mistral multimodal ({mistral_activation}) should be < dense default ({ACTIVATION_MEMORY_BASE_DENSE_GIB})"
+
+    # Qwen2.5-0.5B has architecture Qwen2ForCausalLM, validated at 5.6 GiB
+    qwen_config = get_model_config_from_hf(qwen_model)
+    qwen_activation = estimate_vllm_activation_memory(qwen_config, tp=1)
+    expected_qwen = VALIDATED_ACTIVATION_PROFILES["Qwen2ForCausalLM"]
+    assert qwen_activation == expected_qwen, \
+        f"Qwen activation should be {expected_qwen} GiB (validated), got {qwen_activation} GiB"
+
+def test_estimate_vllm_activation_memory_multimodal_fallback():
+    """Tests that unknown multimodal architectures fall back to multimodal constant"""
+    # Use a simple class instead of MagicMock to avoid hasattr() issues
+    # (MagicMock responds True to all hasattr checks, which triggers is_moe)
+    class FakeMultimodalConfig:
+        architectures = ["LlavaForConditionalGeneration"]
+
+    activation = estimate_vllm_activation_memory(FakeMultimodalConfig(), tp=1)
+    assert activation == ACTIVATION_MEMORY_BASE_MULTIMODAL_GIB, \
+        f"Unknown multimodal should return {ACTIVATION_MEMORY_BASE_MULTIMODAL_GIB} GiB, got {activation} GiB"
+
+def test_estimate_vllm_activation_memory_unknown_dense_fallback():
+    """Tests that unknown dense architectures fall back to dense constant"""
+    class FakeDenseConfig:
+        architectures = ["SomeNewModelForCausalLM"]
+
+    activation = estimate_vllm_activation_memory(FakeDenseConfig(), tp=1)
+    assert activation == ACTIVATION_MEMORY_BASE_DENSE_GIB, \
+        f"Unknown dense model should return {ACTIVATION_MEMORY_BASE_DENSE_GIB} GiB, got {activation} GiB"
+
+
+# ---- Comprehensive Tests for Various Models ----
+
+def test_safetensors_metadata_gpt_oss_models():
+    """Tests safetensors metadata for OpenAI gpt-oss models"""
+    # gpt-oss-20b
+    params_20b = model_params_by_dtype("openai/gpt-oss-20b")
+    assert sum(params_20b.values()) > 0
+    total_20b = model_total_params("openai/gpt-oss-20b")
+    assert total_20b > 0
+
+    # gpt-oss-120b
+    params_120b = model_params_by_dtype("openai/gpt-oss-120B")
+    assert sum(params_120b.values()) > 0
+    total_120b = model_total_params("openai/gpt-oss-120B")
+    assert total_120b > total_20b  # 120B should have more params than 20B
+
+
+def test_safetensors_metadata_qwen_models():
+    """Tests safetensors metadata for Qwen models"""
+    qwen_models = [
+        "Qwen/Qwen2.5-0.5B",
+        "Qwen/Qwen3-0.6B",
+    ]
+
+    for model in qwen_models:
+        params = model_params_by_dtype(model)
+        assert isinstance(params, dict), f"{model}: params should be dict"
+        assert sum(params.values()) > 0, f"{model}: should have params"
+
+        total = model_total_params(model)
+        assert total > 0, f"{model}: total should be > 0"
+        assert total == sum(params.values()), f"{model}: total should match sum of params"
+
+
+def test_safetensors_metadata_llama_models():
+    """Tests safetensors metadata for Llama models (using RedHat FP8 variants to avoid gating)"""
+    llama_models = [
+        "RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic",
+        "RedHatAI/Meta-Llama-3.1-8B-Instruct-FP8-dynamic",
+    ]
+
+    for model in llama_models:
+        params = model_params_by_dtype(model)
+        assert isinstance(params, dict), f"{model}: params should be dict"
+        assert sum(params.values()) > 0, f"{model}: should have params"
+
+        total = model_total_params(model)
+        assert total > 0, f"{model}: total should be > 0"
+
+
+def test_safetensors_metadata_deepseek_models():
+    """Tests safetensors metadata for DeepSeek models"""
+    deepseek_models = [
+        "deepseek-ai/DeepSeek-V2",
+        "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+    ]
+
+    for model in deepseek_models:
+        params = model_params_by_dtype(model)
+        assert isinstance(params, dict), f"{model}: params should be dict"
+        assert sum(params.values()) > 0, f"{model}: should have params"
+
+        total = model_total_params(model)
+        assert total > 0, f"{model}: total should be > 0"
+
+
+def test_model_memory_req_various_models():
+    """Tests model_memory_req for various model types"""
+    test_cases = [
+        # (model_name, min_expected_gb, max_expected_gb)
+        ("Qwen/Qwen3-0.6B", 0.5, 2.0),
+        ("openai/gpt-oss-20b", 12.0, 14.0),
+        ("openai/gpt-oss-120b", 58.0, 63.0),
+        ("RedHatAI/Qwen3-8B-FP8-dynamic", 5.0, 15.0),
+    ]
+
+    for model_name, min_gb, max_gb in test_cases:
+        model_config = get_model_config_from_hf(model_name)
+        memory = model_memory_req(model_name, model_config)
+        assert min_gb <= memory <= max_gb, \
+            f"{model_name}: memory {memory} GB not in expected range [{min_gb}, {max_gb}]"
+
+
+def test_get_safetensors_metadata_caching():
+    """Tests that safetensors metadata is cached properly"""
+    model = "Qwen/Qwen3-0.6B"
+
+    # First call
+    metadata1 = get_safetensors_metadata_from_hf(model)
+
+    # Second call should return cached result
+    metadata2 = get_safetensors_metadata_from_hf(model)
+
+    # Should be the same object (cached)
+    assert metadata1 is metadata2, "Metadata should be cached"

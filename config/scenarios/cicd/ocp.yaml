@@ -1,0 +1,56 @@
+# OpenShift Container Platform CI/CD Scenario
+# Migrated from bash environment variables to YAML format
+# Based on scenarios/cicd/ocp_fb.sh
+#
+# CI/CD scenario for OpenShift clusters.
+# Uses facebook/opt-125m for fast validation with Istio gateway.
+# GPU affinity is auto-detected (commented out in original).
+
+scenario:
+  - name: "ocp-cicd"
+
+    # Model
+    model:
+      name: facebook/opt-125m
+      shortName: facebook-opt-125m
+      path: models/facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
+
+    # Namespace — dedicated CI/CD namespace
+    namespace:
+      name: llmdbenchcicd
+
+    # Harness namespace matches model namespace
+    harnessNamespace:
+      name: llmdbenchcicd
+
+    # GPU affinity — auto-detected on OpenShift
+    # Uncomment to select specific GPU:
+    # affinity:
+    #   enabled: true
+    #   nodeSelector:
+    #     nvidia.com/gpu.product: NVIDIA-L40S
+
+    # Accelerator configuration
+    accelerator:
+      memory: 48
+
+    # Storage
+    storage:
+      modelPvc:
+        storageClassName: ocs-storagecluster-cephfs
+
+    # Deployment
+    deploy:
+      replicas: 1
+      release: llmdbenchcicd
+
+    # Gateway configuration — Istio for OpenShift
+    gateway:
+      className: istio
+
+    # Workload
+    harness:
+      name: vllm-benchmark
+      experimentProfile: sanity_random.yaml
+      workDir: /tmp/cicd/

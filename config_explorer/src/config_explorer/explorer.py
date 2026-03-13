@@ -45,26 +45,18 @@ from typing import Any
 import pandas as pd
 import yaml
 
-# TODO These packages can be imported in different ways depending on whether
-# these are imported as a notebook, or installed as a config_explorer library
-# in a Python environment. This needs to be made consistent as the overall
-# llm-d-benchmark repository is refactored into full Python.
-try:
-    import convert
-    import schema
-    from constants import (
-        BOUND_PREFIX_LEN,
-        COLUMN_BOUND_STR,
-        STR_TO_COLUMN_BOUND,
-    )
-except ImportError:
-    from config_explorer import convert
-    from config_explorer import schema
-    from config_explorer.constants import (
-        BOUND_PREFIX_LEN,
-        COLUMN_BOUND_STR,
-        STR_TO_COLUMN_BOUND,
-    )
+from .benchmark_report import get_nested, import_benchmark_report
+from .benchmark_report.schema_v0_1 import (
+    BenchmarkReport,
+    HostType,
+    Units,
+    WorkloadGenerator,
+)
+from .constants import (
+    BOUND_PREFIX_LEN,
+    COLUMN_BOUND_STR,
+    STR_TO_COLUMN_BOUND,
+)
 
 
 class Text:
@@ -793,43 +785,33 @@ def check_file(file: str) -> None:
         raise Exception(f'Invalid file: {file}')
 
 
-def get_nested(ndict: dict[Any, Any], path: list[Any],
-               default: Any = None) -> Any:
-    """Get value from path through nested dicts.
-
-    Args:
-        d (dict): Nested dict to get value from.
-        path (list): Path through nested dict, as a list of keys.
-        default (Any): Value to return if path does not exist.
-
-    Returns:
-        Any: Value at path location, or default value if path does not exist.
-    """
-
-    d_cur = ndict
-    for key in path:
-        if not isinstance(d_cur, dict):
-            # Path hit a non-dict
-            return default
-        if key not in d_cur:
-            # Key is not in dict
-            return default
-        d_cur = d_cur[key]
-    return d_cur
-
-
-def mul(a: int | None, b: int | None) -> int | None:
+def mul(a: int | float | None, b: int | float | None) -> int | float | None:
     """Multiply two values, returning None if either value is None.
 
     Args:
-        a (int | None): First multiplicand.
-        b (int | None): Second multiplicand.
+        a (int | float | None): First multiplicand.
+        b (int | float | None): Second multiplicand.
 
     Returns:
-        int | None: Multiplied result if multiplicands exist, otherwise None.
+        int | float | None: Multiplied result if multiplicands exist, otherwise None.
     """
-    if a and b:
+    if a is not None and b is not None:
         return a * b
+    return None
+
+
+def div(a: int | float | None, b: int | float | None) -> float | None:
+    """Divide two values, returning None if either value is None or divisor is 0.
+
+    Args:
+        a (int | float | None): Dividend.
+        b (int | float | None): Divisor.
+
+    Returns:
+        float | None: Result if inputs exist, otherwise None.
+    """
+    if a is not None and b:
+        return a / b
     return None
 
 
@@ -883,7 +865,7 @@ def make_benchmark_runs_df() -> pd.DataFrame:
 
 
 def _get_replicas_and_parallelism(
-        report: schema.BenchmarkReport) -> dict[str, int | None]:
+        report: BenchmarkReport) -> dict[str, int | None]:
     """Get the number of replicas and parallelisms.
 
     Args:
@@ -917,9 +899,9 @@ def _get_replicas_and_parallelism(
         # Host details are not available
         return rp
 
-    rp['replicas'] = report.scenario.host.type.count(schema.HostType.REPLICA)
-    rp['p_replicas'] = report.scenario.host.type.count(schema.HostType.PREFILL)
-    rp['d_replicas'] = report.scenario.host.type.count(schema.HostType.DECODE)
+    rp['replicas'] = report.scenario.host.type.count(HostType.REPLICA)
+    rp['p_replicas'] = report.scenario.host.type.count(HostType.PREFILL)
+    rp['d_replicas'] = report.scenario.host.type.count(HostType.DECODE)
     if rp['replicas'] == 0:
         rp['replicas'] = None
     if rp['p_replicas'] == 0:
@@ -938,12 +920,12 @@ def _get_replicas_and_parallelism(
     # We have a P/D setup
     rp['is_pd'] = True
     for ii, accel in enumerate(report.scenario.host.accelerator):
-        if report.scenario.host.type[ii] is schema.HostType.PREFILL and rp['p_tp'] is None:
+        if report.scenario.host.type[ii] is HostType.PREFILL and rp['p_tp'] is None:
             rp['p_tp'] = accel.parallelism.tp
             rp['p_dp'] = accel.parallelism.dp
             rp['p_pp'] = accel.parallelism.pp
             rp['p_ep'] = accel.parallelism.ep
-        if report.scenario.host.type[ii] is schema.HostType.DECODE and rp['d_tp'] is None:
+        if report.scenario.host.type[ii] is HostType.DECODE and rp['d_tp'] is None:
             rp['d_tp'] = accel.parallelism.tp
             rp['d_dp'] = accel.parallelism.dp
             rp['d_pp'] = accel.parallelism.pp
@@ -964,7 +946,7 @@ def add_benchmark_report_to_df(
     """
     # Import benchmark report.
     # We will parse through this to populate a row in the DataFrame
-    report = convert.import_benchmark_report(br_file)
+    report = import_benchmark_report(br_file)
 
     # Get parallelism and replica details
     rp = _get_replicas_and_parallelism(report)
@@ -1039,7 +1021,7 @@ def add_benchmark_report_to_df(
     prompts_per_group = None    # Common prefixes within a group
     target_osl = None
     args = report.scenario.load.args
-    if report.scenario.load.name == schema.WorkloadGenerator.INFERENCE_PERF:
+    if report.scenario.load.name == WorkloadGenerator.INFERENCE_PERF:
         # Workload generator stage
         # If stage metadata is not present in benchmark report, we cannot know
         # which Inference Perf result this data came from.
@@ -1061,9 +1043,9 @@ def add_benchmark_report_to_df(
             get_nested(
                 args, [
                     'data', 'shared_prefix', 'output_len'], -1))
-    elif report.scenario.load.name == schema.WorkloadGenerator.VLLM_BENCHMARK:
+    elif report.scenario.load.name == WorkloadGenerator.VLLM_BENCHMARK:
         concurrency = args.get('max_concurrency')
-    elif report.scenario.load.name == schema.WorkloadGenerator.GUIDELLM:
+    elif report.scenario.load.name == WorkloadGenerator.GUIDELLM:
         # Workload generator stage
         # If stage metadata is missing, this benchmark report is from an older
         # version of convert.py that only took stage 0 results.
@@ -1084,16 +1066,14 @@ def add_benchmark_report_to_df(
             target_osl = data.get('output_tokens')
 
     # Multipliers to ensure values are in ms
-    ttft_mult = 1000 if report.metrics.latency.time_to_first_token.units == schema.Units.S else 1
-    tpot_mult = 1000 if report.metrics.latency.time_per_output_token.units == schema.Units.S_PER_TOKEN else 1
-    itl_mult = 1000 if report.metrics.latency.inter_token_latency.units == schema.Units.S_PER_TOKEN else 1
-    e2el_mult = 1000 if report.metrics.latency.request_latency.units == schema.Units.S else 1
+    ttft_mult = 1000 if report.metrics.latency.time_to_first_token.units == Units.S else 1
+    tpot_mult = 1000 if report.metrics.latency.time_per_output_token.units == Units.S_PER_TOKEN else 1
+    itl_mult = 1000 if report.metrics.latency.inter_token_latency.units == Units.S_PER_TOKEN else 1
+    e2el_mult = 1000 if report.metrics.latency.request_latency.units == Units.S else 1
 
     # Calculated metrics
-    thpt_per_gpu = None
-    if num_gpus:
-        thpt_per_gpu = report.metrics.throughput.output_tokens_per_sec / num_gpus
-    thpt_per_user = 1 / (mul(report.metrics.latency.time_per_output_token.mean, tpot_mult) / 1000)
+    thpt_per_gpu = div(report.metrics.throughput.output_tokens_per_sec, num_gpus)
+    thpt_per_user = div(1, (div(mul(report.metrics.latency.time_per_output_token.mean, tpot_mult), 1000)))
 
     # Scenario details
     engine = None
@@ -1279,7 +1259,15 @@ def get_scenarios(
         s_dict = {}
         if bounded:
             for ii, col_nn in enumerate(cols_nn):
-                s_dict[col_nn] = s_tuple[ii]
+                if isinstance(s_tuple, str):
+                    # If only a single non-numeric column exists,
+                    # runs_df.set_index(cols_nn) will be type 
+                    # pandas.core.indexes.base.Index rather than
+                    # pandas.core.indexes.multi.MultiIndex and s_tuple will be
+                    # the column name (string rather than tuple of strings)
+                    s_dict[col_nn] = s_tuple
+                else:
+                    s_dict[col_nn] = s_tuple[ii]
             # Get rows matching this scenario's non-numeric columns
             df = get_scenario_df(runs_df, s_dict)
             # Get min/max for numeric columns of this scenario
@@ -1301,7 +1289,15 @@ def get_scenarios(
                     s_dict['__le__' + col_num] = val_max
         else:
             for ii, col in enumerate(scenario_columns):
-                s_dict[col] = s_tuple[ii]
+                if isinstance(s_tuple, str):
+                    # If only a single scenario column is defined,
+                    # runs_df.set_index(scenario_columns) will be type 
+                    # pandas.core.indexes.base.Index rather than
+                    # pandas.core.indexes.multi.MultiIndex and s_tuple will be
+                    # the column name (string rather than tuple of strings)
+                    s_dict[col] = s_tuple
+                else:
+                    s_dict[col] = s_tuple[ii]
         if not all_na:
             # Add scenario only if there are rows were all columns have data
             scenarios.append(s_dict)

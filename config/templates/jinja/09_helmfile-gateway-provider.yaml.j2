@@ -1,0 +1,42 @@
+{#
+  Gateway provider helmfile — only rendered for modelservice deployments
+  that use Istio as the gateway provider.  Other providers (kgateway, gke,
+  data-science-gateway-class) are platform-managed or pre-installed.
+#}
+{% set gw_class = gateway.className | default('istio') %}
+{% if standalone.enabled is defined and not standalone.enabled and gw_class == 'istio' %}
+repositories:
+  - name: istio
+    url: {{ helmRepositories.istio.url }}
+
+releases:
+  - name: istio-base
+    chart: istio/base
+    version: {{ chartVersions.istioBase }}
+    namespace: istio-system
+    installed: true
+    labels:
+      type: gateway-provider
+      kind: gateway-crds
+
+  - name: istiod
+    chart: istio/istiod
+    version: {{ chartVersions.istiod }}
+    namespace: istio-system
+    installed: true
+    needs:
+      - istio-system/istio-base
+    values:
+      - meshConfig:
+          defaultConfig:
+            proxyMetadata:
+              ENABLE_GATEWAY_API_INFERENCE_EXTENSION: true
+        pilot:
+          env:
+            ENABLE_GATEWAY_API_INFERENCE_EXTENSION: true
+        tag: {{ chartVersions.istiod }}
+        hub: "docker.io/istio"
+    labels:
+      type: gateway-provider
+      kind: gateway-control-plane
+{% endif %}

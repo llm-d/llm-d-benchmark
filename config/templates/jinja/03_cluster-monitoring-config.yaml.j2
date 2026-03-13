@@ -1,0 +1,9 @@
+{% if monitoring.enabled %}
+apiVersion: v1
+data:
+  config.yaml: 'enableUserWorkload: {{ monitoring.enableUserWorkload | lower }}'
+kind: ConfigMap
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+{% endif %}

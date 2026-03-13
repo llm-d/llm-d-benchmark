@@ -2,7 +2,6 @@
 Streamlit frontend utilities
 """
 import streamlit as st
-from huggingface_hub import ModelInfo
 from transformers import AutoConfig
 from dataclasses import dataclass
 from src.config_explorer.capacity_planner import *
@@ -29,7 +28,6 @@ SELECTED_ENABLE_EP_KEY = "selected_enable_ep"
 class Scenario:
     """Scenario stores info about an user scenario in Streamlit"""
     model_name: str = 'deepseek-ai/DeepSeek-V3.1'
-    model_info: ModelInfo | None = None
     model_config: AutoConfig | None = None      # Info about model
     text_config: AutoConfig | None = None       # Info about the model like max positional embeddings can be nested inside text_config for certain architectures like MistralConfig
     max_model_len: int = 1
@@ -58,7 +56,7 @@ class Scenario:
         return self.get_gpu_spec(gpu_specs_db)['memory']
 
     def can_show_mem_util_chart(self, min_gpu_req: int):
-        if self.model_name and self.model_info and self.model_config and \
+        if self.model_name and self.model_config and \
             self.max_model_len and self.concurrency and \
                 self.gpu_name and self.gpu_count_avail and \
                     self.gpu_count_avail >= min_gpu_req:
@@ -70,7 +68,6 @@ class Scenario:
         Resets inputs
         """
         self.model_name = 'deepseek-ai/DeepSeek-V3.1'
-        self.model_info = None
         self.model_config = None
         self.max_model_len = 1
         self.concurrency = 1

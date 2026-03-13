@@ -1,0 +1,68 @@
+# GKE H100 CI/CD Scenario
+# Migrated from bash environment variables to YAML format
+# Based on scenarios/cicd/gke_H100_fb.sh
+#
+# CI/CD scenario for Google Kubernetes Engine clusters with H100 GPUs.
+# Uses meta-llama/Llama-3.2-1B for fast validation.
+
+scenario:
+  - name: "gke-h100-cicd"
+
+    # Model
+    model:
+      name: meta-llama/Llama-3.2-1B
+      shortName: llama-3.2-1b
+      path: models/meta-llama/Llama-3.2-1B
+      huggingfaceId: meta-llama/Llama-3.2-1B
+
+    # Namespace — dedicated CI/CD namespace
+    namespace:
+      name: llmdbenchcicd
+
+    # Harness namespace matches model namespace
+    harnessNamespace:
+      name: llmdbenchcicd
+
+    # GPU affinity for GKE H100
+    affinity:
+      enabled: true
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-h100-80gb
+
+    # Accelerator configuration
+    accelerator:
+      count: 1
+
+    # Storage
+    storage:
+      modelPvc:
+        storageClassName: standard-rwx
+        size: 1Ti
+
+    # Deployment
+    deploy:
+      replicas: 1
+      release: llmdbenchcicd
+
+    # GKE-specific environment variable for LD_LIBRARY_PATH
+    # Corresponds to: _LD_LIBRARY_PATH
+    decode:
+      extraEnvVars:
+        - name: LD_LIBRARY_PATH
+          value: "${LD_LIBRARY_PATH}:/usr/local/nvidia/lib64"
+
+    prefill:
+      extraEnvVars:
+        - name: LD_LIBRARY_PATH
+          value: "${LD_LIBRARY_PATH}:/usr/local/nvidia/lib64"
+
+    standalone:
+      extraEnvVars:
+        - name: LD_LIBRARY_PATH
+          value: "${LD_LIBRARY_PATH}:/usr/local/nvidia/lib64"
+
+    # Workload
+    harness:
+      name: inference-perf
+      experimentProfile: sanity_random.yaml
+      workDir: /tmp/cicd/

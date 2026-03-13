@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440" font-family="'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <marker id="a1" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#94a3b8"/>
+    </marker>
+    <marker id="a2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect width="800" height="440" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="400" y="30" text-anchor="middle" font-size="16" font-weight="600" fill="#0f172a" letter-spacing="0.3">StepExecutor Orchestration</text>
+  <line x1="280" y1="40" x2="520" y2="40" stroke="#e2e8f0" stroke-width="1"/>
+
+  <!-- Global Steps Section -->
+  <rect x="30" y="54" width="740" height="80" rx="8" fill="#faf5ff" stroke="#e9d5ff" stroke-width="1"/>
+  <text x="50" y="72" font-size="11" font-weight="600" fill="#7c3aed" letter-spacing="0.5">GLOBAL STEPS</text>
+  <text x="195" y="72" font-size="10" font-weight="400" fill="#a78bfa">sequential, per_stack=False</text>
+
+  <rect x="50" y="82" width="130" height="38" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1" filter="url(#shadow)"/>
+  <text x="115" y="106" text-anchor="middle" font-size="12" font-weight="500" fill="#5b21b6">Step 00</text>
+
+  <line x1="180" y1="101" x2="208" y2="101" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a1)"/>
+
+  <rect x="216" y="82" width="130" height="38" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1" filter="url(#shadow)"/>
+  <text x="281" y="106" text-anchor="middle" font-size="12" font-weight="500" fill="#5b21b6">Step 02</text>
+
+  <line x1="346" y1="101" x2="374" y2="101" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a1)"/>
+
+  <rect x="382" y="82" width="130" height="38" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1" filter="url(#shadow)"/>
+  <text x="447" y="106" text-anchor="middle" font-size="12" font-weight="500" fill="#5b21b6">Step 03</text>
+
+  <text x="540" y="106" font-size="16" font-weight="300" fill="#c4b5fd">...</text>
+
+  <!-- Arrow down to per-stack -->
+  <line x1="400" y1="134" x2="400" y2="166" stroke="#64748b" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- Per-Stack Section -->
+  <rect x="30" y="170" width="740" height="240" rx="8" fill="#f0f9ff" stroke="#bae6fd" stroke-width="1"/>
+  <text x="50" y="188" font-size="11" font-weight="600" fill="#0369a1" letter-spacing="0.5">PER-STACK STEPS</text>
+  <text x="195" y="188" font-size="10" font-weight="400" fill="#38bdf8">parallel across stacks, sequential within</text>
+
+  <!-- Stack A -->
+  <rect x="50" y="200" width="210" height="195" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="50" y="200" width="210" height="28" rx="6" fill="#f1f5f9"/>
+  <rect x="50" y="222" width="210" height="6" fill="#f8fafc"/>
+  <text x="155" y="219" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">Stack A</text>
+
+  <rect x="65" y="237" width="180" height="30" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="155" y="257" text-anchor="middle" font-size="11" font-weight="400" fill="#1e40af">Step 04 (model ns)</text>
+
+  <rect x="65" y="275" width="180" height="30" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="155" y="295" text-anchor="middle" font-size="11" font-weight="400" fill="#1e40af">Step 05 (harness ns)</text>
+
+  <rect x="65" y="313" width="180" height="30" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="155" y="333" text-anchor="middle" font-size="11" font-weight="400" fill="#1e40af">Step 06-09 (deploy)</text>
+
+  <rect x="65" y="351" width="180" height="30" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="155" y="371" text-anchor="middle" font-size="11" font-weight="400" fill="#1e40af">Step 10 (smoketest)</text>
+
+  <!-- Stack B -->
+  <rect x="295" y="200" width="210" height="195" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="295" y="200" width="210" height="28" rx="6" fill="#f1f5f9"/>
+  <rect x="295" y="222" width="210" height="6" fill="#f8fafc"/>
+  <text x="400" y="219" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">Stack B</text>
+
+  <rect x="310" y="237" width="180" height="30" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="400" y="257" text-anchor="middle" font-size="11" font-weight="400" fill="#1e40af">Step 04 (model ns)</text>
+
+  <rect x="310" y="275" width="180" height="30" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="400" y="295" text-anchor="middle" font-size="11" font-weight="400" fill="#1e40af">Step 05 (harness ns)</text>
+
+  <rect x="310" y="313" width="180" height="30" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="400" y="333" text-anchor="middle" font-size="11" font-weight="400" fill="#1e40af">Step 06-09 (deploy)</text>
+
+  <rect x="310" y="351" width="180" height="30" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="400" y="371" text-anchor="middle" font-size="11" font-weight="400" fill="#1e40af">Step 10 (smoketest)</text>
+
+  <!-- Stack N -->
+  <rect x="540" y="200" width="210" height="195" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="540" y="200" width="210" height="28" rx="6" fill="#f1f5f9"/>
+  <rect x="540" y="222" width="210" height="6" fill="#f8fafc"/>
+  <text x="645" y="219" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">Stack N</text>
+
+  <rect x="555" y="237" width="180" height="30" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="645" y="257" text-anchor="middle" font-size="11" font-weight="400" fill="#1e40af">Step 04 (model ns)</text>
+
+  <rect x="555" y="275" width="180" height="30" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="645" y="295" text-anchor="middle" font-size="11" font-weight="400" fill="#1e40af">Step 05 (harness ns)</text>
+
+  <rect x="555" y="313" width="180" height="30" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="645" y="333" text-anchor="middle" font-size="11" font-weight="400" fill="#1e40af">Step 06-09 (deploy)</text>
+
+  <rect x="555" y="351" width="180" height="30" rx="5" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="645" y="371" text-anchor="middle" font-size="11" font-weight="400" fill="#1e40af">Step 10 (smoketest)</text>
+
+  <!-- Parallel indicator -->
+  <text x="400" y="428" text-anchor="middle" font-size="11" font-weight="400" fill="#64748b">Controlled by --parallel N (default: 4 concurrent stacks)</text>
+</svg>
