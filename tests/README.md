@@ -30,6 +30,26 @@ Validates the pydantic config schema (`llmdbenchmark/parser/config_schema.py`) a
 | `TestAllowSections` | `extra="allow"` sections accept arbitrary keys (GPU resources, flags, top-level) |
 | `TestScenarioOnlyFields` | Fields used by scenarios but absent from defaults are accepted |
 
+### `test_experiment.py`
+
+Validates the DoE experiment parser (`llmdbenchmark/experiment/parser.py`) and summary tracker (`llmdbenchmark/experiment/summary.py`).
+
+| Test class | What it covers |
+|---|---|
+| `TestDottedToNested` | `dotted_to_nested()` converts flat dotted-key dicts to nested structures |
+| `TestParseExperimentWithSetup` | Parsing experiment YAML with `setup` + `treatments` sections |
+| `TestSetupConstantsOverrideOrder` | Treatment-specific values override `setup.constants` |
+| `TestParseExperimentWithoutSetup` | Run-only experiments (no `setup` section) — backward compat |
+| `TestParseExperimentEdgeCases` | Missing files, invalid YAML, auto-generated names, empty sections |
+| `TestParseRealExperimentFiles` | All 4 experiment YAMLs in `workload/experiments/` parse correctly |
+| `TestTieredPrefixCacheExperiment` | Detailed validation of tiered-prefix-cache setup treatments and matrix |
+| `TestPrecisePrefixCacheAwareExperiment` | Routing plugin setup treatments and matrix |
+| `TestPdDisaggregationExperiment` | 9 fractional factorial treatments, modelservice/standalone split |
+| `TestExperimentPlanProperties` | `total_matrix` computation for various setup/run combinations |
+| `TestTreatmentResult` | `to_dict()` serialization for success and failure cases |
+| `TestExperimentSummary` | Result recording, YAML serialization, summary table output |
+| `TestSetupTreatment` | Dataclass defaults and override storage |
+
 ## Keeping Tests in Sync
 
 The config schema validates `defaults.yaml` and all scenario files automatically. When you make changes to templates or config, run the tests to catch regressions.

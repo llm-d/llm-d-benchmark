@@ -45,6 +45,7 @@ class RenderPlans:
         cli_model: str | None = None,
         cli_methods: str | None = None,
         cli_monitoring: bool = False,
+        setup_overrides: dict | None = None,
     ):
         self.template_dir = Path(template_dir)
         self.defaults_file = Path(defaults_file)
@@ -56,6 +57,7 @@ class RenderPlans:
         self.cli_model = cli_model
         self.cli_methods = cli_methods
         self.cli_monitoring = cli_monitoring
+        self.setup_overrides = setup_overrides
 
         self.logger = logger or get_logger(
             config.log_dir, verbose=config.verbose, log_name=__name__
@@ -530,6 +532,9 @@ class RenderPlans:
 
         stack_config = {k: v for k, v in stack.items() if k != "name"}
         merged_values = self.deep_merge(defaults, stack_config)
+
+        if self.setup_overrides:
+            merged_values = self.deep_merge(merged_values, self.setup_overrides)
 
         merged_values = self._apply_resource_preset(merged_values)
 

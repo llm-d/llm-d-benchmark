@@ -10,6 +10,7 @@ parser/
     render_specification.py       Specification file parsing and validation
     render_plans.py               Jinja2 template rendering engine
     render_result.py              Structured error tracking for renders
+    config_schema.py              Pydantic config validation (typo/type detection)
     version_resolver.py           Auto-resolve image tags and chart versions
     cluster_resource_resolver.py  Auto-detect accelerator/network values
 ```
@@ -33,6 +34,7 @@ Parses and validates the specification file (`.yaml.j2`):
 The main rendering engine:
 - Loads `defaults.yaml` as the base configuration
 - Deep-merges scenario overrides on top of defaults
+- Applies `setup_overrides` from experiment setup treatments (when present)
 - Applies CLI overrides (namespace, model, methods)
 - Generates experiment treatments if specified
 - For each treatment/stack:
@@ -45,6 +47,14 @@ The main rendering engine:
 - Templates with Jinja2 conditionals that evaluate to false render as empty files
 - Each rendered stack gets its own directory under the plan output
 - The `config.yaml` in each stack is the single source of truth for that stack's configuration
+
+### ConfigSchema
+
+Pydantic validation for the merged config dict:
+- Detects typos in key config sections (`decode`, `model`, `vllmCommon`, `harness`, `prefill`)
+- Catches type errors and constraint violations (e.g. `gpuMemoryUtilization > 1`)
+- Non-blocking: `validate_config()` returns a list of warnings, never raises
+- Sections use `STRICT_CONFIG` (typo detection) or `LENIENT_CONFIG` (extensible) as appropriate
 
 ### RenderResult
 
@@ -72,15 +82,19 @@ Auto-detects cluster resources during the plan phase:
 
 ## Merge Strategy
 
+The merge chain applies sources in order — later sources override earlier ones:
+
+`defaults.yaml` → `scenario.yaml` → `setup_overrides` → resource preset → resolvers → CLI overrides
+
 The deep merge follows these rules:
-1. Scalar values: later source wins (scenario overrides defaults, CLI overrides scenario)
+1. Scalar values: later source wins
 2. Dicts: recursively merged (keys from both sources combined)
 3. Lists: later source replaces entirely (no list concatenation)
-4. `null` values in scenario: explicitly set the value to null (removes default)
+4. `null` values: explicitly set the value to null (removes default)
 
 ## Usage from Code
 
-The plan phase is triggered automatically by the CLI for `plan`, `standup`, `teardown`, and `run` commands:
+The plan phase is triggered automatically by the CLI for `plan`, `standup`, `teardown`, `run`, and `experiment` commands:
 
 ```python
 # In cli.py dispatch_cli():

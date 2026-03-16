@@ -1,10 +1,122 @@
 # llm-d-benchmark
 
-Automated workflow for benchmarking LLM inference using the `llm-d` stack. Includes tools for deployment, experiment execution, data collection, and teardown across multiple environments and deployment styles.
+A single CLI for deploying, benchmarking, and tearing down LLM inference stacks on Kubernetes. One command to stand up a model-serving endpoint, run structured workloads against it, collect results, and clean up -- or skip the deployment entirely and point at an endpoint you already have running.
 
-## Main Goal
+## Why llm-d-benchmark
 
-Provide a single source of automation for repeatable and reproducible experiments and performance evaluation on `llm-d`.
+Benchmarking LLM inference stack performance on Kubernetes typically involves stitching together kubectl commands, Helm installs, load-generator scripts, tweaking many knobs for various different configurations, and collecting results by hand in very different formats depending on harness. Each step of that process is fragile, hard to reproduce, and comparing results across configurations requires careful bookkeeping.
+
+`llm-d-benchmark` **solves this problem by providing**:
+
+- **Transparency through a Declarative Lifecyle** -- Infrastructure, workloads, and experiments are defined upfront, in a `plan`. Everything being deployed for a given specification, scenario, profile, and experiment are all first rendered into human-readable plain text that can be version-controlled, diffed, and reviewed. No imperative scripts encode hidden assumptions. This promomtes transparency for before and after benchmarking, as well as providing a **reliable** method to reproduce results.
+
+- **End-to-end automation** -- A single `llmdbenchmark` CLI covers the full lifecycle from rendering all Kubernetes manifests, to deploying various `llm` and `llm-d` stacks, executing benchmarks, collecting results, and tearing down infrastructure in a safe manner. No shell scripts to chain together, no manual steps to forget, and it's entirely automated.
+
+- **Reproducibility by default** -- Every run starts from a versioned specification file and a deterministic config merge chain (`defaults.yaml` → scenario → CLI overrides). The rendered `config.yaml` in each workspace captures the exact configuration used, so any result can be traced back to its inputs.
+
+- **Flexible entry points** -- Use the full pipeline when you want deployment handled for you, or use run-only mode to benchmark an endpoint that already exists. The same workload profiles and experiment definitions work in both modes. Maybe you aren't ready to benchmark, but want to deploy the infrastructure to investigate by hand, no problem, `standup` covers that for you.
+
+- **Structured experiment support** -- Built-in Design of Experiments (DoE) support lets you define factor sweeps in YAML. The `experiment` command automates the full setup × run treatment matrix -- standing up a different infrastructure configuration for each setup treatment, running all workload variations, tearing down, and producing a summary.
+
+- **Multiple harnesses** -- Swap between [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git), [vllm-benchmark](https://github.com/vllm-project/vllm.git), and others with a simple CLI flag. Each harness uses the same profile and experiment system, as well as APIs to provide the benchmarker a common experience.
+
+- **CI/CD ready** -- Every flag has a `LLMDBENCH_*` environment variable counterpart, `--dry-run` previews without touching the cluster, and `--non-admin` skips steps that require cluster-level privileges.
+
+## Getting Started
+
+### Install
+
+```bash
+git clone https://github.com/llm-d/llm-d-benchmark.git
+cd llm-d-benchmark
+./install.sh
+source .venv/bin/activate
+llmdbenchmark --version
+```
+
+The install script creates a virtualenv, validates system tools (kubectl, helm, Python 3.11+), and installs the `llmdbenchmark` package. See [Installation](#installation) for manual install and flags.
+
+### Choose a specification
+
+Every command takes a `--spec` that selects the configuration for your cluster and GPU type. Specs are Jinja2 templates under `config/specification/`:
+
+```bash
+--spec gpu                              # NVIDIA GPU setup (config/specification/examples/gpu.yaml.j2)
+--spec inference-scheduling             # inference scheduling guide
+--spec pd-disaggregation               # prefill-decode disaggregation guide
+--spec /full/path/to/my-spec.yaml.j2    # custom spec
+```
+
+If the name is ambiguous or not found, the CLI lists all available specs and exits.
+
+### Deploy and benchmark (full pipeline)
+
+Stand up the `llm-d` stack, run a quick sanity benchmark, and tear down:
+
+```bash
+# Preview what would be deployed (no cluster changes)
+llmdbenchmark --spec gpu --dry-run standup
+
+# Deploy for real
+llmdbenchmark --spec gpu standup
+
+# Run a sanity benchmark against the deployed endpoint
+llmdbenchmark --spec gpu run -l inference-perf -w sanity_random.yaml
+
+# Tear down when done
+llmdbenchmark --spec gpu teardown
+```
+
+Each command renders Kubernetes manifests from your spec's templates and defaults, then applies them. The workspace directory captures rendered configs, manifests, and results for later inspection.
+
+### Benchmark an existing endpoint (run-only mode)
+
+Already have a model-serving endpoint running? Skip deployment entirely:
+
+```bash
+llmdbenchmark --spec gpu run \
+  --endpoint-url http://10.131.0.42:80 \
+  --model meta-llama/Llama-3.1-8B \
+  --namespace my-namespace \
+  --harness inference-perf \
+  --workload sanity_random.yaml
+```
+
+This uses the same harness, profile rendering, and result collection pipeline -- just without the standup and teardown phases. Useful when someone else manages the infrastructure, or when you want to test different workloads against a long-lived endpoint.
+
+### Run a parameter sweep
+
+Experiment files in `workload/experiments/` define structured parameter sweeps. Each file lists treatments (combinations of factor levels) that the benchmark iterates over:
+
+```bash
+# Sweep workload parameters against an existing stack
+llmdbenchmark --spec inference-scheduling run \
+  --experiments workload/experiments/inference-scheduling.yaml
+
+# Full DoE: auto standup/run/teardown per infrastructure configuration
+llmdbenchmark --spec tiered-prefix-cache experiment \
+  --experiments workload/experiments/tiered-prefix-cache.yaml
+```
+
+The `run --experiments` form varies workload parameters (prompt length, concurrency) against a single endpoint.
+
+The `experiment` command goes even further by providing an interface to variy infrastructure parameters (replica counts, cache sizes, routing plugins) and stands up a fresh stack for each configuration. This is for advanced performance benchmarking that expands beyond simple configurations - **everything** becomes tunable from infrastructure to inference time.
+
+See [workload/README.md](workload/README.md) for the full experiment file format and all pre-built experiments, as well as advanced functionality.
+
+## Next Steps
+
+| Topic | Where to look |
+|-------|---------------|
+| Configuration system, defaults, scenarios, overrides | [config/README.md](config/README.md) |
+| Workloads, harnesses, profiles, experiments | [workload/README.md](workload/README.md) |
+| Standup phase, deployment methods, step details | [llmdbenchmark/standup/README.md](llmdbenchmark/standup/README.md) |
+| Teardown phase and deep clean | [llmdbenchmark/teardown/README.md](llmdbenchmark/teardown/README.md) |
+| Plan-phase rendering pipeline | [llmdbenchmark/parser/README.md](llmdbenchmark/parser/README.md) |
+| Execution framework and step contribution guide | [llmdbenchmark/executor/README.md](llmdbenchmark/executor/README.md) |
+| CLI reference (all flags, env vars) | [CLI Reference](#cli-reference) below |
+
+---
 
 ## Prerequisites
 
@@ -65,78 +177,6 @@ pip install -e config_explorer/
 llmdbenchmark --version
 ```
 
-## Quickstart
-
-Every command requires a **specification file** (`--spec`) that tells the tool where to find templates, defaults, and scenario overrides. You can pass a **bare name**, a **category/name**, or a **full path**:
-
-```bash
---spec gpu                              # searches config/specification/**/gpu.yaml.j2
---spec guides/inference-scheduling      # searches config/specification/guides/inference-scheduling.yaml.j2
---spec /full/path/to/my-spec.yaml.j2    # exact path
-```
-
-If the name is not found, the CLI prints all available specifications and exits.
-
-### 1. Plan (render templates into manifests)
-
-```bash
-llmdbenchmark --spec inference-scheduling plan
-```
-
-This renders Jinja2 templates into complete Kubernetes YAML manifests without touching the cluster. Output goes to a temporary workspace directory.
-
-### 2. Standup (deploy to cluster)
-
-```bash
-llmdbenchmark --spec inference-scheduling standup
-```
-
-This plans and then applies all resources to the cluster. Steps 00-10 run sequentially for global resources, then in parallel across model stacks.
-
-**Dry run** (generate YAML without applying):
-
-```bash
-llmdbenchmark --spec inference-scheduling --dry-run standup
-```
-
-**Non-admin** (skip admin-only steps like CRDs, gateway, cluster roles):
-
-```bash
-llmdbenchmark --spec inference-scheduling --non-admin standup
-```
-
-**Run specific steps only:**
-
-```bash
-llmdbenchmark --spec inference-scheduling standup -s 0,4-6,10
-```
-
-### 3. Run (execute benchmarks)
-
-```bash
-llmdbenchmark --spec inference-scheduling run \
-    -l inference-perf -w sanity_random.yaml
-```
-
-**Run-only mode** (against an existing stack, no planning):
-
-```bash
-llmdbenchmark --spec inference-scheduling run \
-    -U http://my-model-endpoint:8000 -l inference-perf -w sanity_random.yaml
-```
-
-### 4. Teardown (clean up)
-
-```bash
-llmdbenchmark --spec inference-scheduling teardown
-```
-
-**Deep clean** (remove ALL resources in both namespaces):
-
-```bash
-llmdbenchmark --spec inference-scheduling teardown --deep
-```
-
 ## CLI Reference
 
 ### Global Options
@@ -179,6 +219,21 @@ llmdbenchmark --spec inference-scheduling teardown --deep
 | `-d` / `--deep` | `LLMDBENCH_DEEP_CLEAN` | Deep clean: delete ALL resources in both namespaces |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Comma-separated namespaces (model,harness) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
+
+### Experiment Options
+
+| Flag | Env Var | Description |
+|------|---------|-------------|
+| `-e FILE` | `LLMDBENCH_EXPERIMENTS` | Experiment YAML with setup and run treatments (required) |
+| `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
+| `-t METHODS` | `LLMDBENCH_METHODS` | Deploy method |
+| `-m MODELS` | `LLMDBENCH_MODELS` | Models to deploy |
+| `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
+| `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
+| `-l HARNESS` | `LLMDBENCH_HARNESS` | Harness name |
+| `-w PROFILE` | `LLMDBENCH_WORKLOAD` | Workload profile |
+| `--stop-on-error` | | Abort on first setup treatment failure |
+| `--skip-teardown` | | Leave stacks running for debugging |
 
 ### Run Options
 
@@ -289,19 +344,25 @@ llmdbenchmark/                Python package
     config.py                 Plan-phase workspace configuration singleton
 
     interface/                CLI subcommand definitions (argparse)
-        commands.py           Command enum (plan, standup, teardown, run)
+        commands.py           Command enum (plan, standup, teardown, run, experiment)
         env.py                Environment variable helpers for CLI defaults
         plan.py               Plan subcommand
         standup.py            Standup subcommand
         teardown.py           Teardown subcommand
         run.py                Run subcommand
+        experiment.py         Experiment subcommand (DoE orchestration)
 
     parser/                   Plan-phase template rendering (see parser/README.md)
         render_specification.py   Specification file parsing and validation
         render_plans.py           Jinja2 template rendering engine
         render_result.py          Structured error tracking for renders
+        config_schema.py          Pydantic config validation (typo/type detection)
         version_resolver.py       Auto-resolve image tags and chart versions
         cluster_resource_resolver.py  Auto-detect accelerator/network values
+
+    experiment/               DoE experiment orchestration
+        parser.py             Parse experiment YAML (setup + run treatments)
+        summary.py            Per-treatment result tracking and summary output
 
     executor/                 Execution framework (see executor/README.md)
         step.py               Step ABC, Phase enum, result dataclasses

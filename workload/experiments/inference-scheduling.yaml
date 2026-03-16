@@ -8,12 +8,12 @@
 # prefix-aware, KV-aware, queue-based) to compare their behavior
 # across a full factorial workload matrix.
 #
-# Usage (full pipeline — stands up the stack, runs, tears down):
-#   llmdbenchmark --spec inference-scheduling standup run teardown \
+# Usage (full DoE — automatic standup/run/teardown per setup treatment):
+#   llmdbenchmark --spec inference-scheduling experiment \
 #     --experiments workload/experiments/inference-scheduling.yaml
 #
 # Usage (run-only — targets an already-running endpoint):
-#   llmdbenchmark run \
+#   llmdbenchmark --spec inference-scheduling run \
 #     --endpoint-url http://<HOST>:<PORT> \
 #     --model <MODEL_NAME> \
 #     --namespace <NAMESPACE> \
@@ -21,8 +21,8 @@
 #     --workload shared_prefix_synthetic.yaml \
 #     --experiments workload/experiments/inference-scheduling.yaml
 #
-# The full-pipeline form auto-detects the endpoint from the stood-up
-# stack and reads harness/profile defaults from the plan config.
+# The experiment form auto-detects the endpoint from stood-up stacks
+# and reads harness/profile defaults from the plan config.
 # The run-only form requires explicit --endpoint-url, --model, and
 # --namespace since there is no stood-up stack to detect from.
 #
@@ -41,34 +41,47 @@ experiment:
 
 design:
   type: full_factorial
-  total_treatments: 9
 
-  factors:
-    - name: question_len
-      key: data.shared_prefix.question_len
-      levels: [100, 300, 1000]
-      unit: tokens
-      description: Number of tokens in each per-request question
+  setup:
+    factors:
+      - name: scheduling_plugin
+        key: scenario_override
+        levels: [inf-sche-none, inf-sche-prefix, inf-sche-kv, inf-sche-queue]
+        description: >
+          Scheduling strategy scenario file used during standup.
+          Each scenario configures a different scheduling plugin.
 
-    - name: output_len
-      key: data.shared_prefix.output_len
-      levels: [100, 300, 1000]
-      unit: tokens
-      description: Number of output tokens generated per request
+  run:
+    factors:
+      - name: question_len
+        key: data.shared_prefix.question_len
+        levels: [100, 300, 1000]
+        unit: tokens
+        description: Number of tokens in each per-request question
 
-  constants:
-    - key: data.shared_prefix.system_prompt_len
-      value: 2048
-      description: Shared system prompt length (held fixed)
-    - key: data.shared_prefix.num_groups
-      value: 32
-      description: Number of prefix groups
-    - key: data.shared_prefix.num_prompts_per_group
-      value: 32
-      description: Prompts per prefix group
-    - key: api.streaming
-      value: true
-      description: Streaming inference enabled
+      - name: output_len
+        key: data.shared_prefix.output_len
+        levels: [100, 300, 1000]
+        unit: tokens
+        description: Number of output tokens generated per request
+
+    constants:
+      - key: data.shared_prefix.system_prompt_len
+        value: 2048
+        description: Shared system prompt length (held fixed)
+      - key: data.shared_prefix.num_groups
+        value: 32
+        description: Number of prefix groups
+      - key: data.shared_prefix.num_prompts_per_group
+        value: 32
+        description: Prompts per prefix group
+      - key: api.streaming
+        value: true
+        description: Streaming inference enabled
+
+  total_setup_treatments: 4
+  total_run_treatments: 9
+  total_matrix: 36
 
   response_variables:
     - TTFT (Time to First Token)
@@ -76,19 +89,6 @@ design:
     - ITL (Inter-Token Latency)
     - E2EL (End-to-End Latency)
     - Throughput (tokens/sec)
-
-  setup_note: >
-    This experiment requires 4 separate stack configurations, one per
-    scheduling plugin.  Stand up each configuration using the
-    inference-scheduling spec with scenario overrides:
-
-      - inf-sche-none.yaml    (baseline — no scheduling optimization)
-      - inf-sche-prefix.yaml  (prefix-aware scheduling)
-      - inf-sche-kv.yaml      (KV-cache-aware scheduling)
-      - inf-sche-queue.yaml   (queue-based scheduling)
-
-    Run this experiment file against each stood-up stack.  The full
-    comparison matrix is 4 (setup) x 9 (run) = 36 total runs.
 
 # --- Treatments (consumed by step_04 render_profiles) ----------------
 #

@@ -1,7 +1,7 @@
 """Entry point for the llmdbenchmark CLI.
 
 Parses arguments, sets up the workspace, and dispatches to
-plan / standup / teardown / run subcommands.
+plan / standup / teardown / run / experiment subcommands.
 """
 
 import argparse
@@ -10,6 +10,7 @@ import os
 import sys
 import json
 import tempfile
+import time
 from pathlib import Path
 
 from llmdbenchmark import __version__, __package_name__, __package_home__
@@ -24,6 +25,7 @@ from llmdbenchmark.utilities.os.filesystem import (
 )
 from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface import plan, standup, teardown, run
+from llmdbenchmark.interface import experiment as experiment_interface
 from llmdbenchmark.parser.render_specification import RenderSpecification
 from llmdbenchmark.exceptions.exceptions import TemplateError
 from llmdbenchmark.parser.render_plans import RenderPlans
@@ -36,6 +38,12 @@ from llmdbenchmark.standup.steps import get_standup_steps
 from llmdbenchmark.teardown.steps import get_teardown_steps
 
 from llmdbenchmark.run.steps import get_run_steps
+
+
+class PhaseError(Exception):
+    """Raised when a lifecycle phase (standup/run/teardown) fails."""
+
+    pass
 
 
 def setup_workspace(
@@ -55,6 +63,11 @@ def setup_workspace(
 
 def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
     """Render plans and dispatch to the appropriate phase executor."""
+
+    # Experiment command manages its own rendering per setup treatment
+    if args.command == Command.EXPERIMENT.value:
+        _execute_experiment(args, logger)
+        return
 
     if args.command in (
         Command.PLAN.value,
@@ -78,11 +91,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             "Using specification file to fully render templates into complete system stack plans."
         )
 
-        # Create version resolver for auto-version resolution during planning
         version_resolver = VersionResolver(logger=logger, dry_run=args.dry_run)
-
-        # Create cluster resource resolver for auto-detecting accelerator,
-        # network, and affinity values from the live cluster during planning
         cluster_resource_resolver = ClusterResourceResolver(
             logger=logger,
             dry_run=args.dry_run,
@@ -214,34 +223,31 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
             return ["modelservice"]
 
     if phase == "teardown":
-        logger.log_error(
+        raise PhaseError(
             "Cannot determine deployment method: no plan config found and "
             "--methods not specified. Use --methods standalone or "
             "--methods modelservice to specify what to tear down."
         )
-        sys.exit(1)
 
     return ["modelservice"]
 
 
-def _execute_standup(args, logger, render_plan_errors):
-    """Build execution context and run standup steps."""
+def _do_standup(args, logger, render_plan_errors):
+    """Core standup logic. Returns (context, result). Raises PhaseError on failure."""
     rendered_paths = getattr(render_plan_errors, "rendered_paths", [])
     all_stacks_info = _load_all_stacks_info(rendered_paths)
     plan_info = all_stacks_info[0] if all_stacks_info else {}
     deployed_methods = _resolve_deploy_methods(args, plan_info, logger)
 
-    # Resolve namespace from plan config (CLI --namespace overrides)
     cli_ns = getattr(args, "namespace", None)
     namespace = cli_ns or plan_info.get("namespace")
     harness_ns = plan_info.get("harness_namespace") or namespace
 
     if not namespace:
-        logger.log_error(
+        raise PhaseError(
             "No namespace specified. Set 'namespace.name' in your scenario "
             "YAML, defaults.yaml, or pass --namespace on the CLI."
         )
-        sys.exit(1)
 
     context = ExecutionContext(
         plan_dir=config.plan_dir,
@@ -260,7 +266,6 @@ def _execute_standup(args, logger, render_plan_errors):
         logger=logger,
     )
 
-    # Gated model access check — fail fast for ALL stacks' models
     _check_model_access(context, all_stacks_info, logger)
 
     executor = StepExecutor(
@@ -274,7 +279,17 @@ def _execute_standup(args, logger, render_plan_errors):
     result = executor.execute(step_spec=step_spec)
 
     if result.has_errors:
-        logger.log_error(f"Standup failed:\n{result.summary()}")
+        raise PhaseError(f"Standup failed:\n{result.summary()}")
+
+    return context, result
+
+
+def _execute_standup(args, logger, render_plan_errors):
+    """Build execution context and run standup steps."""
+    try:
+        context, result = _do_standup(args, logger, render_plan_errors)
+    except PhaseError as e:
+        logger.log_error(str(e))
         sys.exit(1)
 
     _print_standup_summary(context, result, logger)
@@ -327,8 +342,7 @@ def _check_model_access(context, all_stacks_info, logger):
             else:
                 logger.log_warning(f"{prefix}{result.detail}")
         else:
-            logger.log_error(f"❌ {prefix}{result.detail}")
-            sys.exit(1)
+            raise PhaseError(f"{prefix}{result.detail}")
 
 
 def _print_standup_summary(context, result, logger):
@@ -388,8 +402,8 @@ def _print_standup_summary(context, result, logger):
     logger.log_info("All standup steps complete.", emoji="✅")
 
 
-def _execute_teardown(args, logger, render_plan_errors):
-    """Build execution context and run teardown steps."""
+def _do_teardown(args, logger, render_plan_errors):
+    """Core teardown logic. Returns (context, result). Raises PhaseError on failure."""
     rendered_paths = getattr(render_plan_errors, "rendered_paths", [])
     plan_info = _load_plan_info(rendered_paths)
     deployed_methods = _resolve_deploy_methods(
@@ -410,11 +424,10 @@ def _execute_teardown(args, logger, render_plan_errors):
     )
 
     if not namespace:
-        logger.log_error(
+        raise PhaseError(
             "No namespace specified. Set 'namespace.name' in your scenario "
             "YAML, defaults.yaml, or pass --namespace on the CLI."
         )
-        sys.exit(1)
 
     context = ExecutionContext(
         plan_dir=config.plan_dir,
@@ -445,7 +458,17 @@ def _execute_teardown(args, logger, render_plan_errors):
     result = executor.execute(step_spec=step_spec)
 
     if result.has_errors:
-        logger.log_error(f"Teardown failed:\n{result.summary()}")
+        raise PhaseError(f"Teardown failed:\n{result.summary()}")
+
+    return context, result
+
+
+def _execute_teardown(args, logger, render_plan_errors):
+    """Build execution context and run teardown steps."""
+    try:
+        context, result = _do_teardown(args, logger, render_plan_errors)
+    except PhaseError as e:
+        logger.log_error(str(e))
         sys.exit(1)
 
     ns = context.namespace or "unknown"
@@ -461,8 +484,8 @@ def _execute_teardown(args, logger, render_plan_errors):
     )
 
 
-def _execute_run(args, logger, render_plan_errors):
-    """Build execution context and run experiment steps."""
+def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
+    """Core run logic. Returns (context, result). Raises PhaseError on failure."""
     rendered_paths = getattr(render_plan_errors, "rendered_paths", [])
     all_stacks_info = _load_all_stacks_info(rendered_paths)
     plan_info = all_stacks_info[0] if all_stacks_info else {}
@@ -487,11 +510,12 @@ def _execute_run(args, logger, render_plan_errors):
     is_run_only = bool(endpoint_url or run_config_file)
 
     if not namespace and not is_run_only:
-        logger.log_error(
+        raise PhaseError(
             "No namespace specified. Set 'namespace.name' in your scenario "
             "YAML, defaults.yaml, or pass --namespace on the CLI."
         )
-        sys.exit(1)
+
+    experiments_file = experiment_file_override or getattr(args, "experiments", None)
 
     context = ExecutionContext(
         plan_dir=config.plan_dir,
@@ -510,7 +534,7 @@ def _execute_run(args, logger, render_plan_errors):
         logger=logger,
         harness_name=getattr(args, "harness", None),
         harness_profile=getattr(args, "workload", None),
-        experiment_treatments_file=getattr(args, "experiments", None),
+        experiment_treatments_file=experiments_file,
         profile_overrides=getattr(args, "overrides", None),
         harness_output=getattr(args, "output", "local") or "local",
         harness_parallelism=int(getattr(args, "parallelism", 1) or 1),
@@ -533,20 +557,251 @@ def _execute_run(args, logger, render_plan_errors):
     step_spec = getattr(args, "step", None)
     result = executor.execute(step_spec=step_spec)
 
+    if result.has_errors:
+        raise PhaseError(f"Run failed:\n{result.summary()}")
+
+    return context, result
+
+
+def _execute_run(args, logger, render_plan_errors):
+    """Build execution context and run experiment steps."""
+    try:
+        context, result = _do_run(args, logger, render_plan_errors)
+    except PhaseError as e:
+        logger.log_error(str(e))
+        sys.exit(1)
+
+    endpoint_url = getattr(args, "endpoint_url", None)
+    run_config_file = getattr(args, "run_config", None)
+    is_run_only = bool(endpoint_url or run_config_file)
     mode = "run-only" if is_run_only else "full"
     if context.generate_config_only:
         mode = "generate-config"
     harness = context.harness_name or "inference-perf"
-
-    if result.has_errors:
-        logger.log_error(f"Run failed:\n{result.summary()}")
-        sys.exit(1)
 
     logger.line_break()
     logger.log_info(
         f"Run complete (mode={mode}, harness={harness}).",
         emoji="✅",
     )
+
+
+def _render_plans_for_experiment(args, logger, setup_overrides=None):
+    """Render plans with optional setup overrides. Raises PhaseError on failure."""
+    specification_as_dict = RenderSpecification(
+        specification_file=args.specification_file,
+        base_dir=args.base_dir,
+    ).eval()
+
+    version_resolver = VersionResolver(logger=logger, dry_run=args.dry_run)
+    cluster_resource_resolver = ClusterResourceResolver(
+        logger=logger,
+        dry_run=args.dry_run,
+    )
+
+    render_plan_errors = RenderPlans(
+        template_dir=specification_as_dict["template_dir"]["path"],
+        defaults_file=specification_as_dict["values_file"]["path"],
+        scenarios_file=specification_as_dict["scenario_file"]["path"],
+        output_dir=config.plan_dir,
+        version_resolver=version_resolver,
+        cluster_resource_resolver=cluster_resource_resolver,
+        cli_namespace=getattr(args, "namespace", None),
+        cli_model=getattr(args, "models", None),
+        cli_methods=getattr(args, "methods", None),
+        cli_monitoring=getattr(args, "monitoring", False),
+        setup_overrides=setup_overrides,
+    ).eval()
+
+    if render_plan_errors.has_errors:
+        error_dump = json.dumps(render_plan_errors.to_dict(), indent=2)
+        raise PhaseError(
+            f"Rendering failed with setup overrides:\n{error_dump}"
+        )
+
+    return render_plan_errors
+
+
+def _execute_experiment(args, logger):
+    """Orchestrate a full DoE experiment: setup × run treatment matrix."""
+    from llmdbenchmark.experiment.parser import parse_experiment
+    from llmdbenchmark.experiment.summary import ExperimentSummary
+
+    experiment_file = Path(args.experiments)
+    experiment_plan = parse_experiment(experiment_file)
+
+    if not experiment_plan.has_setup_phase:
+        logger.log_error(
+            f"Experiment file {experiment_file.name} has no 'setup.treatments' section. "
+            f"Use 'llmdbenchmark run --experiments {experiment_file}' for run-only experiments."
+        )
+        sys.exit(1)
+
+    total_setup = len(experiment_plan.setup_treatments)
+    total_run = experiment_plan.run_treatments_count
+    stop_on_error = getattr(args, "stop_on_error", False)
+    skip_teardown = getattr(args, "skip_teardown", False)
+
+    summary = ExperimentSummary(
+        experiment_name=experiment_plan.name,
+        total_setup_treatments=total_setup,
+        total_run_treatments=total_run,
+    )
+
+    W = 62
+    logger.log_info("=" * W)
+    logger.log_info("  DoE EXPERIMENT")
+    logger.log_info("=" * W)
+    logger.log_info(f"  Name:             {experiment_plan.name}")
+    logger.log_info(f"  Setup treatments: {total_setup}")
+    logger.log_info(f"  Run treatments:   {total_run}")
+    logger.log_info(f"  Total matrix:     {experiment_plan.total_matrix}")
+    if experiment_plan.harness:
+        logger.log_info(f"  Harness:          {experiment_plan.harness}")
+    if experiment_plan.profile:
+        logger.log_info(f"  Profile:          {experiment_plan.profile}")
+    logger.log_info(f"  Continue on error: {not stop_on_error}")
+    logger.log_info(f"  Skip teardown:    {skip_teardown}")
+    logger.log_info("=" * W)
+    logger.line_break()
+
+    base_workspace = config.workspace
+    base_plan_dir = config.plan_dir
+
+    for i, setup_treatment in enumerate(experiment_plan.setup_treatments, 1):
+        treatment_start = time.time()
+        treatment_name = setup_treatment.name
+        logger.line_break()
+        logger.log_info(
+            f"[{i}/{total_setup}] Setup treatment: {treatment_name}",
+            emoji="🔧",
+        )
+
+        treatment_dir = Path(base_workspace) / f"setup-treatment-{treatment_name}"
+        treatment_dir.mkdir(parents=True, exist_ok=True)
+        treatment_plan_dir = treatment_dir / "plan"
+        treatment_plan_dir.mkdir(parents=True, exist_ok=True)
+
+        config.workspace = treatment_dir
+        config.plan_dir = treatment_plan_dir
+
+        # --- Phase 1: Render plans with setup overrides ---
+        try:
+            render_plan_errors = _render_plans_for_experiment(
+                args, logger, setup_overrides=setup_treatment.overrides
+            )
+            logger.log_info(
+                f"Plans rendered with setup overrides for {treatment_name}",
+                emoji="✅",
+            )
+        except (PhaseError, Exception) as e:
+            duration = time.time() - treatment_start
+            error_msg = str(e)
+            logger.log_error(f"Rendering failed for {treatment_name}: {error_msg}")
+            summary.record_failure(
+                treatment_name, "standup", error_msg,
+                run_total=total_run,
+                workspace_dir=str(treatment_dir),
+                duration=duration,
+            )
+            if stop_on_error:
+                break
+            continue
+
+        # --- Phase 2: Standup ---
+        try:
+            standup_context, standup_result = _do_standup(
+                args, logger, render_plan_errors
+            )
+            logger.log_info(
+                f"Standup complete for {treatment_name}", emoji="✅"
+            )
+        except PhaseError as e:
+            duration = time.time() - treatment_start
+            error_msg = str(e)
+            logger.log_error(f"Standup failed for {treatment_name}: {error_msg}")
+            summary.record_failure(
+                treatment_name, "standup", error_msg,
+                run_total=total_run,
+                workspace_dir=str(treatment_dir),
+                duration=duration,
+            )
+            if stop_on_error:
+                break
+            continue
+
+        # --- Phase 3: Run (with experiment file for run treatments) ---
+        run_succeeded = False
+        try:
+            run_context, run_result = _do_run(
+                args, logger, render_plan_errors,
+                experiment_file_override=str(experiment_plan.experiment_file),
+            )
+            run_succeeded = True
+            logger.log_info(
+                f"Run complete for {treatment_name}", emoji="✅"
+            )
+        except PhaseError as e:
+            logger.log_error(f"Run failed for {treatment_name}: {e}")
+
+        # --- Phase 4: Teardown (always attempted unless --skip-teardown) ---
+        teardown_error = None
+        if not skip_teardown:
+            try:
+                _do_teardown(args, logger, render_plan_errors)
+                logger.log_info(
+                    f"Teardown complete for {treatment_name}", emoji="✅"
+                )
+            except PhaseError as e:
+                teardown_error = str(e)
+                logger.log_warning(
+                    f"Teardown failed for {treatment_name}: {e}"
+                )
+        else:
+            logger.log_info(
+                f"Teardown skipped for {treatment_name} (--skip-teardown)",
+                emoji="⏭️",
+            )
+
+        # --- Record result ---
+        duration = time.time() - treatment_start
+        if run_succeeded and not teardown_error:
+            summary.record_success(
+                treatment_name,
+                run_completed=total_run,
+                run_total=total_run,
+                workspace_dir=str(treatment_dir),
+                duration=duration,
+            )
+        elif run_succeeded and teardown_error:
+            summary.record_failure(
+                treatment_name, "teardown", teardown_error,
+                run_completed=total_run,
+                run_total=total_run,
+                workspace_dir=str(treatment_dir),
+                duration=duration,
+            )
+        else:
+            summary.record_failure(
+                treatment_name, "run", str(e),
+                run_total=total_run,
+                workspace_dir=str(treatment_dir),
+                duration=duration,
+            )
+
+        if not run_succeeded and stop_on_error:
+            break
+
+    config.workspace = base_workspace
+    config.plan_dir = base_plan_dir
+
+    summary_path = Path(base_workspace) / "experiment-summary.yaml"
+    summary.write(summary_path)
+    logger.log_info(
+        f"Experiment summary written to {summary_path}", emoji="📊"
+    )
+    logger.line_break()
+    summary.print_table(logger)
 
 
 def _log_env_overrides(logger, args):
@@ -741,6 +996,7 @@ def cli() -> None:
     standup.add_subcommands(subparsers)
     teardown.add_subcommands(subparsers)
     run.add_subcommands(subparsers)
+    experiment_interface.add_subcommands(subparsers)
 
     args = parser.parse_args()
 

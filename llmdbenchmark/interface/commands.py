@@ -10,3 +10,4 @@ class Command(Enum):
     STANDUP = "standup"
     RUN = "run"
     TEARDOWN = "teardown"
+    EXPERIMENT = "experiment"

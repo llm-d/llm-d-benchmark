@@ -9,12 +9,12 @@
 # sweeps workload characteristics to measure how well each routing
 # strategy exploits prefix cache locality.
 #
-# Usage (full pipeline — stands up the stack, runs, tears down):
-#   llmdbenchmark --spec precise-prefix-cache-aware standup run teardown \
+# Usage (full DoE — automatic standup/run/teardown per setup treatment):
+#   llmdbenchmark --spec precise-prefix-cache-aware experiment \
 #     --experiments workload/experiments/precise-prefix-cache-aware.yaml
 #
 # Usage (run-only — targets an already-running endpoint):
-#   llmdbenchmark run \
+#   llmdbenchmark --spec precise-prefix-cache-aware run \
 #     --endpoint-url http://<HOST>:<PORT> \
 #     --model <MODEL_NAME> \
 #     --namespace <NAMESPACE> \
@@ -22,8 +22,8 @@
 #     --workload shared_prefix_synthetic.yaml \
 #     --experiments workload/experiments/precise-prefix-cache-aware.yaml
 #
-# The full-pipeline form auto-detects the endpoint from the stood-up
-# stack and reads harness/profile defaults from the plan config.
+# The experiment form auto-detects the endpoint from stood-up stacks
+# and reads harness/profile defaults from the plan config.
 # The run-only form requires explicit --endpoint-url, --model, and
 # --namespace since there is no stood-up stack to detect from.
 #
@@ -43,37 +43,53 @@ experiment:
 
 design:
   type: full_factorial
-  total_treatments: 6
 
-  factors:
-    - name: num_groups
-      key: data.shared_prefix.num_groups
-      levels: [40, 60]
-      description: >
-        Number of distinct prefix groups.  Higher group counts create
-        more contention for prefix cache slots across replicas.
+  setup:
+    factors:
+      - name: pluginsConfigFile
+        key: pluginsCustomConfig.configFile
+        levels: [default, prefix-cache-estimate-config, prefix-cache-tracking-config]
+        description: Routing plugin configuration for prefix-cache-aware scheduling
+    constants:
+      - key: model.maxModelLen
+        value: 16000
+      - key: model.blockSize
+        value: 64
 
-    - name: system_prompt_len
-      key: data.shared_prefix.system_prompt_len
-      levels: [8000, 5000, 1000]
-      unit: tokens
-      description: >
-        Length of the shared system prompt per group.  Longer prompts
-        make cache hits more valuable (more tokens reused).
+  run:
+    factors:
+      - name: num_groups
+        key: data.shared_prefix.num_groups
+        levels: [40, 60]
+        description: >
+          Number of distinct prefix groups.  Higher group counts create
+          more contention for prefix cache slots across replicas.
 
-  constants:
-    - key: api.streaming
-      value: true
-      description: Streaming inference enabled
-    - key: data.shared_prefix.num_prompts_per_group
-      value: 32
-      description: Prompts per prefix group (held fixed)
-    - key: data.shared_prefix.question_len
-      value: 256
-      description: Per-request question length (held fixed)
-    - key: data.shared_prefix.output_len
-      value: 256
-      description: Per-request output length (held fixed)
+      - name: system_prompt_len
+        key: data.shared_prefix.system_prompt_len
+        levels: [8000, 5000, 1000]
+        unit: tokens
+        description: >
+          Length of the shared system prompt per group.  Longer prompts
+          make cache hits more valuable (more tokens reused).
+
+    constants:
+      - key: api.streaming
+        value: true
+        description: Streaming inference enabled
+      - key: data.shared_prefix.num_prompts_per_group
+        value: 32
+        description: Prompts per prefix group (held fixed)
+      - key: data.shared_prefix.question_len
+        value: 256
+        description: Per-request question length (held fixed)
+      - key: data.shared_prefix.output_len
+        value: 256
+        description: Per-request output length (held fixed)
+
+  total_setup_treatments: 3
+  total_run_treatments: 6
+  total_matrix: 18
 
   response_variables:
     - TTFT (Time to First Token)
@@ -84,21 +100,19 @@ design:
     - Prefix cache hit rate (from vLLM metrics)
     - Request routing distribution across replicas
 
-  setup_note: >
-    This experiment requires 3 separate stack configurations, one per
-    routing plugin.  Stand up each configuration using the
-    precise-prefix-cache-aware spec with different plugin configs:
+# --- Runtime: Setup treatments (consumed by experiment orchestrator) -------
 
-      - default                       (baseline — round-robin routing)
-      - prefix-cache-estimate-config  (estimate-based prefix scoring)
-      - prefix-cache-tracking-config  (tracking-based prefix scoring)
-
-    Setup constants (applied via scenario, not profile overrides):
-      - model.maxModelLen: 16000
-      - model.blockSize: 64
-
-    Run this experiment file against each stood-up stack.  The full
-    comparison matrix is 3 (setup) x 6 (run) = 18 total runs.
+setup:
+  constants:
+    model.maxModelLen: 16000
+    model.blockSize: 64
+  treatments:
+    - name: routing-default
+      pluginsCustomConfig.configFile: default
+    - name: routing-estimate
+      pluginsCustomConfig.configFile: prefix-cache-estimate-config
+    - name: routing-tracking
+      pluginsCustomConfig.configFile: prefix-cache-tracking-config
 
 # --- Treatments (consumed by step_04 render_profiles) ----------------
 #

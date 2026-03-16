@@ -361,8 +361,10 @@ Each experiment follows DoE terminology:
 
 Experiments have two dimensions:
 
-- **Setup treatments** change the *infrastructure* (scheduling plugin, replica count, cache size). These require standing up different stack configurations via separate `--spec` runs.
-- **Run treatments** change the *workload* (prompt length, concurrency, output length). These are expressed in experiment files and executed via `--experiments`.
+- **Setup treatments** change the *infrastructure* (scheduling plugin, replica count, cache size). Each setup treatment triggers a full standup → run → teardown cycle with different config overrides.
+- **Run treatments** change the *workload* (prompt length, concurrency, output length). Multiple run treatments execute against a single stood-up stack.
+
+The `experiment` command automates the full setup × run matrix. For run-only sweeps against an existing stack, use `run --experiments`.
 
 ### Default (No Experiments)
 
@@ -416,37 +418,33 @@ llmdbenchmark --spec inference-scheduling run \
 
 ### Experiment File Format
 
-Experiment files are standalone YAML files in `workload/experiments/`. They contain two sections:
+Experiment files are standalone YAML files in `workload/experiments/`. They contain up to four sections:
 
-1. **DoE metadata** (`experiment`, `design`) -- informational, not consumed by the runtime
-2. **Treatments** (`treatments` or `run`) -- consumed by step_04
+1. **DoE metadata** (`experiment`, `design`) -- informational, documents the experimental design
+2. **Setup treatments** (`setup`) -- consumed by the `experiment` command orchestrator (optional)
+3. **Run treatments** (`treatments`) -- consumed by step_04 render_profiles
+
+The `setup` section is optional. When absent, the file works with `run --experiments` for run-only sweeps. When present, the `experiment` command reads it to drive the standup → run → teardown loop.
+
+**Run-only experiment** (no setup section):
 
 ```yaml
-# --- DoE Metadata (informational) ---
 experiment:
   name: my-experiment
-  description: What this experiment measures
   harness: inference-perf
   profile: shared_prefix_synthetic.yaml
 
 design:
   type: full_factorial
-  factors:
-    - name: question_len
-      key: data.shared_prefix.question_len
-      levels: [100, 300, 1000]
-    - name: output_len
-      key: data.shared_prefix.output_len
-      levels: [100, 300, 1000]
-  constants:
-    - key: api.streaming
-      value: true
+  run:
+    factors:
+      - name: question_len
+        key: data.shared_prefix.question_len
+        levels: [100, 300, 1000]
+      - name: output_len
+        key: data.shared_prefix.output_len
+        levels: [100, 300, 1000]
 
-# --- Runtime constants (optional, applied to all treatments) ---
-constants:
-  api.streaming: true
-
-# --- Treatments (consumed by step_04) ---
 treatments:
   - name: qlen100-olen100
     data.shared_prefix.question_len: 100
@@ -455,6 +453,60 @@ treatments:
     data.shared_prefix.question_len: 100
     data.shared_prefix.output_len: 300
 ```
+
+**Full experiment with setup treatments:**
+
+```yaml
+experiment:
+  name: tiered-prefix-cache
+  harness: inference-perf
+  profile: shared_prefix_synthetic.yaml
+
+design:
+  type: full_factorial
+  setup:
+    factors:
+      - name: numCpuBlocks
+        key: vllmCommon.flags.numCpuBlocks
+        levels: [500, 1000, 2000, 5000]
+    constants:
+      - key: model.maxModelLen
+        value: 16000
+  run:
+    factors:
+      - name: num_groups
+        key: data.shared_prefix.num_groups
+        levels: [40, 60]
+  total_setup_treatments: 4
+  total_run_treatments: 6
+  total_matrix: 24
+
+# Setup treatments -- consumed by the experiment orchestrator.
+# Each triggers standup → run → teardown with these config overrides.
+setup:
+  constants:
+    model.maxModelLen: 16000
+    model.blockSize: 64
+  treatments:
+    - name: cpu-blocks-500
+      vllmCommon.flags.numCpuBlocks: 500
+    - name: cpu-blocks-1000
+      vllmCommon.flags.numCpuBlocks: 1000
+
+# Run treatments -- consumed by step_04 (same as run-only experiments)
+treatments:
+  - name: grp40-splen8k
+    data.shared_prefix.num_groups: 40
+    data.shared_prefix.system_prompt_len: 8000
+  - name: grp60-splen1k
+    data.shared_prefix.num_groups: 60
+    data.shared_prefix.system_prompt_len: 1000
+```
+
+**Setup section keys:**
+- `setup.constants` -- merged into every setup treatment's overrides (base values)
+- `setup.treatments[].name` -- identifier for the treatment
+- All other keys in a setup treatment are **config overrides** -- dotted key paths applied to the plan config via deep merge (e.g. `vllmCommon.flags.numCpuBlocks: 500`)
 
 **Treatment keys:**
 - `name` (required) -- identifier used in the experiment ID and rendered profile filename
@@ -523,10 +575,11 @@ All pods within the same treatment share the same experiment ID (they run the sa
 
 Pre-built experiment files are in `workload/experiments/`. Each file is self-contained with DoE metadata, setup requirements, and executable treatments.
 
-Each experiment can be run in two ways:
+Each experiment can be run in three ways:
 
-- **Full pipeline** -- stands up the stack, runs, and tears down. The endpoint and model are auto-detected from the plan config. Harness and profile defaults come from the scenario file.
-- **Run-only** -- targets an already-running endpoint. You must provide `--endpoint-url`, `--model`, `--namespace`, `--harness`, and `--workload` explicitly since there is no stood-up stack to detect from.
+- **Full DoE experiment** (`experiment` command) -- for each setup treatment, stands up the stack with config overrides, runs all run treatments, and tears down. Writes `experiment-summary.yaml` at the end.
+- **Full pipeline** (`standup run teardown`) -- stands up a single stack, runs, and tears down. Use for a single setup configuration.
+- **Run-only** (`run --experiments`) -- targets an already-running endpoint. You must provide `--endpoint-url`, `--model`, `--namespace`, `--harness`, and `--workload` explicitly.
 
 ### inference-scheduling
 
@@ -550,9 +603,15 @@ Evaluates how different prompt and output token lengths affect inference latency
 
 **Treatments:** 3 x 3 = 9 (full factorial: `qlen100-olen100`, `qlen100-olen300`, `qlen100-olen1000`, `qlen300-olen100`, `qlen300-olen300`, `qlen300-olen1000`, `qlen1000-olen100`, `qlen1000-olen300`, `qlen1000-olen1000`)
 
-**Setup requirements:** 4 separate stack configurations, one per scheduling plugin (`inf-sche-none.yaml`, `inf-sche-prefix.yaml`, `inf-sche-kv.yaml`, `inf-sche-queue.yaml`). Total comparison matrix: 4 setup x 9 run = 36 runs.
+**Setup treatments:** 4 scheduling plugin configurations (`inf-sche-none`, `inf-sche-prefix`, `inf-sche-kv`, `inf-sche-queue`). Total matrix: 4 setup x 9 run = 36 runs.
 
-**Full pipeline:**
+**Full DoE experiment** (automated setup × run matrix):
+```bash
+llmdbenchmark --spec inference-scheduling experiment \
+  --experiments workload/experiments/inference-scheduling.yaml
+```
+
+**Single setup, all run treatments:**
 ```bash
 llmdbenchmark --spec inference-scheduling standup run teardown \
   --experiments workload/experiments/inference-scheduling.yaml
@@ -560,7 +619,7 @@ llmdbenchmark --spec inference-scheduling standup run teardown \
 
 **Run-only** (against an existing endpoint):
 ```bash
-llmdbenchmark run \
+llmdbenchmark --spec inference-scheduling run \
   --endpoint-url http://10.131.0.42:80 \
   --model Qwen/Qwen3-32B \
   --namespace my-namespace \
@@ -591,17 +650,17 @@ Evaluates how prefix group count and system prompt length affect performance und
 
 **Treatments:** 2 x 3 = 6 (full factorial: `grp40-splen8k`, `grp40-splen5k`, `grp40-splen1k`, `grp60-splen8k`, `grp60-splen5k`, `grp60-splen1k`)
 
-**Setup requirements:** 4 separate stack configurations varying `vllmCommon.numCpuBlocks` (500, 1000, 2000, 5000). Setup constants: `model.maxModelLen=16000`, `model.blockSize=64`. Total matrix: 4 setup x 6 run = 24 runs.
+**Setup treatments:** 4 CPU block configurations (`numCpuBlocks`: 500, 1000, 2000, 5000). Setup constants: `model.maxModelLen=16000`, `model.blockSize=64`. Total matrix: 4 setup x 6 run = 24 runs.
 
-**Full pipeline:**
+**Full DoE experiment:**
 ```bash
-llmdbenchmark --spec tiered-prefix-cache standup run teardown \
+llmdbenchmark --spec tiered-prefix-cache experiment \
   --experiments workload/experiments/tiered-prefix-cache.yaml
 ```
 
 **Run-only:**
 ```bash
-llmdbenchmark run \
+llmdbenchmark --spec tiered-prefix-cache run \
   --endpoint-url http://10.131.0.42:80 \
   --model Qwen/Qwen3-32B \
   --namespace my-namespace \
@@ -627,17 +686,17 @@ Evaluates how prefix group count and system prompt length affect performance und
 
 **Treatments:** 2 x 3 = 6 (full factorial, same treatment names as tiered-prefix-cache)
 
-**Setup requirements:** 3 separate stack configurations, one per routing plugin (`default`, `prefix-cache-estimate-config`, `prefix-cache-tracking-config`). Setup constants: `model.maxModelLen=16000`, `model.blockSize=64`. Total matrix: 3 setup x 6 run = 18 runs.
+**Setup treatments:** 3 routing plugin configurations (`default`, `prefix-cache-estimate-config`, `prefix-cache-tracking-config`). Setup constants: `model.maxModelLen=16000`, `model.blockSize=64`. Total matrix: 3 setup x 6 run = 18 runs.
 
-**Full pipeline:**
+**Full DoE experiment:**
 ```bash
-llmdbenchmark --spec precise-prefix-cache-aware standup run teardown \
+llmdbenchmark --spec precise-prefix-cache-aware experiment \
   --experiments workload/experiments/precise-prefix-cache-aware.yaml
 ```
 
 **Run-only:**
 ```bash
-llmdbenchmark run \
+llmdbenchmark --spec precise-prefix-cache-aware run \
   --endpoint-url http://10.131.0.42:80 \
   --model Qwen/Qwen3-32B \
   --namespace my-namespace \
@@ -670,17 +729,17 @@ Measures how a disaggregated prefill-decode architecture handles increasing conc
 
 **Treatments:** 6 proportional pairs (`conc1`, `conc8`, `conc32`, `conc64`, `conc128`, `conc256`)
 
-**Setup requirements:** 9 separate stack topologies varying deploy method, decode/prefill replicas, and tensor parallelism (see experiment file for full list). Total matrix: 9 setup x 6 run = 54 runs.
+**Setup treatments:** 9 stack topologies (6 modelservice + 3 standalone) varying deploy method, decode/prefill replicas, and tensor parallelism. Total matrix: 9 setup x 6 run = 54 runs.
 
-**Full pipeline:**
+**Full DoE experiment:**
 ```bash
-llmdbenchmark --spec pd-disaggregation standup run teardown \
+llmdbenchmark --spec pd-disaggregation experiment \
   --experiments workload/experiments/pd-disaggregation.yaml
 ```
 
 **Run-only:**
 ```bash
-llmdbenchmark run \
+llmdbenchmark --spec pd-disaggregation run \
   --endpoint-url http://10.131.0.42:80 \
   --model meta-llama/Llama-3.1-8B-Instruct \
   --namespace my-namespace \
@@ -755,7 +814,7 @@ Steps 00-10 execute in sequence. The endpoint is auto-detected from the stood-up
 Targets an already-running model-serving endpoint without requiring a prior standup:
 
 ```bash
-llmdbenchmark run \
+llmdbenchmark --spec gpu run \
   --endpoint-url http://10.0.0.1:80 \
   --model facebook/opt-125m \
   --harness inference-perf \
@@ -811,7 +870,7 @@ kubectl get route llmdbench-inference-gateway-route -n <NAMESPACE> \
 Then use the discovered URL:
 
 ```bash
-llmdbenchmark run \
+llmdbenchmark --spec gpu run \
   --endpoint-url http://10.131.0.42:80 \
   --model meta-llama/Llama-3.1-8B \
   --namespace my-namespace \
@@ -852,6 +911,26 @@ Every step prints what it *would* do without creating any Kubernetes resources.
 ---
 
 ## CLI Reference
+
+### `experiment` subcommand
+
+The `experiment` command automates the full setup × run treatment matrix:
+
+| Flag | Short | Type | Default | Description |
+|------|-------|------|---------|-------------|
+| `--experiments` | `-e` | string | (required) | Experiment YAML with `setup` and `treatments` sections |
+| `--namespace` | `-p` | string | (from plan) | Kubernetes namespace |
+| `--methods` | `-t` | string | (from plan) | Deploy method |
+| `--models` | `-m` | string | (from plan) | Models to deploy |
+| `--kubeconfig` | `-k` | string | (from env) | Kubeconfig path |
+| `--parallel` | | int | `4` | Max parallel stacks |
+| `--monitoring` | `-f` | flag | false | Enable metrics scraping |
+| `--harness` | `-l` | string | (from experiment) | Harness name |
+| `--workload` | `-w` | string | (from experiment) | Profile name |
+| `--stop-on-error` | | flag | false | Abort on first setup treatment failure |
+| `--skip-teardown` | | flag | false | Leave stacks running for debugging |
+
+### `run` subcommand
 
 All flags for the `run` subcommand:
 

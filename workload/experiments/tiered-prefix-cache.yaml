@@ -8,12 +8,12 @@
 # blocks allocated for the KV cache tier; the run phase sweeps
 # workload characteristics to measure cache hit rates and latency.
 #
-# Usage (full pipeline — stands up the stack, runs, tears down):
-#   llmdbenchmark --spec tiered-prefix-cache standup run teardown \
+# Usage (full DoE — automatic standup/run/teardown per setup treatment):
+#   llmdbenchmark --spec tiered-prefix-cache experiment \
 #     --experiments workload/experiments/tiered-prefix-cache.yaml
 #
 # Usage (run-only — targets an already-running endpoint):
-#   llmdbenchmark run \
+#   llmdbenchmark --spec tiered-prefix-cache run \
 #     --endpoint-url http://<HOST>:<PORT> \
 #     --model <MODEL_NAME> \
 #     --namespace <NAMESPACE> \
@@ -21,8 +21,8 @@
 #     --workload shared_prefix_synthetic.yaml \
 #     --experiments workload/experiments/tiered-prefix-cache.yaml
 #
-# The full-pipeline form auto-detects the endpoint from the stood-up
-# stack and reads harness/profile defaults from the plan config.
+# The experiment form auto-detects the endpoint from stood-up stacks
+# and reads harness/profile defaults from the plan config.
 # The run-only form requires explicit --endpoint-url, --model, and
 # --namespace since there is no stood-up stack to detect from.
 #
@@ -41,37 +41,53 @@ experiment:
 
 design:
   type: full_factorial
-  total_treatments: 6
 
-  factors:
-    - name: num_groups
-      key: data.shared_prefix.num_groups
-      levels: [40, 60]
-      description: >
-        Number of distinct prefix groups.  More groups means more
-        unique system prompts competing for cache space.
+  setup:
+    factors:
+      - name: numCpuBlocks
+        key: vllmCommon.flags.numCpuBlocks
+        levels: [500, 1000, 2000, 5000]
+        description: CPU blocks allocated for KV cache tier
+    constants:
+      - key: model.maxModelLen
+        value: 16000
+      - key: model.blockSize
+        value: 64
 
-    - name: system_prompt_len
-      key: data.shared_prefix.system_prompt_len
-      levels: [8000, 5000, 1000]
-      unit: tokens
-      description: >
-        Length of the shared system prompt per group.  Longer prompts
-        consume more cache capacity but benefit more from caching.
+  run:
+    factors:
+      - name: num_groups
+        key: data.shared_prefix.num_groups
+        levels: [40, 60]
+        description: >
+          Number of distinct prefix groups.  More groups means more
+          unique system prompts competing for cache space.
 
-  constants:
-    - key: api.streaming
-      value: true
-      description: Streaming inference enabled
-    - key: data.shared_prefix.num_prompts_per_group
-      value: 32
-      description: Prompts per prefix group (held fixed)
-    - key: data.shared_prefix.question_len
-      value: 256
-      description: Per-request question length (held fixed)
-    - key: data.shared_prefix.output_len
-      value: 256
-      description: Per-request output length (held fixed)
+      - name: system_prompt_len
+        key: data.shared_prefix.system_prompt_len
+        levels: [8000, 5000, 1000]
+        unit: tokens
+        description: >
+          Length of the shared system prompt per group.  Longer prompts
+          consume more cache capacity but benefit more from caching.
+
+    constants:
+      - key: api.streaming
+        value: true
+        description: Streaming inference enabled
+      - key: data.shared_prefix.num_prompts_per_group
+        value: 32
+        description: Prompts per prefix group (held fixed)
+      - key: data.shared_prefix.question_len
+        value: 256
+        description: Per-request question length (held fixed)
+      - key: data.shared_prefix.output_len
+        value: 256
+        description: Per-request output length (held fixed)
+
+  total_setup_treatments: 4
+  total_run_treatments: 6
+  total_matrix: 24
 
   response_variables:
     - TTFT (Time to First Token)
@@ -81,22 +97,21 @@ design:
     - Throughput (tokens/sec)
     - Prefix cache hit rate (from vLLM metrics)
 
-  setup_note: >
-    This experiment requires 4 separate stack configurations, one per
-    CPU block count setting.  Stand up each configuration using the
-    tiered-prefix-cache spec with vllmCommon.numCpuBlocks overridden:
+# --- Runtime: Setup treatments (consumed by experiment orchestrator) -------
 
-      - numCpuBlocks=500   (minimal CPU cache tier)
-      - numCpuBlocks=1000  (small CPU cache tier)
-      - numCpuBlocks=2000  (medium CPU cache tier)
-      - numCpuBlocks=5000  (large CPU cache tier)
-
-    Setup constants (applied via scenario, not profile overrides):
-      - model.maxModelLen: 16000
-      - model.blockSize: 64
-
-    Run this experiment file against each stood-up stack.  The full
-    comparison matrix is 4 (setup) x 6 (run) = 24 total runs.
+setup:
+  constants:
+    model.maxModelLen: 16000
+    model.blockSize: 64
+  treatments:
+    - name: cpu-blocks-500
+      vllmCommon.flags.numCpuBlocks: 500
+    - name: cpu-blocks-1000
+      vllmCommon.flags.numCpuBlocks: 1000
+    - name: cpu-blocks-2000
+      vllmCommon.flags.numCpuBlocks: 2000
+    - name: cpu-blocks-5000
+      vllmCommon.flags.numCpuBlocks: 5000
 
 # --- Treatments (consumed by step_04 render_profiles) ----------------
 #
