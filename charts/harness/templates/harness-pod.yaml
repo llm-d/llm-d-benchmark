@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .Values.harness.type }}-launcher
+  labels:
+    app: {{ .Values.harness.type }}-launcher
+spec:
+  serviceAccountName: {{ include "harness.name" . }}-runner
+  containers:
+  - name: harness
+    image: "{{ .Values.harness.image.registry }}/{{ .Values.harness.image.repository }}/{{ .Values.harness.image.name }}:{{ .Values.harness.image.tag }}"
+    imagePullPolicy: {{ .Values.harness.image.pullPolicy }}
+    securityContext:
+      runAsUser: 0
+    command: ["sh", "-c"]
+    args:
+    {{- toYaml .Values.harness.args | nindent 4 }}
+    env:
+    - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
+      value: "1"
+    - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY
+      value: "0"
+    - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS
+      value: "{{ .Values.harness.type }}-llm-d-benchmark.sh"
+    - name: LLMDBENCH_RUN_EXPERIMENT_ANALYZER
+      value: "{{ .Values.harness.type }}-analyze_results.sh"
+    - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME
+      value: "{{ .Values.experiment.profile.name }}"
+    - name: LLMDBENCH_RUN_EXPERIMENT_ID
+      value: "{{ .Values.experiment.identifier }}"
+    - name: LLMDBENCH_HARNESS_NAME
+      value: "{{ .Values.harness.type }}"
+    - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
+      value: "/requests/{{ .Values.harness.type }}_{{ .Values.experiment.identifier }}_{{ .Values.stack.name }}"
+    - name: LLMDBENCH_CONTROL_WORK_DIR
+      value: "/requests/{{ .Values.harness.type }}_{{ .Values.experiment.identifier }}_{{ .Values.stack.name }}"
+    - name: LLMDBENCH_HARNESS_NAMESPACE
+      value: "{{ .Release.Namespace }}"
+    - name: LLMDBENCH_HARNESS_STACK_TYPE
+      value: "{{ .Values.stack.type }}"
+    - name: LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+      value: "{{ .Values.stack.endpointUrl }}"
+    - name: LLMDBENCH_HARNESS_STACK_NAME
+      value: {{ include "harness.sanitizeString" .Values.stack.model | quote }}
+    - name: LLMDBENCH_DEPLOY_METHODS
+      value: "{{ .Values.stack.deployMethod }}"
+    - name: LLMDBENCH_MAGIC_ENVAR
+      value: "harness_pod"
+
+    - name: LLMDBENCH_LLMD_IMAGE_REGISTRY
+      value: {{ .Values.harness.image.registry }}
+    - name: LLMDBENCH_LLMD_IMAGE_REPO
+      value: {{ .Values.harness.image.repository }}
+    - name: LLMDBENCH_LLMD_IMAGE_NAME
+      value: {{ .Values.harness.image.name }}
+    - name: LLMDBENCH_LLMD_IMAGE_TAG
+      value: {{ .Values.harness.image.tag | quote }}
+    {{- with .Values.harness.extraEnv }}
+    - name: {{ .name }}
+      value: "{{ .value }}"
+    {{- end }}
+
+    #  TBD add_env_vars_to_pod $LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD
+    - name: LLMDBENCH_DEPLOY_CURRENT_MODEL
+      value: "{{ .Values.stack.model }}"
+    - name: LLMDBENCH_DEPLOY_CURRENT_MODELID
+      value: {{ include "harness.sanitizeString" .Values.stack.model | quote }}
+    - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS
+      value: "0"
+    - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS
+      value: "2"
+    - name: LLMDBENCH_VLLM_COMMON_AFFINITY
+      value: "nvidia.com/gpu.product:NVIDIA-H100-80GB-HBM3"
+    - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM
+      value: "4"
+    - name: LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM
+      value: "1"
+    - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM
+      value: "1"
+    - name: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM
+      value: "1"
+
+    - name: HF_TOKEN_SECRET
+      value: "hf-secret"
+    - name: HUGGING_FACE_HUB_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-secret
+          key: HF_TOKEN
+    resources:
+      {{- toYaml .Values.harness.resources | nindent 6 }}
+    volumeMounts:
+    - name: results
+      mountPath: /requests
+    - name: {{ .Values.harness.type }}-profiles
+      mountPath: /workspace/profiles/{{ .Values.harness.type }}
+  volumes:
+  - name: results
+    persistentVolumeClaim:
+      claimName: {{ .Values.harness.resultsPVC }}
+  - name: {{ .Values.harness.type }}-profiles
+    configMap:
+      name: {{ .Values.harness.type }}-profiles
+  restartPolicy: Never
