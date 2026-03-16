@@ -15,12 +15,15 @@ RUN apt-get update; \
     wget \
     ca-certificates \
     gnupg \
+    infiniband-diags \
+    iproute2 \
     && apt-get clean && rm -rf /var/cache/apt
 
 # Install OpenShift CLI (oc)
-RUN wget -N https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/openshift-client-linux$(echo "-$(uname -m)" | sed -e 's/-x86_64//g' -e 's/-amd64//g').tar.gz && \
-    tar -xzf openshift-client-linux.tar.gz -C /usr/local/bin/ oc && \
-    rm openshift-client-linux.tar.gz && \
+RUN OCPFN=$(echo "-$(uname -m)" | sed -e 's/-x86_64//g' -e 's/-amd64//g' -e 's/aarch64/ppc64le/g' -e 's/s390x/s390x-rhel9/g'); \
+    wget -N https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/openshift-client-linux$OCPFN.tar.gz && \
+    tar -xzf openshift-client-linux$OCPFN.tar.gz -C /usr/local/bin/ oc && \
+    rm openshift-client-linux$OCPFN.tar.gz && \
     chmod +x /usr/local/bin/oc
 
 RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
@@ -127,7 +130,8 @@ COPY build/requirements-analysis.txt .
 RUN pip install --no-cache-dir -r requirements-analysis.txt
 RUN pip install -e /opt
 
-ADD ../setup/preprocess /preprocess
+ADD ../setup/preprocess /tmp/preprocess/
+RUN chmod +x /tmp/preprocess/* ; cp -f  /tmp/preprocess/* /usr/local/bin/
 
 COPY build/llm-d-benchmark.sh /usr/local/bin/llm-d-benchmark.sh
 

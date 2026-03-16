@@ -79,3 +79,4 @@ export LLMDBENCH_HARNESS_NAME=inference-perf # (default is "inference-perf")
 
 #export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=sanity_random.yaml # (default is "sanity_random.yaml")
 ######export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=nop.yaml
+export LLMDBENCH_CONTROL_WORK_DIR=~/data/sim

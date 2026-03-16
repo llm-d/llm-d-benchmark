@@ -190,3 +190,4 @@ export LLMDBENCH_HARNESS_WAIT_TIMEOUT=36000
 export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=sanity_random.yaml # (default is "sanity_random.yaml")
 # export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=fixed_dataset.yaml # (default is "sanity_random.yaml")
 ######export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=nop.yaml
+export LLMDBENCH_CONTROL_WORK_DIR=~/data/spyre
