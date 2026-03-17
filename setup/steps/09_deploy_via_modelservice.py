@@ -490,11 +490,12 @@ def main():
       )
 
       result = llmdbench_execute_cmd(
-          helmfile_cmd, ev["control_dry_run"], ev["control_verbose"]
+          helmfile_cmd, ev["control_dry_run"], ev["control_verbose"], True, 1, False
       )
+
       if result != 0:
           announce(
-              f"ERROR: Failed to deploy helm chart for model {ev['deploy_current_model']}"
+              f"ERROR: Failed to deploy helm chart for model {ev['deploy_current_model']}\nCommand was \"{helmfile_cmd}\""
           )
           sys.exit(result)
 

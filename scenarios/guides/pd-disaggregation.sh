@@ -11,6 +11,7 @@
 # Model parameters
 #export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-0.6B"
 export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
+#export LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-30B-A3B"
 #export LLMDBENCH_DEPLOY_MODEL_LIST=openai/gpt-oss-120b
 #export LLMDBENCH_DEPLOY_MODEL_LIST="RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic"
 #export LLMDBENCH_DEPLOY_MODEL_LIST=ibm-granite/granite-vision-3.3-2b
@@ -142,6 +143,8 @@ cat << EOF > $LLMDBENCH_VLLM_COMMON_EXTRA_INIT_CONTAINER_CONFIG
   - name: shared-config
     mountPath: /shared-config
 EOF
+
+#export LLMDBENCH_VLLM_MODELSERVICE_MULTINODE=true
 
 # Prefill parameters
 export LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1
