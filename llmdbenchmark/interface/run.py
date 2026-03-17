@@ -113,6 +113,12 @@ def add_subcommands(parser: argparse._SubParsersAction):
         action="store_true",
         help="Debug mode: start harness pods with 'sleep infinity' instead of running.",
     )
+    run_parser.add_argument(
+        "--analyze",
+        action="store_true",
+        default=env("LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY") == "1",
+        help="Run local analysis on collected results (env: LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY=1).",
+    )
 
     # Run-only / existing-stack mode
     run_parser.add_argument(

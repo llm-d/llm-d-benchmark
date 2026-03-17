@@ -7,6 +7,9 @@ from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.utilities.endpoint import (
     find_standalone_endpoint,
     find_gateway_endpoint,
+    find_custom_endpoint,
+    discover_hf_token_secret,
+    extract_hf_token_from_secret,
 )
 
 
@@ -81,9 +84,30 @@ class DetectEndpointStep(Step):
         gateway_port = "80"
         stack_type = "vllm-prod"
 
+        # Determine the deploy method for custom endpoint detection
+        deploy_method = None
+        methods_arg = getattr(context, "deployed_methods", [])
+        if methods_arg:
+            for m in methods_arg:
+                if m not in ("standalone", "modelservice"):
+                    deploy_method = m
+                    break
+
         if is_standalone:
             service_ip, service_name, gateway_port = find_standalone_endpoint(
                 cmd, namespace, inference_port
+            )
+            stack_type = "vllm-prod"
+        elif deploy_method:
+            # Custom deployment — use multi-level fallback discovery
+            # matching the original bash run.sh logic.
+            context.logger.log_info(
+                f"Method '{deploy_method}' is neither standalone nor "
+                f"modelservice — trying custom endpoint discovery...",
+                emoji="🔍",
+            )
+            service_ip, service_name, gateway_port = find_custom_endpoint(
+                cmd, namespace, deploy_method,
             )
             stack_type = "vllm-prod"
         else:
@@ -100,7 +124,10 @@ class DetectEndpointStep(Step):
                 message=f"Could not detect endpoint for {stack_name}",
                 errors=[
                     f"No service/gateway IP found in namespace '{namespace}'. "
-                    f"Is the model deployed? (standalone={is_standalone})"
+                    f"Is the model deployed? (standalone={is_standalone}). "
+                    f"Tip: If the stack was not deployed via standup, use "
+                    f"--methods <string-matching-service-or-pod-name> or "
+                    f"--endpoint-url <URL>."
                 ],
                 stack_name=stack_name,
             )
@@ -114,6 +141,13 @@ class DetectEndpointStep(Step):
             f"Detected endpoint: {endpoint_url} "
             f"(service={service_name}, stack_type={stack_type})"
         )
+
+        # --- HF token auto-discovery for custom deployments ---
+        # When the deployment method is neither standalone nor modelservice,
+        # attempt to discover a HuggingFace token from cluster secrets,
+        # matching the original bash run.sh logic.
+        if deploy_method and not context.dry_run:
+            self._discover_hf_token(cmd, namespace, context)
 
         return StepResult(
             step_number=self.number,
@@ -133,3 +167,52 @@ class DetectEndpointStep(Step):
             return "llm-d"
         # Default for run-only mode
         return "vllm-prod"
+
+    @staticmethod
+    def _discover_hf_token(cmd, namespace: str, context: ExecutionContext) -> None:
+        """Auto-discover HuggingFace token from cluster secrets.
+
+        Matches the bash run.sh logic that searches for secrets matching
+        ``llm-d-hf.*token.*`` in the namespace.  The discovered token is
+        stored on the context so downstream steps (e.g. model verification)
+        can use it.
+        """
+        import os
+
+        # Skip if the token is already set via environment
+        if os.environ.get("HF_TOKEN") or os.environ.get("LLMDBENCH_HF_TOKEN"):
+            return
+
+        context.logger.log_info(
+            "Trying to find a matching HuggingFace token "
+            "secret in the cluster...",
+            emoji="🔍",
+        )
+
+        secret_name = discover_hf_token_secret(cmd, namespace)
+        if not secret_name:
+            context.logger.log_warning(
+                "Could not find a HuggingFace token secret "
+                f"(pattern 'llm-d-hf*token*') in namespace '{namespace}'. "
+                "If the model is gated, set HF_TOKEN in your environment."
+            )
+            return
+
+        context.logger.log_info(
+            f"HuggingFace token secret detected: '{secret_name}'"
+        )
+
+        token = extract_hf_token_from_secret(cmd, namespace, secret_name)
+        if token:
+            # Make it available to downstream processes and harness pods
+            os.environ["HF_TOKEN"] = token
+            context.logger.log_info(
+                "HuggingFace token extracted from cluster secret "
+                "and set in environment",
+                emoji="✅",
+            )
+        else:
+            context.logger.log_warning(
+                f"Found secret '{secret_name}' but could not extract "
+                "a valid HF token (expected token starting with 'hf_')."
+            )

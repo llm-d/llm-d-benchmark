@@ -28,6 +28,14 @@ where = ["."]
 include = ["llmdbenchmark*"]
 exclude = ["templates*", "specification*"]
 
+[tool.setuptools.package-data]
+"llmdbenchmark.analysis" = [
+    "scripts/*.sh",
+    "scripts/*.py",
+    "benchmark_report/*.yaml",
+    "benchmark_report/*.json",
+]
+
 [project.urls]
 Homepage = "https://llm-d.ai"
 Repository = "https://github.com/llm-d/llm-d-benchmark"

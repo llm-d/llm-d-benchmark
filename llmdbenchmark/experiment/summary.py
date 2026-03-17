@@ -55,7 +55,7 @@ class ExperimentSummary:
     @property
     def total_matrix(self) -> int:
         """Total expected runs: setup × run treatments."""
-        return self.total_setup_treatments * max(self.total_run_treatments, 1)
+        return max(self.total_setup_treatments, 1) * max(self.total_run_treatments, 1)
 
     @property
     def succeeded(self) -> int:

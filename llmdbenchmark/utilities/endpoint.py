@@ -129,6 +129,205 @@ def find_gateway_endpoint(
     return None, gateway_name, gateway_port
 
 
+def discover_hf_token_secret(
+    cmd: CommandExecutor,
+    namespace: str,
+) -> str | None:
+    """Auto-discover a HuggingFace token secret in the given namespace.
+
+    Matches the original bash run.sh pattern which searches for secrets
+    whose name matches ``llm-d-hf.*token.*``.
+
+    Returns:
+        The secret name (e.g. ``llm-d-hf-token``) if found, else None.
+    """
+    result = cmd.kube(
+        "get", "secrets",
+        "--namespace", namespace,
+        "--no-headers",
+        "-o", "custom-columns=NAME:.metadata.name",
+        check=False,
+    )
+    if not result.success or not result.stdout.strip():
+        return None
+
+    import re
+    pattern = re.compile(r"llm-d-hf.*token", re.IGNORECASE)
+    for line in result.stdout.strip().splitlines():
+        secret_name = line.strip()
+        if pattern.search(secret_name):
+            return secret_name
+    return None
+
+
+def extract_hf_token_from_secret(
+    cmd: CommandExecutor,
+    namespace: str,
+    secret_name: str,
+    key: str = "HF_TOKEN",
+) -> str | None:
+    """Extract the HuggingFace token value from a Kubernetes secret.
+
+    Tries the specific *key* first; if the secret has a different data key
+    it falls back to reading all data values and returning the first one
+    that starts with ``hf_``.
+
+    Returns:
+        The decoded token string, or None if extraction fails.
+    """
+    import base64 as _b64
+
+    # Try the explicit key
+    result = cmd.kube(
+        "get", "secret", secret_name,
+        "--namespace", namespace,
+        "-o", f"jsonpath={{.data.{key}}}",
+        check=False,
+    )
+    if result.success and result.stdout.strip():
+        try:
+            decoded = _b64.b64decode(result.stdout.strip()).decode("utf-8")
+            if decoded.startswith("hf_"):
+                return decoded
+        except Exception:
+            pass
+
+    # Fallback: dump all data values
+    result = cmd.kube(
+        "get", "secret", secret_name,
+        "--namespace", namespace,
+        "-o", "jsonpath={.data}",
+        check=False,
+    )
+    if result.success and result.stdout.strip():
+        try:
+            data = json.loads(result.stdout.strip())
+            for val in data.values():
+                decoded = _b64.b64decode(val).decode("utf-8")
+                if decoded.startswith("hf_"):
+                    return decoded
+        except Exception:
+            pass
+
+    return None
+
+
+def find_custom_endpoint(
+    cmd: CommandExecutor,
+    namespace: str,
+    method_pattern: str,
+) -> tuple[str | None, str | None, str]:
+    """Discover an endpoint for non-standard (custom) deployments.
+
+    Implements the same multi-level fallback as the original bash run.sh
+    for deployments that are neither *standalone* nor *modelservice*:
+
+    1. **Service match** — look for a service whose name contains
+       *method_pattern*; extract port from named ports (``default``,
+       ``http``, ``https``).
+    2. **Pod match** — look for a pod whose name contains *method_pattern*;
+       extract port from liveness/readiness probes, then fall back to the
+       ``metrics`` container port; resolve to the pod IP.
+
+    Returns:
+        ``(ip_or_service, name, port)`` — any may be ``None`` if nothing
+        matched.
+    """
+    # --- 1. Try to find a matching Service ---
+    svc_result = cmd.kube(
+        "get", "service",
+        "--namespace", namespace,
+        "--no-headers",
+        "-o", "custom-columns=NAME:.metadata.name",
+        check=False,
+    )
+    if svc_result.success and svc_result.stdout.strip():
+        for svc_name in svc_result.stdout.strip().splitlines():
+            svc_name = svc_name.strip()
+            if method_pattern not in svc_name:
+                continue
+            # Found a matching service — try port names: default, http, https
+            for port_name in ("default", "http", "https"):
+                port_result = cmd.kube(
+                    "get", f"service/{svc_name}",
+                    "--namespace", namespace,
+                    "-o", f"jsonpath={{.spec.ports[?(@.name==\"{port_name}\")].port}}",
+                    check=False,
+                )
+                port_val = (
+                    port_result.stdout.strip()
+                    if port_result.success else ""
+                )
+                if port_val and port_val != "null":
+                    return svc_name, svc_name, port_val
+
+            # Fall back to first port
+            port_result = cmd.kube(
+                "get", f"service/{svc_name}",
+                "--namespace", namespace,
+                "-o", "jsonpath={.spec.ports[0].port}",
+                check=False,
+            )
+            port_val = port_result.stdout.strip() if port_result.success else ""
+            if port_val and port_val != "null":
+                return svc_name, svc_name, port_val
+
+    # --- 2. Try to find a matching Pod ---
+    pod_result = cmd.kube(
+        "get", "pod",
+        "--namespace", namespace,
+        "--no-headers",
+        "-o", "custom-columns=NAME:.metadata.name",
+        check=False,
+    )
+    if pod_result.success and pod_result.stdout.strip():
+        for pod_line in pod_result.stdout.strip().splitlines():
+            pod_name = pod_line.strip()
+            if method_pattern not in pod_name:
+                continue
+            # Found a pod — try probes for port
+            port_val = None
+            for probe in ("livenessProbe", "readinessProbe"):
+                probe_result = cmd.kube(
+                    "get", f"pod/{pod_name}",
+                    "--namespace", namespace,
+                    "-o", f"jsonpath={{.spec.containers[0].{probe}.httpGet.port}}",
+                    check=False,
+                )
+                pv = probe_result.stdout.strip() if probe_result.success else ""
+                if pv and pv != "null":
+                    port_val = pv
+                    break
+
+            # Fall back to metrics container port
+            if not port_val:
+                metrics_result = cmd.kube(
+                    "get", f"pod/{pod_name}",
+                    "--namespace", namespace,
+                    "-o", 'jsonpath={.spec.containers[0].ports[?(@.name=="metrics")].containerPort}',
+                    check=False,
+                )
+                pv = metrics_result.stdout.strip() if metrics_result.success else ""
+                if pv and pv != "null":
+                    port_val = pv
+
+            if not port_val:
+                continue
+
+            # Resolve pod IP
+            ip_result = cmd.kube(
+                "get", f"pod/{pod_name}",
+                "--namespace", namespace,
+                "-o", "jsonpath={.status.podIP}",
+                check=False,
+            )
+            pod_ip = ip_result.stdout.strip() if ip_result.success else None
+            if pod_ip and pod_ip != "null":
+                return pod_ip, pod_name, port_val
+
+    return None, None, "80"
+
+
 # Retryable HTTP status codes / error substrings that indicate the
 # model is still loading or the P/D topology isn't ready yet.
 _RETRYABLE_INDICATORS = (

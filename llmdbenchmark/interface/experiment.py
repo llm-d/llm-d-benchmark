@@ -22,7 +22,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
     exp_parser.add_argument(
         "-e",
         "--experiments",
-        required=True,
+        required=not env("LLMDBENCH_EXPERIMENTS"),
         default=env("LLMDBENCH_EXPERIMENTS"),
         help="Path to experiment YAML file with setup and run treatments.",
     )
@@ -116,16 +116,11 @@ def add_subcommands(parser: argparse._SubParsersAction):
     )
 
     exp_parser.add_argument(
-        "--continue-on-error",
-        action="store_true",
-        default=True,
-        help="Continue to next setup treatment on failure (default: True).",
-    )
-    exp_parser.add_argument(
         "--stop-on-error",
         action="store_true",
         default=False,
-        help="Abort the entire experiment on the first setup treatment failure.",
+        help="Abort the entire experiment on the first setup treatment failure. "
+        "Default behavior is to continue to the next setup treatment.",
     )
     exp_parser.add_argument(
         "--skip-teardown",

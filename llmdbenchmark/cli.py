@@ -541,6 +541,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         harness_wait_timeout=int(getattr(args, "wait_timeout", 3600) or 3600),
         harness_debug=getattr(args, "debug", False),
         harness_skip_run=getattr(args, "skip", False),
+        analyze_locally=getattr(args, "analyze", False),
         endpoint_url=endpoint_url,
         run_config_file=run_config_file,
         generate_config_only=getattr(args, "generate_config", False),
@@ -615,27 +616,34 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
 
     if render_plan_errors.has_errors:
         error_dump = json.dumps(render_plan_errors.to_dict(), indent=2)
-        raise PhaseError(
-            f"Rendering failed with setup overrides:\n{error_dump}"
-        )
+        raise PhaseError(f"Rendering failed with setup overrides:\n{error_dump}")
 
     return render_plan_errors
 
 
 def _execute_experiment(args, logger):
     """Orchestrate a full DoE experiment: setup × run treatment matrix."""
-    from llmdbenchmark.experiment.parser import parse_experiment
+    from llmdbenchmark.experiment.parser import parse_experiment, SetupTreatment
     from llmdbenchmark.experiment.summary import ExperimentSummary
 
     experiment_file = Path(args.experiments)
     experiment_plan = parse_experiment(experiment_file)
 
+    # When no setup.treatments are defined, synthesize a single "default"
+    # treatment with no overrides so the spec's defaults flow through.
     if not experiment_plan.has_setup_phase:
-        logger.log_error(
-            f"Experiment file {experiment_file.name} has no 'setup.treatments' section. "
-            f"Use 'llmdbenchmark run --experiments {experiment_file}' for run-only experiments."
+        experiment_plan.setup_treatments = [SetupTreatment(name="default")]
+        experiment_plan.has_setup_phase = True
+        logger.log_info(
+            f"No setup.treatments in {experiment_file.name} — "
+            f"running a single cycle with spec defaults."
         )
-        sys.exit(1)
+
+    # Wire experiment-level harness/profile as fallbacks for CLI args
+    if experiment_plan.harness and not getattr(args, "harness", None):
+        args.harness = experiment_plan.harness
+    if experiment_plan.profile and not getattr(args, "workload", None):
+        args.workload = experiment_plan.profile
 
     total_setup = len(experiment_plan.setup_treatments)
     total_run = experiment_plan.run_treatments_count
@@ -685,13 +693,13 @@ def _execute_experiment(args, logger):
         config.workspace = treatment_dir
         config.plan_dir = treatment_plan_dir
 
-        # --- Phase 1: Render plans with setup overrides ---
         try:
             render_plan_errors = _render_plans_for_experiment(
                 args, logger, setup_overrides=setup_treatment.overrides
             )
+            override_note = " with setup overrides" if setup_treatment.overrides else ""
             logger.log_info(
-                f"Plans rendered with setup overrides for {treatment_name}",
+                f"Plans rendered{override_note} for {treatment_name}",
                 emoji="✅",
             )
         except (PhaseError, Exception) as e:
@@ -699,7 +707,9 @@ def _execute_experiment(args, logger):
             error_msg = str(e)
             logger.log_error(f"Rendering failed for {treatment_name}: {error_msg}")
             summary.record_failure(
-                treatment_name, "standup", error_msg,
+                treatment_name,
+                "render",
+                error_msg,
                 run_total=total_run,
                 workspace_dir=str(treatment_dir),
                 duration=duration,
@@ -708,20 +718,32 @@ def _execute_experiment(args, logger):
                 break
             continue
 
-        # --- Phase 2: Standup ---
         try:
             standup_context, standup_result = _do_standup(
                 args, logger, render_plan_errors
             )
-            logger.log_info(
-                f"Standup complete for {treatment_name}", emoji="✅"
-            )
+            logger.log_info(f"Standup complete for {treatment_name}", emoji="✅")
         except PhaseError as e:
-            duration = time.time() - treatment_start
             error_msg = str(e)
             logger.log_error(f"Standup failed for {treatment_name}: {error_msg}")
+            # Attempt teardown to clean up any partially deployed resources
+            if not skip_teardown:
+                try:
+                    _do_teardown(args, logger, render_plan_errors)
+                    logger.log_info(
+                        f"Cleanup teardown complete for {treatment_name}",
+                        emoji="🧹",
+                    )
+                except PhaseError:
+                    logger.log_warning(
+                        f"Cleanup teardown also failed for {treatment_name} "
+                        f"(resources may need manual cleanup)"
+                    )
+            duration = time.time() - treatment_start
             summary.record_failure(
-                treatment_name, "standup", error_msg,
+                treatment_name,
+                "standup",
+                error_msg,
                 run_total=total_run,
                 workspace_dir=str(treatment_dir),
                 duration=duration,
@@ -730,32 +752,31 @@ def _execute_experiment(args, logger):
                 break
             continue
 
-        # --- Phase 3: Run (with experiment file for run treatments) ---
         run_succeeded = False
+        run_error_msg = None
         try:
             run_context, run_result = _do_run(
-                args, logger, render_plan_errors,
+                args,
+                logger,
+                render_plan_errors,
                 experiment_file_override=str(experiment_plan.experiment_file),
             )
             run_succeeded = True
-            logger.log_info(
-                f"Run complete for {treatment_name}", emoji="✅"
-            )
+            logger.log_info(f"Run complete for {treatment_name}", emoji="✅")
         except PhaseError as e:
-            logger.log_error(f"Run failed for {treatment_name}: {e}")
+            run_error_msg = str(e)
+            logger.log_error(f"Run failed for {treatment_name}: {run_error_msg}")
 
         # --- Phase 4: Teardown (always attempted unless --skip-teardown) ---
         teardown_error = None
         if not skip_teardown:
             try:
                 _do_teardown(args, logger, render_plan_errors)
-                logger.log_info(
-                    f"Teardown complete for {treatment_name}", emoji="✅"
-                )
+                logger.log_info(f"Teardown complete for {treatment_name}", emoji="✅")
             except PhaseError as e:
                 teardown_error = str(e)
                 logger.log_warning(
-                    f"Teardown failed for {treatment_name}: {e}"
+                    f"Teardown failed for {treatment_name}: {teardown_error}"
                 )
         else:
             logger.log_info(
@@ -775,7 +796,9 @@ def _execute_experiment(args, logger):
             )
         elif run_succeeded and teardown_error:
             summary.record_failure(
-                treatment_name, "teardown", teardown_error,
+                treatment_name,
+                "teardown",
+                teardown_error,
                 run_completed=total_run,
                 run_total=total_run,
                 workspace_dir=str(treatment_dir),
@@ -783,7 +806,10 @@ def _execute_experiment(args, logger):
             )
         else:
             summary.record_failure(
-                treatment_name, "run", str(e),
+                treatment_name,
+                "run",
+                run_error_msg,
+                run_completed=0,
                 run_total=total_run,
                 workspace_dir=str(treatment_dir),
                 duration=duration,
@@ -797,9 +823,7 @@ def _execute_experiment(args, logger):
 
     summary_path = Path(base_workspace) / "experiment-summary.yaml"
     summary.write(summary_path)
-    logger.log_info(
-        f"Experiment summary written to {summary_path}", emoji="📊"
-    )
+    logger.log_info(f"Experiment summary written to {summary_path}", emoji="📊")
     logger.line_break()
     summary.print_table(logger)
 
@@ -841,10 +865,7 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_WVA": ("wva", "--wva"),
     }
 
-    active = {
-        k: v for k, v in os.environ.items()
-        if k in _ENV_TO_CLI
-    }
+    active = {k: v for k, v in os.environ.items() if k in _ENV_TO_CLI}
     if not active:
         return
 

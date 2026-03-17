@@ -15,6 +15,7 @@ from llmdbenchmark.run.steps.step_07_wait_completion import WaitCompletionStep
 from llmdbenchmark.run.steps.step_08_collect_results import CollectResultsStep
 from llmdbenchmark.run.steps.step_09_upload_results import UploadResultsStep
 from llmdbenchmark.run.steps.step_10_cleanup_post import RunCleanupPostStep
+from llmdbenchmark.run.steps.step_11_analyze_results import AnalyzeResultsStep
 
 
 def get_run_steps() -> list[Step]:
@@ -29,6 +30,7 @@ def get_run_steps() -> list[Step]:
         DeployHarnessStep(),
         WaitCompletionStep(),
         CollectResultsStep(),
+        AnalyzeResultsStep(),
         UploadResultsStep(),
         RunCleanupPostStep(),
     ]

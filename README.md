@@ -1,10 +1,10 @@
 # llm-d-benchmark
 
-A single CLI for deploying, benchmarking, and tearing down LLM inference stacks on Kubernetes. One command to stand up a model-serving endpoint, run structured workloads against it, collect results, and clean up -- or skip the deployment entirely and point at an endpoint you already have running.
+A single CLI for planning, deploying, benchmarking, data collection, and tearingdown LLM inference stacks across multiple environments and deployment styles using `llm-d`.
 
 ## Why llm-d-benchmark
 
-Benchmarking LLM inference stack performance on Kubernetes typically involves stitching together kubectl commands, Helm installs, load-generator scripts, tweaking many knobs for various different configurations, and collecting results by hand in very different formats depending on harness. Each step of that process is fragile, hard to reproduce, and comparing results across configurations requires careful bookkeeping.
+Benchmarking LLM inference stack performance on Kubernetes involves stitching together kubectl commands, Helm installs, load-generator scripts, tweaking many knobs for various different configurations, and collecting results by hand in very different formats depending on harness. Each step of that process is fragile, hard to reproduce, and comparing results across configurations requires careful bookkeeping.
 
 `llm-d-benchmark` **solves this problem by providing**:
 

@@ -15,11 +15,14 @@ behaves identically to the existing ``--experiments`` run-only flow.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -52,6 +55,9 @@ class ExperimentPlan:
 def dotted_to_nested(flat: dict[str, Any]) -> dict[str, Any]:
     """Convert a flat dict with dotted keys to a nested dict.
 
+    Raises ``ValueError`` if dotted keys conflict (e.g. ``a.b: 1`` and
+    ``a.b.c: 2`` where ``a.b`` would need to be both a scalar and a dict).
+
     Example::
 
         >>> dotted_to_nested({"a.b.c": 1, "a.b.d": 2, "x": 3})
@@ -62,8 +68,21 @@ def dotted_to_nested(flat: dict[str, Any]) -> dict[str, Any]:
         parts = dotted_key.split(".")
         target = nested
         for part in parts[:-1]:
+            existing = target.get(part)
+            if existing is not None and not isinstance(existing, dict):
+                raise ValueError(
+                    f"Key conflict: '{dotted_key}' requires '{part}' to be a "
+                    f"dict, but it was already set to {existing!r}"
+                )
             target = target.setdefault(part, {})
-        target[parts[-1]] = value
+        leaf = parts[-1]
+        existing_leaf = target.get(leaf)
+        if isinstance(existing_leaf, dict) and not isinstance(value, dict):
+            raise ValueError(
+                f"Key conflict: '{dotted_key}' would overwrite a nested dict "
+                f"with scalar value {value!r}"
+            )
+        target[leaf] = value
     return nested
 
 
@@ -85,6 +104,10 @@ def _parse_setup_treatments(setup_data: dict) -> list[SetupTreatment]:
     treatments: list[SetupTreatment] = []
     for i, item in enumerate(raw_treatments):
         if not isinstance(item, dict):
+            logger.warning(
+                "setup.treatments[%d] is %s, expected dict — skipping",
+                i, type(item).__name__,
+            )
             continue
 
         # Constants first, then treatment-specific overrides
@@ -105,7 +128,9 @@ def _parse_setup_treatments(setup_data: dict) -> list[SetupTreatment]:
 
 def _count_run_treatments(exp_data: dict) -> int:
     """Count the number of run treatments in the experiment file."""
-    raw = exp_data.get("treatments") or exp_data.get("run", [])
+    raw = exp_data.get("treatments")
+    if raw is None:
+        raw = exp_data.get("run", [])
     if isinstance(raw, list):
         return len(raw)
     return 0

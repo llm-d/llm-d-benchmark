@@ -88,6 +88,16 @@ class TestDottedToNested:
         assert result["a"]["none"] is None
         assert result["a"]["list"] == [1, 2, 3]
 
+    def test_collision_scalar_then_nested(self):
+        """Setting 'a.b' to a scalar then 'a.b.c' to a value should raise."""
+        with pytest.raises(ValueError, match="Key conflict"):
+            dotted_to_nested({"a.b": 1, "a.b.c": 2})
+
+    def test_collision_nested_then_scalar(self):
+        """Setting 'a.b.c' to a value then 'a.b' to a scalar should raise."""
+        with pytest.raises(ValueError, match="Key conflict"):
+            dotted_to_nested({"a.b.c": 2, "a.b": 1})
+
 
 # ===========================================================================
 # parse_experiment — with setup treatments
@@ -371,6 +381,21 @@ class TestParseExperimentEdgeCases:
         assert plan.run_treatments_count == 0
         # total_matrix: max(1 setup, 1) × max(0 run, 1) = 1
         assert plan.total_matrix == 1
+
+    def test_empty_treatments_list_returns_zero(self, tmp_path: Path):
+        """An explicit empty treatments list should return 0, not fall through."""
+        content = textwrap.dedent("""\
+            experiment:
+              name: empty-treatments
+            treatments: []
+            run:
+              - name: should-not-count
+                key: value
+        """)
+        p = tmp_path / "empty-treatments.yaml"
+        p.write_text(content)
+        plan = parse_experiment(p)
+        assert plan.run_treatments_count == 0
 
     def test_setup_constants_without_constants_key(self, tmp_path: Path):
         """Setup section without constants key — treatments still parse."""

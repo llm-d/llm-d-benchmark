@@ -85,6 +85,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     harness_wait_timeout: int = 3600
     harness_debug: bool = False
     harness_skip_run: bool = False
+    analyze_locally: bool = False
 
     # Run-only mode (existing-stack)
     endpoint_url: str | None = None
