@@ -14,6 +14,7 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
 - [Templates](#templates)
   - [Jinja2 Templates](#templatesjinja)
   - [defaults.yaml](#templatesvaluesdefaultsyaml)
+- [KV Transfer Configuration](#kv-transfer-configuration)
 - [Container Images](#container-images)
   - [Image Config Paths](#image-config-paths)
   - [Which Template Uses Which Image](#which-template-uses-which-image)
@@ -255,11 +256,41 @@ The base configuration file containing every configurable parameter with sensibl
 
 **YAML anchors:** The file uses anchors (`&name`) and aliases (`*name`) to ensure consistency. For example, `&vllm_service_port` is defined once as `8000` and referenced by `decode.vllm.servicePort`, `prefill.vllm.servicePort`, and `vllmCommon.inferencePort`.
 
-### KV Transfer Extra Config
+### KV Transfer Configuration
 
-The `vllmCommon.kvTransfer.extraConfig` field allows passing arbitrary `kv_connector_extra_config` to the `--kv-transfer-config` JSON. This is needed by connectors that require additional parameters beyond the standard `kv_connector` and `kv_role` fields (e.g., `OffloadingConnector` for tiered prefix cache, or the `FileSystemConnector`).
+The `vllmCommon.kvTransfer` section controls the `--kv-transfer-config` argument passed to the `vllm serve` command. This is how vLLM knows which KV cache transfer connector to use and how to configure it.
 
-**Usage in a scenario file:**
+#### Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `kvTransfer.enabled` | `bool` | `false` | Append `--kv-transfer-config` to the vLLM serve command |
+| `kvTransfer.connector` | `str` | `NixlConnector` | KV connector class name (e.g. `NixlConnector`, `OffloadingConnector`, `FileSystemConnector`) |
+| `kvTransfer.role` | `str` | `kv_both` | KV role: `kv_both`, `kv_producer`, or `kv_consumer` |
+| `kvTransfer.extraConfig` | `dict\|null` | `null` | Arbitrary key-value pairs passed as `kv_connector_extra_config` |
+
+#### How it works
+
+The `build_kv_transfer_config()` macro in `_macros.j2` assembles the JSON from these fields. When `extraConfig` is omitted or `null`, the output contains only `kv_connector` and `kv_role`. When `extraConfig` is set, it is serialized as `kv_connector_extra_config` inside the same JSON object.
+
+The macro is called automatically when `kvTransfer.enabled: true` — both in the default vLLM serve command and when using `customCommand`.
+
+#### Override examples
+
+**Standard P/D disaggregation (NixlConnector):**
+
+```yaml
+# In your scenario file
+vllmCommon:
+  kvTransfer:
+    enabled: true
+    connector: NixlConnector
+    role: kv_both
+```
+
+Produces: `--kv-transfer-config '{"kv_connector":"NixlConnector","kv_role":"kv_both"}'`
+
+**Tiered prefix cache (OffloadingConnector with extra config):**
 
 ```yaml
 vllmCommon:
@@ -272,20 +303,54 @@ vllmCommon:
       cpu_bytes_to_use: 1000000000
 ```
 
-This produces the following `--kv-transfer-config` argument:
+Produces: `--kv-transfer-config '{"kv_connector":"OffloadingConnector","kv_role":"kv_both","kv_connector_extra_config":{"num_cpu_blocks":5000,"cpu_bytes_to_use":1000000000}}'`
 
+**FileSystem connector:**
+
+```yaml
+vllmCommon:
+  kvTransfer:
+    enabled: true
+    connector: FileSystemConnector
+    role: kv_both
+    extraConfig:
+      storage_path: /mnt/kv-cache
 ```
---kv-transfer-config '{"kv_connector":"OffloadingConnector","kv_role":"kv_both","kv_connector_extra_config":{"num_cpu_blocks":5000,"cpu_bytes_to_use":1000000000}}'
+
+Produces: `--kv-transfer-config '{"kv_connector":"FileSystemConnector","kv_role":"kv_both","kv_connector_extra_config":{"storage_path":"/mnt/kv-cache"}}'`
+
+**Disabling KV transfer (default):**
+
+```yaml
+vllmCommon:
+  kvTransfer:
+    enabled: false
 ```
 
-When `extraConfig` is omitted or `null`, the JSON contains only `kv_connector` and `kv_role` (the previous default behavior).
+No `--kv-transfer-config` flag is added to the vLLM serve command.
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `kvTransfer.enabled` | `bool` | `false` | Enable KV transfer in the vLLM serve command |
-| `kvTransfer.connector` | `str` | `NixlConnector` | KV connector class name |
-| `kvTransfer.role` | `str` | `kv_both` | KV role (`kv_both`, `kv_producer`, `kv_consumer`) |
-| `kvTransfer.extraConfig` | `dict` | `null` | Extra config passed as `kv_connector_extra_config` |
+#### Relationship to customCommand
+
+Before `extraConfig` was available, scenarios that needed `kv_connector_extra_config` had to use `customCommand` and hardcode the entire `--kv-transfer-config` JSON inline (see `tiered-prefix-cache.yaml` for an example). With `extraConfig`, this workaround is no longer necessary — the macro handles it. Note that when `customCommand` is used, the macro still appends `--kv-transfer-config` if `kvTransfer.enabled: true`, so set `enabled: false` if you are handling it in `customCommand` to avoid duplication.
+
+#### Defaults chain
+
+The global defaults in `defaults.yaml` set:
+
+```yaml
+_internal:
+  kv_connector: &kv_connector NixlConnector
+  kv_role: &kv_role kv_both
+
+vllmCommon:
+  kvTransfer:
+    enabled: false
+    connector: *kv_connector    # NixlConnector
+    role: *kv_role              # kv_both
+    # extraConfig: null         # not set by default
+```
+
+A scenario file overrides any of these fields under `vllmCommon.kvTransfer`. The override is a full merge — you must include `enabled`, `connector`, and `role` in your scenario if you want them to differ from defaults.
 
 ---
 
