@@ -6,7 +6,7 @@ pushd "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" > /dev/null  2>&1
 export LLMDBENCH_HARNESS_ARGS="--scenario ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/guidellm/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} --output-path ${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/results.json --disable-progress"
 
 # Start metrics collection in background if enabled
-if [[ "${LLMDBENCH_COLLECT_METRICS:-1}" == "1" ]]; then
+if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
   echo "Starting metrics collection..."
   /usr/local/bin/collect_metrics.sh start &
   METRICS_COLLECTOR_PID=$!
@@ -19,7 +19,7 @@ export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
 stop=$(date +%s.%N)
 
 # Stop metrics collection
-if [[ "${LLMDBENCH_COLLECT_METRICS:-1}" == "1" ]] && [[ -n "${METRICS_COLLECTOR_PID:-}" ]]; then
+if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]] && [[ -n "${METRICS_COLLECTOR_PID:-}" ]]; then
   echo "Stopping metrics collection..."
   /usr/local/bin/collect_metrics.sh stop
   wait $METRICS_COLLECTOR_PID 2>/dev/null || true
