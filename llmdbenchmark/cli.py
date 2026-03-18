@@ -187,6 +187,36 @@ def _load_plan_info(rendered_paths):
     return all_info[0] if all_info else {}
 
 
+def _parse_namespaces(
+    ns_str: str | None, plan_info: dict
+) -> tuple[str | None, str | None]:
+    """Parse the ``--namespace`` CLI value into (namespace, harness_namespace).
+
+    Supports two formats:
+    - ``"ns"`` — both namespaces use the same value.
+    - ``"ns,harness_ns"`` — first is the infra namespace, second is the
+      harness namespace.
+
+    Falls back to ``plan_info`` if *ns_str* is ``None``.
+
+    Returns:
+        (namespace, harness_namespace).  Either may be ``None`` if
+        no value was provided anywhere.
+    """
+    cli_namespace = None
+    cli_harness_namespace = None
+    if ns_str:
+        parts = [p.strip() for p in ns_str.split(",")]
+        cli_namespace = parts[0]
+        cli_harness_namespace = parts[1] if len(parts) > 1 else parts[0]
+
+    namespace = cli_namespace or plan_info.get("namespace")
+    harness_ns = (
+        cli_harness_namespace or plan_info.get("harness_namespace") or namespace
+    )
+    return namespace, harness_ns
+
+
 def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
     """Determine deployment methods from CLI flag or plan config.
 
@@ -239,9 +269,9 @@ def _do_standup(args, logger, render_plan_errors):
     plan_info = all_stacks_info[0] if all_stacks_info else {}
     deployed_methods = _resolve_deploy_methods(args, plan_info, logger)
 
-    cli_ns = getattr(args, "namespace", None)
-    namespace = cli_ns or plan_info.get("namespace")
-    harness_ns = plan_info.get("harness_namespace") or namespace
+    namespace, harness_ns = _parse_namespaces(
+        getattr(args, "namespace", None), plan_info,
+    )
 
     if not namespace:
         raise PhaseError(
@@ -410,17 +440,8 @@ def _do_teardown(args, logger, render_plan_errors):
         args, plan_info, logger, phase="teardown"
     )
 
-    cli_namespace = None
-    cli_harness_namespace = None
-    ns_str = getattr(args, "namespace", None)
-    if ns_str:
-        parts = [p.strip() for p in ns_str.split(",")]
-        cli_namespace = parts[0]
-        cli_harness_namespace = parts[1] if len(parts) > 1 else parts[0]
-
-    namespace = cli_namespace or plan_info.get("namespace")
-    harness_ns = (
-        cli_harness_namespace or plan_info.get("harness_namespace") or namespace
+    namespace, harness_ns = _parse_namespaces(
+        getattr(args, "namespace", None), plan_info,
     )
 
     if not namespace:
@@ -492,17 +513,8 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
 
     deployed_methods = _resolve_deploy_methods(args, plan_info, logger, phase="run")
 
-    cli_namespace = None
-    cli_harness_namespace = None
-    ns_str = getattr(args, "namespace", None)
-    if ns_str:
-        parts = [p.strip() for p in ns_str.split(",")]
-        cli_namespace = parts[0]
-        cli_harness_namespace = parts[1] if len(parts) > 1 else parts[0]
-
-    namespace = cli_namespace or plan_info.get("namespace")
-    harness_ns = (
-        cli_harness_namespace or plan_info.get("harness_namespace") or namespace
+    namespace, harness_ns = _parse_namespaces(
+        getattr(args, "namespace", None), plan_info,
     )
 
     endpoint_url = getattr(args, "endpoint_url", None)

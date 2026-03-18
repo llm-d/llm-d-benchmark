@@ -255,6 +255,38 @@ The base configuration file containing every configurable parameter with sensibl
 
 **YAML anchors:** The file uses anchors (`&name`) and aliases (`*name`) to ensure consistency. For example, `&vllm_service_port` is defined once as `8000` and referenced by `decode.vllm.servicePort`, `prefill.vllm.servicePort`, and `vllmCommon.inferencePort`.
 
+### KV Transfer Extra Config
+
+The `vllmCommon.kvTransfer.extraConfig` field allows passing arbitrary `kv_connector_extra_config` to the `--kv-transfer-config` JSON. This is needed by connectors that require additional parameters beyond the standard `kv_connector` and `kv_role` fields (e.g., `OffloadingConnector` for tiered prefix cache, or the `FileSystemConnector`).
+
+**Usage in a scenario file:**
+
+```yaml
+vllmCommon:
+  kvTransfer:
+    enabled: true
+    connector: OffloadingConnector
+    role: kv_both
+    extraConfig:
+      num_cpu_blocks: 5000
+      cpu_bytes_to_use: 1000000000
+```
+
+This produces the following `--kv-transfer-config` argument:
+
+```
+--kv-transfer-config '{"kv_connector":"OffloadingConnector","kv_role":"kv_both","kv_connector_extra_config":{"num_cpu_blocks":5000,"cpu_bytes_to_use":1000000000}}'
+```
+
+When `extraConfig` is omitted or `null`, the JSON contains only `kv_connector` and `kv_role` (the previous default behavior).
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `kvTransfer.enabled` | `bool` | `false` | Enable KV transfer in the vLLM serve command |
+| `kvTransfer.connector` | `str` | `NixlConnector` | KV connector class name |
+| `kvTransfer.role` | `str` | `kv_both` | KV role (`kv_both`, `kv_producer`, `kv_consumer`) |
+| `kvTransfer.extraConfig` | `dict` | `null` | Extra config passed as `kv_connector_extra_config` |
+
 ---
 
 ## Container Images

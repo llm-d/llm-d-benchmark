@@ -1,5 +1,10 @@
-"""
-Process collected metrics and integrate into benchmark report.
+"""Process collected metrics and integrate into benchmark report.
+
+NOTE: This module is not yet integrated into the main analysis pipeline.
+It provides functions for parsing Prometheus metrics and building
+``ResourceMetrics`` / ``TimeSeriesData`` objects for benchmark report v0.2,
+but the pipeline (``run_analysis`` in ``analysis/__init__.py``) does not
+call it yet.  Future work should wire this into the v0.2 conversion path.
 """
 
 import json

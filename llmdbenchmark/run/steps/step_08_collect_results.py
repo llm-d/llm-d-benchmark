@@ -4,6 +4,7 @@ from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.utilities.kube_helpers import find_data_access_pod
 
 
 class CollectResultsStep(Step):
@@ -40,11 +41,9 @@ class CollectResultsStep(Step):
         harness_ns = context.harness_namespace or context.namespace
         if not harness_ns:
             plan_config = self._load_stack_config(stack_path)
-            if plan_config:
-                harness_ns = (
-                    plan_config.get("harness", {}).get("namespace")
-                    or plan_config.get("namespace", {}).get("name")
-                )
+            harness_ns = self._resolve(
+                plan_config, "harness.namespace", "namespace.name",
+            )
         if not harness_ns:
             return StepResult(
                 step_number=self.number,
@@ -64,11 +63,9 @@ class CollectResultsStep(Step):
 
         # Resolve results dir prefix
         plan_config = self._load_stack_config(stack_path)
-        results_dir_prefix = "/requests"
-        if plan_config:
-            results_dir_prefix = plan_config.get("experiment", {}).get(
-                "resultsDir", "/requests"
-            )
+        results_dir_prefix = self._resolve(
+            plan_config, "experiment.resultsDir", default="/requests",
+        )
 
         if context.dry_run:
             return StepResult(
@@ -83,7 +80,7 @@ class CollectResultsStep(Step):
             )
 
         # Find the data-access pod
-        data_pod = self._find_data_access_pod(cmd, harness_ns)
+        data_pod = find_data_access_pod(cmd, harness_ns)
         if not data_pod:
             return StepResult(
                 step_number=self.number,
@@ -201,16 +198,4 @@ class CollectResultsStep(Step):
             stack_name=stack_name,
         )
 
-    @staticmethod
-    def _find_data_access_pod(cmd, namespace: str) -> str | None:
-        """Find the data-access pod by label."""
-        result = cmd.kube(
-            "get", "pod",
-            "-l", "role=llm-d-benchmark-data-access",
-            "--namespace", namespace,
-            "-o", "jsonpath={.items[0].metadata.name}",
-            check=False,
-        )
-        if result.success and result.stdout.strip():
-            return result.stdout.strip()
-        return None
+    # _find_data_access_pod is now provided by kube_helpers.find_data_access_pod

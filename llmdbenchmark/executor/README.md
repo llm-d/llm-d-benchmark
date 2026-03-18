@@ -10,6 +10,7 @@ executor/
     step_executor.py      Step orchestrator (sequential + parallel)
     command.py            kubectl/helm/helmfile subprocess wrapper
     context.py            Shared state (ExecutionContext dataclass)
+    protocols.py          Structural typing (LoggerProtocol)
     deps.py               System dependency checker
 ```
 
@@ -75,6 +76,20 @@ Key fields:
 | `deployed_methods` | List of active deployment methods |
 | `is_openshift` | True if running on OpenShift |
 
+### LoggerProtocol
+
+Defined in `protocols.py`, `LoggerProtocol` provides structural typing for the logger interface. Any object implementing these four methods satisfies the protocol:
+
+```python
+class LoggerProtocol(Protocol):
+    def log_info(self, msg: str, *, emoji: str = "") -> None: ...
+    def log_warning(self, msg: str) -> None: ...
+    def log_error(self, msg: str) -> None: ...
+    def set_indent(self, level: int) -> None: ...
+```
+
+The `ExecutionContext.logger` field is typed as `LoggerProtocol | None`. Both the full `LLMDBenchmarkLogger` and the internal `_MinimalLogger` satisfy this protocol.
+
 ### CommandExecutor
 
 Subprocess wrapper for `kubectl`, `helm`, and `helmfile` commands:
@@ -121,6 +136,7 @@ The `Step` base class provides helpers available to all steps:
 
 | Method | Description |
 |--------|-------------|
+| `_resolve(plan_config, *config_paths, context_value, default)` | Three-tier config resolution with fallback chain |
 | `_require_config(config, *keys)` | Read a required value from rendered config; raises `KeyError` if missing |
 | `_load_plan_config(context)` | Load `config.yaml` from the first rendered stack |
 | `_load_stack_config(stack_path)` | Load `config.yaml` from a specific stack directory |
@@ -128,6 +144,34 @@ The `Step` base class provides helpers available to all steps:
 | `_find_yaml(stack_path, prefix)` | Find a YAML file by prefix in a stack directory |
 | `_has_yaml_content(yaml_path)` | Check if a rendered YAML file has non-empty content |
 | `_all_target_namespaces(context)` | Collect all unique namespaces from all stacks |
+| `_check_existing_pvc(cmd, context, pvc_name, size, ns, errors)` | Check PVC existence and validate size |
+| `_parse_size_gi(size_str)` | Parse Kubernetes quantity string to GiB |
+
+### `_resolve()` Pattern
+
+For run-phase steps that need CLI overrides, `_resolve()` provides a three-tier fallback:
+
+1. **context_value** -- Runtime override from CLI / ExecutionContext (highest priority)
+2. **plan_config** -- Nested lookup via dotted config paths
+3. **default** -- Fallback value (lowest priority)
+
+```python
+# Single config path
+harness_name = self._resolve(
+    plan_config, "harness.name",
+    context_value=context.harness_name,
+    default="inference-perf",
+)
+
+# Multiple config paths (fallback chain)
+profile_name = self._resolve(
+    plan_config, "harness.experimentProfile", "harness.profile",
+    context_value=context.harness_profile,
+    default="sanity_random.yaml",
+)
+```
+
+Use `_resolve()` when a value can come from multiple sources (CLI flag, experiment file, rendered config). Use `_require_config()` when a value must exist in the rendered config.
 
 ### `_require_config()` Pattern
 
@@ -260,10 +304,32 @@ If your step reads new config values:
 
 ### Key Guidelines
 
-- **Always use `_require_config()`** for reading config values. Never use `.get("key", default)` in steps.
+- **Use `_require_config()`** for config values that must exist in the rendered plan. Never use `.get("key", default)` in steps.
+- **Use `_resolve()`** for values that can come from CLI, experiment file, or config (three-tier fallback).
 - **Return `StepResult`** from `execute()` -- never raise exceptions (the executor catches them but it's better to return structured results).
 - **Use `context.require_cmd()`** to get the `CommandExecutor`. It raises if step 00 hasn't run yet.
 - **Check `context.dry_run`** -- if True, log what would happen but don't modify cluster state. The `CommandExecutor` handles this automatically for kubectl/helm commands.
 - **Use `should_skip()`** for conditional execution -- e.g., standalone-only steps should skip when method is modelservice.
 - **For per-stack steps:** the `stack_path` parameter points to the rendered stack directory containing `config.yaml` and all rendered YAMLs.
 - **For global steps:** `stack_path` is `None`. Use `_load_plan_config(context)` to load config from the first stack.
+
+---
+
+## Step I/O Contracts
+
+Steps communicate through `ExecutionContext` fields. This table documents which fields each run-phase step reads and writes:
+
+| Step | Reads | Writes |
+|------|-------|--------|
+| 00 preflight | `kubeconfig`, `namespace` | `cmd` (via cluster.resolve_cluster) |
+| 01 cleanup_previous | `harness_namespace`, pod labels | -- |
+| 02 detect_endpoint | `endpoint_url`, `deployed_methods`, `namespace` | `deployed_endpoints[stack]` |
+| 03 verify_model | `model_name`, `deployed_endpoints` | -- |
+| 04 render_profiles | `harness_name`, `harness_profile`, `experiments_file` | `treatments` (list), rendered profiles on disk |
+| 05 create_configmap | `harness_name`, `harness_namespace` | ConfigMaps in cluster |
+| 06 deploy_harness | `harness_*`, `model_name`, `deployed_endpoints`, `treatments` | Results on disk, `results_dir` |
+| 07 wait_completion | `harness_pod_names`, `wait_timeout` | -- |
+| 08 collect_results | `harness_namespace`, `results_dir_prefix` | Results on disk |
+| 09 upload_results | `harness_output`, `run_results_dir()` | -- |
+| 10 cleanup_post | `harness_namespace`, pod labels | -- |
+| 11 analyze_results | `harness_name`, `run_results_dir()` | Analysis output on disk |

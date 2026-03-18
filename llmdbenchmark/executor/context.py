@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
+from llmdbenchmark.executor.protocols import LoggerProtocol
 from llmdbenchmark.executor.step import Phase
 
 if TYPE_CHECKING:
@@ -93,7 +94,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     generate_config_only: bool = False
     dataset_url: str | None = None
 
-    logger: Any = field(default=None, repr=False)
+    logger: LoggerProtocol | None = field(default=None, repr=False)
 
     # Call rebuild_cmd() after changing kubeconfig or is_openshift.
     cmd: CommandExecutor | None = field(default=None, repr=False)

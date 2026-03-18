@@ -65,10 +65,14 @@ class DetectEndpointStep(Step):
         )
         is_standalone = (
             "standalone" in context.deployed_methods
-            or plan_config.get("standalone", {}).get("enabled", False)
+            or self._resolve(plan_config, "standalone.enabled", default=False)
         )
-        inference_port = plan_config.get("vllmCommon", {}).get("inferencePort", 8000)
-        release = plan_config.get("release", context.release)
+        inference_port = self._resolve(
+            plan_config, "vllmCommon.inferencePort", default=8000,
+        )
+        release = self._resolve(
+            plan_config, "release", context_value=context.release,
+        )
 
         if context.dry_run:
             return StepResult(

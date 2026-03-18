@@ -1,11 +1,10 @@
 """Step 07 -- Wait for harness pod(s) to complete."""
 
-import json
-import time
 from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.utilities.kube_helpers import wait_for_pod
 
 
 class WaitCompletionStep(Step):
@@ -102,7 +101,7 @@ class WaitCompletionStep(Step):
 
         # Wait for each pod
         for pod_name in pod_names:
-            result = self._wait_for_pod(
+            result = wait_for_pod(
                 cmd, pod_name, harness_ns, timeout, context
             )
             if result == "Succeeded":
@@ -143,89 +142,4 @@ class WaitCompletionStep(Step):
             stack_name=stack_name,
         )
 
-    def _wait_for_pod(
-        self,
-        cmd,
-        pod_name: str,
-        namespace: str,
-        timeout: int,
-        context: ExecutionContext,
-        poll_interval: int = 15,
-    ) -> str:
-        """Wait for a single pod to reach a terminal phase.
-
-        Returns:
-            'Succeeded', 'Failed', or an error string.
-        """
-        crash_states = {
-            "CrashLoopBackOff", "Error", "OOMKilled",
-            "CreateContainerConfigError", "ImagePullBackOff",
-            "ErrImagePull", "InvalidImageName",
-        }
-
-        start = time.time()
-
-        while True:
-            elapsed = time.time() - start
-            if elapsed > timeout:
-                return f"Timed out after {timeout}s"
-
-            result = cmd.kube(
-                "get", "pod", pod_name,
-                "--namespace", namespace,
-                "-o", "jsonpath={.status.phase}:{.status.containerStatuses[0].state}",
-                check=False,
-            )
-
-            if not result.success:
-                # Pod may not exist yet
-                time.sleep(poll_interval)
-                continue
-
-            output = result.stdout.strip()
-            parts = output.split(":", 1)
-            phase = parts[0] if parts else ""
-
-            if phase == "Succeeded":
-                context.logger.log_info(
-                    f"Pod '{pod_name}' completed successfully "
-                    f"({int(elapsed)}s)"
-                )
-                return "Succeeded"
-
-            if phase == "Failed":
-                # Get exit code for debugging
-                exit_result = cmd.kube(
-                    "get", "pod", pod_name,
-                    "--namespace", namespace,
-                    "-o", "jsonpath={.status.containerStatuses[0].state.terminated.exitCode}",
-                    check=False,
-                )
-                exit_code = exit_result.stdout.strip() if exit_result.success else "?"
-                context.logger.log_error(
-                    f"Pod '{pod_name}' failed (exit_code={exit_code}, "
-                    f"{int(elapsed)}s)"
-                )
-                return "Failed"
-
-            # Check for crash states via container status
-            container_result = cmd.kube(
-                "get", "pod", pod_name,
-                "--namespace", namespace,
-                "-o", "jsonpath={.status.containerStatuses[0].state.waiting.reason}",
-                check=False,
-            )
-            if container_result.success and container_result.stdout.strip():
-                reason = container_result.stdout.strip()
-                if reason in crash_states:
-                    context.logger.log_error(
-                        f"Pod '{pod_name}' in terminal state: {reason}"
-                    )
-                    return f"Terminal state: {reason}"
-
-            remaining = int(timeout - elapsed)
-            context.logger.log_info(
-                f"Pod '{pod_name}': {phase} ({int(elapsed)}s elapsed, "
-                f"{remaining}s remaining)"
-            )
-            time.sleep(poll_interval)
+    # _wait_for_pod is now provided by kube_helpers.wait_for_pod

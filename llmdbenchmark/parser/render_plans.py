@@ -84,6 +84,7 @@ class RenderPlans:
         # Register custom filters
         env.filters["indent"] = self._indent_filter
         env.filters["toyaml"] = self._toyaml_filter
+        env.filters["tojson"] = self._tojson_filter
         env.filters["is_empty"] = self._is_empty_filter
         env.filters["default_if_empty"] = self._default_if_empty_filter
         env.filters["b64pad"] = self._b64pad_filter
@@ -130,6 +131,13 @@ class RenderPlans:
                 " " * indent + line if line.strip() else line for line in lines
             )
         return result
+
+    @staticmethod
+    def _tojson_filter(value: Any) -> str:
+        """Convert Python object to compact JSON string."""
+        if value is None:
+            return "null"
+        return json.dumps(value, separators=(",", ":"))
 
     @staticmethod
     def _is_empty_filter(value: Any) -> bool:

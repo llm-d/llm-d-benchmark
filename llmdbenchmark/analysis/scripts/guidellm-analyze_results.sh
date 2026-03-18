@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# DEPRECATED: This script is superseded by the Python API in
+# llmdbenchmark/analysis/__init__.py (run_analysis function).
+# Kept for reference only.
+#
 # Convert results into universal format
 export LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC=0
 echo "Converting results.json to Benchmark Report v0.1"

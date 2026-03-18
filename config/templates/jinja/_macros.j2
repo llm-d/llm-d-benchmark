@@ -1,6 +1,10 @@
 {# Macro to build kv-transfer-config JSON #}
 {% macro build_kv_transfer_config() -%}
+{% if vllmCommon.kvTransfer.extraConfig is defined and vllmCommon.kvTransfer.extraConfig -%}
+{"kv_connector":"{{ vllmCommon.kvTransfer.connector }}","kv_role":"{{ vllmCommon.kvTransfer.role }}","kv_connector_extra_config":{{ vllmCommon.kvTransfer.extraConfig | tojson }}}
+{%- else -%}
 {"kv_connector":"{{ vllmCommon.kvTransfer.connector }}","kv_role":"{{ vllmCommon.kvTransfer.role }}"}
+{%- endif %}
 {%- endmacro %}
 
 {# Macro to build kv-events-config JSON #}

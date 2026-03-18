@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from llmdbenchmark.exceptions.exceptions import ExecutionError
+from llmdbenchmark.utilities.kube_helpers import CRASH_STATES
 
 
 @dataclass
@@ -312,13 +313,8 @@ class CommandExecutor:
             self._print_progress(status_line, last_status_line)
             last_status_line = status_line
 
-            crash_states = {
-                "CrashLoopBackOff", "Error", "OOMKilled",
-                "CreateContainerConfigError", "ImagePullBackOff",
-                "ErrImagePull", "InvalidImageName",
-            }
             crashing = [
-                p for p in pods if p["status"] in crash_states
+                p for p in pods if p["status"] in CRASH_STATES
             ]
             if crashing:
                 self._clear_progress_line(last_status_line)
@@ -494,7 +490,7 @@ class CommandExecutor:
                     desc, elapsed, timeout,
                     f"{phase}{sc_info}", 0, 1,
                 )
-            except Exception:
+            except (OSError, KeyError, ValueError):
                 status_line = self._format_progress(
                     desc, elapsed, timeout, "querying...", 0, 1,
                 )

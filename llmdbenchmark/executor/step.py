@@ -143,6 +143,42 @@ class Step(ABC):
         """Override to implement conditional skip logic."""
         return False
 
+    def _resolve(
+        self,
+        plan_config: dict | None,
+        *config_paths: str,
+        context_value: Any = None,
+        default: Any = None,
+    ) -> Any:
+        """Resolve a value with a three-tier fallback.
+
+        1. *context_value* — runtime override from CLI / ExecutionContext.
+        2. *plan_config* nested lookup via dotted *config_paths*.
+        3. *default*.
+
+        Multiple *config_paths* may be given for fallback chains
+        (e.g. ``"harness.experimentProfile", "harness.profile"``).
+        """
+        # Tier 1: explicit runtime value
+        if context_value:
+            return context_value
+
+        # Tier 2: plan config lookup
+        if plan_config:
+            for path in config_paths:
+                obj: Any = plan_config
+                for key in path.split("."):
+                    if isinstance(obj, dict):
+                        obj = obj.get(key)
+                    else:
+                        obj = None
+                        break
+                if obj is not None and obj != {} and obj != []:
+                    return obj
+
+        # Tier 3: default
+        return default
+
     @staticmethod
     def _require_config(config: dict, *keys: str) -> Any:
         """Traverse a nested key path in the rendered config, raising KeyError if missing."""

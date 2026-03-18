@@ -111,7 +111,9 @@ See [workload/README.md](workload/README.md) for the full experiment file format
 | Configuration system, defaults, scenarios, overrides | [config/README.md](config/README.md) |
 | Workloads, harnesses, profiles, experiments | [workload/README.md](workload/README.md) |
 | Standup phase, deployment methods, step details | [llmdbenchmark/standup/README.md](llmdbenchmark/standup/README.md) |
+| Run phase, benchmark execution, result collection | [llmdbenchmark/run/README.md](llmdbenchmark/run/README.md) |
 | Teardown phase and deep clean | [llmdbenchmark/teardown/README.md](llmdbenchmark/teardown/README.md) |
+| Design of Experiments (DoE) orchestration | [llmdbenchmark/experiment/README.md](llmdbenchmark/experiment/README.md) |
 | Plan-phase rendering pipeline | [llmdbenchmark/parser/README.md](llmdbenchmark/parser/README.md) |
 | Execution framework and step contribution guide | [llmdbenchmark/executor/README.md](llmdbenchmark/executor/README.md) |
 | CLI reference (all flags, env vars) | [CLI Reference](#cli-reference) below |
@@ -319,6 +321,23 @@ Both paths share steps 00-05 (infrastructure, namespaces, secrets) and step 10 (
 | 09 | deploy_modelservice | Per-stack | Modelservice deployment (helmfile + LWS) |
 | 10 | smoketest | Per-stack | Smoketest (endpoint health, model serving validation) |
 
+### [Run Steps](llmdbenchmark/run/README.md)
+
+| Step | Name | Scope | Description |
+|------|------|-------|-------------|
+| 00 | preflight | Global | Validate cluster connectivity and run-phase prerequisites |
+| 01 | cleanup_previous | Global | Remove leftover harness pods from previous runs |
+| 02 | detect_endpoint | Per-stack | Discover or accept the model-serving endpoint |
+| 03 | verify_model | Per-stack | Verify the expected model is served at the endpoint |
+| 04 | render_profiles | Per-stack | Render workload profile templates with runtime values |
+| 05 | create_profile_configmap | Per-stack | Create profile and harness-scripts ConfigMaps |
+| 06 | deploy_harness | Per-stack | Deploy harness pod(s) and execute the full treatment cycle |
+| 07 | wait_completion | Per-stack | Wait for harness pod(s) to complete |
+| 08 | collect_results | Per-stack | Collect results from PVC to local workspace |
+| 09 | upload_results | Global | Upload results to cloud storage (safety-net bulk upload) |
+| 10 | cleanup_post | Global | Clean up harness pods and ConfigMaps |
+| 11 | analyze_results | Global | Run local analysis on collected results |
+
 ### [Teardown Steps](llmdbenchmark/teardown/README.md)
 
 | Step | Name | Description | Condition |
@@ -360,7 +379,7 @@ llmdbenchmark/                Python package
         version_resolver.py       Auto-resolve image tags and chart versions
         cluster_resource_resolver.py  Auto-detect accelerator/network values
 
-    experiment/               DoE experiment orchestration
+    experiment/               DoE experiment orchestration (see experiment/README.md)
         parser.py             Parse experiment YAML (setup + run treatments)
         summary.py            Per-treatment result tracking and summary output
 
@@ -369,6 +388,7 @@ llmdbenchmark/                Python package
         step_executor.py      Step orchestrator (sequential + parallel)
         command.py            kubectl/helm/helmfile subprocess wrapper
         context.py            Shared state (ExecutionContext dataclass)
+        protocols.py          Structural typing (LoggerProtocol)
         deps.py               System dependency checker
 
     standup/                  Standup phase (see standup/README.md)
@@ -378,8 +398,8 @@ llmdbenchmark/                Python package
     teardown/                 Teardown phase (see teardown/README.md)
         steps/                Step implementations (00-05)
 
-    run/                      Run phase (benchmark execution)
-        steps/                Step implementations
+    run/                      Run phase (see run/README.md)
+        steps/                Step implementations (00-11)
 
     logging/                  Structured logger with emoji support (see logging/README.md)
     exceptions/               Error hierarchy (Template, Configuration, Execution)
@@ -387,6 +407,10 @@ llmdbenchmark/                Python package
         cluster.py            Kubernetes connection, platform detection
         capacity_validator.py GPU capacity validation
         huggingface.py        HuggingFace model access checks
+        endpoint.py           Endpoint discovery and model verification
+        profile_renderer.py   Workload profile template rendering
+        kube_helpers.py       Shared kubectl patterns (wait, collect, cleanup)
+        cloud_upload.py       Unified cloud storage upload (GCS, S3)
         os/
             filesystem.py     Workspace and directory management
             platform.py       Host OS detection
@@ -396,7 +420,9 @@ See module-level READMEs for detailed documentation:
 
 - [executor/README.md](llmdbenchmark/executor/README.md) -- Execution framework and step contribution guide
 - [standup/README.md](llmdbenchmark/standup/README.md) -- Standup phase details
+- [run/README.md](llmdbenchmark/run/README.md) -- Run phase, benchmark execution, result collection
 - [teardown/README.md](llmdbenchmark/teardown/README.md) -- Teardown phase details
+- [experiment/README.md](llmdbenchmark/experiment/README.md) -- DoE experiment orchestration
 - [parser/README.md](llmdbenchmark/parser/README.md) -- Plan-phase rendering pipeline
 - [logging/README.md](llmdbenchmark/logging/README.md) -- Logger, stream separation, file logging
 - [utilities/README.md](llmdbenchmark/utilities/README.md) -- Shared utilities, workspace architecture

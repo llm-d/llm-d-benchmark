@@ -7,6 +7,7 @@ from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.run.steps.step_05_create_profile_configmap import (
     HARNESS_SCRIPTS_CONFIGMAP,
 )
+from llmdbenchmark.utilities.kube_helpers import delete_pods_by_label
 
 
 class RunCleanupPostStep(Step):
@@ -40,13 +41,13 @@ class RunCleanupPostStep(Step):
             )
 
         plan_config = self._load_plan_config(context)
-        pod_label = "llmdbench-harness-launcher"
-        harness_name = "inference-perf"
-        if plan_config:
-            pod_label = plan_config.get("harness", {}).get("podLabel", pod_label)
-            harness_name = plan_config.get("harness", {}).get("name", harness_name)
-        if context.harness_name:
-            harness_name = context.harness_name
+        pod_label = self._resolve(
+            plan_config, "harness.podLabel", default="llmdbench-harness-launcher",
+        )
+        harness_name = self._resolve(
+            plan_config, "harness.name",
+            context_value=context.harness_name, default="inference-perf",
+        )
 
         if context.dry_run:
             return StepResult(
@@ -65,19 +66,7 @@ class RunCleanupPostStep(Step):
         )
 
         # Delete harness pods
-        result = cmd.kube(
-            "delete", "pod",
-            "-l", f"app={pod_label}",
-            "--namespace", harness_ns,
-            "--ignore-not-found",
-            check=False,
-        )
-        if result.success:
-            context.logger.log_info("Harness pods deleted")
-        else:
-            context.logger.log_warning(
-                f"Pod cleanup warning: {result.stderr}"
-            )
+        delete_pods_by_label(cmd, pod_label, harness_ns, context)
 
         # Delete profile ConfigMap
         profiles_cm = f"{harness_name}-profiles"

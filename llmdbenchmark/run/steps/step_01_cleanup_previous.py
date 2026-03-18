@@ -37,9 +37,9 @@ class RunCleanupPreviousStep(Step):
             )
 
         plan_config = self._load_plan_config(context)
-        pod_label = "llmdbench-harness-launcher"
-        if plan_config:
-            pod_label = plan_config.get("harness", {}).get("podLabel", pod_label)
+        pod_label = self._resolve(
+            plan_config, "harness.podLabel", default="llmdbench-harness-launcher",
+        )
 
         context.logger.log_info(
             f"Cleaning up previous harness pods (label={pod_label}, ns={harness_ns})..."

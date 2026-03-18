@@ -600,6 +600,11 @@ vllmCommon:
     enabled: false
     connector: *kv_connector
     role: *kv_role
+    # Extra config passed as kv_connector_extra_config in --kv-transfer-config JSON.
+    # Used by connectors like OffloadingConnector (e.g. {num_cpu_blocks: 5000}).
+    # extraConfig:
+    #   num_cpu_blocks: 5000
+    #   cpu_bytes_to_use: 1000000000
   # KV Events Configuration (for precise prefix cache aware routing)
   # When enabled, adds --kv-events-config to vllm serve command
   # Generates endpoint: tcp://<serviceName>.<namespace>.svc.cluster.local:<port>

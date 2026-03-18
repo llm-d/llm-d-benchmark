@@ -329,8 +329,10 @@ def _run_nop_analysis(
     """Run the nop analysis script.
 
     The nop analysis reads ``benchmark_report/result.yaml`` and produces
-    ``analysis/result.txt``.  We call it via the original script preserved
-    in ``scripts/nop-analyze_results.py``.
+    ``analysis/result.txt``.  Currently called via subprocess because the
+    script uses bare ``from benchmark_report import ...`` imports and
+    ``pandas``.  A future improvement could refactor the script into an
+    importable function to avoid the subprocess overhead.
     """
     script = SCRIPTS_DIR / "nop-analyze_results.py"
     if not script.exists():

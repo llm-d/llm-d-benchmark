@@ -40,9 +40,9 @@ class VerifyModelStep(Step):
 
         # Determine model name
         plan_config = self._load_stack_config(stack_path)
-        model_name = context.model_name
-        if not model_name and plan_config:
-            model_name = plan_config.get("model", {}).get("name")
+        model_name = self._resolve(
+            plan_config, "model.name", context_value=context.model_name,
+        )
         if not model_name:
             return StepResult(
                 step_number=self.number,

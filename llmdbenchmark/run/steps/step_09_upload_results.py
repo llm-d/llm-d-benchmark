@@ -1,9 +1,15 @@
-"""Step 09 -- Upload results to cloud storage (GCS/S3) if configured."""
+"""Step 09 -- Upload results to cloud storage (GCS/S3) if configured.
+
+Acts as a safety-net bulk upload.  Per-pod uploads happen in step_06
+during result collection; this step re-uploads the entire results
+directory to ensure nothing was missed.
+"""
 
 from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
+from llmdbenchmark.utilities.cloud_upload import upload_all_results
 
 
 class UploadResultsStep(Step):
@@ -37,65 +43,14 @@ class UploadResultsStep(Step):
                 message="No results to upload",
             )
 
-        if context.dry_run:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=(
-                    f"[DRY RUN] Would upload results from "
-                    f"{results_dir} to {output}"
-                ),
-            )
-
-        context.logger.log_info(
-            f"Uploading results to {output}..."
-        )
-
-        if output.startswith("gs://"):
-            result = cmd.execute(
-                f"gsutil -m cp -r {results_dir}/* {output}/",
-                check=False,
-            )
-            if not result.success:
-                return StepResult(
-                    step_number=self.number,
-                    step_name=self.name,
-                    success=False,
-                    message=f"GCS upload failed: {result.stderr}",
-                    errors=[result.stderr],
-                )
-            context.logger.log_info(
-                f"Results uploaded to {output}"
-            )
-
-        elif output.startswith("s3://"):
-            result = cmd.execute(
-                f"aws s3 sync {results_dir}/ {output}/",
-                check=False,
-            )
-            if not result.success:
-                return StepResult(
-                    step_number=self.number,
-                    step_name=self.name,
-                    success=False,
-                    message=f"S3 upload failed: {result.stderr}",
-                    errors=[result.stderr],
-                )
-            context.logger.log_info(
-                f"Results uploaded to {output}"
-            )
-
-        else:
+        error = upload_all_results(cmd, results_dir, output, context)
+        if error:
             return StepResult(
                 step_number=self.number,
                 step_name=self.name,
                 success=False,
-                message=f"Unknown output destination: {output}",
-                errors=[
-                    f"Unsupported output format: {output}. "
-                    f"Use 'local', 'gs://...', or 's3://...'"
-                ],
+                message=error,
+                errors=[error],
             )
 
         return StepResult(

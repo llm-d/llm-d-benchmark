@@ -38,18 +38,16 @@ class CreateProfileConfigmapStep(Step):
         plan_config = self._load_stack_config(stack_path)
 
         # Resolve harness name
-        harness_name = context.harness_name
-        if not harness_name and plan_config:
-            harness_name = plan_config.get("harness", {}).get("name")
-        harness_name = harness_name or "inference-perf"
+        harness_name = self._resolve(
+            plan_config, "harness.name",
+            context_value=context.harness_name, default="inference-perf",
+        )
 
         # Resolve namespace
-        harness_ns = context.harness_namespace or context.namespace
-        if not harness_ns and plan_config:
-            harness_ns = (
-                plan_config.get("harness", {}).get("namespace")
-                or plan_config.get("namespace", {}).get("name")
-            )
+        harness_ns = self._resolve(
+            plan_config, "harness.namespace", "namespace.name",
+            context_value=context.harness_namespace or context.namespace,
+        )
         if not harness_ns:
             return StepResult(
                 step_number=self.number,

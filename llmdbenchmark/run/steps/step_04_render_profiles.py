@@ -43,19 +43,16 @@ class RenderProfilesStep(Step):
         plan_config = self._load_stack_config(stack_path)
 
         # Resolve harness name
-        harness_name = context.harness_name
-        if not harness_name and plan_config:
-            harness_name = plan_config.get("harness", {}).get("name")
-        harness_name = harness_name or "inference-perf"
+        harness_name = self._resolve(
+            plan_config, "harness.name",
+            context_value=context.harness_name, default="inference-perf",
+        )
 
         # Resolve profile name
-        profile_name = context.harness_profile
-        if not profile_name and plan_config:
-            profile_name = (
-                plan_config.get("harness", {}).get("experimentProfile")
-                or plan_config.get("harness", {}).get("profile")
-            )
-        profile_name = profile_name or "sanity_random.yaml"
+        profile_name = self._resolve(
+            plan_config, "harness.experimentProfile", "harness.profile",
+            context_value=context.harness_profile, default="sanity_random.yaml",
+        )
 
         # Locate source profiles directory
         base_dir = context.base_dir or Path(__file__).resolve().parents[3]

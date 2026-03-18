@@ -252,6 +252,7 @@ class KvTransferConfig(BaseModel):
     enabled: bool
     connector: str
     role: str
+    extraConfig: dict | None = None
 
 
 class KvEventsConfig(BaseModel):

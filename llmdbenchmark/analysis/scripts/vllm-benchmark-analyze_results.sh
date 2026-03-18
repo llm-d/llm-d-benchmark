@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# DEPRECATED: This script is superseded by the Python API in
+# llmdbenchmark/analysis/__init__.py (run_analysis function).
+# Kept for reference only.
 
 # Convert results into universal format
 # We can't easily determine what the result filename will be, so search for and

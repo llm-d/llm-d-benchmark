@@ -10,6 +10,10 @@ utilities/
     cluster.py              Kubernetes connection, platform detection
     capacity_validator.py   GPU capacity validation
     huggingface.py          HuggingFace model access checks
+    endpoint.py             Endpoint discovery and model verification
+    profile_renderer.py     Workload profile template rendering
+    kube_helpers.py         Shared kubectl patterns (wait, collect, cleanup)
+    cloud_upload.py         Unified cloud storage upload (GCS, S3)
     os/
         __init__.py
         filesystem.py       Workspace and directory management
@@ -85,6 +89,77 @@ Directory creation and path resolution utilities:
 | `get_platform_info()` | Returns `PlatformInfo` for the current host |
 | `get_platform_dict()` | Returns platform info as a dictionary |
 | `get_user_id()` | Returns the current system username |
+
+### endpoint.py -- Endpoint Discovery
+
+Endpoint detection and model verification functions used by run-phase steps 02 and 03:
+
+| Function | Description |
+|----------|-------------|
+| `find_standalone_endpoint(cmd, namespace, inference_port)` | Find standalone service by `stood-up-from=llm-d-benchmark` label |
+| `find_gateway_endpoint(cmd, namespace, release)` | Discover gateway IP with automatic HTTPS detection |
+| `find_custom_endpoint(cmd, namespace, method_pattern)` | Multi-level fallback: service match → pod match |
+| `discover_hf_token_secret(cmd, namespace)` | Auto-discover HuggingFace token secret from cluster |
+| `extract_hf_token_from_secret(cmd, namespace, secret, key)` | Extract and decode HF token from Kubernetes secret |
+| `validate_model_response(stdout, expected_model, host, port)` | Validate `/v1/models` response contains expected model |
+| `test_model_serving(cmd, namespace, host, port, model, ...)` | Test endpoint via ephemeral curl pod with retries |
+
+**Retry behavior:** `test_model_serving()` retries on transient failures (503, 502, "not ready", "still loading") up to `max_retries` times.
+
+### profile_renderer.py -- Profile Template Rendering
+
+Regex-based substitution engine for `.yaml.in` workload profile templates:
+
+| Function | Description |
+|----------|-------------|
+| `build_env_map(plan_config, runtime_values)` | Build substitution map from token registry and config |
+| `render_profile(template_content, env_map)` | Replace `REPLACE_ENV_{KEY}` tokens in template string |
+| `render_profile_file(source, dest, env_map)` | Render template file and write result |
+| `apply_overrides(profile_content, overrides)` | Apply dotted key=value overrides to rendered YAML |
+
+**Token registry:** `PROFILE_TOKENS` maps token suffixes to config paths:
+
+| Token Suffix | Config Path | Description |
+|-------------|-------------|-------------|
+| `LLMDBENCH_DEPLOY_CURRENT_MODEL` | `model.name` | Model identifier |
+| `LLMDBENCH_DEPLOY_CURRENT_TOKENIZER` | `model.name` | Tokenizer (defaults to model) |
+| `LLMDBENCH_HARNESS_STACK_ENDPOINT_URL` | Runtime only | Endpoint URL |
+| `LLMDBENCH_RUN_DATASET_DIR` | `experiment.datasetDir` | Dataset directory |
+
+### kube_helpers.py -- Shared Kubernetes Patterns
+
+Common kubectl operations extracted from run-phase steps to eliminate duplication:
+
+| Function | Description |
+|----------|-------------|
+| `find_data_access_pod(cmd, namespace)` | Find data-access pod by label |
+| `wait_for_pods_by_label(cmd, label, namespace, timeout, context)` | Two-phase wait: Ready → Completed, with crash detection |
+| `wait_for_pod(cmd, pod_name, namespace, timeout, context, poll_interval)` | Per-pod polling fallback |
+| `collect_pod_results(cmd, data_pod, namespace, prefix, id, idx, dir, context)` | Copy results from PVC for a single pod |
+| `sync_analysis_dir(local_path, analysis_dir, suffix)` | Move analysis subdirectory out of results |
+| `delete_pods_by_names(cmd, pod_names, namespace, context)` | Delete pods by individual name |
+| `delete_pods_by_label(cmd, label, namespace, context)` | Delete all pods matching a label selector |
+| `capture_pod_logs(cmd, pod_names, namespace, log_dir, context)` | Capture logs from harness pods |
+| `capture_label_logs(cmd, namespace, label, dest, label_name, context)` | Capture aggregated logs by label |
+| `capture_infrastructure_logs(cmd, namespace, log_dir, model_label, context)` | Capture pod status and infrastructure logs |
+
+**Constants:**
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `CRASH_STATES` | `{CrashLoopBackOff, Error, OOMKilled, ...}` | Terminal error pod states |
+| `DATA_ACCESS_LABEL` | `role=llm-d-benchmark-data-access` | Label for data-access pods |
+
+### cloud_upload.py -- Cloud Storage Upload
+
+Unified upload implementation for GCS and S3, used by step 06 (per-pod) and step 09 (bulk):
+
+| Function | Description |
+|----------|-------------|
+| `upload_results_dir(cmd, local_path, output, context, relative_path)` | Upload single directory to cloud storage |
+| `upload_all_results(cmd, results_dir, output, context)` | Bulk upload entire results directory |
+
+**Supported destinations:** `gs://` (Google Cloud Storage via `gcloud storage cp`), `s3://` (Amazon S3 via `aws s3 cp`), `local` (no-op).
 
 ## Workspace Architecture
 
