@@ -490,9 +490,6 @@ class DeployModelserviceStep(Step):
                 "create",
                 "namespace",
                 wva_namespace,
-                "--dry-run=client",
-                "-o",
-                "yaml",
                 check=False,
             )
 
@@ -519,7 +516,7 @@ class DeployModelserviceStep(Step):
 
         affinity_str = ""
         decode_cfg = plan_config.get("decode", {})
-        accel_types = decode_cfg.get("acceleratorTypes", {})
+        accel_types = decode_cfg.get("acceleratorType", {})
         if accel_types:
             label_values = accel_types.get("labelValues", [])
             if label_values:
@@ -554,7 +551,7 @@ class DeployModelserviceStep(Step):
                 "upgrade",
                 "--install",
                 "workload-variant-autoscaler",
-                f"{chart_url}/workload-variant-autoscaler",
+                chart_url,
                 "--version",
                 chart_version,
                 "--namespace",

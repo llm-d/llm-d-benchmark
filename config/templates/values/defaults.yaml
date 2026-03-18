@@ -796,24 +796,8 @@ decode:
   # Extra pod config
   extraPodConfig: {}
   
-  # Init containers — runs the benchmark image to perform environment setup
-  # (network config, IB detection) and writes results to /shared-config/llmdbench_env.sh.
-  # Override image or command per scenario, or set to [] to disable.
-  initContainers:
-    - name: preprocess
-      image: ghcr.io/llm-d/llm-d-benchmark:auto
-      imagePullPolicy: Always
-      command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-      securityContext:
-        capabilities:
-          add:
-            - IPC_LOCK
-            - SYS_RAWIO
-            - NET_ADMIN
-            - NET_RAW
-      volumeMounts:
-        - name: shared-config
-          mountPath: /shared-config
+  # Init containers (optional, configured per scenario)
+  initContainers: []
 
   # LWS / Multinode options (optional)
   # hostIPC: false
@@ -922,22 +906,8 @@ prefill:
   # Extra pod config
   extraPodConfig: {}
 
-  # Init containers — inherits from decode defaults; override per scenario or set to [] to disable
-  initContainers:
-    - name: preprocess
-      image: ghcr.io/llm-d/llm-d-benchmark:auto
-      imagePullPolicy: Always
-      command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-      securityContext:
-        capabilities:
-          add:
-            - IPC_LOCK
-            - SYS_RAWIO
-            - NET_ADMIN
-            - NET_RAW
-      volumeMounts:
-        - name: shared-config
-          mountPath: /shared-config
+  # Init containers (optional, configured per scenario)
+  initContainers: []
 
 
   # Monitoring / PodMonitor (optional)

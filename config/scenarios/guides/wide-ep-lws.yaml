@@ -138,6 +138,22 @@ scenario:
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1
       replicas: 1
 
+      initContainers:
+        - name: preprocess
+          image: ghcr.io/llm-d/llm-d-benchmark:auto
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          securityContext:
+            capabilities:
+              add:
+                - IPC_LOCK
+                - SYS_RAWIO
+                - NET_ADMIN
+                - NET_RAW
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_*_PARALLELISM
       parallelism:
         tensor: 1      # LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=1
@@ -294,6 +310,22 @@ scenario:
     decode:
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1
       replicas: 1
+
+      initContainers:
+        - name: preprocess
+          image: ghcr.io/llm-d/llm-d-benchmark:auto
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          securityContext:
+            capabilities:
+              add:
+                - IPC_LOCK
+                - SYS_RAWIO
+                - NET_ADMIN
+                - NET_RAW
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
 
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*_PARALLELISM
       parallelism:

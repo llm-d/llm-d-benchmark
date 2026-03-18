@@ -16,6 +16,7 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
   - [defaults.yaml](#templatesvaluesdefaultsyaml)
 - [KV Transfer Configuration](#kv-transfer-configuration)
 - [Init Containers](#init-containers)
+- [Monitoring and Metrics](#monitoring-and-metrics)
 - [Container Images](#container-images)
   - [Image Config Paths](#image-config-paths)
   - [Which Template Uses Which Image](#which-template-uses-which-image)
@@ -257,7 +258,7 @@ The base configuration file containing every configurable parameter with sensibl
 
 **YAML anchors:** The file uses anchors (`&name`) and aliases (`*name`) to ensure consistency. For example, `&vllm_service_port` is defined once as `8000` and referenced by `decode.vllm.servicePort`, `prefill.vllm.servicePort`, and `vllmCommon.inferencePort`.
 
-### KV Transfer Configuration
+## KV Transfer Configuration
 
 The `vllmCommon.kvTransfer` section controls the `--kv-transfer-config` argument passed to the `vllm serve` command. This is how vLLM knows which KV cache transfer connector to use and how to configure it.
 
@@ -355,7 +356,7 @@ A scenario file overrides any of these fields under `vllmCommon.kvTransfer`. The
 
 ---
 
-### Init Containers
+## Init Containers
 
 Init containers run before the main vLLM container to perform environment setup tasks such as network configuration (RDMA/InfiniBand route tables), hardware detection, and environment variable preparation.
 
@@ -367,28 +368,51 @@ Init containers run before the main vLLM container to perform environment setup 
 
 The `shared-config` emptyDir volume and volumeMount are already configured in `defaults.yaml` under `vllmCommon.volumes` and `vllmCommon.volumeMounts`.
 
-#### Default configuration
+#### Scenario configuration
 
-The default init container is defined in `defaults.yaml` under both `decode.initContainers` and `prefill.initContainers`. It uses the benchmark image (`ghcr.io/llm-d/llm-d-benchmark:auto`) and runs `set_llmdbench_environment.py -i` to perform environment setup. Scenarios inherit this automatically — no init container configuration is needed in most scenario files.
-
-The `securityContext` capabilities (`IPC_LOCK`, `SYS_RAWIO`, `NET_ADMIN`, `NET_RAW`) are included for network configuration (route tables, IB detection).
-
-#### Overriding init containers
-
-To use a different image or command, override `initContainers` in your scenario:
+Init containers are configured per scenario (the default in `defaults.yaml` is `initContainers: []`). Each guide scenario explicitly defines the preprocess init container:
 
 ```yaml
 decode:
   initContainers:
     - name: preprocess
-      image: my-registry/my-benchmark:v1.0
-      command: ["my-setup-script.sh"]
+      image: ghcr.io/llm-d/llm-d-benchmark:auto
+      imagePullPolicy: Always
+      command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+      securityContext:
+        capabilities:
+          add:
+            - IPC_LOCK
+            - SYS_RAWIO
+            - NET_ADMIN
+            - NET_RAW
       volumeMounts:
         - name: shared-config
           mountPath: /shared-config
 ```
 
-To add additional init containers alongside the default, list them all (the scenario list replaces the default, it doesn't append):
+The `securityContext` capabilities are needed for network configuration (route tables, IB detection). If your environment doesn't need network setup, you can omit the `securityContext` block.
+
+For scenarios with prefill pods (e.g., `pd-disaggregation`, `wide-ep-lws`), add the same block under the `prefill` section as well.
+
+#### Custom preprocessing
+
+To use a different preprocessing script, change the `command` and/or `image`:
+
+```yaml
+decode:
+  initContainers:
+    - name: preprocess
+      image: my-registry/my-init:v1.0
+      command: ["my-setup-script.sh", "-o", "/shared-config/llmdbench_env.sh"]
+      volumeMounts:
+        - name: shared-config
+          mountPath: /shared-config
+```
+
+The script must write a sourceable shell file to `/shared-config/llmdbench_env.sh` — the main container's `preprocessScript` sources it on startup.
+
+#### Adding additional init containers
 
 ```yaml
 decode:
@@ -406,12 +430,109 @@ decode:
 
 #### Disabling init containers
 
-To disable init containers (e.g., for simulated/CI deployments that don't need preprocessing), set `initContainers` to an empty list in your scenario:
+Omit the `initContainers` field or leave it as the default (`[]`). CI/simulated scenarios like `simulated-accelerators` don't define init containers.
+
+---
+
+## Monitoring and Metrics
+
+The benchmark supports Prometheus-based monitoring at three levels: global monitoring configuration, per-deployment PodMonitors, and EPP (inference scheduler) metrics.
+
+#### Global monitoring settings
+
+Configured under the top-level `monitoring` section in `defaults.yaml`:
+
+| Field | Default | Description |
+|---|---|---|
+| `monitoring.enabled` | `true` | Enable monitoring infrastructure |
+| `monitoring.enableUserWorkload` | `true` | Enable OpenShift user workload monitoring |
+| `monitoring.podmonitor.enabled` | `false` | Create PodMonitor resources for Prometheus scraping |
+| `monitoring.metricsPath` | `/metrics` | Prometheus scrape path |
+| `monitoring.scrapeInterval` | `"30s"` | Prometheus scrape interval |
+
+When `monitoring.enabled` is `true` and running on OpenShift, the `03_cluster-monitoring-config.yaml.j2` template renders a ConfigMap to enable user workload monitoring.
+
+#### Per-deployment PodMonitors
+
+Decode and prefill sections have their own `monitoring.podmonitor` config that controls PodMonitor creation:
 
 ```yaml
 decode:
-  initContainers: []
+  monitoring:
+    podmonitor:
+      enabled: true
+      portName: "metrics"
+      path: "/metrics"
+      interval: "30s"
+      labels: {}
+      annotations: {}
+      relabelings: []
+      metricRelabelings: []
 ```
+
+When `podmonitor.enabled: true`, the templates `17_standalone-podmonitor.yaml.j2` (standalone) or `18_podmonitor.yaml.j2` (modelservice) render PodMonitor CRDs that tell Prometheus to scrape vLLM pods.
+
+**Metrics exposed by vLLM pods** (scraped via PodMonitor):
+- `vllm:kv_cache_usage_perc` — KV cache utilization
+- `vllm:num_requests_running` — active requests in batch
+- `vllm:num_requests_waiting` — queued requests
+- `vllm:prompt_tokens_total` — prefill token count
+- `vllm:generation_tokens_total` — decode token count
+- `vllm:prefix_cache_hits_total` / `vllm:prefix_cache_queries_total` — cache hit rate
+
+#### EPP (Inference Scheduler) monitoring
+
+The inference extension has its own monitoring config under `inferenceExtension.monitoring`:
+
+```yaml
+inferenceExtension:
+  monitoring:
+    secretName: kv-events-gateway-sa-metrics-reader-secret
+    interval: "10s"
+    prometheus:
+      enabled: true
+      auth:
+        enabled: true
+```
+
+This creates a ServiceMonitor for the EPP pod, enabling Prometheus to scrape inference scheduler metrics:
+- `inference_extension_scheduler_e2e_duration_seconds` — scheduling latency
+- `inference_pool_average_kv_cache_utilization` — pool-wide cache utilization
+- `inference_pool_average_queue_size` — average request queue depth
+- `inference_pool_ready_pods` — ready pod count
+
+When flow control is enabled (see [KV Transfer Configuration](#kv-transfer-configuration) for EPP config), additional metrics are emitted:
+- `inference_extension_flow_control_queue_size` — flow control queue depth
+- `inference_extension_flow_control_pool_saturation` — pool saturation level
+
+#### Enabling monitoring in a scenario
+
+To enable PodMonitor-based metrics collection for a deployment:
+
+```yaml
+scenario:
+  - name: "my-monitored-deployment"
+    monitoring:
+      podmonitor:
+        enabled: true
+    decode:
+      monitoring:
+        podmonitor:
+          enabled: true
+```
+
+#### Benchmark report integration
+
+The analysis pipeline converts collected results into v0.2 benchmark reports (`llmdbenchmark/analysis/benchmark_report/`). Reports include:
+- **Performance metrics**: TTFT, TPOT, ITL, request latency, throughput
+- **Resource metrics**: KV cache usage, GPU/CPU memory, GPU utilization
+- **Time series data**: Per-interval metric snapshots
+
+Reports are generated in both YAML and JSON formats. See `llmdbenchmark/analysis/benchmark_report/README.md` for the full schema reference.
+
+#### Prometheus adapter (for autoscaling)
+
+The `21_prometheus-adapter-values.yaml.j2` template configures a Prometheus adapter that bridges WVA (Workload Variant Autoscaler) metrics to the Kubernetes external metrics API. This is only needed when using WVA-based autoscaling.
 
 ---
 

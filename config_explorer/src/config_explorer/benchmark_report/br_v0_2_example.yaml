@@ -46,7 +46,7 @@ scenario:
       args: # Arguments sent to executable
         --block-size: 1024
         --kv-transfer-config: {"kv_connector":"NixlConnector", "kv_role":"kv_both"}
-        --disable-log-requests: null
+        --no-enable-log-requests: null
         --disable-uvicorn-access-log: null
         --max-model-len: 1024
         --tensor-parallel-size: 8
