@@ -354,7 +354,7 @@ decode:
 {# Init containers #}
 {% if decode.initContainers is defined and decode.initContainers %}
   initContainers:
-{{ decode.initContainers | toyaml | indent(4) }}
+{{ decode.initContainers | toyaml | indent(2, true) }}
 {% endif %}
 
 {# Main containers #}
@@ -788,7 +788,7 @@ prefill:
 {# Init containers #}
 {% if prefill.initContainers is defined and prefill.initContainers %}
   initContainers:
-{{ prefill.initContainers | toyaml | indent(4) }}
+{{ prefill.initContainers | toyaml | indent(2, true) }}
 {% endif %}
 
 {# Main containers #}

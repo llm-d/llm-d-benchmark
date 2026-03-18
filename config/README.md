@@ -15,6 +15,7 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
   - [Jinja2 Templates](#templatesjinja)
   - [defaults.yaml](#templatesvaluesdefaultsyaml)
 - [KV Transfer Configuration](#kv-transfer-configuration)
+- [Init Containers](#init-containers)
 - [Container Images](#container-images)
   - [Image Config Paths](#image-config-paths)
   - [Which Template Uses Which Image](#which-template-uses-which-image)
@@ -351,6 +352,66 @@ vllmCommon:
 ```
 
 A scenario file overrides any of these fields under `vllmCommon.kvTransfer`. The override is a full merge — you must include `enabled`, `connector`, and `role` in your scenario if you want them to differ from defaults.
+
+---
+
+### Init Containers
+
+Init containers run before the main vLLM container to perform environment setup tasks such as network configuration (RDMA/InfiniBand route tables), hardware detection, and environment variable preparation.
+
+#### How it works
+
+1. The init container runs the benchmark image with `set_llmdbench_environment.py -i` (init container mode)
+2. It writes environment configuration to `/shared-config/llmdbench_env.sh` on a shared emptyDir volume
+3. The main vLLM container sources this file via `preprocessScript: "source /shared-config/llmdbench_env.sh"`
+
+The `shared-config` emptyDir volume and volumeMount are already configured in `defaults.yaml` under `vllmCommon.volumes` and `vllmCommon.volumeMounts`.
+
+#### Default configuration
+
+The default init container is defined in `defaults.yaml` under both `decode.initContainers` and `prefill.initContainers`. It uses the benchmark image (`ghcr.io/llm-d/llm-d-benchmark:auto`) and runs `set_llmdbench_environment.py -i` to perform environment setup. Scenarios inherit this automatically — no init container configuration is needed in most scenario files.
+
+The `securityContext` capabilities (`IPC_LOCK`, `SYS_RAWIO`, `NET_ADMIN`, `NET_RAW`) are included for network configuration (route tables, IB detection).
+
+#### Overriding init containers
+
+To use a different image or command, override `initContainers` in your scenario:
+
+```yaml
+decode:
+  initContainers:
+    - name: preprocess
+      image: my-registry/my-benchmark:v1.0
+      command: ["my-setup-script.sh"]
+      volumeMounts:
+        - name: shared-config
+          mountPath: /shared-config
+```
+
+To add additional init containers alongside the default, list them all (the scenario list replaces the default, it doesn't append):
+
+```yaml
+decode:
+  initContainers:
+    - name: preprocess
+      image: ghcr.io/llm-d/llm-d-benchmark:auto
+      command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+      volumeMounts:
+        - name: shared-config
+          mountPath: /shared-config
+    - name: my-custom-init
+      image: my-registry/my-init:latest
+      command: ["my-setup-script.sh"]
+```
+
+#### Disabling init containers
+
+To disable init containers (e.g., for simulated/CI deployments that don't need preprocessing), set `initContainers` to an empty list in your scenario:
+
+```yaml
+decode:
+  initContainers: []
+```
 
 ---
 

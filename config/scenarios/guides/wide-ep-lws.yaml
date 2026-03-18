@@ -137,7 +137,7 @@ scenario:
       enabled: true
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1
       replicas: 1
-      
+
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_*_PARALLELISM
       parallelism:
         tensor: 1      # LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=1
@@ -224,8 +224,7 @@ scenario:
             --enable-eplb \
             --eplb-config '{"window_size":"1000","step_interval":"3000","num_redundant_experts":"32","log_balancedness":"False"}' \
             --gpu-memory-utilization 0.75
-        # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS
-        customPreprocessCommand: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
+        customPreprocessCommand: null
       
       # -----------------------------------------------------------------------
       # Extra Environment Variables
@@ -295,7 +294,7 @@ scenario:
     decode:
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1
       replicas: 1
-      
+
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*_PARALLELISM
       parallelism:
         tensor: 1      # LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1
@@ -380,8 +379,7 @@ scenario:
             --eplb-config '{"window_size":"1000","step_interval":"3000","num_redundant_experts":"32","log_balancedness":"False"}' \
             --compilation_config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
             --kv-cache-memory-bytes=${KV_CACHE_MEMORY_BYTES-}
-        # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS
-        customPreprocessCommand: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
+        customPreprocessCommand: null
       
       # -----------------------------------------------------------------------
       # Extra Environment Variables
@@ -460,9 +458,6 @@ scenario:
     # -------------------------------------------------------------------------
     vllmCommon:
       host: "0.0.0.0"
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_*_PREPROCESS
-      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
-      
       # KV Transfer Configuration
       # Note: kv-transfer-config is in customCommand for this scenario due to extra options
       kvTransfer:
@@ -481,11 +476,6 @@ scenario:
       
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_*_EXTRA_VOLUMES
       volumes:
-        - name: preprocesses
-          type: configMap
-          configMap:
-            name: llm-d-benchmark-preprocesses
-            defaultMode: 0755
         - name: dshm
           type: emptyDir
           emptyDir:
@@ -498,8 +488,6 @@ scenario:
       volumeMounts:
         - name: dshm
           mountPath: /dev/shm
-        - name: preprocesses
-          mountPath: /setup/preprocess
     
     # -------------------------------------------------------------------------
     # Workload/Harness Configuration

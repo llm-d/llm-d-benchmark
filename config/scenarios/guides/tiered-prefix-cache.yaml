@@ -95,7 +95,7 @@ scenario:
     decode:
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
       replicas: 2
-      
+
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1
       parallelism:
         tensor: 1
@@ -136,8 +136,7 @@ scenario:
           --no-enable-log-requests \
           --disable-uvicorn-access-log \
           --enable-prefix-caching
-        # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS
-        customPreprocessCommand: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
+        customPreprocessCommand: null
       
       # -----------------------------------------------------------------------
       # Extra Environment Variables
@@ -177,14 +176,12 @@ scenario:
       # -----------------------------------------------------------------------
       # Additional Volume Mounts
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
-      # Note: dshm and preprocesses are already in vllmCommon.volumeMounts
       # -----------------------------------------------------------------------
       additionalVolumeMounts: []
-      
+
       # -----------------------------------------------------------------------
       # Additional Volumes
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
-      # Note: dshm and preprocesses are already in vllmCommon.volumes
       # -----------------------------------------------------------------------
       additionalVolumes: []
       
@@ -215,9 +212,6 @@ scenario:
     # -------------------------------------------------------------------------
     vllmCommon:
       host: "0.0.0.0"
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS
-      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
-      
       # KV Transfer Configuration
       # Note: For tiered-prefix-cache, kv-transfer-config is in customCommand
       # because it includes kv_connector_extra_config
@@ -238,11 +232,6 @@ scenario:
       
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
       volumes:
-        - name: preprocesses
-          type: configMap
-          configMap:
-            name: llm-d-benchmark-preprocesses
-            defaultMode: 0755
         - name: dshm
           type: emptyDir
           emptyDir:
@@ -254,8 +243,6 @@ scenario:
       volumeMounts:
         - name: dshm
           mountPath: /dev/shm
-        - name: preprocesses
-          mountPath: /setup/preprocess
     
     # -------------------------------------------------------------------------
     # Custom Image Configuration (optional)
