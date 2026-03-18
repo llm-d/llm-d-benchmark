@@ -24,7 +24,7 @@ spec:
       llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
       llm-d.ai/model: {{ model.shortName }}
   podMetricsEndpoints:
-  - port: "{{ vllmCommon.metricsPort | default(8200) }}"
+  - port: {{ monitoring.podmonitor.portName | default('metrics') }}
     path: {{ monitoring.metricsPath | default('/metrics') }}
     interval: {{ monitoring.scrapeInterval | default('30s') }}
 {% endif %}

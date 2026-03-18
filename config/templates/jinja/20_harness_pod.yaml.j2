@@ -68,7 +68,7 @@ spec:
     - name: LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED
       value: "{{ monitoring.metricsScrapeEnabled | default('false') }}"
     - name: LLMDBENCH_VLLM_COMMON_METRICS_PORT
-      value: "{{ decode.vllm.metricsPort | default('8200') }}"
+      value: "{{ decode.vllm.port | default('8200') }}"
     - name: LLMDBENCH_VLLM_MONITORING_METRICS_PATH
       value: "{{ monitoring.metricsPath | default('/metrics') }}"
 {% endif %}

@@ -1206,6 +1206,7 @@ gatewayProviders:
 lws:
   chartVersion: "0.8.0"
   namespace: lws-system
+  helmRepository: oci://ghcr.io/kubernetes-sigs/lws
 
 # ============================================================================
 # GATEWAY API CRD VERSIONS

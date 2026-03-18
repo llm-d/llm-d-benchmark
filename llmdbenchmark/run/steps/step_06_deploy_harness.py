@@ -517,8 +517,7 @@ class DeployHarnessStep(Step):
         suffix = Path(base_name).suffix
         return f"{stem}-{treatment_name}{suffix}"
 
-    @staticmethod
-    def _load_plan_config(context: ExecutionContext) -> dict | None:
+    def _load_plan_config(self, context: ExecutionContext) -> dict | None:
         """Load plan config from the first rendered stack."""
         rendered_paths = getattr(context, "rendered_stacks", [])
         for stack_path in rendered_paths or []:

@@ -160,7 +160,7 @@ class Step(ABC):
         (e.g. ``"harness.experimentProfile", "harness.profile"``).
         """
         # Tier 1: explicit runtime value
-        if context_value:
+        if context_value is not None:
             return context_value
 
         # Tier 2: plan config lookup

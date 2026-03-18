@@ -239,7 +239,7 @@ class WorkloadMonitoringStep(Step):
             "get",
             "nodes",
             "-o",
-            "jsonpath={.items[*].metadata.labels}",
+            "json",
         )
         if not result.success:
             return None
@@ -248,19 +248,14 @@ class WorkloadMonitoringStep(Step):
         if not raw:
             return []
 
-        labels_list: list[dict[str, str]] = []
-        for chunk in raw.split("} {"):
-            chunk = chunk.strip()
-            if not chunk.startswith("{"):
-                chunk = "{" + chunk
-            if not chunk.endswith("}"):
-                chunk = chunk + "}"
-            try:
-                labels_list.append(json.loads(chunk))
-            except (json.JSONDecodeError, ValueError):
-                continue
-
-        return labels_list
+        try:
+            data = json.loads(raw)
+            return [
+                node.get("metadata", {}).get("labels", {})
+                for node in data.get("items", [])
+            ]
+        except (json.JSONDecodeError, ValueError):
+            return None
 
     @staticmethod
     def _label_exists_on_nodes(

@@ -244,7 +244,7 @@ def collect_pod_results(
     """
     pod_suffix = f"{experiment_id}_{parallel_idx}"
     remote_path = (
-        f"{namespace}/{data_pod}:"
+        f"{data_pod}:"
         f"{remote_prefix}/{pod_suffix}"
     )
     local_path = local_results_dir / pod_suffix
@@ -253,7 +253,7 @@ def collect_pod_results(
     cp_result = cmd.kube(
         "cp", "--retries=5",
         remote_path, str(local_path),
-        "--namespace", namespace,
+        namespace=namespace,
         check=False,
     )
 

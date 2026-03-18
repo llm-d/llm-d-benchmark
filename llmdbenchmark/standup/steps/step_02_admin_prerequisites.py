@@ -108,9 +108,7 @@ class AdminPrerequisitesStep(Step):
             existing_crds,
         )
 
-        deploy_methods = plan_config.get("deployMethods", [])
-        if isinstance(deploy_methods, str):
-            deploy_methods = [m.strip() for m in deploy_methods.split(",")]
+        deploy_methods = context.deployed_methods or []
         modelservice_active = "modelservice" in deploy_methods
 
         if modelservice_active:

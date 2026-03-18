@@ -57,20 +57,28 @@ class StepExecutor:
         result = ExecutionResult(phase=self.context.current_phase)
         allowed_numbers = set(self.parse_step_list(step_spec)) if step_spec else None
 
-        global_steps, per_stack_steps = self._partition_steps(allowed_numbers)
+        pre_global, per_stack_steps, post_global = self._partition_steps(allowed_numbers)
 
-        abort = self._execute_global_steps(global_steps, result)
+        abort = self._execute_global_steps(pre_global, result)
         if abort:
             return result
 
         self._execute_per_stack_steps(per_stack_steps, result)
 
+        if post_global:
+            self._execute_global_steps(post_global, result)
+
         return result
 
     def _partition_steps(
         self, allowed_numbers: set[int] | None
-    ) -> tuple[list[Step], list[Step]]:
-        """Split steps into global and per-stack lists, filtered by allowed numbers."""
+    ) -> tuple[list[Step], list[Step], list[Step]]:
+        """Split steps into pre-global, per-stack, and post-global lists.
+
+        Global steps whose number is lower than the lowest per-stack step
+        run before per-stack work (pre-global).  Global steps with a higher
+        number run after all per-stack work completes (post-global).
+        """
         global_steps = []
         per_stack_steps = []
         for step in self.steps:
@@ -80,7 +88,17 @@ class StepExecutor:
                 per_stack_steps.append(step)
             else:
                 global_steps.append(step)
-        return global_steps, per_stack_steps
+
+        # Find the boundary: lowest per-stack step number
+        if per_stack_steps:
+            min_per_stack = min(s.number for s in per_stack_steps)
+            pre_global = [s for s in global_steps if s.number < min_per_stack]
+            post_global = [s for s in global_steps if s.number >= min_per_stack]
+        else:
+            pre_global = global_steps
+            post_global = []
+
+        return pre_global, per_stack_steps, post_global
 
     def _execute_global_steps(
         self, global_steps: list[Step], result: ExecutionResult

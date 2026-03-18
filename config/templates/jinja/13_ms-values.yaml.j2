@@ -93,12 +93,12 @@ accelerator:
 {# -------------------------------------------------------------------------- #}
 {# ACCELERATOR DRA (Dynamic Resource Allocation)                              #}
 {# -------------------------------------------------------------------------- #}
-{% if accelerator.dra is defined %}
-  dra: {{ accelerator.dra | lower }}
+{% if dra is defined and dra.enabled is defined %}
+  dra: {{ dra.enabled | lower }}
 {% endif %}
-{% if accelerator.resourceClaimTemplates is defined %}
+{% if dra is defined and dra.claimTemplates is defined %}
   resourceClaimTemplates:
-{{ accelerator.resourceClaimTemplates | toyaml | indent(4) }}
+{{ dra.claimTemplates | toyaml | indent(4) }}
 {% endif %}
 
 {# -------------------------------------------------------------------------- #}
@@ -315,8 +315,8 @@ decode:
 {% if decode.accelerator.type is defined %}
     type: {{ decode.accelerator.type }}
 {% endif %}
-{% if decode.accelerator.dra is defined %}
-    dra: {{ decode.accelerator.dra | lower }}
+{% if dra is defined and dra.enabled is defined %}
+    dra: {{ dra.enabled | lower }}
 {% endif %}
 {% endif %}
 
@@ -749,8 +749,8 @@ prefill:
 {% if prefill.accelerator.type is defined %}
     type: {{ prefill.accelerator.type }}
 {% endif %}
-{% if prefill.accelerator.dra is defined %}
-    dra: {{ prefill.accelerator.dra | lower }}
+{% if dra is defined and dra.enabled is defined %}
+    dra: {{ dra.enabled | lower }}
 {% endif %}
 {% endif %}
 

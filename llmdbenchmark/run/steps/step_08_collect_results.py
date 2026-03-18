@@ -100,7 +100,7 @@ class CollectResultsStep(Step):
         if experiment_ids:
             # Collect results for each known experiment ID
             for exp_id in experiment_ids:
-                remote_path = f"{harness_ns}/{data_pod}:{results_dir_prefix}/{exp_id}"
+                remote_path = f"{data_pod}:{results_dir_prefix}/{exp_id}"
                 local_path = local_results_dir / exp_id
                 local_path.mkdir(parents=True, exist_ok=True)
 
@@ -110,7 +110,7 @@ class CollectResultsStep(Step):
 
                 result = cmd.kube(
                     "cp", remote_path, str(local_path),
-                    "--namespace", harness_ns,
+                    namespace=harness_ns,
                     check=False,
                 )
                 if result.success:
@@ -149,13 +149,13 @@ class CollectResultsStep(Step):
                     dir_name = dir_name.strip()
                     if not dir_name:
                         continue
-                    remote_path = f"{harness_ns}/{data_pod}:{results_dir_prefix}/{dir_name}"
+                    remote_path = f"{data_pod}:{results_dir_prefix}/{dir_name}"
                     local_path = local_results_dir / dir_name
                     local_path.mkdir(parents=True, exist_ok=True)
 
                     result = cmd.kube(
                         "cp", remote_path, str(local_path),
-                        "--namespace", harness_ns,
+                        namespace=harness_ns,
                         check=False,
                     )
                     if result.success:

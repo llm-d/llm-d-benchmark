@@ -21,7 +21,7 @@ def _build_overrides(plan_config: dict | None) -> list[str]:
     """Build --overrides args for ephemeral curl pods (imagePullSecrets, serviceAccount)."""
     overrides: dict = {}
     if plan_config:
-        pull_secret = plan_config.get("vllmCommon", {}).get("imagePullSecrets", "")
+        pull_secret = plan_config.get("vllmCommon", {}).get("pullSecret", "")
         if pull_secret:
             overrides.setdefault("spec", {})["imagePullSecrets"] = [
                 {"name": pull_secret}
