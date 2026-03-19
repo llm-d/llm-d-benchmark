@@ -200,15 +200,29 @@ class DeployHarnessStep(Step):
                 if context.harness_debug:
                     harness_command = "sleep infinity"
                 else:
+                    harness_cfg = plan_config.get("harness", {}) if plan_config else {}
+                    entrypoint = harness_cfg.get(
+                        "entrypoint", "llm-d-benchmark.sh"
+                    )
                     harness_command = self._build_harness_command(
                         harness_executable=harness_executable,
                         profile_name=pod_profile_name,
                         harness_name=harness_name,
                         results_dir=results_dir,
+                        entrypoint=entrypoint,
                     )
 
                 # Build template values by merging plan_config with runtime values
                 template_values = dict(plan_config) if plan_config else {}
+                # Determine deploy method for benchmark report population
+                deploy_method = "modelservice"
+                if context.deployed_methods:
+                    deploy_method = ",".join(context.deployed_methods)
+                elif plan_config:
+                    dm = plan_config.get("standalone", {}).get("enabled")
+                    if dm:
+                        deploy_method = "standalone"
+
                 template_values.update({
                     "pod_name": pod_name,
                     "harness_command": harness_command,
@@ -216,7 +230,16 @@ class DeployHarnessStep(Step):
                     "experiment_id": experiment_id,
                     "results_dir": results_dir,
                     "stack_type": stack_type,
+                    "deploy_method": deploy_method,
                 })
+
+                # Inject base64-encoded kubeconfig so kubectl works inside the pod
+                # (needed by collect_metrics.sh and llm-d-benchmark.sh vLLM scraping)
+                kubeconfig_path = context.kubeconfig
+                if kubeconfig_path and Path(kubeconfig_path).exists():
+                    template_values["base64_context_contents"] = self._b64encode_filter(
+                        Path(kubeconfig_path).read_text(encoding="utf-8")
+                    )
 
                 # Ensure required nested keys exist with defaults
                 template_values.setdefault("harness", {})
@@ -287,10 +310,9 @@ class DeployHarnessStep(Step):
 
             # --- Phase 3: Collect this treatment's results ---
             if not context.dry_run and not context.harness_debug:
-                collect_errors = self._collect_treatment_results(
+                collect_errors = self._collect_treatment_results_discovery(
                     cmd, experiment_id, harness_ns,
                     results_dir_prefix, context,
-                    parallelism=parallelism,
                 )
                 if collect_errors:
                     errors.extend(collect_errors)
@@ -346,6 +368,94 @@ class DeployHarnessStep(Step):
     # ------------------------------------------------------------------
     # Per-treatment result collection
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _collect_treatment_results_discovery(
+        cmd, experiment_id: str, namespace: str,
+        results_dir_prefix: str, context: ExecutionContext,
+    ) -> list[str]:
+        """Collect results by discovering directories on the PVC.
+
+        The entrypoint may construct a results path that differs from
+        what step_06 predicted (e.g. old images use a different naming
+        convention).  This method lists all directories on the PVC that
+        contain the experiment_id and copies them.
+        """
+        errors: list[str] = []
+
+        data_pod = find_data_access_pod(cmd, namespace)
+        if not data_pod:
+            errors.append(
+                f"Data access pod not found in namespace '{namespace}' — "
+                f"cannot collect results for {experiment_id}"
+            )
+            return errors
+
+        local_results_dir = context.run_results_dir()
+        local_analysis_dir = context.run_analysis_dir()
+
+        # List directories on the PVC under the results prefix
+        ls_result = cmd.kube(
+            "exec", data_pod,
+            "--", "ls", "-1", results_dir_prefix,
+            namespace=namespace,
+            check=False,
+        )
+        if not ls_result.success or not ls_result.stdout.strip():
+            errors.append(
+                f"Could not list results on PVC: {ls_result.stderr[:200]}"
+            )
+            return errors
+
+        # Find directories matching this experiment
+        all_dirs = [
+            d.strip() for d in ls_result.stdout.strip().split("\n")
+            if d.strip()
+        ]
+        matching_dirs = [
+            d for d in all_dirs if experiment_id in d
+        ]
+
+        if not matching_dirs:
+            context.logger.log_warning(
+                f"No result directories found for experiment {experiment_id} "
+                f"on PVC (found: {all_dirs[:5]})"
+            )
+            return errors
+
+        context.logger.log_info(
+            f"Collecting results for {len(matching_dirs)} dir(s): "
+            f"{', '.join(matching_dirs)}"
+        )
+
+        for dir_name in matching_dirs:
+            remote_path = f"{data_pod}:{results_dir_prefix}/{dir_name}"
+            local_path = local_results_dir / dir_name
+            local_path.mkdir(parents=True, exist_ok=True)
+
+            cp_result = cmd.kube(
+                "cp", "--retries=5",
+                remote_path, str(local_path),
+                namespace=namespace,
+                check=False,
+            )
+
+            if cp_result.success:
+                file_count = sum(1 for f in local_path.rglob("*") if f.is_file())
+                context.logger.log_info(
+                    f"Collected {file_count} file(s) for {dir_name}"
+                )
+                # Sync analysis sub-directory
+                if not context.harness_debug and context.harness_wait_timeout != 0:
+                    sync_analysis_dir(
+                        local_path, local_analysis_dir, dir_name,
+                    )
+            else:
+                errors.append(
+                    f"Failed to copy {dir_name}: {cp_result.stderr[:200]}"
+                )
+
+        return errors
 
     @staticmethod
     def _collect_treatment_results(
@@ -487,21 +597,67 @@ class DeployHarnessStep(Step):
         profile_name: str,
         harness_name: str,
         results_dir: str,
+        entrypoint: str = "llm-d-benchmark.sh",
     ) -> str:
-        """Build the shell command that runs inside the harness pod."""
+        """Build the shell command that runs inside the harness pod.
+
+        Pre-computes all paths (harness script, analyzer, results dir)
+        and exports them before calling the entrypoint.  This matches
+        the old ``run.sh`` approach where the workstation is the source
+        of truth — the entrypoint's auto-discovery block (line 56) is
+        skipped because ``LLMDBENCH_RUN_EXPERIMENT_HARNESS_NAME_AUTO``
+        stays at its default value of ``1``.
+
+        The entrypoint still handles: kubeconfig setup, pre/post vLLM
+        metrics scraping, harness execution with retries, and
+        in-container analysis.
+
+        The entrypoint is configurable via ``harness.entrypoint`` in
+        the scenario YAML (default: ``llm-d-benchmark.sh``).
+        """
+        # Derive the harness script and analyzer names the same way
+        # llm-d-benchmark.sh would (matching its find/grep logic)
+        harness_script = f"{harness_name}-{harness_executable}"
+        analyzer_script = f"{harness_name}-analyze_results.sh"
+        if harness_name == "nop":
+            analyzer_script = "nop-analyze_results.py"
+
         parts: list[str] = []
 
-        # Set runtime env vars that the harness script consumes
+        # Pre-compute all vars — entrypoint uses them directly
+        parts.append(
+            f"export LLMDBENCH_RUN_EXPERIMENT_HARNESS={harness_script}"
+        )
+        parts.append(
+            f"export LLMDBENCH_RUN_EXPERIMENT_ANALYZER={analyzer_script}"
+        )
         parts.append(
             f"export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR={results_dir}"
+        )
+        parts.append(
+            f"export LLMDBENCH_CONTROL_WORK_DIR={results_dir}"
         )
         parts.append(
             f"export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME={profile_name}"
         )
 
-        # Run the harness script (mounted from ConfigMap)
-        script_path = f"/workspace/harnesses/{harness_name}-{harness_executable}"
-        parts.append(script_path)
+        # Capture harness timing and version for benchmark report population
+        parts.append(
+            "export LLMDBENCH_HARNESS_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        )
+        parts.append(
+            f"export LLMDBENCH_HARNESS_ARGS='--workload {profile_name}'"
+        )
+
+        # Extract harness version from repos.txt at runtime (set inside container)
+        parts.append(
+            f"export LLMDBENCH_HARNESS_VERSION=$(grep '^{harness_name}:' "
+            f"/workspace/repos.txt 2>/dev/null | cut -d' ' -f3 || echo 'unknown')"
+        )
+
+        # Call the entrypoint without --harness flag so NAME_AUTO stays 1
+        # and the auto-discovery block is skipped (our exports are used as-is)
+        parts.append(entrypoint)
 
         return "; ".join(parts)
 

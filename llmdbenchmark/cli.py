@@ -592,11 +592,143 @@ def _execute_run(args, logger, render_plan_errors):
         mode = "generate-config"
     harness = context.harness_name or "inference-perf"
 
+    # --- Summary banner ---
+    results_dir = context.run_results_dir()
+    namespace = context.harness_namespace or context.namespace or "unknown"
+    model_name = context.model_name or "unknown"
+    workload = context.harness_profile or "unknown"
+    experiment_ids = getattr(context, "experiment_ids", [])
+    parallelism = context.harness_parallelism or 1
+
     logger.line_break()
+    logger.log_info("=" * 60)
+    logger.log_info("BENCHMARK RUN SUMMARY")
+    logger.log_info("=" * 60)
+    logger.log_info(f"  Harness:       {harness}")
+    logger.log_info(f"  Workload:      {workload}")
+    logger.log_info(f"  Model:         {model_name}")
+    logger.log_info(f"  Namespace:     {namespace}")
+    logger.log_info(f"  Mode:          {mode}")
+    logger.log_info(f"  Parallelism:   {parallelism}")
+    if experiment_ids:
+        logger.log_info(f"  Treatments:    {len(experiment_ids)}")
+        for eid in experiment_ids:
+            logger.log_info(f"    - {eid}")
+            # Show per-parallelism result dirs
+            for i in range(1, parallelism + 1):
+                local_path = results_dir / f"{eid}_{i}"
+                if local_path.exists():
+                    file_count = sum(1 for f in local_path.rglob("*") if f.is_file())
+                    logger.log_info(f"      [{i}/{parallelism}] {local_path.name} ({file_count} files)")
+    logger.log_info(f"  Local results: {results_dir}")
+    logger.log_info(
+        f"  PVC results:   oc exec -n {namespace} "
+        f"$(oc get pod -n {namespace} -l role=llm-d-benchmark-data-access "
+        f"-o jsonpath='{{.items[0].metadata.name}}') -- ls /requests/"
+    )
+    logger.log_info("=" * 60)
     logger.log_info(
         f"Run complete (mode={mode}, harness={harness}).",
         emoji="✅",
     )
+
+    # --- Store run parameters as ConfigMap in namespace ---
+    if not context.dry_run:
+        _store_run_parameters_configmap(context, harness, workload, experiment_ids, logger)
+
+
+def _store_run_parameters_configmap(context, harness, workload, experiment_ids, logger):
+    """Store run parameters as a ConfigMap in the namespace for auditability.
+
+    Each run gets its own key in the ConfigMap data (keyed by timestamp),
+    so multiple sequential or parallel runs accumulate history in a single
+    ConfigMap rather than overwriting each other.
+    """
+    try:
+        cmd = context.require_cmd()
+        namespace = context.harness_namespace or context.namespace
+        if not namespace:
+            return
+
+        import yaml as _yaml
+        from datetime import datetime, timezone
+
+        cm_name = "llm-d-benchmark-run-parameters"
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+        # Build PVC results paths from experiment IDs
+        parallelism = context.harness_parallelism or 1
+        results_dir_prefix = "/requests"
+        pvc_paths = []
+        for eid in (experiment_ids or []):
+            for i in range(1, parallelism + 1):
+                pvc_paths.append(f"{results_dir_prefix}/{eid}_{i}")
+
+        import getpass
+        import socket
+
+        run_entry = {
+            "harness": harness,
+            "workload": workload,
+            "model": context.model_name or "",
+            "namespace": namespace,
+            "endpoint_url": context.endpoint_url or "",
+            "user": getpass.getuser(),
+            "hostname": socket.gethostname(),
+            "experiment_ids": experiment_ids or [],
+            "pvc_name": "workload-pvc",
+            "pvc_results_paths": pvc_paths,
+            "pvc_results_prefix": results_dir_prefix,
+            "timestamp": timestamp,
+            "analyze": context.analyze_locally,
+            "parallelism": parallelism,
+            "output": context.harness_output or "local",
+        }
+
+        # Try to read existing ConfigMap to append
+        existing_data = {}
+        get_result = cmd.kube(
+            "get", "configmap", cm_name,
+            "-o", "jsonpath={.data}",
+            namespace=namespace,
+            check=False,
+        )
+        if get_result.success and get_result.stdout.strip():
+            try:
+                existing_data = json.loads(get_result.stdout)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # Add this run keyed by timestamp (also update "latest")
+        run_key = f"run-{timestamp}"
+        existing_data[run_key] = _yaml.dump(run_entry, default_flow_style=False)
+        existing_data["latest"] = _yaml.dump(run_entry, default_flow_style=False)
+
+        # Build configmap YAML
+        cm = {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {
+                "name": cm_name,
+                "namespace": namespace,
+            },
+            "data": existing_data,
+        }
+
+        cm_path = context.run_dir() / "run-parameters-configmap.yaml"
+        cm_path.parent.mkdir(parents=True, exist_ok=True)
+        cm_path.write_text(_yaml.dump(cm, default_flow_style=False), encoding="utf-8")
+
+        cmd.kube(
+            "apply", "-f", str(cm_path),
+            namespace=namespace,
+            check=False,
+        )
+        logger.log_info(
+            f"Run parameters stored in configmap/{cm_name} (key={run_key}) in ns/{namespace}",
+        )
+    except Exception as exc:
+        logger.log_warning(f"Could not store run parameters ConfigMap: {exc}")
 
 
 def _render_plans_for_experiment(args, logger, setup_overrides=None):

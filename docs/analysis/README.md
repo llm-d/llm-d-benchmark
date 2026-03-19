@@ -1,5 +1,7 @@
 # llm-d-benchmark Analysis
 
+For an overview of the full analysis pipeline (in-container analysis, `--analyze` flag, per-request plots, cross-treatment comparison, and Prometheus metric visualization), see [docs/analysis.md](../analysis.md).
+
 ## Jupyter Analysis Notebook
 
 Data analysis can be performed using the [Jupyter](https://docs.jupyter.org/en/latest/) notebook [analysis.ipynb](analysis.ipynb) using Jupyter Lab, an interactive development environment. This notebook is written in Python, and will import all benchmark report files found within a provided list of directories and populate a [Pandas](https://pandas.pydata.org/) DataFrame. You may then execute pre-built plotting functions, modify these functions, or add your own custom analysis.

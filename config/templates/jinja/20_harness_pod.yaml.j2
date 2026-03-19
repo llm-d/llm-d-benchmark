@@ -31,6 +31,10 @@ spec:
     env:
     - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
       value: "1"
+    - name: LLMDBENCH_MAGIC_ENVAR
+      value: "harness_pod"
+    - name: LLMDBENCH_DEPLOY_METHODS
+      value: "{{ deploy_method | default('modelservice') }}"
     - name: LLMDBENCH_RUN_WORKSPACE_DIR
       value: "{{ experiment.workspaceDir | default('/workspace') }}"
     - name: LLMDBENCH_CONTROL_WORK_DIR
@@ -64,6 +68,18 @@ spec:
       valueFrom:
         fieldRef:
           fieldPath: metadata.uid
+    - name: LLMDBENCH_VLLM_COMMON_NAMESPACE
+      value: "{{ namespace.name }}"
+{% if base64_context_contents is defined and base64_context_contents %}
+    - name: LLMDBENCH_BASE64_CONTEXT_CONTENTS
+      value: "{{ base64_context_contents }}"
+{% endif %}
+    - name: LLMDBENCH_VLLM_COMMON_INFERENCE_PORT
+      value: "{{ vllmCommon.inferencePort | default(decode.vllm.servicePort) | default('8000') }}"
+    - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX
+      value: "{{ harness.resultsDirPrefix | default('/requests') }}"
+    - name: LLMDBENCH_HARNESS_STACK_NAME
+      value: "{{ harness.stackName | default(model.shortName) | default('default') }}"
 {% if monitoring is defined and monitoring.metricsScrapeEnabled is defined %}
     - name: LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED
       value: "{{ monitoring.metricsScrapeEnabled | default('false') }}"

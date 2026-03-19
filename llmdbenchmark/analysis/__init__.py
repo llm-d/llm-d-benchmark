@@ -126,6 +126,9 @@ def run_analysis(
     if metrics_dir.exists():
         _run_metric_visualizations(metrics_dir, results_dir, context)
 
+    # --- 5. Generate per-request distribution plots ---
+    _run_per_request_plots(results_dir, context)
+
     if errors:
         return f"Conversion errors: {'; '.join(errors)}"
     return None
@@ -359,6 +362,44 @@ def _run_metric_visualizations(
             _log(context, f"Generated {count} metric plot(s)")
     except Exception as exc:
         _log(context, f"Metric visualization failed: {exc}", warning=True)
+
+
+# ---------------------------------------------------------------------------
+# Per-request distribution plots
+# ---------------------------------------------------------------------------
+
+def _run_per_request_plots(
+    results_dir: Path,
+    context: ExecutionContext | None,
+) -> None:
+    """Generate per-request distribution plots (histograms, CDFs, scatter).
+
+    Reads ``per_request_lifecycle_metrics.json`` and writes plots to
+    ``analysis/distributions/``.  Requires ``matplotlib``.
+    """
+    pr_file = results_dir / "per_request_lifecycle_metrics.json"
+    if not pr_file.exists():
+        return
+
+    try:
+        from llmdbenchmark.analysis.per_request_plots import (
+            generate_per_request_plots,
+        )
+    except ImportError:
+        _log(context, "matplotlib not available -- skipping per-request plots")
+        return
+
+    try:
+        dist_dir = results_dir / "analysis" / "distributions"
+        count = generate_per_request_plots(
+            results_dir,
+            output_dir=dist_dir,
+            context=context,
+        )
+        if count:
+            _log(context, f"Generated {count} per-request distribution plot(s)")
+    except Exception as exc:
+        _log(context, f"Per-request plot generation failed: {exc}", warning=True)
 
 
 # ---------------------------------------------------------------------------

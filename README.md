@@ -467,9 +467,9 @@ The configuration explorer is a library that helps find the most cost-effective,
 
 Results are saved in the native format of each harness, as well as a universal Benchmark Report format (v0.1 and v0.2). The benchmark report is a standard data format describing the cluster configuration, workload, and results of a benchmark run. It acts as a common API for comparing results across different harnesses and configurations. See [llmdbenchmark/analysis/benchmark_report/README.md](llmdbenchmark/analysis/benchmark_report/README.md) for the full schema documentation and Python API.
 
-### [Analysis](docs/analysis/README.md)
+### [Analysis](docs/analysis.md)
 
-Data analysis can be performed using the Jupyter notebook `analysis.ipynb`, which imports benchmark report files and populates a Pandas DataFrame for plotting and custom analysis.
+The analysis pipeline generates per-request distribution plots, cross-treatment comparison tables and charts, and Prometheus metric visualizations. Analysis runs both inside the harness container (automatically) and locally via `--analyze`. For interactive exploration, a Jupyter notebook is also available at [`docs/analysis/README.md`](docs/analysis/README.md).
 
 ## Dependencies
 
@@ -487,6 +487,10 @@ Data analysis can be performed using the Jupyter notebook `analysis.ipynb`, whic
 
 ## Topics
 
+- [Analysis Pipeline](docs/analysis.md)
+- [Metrics Collection](docs/metrics_collection.md)
+- [Benchmark Report](docs/benchmark_report.md)
+- [Design of Experiments (DoE)](docs/doe.md)
 - [Reproducibility](docs/reproducibility.md)
 - [Observability](docs/observability.md)
 - [Quickstart](docs/quickstart.md)

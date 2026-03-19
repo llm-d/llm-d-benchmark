@@ -85,6 +85,30 @@ class AnalyzeResultsStep(Step):
         for err in errors:
             context.logger.log_warning(f"Analysis issue: {err}")
 
+        # Cross-treatment comparison (only useful with 2+ result dirs)
+        if analyzed >= 2:
+            try:
+                from llmdbenchmark.analysis.cross_treatment import (
+                    generate_cross_treatment_summary,
+                )
+
+                comparison_dir = results_dir / "cross-treatment-comparison"
+                compared = generate_cross_treatment_summary(
+                    results_dir,
+                    output_dir=comparison_dir,
+                    context=context,
+                )
+                if compared:
+                    context.logger.log_info(
+                        f"Cross-treatment comparison: {compared} treatments "
+                        f"compared in {comparison_dir}",
+                        emoji="📊",
+                    )
+            except Exception as exc:
+                context.logger.log_warning(
+                    f"Cross-treatment comparison failed: {exc}"
+                )
+
         return StepResult(
             step_number=self.number,
             step_name=self.name,

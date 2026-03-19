@@ -449,6 +449,85 @@ Omit the `initContainers` field or leave it as the default (`[]`). CI/simulated 
 
 ---
 
+## Harness Entrypoint Configuration
+
+The harness entrypoint is the shell script executed inside the harness pod to orchestrate benchmark execution, metrics collection, and in-container analysis. By default, the entrypoint is `llm-d-benchmark.sh`, but it can be overridden per scenario.
+
+#### Configuration
+
+The entrypoint is read from `harness.entrypoint` in the plan config (which comes from `defaults.yaml` or a scenario override). If not set, it defaults to `llm-d-benchmark.sh`.
+
+```yaml
+harness:
+  entrypoint: llm-d-benchmark.sh  # default
+```
+
+#### Custom entrypoints
+
+To use a different entrypoint script (e.g., for a custom harness or specialized workflow):
+
+```yaml
+harness:
+  entrypoint: my-custom-entrypoint.sh
+```
+
+The custom script must be present in the harness container image. It receives the same environment variables as the default entrypoint (`LLMDBENCH_*` variables, kubeconfig, namespace, results directory, etc.).
+
+#### What the default entrypoint does
+
+The `llm-d-benchmark.sh` entrypoint handles:
+
+1. **Kubeconfig setup** -- Configures cluster access inside the pod using the base64-encoded context from `LLMDBENCH_BASE64_CONTEXT_CONTENTS`
+2. **Pre-benchmark metrics scrape** -- Collects baseline vLLM metrics before the benchmark starts
+3. **Harness execution** -- Runs the selected harness script (e.g., `inference-perf-llm-d-benchmark.sh`) with retry logic
+4. **Post-benchmark metrics scrape** -- Collects final vLLM metrics after the benchmark completes
+5. **In-container analysis** -- Runs analyzer scripts to produce benchmark reports
+
+---
+
+## Flow Control Configuration
+
+Flow control is an EPP (inference scheduler) feature that manages request queuing and load distribution. When enabled, the EPP buffers requests based on pool capacity rather than sending them immediately to pods.
+
+#### Enabling flow control
+
+Flow control is configured through the GAIE plugin configuration. The specific plugin config file is set in the scenario YAML:
+
+```yaml
+inferenceExtension:
+  plugins:
+    configFile: flow-control-config  # name of the plugin config
+```
+
+#### Monitoring flow control
+
+When flow control is active, additional Prometheus metrics are emitted by the EPP pod (see [Monitoring and Metrics](#monitoring-and-metrics) below for the full list). To scrape these metrics, enable EPP monitoring:
+
+```yaml
+inferenceExtension:
+  monitoring:
+    prometheus:
+      enabled: true
+    interval: "10s"
+```
+
+#### Using flow control in experiments
+
+To compare performance with and without flow control, define setup treatments that vary the plugin configuration:
+
+```yaml
+setup:
+  factors:
+    - LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE
+  levels:
+    LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE: "default,flow-control-config"
+  treatments:
+    - "default"
+    - "flow-control-config"
+```
+
+---
+
 ## Monitoring and Metrics
 
 The benchmark supports Prometheus-based monitoring at three levels: global monitoring configuration, per-deployment PodMonitors, and EPP (inference scheduler) metrics.

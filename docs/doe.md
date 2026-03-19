@@ -116,3 +116,57 @@ run:
 ```
 llmdbenchmark experiment --spec precise-prefix-cache-aware --experiments precise-prefix-cache-aware
 ```
+
+## Treatment Execution Lifecycle
+
+The `experiment` command orchestrates a nested loop of setup and run treatments. Understanding this lifecycle is important for designing experiments and interpreting results.
+
+### Setup Treatment Cycling
+
+Each **setup treatment** represents a distinct infrastructure configuration. The experiment command cycles through setup treatments sequentially, performing the full standup/run/teardown lifecycle for each:
+
+```
+For each setup treatment:
+    1. standup   -- Deploy the stack with this treatment's infrastructure parameters
+    2. run       -- Execute ALL run treatments against this stack
+    3. teardown  -- Tear down the stack before moving to the next setup treatment
+```
+
+For example, if you have 3 setup treatments (different replica counts) and 5 run treatments (different concurrency levels), the experiment executes:
+
+```
+Setup treatment 1 (replicas=2):
+    standup → run treatment 1..5 → teardown
+Setup treatment 2 (replicas=4):
+    standup → run treatment 1..5 → teardown
+Setup treatment 3 (replicas=8):
+    standup → run treatment 1..5 → teardown
+```
+
+This produces 15 result sets total (3 setup x 5 run treatments).
+
+### Run Treatments Within Each Cycle
+
+Within a single setup treatment, run treatments are executed sequentially against the same deployed stack. Each run treatment applies its factor values as workload profile overrides (e.g., `max-concurrency=64, num-prompts=640`). The harness pod is deployed, executes the workload, collects results, and is cleaned up before the next run treatment begins.
+
+### Step Ordering
+
+During each lifecycle phase, steps execute in three partitions:
+
+1. **Pre-global steps** -- Global steps that run before any per-stack work (e.g., preflight checks, cleanup of previous runs)
+2. **Per-stack steps** -- Steps that operate on each stack individually (e.g., endpoint detection, profile rendering, harness deployment, result collection)
+3. **Post-global steps** -- Global steps that run after all per-stack work completes (e.g., result upload, post-run cleanup, local analysis)
+
+For the run phase specifically, steps 00-01 are pre-global, steps 02-08 are per-stack, and steps 09-11 are post-global. This ensures that operations like result upload and analysis happen only after all per-stack collection is complete.
+
+## Parallelism Levels
+
+The benchmark supports parallelism at three levels:
+
+| Level | Flag | Description |
+|-------|------|-------------|
+| **Pod parallelism** | `-j/--parallelism` | Number of identical harness pods running the same workload profile concurrently. Useful for increasing aggregate load or reducing statistical variance. Each pod writes results to its own subdirectory (`<experiment_id>_1`, `<experiment_id>_2`, etc.). |
+| **Treatment parallelism** | (sequential) | Run treatments within a setup cycle execute sequentially. Each treatment waits for the previous to complete before starting. |
+| **Setup parallelism** | `--parallel N` | Maximum number of stacks to deploy in parallel during standalone `standup` (not used during `experiment`, which processes setup treatments sequentially to avoid resource contention). |
+
+Pod parallelism is the most commonly used level. With `-j 4`, four harness pods are created simultaneously, each executing the same workload profile. Results from all pods are collected and can be analyzed together for statistical significance.

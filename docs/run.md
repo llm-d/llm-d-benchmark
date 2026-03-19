@@ -173,6 +173,87 @@ dependencies, export additional environment variables and pre-serialize models w
 
 The preprocess scripts will run in the vLLM standalone pod before the vLLM server starts.
 
+## Local Analysis (`--analyze`)
+
+The `--analyze` flag on `llmdbenchmark run` enables local analysis of collected results after the benchmark completes. When enabled, step 11 (`analyze_results`) runs the following analysis pipeline on the experimenter's workstation:
+
+1. **Harness-native analysis** -- For `inference-perf`, invokes `inference-perf --analyze` on the collected results directory.
+2. **Per-request distribution plots** -- Generates histograms and CDFs from `per_request_lifecycle_metrics.json` (see [Analysis](analysis.md#per-request-distribution-plots)).
+3. **Cross-treatment comparison** -- If multiple treatments were executed, produces a CSV summary table and comparison charts (see [Analysis](analysis.md#cross-treatment-comparison)).
+4. **Prometheus metric visualization** -- Generates time series plots from collected Prometheus scrapes (see [Analysis](analysis.md#prometheus-metric-visualization)).
+
+```bash
+# Run benchmark with local analysis
+llmdbenchmark --spec gpu run -l inference-perf -w sanity_random.yaml --analyze
+
+# Equivalent via environment variable
+export LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY=1
+llmdbenchmark --spec gpu run -l inference-perf -w sanity_random.yaml
+```
+
+Without `--analyze`, analysis is still performed **inside the harness container** (by the harness entrypoint script). The `--analyze` flag adds a second pass on the local machine after results have been collected, which is useful for generating plots that require matplotlib (not always available in the container image).
+
+### `run --experiments` vs `experiment`
+
+Both commands support parameter sweeps, but they differ in scope:
+
+| | `run --experiments` | `experiment` |
+|---|---|---|
+| **Scope** | Varies **workload** parameters only (`run` treatments) | Varies **both** infrastructure (`setup` treatments) and workload (`run` treatments) |
+| **Stack lifecycle** | Runs against a single, already-deployed stack | Stands up, benchmarks, and tears down a fresh stack per setup treatment |
+| **Use case** | Sweep concurrency, prompt length, etc. against a fixed deployment | Compare replica counts, scheduler plugins, cache configs across deployments |
+| **Command** | `llmdbenchmark run -e <experiment.yaml>` | `llmdbenchmark experiment -e <experiment.yaml>` |
+
+## Run Summary Banner
+
+After each run completes, a summary banner is printed to the CLI showing key run parameters and results:
+
+```
+============================================================
+BENCHMARK RUN SUMMARY
+============================================================
+  Harness:       inference-perf
+  Workload:      sanity_random.yaml
+  Model:         meta-llama/Llama-3.1-8B
+  Namespace:     llmdbench
+  Mode:          full
+  Parallelism:   1
+  Treatments:    2
+    - experiment_001
+      [1/1] experiment_001_1 (12 files)
+    - experiment_002
+      [1/1] experiment_002_1 (12 files)
+  Local results: /path/to/workspace/results
+  PVC results:   oc exec -n llmdbench <pod> -- ls /requests/
+============================================================
+Run complete (mode=full, harness=inference-perf).
+```
+
+The banner provides at a glance: harness, workload, model, namespace, execution mode, parallelism level, per-treatment result file counts, and commands to access results both locally and on the PVC.
+
+## Run Parameters ConfigMap
+
+After each run, a ConfigMap named `llm-d-benchmark-run-parameters` is created (or updated) in the harness namespace. This provides an auditable record of every benchmark run executed against the namespace.
+
+Each run appends a timestamped key (`run-<timestamp>`) to the ConfigMap data, plus a `latest` key that always points to the most recent run. The stored data includes:
+
+- User and hostname of the experimenter
+- Harness, workload, and model
+- Namespace and endpoint URL
+- Experiment IDs and PVC result paths
+- Parallelism level and output destination
+
+```bash
+# View all run parameters stored in the namespace
+kubectl get configmap llm-d-benchmark-run-parameters -n <namespace> -o yaml
+
+# View just the latest run
+kubectl get configmap llm-d-benchmark-run-parameters -n <namespace> \
+  -o jsonpath='{.data.latest}'
+```
+
+This ConfigMap is not deleted during teardown, so it persists as a historical record across multiple standup/teardown cycles.
+
 An additional container can be added to `standalone` mode that starts the inference launcher from https://github.com/llm-d-incubation/llm-d-fast-model-actuation/blob/main/inference_server/launcher/launcher.py
 
 This launcher is contained in an image that also contains vLLM.

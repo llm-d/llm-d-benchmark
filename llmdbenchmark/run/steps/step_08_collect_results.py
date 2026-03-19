@@ -19,8 +19,12 @@ class CollectResultsStep(Step):
             per_stack=True,
         )
 
-    # NOTE: This step does NOT override should_skip — it always runs.
-    # Collecting results is the purpose of --skip mode.
+    def should_skip(self, context: ExecutionContext) -> bool:
+        """Skip if step 06 already collected results locally."""
+        results_dir = context.run_results_dir()
+        if results_dir.exists() and any(results_dir.iterdir()):
+            return True
+        return False
 
     def execute(  # pylint: disable=too-many-locals,too-many-branches
         self, context: ExecutionContext, stack_path: Path | None = None
