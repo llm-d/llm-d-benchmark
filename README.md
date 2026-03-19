@@ -491,16 +491,26 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 - [Metrics Collection](docs/metrics_collection.md)
 - [Benchmark Report](docs/benchmark_report.md)
 - [Design of Experiments (DoE)](docs/doe.md)
+- [Lifecycle](docs/lifecycle.md)
+- [Run](docs/run.md)
+- [Standup](docs/standup.md)
 - [Reproducibility](docs/reproducibility.md)
 - [Observability](docs/observability.md)
 - [Quickstart](docs/quickstart.md)
 - [Resource Requirements](docs/resource_requirements.md)
+- [WVA (Workload Variant Autoscaler)](docs/workload-variant-autoscaler.md)
+- [Upstream Versions](docs/upstream-versions.md)
 - [FAQ](docs/faq.md)
+
+## Developing
+
+- [Developer Guide](docs/developer-guide.md) -- How to add new steps, analysis modules, harnesses, scenarios, and experiments
+- [Package Architecture](llmdbenchmark/README.md) -- Overview of the `llmdbenchmark` package structure and submodules
 
 ## Contribute
 
 - [How to contribute](CONTRIBUTING.md), including development process and governance.
-- See [executor/README.md](llmdbenchmark/executor/README.md) for the step contribution guide (how to add new steps).
+- See [Developer Guide](docs/developer-guide.md) for how to add new steps, harnesses, scenarios, and analysis modules.
 - Join [Slack](https://llm-d.ai/slack) (`sig-benchmarking` channel) for cross-org development discussion.
 - Bi-weekly contributor standup: Tuesdays 13:00 EST. [Calendar](https://calendar.google.com/calendar/u/0?cid=NzA4ZWNlZDY0NDBjYjBkYzA3NjdlZTNhZTk2NWQ2ZTc1Y2U5NTZlMzA5MzhmYTAyZmQ3ZmU1MDJjMDBhNTRiNEBncm91cC5jYWxlbmRhci5nb29nbGUuY29t) | [Meeting notes](https://docs.google.com/document/d/1njjeyBJF6o69FlyadVbuXHxQRBGDLcIuT7JHJU3T_og/edit?usp=sharing) | [Google group](https://groups.google.com/g/llm-d-contributors)
 
