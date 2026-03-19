@@ -96,6 +96,10 @@ The scenario parameters can be roughly categorized in four groups:
 | ------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------- |
 | LLMDBENCH_VLLM_INFRA_CHART_NAME                   |                                                 |                                                 |
 | LLMDBENCH_VLLM_INFRA_CHART_VERSION                |                                                 |                                                 |
+| LLMDBENCH_VLLM_INFRA_GATEWAY_CPU_REQUEST          | Gateway CPU request                             | Default=`4`                                     |
+| LLMDBENCH_VLLM_INFRA_GATEWAY_CPU_LIMIT            | Gateway CPU limit                               | Default=`16`                                    |
+| LLMDBENCH_VLLM_INFRA_GATEWAY_MEMORY_REQUEST       | Gateway memory request                          | Default=`4Gi`                                   |
+| LLMDBENCH_VLLM_INFRA_GATEWAY_MEMORY_LIMIT         | Gateway memory limit                            | Default=`16Gi`                                  |
 | LLMDBENCH_VLLM_GAIE_CHART_NAME                    |                                                 |                                                 |
 | LLMDBENCH_VLLM_GAIE_CHART_VERSION                 |                                                 |                                                 |
 | LLMDBENCH_VLLM_MODELSERVICE_RELEASE               |                                                 |                                                 |
