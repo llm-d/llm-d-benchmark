@@ -187,7 +187,7 @@ def main():
     interval: "10s"
     # Prometheus ServiceMonitor will be created when enabled for EPP metrics collection
     prometheus:
-      enabled: true
+      enabled: {str(ev.get('vllm_modelservice_gaie_monitoring_prometheus_enabled', 'false')).lower()}
       auth:
         # To allow unauthenticated /metrics access (e.g., for debugging with curl), set to false
         enabled: true

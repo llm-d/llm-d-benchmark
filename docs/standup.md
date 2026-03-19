@@ -113,3 +113,4 @@ The scenario parameters can be roughly categorized in four groups:
 | LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL       |                                                 |                                                 |
 | LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL        |                                                 |                                                 |
 | LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE |                                                 |                                                 |
+| LLMDBENCH_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED | Enable Prometheus ServiceMonitor for GAIE EPP component metrics                                                 | `true` (default) or `false` false                                            |
