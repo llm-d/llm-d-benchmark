@@ -263,7 +263,7 @@ class DeployModelserviceStep(Step):
                 "expose",
                 f"service/{route_service}",
                 f"--name={route_name}",
-                "--target-port=80",
+                "--port=80",
                 "-n",
                 namespace,
             )

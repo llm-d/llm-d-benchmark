@@ -1,0 +1,9 @@
+target: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+model: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+data_request_formatter: text_completions
+profile: concurrent
+rate: [1, 5, 25, 50, 100, 150, 200]
+max_seconds: 300
+data:
+  prompt_tokens: 256
+  output_tokens: 256

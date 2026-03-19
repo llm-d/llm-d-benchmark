@@ -351,9 +351,15 @@ decode:
   subGroupExclusiveTopology: {{ decode.subGroupExclusiveTopology | lower }}
 {% endif %}
 
-{# Init containers #}
+{# Init containers — default image to images.benchmark if not specified or set to "auto" #}
 {% if decode.initContainers is defined and decode.initContainers %}
   initContainers:
+{% for ic in decode.initContainers %}
+{% set ic_image = ic.image | default('') %}
+{% if not ic_image or ic_image.endswith(':auto') %}
+{% set _ = ic.update({'image': images.benchmark.repository ~ ':' ~ images.benchmark.tag}) %}
+{% endif %}
+{% endfor %}
 {{ decode.initContainers | toyaml | indent(2, true) }}
 {% endif %}
 
@@ -785,9 +791,15 @@ prefill:
   subGroupExclusiveTopology: {{ prefill.subGroupExclusiveTopology | lower }}
 {% endif %}
 
-{# Init containers #}
+{# Init containers — default image to images.benchmark if not specified or set to "auto" #}
 {% if prefill.initContainers is defined and prefill.initContainers %}
   initContainers:
+{% for ic in prefill.initContainers %}
+{% set ic_image = ic.image | default('') %}
+{% if not ic_image or ic_image.endswith(':auto') %}
+{% set _ = ic.update({'image': images.benchmark.repository ~ ':' ~ images.benchmark.tag}) %}
+{% endif %}
+{% endfor %}
 {{ prefill.initContainers | toyaml | indent(2, true) }}
 {% endif %}
 

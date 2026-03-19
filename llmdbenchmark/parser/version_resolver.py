@@ -150,6 +150,42 @@ class VersionResolver:
                 check=False,
             )
 
+    def _resolve_image_string(self, image: str) -> str:
+        """Resolve an image string like ``registry/repo:auto`` to ``registry/repo:latest_tag``."""
+        if not image.endswith(":auto"):
+            return image
+        repo = image.rsplit(":auto", 1)[0]
+        tag = self.resolve_image_tag("", repo)
+        return f"{repo}:{tag}"
+
+    def _resolve_init_container_images(self, values: dict, unresolved: list) -> None:
+        """Resolve ``:auto`` tags in initContainers across decode, prefill, and standalone."""
+        sections = []
+        for role in ("decode", "prefill"):
+            role_cfg = values.get(role, {})
+            if isinstance(role_cfg, dict) and "initContainers" in role_cfg:
+                sections.append((f"{role}.initContainers", role_cfg["initContainers"]))
+        standalone = values.get("standalone", {})
+        if isinstance(standalone, dict) and "initContainers" in standalone:
+            sections.append(("standalone.initContainers", standalone["initContainers"]))
+
+        for section_name, containers in sections:
+            if not isinstance(containers, list):
+                continue
+            for i, container in enumerate(containers):
+                if not isinstance(container, dict):
+                    continue
+                image = container.get("image", "")
+                if isinstance(image, str) and image.endswith(":auto"):
+                    try:
+                        container["image"] = self._resolve_image_string(image)
+                    except RuntimeError as exc:
+                        self.logger.log_warning(
+                            f"⚠️  Could not resolve init container image "
+                            f"{section_name}[{i}]: {exc}"
+                        )
+                        unresolved.append(f"{section_name}[{i}].image")
+
     def resolve_all(self, values: dict) -> dict:
         """Resolve all ``"auto"`` image tags and chart versions in the values dict."""
         result = deepcopy(values)
@@ -158,6 +194,7 @@ class VersionResolver:
         self._resolve_image_tags(result, unresolved)
         self._resolve_standalone_image(result, unresolved)
         self._resolve_wva_image(result, unresolved)
+        self._resolve_init_container_images(result, unresolved)
         self._resolve_chart_versions(result, unresolved)
         self._resolve_gateway_version(result)
 
@@ -260,4 +297,11 @@ class VersionResolver:
         wva = values.get("wva", {}).get("image", {})
         if isinstance(wva, dict) and wva.get("tag") == "auto":
             unresolved.append("wva.image.tag")
+        # Check init container images
+        for role in ("decode", "prefill", "standalone"):
+            role_cfg = values.get(role, {})
+            if isinstance(role_cfg, dict):
+                for i, c in enumerate(role_cfg.get("initContainers", []) or []):
+                    if isinstance(c, dict) and str(c.get("image", "")).endswith(":auto"):
+                        unresolved.append(f"{role}.initContainers[{i}].image")
         return unresolved

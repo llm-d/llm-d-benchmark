@@ -275,15 +275,20 @@ scenario:
       
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
       volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
         - name: dshm
           type: emptyDir
           emptyDir:
             medium: Memory
             # Corresponds to: LLMDBENCH_VLLM_COMMON_SHM_MEM
             sizeLimit: 16Gi
-      
+
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
       volumeMounts:
+        - name: shared-config
+          mountPath: /shared-config
         - name: dshm
           mountPath: /dev/shm
     

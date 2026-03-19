@@ -1,0 +1,60 @@
+# Typos configuration for llm-d-benchmark
+# https://github.com/crate-ci/typos
+
+[files]
+extend-exclude = [
+    # Jupyter notebook outputs contain generated content
+    "**/*.ipynb",
+]
+
+[default.extend-words]
+# sed regex pattern (not a typo)
+ba = "ba"
+# Shell variable / abbreviation
+nam = "nam"
+# Parameter abbreviation used in code
+parm = "parm"
+
+# Pre-existing typos in codebase (to be fixed separately)
+analagous = "analagous"
+analisys = "analisys"
+benchamrk = "benchamrk"
+benchark = "benchark"
+byt = "byt"
+clinet = "clinet"
+configiration = "configiration"
+correspon = "correspon"
+correspondance = "correspondance"
+Descriptin = "Descriptin"
+dictionray = "dictionray"
+Direcotry = "Direcotry"
+diretory = "diretory"
+expceted = "expceted"
+explaning = "explaning"
+failng = "failng"
+implementaton = "implementaton"
+intial = "intial"
+lenght = "lenght"
+occured = "occured"
+occurence = "occurence"
+octect = "octect"
+ommited = "ommited"
+onlye = "onlye"
+optios = "optios"
+ouput = "ouput"
+overriden = "overriden"
+ovewritten = "ovewritten"
+paraemeter = "paraemeter"
+paramaters = "paramaters"
+performnace = "performnace"
+Pleae = "Pleae"
+plugable = "plugable"
+priviledged = "priviledged"
+seperate = "seperate"
+seperating = "seperating"
+shoudn = "shoudn"
+Specifiy = "Specifiy"
+ths = "ths"
+Unsupport = "Unsupport"
+varaibles = "varaibles"
+wating = "wating"

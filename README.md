@@ -427,11 +427,23 @@ See module-level READMEs for detailed documentation:
 - [logging/README.md](llmdbenchmark/logging/README.md) -- Logger, stream separation, file logging
 - [utilities/README.md](llmdbenchmark/utilities/README.md) -- Shared utilities, workspace architecture
 
+## Well-Lit Path Guides
+
+`llm-d-benchmark` supports all available [Well-Lit Path Guides](https://github.com/llm-d/llm-d/blob/main/guides/README.md). Each guide has a corresponding specification:
+
+```bash
+llmdbenchmark --spec inference-scheduling standup       # Inference scheduling
+llmdbenchmark --spec pd-disaggregation standup          # Prefill-decode disaggregation
+llmdbenchmark --spec tiered-prefix-cache standup        # Tiered prefix cache
+llmdbenchmark --spec precise-prefix-cache-aware standup # Precise prefix cache-aware routing
+llmdbenchmark --spec wide-ep-lws standup                # Wide expert-parallel with LWS
+```
+
 ## Main Concepts
 
 ### [Scenarios](docs/standup.md#scenarios)
 
-Cluster-specific configuration: GPU model, LLM, and `llm-d` parameters.
+Cluster-specific configuration: GPU model, LLM, and `llm-d` parameters. Scenarios are YAML files under `config/scenarios/` that override `defaults.yaml` for a particular deployment context.
 
 ### [Harnesses](docs/run.md#harnesses)
 
@@ -441,15 +453,37 @@ Load generators that drive benchmark traffic. Supported: [inference-perf](https:
 
 Benchmark load specifications including LLM use case, traffic pattern, input/output distribution, and dataset. Found under [`workload/profiles`](./workload/profiles).
 
+> **Reproducibility:** The triplet `<scenario>`, `<harness>`, `<(workload) profile>`, combined with the standup/teardown capabilities, provides enough information to reproduce any single experiment.
+
 ### [Experiments](docs/doe.md)
 
-Design of Experiments (DOE) files describing parameter sweeps across standup and run configurations.
+Design of Experiments (DOE) files describing parameter sweeps across standup and run configurations. The `experiment` command automates the full setup x run treatment matrix -- standing up a different infrastructure configuration for each setup treatment, running all workload variations, tearing down, and producing a summary. See [llmdbenchmark/experiment/README.md](llmdbenchmark/experiment/README.md) for the full experiment lifecycle documentation.
+
+### [Configuration Explorer](config_explorer/README.md)
+
+The configuration explorer is a library that helps find the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements. A "Capacity Planner" is provided as an initial component to help determine if a vLLM configuration is feasible for deployment.
+
+### [Benchmark Report](llmdbenchmark/analysis/benchmark_report/README.md)
+
+Results are saved in the native format of each harness, as well as a universal Benchmark Report format (v0.1 and v0.2). The benchmark report is a standard data format describing the cluster configuration, workload, and results of a benchmark run. It acts as a common API for comparing results across different harnesses and configurations. See [llmdbenchmark/analysis/benchmark_report/README.md](llmdbenchmark/analysis/benchmark_report/README.md) for the full schema documentation and Python API.
+
+### [Analysis](docs/analysis/README.md)
+
+Data analysis can be performed using the Jupyter notebook `analysis.ipynb`, which imports benchmark report files and populates a Pandas DataFrame for plotting and custom analysis.
 
 ## Dependencies
 
 - [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git)
 - [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git)
 - [inference-perf](https://github.com/kubernetes-sigs/inference-perf)
+- [guidellm](https://github.com/vllm-project/guidellm.git)
+- [vllm](https://github.com/vllm-project/vllm.git)
+- [inferencemax](https://github.com/InferenceMAX/InferenceMAX.git)
+
+## News
+
+- `llm-d-benchmark` supports all available [Well-Lit Path Guides](https://github.com/llm-d/llm-d/blob/main/guides/README.md)
+- Data from benchmarking experiments is made available on the [main project's Google Drive](https://drive.google.com/drive/folders/1sqnibn_mFlciV3-qZIFgZYmk-p9zemzH)
 
 ## Topics
 

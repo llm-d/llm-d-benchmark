@@ -5,10 +5,33 @@ mkdir -p "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 pushd "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" > /dev/null  2>&1
 yq '.storage["local_storage"]["path"] = '\"${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}\" <"${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/inference-perf/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}" -y >${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME}
 export LLMDBENCH_HARNESS_ARGS="--config_file $(realpath ./${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME})"
+
+# Start metrics collection in background if enabled
+if [[ "${LLMDBENCH_COLLECT_METRICS:-1}" == "1" ]]; then
+  echo "Starting metrics collection..."
+  /usr/local/bin/collect_metrics.sh start >> $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics_collection.log 2>&1 &
+  METRICS_COLLECTOR_PID=$!
+  echo "Metrics collector started with PID: $METRICS_COLLECTOR_PID"
+  echo "Metrics collection logs: $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics_collection.log"
+fi
+
 start=$(date +%s.%N)
 inference-perf $LLMDBENCH_HARNESS_ARGS > >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log) 2> >(tee -a $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log >&2)
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
 stop=$(date +%s.%N)
+
+# Stop metrics collection
+if [[ "${LLMDBENCH_COLLECT_METRICS:-1}" == "1" ]] && [[ -n "${METRICS_COLLECTOR_PID:-}" ]]; then
+  echo "Stopping metrics collection..."
+  /usr/local/bin/collect_metrics.sh stop >> $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics_collection.log 2>&1
+  wait $METRICS_COLLECTOR_PID 2>/dev/null || true
+  
+  # Process collected metrics
+  echo "Processing collected metrics..."
+  /usr/local/bin/collect_metrics.sh process >> $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics_collection.log 2>&1
+  
+  echo "Metrics collection complete. Check metrics_collection.log for details."
+fi
 
 export LLMDBENCH_HARNESS_START=$(date -d "@${start}" --iso-8601=seconds)
 export LLMDBENCH_HARNESS_STOP=$(date -d "@${stop}" --iso-8601=seconds)

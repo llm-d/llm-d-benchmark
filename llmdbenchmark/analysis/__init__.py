@@ -121,6 +121,11 @@ def run_analysis(
     if harness_name == "inference-perf":
         _run_inference_perf_analyze(results_dir, context)
 
+    # --- 4. Generate metric plots (if metrics were collected) ---
+    metrics_dir = results_dir / "metrics"
+    if metrics_dir.exists():
+        _run_metric_visualizations(metrics_dir, results_dir, context)
+
     if errors:
         return f"Conversion errors: {'; '.join(errors)}"
     return None
@@ -316,6 +321,44 @@ def _run_inference_perf_analyze(
         pass
     except subprocess.TimeoutExpired:
         _log(context, "inference-perf --analyze timed out (>300s)", warning=True)
+
+
+# ---------------------------------------------------------------------------
+# Metric visualization (Prometheus time series → PNG plots)
+# ---------------------------------------------------------------------------
+
+def _run_metric_visualizations(
+    metrics_dir: Path,
+    results_dir: Path,
+    context: ExecutionContext | None,
+) -> None:
+    """Generate PNG plots for collected Prometheus metrics.
+
+    Reads ``metrics/raw/*.txt`` files and writes PNG graphs to
+    ``analysis/graphs/``.  Requires ``matplotlib`` (optional dependency).
+    """
+    try:
+        from llmdbenchmark.analysis.visualize_metrics import (
+            generate_all_visualizations,
+        )
+    except ImportError:
+        _log(context, "matplotlib not available -- skipping metric plots")
+        return
+
+    analysis_dir = results_dir / "analysis"
+    graphs_dir = analysis_dir / "graphs"
+    graphs_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        count = generate_all_visualizations(
+            str(metrics_dir),
+            output_dir=str(graphs_dir),
+            context=context,
+        )
+        if count:
+            _log(context, f"Generated {count} metric plot(s)")
+    except Exception as exc:
+        _log(context, f"Metric visualization failed: {exc}", warning=True)
 
 
 # ---------------------------------------------------------------------------

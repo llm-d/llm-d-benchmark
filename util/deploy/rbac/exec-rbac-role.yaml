@@ -1,0 +1,9 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: exec-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    resourceNames: ["placeholder-0-0"]
+    verbs: ["create"]

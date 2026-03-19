@@ -368,6 +368,21 @@ Init containers run before the main vLLM container to perform environment setup 
 
 The `shared-config` emptyDir volume and volumeMount are already configured in `defaults.yaml` under `vllmCommon.volumes` and `vllmCommon.volumeMounts`.
 
+#### Image resolution
+
+Init container images follow the same `auto` resolution as all other images in the benchmark. The resolution works through two layers:
+
+1. **`images.benchmark` entry** (in `defaults.yaml`): Defines the benchmark image with `tag: auto`. During rendering, the `VersionResolver` resolves this tag to the latest available tag via `skopeo list-tags` (or `podman` as fallback).
+
+2. **Template defaulting** (in `13_ms-values.yaml.j2`): When rendering init containers, if an init container's `image` field is missing or ends with `:auto`, the template automatically replaces it with the resolved `images.benchmark.repository:images.benchmark.tag`.
+
+This means:
+- You can set `image: ghcr.io/llm-d/llm-d-benchmark:auto` — the `:auto` suffix is resolved at render time
+- You can omit the `image` field entirely — it defaults to the benchmark image
+- You can set a specific image (e.g., `image: my-registry/my-init:v1.0`) — it is used as-is
+
+The resolved image tag is visible in the rendered `ms-values.yaml` in the workspace directory.
+
 #### Scenario configuration
 
 Init containers are configured per scenario (the default in `defaults.yaml` is `initContainers: []`). Each guide scenario explicitly defines the preprocess init container:
@@ -376,7 +391,7 @@ Init containers are configured per scenario (the default in `defaults.yaml` is `
 decode:
   initContainers:
     - name: preprocess
-      image: ghcr.io/llm-d/llm-d-benchmark:auto
+      image: ghcr.io/llm-d/llm-d-benchmark:auto  # resolved to latest tag at render time
       imagePullPolicy: Always
       command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
       securityContext:
@@ -403,7 +418,7 @@ To use a different preprocessing script, change the `command` and/or `image`:
 decode:
   initContainers:
     - name: preprocess
-      image: my-registry/my-init:v1.0
+      image: my-registry/my-init:v1.0  # custom image — used as-is, no auto-resolution
       command: ["my-setup-script.sh", "-o", "/shared-config/llmdbench_env.sh"]
       volumeMounts:
         - name: shared-config

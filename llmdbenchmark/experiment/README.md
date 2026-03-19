@@ -157,23 +157,15 @@ llmdbenchmark --spec tiered-prefix-cache experiment \
   --experiments workload/experiments/tiered-prefix-cache.yaml
 ```
 
-The `experiment` command:
-
-1. Parses the experiment YAML
-2. For each setup treatment:
-   a. Deep-merges treatment overrides into the plan configuration
-   b. Runs standup (deploys infrastructure with treatment config)
-   c. Runs all run treatments against the stood-up stack
-   d. Runs teardown
-   e. Records success or failure
-3. Prints a summary table and writes `experiment-summary.yaml`
-
-### Run-only sweeps
+### Run-only sweeps (no infrastructure changes)
 
 ```bash
+# Sweep workload parameters against an already-deployed stack
 llmdbenchmark --spec gpu run \
   --experiments workload/experiments/inference-scheduling.yaml
 ```
+
+When there is no `setup:` section in the experiment YAML (or when using `run --experiments` instead of `experiment`), the tool only varies workload parameters. No standup or teardown happens — the run treatments execute against whatever endpoint is already available.
 
 ### Experiment command flags
 
@@ -182,6 +174,88 @@ llmdbenchmark --spec gpu run \
 | `--experiments` / `-e` | Experiment YAML file (required) |
 | `--stop-on-error` | Abort on first setup treatment failure |
 | `--skip-teardown` | Leave stacks running after each treatment (for debugging) |
+
+## Execution Flow
+
+The `experiment` command orchestrates a **sequential** pipeline. Only one infrastructure configuration is alive at any time.
+
+### Step-by-step for `experiment`
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  llmdbenchmark --spec <spec> experiment -e <experiment.yaml>│
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+               Parse experiment YAML
+               (setup treatments + run treatments)
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+   Setup Treatment 1  Setup Treatment 2  ...  (sequential)
+         │
+         ├─ 1. Render plans (deep-merge setup overrides into config)
+         ├─ 2. Standup (deploy infrastructure with overridden config)
+         ├─ 3. Run ALL run treatments against this stack:
+         │      ├─ Run treatment A (render profile, deploy harness, collect)
+         │      ├─ Run treatment B
+         │      └─ Run treatment C
+         ├─ 4. Teardown (destroy the stack)
+         └─ 5. Record result (success/failure + duration)
+                         │
+                         ▼
+              Next setup treatment (repeat 1-5)
+                         │
+                         ▼
+              Write experiment-summary.yaml
+              Print summary table
+```
+
+### What each phase does internally
+
+**Render** (`_render_plans_for_experiment`): Takes the setup treatment's overrides (e.g., `{"decode": {"replicas": 4}}`), deep-merges them on top of `defaults.yaml + scenario`, then renders all Jinja2 templates. The result is a complete set of Kubernetes manifests customised for this treatment.
+
+**Standup** (`_do_standup`): Runs the full standup step pipeline (steps 00-10) using the rendered manifests. This deploys the llm-d stack, GAIE, model service, and runs the smoketest.
+
+**Run** (`_do_run`): Runs the full run step pipeline (steps 00-11). The experiment YAML file is passed through as `experiment_file_override`, so step 04 reads the `treatments:` key and renders one workload profile per run treatment. Step 06 then deploys harness pods for each run treatment **sequentially** — deploy, wait, collect results, clean up, then move to the next run treatment.
+
+**Teardown** (`_do_teardown`): Runs the full teardown step pipeline (steps 00-04). Uninstalls Helm releases, deletes resources, and cleans up the namespace. This ensures a clean slate for the next setup treatment.
+
+### Endpoint discovery
+
+The endpoint is **auto-discovered** after standup. Run step 02 (`DetectEndpointStep`) finds the gateway or standalone service IP in the namespace. There is no way to pass a per-treatment `--endpoint-url` — the experiment always deploys and discovers.
+
+### Error handling
+
+By default, a failed setup treatment is recorded and the experiment **continues** to the next setup treatment. Use `--stop-on-error` to abort the entire experiment on the first failure.
+
+If standup fails, a cleanup teardown is still attempted (unless `--skip-teardown` is set) to avoid leaking cluster resources.
+
+### Workspace structure
+
+Each setup treatment gets its own subdirectory:
+
+```text
+workspace/
+    setup-treatment-2-replicas/
+        plan/                    # Rendered manifests for this treatment
+        run/                     # Benchmark results
+    setup-treatment-4-replicas/
+        plan/
+        run/
+    experiment-summary.yaml      # Aggregate results
+```
+
+### Comparison: `experiment` vs `run --experiments`
+
+| | `experiment` | `run --experiments` |
+|---|---|---|
+| **Command** | `llmdbenchmark experiment -e file.yaml` | `llmdbenchmark run -e file.yaml` |
+| **Reads `setup:` section** | Yes — one standup/teardown per setup treatment | No — ignored entirely |
+| **Reads `treatments:` section** | Yes — workload variations per stack | Yes — workload variations |
+| **Deploys infrastructure** | Yes — per setup treatment | No — uses existing endpoint |
+| **Tears down** | Yes — after each setup treatment | No |
+| **Use case** | Full factorial sweep across infrastructure + workload | Sweep workload parameters against a fixed stack |
 
 ## Summary Output
 
