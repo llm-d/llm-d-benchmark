@@ -13,7 +13,7 @@ sys.path.insert(0, str(project_root))
 # Import from functions.py
 from functions import environment_variable_to_dict, announce, llmdbench_execute_cmd, model_attribute, auto_detect_version
 
-def gateway_values(provider : str, host: str, service: str) -> str:
+def gateway_values(provider: str, host: str, service: str, ev: dict) -> str:
     if provider == "istio":
         return f"""gateway:
   gatewayClassName: istio
@@ -23,11 +23,11 @@ def gateway_values(provider : str, host: str, service: str) -> str:
     logLevel: error
     resources:
       limits:
-        cpu: "16"
-        memory: 16Gi
+        cpu: "{ev['vllm_infra_gateway_cpu_limit']}"
+        memory: {ev['vllm_infra_gateway_memory_limit']}
       requests:
-        cpu: "4"
-        memory: 4Gi
+        cpu: "{ev['vllm_infra_gateway_cpu_request']}"
+        memory: {ev['vllm_infra_gateway_memory_request']}
   service:
     type: {service}
 """
@@ -178,7 +178,14 @@ def main():
                 gw_class = ev['vllm_modelservice_gateway_class_name']
                 if gw_class == 'kgateway' and ev['control_deploy_is_openshift']:
                     gw_class = f"{gw_class}-openshift"
-                f.write(gateway_values(gw_class, f"{model_id_label}-gaie-epp.{ev['vllm_common_namespace']}{ev['vllm_common_fqdn']}", ev["vllm_modelservice_gateway_service_type"]))
+                f.write(
+                    gateway_values(
+                        gw_class,
+                        f"{model_id_label}-gaie-epp.{ev['vllm_common_namespace']}{ev['vllm_common_fqdn']}",
+                        ev["vllm_modelservice_gateway_service_type"],
+                        ev,
+                    )
+                )
 
             ev["deploy_current_model_id_label"] = model_id_label
 
