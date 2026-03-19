@@ -44,6 +44,8 @@ def generate_per_request_plots(
 
     pr_file = results_dir / "per_request_lifecycle_metrics.json"
     if not pr_file.exists():
+        pr_file = results_dir / "analysis" / "per_request_lifecycle_metrics.json"
+    if not pr_file.exists():
         return 0
 
     try:

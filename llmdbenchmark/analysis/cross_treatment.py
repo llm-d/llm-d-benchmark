@@ -56,6 +56,38 @@ def _deep_get(d: dict, dotted_key: str, default=None):
     return d
 
 
+def _shorten_treatment_label(name: str) -> str:
+    """Extract a readable treatment label from a results directory name.
+
+    Strips the harness prefix, experiment ID, and parallelism suffix to
+    extract just the treatment-specific part.
+
+    Examples:
+        inference-perf-grp40-splen8k-1773947901-i5e39v_1 -> grp40-splen8k
+        inference-perf-conc32-1773947901-abc123_1        -> conc32
+        inference-perf-1773947901-xyz789_1               -> default
+        qlen100-olen300                                  -> qlen100-olen300
+    """
+    import re
+
+    # Strip trailing _N (parallelism index)
+    name = re.sub(r"_\d+$", "", name)
+
+    # Strip trailing random ID (e.g., -i5e39v or -abc123)
+    name = re.sub(r"-[a-z0-9]{6,8}$", "", name)
+
+    # Strip trailing timestamp/experiment ID (e.g., -1773947901)
+    name = re.sub(r"-\d{10,}$", "", name)
+
+    # Strip harness prefix (e.g., inference-perf-)
+    for prefix in ("inference-perf-", "guidellm-", "vllm-benchmark-", "inferencemax-", "nop-"):
+        if name.startswith(prefix):
+            name = name[len(prefix):]
+            break
+
+    return name if name else "default"
+
+
 def generate_cross_treatment_summary(
     results_dir: Path,
     output_dir: Path | None = None,
@@ -148,11 +180,16 @@ def _generate_comparison_plots(
     output_dir: Path,
     context: "ExecutionContext | None" = None,
 ) -> int:
-    """Generate bar charts comparing key metrics across treatments."""
+    """Generate bar charts comparing key metrics across treatments.
+
+    Aggregates multiple stages per treatment into mean with min/max
+    error bars, so each treatment gets one bar instead of one per stage.
+    """
     try:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+        import numpy as np
     except ImportError:
         _log(context, "matplotlib not available -- skipping comparison plots")
         return 0
@@ -171,45 +208,92 @@ def _generate_comparison_plots(
         ("request_qps", "Request Throughput", "queries/s", True),
         ("ttft_p99_s", "TTFT P99", "seconds", False),
         ("tpot_p99_s", "TPOT P99", "seconds", False),
+        ("failures", "Request Failures", "count", False),
     ]
 
-    labels = [r["treatment"] for r in rows]
+    # Aggregate rows by treatment (average across stages)
+    from collections import defaultdict
+    treatment_values: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        label = _shorten_treatment_label(r["treatment"])
+        treatment_values[label].append(r)
+
+    treatment_labels = sorted(treatment_values.keys())
+    if len(treatment_labels) < 2:
+        return 0
+
+    # Color palette
+    bar_colors = [
+        "#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12",
+        "#1abc9c", "#e67e22", "#34495e", "#16a085", "#c0392b",
+    ]
+
     generated = 0
 
     for col_name, title, unit, higher_is_better in plot_specs:
-        values = [r.get(col_name) for r in rows]
-        # Skip if all None
-        if all(v is None for v in values):
+        means = []
+        mins = []
+        maxs = []
+        has_data = False
+
+        for label in treatment_labels:
+            vals = [
+                float(r[col_name]) for r in treatment_values[label]
+                if r.get(col_name) is not None
+            ]
+            if vals:
+                has_data = True
+                m = sum(vals) / len(vals)
+                means.append(m)
+                mins.append(m - min(vals))
+                maxs.append(max(vals) - m)
+            else:
+                means.append(0.0)
+                mins.append(0.0)
+                maxs.append(0.0)
+
+        if not has_data:
             continue
 
-        values = [float(v) if v is not None else 0.0 for v in values]
+        fig, ax = plt.subplots(figsize=(max(8, len(treatment_labels) * 1.5), 5))
+        colors = [bar_colors[i % len(bar_colors)] for i in range(len(treatment_labels))]
 
-        fig, ax = plt.subplots(figsize=(max(8, len(labels) * 1.2), 5))
-        colors = ["#2ecc71" if higher_is_better else "#e74c3c"] * len(values)
+        # Highlight best treatment
+        non_zero_means = [m for m in means if m > 0]
+        if non_zero_means:
+            if higher_is_better:
+                best_idx = means.index(max(non_zero_means))
+            else:
+                best_idx = means.index(min(non_zero_means))
+            colors[best_idx] = "#2ecc71"  # green for best
 
-        # Highlight best
-        if higher_is_better:
-            best_idx = values.index(max(values))
-        else:
-            non_zero = [v for v in values if v > 0]
-            best_idx = values.index(min(non_zero)) if non_zero else 0
-        colors[best_idx] = "#3498db"
-
-        bars = ax.bar(range(len(labels)), values, color=colors, alpha=0.8)
+        x_pos = range(len(treatment_labels))
+        bars = ax.bar(
+            x_pos, means, color=colors, alpha=0.85,
+            yerr=[mins, maxs], capsize=4, error_kw={"linewidth": 1.5},
+        )
 
         # Add value labels on bars
-        for bar, val in zip(bars, values):
+        for bar, val in zip(bars, means):
+            text = f"{val:.4f}" if val < 10 else f"{val:.1f}"
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height(),
-                f"{val:.4f}" if val < 10 else f"{val:.1f}",
-                ha="center", va="bottom", fontsize=8,
+                bar.get_height() + max(maxs) * 0.02,
+                text, ha="center", va="bottom", fontsize=8, fontweight="bold",
             )
 
-        ax.set_xticks(range(len(labels)))
-        ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
+        # Add stage count annotation
+        for i, label in enumerate(treatment_labels):
+            n_stages = len(treatment_values[label])
+            ax.text(
+                i, 0, f"n={n_stages}",
+                ha="center", va="bottom", fontsize=7, color="gray",
+            )
+
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(treatment_labels, rotation=30, ha="right", fontsize=9)
         ax.set_ylabel(unit)
-        ax.set_title(title)
+        ax.set_title(f"{title}\n(mean across stages, error bars = min/max)")
         ax.grid(axis="y", alpha=0.3)
 
         plt.tight_layout()
@@ -271,41 +355,48 @@ def _generate_scatter_plots(
         ("request_qps", "tpot_p99_s", "TPOT P99 vs Request Rate", "Request Rate (QPS)", "TPOT P99 (s)"),
     ]
 
+    # Color palette
+    colors = [
+        "#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12",
+        "#1abc9c", "#e67e22", "#34495e", "#16a085", "#c0392b",
+    ]
+    markers = ["o", "s", "^", "D", "v", "P", "*", "X", "h", "p"]
+
     generated = 0
 
     for x_col, y_col, title, x_label, y_label in scatter_specs:
-        x_vals = [r.get(x_col) for r in sorted_rows]
-        y_vals = [r.get(y_col) for r in sorted_rows]
-        labels = [r["treatment"] for r in sorted_rows]
+        # Build per-treatment data points
+        treatment_points: dict[str, list[tuple[float, float]]] = {}
+        for r in sorted_rows:
+            x = r.get(x_col)
+            y = r.get(y_col)
+            if x is None or y is None:
+                continue
+            label = _shorten_treatment_label(r["treatment"])
+            if label not in treatment_points:
+                treatment_points[label] = []
+            treatment_points[label].append((float(x), float(y)))
 
-        # Skip if insufficient data
-        valid_pairs = [(x, y, l) for x, y, l in zip(x_vals, y_vals, labels)
-                       if x is not None and y is not None]
-        if len(valid_pairs) < 2:
+        if len(treatment_points) < 1:
             continue
-
-        xs, ys, lbls = zip(*valid_pairs)
-        xs = [float(x) for x in xs]
-        ys = [float(y) for y in ys]
+        # Need at least 2 total data points across all treatments
+        total_points = sum(len(pts) for pts in treatment_points.values())
+        if total_points < 2:
+            continue
 
         fig, ax = plt.subplots(figsize=(10, 6))
 
-        # Line + scatter
-        ax.plot(xs, ys, "o-", color="#3498db", markersize=8, linewidth=2, alpha=0.8)
-
-        # Label each point with treatment name
-        for x, y, lbl in zip(xs, ys, lbls):
-            # Shorten label for readability
-            short = lbl.split("_")[-1] if "_" in lbl else lbl[-12:]
-            ax.annotate(
-                short, (x, y),
-                textcoords="offset points", xytext=(5, 8),
-                fontsize=7, alpha=0.7,
-            )
+        for i, (label, points) in enumerate(sorted(treatment_points.items())):
+            xs, ys = zip(*points)
+            color = colors[i % len(colors)]
+            marker = markers[i % len(markers)]
+            ax.plot(xs, ys, f"{marker}-", color=color, markersize=8,
+                    linewidth=2, alpha=0.8, label=label)
 
         ax.set_xlabel(x_label)
         ax.set_ylabel(y_label)
         ax.set_title(title)
+        ax.legend(fontsize=8, loc="best")
         ax.grid(True, alpha=0.3)
 
         plt.tight_layout()
@@ -375,7 +466,11 @@ def _generate_overlaid_cdf_plots(
     for subdir in sorted(results_dir.iterdir()):
         if not subdir.is_dir():
             continue
+        # Check both root and analysis/ subdirectory (inference-perf --analyze
+        # moves the file into analysis/)
         pr_file = subdir / "per_request_lifecycle_metrics.json"
+        if not pr_file.exists():
+            pr_file = subdir / "analysis" / "per_request_lifecycle_metrics.json"
         if not pr_file.exists():
             continue
         try:
@@ -419,8 +514,7 @@ def _generate_overlaid_cdf_plots(
             n = len(values)
             cdf = [j / n for j in range(n)]
 
-            # Shorten label for legend
-            label = treatment.split("_")[-1] if "_" in treatment else treatment[-20:]
+            label = _shorten_treatment_label(treatment)
             color = colors[i % len(colors)]
 
             ax.plot(values, cdf, linewidth=2, label=f"{label} (n={n})",
