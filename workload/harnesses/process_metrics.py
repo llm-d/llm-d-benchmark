@@ -196,6 +196,29 @@ def parse_vllm_log(file_path):
     return timestamp, pod_name, namespace, dict(metrics)
 
 
+def percentile(sorted_values, p):
+    """Calculate the p-th percentile from a sorted list using linear interpolation.
+
+    Args:
+        sorted_values: Sorted list of numeric values
+        p: Percentile (0-100)
+
+    Returns:
+        Interpolated percentile value
+    """
+    n = len(sorted_values)
+    if n == 0:
+        return None
+    if n == 1:
+        return sorted_values[0]
+    k = (n - 1) * p / 100.0
+    f = int(k)
+    c = f + 1
+    if c >= n:
+        return sorted_values[f]
+    return sorted_values[f] + (k - f) * (sorted_values[c] - sorted_values[f])
+
+
 def aggregate_metrics():
     """Aggregate metrics from all collected files."""
     # Structure: {pod_name: {metric_name: [values]}}
@@ -262,10 +285,17 @@ def aggregate_metrics():
 
         for metric_name, values in metrics.items():
             if values:
+                sorted_vals = sorted(values)
                 results[pod_name]['metrics'][metric_name] = {
                     'mean': statistics.mean(values),
                     'stddev': statistics.stdev(values) if len(values) > 1 else 0,
                     'min': min(values),
+                    'p25': percentile(sorted_vals, 25),
+                    'p50': percentile(sorted_vals, 50),
+                    'p75': percentile(sorted_vals, 75),
+                    'p90': percentile(sorted_vals, 90),
+                    'p95': percentile(sorted_vals, 95),
+                    'p99': percentile(sorted_vals, 99),
                     'max': max(values),
                     'count': len(values),
                     'unit': get_metric_unit(metric_name)

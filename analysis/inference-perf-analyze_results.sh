@@ -36,4 +36,26 @@ tm=$(date)
 inference-perf --analyze "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 ec=$?
 find $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR -type f -newermt "${tm}" -exec mv -t "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"/analysis {} +
+
+# Integrate vLLM metrics into benchmark report(s) v0.2 and generate plots
+_metrics_dir="$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics"
+if [[ -f "$_metrics_dir/processed/metrics_summary.json" ]]; then
+  echo "Integrating metrics summary into benchmark report(s) v0.2..."
+  for _report in $(find "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" -maxdepth 1 -name 'benchmark_report_v0.2,_*.yaml'); do
+    python3 -c "
+import yaml, sys
+from benchmark_report.metrics_processor import add_metrics_to_benchmark_report
+report_file, metrics_dir = sys.argv[1], sys.argv[2]
+with open(report_file) as f:
+    br_dict = yaml.safe_load(f)
+br_dict = add_metrics_to_benchmark_report(br_dict, metrics_dir)
+with open(report_file, 'w') as f:
+    yaml.dump(br_dict, f, default_flow_style=False, allow_unicode=True)
+print('Metrics integrated into: ' + report_file)
+" "$_report" "$_metrics_dir" 2>&1 | tee -a "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log" || true
+  done
+  echo "Generating metric plots..."
+  python3 /usr/local/bin/visualize_metrics.py "$_metrics_dir" 2>&1 | tee -a "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log" || true
+fi
+
 exit $ec

@@ -35,10 +35,6 @@ RUN apt-get update; \
 RUN curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/$(dpkg --print-architecture)/kubectl" \
     -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
 
-# Install kubectl for in-pod cluster operations (e.g. vLLM metrics scraping)
-RUN curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
-    -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
-
 RUN echo "# /etc/rsyncd: configuration file for rsync daemon mode" > /etc/rsyncd.conf; echo -e "\
 \n\
 [global]\n\
@@ -122,6 +118,7 @@ COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
 COPY analysis/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
 COPY analysis/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
 COPY analysis/inferencemax-analyze_results.sh /usr/local/bin/inferencemax-analyze_results.sh
+COPY analysis/visualize_metrics.py /usr/local/bin/visualize_metrics.py
 COPY benchmark_report/ /opt/benchmark_report/
 RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
 
