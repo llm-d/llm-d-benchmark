@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 
-# Copyright 2025 The llm-d Authors.
-# Licensed under the Apache License, Version 2.0 (the "License");
-
 """
 EPP (Endpoint Picker Plugin) log parser and visualization for llm-d-benchmark.
 Parses structured JSON logs from EPP pods, extracts scheduling metrics,
