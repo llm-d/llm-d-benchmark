@@ -307,7 +307,8 @@ scenario:
     #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic.yaml
     #                 LLMDBENCH_CONTROL_WORK_DIR=~/data/precise_prefix_cache_aware
     # -------------------------------------------------------------------------
+    workDir: "~/data/precise_prefix_cache_aware"
+
     harness:
       name: inference-perf
       experimentProfile: shared_prefix_synthetic.yaml
-      workDir: "~/data/precise_prefix_cache_aware"

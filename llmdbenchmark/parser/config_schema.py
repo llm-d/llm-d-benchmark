@@ -384,8 +384,6 @@ class HarnessConfig(BaseModel):
     inferencePerf: InferencePerfConfig
     namespace: str | None = None
 
-    workDir: str | None = None
-
 
 # ---------------------------------------------------------------------------
 # Root model
@@ -409,6 +407,10 @@ class BenchmarkConfig(BaseModel):
     vllmCommon: VllmCommonConfig
     harness: HarnessConfig
     parallelism: ParallelismConfig | None = None
+
+    # Scenario-level workspace directory (equivalent to LLMDBENCH_CONTROL_WORK_DIR).
+    # Used as workspace fallback when --workspace is not specified on the CLI.
+    workDir: str | None = None
 
 
 # ---------------------------------------------------------------------------

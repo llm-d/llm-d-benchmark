@@ -526,7 +526,8 @@ scenario:
     #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=random_concurrent.yaml
     #                 LLMDBENCH_CONTROL_WORK_DIR=~/data/wide_ep_lws
     # -------------------------------------------------------------------------
+    workDir: "~/data/wide_ep_lws"
+
     harness:
       name: vllm-benchmark
       experimentProfile: random_concurrent.yaml
-      workDir: "~/data/wide_ep_lws"

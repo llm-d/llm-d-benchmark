@@ -381,7 +381,8 @@ scenario:
     #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=random_concurrent.yaml
     #                 LLMDBENCH_CONTROL_WORK_DIR=~/data/pd-disaggregation
     # -------------------------------------------------------------------------
+    workDir: "~/data/pd-disaggregation"
+
     harness:
       name: vllm-benchmark
       experimentProfile: random_concurrent.yaml
-      workDir: "~/data/pd-disaggregation"

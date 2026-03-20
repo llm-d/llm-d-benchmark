@@ -43,8 +43,9 @@ scenario:
       replicas: 1
       release: llmdbenchcicd
 
+    workDir: /tmp/cicd/
+
     # Workload
     harness:
       name: vllm-benchmark
       experimentProfile: sanity_random.yaml
-      workDir: /tmp/cicd/

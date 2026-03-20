@@ -1080,6 +1080,44 @@ def _all_flag_forms(flag: str) -> list[str]:
     return _ALIASES.get(flag, [flag])
 
 
+def _extract_workspace_from_scenario(
+    specification_file: Path,
+    base_dir: Path,
+) -> str | None:
+    """Quick-parse the scenario YAML to extract workDir if present.
+
+    This runs *before* the full rendering pipeline so we can use the
+    scenario-specified workspace (equivalent to LLMDBENCH_CONTROL_WORK_DIR)
+    as a fallback when --workspace is not given on the CLI.
+    """
+    import yaml as _yaml
+    from jinja2 import Environment as _Env
+
+    try:
+        env = _Env(autoescape=False, trim_blocks=True, lstrip_blocks=True)
+        rendered = env.from_string(specification_file.read_text()).render(
+            base_dir=str(base_dir)
+        )
+        spec = _yaml.safe_load(rendered)
+        scenario_path = spec.get("scenario_file", {}).get("path")
+        if not scenario_path:
+            return None
+
+        scenario_path = Path(scenario_path)
+        if not scenario_path.exists():
+            return None
+
+        with open(scenario_path, encoding="utf-8") as f:
+            scenario_data = _yaml.safe_load(f)
+
+        scenarios = scenario_data.get("scenario", [])
+        if scenarios and isinstance(scenarios, list):
+            return scenarios[0].get("workDir")
+    except Exception:  # noqa: BLE001 — best-effort; fall through to temp dir
+        pass
+    return None
+
+
 def cli() -> None:
     """Parse arguments, set up workspace and logging, and dispatch the subcommand."""
 
@@ -1181,27 +1219,6 @@ def cli() -> None:
     if hasattr(args, "debug") and not args.debug:
         args.debug = env_bool("LLMDBENCH_DEBUG")
 
-    # Each invocation gets its own timestamped sub-directory inside the workspace.
-    # When no workspace is specified, create a temp dir with a "workspace_" prefix
-    # so it's caught by the workspace*/ .gitignore pattern.
-    if args.workspace:
-        overall_workspace = Path(args.workspace)
-    else:
-        overall_workspace = Path(tempfile.mkdtemp(prefix="workspace_llmdbench_"))
-    overall_workspace = create_workspace(overall_workspace)
-    absolute_overall_workspace_path = get_absolute_path(overall_workspace)
-
-    current_workspace = create_sub_dir_workload(absolute_overall_workspace_path)
-    absolute_workspace_path = get_absolute_path(current_workspace)
-
-    absolute_workspace_log_dir = create_sub_dir_workload(
-        absolute_workspace_path, "logs"
-    )
-
-    absolute_workspace_plan_dir = create_sub_dir_workload(
-        absolute_workspace_path, "plan"
-    )
-
     # Convert relative/~ paths to absolute
     args.base_dir = get_absolute_path(args.base_dir)
 
@@ -1215,6 +1232,35 @@ def cli() -> None:
     except (FileNotFoundError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)
+
+    # Each invocation gets its own timestamped sub-directory inside the workspace.
+    # Priority: --workspace CLI / LLMDBENCH_WORKSPACE env > scenario workDir
+    #           > auto-generated temp dir.
+    # workDir is the YAML equivalent of LLMDBENCH_CONTROL_WORK_DIR from the
+    # old bash scenarios.
+    if args.workspace:
+        overall_workspace = Path(args.workspace)
+    else:
+        scenario_work_dir = _extract_workspace_from_scenario(
+            args.specification_file, args.base_dir
+        )
+        if scenario_work_dir:
+            overall_workspace = Path(scenario_work_dir).expanduser()
+        else:
+            overall_workspace = Path(tempfile.mkdtemp(prefix="workspace_llmdbench_"))
+    overall_workspace = create_workspace(overall_workspace)
+    absolute_overall_workspace_path = get_absolute_path(overall_workspace)
+
+    current_workspace = create_sub_dir_workload(absolute_overall_workspace_path)
+    absolute_workspace_path = get_absolute_path(current_workspace)
+
+    absolute_workspace_log_dir = create_sub_dir_workload(
+        absolute_workspace_path, "logs"
+    )
+
+    absolute_workspace_plan_dir = create_sub_dir_workload(
+        absolute_workspace_path, "plan"
+    )
 
     setup_workspace(
         workspace_path=absolute_workspace_path,

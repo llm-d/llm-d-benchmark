@@ -202,7 +202,8 @@ scenario:
     # Corresponds to: LLMDBENCH_HARNESS_NAME=inference-perf
     #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic.yaml
     # -------------------------------------------------------------------------
+    workDir: "~/data/inference-scheduling"
+
     harness:
       name: inference-perf
       experimentProfile: shared_prefix_synthetic.yaml
-      workDir: "~/data/inference-scheduling"

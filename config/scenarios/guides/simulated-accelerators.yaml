@@ -82,10 +82,11 @@ scenario:
         modelCommand: imageDefault
 
     # Harness configuration for simulated workloads
+    # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR=~/data/simulated-accelerators
+    workDir: "~/data/simulated-accelerators"
+
     # Corresponds to: LLMDBENCH_HARNESS_NAME=vllm-benchmark
     #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=random_concurrent.yaml
-    #                 LLMDBENCH_CONTROL_WORK_DIR=~/data/simulated-accelerators
     harness:
       name: vllm-benchmark
       experimentProfile: random_concurrent.yaml
-      workDir: "~/data/simulated-accelerators"

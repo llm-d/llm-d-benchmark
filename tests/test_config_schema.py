@@ -300,11 +300,11 @@ class TestScenarioOnlyFields:
             f"harness.experimentProfile should be accepted: {warnings}"
         )
 
-    def test_harness_work_dir(self, defaults_copy: dict) -> None:
-        defaults_copy["harness"]["workDir"] = "/workspace"
+    def test_work_dir(self, defaults_copy: dict) -> None:
+        defaults_copy["workDir"] = "/workspace"
         warnings = validate_config(defaults_copy)
         assert warnings == [], (
-            f"harness.workDir should be accepted: {warnings}"
+            f"workDir should be accepted: {warnings}"
         )
 
     def test_decode_accelerator(self, defaults_copy: dict) -> None:

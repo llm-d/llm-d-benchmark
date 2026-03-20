@@ -281,7 +281,8 @@ scenario:
     #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic.yaml
     #                 LLMDBENCH_CONTROL_WORK_DIR=~/data/tiered-prefix-cache
     # -------------------------------------------------------------------------
+    workDir: "~/data/tiered-prefix-cache"
+
     harness:
       name: inference-perf
       experimentProfile: shared_prefix_synthetic.yaml
-      workDir: "~/data/tiered-prefix-cache"

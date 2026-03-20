@@ -173,6 +173,10 @@ scenario:
     # Workload/Harness Configuration
     # Corresponds to: LLMDBENCH_HARNESS_NAME=inference-perf
     # -------------------------------------------------------------------------
+    # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR=~/data/cpu
+    # Used as workspace when --workspace is not specified on the CLI.
+    workDir: "~/data/cpu"
+
     harness:
       name: inference-perf
       experimentProfile: sanity_random.yaml
