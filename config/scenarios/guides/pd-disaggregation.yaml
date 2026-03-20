@@ -125,10 +125,11 @@ scenario:
           memory: 128Gi
           cpu: "32"
 
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND=custom
-      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS
-      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS
       vllm:
+        # Custom command overrides the template-built command entirely.
+        # vllmCommon.flags are IGNORED when customCommand is set — all flags must
+        # be listed here explicitly. kv-transfer-config is auto-appended from
+        # vllmCommon.kvTransfer.
         customCommand: |
           vllm serve /model-cache/models/meta-llama/Llama-3.1-8B-Instruct \
           --host 0.0.0.0 \
@@ -141,7 +142,6 @@ scenario:
           --no-enable-log-requests \
           --disable-uvicorn-access-log \
           --no-enable-prefix-caching
-        customPreprocessCommand: null
 
       # -----------------------------------------------------------------------
       # Extra Environment Variables
@@ -245,10 +245,11 @@ scenario:
           memory: 128Gi
           cpu: "32"
 
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
       vllm:
+        # Custom command overrides the template-built command entirely.
+        # vllmCommon.flags are IGNORED when customCommand is set — all flags must
+        # be listed here explicitly. kv-transfer-config is auto-appended from
+        # vllmCommon.kvTransfer.
         customCommand: |
           vllm serve /model-cache/models/meta-llama/Llama-3.1-8B-Instruct \
           --host 0.0.0.0 \
@@ -261,7 +262,6 @@ scenario:
           --no-enable-log-requests \
           --disable-uvicorn-access-log \
           --no-enable-prefix-caching
-        customPreprocessCommand: null
 
       # -----------------------------------------------------------------------
       # Extra Environment Variables

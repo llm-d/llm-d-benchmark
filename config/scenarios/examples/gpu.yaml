@@ -74,20 +74,22 @@ scenario:
 
       preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
 
+      # These flags control the auto-generated vllm serve command.
+      # Flags not listed here inherit from defaults.yaml (e.g. allowLongMaxModelLen, serverDevMode).
+      # To use a fully custom command instead, set decode.vllm.customCommand.
       flags:
-        disableLogRequests: true
-        disableUvicornAccessLog: true
-        noPrefixCaching: true
+        enforceEager: false          # old gpu.sh did not use --enforce-eager
+        disableLogRequests: true     # --no-enable-log-requests
+        disableUvicornAccessLog: true  # --disable-uvicorn-access-log
+        noPrefixCaching: true        # --no-enable-prefix-caching
 
     # -------------------------------------------------------------------------
     # Standalone Deployment Configuration
     # -------------------------------------------------------------------------
     standalone:
-      enabled: true
+      enabled: false
       replicas: 1
 
-      vllm:
-        customCommand: null
 
     # -------------------------------------------------------------------------
     # Prefill Configuration
@@ -96,17 +98,11 @@ scenario:
       enabled: true
       # replicas: 1  # default
 
-      vllm:
-        customCommand: null
-
     # -------------------------------------------------------------------------
     # Decode Configuration
     # -------------------------------------------------------------------------
     decode:
       # replicas: 1  # default
-
-      vllm:
-        customCommand: null
 
     # -------------------------------------------------------------------------
     # Workload/Harness Configuration

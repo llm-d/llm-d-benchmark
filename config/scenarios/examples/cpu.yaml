@@ -24,14 +24,14 @@ scenario:
     # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST (commented — user selects)
     # -------------------------------------------------------------------------
     # Uncomment ONE of the following models:
-    # model:
+    model:
     #   name: Qwen/Qwen3-0.6B
     #   name: Qwen/Qwen3-32B
     #   name: RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic
     #   name: ibm-granite/granite-3.3-8b-instruct
     #   name: ibm-granite/granite-3.3-2b-instruct
     #   name: ibm-ai-platform/micro-g3.3-8b-instruct-1b
-    #   name: facebook/opt-125m
+        name: facebook/opt-125m
     #   name: meta-llama/Llama-3.1-8B-Instruct
     #   name: meta-llama/Llama-3.1-70B-Instruct
     #   name: deepseek-ai/DeepSeek-R1-0528
@@ -82,22 +82,26 @@ scenario:
         - name: preprocesses
           mountPath: /setup/preprocess
 
+      # These flags control the auto-generated vllm serve command.
+      # Flags not listed here inherit from defaults.yaml (e.g. allowLongMaxModelLen, serverDevMode).
+      # To use a fully custom command instead, set decode.vllm.customCommand.
       flags:
-        disableLogRequests: true
-        disableUvicornAccessLog: true
-        noPrefixCaching: true
+        enforceEager: false          # old cpu.sh did not use --enforce-eager
+        disableLogRequests: true     # --no-enable-log-requests
+        disableUvicornAccessLog: true  # --disable-uvicorn-access-log
+        noPrefixCaching: true        # --no-enable-prefix-caching
 
     # -------------------------------------------------------------------------
     # Standalone Deployment Configuration
     # Corresponds to: LLMDBENCH_VLLM_STANDALONE_*
     # -------------------------------------------------------------------------
     standalone:
-      enabled: true
+      enabled: false
       replicas: 1
 
       image:
         repository: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
-        tag: v0.11.2
+        tag: v0.12.0
         pullPolicy: IfNotPresent
 
       # No GPU parallelism for CPU-only deployment
@@ -112,8 +116,6 @@ scenario:
           memory: 8Gi
           cpu: "4"
 
-      vllm:
-        customCommand: null
 
     # -------------------------------------------------------------------------
     # Model GPU memory — disabled for CPU-only
@@ -130,7 +132,7 @@ scenario:
     images:
       vllm:
         repository: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
-        tag: v0.11.2
+        tag: v0.12.0
 
     # -------------------------------------------------------------------------
     # Prefill Configuration — disabled (0 prefill pods)
@@ -166,8 +168,6 @@ scenario:
       accelerator:
         count: 0
 
-      vllm:
-        customCommand: null
 
     # -------------------------------------------------------------------------
     # Workload/Harness Configuration

@@ -212,13 +212,11 @@ scenario:
       annotations:
         k8s.v1.cni.cncf.io/networks: multi-nic-inference
 
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_MODEL_COMMAND=custom
-      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PREPROCESS
-      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS
       vllm:
-        useTemplatedArgs: false
         imagePullPolicy: Always
-        # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_ARGS
+        # Custom command overrides the template-built command entirely.
+        # vllmCommon.flags are IGNORED when customCommand is set — all flags must
+        # be listed here explicitly.
         customCommand: |
           exec vllm serve /model-cache/models/Qwen/Qwen3-30B-A3B \
             --served-model-name Qwen/Qwen3-30B-A3B \
@@ -240,7 +238,6 @@ scenario:
             --enable-eplb \
             --eplb-config '{"window_size":"1000","step_interval":"3000","num_redundant_experts":"32","log_balancedness":"False"}' \
             --gpu-memory-utilization 0.75
-        customPreprocessCommand: null
       
       # -----------------------------------------------------------------------
       # Extra Environment Variables
@@ -382,13 +379,11 @@ scenario:
       annotations:
         k8s.v1.cni.cncf.io/networks: multi-nic-inference
 
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
       vllm:
-        useTemplatedArgs: false
         imagePullPolicy: Always
-        # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
+        # Custom command overrides the template-built command entirely.
+        # vllmCommon.flags are IGNORED when customCommand is set — all flags must
+        # be listed here explicitly.
         customCommand: |
           exec vllm serve /model-cache/models/Qwen/Qwen3-30B-A3B \
             --served-model-name Qwen/Qwen3-30B-A3B \
@@ -411,7 +406,6 @@ scenario:
             --eplb-config '{"window_size":"1000","step_interval":"3000","num_redundant_experts":"32","log_balancedness":"False"}' \
             --compilation_config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
             --kv-cache-memory-bytes=${KV_CACHE_MEMORY_BYTES-}
-        customPreprocessCommand: null
       
       # -----------------------------------------------------------------------
       # Extra Environment Variables

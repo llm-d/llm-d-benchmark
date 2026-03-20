@@ -134,9 +134,10 @@ scenario:
       #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS
       #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
       vllm:
-        # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
-        # Note: Uses OffloadingConnector for tiered prefix cache
-        # Note: kv-transfer-config is included in customCommand since it has extra config
+        # Custom command overrides the template-built command entirely.
+        # vllmCommon.flags are IGNORED when customCommand is set — all flags must
+        # be listed here explicitly. kv-transfer-config is inline because it needs
+        # kv_connector_extra_config (OffloadingConnector for tiered prefix cache).
         customCommand: |
           vllm serve /model-cache/models/Qwen/Qwen3-32B \
           --host 0.0.0.0 \
@@ -152,7 +153,6 @@ scenario:
           --no-enable-log-requests \
           --disable-uvicorn-access-log \
           --enable-prefix-caching
-        customPreprocessCommand: null
       
       # -----------------------------------------------------------------------
       # Extra Environment Variables

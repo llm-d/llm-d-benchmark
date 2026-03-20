@@ -110,12 +110,6 @@ scenario:
       
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
       # Uses custom command via the vllm serve configuration
-      vllm:
-        useTemplatedArgs: true
-        # Custom command is null to use the template-based command generation
-        customCommand: null
-        customPreprocessCommand: null
-      
       # -----------------------------------------------------------------------
       # Extra Environment Variables
       # Corresponds to: LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
@@ -166,10 +160,13 @@ scenario:
         connector: NixlConnector
         role: kv_both
       
+      # These flags control the auto-generated vllm serve command.
+      # Flags not listed here inherit from defaults.yaml.
+      # To use a fully custom command instead, set decode.vllm.customCommand.
       flags:
-        enforceEager: true
-        disableLogRequests: true
-        disableUvicornAccessLog: true
+        enforceEager: true             # --enforce-eager
+        disableLogRequests: true       # --no-enable-log-requests
+        disableUvicornAccessLog: true  # --disable-uvicorn-access-log
         allowLongMaxModelLen: "1"
         serverDevMode: "1"
       

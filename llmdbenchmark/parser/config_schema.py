@@ -171,7 +171,6 @@ class VllmServeConfig(BaseModel):
     workerMultiprocMethod: str
     loggingLevel: str
     imagePullPolicy: str | None = None
-    useTemplatedArgs: bool
     customCommand: str | None = None
     customPreprocessCommand: str | None = None
     additionalFlags: list[str]

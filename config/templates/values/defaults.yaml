@@ -744,7 +744,6 @@ decode:
     workerMultiprocMethod: *worker_method
     loggingLevel: *logging_level
     imagePullPolicy: *pull_if_not_present
-    useTemplatedArgs: true
     customCommand: null
     customPreprocessCommand: null
     # Use these if wanted to use default command but add additional
@@ -878,7 +877,6 @@ prefill:
     # servicePort inherits from decode if not specified
     workerMultiprocMethod: *worker_method
     loggingLevel: *logging_level
-    useTemplatedArgs: true
     # Use these if wanted to use default command but add additional
     # flags
     additionalFlags: []
