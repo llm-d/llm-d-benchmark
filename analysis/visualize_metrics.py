@@ -155,6 +155,54 @@ def plot_metric_time_series(
     print(f"Saved plot: {output_path}")
 
 
+def plot_metric_boxplot(
+    pod_data: dict[str, dict[str, list[tuple[datetime, float]]]],
+    metric_name: str,
+    output_path: str,
+    title: str | None = None,
+    ylabel: str | None = None
+):
+    """Create a box plot showing the distribution of a metric across all pods.
+
+    Args:
+        pod_data: Time series data for all pods
+        metric_name: Name of metric to plot
+        output_path: Path to save the plot
+        title: Plot title (optional)
+        ylabel: Y-axis label (optional)
+    """
+    if not MATPLOTLIB_AVAILABLE:
+        print(f"Skipping box plot for {metric_name}: matplotlib not available")
+        return
+
+    data = []
+    labels = []
+    for pod_name, metrics in pod_data.items():
+        if metric_name in metrics:
+            values = [v for _, v in metrics[metric_name]]
+            if values:
+                data.append(values)
+                labels.append(pod_name)
+
+    if not data:
+        return
+
+    fig, ax = plt.subplots(figsize=(max(8, 3 * len(data)), 6))
+    ax.boxplot(data, labels=labels, patch_artist=True,
+               medianprops=dict(color='red', linewidth=2))
+    ax.set_xlabel('Pod')
+    ax.set_ylabel(ylabel or metric_name)
+    ax.set_title(title or f'{metric_name} Distribution')
+    ax.grid(True, alpha=0.3, axis='y')
+    plt.xticks(rotation=45, ha='right')
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close()
+
+    print(f"Saved plot: {output_path}")
+
+
 def generate_all_visualizations(metrics_dir: str, output_dir: str | None = None):
     """Generate visualizations for all collected metrics.
 
@@ -194,17 +242,21 @@ def generate_all_visualizations(metrics_dir: str, output_dir: str | None = None)
         'vllm:num_requests_waiting': ('Waiting Requests', 'Count'),
     }
 
-    # Generate plots
+    # Generate line plots (time series) and box plots (distributions)
     for metric_name, (title, ylabel) in metrics_to_plot.items():
-        # Check if any pod has this metric
         has_metric = any(
             metric_name in metrics for metrics in pod_data.values())
 
         if has_metric:
-            output_path = os.path.join(
-                output_dir, f'{metric_name.replace(":", "_")}.png')
+            safe_name = metric_name.replace(':', '_')
             plot_metric_time_series(
-                pod_data, metric_name, output_path, title, ylabel)
+                pod_data, metric_name,
+                os.path.join(output_dir, f'{safe_name}.png'),
+                title, ylabel)
+            plot_metric_boxplot(
+                pod_data, metric_name,
+                os.path.join(output_dir, f'{safe_name}_boxplot.png'),
+                f'{title} Distribution', ylabel)
 
     print(f"\nAll visualizations saved to: {output_dir}")
 
