@@ -557,7 +557,9 @@ for method in ${LLMDBENCH_DEPLOY_METHODS//,/ }; do
 
         deploy_harness_config ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ${LLMDBENCH_DEPLOY_CURRENT_MODELID} ${local_results_dir} ${local_analysis_dir} ${_combined_pod_config}
 
-        capture_pod_logs ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ${local_results_dir}
+        if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED}" == "true" ]]; then
+          capture_pod_logs ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ${local_results_dir}
+        fi
 
         if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
           exit 0
