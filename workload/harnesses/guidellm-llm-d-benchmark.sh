@@ -8,9 +8,10 @@ export LLMDBENCH_HARNESS_ARGS="--scenario ${LLMDBENCH_RUN_WORKSPACE_DIR}/profile
 # Start metrics collection in background if enabled
 if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
   echo "Starting metrics collection..."
-  /usr/local/bin/collect_metrics.sh start &
+  /usr/local/bin/collect_metrics.sh start >> $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics_collection.log 2>&1 &
   METRICS_COLLECTOR_PID=$!
   echo "Metrics collector started with PID: $METRICS_COLLECTOR_PID"
+  echo "Metrics collection logs: $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics_collection.log"
 fi
 
 start=$(date +%s.%N)
@@ -21,12 +22,12 @@ stop=$(date +%s.%N)
 # Stop metrics collection
 if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]] && [[ -n "${METRICS_COLLECTOR_PID:-}" ]]; then
   echo "Stopping metrics collection..."
-  /usr/local/bin/collect_metrics.sh stop
+  /usr/local/bin/collect_metrics.sh stop >> $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics_collection.log 2>&1
   wait $METRICS_COLLECTOR_PID 2>/dev/null || true
-  
+
   # Process collected metrics
   echo "Processing collected metrics..."
-  /usr/local/bin/collect_metrics.sh process
+  /usr/local/bin/collect_metrics.sh process >> $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics_collection.log 2>&1
   
   echo "Metrics collection complete. Check metrics_collection.log for details."
 fi
