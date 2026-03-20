@@ -200,6 +200,7 @@ while [[ $# -gt 0 ]]; do
         ;;
         -f|--monitoring)
         export LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED=true
+        export LLMDBENCH_VLLM_MODELSERVICE_GAIE_EPP_VERBOSITY=${LLMDBENCH_VLLM_MODELSERVICE_GAIE_EPP_VERBOSITY:-4}
         ;;
         -z|--skip)
         export LLMDBENCH_CLIOVERRIDE_HARNESS_SKIP_RUN=1
