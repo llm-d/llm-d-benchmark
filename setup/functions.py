@@ -331,7 +331,8 @@ def environment_variable_to_dict(ev: dict = {}):
         "wva_enabled",
         "vllm_modelservice_multinode",
         "vllm_standalone_launcher",
-        "vllm_modelservice_gaie_sidecar_enabled"
+        "vllm_modelservice_gaie_sidecar_enabled",
+        "vllm_modelservice_gaie_monitoring_prometheus_enabled"
     ]:
         if mandatory_boolean_key not in ev:
             ev[mandatory_boolean_key] = 0
