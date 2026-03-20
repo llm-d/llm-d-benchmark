@@ -1181,17 +1181,13 @@ def cli() -> None:
     if hasattr(args, "debug") and not args.debug:
         args.debug = env_bool("LLMDBENCH_DEBUG")
 
-    # Ensure the workspace dir name contains "workspace" to avoid
-    # accidentally writing into the repo root (workspace*/ is in .gitignore).
-    # Each invocation gets its own timestamped sub-directory.
+    # Each invocation gets its own timestamped sub-directory inside the workspace.
+    # When no workspace is specified, create a temp dir with a "workspace_" prefix
+    # so it's caught by the workspace*/ .gitignore pattern.
     if args.workspace:
         overall_workspace = Path(args.workspace)
     else:
         overall_workspace = Path(tempfile.mkdtemp(prefix="workspace_llmdbench_"))
-    if "workspace" not in overall_workspace.name.lower():
-        overall_workspace = overall_workspace.with_name(
-            f"workspace_{overall_workspace.name}"
-        )
     overall_workspace = create_workspace(overall_workspace)
     absolute_overall_workspace_path = get_absolute_path(overall_workspace)
 
