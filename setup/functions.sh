@@ -501,6 +501,16 @@ function capture_pod_logs {
       ${LLMDBENCH_CONTROL_DRY_RUN} \
       ${LLMDBENCH_CONTROL_VERBOSE}
       announce "✅ Pod logs captured to \"${pod_results_dir}/logs/\""
+
+      # Process EPP logs if present and monitoring is enabled
+      if [[ -f "${pod_results_dir}/logs/epp_pods.log" ]] && \
+         [[ -s "${pod_results_dir}/logs/epp_pods.log" ]]; then
+          announce "📊 Processing EPP logs..."
+          python3 "${LLMDBENCH_MAIN_DIR}/workload/harnesses/process_epp_logs.py" \
+              "${pod_results_dir}" --visualize 2>&1 || \
+              announce "⚠️  EPP log processing failed (non-fatal)"
+          announce "✅ EPP log processing complete."
+      fi
     done
 }
 export -f capture_pod_logs
