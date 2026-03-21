@@ -27,7 +27,6 @@ scenario:
       maxModelLen: 16000
       # Corresponds to: LLMDBENCH_VLLM_COMMON_BLOCK_SIZE
       blockSize: 64
-      tensorParallelSize: 1
       gpuMemoryUtilization: 0.95
     
     # -------------------------------------------------------------------------
@@ -79,13 +78,6 @@ scenario:
           image: ghcr.io/llm-d/llm-d-benchmark:auto
           imagePullPolicy: Always
           command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-          securityContext:
-            capabilities:
-              add:
-                - IPC_LOCK
-                - SYS_RAWIO
-                - NET_ADMIN
-                - NET_RAW
           volumeMounts:
             - name: shared-config
               mountPath: /shared-config
@@ -127,7 +119,7 @@ scenario:
         ports:
           - containerPort: 5557  # NIXL side channel port
             protocol: TCP
-          - containerPort: 8000  # Metrics port
+          - containerPort: 8200  # Metrics port
             name: metrics
             protocol: TCP
         securityContext:

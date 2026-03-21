@@ -23,18 +23,19 @@ scenario:
     # Model Configuration
     # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST (commented — user selects)
     # -------------------------------------------------------------------------
-    # Uncomment ONE of the following models:
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # Alternative models (uncomment and update shortName/path/huggingfaceId):
+    #   Qwen/Qwen3-0.6B, Qwen/Qwen3-32B, meta-llama/Llama-3.1-8B-Instruct,
+    #   meta-llama/Llama-3.1-70B-Instruct, deepseek-ai/DeepSeek-R1-0528
+    # -------------------------------------------------------------------------
     model:
-    #   name: Qwen/Qwen3-0.6B
-    #   name: Qwen/Qwen3-32B
-    #   name: RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic
-    #   name: ibm-granite/granite-3.3-8b-instruct
-    #   name: ibm-granite/granite-3.3-2b-instruct
-    #   name: ibm-ai-platform/micro-g3.3-8b-instruct-1b
-        name: facebook/opt-125m
-    #   name: meta-llama/Llama-3.1-8B-Instruct
-    #   name: meta-llama/Llama-3.1-70B-Instruct
-    #   name: deepseek-ai/DeepSeek-R1-0528
+      name: facebook/opt-125m
+      shortName: facebook-opt-125m
+      path: models/facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
+      gpuMemoryUtilization: 0
+      maxModelLen: 8192
 
     # -------------------------------------------------------------------------
     # CPU-only Affinity
@@ -56,12 +57,10 @@ scenario:
     # vLLM Common Configuration (shared across standalone and modelservice)
     # -------------------------------------------------------------------------
     vllmCommon:
-      tensorParallelism: 2
-      maxModelLen: 2048
+      shmMemory: 64Gi
       maxNumSeq: 32
-      shmMemory: 2Gi
 
-      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
+      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && . $HOME/llmdbench_env.sh"
 
       # Shared volumes for CPU scenarios
       volumes:
@@ -69,18 +68,25 @@ scenario:
           type: emptyDir
           emptyDir:
             medium: Memory
-            sizeLimit: 2Gi
+            sizeLimit: 64Gi
         - name: preprocesses
           type: configMap
           configMap:
             name: llm-d-benchmark-preprocesses
-            defaultMode: 0755
+            defaultMode: 320
+        - name: k8s-llmdbench-context
+          type: secret
+          secret:
+            secretName: llmdbench-context
 
       volumeMounts:
         - name: dshm
           mountPath: /dev/shm
         - name: preprocesses
           mountPath: /setup/preprocess
+        - name: k8s-llmdbench-context
+          mountPath: /etc/kubeconfig
+          readOnly: true
 
       # These flags control the auto-generated vllm serve command.
       # Flags not listed here inherit from defaults.yaml (e.g. allowLongMaxModelLen, serverDevMode).
@@ -104,26 +110,18 @@ scenario:
         tag: v0.12.0
         pullPolicy: IfNotPresent
 
-      # No GPU parallelism for CPU-only deployment
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=2
       parallelism:
-        tensor: 0
+        tensor: 2
 
       resources:
         limits:
-          memory: 8Gi
-          cpu: "4"
+          memory: 256Gi
+          cpu: "64"
         requests:
-          memory: 8Gi
-          cpu: "4"
+          memory: 256Gi
+          cpu: "64"
 
-
-    # -------------------------------------------------------------------------
-    # Model GPU memory — disabled for CPU-only
-    # Ensures --gpu-memory-utilization is NOT rendered in vllm serve command
-    # -------------------------------------------------------------------------
-    model:
-      gpuMemoryUtilization: 0
-      maxModelLen: 2048
 
     # -------------------------------------------------------------------------
     # Override images for modelservice (CPU vLLM image)
@@ -159,11 +157,11 @@ scenario:
 
       resources:
         limits:
-          memory: 8Gi
-          cpu: "4"
+          memory: 256Gi
+          cpu: "64"
         requests:
-          memory: 8Gi
-          cpu: "4"
+          memory: 256Gi
+          cpu: "64"
 
       accelerator:
         count: 0

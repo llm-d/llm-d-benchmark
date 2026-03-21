@@ -42,9 +42,10 @@ scenario:
     # -------------------------------------------------------------------------
     # Scheduler Configuration
     # Corresponds to: LLMDBENCH_VLLM_COMMON_POD_SCHEDULER=custom-binpack-scheduler
+    # (commented out in original — uncomment to enable)
     # -------------------------------------------------------------------------
-    schedulerName: custom-binpack-scheduler
-    
+    # schedulerName: custom-binpack-scheduler
+
     # -------------------------------------------------------------------------
     # Routing Configuration
     # Corresponds to: LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR=nixlv2 (default)
@@ -143,13 +144,6 @@ scenario:
           image: ghcr.io/llm-d/llm-d-benchmark:auto
           imagePullPolicy: Always
           command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-          securityContext:
-            capabilities:
-              add:
-                - IPC_LOCK
-                - SYS_RAWIO
-                - NET_ADMIN
-                - NET_RAW
           volumeMounts:
             - name: shared-config
               mountPath: /shared-config
@@ -164,20 +158,16 @@ scenario:
       # Resource configuration
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=32
       #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=512Gi
-      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=rdma/ib
+      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=auto (auto-detect)
       #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR=1
       #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EPHEMERAL_STORAGE=1Ti
       resources:
         limits:
           memory: 512Gi
           cpu: "32"
-          rdma/ib: "1"
-          ephemeral-storage: 1Ti
         requests:
           memory: 512Gi
           cpu: "32"
-          rdma/ib: "1"
-          ephemeral-storage: 1Ti
       
       # Accelerator configuration
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_RESOURCE=nvidia
@@ -288,18 +278,8 @@ scenario:
       # Additional Volumes
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES
       # -----------------------------------------------------------------------
-      additionalVolumes:
-        - name: hf-cache
-          type: hostPath
-          hostPath:
-            path: /mnt/local/hf-cache
-            type: DirectoryOrCreate
-        - name: jit-cache
-          type: hostPath
-          hostPath:
-            path: /mnt/local/jit-cache
-            type: DirectoryOrCreate
-    
+      additionalVolumes: []
+
     # -------------------------------------------------------------------------
     # Decode Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
@@ -313,13 +293,6 @@ scenario:
           image: ghcr.io/llm-d/llm-d-benchmark:auto
           imagePullPolicy: Always
           command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-          securityContext:
-            capabilities:
-              add:
-                - IPC_LOCK
-                - SYS_RAWIO
-                - NET_ADMIN
-                - NET_RAW
           volumeMounts:
             - name: shared-config
               mountPath: /shared-config
@@ -334,20 +307,16 @@ scenario:
       # Resource configuration
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=32
       #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=512Gi
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=rdma/ib
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=auto (auto-detect)
       #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=1
       #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_EPHEMERAL_STORAGE=1Ti
       resources:
         limits:
           memory: 512Gi
           cpu: "32"
-          rdma/ib: "1"
-          ephemeral-storage: 1Ti
         requests:
           memory: 512Gi
           cpu: "32"
-          rdma/ib: "1"
-          ephemeral-storage: 1Ti
       
       # Accelerator configuration
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_RESOURCE=nvidia
@@ -457,33 +426,24 @@ scenario:
       # Additional Volume Mounts
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
       # -----------------------------------------------------------------------
-      additionalVolumeMounts:
-        - name: hf-cache
-          mountPath: /var/cache/huggingface
-        - name: jit-cache
-          mountPath: /var/cache/vllm
-      
+      additionalVolumeMounts: []
+
       # -----------------------------------------------------------------------
       # Additional Volumes
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
       # -----------------------------------------------------------------------
-      additionalVolumes:
-        - name: hf-cache
-          type: hostPath
-          hostPath:
-            path: /mnt/local/hf-cache
-            type: DirectoryOrCreate
-        - name: jit-cache
-          type: hostPath
-          hostPath:
-            path: /mnt/local/jit-cache
-            type: DirectoryOrCreate
+      additionalVolumes: []
     
     # -------------------------------------------------------------------------
     # vLLM Common Configuration
     # -------------------------------------------------------------------------
     vllmCommon:
       host: "0.0.0.0"
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=auto
+      networkResource: "auto"
+      networkNr: "1"
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_*_EPHEMERAL_STORAGE=1Ti
+      ephemeralStorage: 1Ti
       # KV Transfer Configuration
       # Note: kv-transfer-config is in customCommand for this scenario due to extra options
       kvTransfer:

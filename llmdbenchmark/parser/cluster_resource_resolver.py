@@ -123,7 +123,7 @@ class ClusterResourceResolver:
             unresolved.append("affinity.nodeSelector")
 
         for section in ("decode", "prefill", "standalone"):
-            accel_type = values.get(section, {}).get("acceleratorType", {})
+            accel_type = (values.get(section) or {}).get("acceleratorType", {})
             if isinstance(accel_type, dict) and accel_type.get("labelValue") == "auto":
                 unresolved.append(f"{section}.acceleratorType.labelValue")
 
@@ -356,7 +356,7 @@ class ClusterResourceResolver:
         resources = self._node_resources or NodeResources()
 
         for section in ("decode", "prefill", "standalone"):
-            section_dict = values.get(section, {})
+            section_dict = values.get(section) or {}
             if not isinstance(section_dict, dict):
                 continue
 
@@ -392,7 +392,7 @@ class ClusterResourceResolver:
         common_net_nr = vllm_common.get("networkNr", "")
 
         for section in ("decode", "prefill", "standalone"):
-            section_dict = values.get(section, {})
+            section_dict = values.get(section) or {}
             if not isinstance(section_dict, dict):
                 continue
 

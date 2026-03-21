@@ -36,7 +36,6 @@ scenario:
 
     # Minimal resources for Kind cluster
     vllmCommon:
-      maxModelLen: 1024
       shmMemory: 500Mi
 
     # Storage — minimal for Kind

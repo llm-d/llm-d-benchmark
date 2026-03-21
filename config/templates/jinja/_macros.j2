@@ -12,9 +12,9 @@
 {% set default_service_name = model.shortName ~ '-gaie-epp' -%}
 {% set service_name = vllmCommon.kvEvents.serviceName | default(default_service_name) -%}
 {% set ns = namespace.name -%}
-{% set port = vllmCommon.kvEvents.port | default(5557) -%}
-{% set publisher = vllmCommon.kvEvents.publisher | default('zmq') -%}
-{% set topic_prefix = vllmCommon.kvEvents.topicPrefix | default('kv') -%}
+{% set port = vllmCommon.kvEvents.port -%}
+{% set publisher = vllmCommon.kvEvents.publisher -%}
+{% set topic_prefix = vllmCommon.kvEvents.topicPrefix -%}
 {"enable_kv_cache_events":true,"publisher":"{{ publisher }}","endpoint":"tcp://{{ service_name }}.{{ ns }}.svc.cluster.local:{{ port }}","topic":"{{ topic_prefix }}@${POD_IP}@{{ model.name }}"}
 {%- endmacro %}
 
@@ -38,9 +38,10 @@
 {% set has_disable_log_requests = vllmCommon.flags.disableLogRequests | default(false) -%}
 {% set has_disable_uvicorn = vllmCommon.flags.disableUvicornAccessLog | default(false) -%}
 {% set has_no_prefix_caching = vllmCommon.flags.noPrefixCaching | default(false) -%}
+{% set has_enable_prefix_caching = vllmCommon.flags.enablePrefixCaching | default(false) -%}
 {% set has_kv_transfer = vllmCommon.kvTransfer is defined and vllmCommon.kvTransfer.enabled -%}
 {% set has_kv_events = vllmCommon.kvEvents is defined and vllmCommon.kvEvents.enabled -%}
-{% set gpu_mem_util = model.gpuMemoryUtilization | default(0) | float -%}
+{% set gpu_mem_util = model.gpuMemoryUtilization | float -%}
 
 {# Custom command provided #}
 {% if config.vllm.customCommand is defined and config.vllm.customCommand is not none -%}
@@ -53,8 +54,8 @@
 {%- endif %}
 {%- else -%}
 {# Use default vllm serve command #}
-{% set effective_max_model_len = vllmCommon.maxModelLen | default(model.maxModelLen) -%}
-{% set effective_block_size = vllmCommon.blockSize | default(model.blockSize) -%}
+{% set effective_max_model_len = model.maxModelLen -%}
+{% set effective_block_size = model.blockSize -%}
 {{ preprocess_script }}; vllm serve {{ model.cacheBase }}/{{ model.path }} \
   --host {{ vllmCommon.host }} \
   --served-model-name {{ model.name }} \
@@ -80,6 +81,9 @@
 {%- if has_no_prefix_caching %} \
   --no-enable-prefix-caching
 {%- endif %}
+{%- if has_enable_prefix_caching %} \
+  --enable-prefix-caching
+{%- endif %}
 {%- if has_kv_transfer %} \
   --kv-transfer-config '{{ build_kv_transfer_config() }}'
 {%- endif %}
@@ -103,13 +107,13 @@
 {% elif vllmCommon.preprocessScript is defined -%}
 {% set preprocess_script = vllmCommon.preprocessScript -%}
 {% else -%}
-{% set preprocess_script = standalone.vllm.preprocessCommand | default('/bin/true') -%}
+{% set preprocess_script = standalone.vllm.preprocessCommand -%}
 {% endif -%}
 
 {# Pre-calculate which optional flags are enabled #}
 {% set has_kv_transfer = vllmCommon.kvTransfer is defined and vllmCommon.kvTransfer.enabled -%}
 {% set has_kv_events = vllmCommon.kvEvents is defined and vllmCommon.kvEvents.enabled -%}
-{% set gpu_mem_util = model.gpuMemoryUtilization | default(0) | float -%}
+{% set gpu_mem_util = model.gpuMemoryUtilization | float -%}
 
 {# Custom command provided #}
 {% if standalone.vllm.customCommand is defined and standalone.vllm.customCommand is not none -%}
@@ -122,17 +126,16 @@
 {%- endif %}
 {%- else -%}
 {# Use default vllm serve command #}
-{% set effective_max_model_len = vllmCommon.maxModelLen | default(model.maxModelLen) -%}
 {{ preprocess_script }}; vllm serve {{ model.name }} \
   --no-enable-prefix-caching \
-  --load-format {{ standalone.vllm.loadFormat | default('auto') }} \
-  --port {{ standalone.vllm.port | default(8000) }} \
-  --max-model-len {{ effective_max_model_len }} \
+  --load-format {{ standalone.vllm.loadFormat }} \
+  --port {{ standalone.vllm.port }} \
+  --max-model-len {{ model.maxModelLen }} \
   --no-enable-log-requests
 {%- if gpu_mem_util > 0 %} \
   --gpu-memory-utilization {{ model.gpuMemoryUtilization }}
 {%- endif %}
-{%- set tp_size = standalone.parallelism.tensor | default(decode.parallelism.tensor) | int %}
+{%- set tp_size = standalone.parallelism.tensor | int %}
 {%- if tp_size > 0 %} \
   --tensor-parallel-size {{ tp_size }}
 {%- endif %} \

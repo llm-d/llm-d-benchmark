@@ -27,9 +27,16 @@ scenario:
       maxModelLen: 16000
       # Corresponds to: LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
       blockSize: 64
-      tensorParallelSize: 2
       gpuMemoryUtilization: 0.95
     
+    # -------------------------------------------------------------------------
+    # Routing Configuration
+    # Corresponds to: LLMDBENCH_LLMD_ROUTINGSIDECAR_ENABLED=false
+    # -------------------------------------------------------------------------
+    routing:
+      proxy:
+        enabled: false
+
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="precise-prefix-cache-config.yaml"
@@ -84,6 +91,7 @@ scenario:
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG
       inferencePoolProviderConfig:
         destinationRule:
+          host: qwen-qwen3-32b-gaie-epp
           trafficPolicy:
             connectionPool:
               http:
@@ -131,13 +139,6 @@ scenario:
           image: ghcr.io/llm-d/llm-d-benchmark:auto
           imagePullPolicy: Always
           command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-          securityContext:
-            capabilities:
-              add:
-                - IPC_LOCK
-                - SYS_RAWIO
-                - NET_ADMIN
-                - NET_RAW
           volumeMounts:
             - name: shared-config
               mountPath: /shared-config
@@ -147,7 +148,7 @@ scenario:
         tensor: 2
         data: 1
         dataLocal: 1
-        workers: 2
+        workers: 1
       
       # Resource configuration
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR (env.sh default=4)
@@ -160,23 +161,16 @@ scenario:
           memory: 64Gi
           cpu: "4"
 
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
       vllm:
-        # Custom command overrides the template-built command entirely.
-        # vllmCommon.flags are IGNORED when customCommand is set — all flags must
-        # be listed here explicitly. kv-transfer-config and kv-events-config are
-        # still auto-appended from vllmCommon.kvTransfer / vllmCommon.kvEvents.
-        customCommand: |
-          vllm serve /model-cache/models/Qwen/Qwen3-32B \
-          --host 0.0.0.0 \
-          --served-model-name Qwen/Qwen3-32B \
-          --port 8200 \
-          --block-size 64 \
-          --max-model-len 16000 \
-          --tensor-parallel-size 2 \
-          --gpu-memory-utilization 0.95 \
-          --prefix-caching-hash-algo sha256_cbor \
-          --enforce-eager
+        # vllm serve command is auto-generated from model config + vllmCommon.flags.
+        # The following flags are applied (see vllmCommon.flags below):
+        #   --enforce-eager, --no-enable-log-requests, --disable-uvicorn-access-log
+        # Plus --kv-transfer-config from vllmCommon.kvTransfer
+        #   and --kv-events-config from vllmCommon.kvEvents.
+        # Additional non-standard flags are appended via additionalFlags.
+        # To override entirely, set vllm.customCommand.
+        additionalFlags:
+          - "--prefix-caching-hash-algo sha256_cbor"
 
       # -----------------------------------------------------------------------
       # Extra Environment Variables
@@ -196,7 +190,7 @@ scenario:
         ports:
           - containerPort: 5557  # NIXL side channel port
             protocol: TCP
-          - containerPort: 8000  # Metrics port
+          - containerPort: 8200  # Metrics port
             name: metrics
             protocol: TCP
         securityContext:
@@ -264,8 +258,8 @@ scenario:
       
       flags:
         enforceEager: true
-        disableLogRequests: true
-        disableUvicornAccessLog: true
+        disableLogRequests: false
+        disableUvicornAccessLog: false
         allowLongMaxModelLen: "1"
         serverDevMode: "1"
       

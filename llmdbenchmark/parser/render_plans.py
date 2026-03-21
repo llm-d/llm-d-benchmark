@@ -197,6 +197,8 @@ class RenderPlans:
         result = deepcopy(base)
 
         for key, value in override.items():
+            if value is None:
+                continue  # YAML key with no value — don't clobber defaults
             if (
                 key in result
                 and isinstance(result[key], dict)
@@ -350,6 +352,31 @@ class RenderPlans:
         )
 
         return result
+
+    def _warn_custom_command_conflicts(self, values: dict) -> None:
+        """Warn when CLI overrides won't propagate into hardcoded customCommands.
+
+        customCommand is a verbatim string — CLI flags like --models only
+        update the config dict (model.name, etc.) but cannot modify the
+        hardcoded values inside customCommand.  Emit a warning so users
+        know to update the customCommand manually.
+        """
+        if not self.cli_model:
+            return
+
+        for role in ("decode", "prefill"):
+            cmd = (
+                values.get(role, {})
+                .get("vllm", {})
+                .get("customCommand")
+            )
+            if cmd:
+                self.logger.log_warning(
+                    f"CLI --models override ({self.cli_model}) will not "
+                    f"propagate into {role}.vllm.customCommand. "
+                    f"Update the customCommand in your scenario to match, "
+                    f"or remove customCommand to use the auto-generated command."
+                )
 
     def _resolve_monitoring(self, values: dict) -> dict:
         """Enable PodMonitor and metrics scraping when ``--monitoring`` is set.
@@ -562,6 +589,7 @@ class RenderPlans:
 
         merged_values = self._resolve_namespace(merged_values)
         merged_values = self._resolve_model(merged_values)
+        self._warn_custom_command_conflicts(merged_values)
         merged_values = self._resolve_deploy_method(merged_values)
         merged_values = self._resolve_monitoring(merged_values)
         merged_values = self._resolve_hf_token(merged_values)

@@ -143,7 +143,7 @@ tracing:
 {# ROUTING / PROXY CONFIGURATION                                              #}
 {# -------------------------------------------------------------------------- #}
 routing:
-  servicePort: {{ routing.servicePort | default(decode.vllm.servicePort) | default(8000) }}
+  servicePort: {{ routing.servicePort }}
   proxy:
 {% if routing.proxy is defined and routing.proxy.enabled is defined %}
     enabled: {{ routing.proxy.enabled | lower }}
@@ -159,10 +159,10 @@ routing:
 {% if routing.proxy is defined and routing.proxy.targetPort is defined %}
     targetPort: {{ routing.proxy.targetPort }}
 {% else %}
-    targetPort: {{ decode.vllm.port | default(8200) }}
+    targetPort: {{ decode.vllm.port }}
 {% endif %}
-    connector: {{ routing.connector | default('nixlv2') }}
-    secure: {{ routing.secure | default(false) | lower }}
+    connector: {{ routing.connector }}
+    secure: {{ routing.secure | lower }}
 {% if routing.proxy is defined %}
 {% if routing.proxy.prefillerUseTLS is defined %}
     prefillerUseTLS: {{ routing.proxy.prefillerUseTLS | lower }}
@@ -226,7 +226,7 @@ decode:
 
 {% if decode.autoscaling is defined %}
   autoscaling:
-    enabled: {{ decode.autoscaling.enabled | default(false) | lower }}
+    enabled: {{ decode.autoscaling.enabled | lower }}
 {% if decode.autoscaling.minReplicas is defined %}
     minReplicas: {{ decode.autoscaling.minReplicas }}
 {% endif %}
@@ -248,7 +248,7 @@ decode:
   priorityClassName: {{ decode.priorityClassName }}
 {% endif %}
 
-{% if (decode.parallelism.tensor | default(0) | int) > 0 and decode.accelerator is defined and (decode.accelerator.count | default(0) | int) > 0 %}
+{% if (decode.parallelism.tensor | int) > 0 and decode.accelerator is defined and (decode.accelerator.count | default(0) | int) > 0 %}
   acceleratorTypes:
     labelKey: {{ decode.acceleratorType.labelKey }}
     labelValues:
@@ -370,7 +370,7 @@ decode:
 {% if decode.vllm.imagePullPolicy is defined %}
     imagePullPolicy: {{ decode.vllm.imagePullPolicy }}
 {% endif %}
-    mountModelVolume: {{ decode.mountModelVolume | default(true) | lower }}
+    mountModelVolume: {{ decode.mountModelVolume | lower }}
 {% set decode_model_command = decode.vllm.modelCommand | default('custom') %}
     modelCommand: {{ decode_model_command }}
 {% if decode_model_command == 'custom' %}
@@ -385,15 +385,15 @@ decode:
       - name: VLLM_IS_DECODE
         value: "1"
       - name: HOME
-        value: "{{ vllmCommon.containerHome | default('/tmp') }}"
+        value: "{{ vllmCommon.containerHome }}"
       - name: HF_HOME
-        value: "{{ vllmCommon.hfHome | default('/tmp/huggingface') }}"
+        value: "{{ vllmCommon.hfHome }}"
       - name: VLLM_CACHE_ROOT
-        value: "{{ decode.vllm.cacheRoot | default(vllmCommon.containerHome | default('/tmp') ~ '/vllm') }}"
+        value: "{{ decode.vllm.cacheRoot | default(vllmCommon.containerHome ~ '/vllm') }}"
       - name: VLLM_WORKER_MULTIPROC_METHOD
-        value: "{{ decode.vllm.workerMultiprocMethod | default('spawn') }}"
+        value: "{{ decode.vllm.workerMultiprocMethod }}"
       - name: VLLM_LOGGING_LEVEL
-        value: "{{ decode.vllm.loggingLevel | default('INFO') }}"
+        value: "{{ decode.vllm.loggingLevel }}"
 {% if vllmCommon.flags.allowLongMaxModelLen is defined and vllmCommon.flags.allowLongMaxModelLen %}
       - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
         value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
@@ -462,20 +462,20 @@ decode:
       limits:
         memory: {{ decode.resources.limits.memory }}
         cpu: "{{ decode.resources.limits.cpu }}"
-{% set decode_accel_resource = (decode.accelerator.resource if decode.accelerator is defined and decode.accelerator.resource is defined else accelerator.resource | default('nvidia.com/gpu')) %}
-{% set decode_accel_count = (decode.accelerator.count | default(decode.parallelism.tensor | default(0)) | int) if decode.accelerator is defined else (decode.parallelism.tensor | default(0) | int) %}
+{% set decode_accel_resource = (decode.accelerator.resource if decode.accelerator is defined and decode.accelerator.resource is defined else accelerator.resource) %}
+{% set decode_accel_count = (decode.accelerator.count | default(decode.parallelism.tensor | int) | int) if decode.accelerator is defined else (decode.parallelism.tensor | int) %}
 {% if decode.resources.limits is defined and decode.resources.limits[decode_accel_resource] is defined %}
         {{ decode_accel_resource }}: "{{ decode.resources.limits[decode_accel_resource] }}"
-{% elif decode_accel_count > 0 and (accelerator.type | default('nvidia')) != 'cpu' %}
+{% elif decode_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ decode_accel_resource }}: "{{ decode_accel_count }}"
 {% endif %}
-{% set decode_eph_storage = decode.ephemeralStorage | default(vllmCommon.ephemeralStorage | default('')) %}
-{% set decode_eph_resource = vllmCommon.ephemeralStorageResource | default('ephemeral-storage') %}
+{% set decode_eph_storage = decode.ephemeralStorage | default(vllmCommon.ephemeralStorage) %}
+{% set decode_eph_resource = vllmCommon.ephemeralStorageResource %}
 {% if decode_eph_storage and decode_eph_resource %}
         {{ decode_eph_resource }}: "{{ decode_eph_storage }}"
 {% endif %}
-{% set decode_net_resource = decode.networkResource | default(vllmCommon.networkResource | default('')) %}
-{% set decode_net_nr = decode.networkNr | default(vllmCommon.networkNr | default('')) %}
+{% set decode_net_resource = decode.networkResource | default(vllmCommon.networkResource) %}
+{% set decode_net_nr = decode.networkNr | default(vllmCommon.networkNr) %}
 {% if decode_net_resource and decode_net_nr %}
         {{ decode_net_resource }}: "{{ decode_net_nr }}"
 {% endif %}
@@ -488,7 +488,7 @@ decode:
         cpu: "{{ decode.resources.requests.cpu }}"
 {% if decode.resources.requests is defined and decode.resources.requests[decode_accel_resource] is defined %}
         {{ decode_accel_resource }}: "{{ decode.resources.requests[decode_accel_resource] }}"
-{% elif decode_accel_count > 0 and (accelerator.type | default('nvidia')) != 'cpu' %}
+{% elif decode_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ decode_accel_resource }}: "{{ decode_accel_count }}"
 {% endif %}
 {% if decode_eph_storage and decode_eph_resource %}
@@ -504,23 +504,23 @@ decode:
 {% endif %}
       startupProbe:
         httpGet:
-          path: {{ decode.probes.startup.path | default('/health') }}
-          port: {{ decode.vllm.servicePort | default(8000) }}
-        failureThreshold: {{ decode.probes.startup.failureThreshold | default(60) }}
-        initialDelaySeconds: {{ decode.probes.startup.initialDelaySeconds | default(30) }}
-        periodSeconds: {{ decode.probes.startup.periodSeconds | default(30) }}
-        timeoutSeconds: {{ decode.probes.startup.timeoutSeconds | default(5) }}
+          path: {{ decode.probes.startup.path }}
+          port: {{ decode.vllm.servicePort }}
+        failureThreshold: {{ decode.probes.startup.failureThreshold }}
+        initialDelaySeconds: {{ decode.probes.startup.initialDelaySeconds }}
+        periodSeconds: {{ decode.probes.startup.periodSeconds }}
+        timeoutSeconds: {{ decode.probes.startup.timeoutSeconds }}
       livenessProbe:
         tcpSocket:
-          port: {{ decode.vllm.servicePort | default(8000) }}
-        failureThreshold: {{ decode.probes.liveness.failureThreshold | default(3) }}
-        periodSeconds: {{ decode.probes.liveness.periodSeconds | default(5) }}
+          port: {{ decode.vllm.servicePort }}
+        failureThreshold: {{ decode.probes.liveness.failureThreshold }}
+        periodSeconds: {{ decode.probes.liveness.periodSeconds }}
       readinessProbe:
         httpGet:
-          path: {{ decode.probes.readiness.path | default('/health') }}
-          port: {{ decode.vllm.servicePort | default(8000) }}
-        failureThreshold: {{ decode.probes.readiness.failureThreshold | default(3) }}
-        periodSeconds: {{ decode.probes.readiness.periodSeconds | default(5) }}
+          path: {{ decode.probes.readiness.path }}
+          port: {{ decode.vllm.servicePort }}
+        failureThreshold: {{ decode.probes.readiness.failureThreshold }}
+        periodSeconds: {{ decode.probes.readiness.periodSeconds }}
 {% if decode.extraContainerConfig is defined and decode.extraContainerConfig %}
 {% set extra_config_without_ports = {} %}
 {% for k, v in decode.extraContainerConfig.items() if k != 'ports' %}
@@ -628,11 +628,11 @@ decode:
 {% if decode.monitoring is defined and decode.monitoring.podmonitor is defined %}
   monitoring:
     podmonitor:
-      enabled: {{ decode.monitoring.podmonitor.enabled | default(false) | lower }}
+      enabled: {{ decode.monitoring.podmonitor.enabled | lower }}
 {% if decode.monitoring.podmonitor.enabled %}
-      portName: "{{ decode.monitoring.podmonitor.portName | default('metrics') }}"
-      path: "{{ decode.monitoring.podmonitor.path | default('/metrics') }}"
-      interval: "{{ decode.monitoring.podmonitor.interval | default('30s') }}"
+      portName: "{{ decode.monitoring.podmonitor.portName }}"
+      path: "{{ decode.monitoring.podmonitor.path }}"
+      interval: "{{ decode.monitoring.podmonitor.interval }}"
 {% if decode.monitoring.podmonitor.scrapeTimeout is defined %}
       scrapeTimeout: "{{ decode.monitoring.podmonitor.scrapeTimeout }}"
 {% endif %}
@@ -666,7 +666,7 @@ prefill:
 
 {% if prefill.autoscaling is defined %}
   autoscaling:
-    enabled: {{ prefill.autoscaling.enabled | default(false) | lower }}
+    enabled: {{ prefill.autoscaling.enabled | lower }}
 {% if prefill.autoscaling.minReplicas is defined %}
     minReplicas: {{ prefill.autoscaling.minReplicas }}
 {% endif %}
@@ -688,7 +688,7 @@ prefill:
   priorityClassName: {{ prefill.priorityClassName }}
 {% endif %}
 
-{% if (prefill.parallelism.tensor | default(0) | int) > 0 and prefill.accelerator is defined and (prefill.accelerator.count | default(0) | int) > 0 %}
+{% if (prefill.parallelism.tensor | int) > 0 and prefill.accelerator is defined and (prefill.accelerator.count | default(0) | int) > 0 %}
   acceleratorTypes:
     labelKey: {{ prefill.acceleratorType.labelKey }}
     labelValues:
@@ -810,7 +810,7 @@ prefill:
 {% if prefill.vllm is defined and prefill.vllm.imagePullPolicy is defined %}
     imagePullPolicy: {{ prefill.vllm.imagePullPolicy }}
 {% endif %}
-    mountModelVolume: {{ prefill.mountModelVolume | default(true) | lower }}
+    mountModelVolume: {{ prefill.mountModelVolume | lower }}
 {% set prefill_model_command = prefill.vllm.modelCommand | default('custom') %}
     modelCommand: {{ prefill_model_command }}
 {% if prefill_model_command == 'custom' %}
@@ -823,15 +823,15 @@ prefill:
 {% endif %}
     env:
       - name: HOME
-        value: "{{ vllmCommon.containerHome | default('/tmp') }}"
+        value: "{{ vllmCommon.containerHome }}"
       - name: HF_HOME
-        value: "{{ vllmCommon.hfHome | default('/tmp/huggingface') }}"
+        value: "{{ vllmCommon.hfHome }}"
       - name: VLLM_CACHE_ROOT
-        value: "{{ (prefill.vllm.cacheRoot if prefill.vllm is defined and prefill.vllm.cacheRoot is defined else decode.vllm.cacheRoot) | default(vllmCommon.containerHome | default('/tmp') ~ '/vllm') }}"
+        value: "{{ (prefill.vllm.cacheRoot if prefill.vllm is defined and prefill.vllm.cacheRoot is defined else decode.vllm.cacheRoot) | default(vllmCommon.containerHome ~ '/vllm') }}"
       - name: VLLM_WORKER_MULTIPROC_METHOD
-        value: "{{ (prefill.vllm.workerMultiprocMethod if prefill.vllm is defined and prefill.vllm.workerMultiprocMethod is defined else decode.vllm.workerMultiprocMethod) | default('spawn') }}"
+        value: "{{ (prefill.vllm.workerMultiprocMethod if prefill.vllm is defined and prefill.vllm.workerMultiprocMethod is defined else decode.vllm.workerMultiprocMethod) }}"
       - name: VLLM_LOGGING_LEVEL
-        value: "{{ (prefill.vllm.loggingLevel if prefill.vllm is defined and prefill.vllm.loggingLevel is defined else decode.vllm.loggingLevel) | default('INFO') }}"
+        value: "{{ (prefill.vllm.loggingLevel if prefill.vllm is defined and prefill.vllm.loggingLevel is defined else decode.vllm.loggingLevel) }}"
 {% if vllmCommon.flags.allowLongMaxModelLen is defined and vllmCommon.flags.allowLongMaxModelLen %}
       - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
         value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
@@ -902,20 +902,20 @@ prefill:
       limits:
         memory: {{ prefill.resources.limits.memory }}
         cpu: "{{ prefill.resources.limits.cpu }}"
-{% set prefill_accel_resource = (prefill.accelerator.resource if prefill.accelerator is defined and prefill.accelerator.resource is defined else accelerator.resource | default('nvidia.com/gpu')) %}
-{% set prefill_accel_count = (prefill.accelerator.count | default(prefill.parallelism.tensor | default(0)) | int) if prefill.accelerator is defined else (prefill.parallelism.tensor | default(0) | int) %}
+{% set prefill_accel_resource = (prefill.accelerator.resource if prefill.accelerator is defined and prefill.accelerator.resource is defined else accelerator.resource) %}
+{% set prefill_accel_count = (prefill.accelerator.count | default(prefill.parallelism.tensor | int) | int) if prefill.accelerator is defined else (prefill.parallelism.tensor | int) %}
 {% if prefill.resources.limits is defined and prefill.resources.limits[prefill_accel_resource] is defined %}
         {{ prefill_accel_resource }}: "{{ prefill.resources.limits[prefill_accel_resource] }}"
-{% elif prefill_accel_count > 0 and (accelerator.type | default('nvidia')) != 'cpu' %}
+{% elif prefill_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ prefill_accel_resource }}: "{{ prefill_accel_count }}"
 {% endif %}
-{% set prefill_eph_storage = prefill.ephemeralStorage | default(vllmCommon.ephemeralStorage | default('')) %}
-{% set prefill_eph_resource = vllmCommon.ephemeralStorageResource | default('ephemeral-storage') %}
+{% set prefill_eph_storage = prefill.ephemeralStorage | default(vllmCommon.ephemeralStorage) %}
+{% set prefill_eph_resource = vllmCommon.ephemeralStorageResource %}
 {% if prefill_eph_storage and prefill_eph_resource %}
         {{ prefill_eph_resource }}: "{{ prefill_eph_storage }}"
 {% endif %}
-{% set prefill_net_resource = prefill.networkResource | default(vllmCommon.networkResource | default('')) %}
-{% set prefill_net_nr = prefill.networkNr | default(vllmCommon.networkNr | default('')) %}
+{% set prefill_net_resource = prefill.networkResource | default(vllmCommon.networkResource) %}
+{% set prefill_net_nr = prefill.networkNr | default(vllmCommon.networkNr) %}
 {% if prefill_net_resource and prefill_net_nr %}
         {{ prefill_net_resource }}: "{{ prefill_net_nr }}"
 {% endif %}
@@ -928,7 +928,7 @@ prefill:
         cpu: "{{ prefill.resources.requests.cpu }}"
 {% if prefill.resources.requests is defined and prefill.resources.requests[prefill_accel_resource] is defined %}
         {{ prefill_accel_resource }}: "{{ prefill.resources.requests[prefill_accel_resource] }}"
-{% elif prefill_accel_count > 0 and (accelerator.type | default('nvidia')) != 'cpu' %}
+{% elif prefill_accel_count > 0 and accelerator.type != 'cpu' %}
         {{ prefill_accel_resource }}: "{{ prefill_accel_count }}"
 {% endif %}
 {% if prefill_eph_storage and prefill_eph_resource %}
@@ -944,23 +944,23 @@ prefill:
 {% endif %}
       startupProbe:
         httpGet:
-          path: {{ prefill.probes.startup.path | default('/health') }}
-          port: {{ (prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort) | default(8000) }}
-        failureThreshold: {{ prefill.probes.startup.failureThreshold | default(60) }}
-        initialDelaySeconds: {{ prefill.probes.startup.initialDelaySeconds | default(30) }}
-        periodSeconds: {{ prefill.probes.startup.periodSeconds | default(30) }}
-        timeoutSeconds: {{ prefill.probes.startup.timeoutSeconds | default(5) }}
+          path: {{ prefill.probes.startup.path }}
+          port: {{ prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort }}
+        failureThreshold: {{ prefill.probes.startup.failureThreshold }}
+        initialDelaySeconds: {{ prefill.probes.startup.initialDelaySeconds }}
+        periodSeconds: {{ prefill.probes.startup.periodSeconds }}
+        timeoutSeconds: {{ prefill.probes.startup.timeoutSeconds }}
       livenessProbe:
         tcpSocket:
-          port: {{ (prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort) | default(8000) }}
-        failureThreshold: {{ prefill.probes.liveness.failureThreshold | default(3) }}
-        periodSeconds: {{ prefill.probes.liveness.periodSeconds | default(5) }}
+          port: {{ prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort }}
+        failureThreshold: {{ prefill.probes.liveness.failureThreshold }}
+        periodSeconds: {{ prefill.probes.liveness.periodSeconds }}
       readinessProbe:
         httpGet:
-          path: {{ prefill.probes.readiness.path | default('/health') }}
-          port: {{ (prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort) | default(8000) }}
-        failureThreshold: {{ prefill.probes.readiness.failureThreshold | default(3) }}
-        periodSeconds: {{ prefill.probes.readiness.periodSeconds | default(5) }}
+          path: {{ prefill.probes.readiness.path }}
+          port: {{ prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort }}
+        failureThreshold: {{ prefill.probes.readiness.failureThreshold }}
+        periodSeconds: {{ prefill.probes.readiness.periodSeconds }}
 {% if prefill.extraContainerConfig is defined and prefill.extraContainerConfig %}
 {% set extra_config_without_ports = {} %}
 {% for k, v in prefill.extraContainerConfig.items() if k != 'ports' %}
@@ -1068,11 +1068,11 @@ prefill:
 {% if prefill.monitoring is defined and prefill.monitoring.podmonitor is defined %}
   monitoring:
     podmonitor:
-      enabled: {{ prefill.monitoring.podmonitor.enabled | default(false) | lower }}
+      enabled: {{ prefill.monitoring.podmonitor.enabled | lower }}
 {% if prefill.monitoring.podmonitor.enabled %}
-      portName: "{{ prefill.monitoring.podmonitor.portName | default('metrics') }}"
-      path: "{{ prefill.monitoring.podmonitor.path | default('/metrics') }}"
-      interval: "{{ prefill.monitoring.podmonitor.interval | default('30s') }}"
+      portName: "{{ prefill.monitoring.podmonitor.portName }}"
+      path: "{{ prefill.monitoring.podmonitor.path }}"
+      interval: "{{ prefill.monitoring.podmonitor.interval }}"
 {% if prefill.monitoring.podmonitor.scrapeTimeout is defined %}
       scrapeTimeout: "{{ prefill.monitoring.podmonitor.scrapeTimeout }}"
 {% endif %}

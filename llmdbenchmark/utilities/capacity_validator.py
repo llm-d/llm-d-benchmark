@@ -352,9 +352,9 @@ def _extract_params(
     if hf_token in ("", "REPLACE_TOKEN"):
         hf_token = None
 
-    parallelism = method_config.get("parallelism", {})
-    tp = int(parallelism.get("tensor", model_config.get("tensorParallelSize", 1)))
-    dp = int(parallelism.get("data", 1))
+    parallelism = method_config["parallelism"]
+    tp = int(parallelism["tensor"])
+    dp = int(parallelism["data"])
     pp = 1  # Pipeline parallelism not yet exposed per-method
 
     accelerator_nr = int(
@@ -373,16 +373,9 @@ def _extract_params(
         str(accel_section.get("memory", "")),
     )
 
-    vllm_common = plan_config.get("vllmCommon", {})
-    gpu_memory_util = float(
-        vllm_common.get("gpuMemoryUtilization",
-                        model_config.get("gpuMemoryUtilization", 0.9))
-    )
+    gpu_memory_util = float(model_config["gpuMemoryUtilization"])
 
-    max_model_len = int(
-        vllm_common.get("maxModelLen",
-                        model_config.get("maxModelLen", 2048))
-    )
+    max_model_len = int(model_config["maxModelLen"])
 
     return ValidationParams(
         models=models,

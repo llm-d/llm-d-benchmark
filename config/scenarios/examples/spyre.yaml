@@ -27,7 +27,6 @@ scenario:
       maxModelLen: 32768
       maxNumSeq: 32
       maxNumBatchedTokens: 1024
-      tensorParallelSize: 4
 
     # -------------------------------------------------------------------------
     # Affinity Configuration — IBM Spyre
@@ -43,20 +42,17 @@ scenario:
     # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=ibm.com/spyre_vf
     # -------------------------------------------------------------------------
     accelerator:
-      resourceName: ibm.com/spyre_vf
+      resource: ibm.com/spyre_vf
+      count: 1
 
     # -------------------------------------------------------------------------
     # vLLM Common Configuration
     # -------------------------------------------------------------------------
     vllmCommon:
-      tensorParallelism: 4
-      maxModelLen: 32768
-      maxNumSeq: 32
-      maxNumBatchedTokens: 1024
       shmMemory: 64Gi
       podScheduler: spyre-scheduler
 
-      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
+      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && source $HOME/llmdbench_env.sh"
 
       flags:
         enablePrefixCaching: true
@@ -79,6 +75,10 @@ scenario:
           configMap:
             name: llm-d-benchmark-preprocesses
             defaultMode: 493  # 0755
+        - name: k8s-llmdbench-context
+          type: secret
+          secret:
+            secretName: llmdbench-context
 
       volumeMounts:
         - name: spyre-precompiled-model
@@ -87,6 +87,9 @@ scenario:
           mountPath: /dev/shm
         - name: preprocesses
           mountPath: /setup/preprocess
+        - name: k8s-llmdbench-context
+          mountPath: /etc/kubeconfig
+          readOnly: true
 
     # -------------------------------------------------------------------------
     # Standalone Deployment Configuration
@@ -123,6 +126,10 @@ scenario:
 
       # Spyre-specific environment variables
       extraEnvVars:
+        - name: KUBECONFIG
+          value: "/etc/kubeconfig/llmdbench-context"
+        - name: PORT
+          value: "8000"
         - name: SERVED_MODEL_NAME
           value: "ibm-ai-platform/micro-g3.3-8b-instruct-1b"
         - name: FLEX_COMPUTE
@@ -167,7 +174,8 @@ scenario:
       enabled: false
       replicas: 0
       accelerator:
-        resourceName: ibm.com/spyre_vf
+        resource: ibm.com/spyre_vf
+        count: 1
 
     # -------------------------------------------------------------------------
     # Decode Configuration — 2 decode pods on Spyre
@@ -191,7 +199,13 @@ scenario:
           cpu: "100"
 
       accelerator:
-        resourceName: ibm.com/spyre_vf
+        resource: ibm.com/spyre_vf
+        count: 1
+
+      # Spyre uses affinity-based scheduling, not GPU label selection
+      acceleratorType:
+        labelKey: ibm.com/spyre.product
+        labelValue: IBM_Spyre
 
       vllm:
         customCommand: |
@@ -208,6 +222,10 @@ scenario:
 
       # Same Spyre-specific env vars as standalone
       extraEnvVars:
+        - name: KUBECONFIG
+          value: "/etc/kubeconfig/llmdbench-context"
+        - name: PORT
+          value: "8000"
         - name: SERVED_MODEL_NAME
           value: "ibm-ai-platform/micro-g3.3-8b-instruct-1b"
         - name: FLEX_COMPUTE

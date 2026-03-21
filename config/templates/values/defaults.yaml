@@ -8,9 +8,9 @@
 # ============================================================================
 _anchors:
   # Model identifiers
-  model_name: &model_name meta-llama/Llama-3.1-8B
-  model_short_name: &model_short_name meta-lla-1ebbf38c-a-3-1-8b
-  model_path: &model_path models/meta-llama/Llama-3.1-8B
+  model_name: &model_name facebook/opt-125m
+  model_short_name: &model_short_name facebook-opt-125m
+  model_path: &model_path models/facebook/opt-125m
   model_cache_base: &model_cache_base /model-cache
   
   # Common ports
@@ -42,7 +42,6 @@ _anchors:
   # Common vLLM settings
   block_size: &block_size 64
   max_model_len: &max_model_len 16384
-  tensor_parallel: &tensor_parallel 1
   worker_method: &worker_method spawn
   logging_level: &logging_level INFO
   container_home: &container_home /tmp
@@ -96,14 +95,14 @@ _anchors:
   pull_if_not_present: &pull_if_not_present IfNotPresent
   
   # Chart versions
-  istio_version: &istio_version 1.28.1
+  istio_version: &istio_version 1.29.1
   
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
   inference_serving_label: &inference_serving_label "true"
   
   # Preprocessing script (sourced from init container output)
-  preprocess_script: &preprocess_script source /shared-config/llmdbench_env.sh
+  preprocess_script: &preprocess_script /bin/true
 
 # ============================================================================
 # RESOURCE PRESETS - For different model sizes (as we get understanding...)
@@ -247,7 +246,6 @@ model:
   size: 1Ti
   maxModelLen: *max_model_len
   blockSize: *block_size
-  tensorParallelSize: *tensor_parallel
   gpuMemoryUtilization: *gpu_memory_util
   cacheBase: *model_cache_base
 
@@ -369,11 +367,11 @@ helmRepositories:
 chartVersions:
   istioBase: *istio_version
   istiod: *istio_version
-  llmDInfra: v1.3.8
+  llmDInfra: auto
   llmDModelservice: auto
   inferencePool: v1.3.0
-  gaie: v1.3.0
-  wva: 0.5.1-rc.2
+  gaie: v1.3.1
+  wva: auto
 
 # ============================================================================
 # SERVICE ACCOUNT CONFIGURATION
@@ -388,7 +386,7 @@ monitoring:
   enabled: true
   enableUserWorkload: true
   podmonitor:
-    enabled: false
+    enabled: true
   metricsPath: /metrics
   scrapeInterval: "30s"
   metricsScrapeEnabled: false
@@ -716,15 +714,15 @@ decode:
   # Resource configuration
   resources:
     limits:
-      memory: *memory_64gi
-      cpu: *cpu_16
+      memory: *memory_40gi
+      cpu: *cpu_4
       # GPU resource (optional - uncomment to explicitly request GPUs)
       # nvidia.com/gpu: "1"
       # DRA claims (optional)
       # claims: {}
     requests:
-      memory: *memory_64gi
-      cpu: *cpu_16
+      memory: *memory_40gi
+      cpu: *cpu_4
       # nvidia.com/gpu: "1"
   
   # Shared memory
@@ -874,9 +872,11 @@ prefill:
 
   # vLLM configuration
   vllm:
-    # servicePort inherits from decode if not specified
+    port: *vllm_port
+    servicePort: *vllm_service_port
     workerMultiprocMethod: *worker_method
     loggingLevel: *logging_level
+    imagePullPolicy: *pull_if_not_present
     # Use these if wanted to use default command but add additional
     # flags
     additionalFlags: []
@@ -885,7 +885,7 @@ prefill:
       # - "--tensor-parallel-size 1"
     customCommand: null
     customPreprocessCommand: null
-  
+
   # Mount model volume
   mountModelVolume: true
   
@@ -990,7 +990,7 @@ standalone:
   # Image configuration (inherits from images.vllm if not specified)
   image:
     repository: docker.io/vllm/vllm-openai
-    tag: latest
+    tag: auto
     pullPolicy: Always
   
   # Parallelism configuration
@@ -1009,13 +1009,13 @@ standalone:
   # Probe configuration
   probes:
     startup:
-      failureThreshold: 200
+      failureThreshold: 60
       initialDelaySeconds: 30
       periodSeconds: 30
       timeoutSeconds: 5
     liveness:
       failureThreshold: 3
-      periodSeconds: 10
+      periodSeconds: 5
     readiness:
       failureThreshold: 3
       periodSeconds: 5
@@ -1162,7 +1162,7 @@ wva:
   namespace: ""  # defaults to common namespace
   image:
     repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
-    tag: v0.5.1-rc.2
+    tag: auto
   replicaCount: 1
   controller:
     enabled: true
@@ -1194,7 +1194,7 @@ wva:
 # ============================================================================
 gatewayProviders:
   kgateway:
-    chartVersion: v2.1.1
+    chartVersion: v2.2.1
     namespace: kgateway-system
     helmRepository: oci://cr.kgateway.dev/kgateway-dev/charts
 
@@ -1211,7 +1211,7 @@ lws:
 # ============================================================================
 gatewayApiCrd:
   revision: v1.4.0
-  inferenceExtensionRevision: v1.3.0
+  inferenceExtensionRevision: v1.3.1
 
 # ============================================================================
 # HARNESS CONFIGURATION

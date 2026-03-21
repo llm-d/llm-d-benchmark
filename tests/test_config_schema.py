@@ -89,7 +89,7 @@ class TestDefaultsValidation:
 
     def test_defaults_produce_valid_model(self, defaults: dict) -> None:
         config = BenchmarkConfig.model_validate(defaults)
-        assert config.model.name == "meta-llama/Llama-3.1-8B"
+        assert config.model.name == "facebook/opt-125m"
         assert config.decode.enabled is True
         assert config.prefill.enabled is False
         assert config.vllmCommon.inferencePort == 8000
@@ -272,18 +272,18 @@ class TestAllowSections:
 class TestScenarioOnlyFields:
     """Fields that exist in scenarios but not defaults must be accepted."""
 
-    def test_vllm_common_tensor_parallelism(self, defaults_copy: dict) -> None:
+    def test_vllm_common_tensor_parallelism_rejected(self, defaults_copy: dict) -> None:
         defaults_copy["vllmCommon"]["tensorParallelism"] = 4
         warnings = validate_config(defaults_copy)
-        assert warnings == [], (
-            f"vllmCommon.tensorParallelism should be accepted: {warnings}"
+        assert any("tensorParallelism" in w for w in warnings), (
+            "vllmCommon.tensorParallelism should be rejected (use decode/prefill parallelism.tensor)"
         )
 
-    def test_vllm_common_max_model_len(self, defaults_copy: dict) -> None:
+    def test_vllm_common_max_model_len_rejected(self, defaults_copy: dict) -> None:
         defaults_copy["vllmCommon"]["maxModelLen"] = 8192
         warnings = validate_config(defaults_copy)
-        assert warnings == [], (
-            f"vllmCommon.maxModelLen should be accepted: {warnings}"
+        assert any("maxModelLen" in w for w in warnings), (
+            "vllmCommon.maxModelLen should be rejected (use model.maxModelLen)"
         )
 
     def test_vllm_common_shm_memory(self, defaults_copy: dict) -> None:

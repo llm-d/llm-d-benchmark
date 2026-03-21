@@ -10,31 +10,31 @@
 
 scenario:
   # ============================================================================
-  # P/D Disaggregation - Llama 3.1 8B Instruct with 2 prefill and 2 decode pods
+  # P/D Disaggregation - Qwen3-32B with 2 prefill and 2 decode pods
   # ============================================================================
   - name: "pd-disaggregation"
     
     # -------------------------------------------------------------------------
     # Model Configuration
-    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.1-8B-Instruct"
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
     # Alternative models (commented out in original):
     #   - Qwen/Qwen3-0.6B
     #   - facebook/opt-125m
+    #   - meta-llama/Llama-3.1-8B-Instruct
     #   - meta-llama/Llama-3.1-70B-Instruct
     #   - deepseek-ai/DeepSeek-R1-0528
     # -------------------------------------------------------------------------
     model:
-      name: meta-llama/Llama-3.1-8B-Instruct
-      shortName: meta-lla-8b-instruct
-      path: models/meta-llama/Llama-3.1-8B-Instruct
-      huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
+      name: Qwen/Qwen3-32B
+      shortName: qwen-qwen3-32b
+      path: models/Qwen/Qwen3-32B
+      huggingfaceId: Qwen/Qwen3-32B
       # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
       size: 1Ti
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
-      maxModelLen: 16000
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=32000
+      maxModelLen: 32000
       # Corresponds to: LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=128
       blockSize: 128
-      tensorParallelSize: 2
       gpuMemoryUtilization: 0.95
       cacheBase: /model-cache
     
@@ -96,13 +96,6 @@ scenario:
           image: ghcr.io/llm-d/llm-d-benchmark:auto
           imagePullPolicy: Always
           command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-          securityContext:
-            capabilities:
-              add:
-                - IPC_LOCK
-                - SYS_RAWIO
-                - NET_ADMIN
-                - NET_RAW
           volumeMounts:
             - name: shared-config
               mountPath: /shared-config
@@ -112,7 +105,7 @@ scenario:
         tensor: 2
         data: 1
         dataLocal: 1
-        workers: 2
+        workers: 1
 
       # Resource configuration
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR (=32)
@@ -125,23 +118,12 @@ scenario:
           memory: 128Gi
           cpu: "32"
 
-      vllm:
-        # Custom command overrides the template-built command entirely.
-        # vllmCommon.flags are IGNORED when customCommand is set — all flags must
-        # be listed here explicitly. kv-transfer-config is auto-appended from
-        # vllmCommon.kvTransfer.
-        customCommand: |
-          vllm serve /model-cache/models/meta-llama/Llama-3.1-8B-Instruct \
-          --host 0.0.0.0 \
-          --served-model-name meta-llama/Llama-3.1-8B-Instruct \
-          --port 8000 \
-          --block-size 128 \
-          --max-model-len 16000 \
-          --tensor-parallel-size 2 \
-          --gpu-memory-utilization 0.95 \
-          --no-enable-log-requests \
-          --disable-uvicorn-access-log \
-          --no-enable-prefix-caching
+      # vllm serve command is auto-generated from model config + vllmCommon.flags.
+      # The following flags are applied (see vllmCommon.flags below):
+      #   --no-enable-log-requests, --disable-uvicorn-access-log,
+      #   --no-enable-prefix-caching
+      # Plus --kv-transfer-config from vllmCommon.kvTransfer.
+      # To override entirely, set vllm.customCommand.
 
       # -----------------------------------------------------------------------
       # Extra Environment Variables
@@ -168,7 +150,7 @@ scenario:
           runAsGroup: 0
           runAsUser: 0
         imagePullPolicy: Always
-      
+
       # -----------------------------------------------------------------------
       # Additional Volume Mounts
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS
@@ -216,13 +198,6 @@ scenario:
           image: ghcr.io/llm-d/llm-d-benchmark:auto
           imagePullPolicy: Always
           command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
-          securityContext:
-            capabilities:
-              add:
-                - IPC_LOCK
-                - SYS_RAWIO
-                - NET_ADMIN
-                - NET_RAW
           volumeMounts:
             - name: shared-config
               mountPath: /shared-config
@@ -232,7 +207,7 @@ scenario:
         tensor: 2
         data: 1
         dataLocal: 1
-        workers: 2
+        workers: 1
 
       # Resource configuration
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR (=32)
@@ -245,23 +220,12 @@ scenario:
           memory: 128Gi
           cpu: "32"
 
-      vllm:
-        # Custom command overrides the template-built command entirely.
-        # vllmCommon.flags are IGNORED when customCommand is set — all flags must
-        # be listed here explicitly. kv-transfer-config is auto-appended from
-        # vllmCommon.kvTransfer.
-        customCommand: |
-          vllm serve /model-cache/models/meta-llama/Llama-3.1-8B-Instruct \
-          --host 0.0.0.0 \
-          --served-model-name meta-llama/Llama-3.1-8B-Instruct \
-          --port 8200 \
-          --block-size 128 \
-          --max-model-len 16000 \
-          --tensor-parallel-size 2 \
-          --gpu-memory-utilization 0.95 \
-          --no-enable-log-requests \
-          --disable-uvicorn-access-log \
-          --no-enable-prefix-caching
+      # vllm serve command is auto-generated from model config + vllmCommon.flags.
+      # The following flags are applied (see vllmCommon.flags below):
+      #   --no-enable-log-requests, --disable-uvicorn-access-log,
+      #   --no-enable-prefix-caching
+      # Plus --kv-transfer-config from vllmCommon.kvTransfer.
+      # To override entirely, set vllm.customCommand.
 
       # -----------------------------------------------------------------------
       # Extra Environment Variables

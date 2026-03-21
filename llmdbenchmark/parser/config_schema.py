@@ -310,10 +310,6 @@ class VllmCommonConfig(BaseModel):
     volumes: list[dict[str, Any]]
     volumeMounts: list[dict[str, Any]]
 
-    tensorParallelism: int | None = None
-    maxModelLen: int | str | None = None
-    maxNumSeq: int | None = None
-    maxNumBatchedTokens: int | None = None
     shmMemory: str | None = None
     podScheduler: str | None = None
 
@@ -335,7 +331,6 @@ class ModelConfig(BaseModel):
     size: str
     maxModelLen: int | str
     blockSize: int
-    tensorParallelSize: int = Field(ge=1)
     gpuMemoryUtilization: float = Field(ge=0, le=1)
     cacheBase: str
 

@@ -9,13 +9,13 @@ metadata:
   name: {{ pod_name }}
   namespace: {{ harness.namespace | default(namespace.name) }}
   labels:
-    app: {{ harness.podLabel | default('llmdbench-harness-launcher') }}
+    app: {{ harness.podLabel }}
     function: load_generator
 spec:
   containers:
   - name: harness
     image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
-    imagePullPolicy: {{ images.benchmark.pullPolicy | default('Always') }}
+    imagePullPolicy: {{ images.benchmark.pullPolicy }}
     securityContext:
       runAsUser: 0
     command: ["sh", "-c"]
@@ -23,11 +23,11 @@ spec:
     - "{{ harness_command }}"
     resources:
       limits:
-        cpu: "{{ harness.resources.cpu | default(16) }}"
-        memory: {{ harness.resources.memory | default('32Gi') }}
+        cpu: "{{ harness.resources.cpu }}"
+        memory: {{ harness.resources.memory }}
       requests:
-        cpu: "{{ harness.resources.cpu | default(16) }}"
-        memory: {{ harness.resources.memory | default('32Gi') }}
+        cpu: "{{ harness.resources.cpu }}"
+        memory: {{ harness.resources.memory }}
     env:
     - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
       value: "1"
@@ -36,7 +36,7 @@ spec:
     - name: LLMDBENCH_DEPLOY_METHODS
       value: "{{ deploy_method | default('modelservice') }}"
     - name: LLMDBENCH_RUN_WORKSPACE_DIR
-      value: "{{ experiment.workspaceDir | default('/workspace') }}"
+      value: "{{ experiment.workspaceDir }}"
     - name: LLMDBENCH_CONTROL_WORK_DIR
       value: "{{ results_dir }}"
     - name: LLMDBENCH_DEPLOY_CURRENT_MODEL
@@ -48,18 +48,18 @@ spec:
     - name: LLMDBENCH_HARNESS_STACK_TYPE
       value: "{{ stack_type }}"
     - name: LLMDBENCH_HARNESS_NAME
-      value: "{{ harness.name | default('inference-perf') }}"
+      value: "{{ harness.name }}"
     - name: LLMDBENCH_RUN_EXPERIMENT_ID
       value: "{{ experiment_id }}"
     - name: RAYON_NUM_THREADS
-      value: "{{ harness.inferencePerf.rayonNumThreads | default(4) }}"
+      value: "{{ harness.inferencePerf.rayonNumThreads }}"
     - name: HF_TOKEN_SECRET
-      value: "{{ huggingface.secretName | default('llm-d-hf-token') }}"
+      value: "{{ huggingface.secretName }}"
     - name: HUGGING_FACE_HUB_TOKEN
       valueFrom:
         secretKeyRef:
-          name: {{ huggingface.secretName | default('llm-d-hf-token') }}
-          key: {{ huggingface.tokenKey | default('HF_TOKEN') }}
+          name: {{ huggingface.secretName }}
+          key: {{ huggingface.tokenKey }}
     - name: POD_NAME
       valueFrom:
         fieldRef:
@@ -75,33 +75,33 @@ spec:
       value: "{{ base64_context_contents }}"
 {% endif %}
     - name: LLMDBENCH_VLLM_COMMON_INFERENCE_PORT
-      value: "{{ vllmCommon.inferencePort | default(decode.vllm.servicePort) | default('8000') }}"
+      value: "{{ vllmCommon.inferencePort }}"
     - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX
       value: "{{ harness.resultsDirPrefix | default('/requests') }}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
       value: "{{ harness.stackName | default(model.shortName) | default('default') }}"
 {% if monitoring is defined and monitoring.metricsScrapeEnabled is defined %}
     - name: LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED
-      value: "{{ monitoring.metricsScrapeEnabled | default('false') }}"
+      value: "{{ monitoring.metricsScrapeEnabled }}"
     - name: LLMDBENCH_VLLM_COMMON_METRICS_PORT
-      value: "{{ decode.vllm.port | default('8200') }}"
+      value: "{{ decode.vllm.port }}"
     - name: LLMDBENCH_VLLM_MONITORING_METRICS_PATH
-      value: "{{ monitoring.metricsPath | default('/metrics') }}"
+      value: "{{ monitoring.metricsPath }}"
 {% endif %}
     volumeMounts:
     - name: results
       mountPath: /requests
-    - name: {{ harness.name | default('inference-perf') }}-profiles
-      mountPath: /workspace/profiles/{{ harness.name | default('inference-perf') }}
+    - name: {{ harness.name }}-profiles
+      mountPath: /workspace/profiles/{{ harness.name }}
     - name: harness-scripts
       mountPath: /workspace/harnesses
   volumes:
   - name: results
     persistentVolumeClaim:
       claimName: {{ storage.workloadPvc.name }}
-  - name: {{ harness.name | default('inference-perf') }}-profiles
+  - name: {{ harness.name }}-profiles
     configMap:
-      name: {{ harness.name | default('inference-perf') }}-profiles
+      name: {{ harness.name }}-profiles
   - name: harness-scripts
     configMap:
       name: llmdbench-harness-scripts

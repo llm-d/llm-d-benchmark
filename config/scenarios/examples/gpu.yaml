@@ -21,20 +21,12 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Model Configuration
-    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST (commented — user selects)
     # -------------------------------------------------------------------------
-    # Uncomment ONE of the following models:
-    # model:
-    #   name: Qwen/Qwen3-0.6B
-    #   name: Qwen/Qwen3-32B
-    #   name: RedHatAI/Llama-3.3-70B-Instruct-FP8-dynamic
-    #   name: ibm-granite/granite-3.3-8b-instruct
-    #   name: ibm-granite/granite-3.3-2b-instruct
-    #   name: ibm-ai-platform/micro-g3.3-8b-instruct-1b
-    #   name: facebook/opt-125m
-    #   name: meta-llama/Llama-3.1-8B-Instruct
-    #   name: meta-llama/Llama-3.1-70B-Instruct
-    #   name: deepseek-ai/DeepSeek-R1-0528
+    model:
+      name: facebook/opt-125m
+      shortName: facebook-opt-125m
+      path: models/facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
 
     # -------------------------------------------------------------------------
     # PVC Configuration
@@ -71,8 +63,6 @@ scenario:
     vllmCommon:
       # Corresponds to: LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM (default 1)
       # tensorParallelism: 2
-
-      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py; source $HOME/llmdbench_env.sh"
 
       # These flags control the auto-generated vllm serve command.
       # Flags not listed here inherit from defaults.yaml (e.g. allowLongMaxModelLen, serverDevMode).
