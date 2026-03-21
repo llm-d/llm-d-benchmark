@@ -27,7 +27,7 @@ export LLMDBENCH_GATEWAY_API_CRD_REVISION=${LLMDBENCH_GATEWAY_API_CRD_REVISION:-
 export LLMDBENCH_WVA_CHART_VERSION=${LLMDBENCH_WVA_CHART_VERSION:-"auto"}
 export LLMDBENCH_WVA_IMAGE_TAG=${LLMDBENCH_WVA_IMAGE_TAG:-"auto"}
 #FIXME: oci helm repos do not output a list of versions. Use "skopeo list-tags  docker://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool"
-export LLMDBENCH_VLLM_GAIE_CHART_VERSION=${LLMDBENCH_VLLM_GAIE_CHART_VERSION:-v1.3.1}
+export LLMDBENCH_VLLM_GAIE_CHART_VERSION=${LLMDBENCH_VLLM_GAIE_CHART_VERSION:-v1.4.0}
 
 # Images
 export LLMDBENCH_IMAGE_REGISTRY=${LLMDBENCH_IMAGE_REGISTRY:-ghcr.io}
