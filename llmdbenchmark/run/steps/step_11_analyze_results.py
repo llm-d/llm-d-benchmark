@@ -45,13 +45,19 @@ class AnalyzeResultsStep(Step):
             )
 
         if context.dry_run:
+            # Log what would be analyzed (local Python, no kubectl commands)
+            subdirs = [d.name for d in sorted(results_dir.iterdir()) if d.is_dir()]
+            context.logger.log_info(
+                f"[DRY RUN] Would run {harness_name} analysis on "
+                f"{len(subdirs)} result set(s) in {results_dir}: "
+                f"{', '.join(subdirs) or '(none)'}"
+            )
             return StepResult(
                 step_number=self.number,
                 step_name=self.name,
                 success=True,
                 message=(
-                    f"[DRY RUN] Would run {harness_name} analysis "
-                    f"on {results_dir}"
+                    f"[DRY RUN] Would analyze {len(subdirs)} result set(s)"
                 ),
             )
 

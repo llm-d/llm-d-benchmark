@@ -428,6 +428,9 @@ def test_model_serving(
 
         result = cmd.kube(*kubectl_args, check=False)
 
+        if result.dry_run:
+            return None  # Command logged, skip retries
+
         if not result.success:
             detail = result.stderr[:200] or result.stdout[:200]
             last_error = f"Curl to {host}:{port} failed: {detail}"

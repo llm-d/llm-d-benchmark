@@ -91,12 +91,18 @@ class CommandExecutor:
         silent: bool = True,
         delay: int = 10,
         check: bool = True,
+        force: bool = False,
     ) -> CommandResult:
-        """Run a shell command with optional retry. Raises ExecutionError if fatal and failed."""
+        """Run a shell command with optional retry. Raises ExecutionError if fatal and failed.
+
+        When *force* is True the command runs even in dry-run mode.
+        Use this for local-only read operations (e.g. ``kubectl config view``)
+        whose results are needed to build later commands correctly.
+        """
         cmd_str = " ".join(cmd) if isinstance(cmd, list) else cmd
         timestamp = int(time.time() * 1e9)
 
-        if self.dry_run:
+        if self.dry_run and not force:
             return self._handle_dry_run(cmd_str, timestamp)
 
         self._write_log(f"{timestamp}_command.log",
@@ -213,15 +219,20 @@ class CommandExecutor:
         return parts
 
     def kube(
-        self, *args: str, namespace: str | None = None, check: bool = True
+        self, *args: str, namespace: str | None = None, check: bool = True,
+        force: bool = False,
     ) -> CommandResult:
-        """Execute a kubectl/oc command with auto-injected kubeconfig flags."""
+        """Execute a kubectl/oc command with auto-injected kubeconfig flags.
+
+        When *force* is True the command runs even in dry-run mode.
+        Use for local-only reads like ``config view``.
+        """
         parts = [self._kube_bin]
         parts.extend(self._kubeconfig_args())
         if namespace:
             parts.extend(["--namespace", namespace])
         parts.extend(args)
-        return self.execute(" ".join(parts), check=check)
+        return self.execute(" ".join(parts), check=check, force=force)
 
     def helm(self, *args: str, check: bool = True) -> CommandResult:
         """Execute a helm command with auto-injected kubeconfig flags."""
@@ -247,10 +258,11 @@ class CommandExecutor:
     ) -> CommandResult:
         """Poll pods matching a label selector until all are Ready, showing live progress."""
         desc = description or label
+        kc_args = " ".join(self._kubeconfig_args())
         cmd_repr = (
-            f'kubectl wait --for=condition=Ready pod -l {label} '
+            f'{self._kube_bin} {kc_args} wait --for=condition=Ready pod -l {label} '
             f'--namespace {namespace} --timeout={timeout}s'
-        )
+        ).replace("  ", " ")
 
         if self.dry_run:
             return self._handle_dry_run(cmd_repr, int(time.time() * 1e9))
@@ -353,10 +365,11 @@ class CommandExecutor:
     ) -> CommandResult:
         """Poll a Job until it completes or fails, showing live progress."""
         desc = description or f"job/{job_name}"
+        kc_args = " ".join(self._kubeconfig_args())
         cmd_repr = (
-            f'kubectl wait --for=condition=complete job/{job_name} '
+            f'{self._kube_bin} {kc_args} wait --for=condition=complete job/{job_name} '
             f'--namespace {namespace} --timeout={timeout}s'
-        )
+        ).replace("  ", " ")
 
         if self.dry_run:
             return self._handle_dry_run(cmd_repr, int(time.time() * 1e9))
@@ -439,7 +452,8 @@ class CommandExecutor:
     ) -> CommandResult:
         """Poll a PVC until it reaches Bound phase, showing live progress."""
         desc = description or f"pvc/{pvc_name}"
-        cmd_repr = f'kubectl wait --for=jsonpath={{.status.phase}}=Bound pvc/{pvc_name} --namespace {namespace} --timeout={timeout}s'
+        kc_args = " ".join(self._kubeconfig_args())
+        cmd_repr = f'{self._kube_bin} {kc_args} wait --for=jsonpath={{.status.phase}}=Bound pvc/{pvc_name} --namespace {namespace} --timeout={timeout}s'.replace("  ", " ")
 
         if self.dry_run:
             return self._handle_dry_run(cmd_repr, int(time.time() * 1e9))

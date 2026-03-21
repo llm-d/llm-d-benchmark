@@ -165,6 +165,9 @@ def wait_for_pod(
             check=False,
         )
 
+        if result.dry_run:
+            return "Succeeded"  # Command logged, skip polling
+
         if not result.success:
             # Pod may not exist yet
             time.sleep(poll_interval)

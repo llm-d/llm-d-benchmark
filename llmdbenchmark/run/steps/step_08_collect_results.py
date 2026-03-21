@@ -71,32 +71,23 @@ class CollectResultsStep(Step):
             plan_config, "experiment.resultsDir", default="/requests",
         )
 
-        if context.dry_run:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=(
-                    f"[DRY RUN] Would collect results for "
-                    f"{len(experiment_ids)} experiment(s)"
-                ),
-                stack_name=stack_name,
-            )
-
         # Find the data-access pod
         data_pod = find_data_access_pod(cmd, harness_ns)
         if not data_pod:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Data access pod not found",
-                errors=[
-                    f"No pod with label 'role=llm-d-benchmark-data-access' "
-                    f"found in namespace '{harness_ns}'"
-                ],
-                stack_name=stack_name,
-            )
+            if context.dry_run:
+                data_pod = "<dry-run-data-pod>"
+            else:
+                return StepResult(
+                    step_number=self.number,
+                    step_name=self.name,
+                    success=False,
+                    message="Data access pod not found",
+                    errors=[
+                        f"No pod with label 'role=llm-d-benchmark-data-access' "
+                        f"found in namespace '{harness_ns}'"
+                    ],
+                    stack_name=stack_name,
+                )
 
         local_results_dir = context.run_results_dir()
         total_collected = 0

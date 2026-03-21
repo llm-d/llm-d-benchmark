@@ -92,15 +92,6 @@ class InferenceTestStep(Step):
         )
         release = self._require_config(plan_config, "release")
 
-        if context.dry_run:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=f"[DRY RUN] Inference test logged for {stack_name}",
-                stack_name=stack_name,
-            )
-
         # Discover endpoint (same logic as smoketest)
         if is_standalone:
             service_ip, _, gateway_port = find_standalone_endpoint(
@@ -112,15 +103,19 @@ class InferenceTestStep(Step):
             )
 
         if not service_ip:
-            errors.append("Could not find service/gateway IP for inference test")
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Inference test failed — no endpoint found",
-                errors=errors,
-                stack_name=stack_name,
-            )
+            if context.dry_run:
+                service_ip = "<dry-run-endpoint>"
+                gateway_port = "80"
+            else:
+                errors.append("Could not find service/gateway IP for inference test")
+                return StepResult(
+                    step_number=self.number,
+                    step_name=self.name,
+                    success=False,
+                    message="Inference test failed — no endpoint found",
+                    errors=errors,
+                    stack_name=stack_name,
+                )
 
         protocol = "https" if str(gateway_port) == "443" else "http"
         base_url = f"{protocol}://{service_ip}:{gateway_port}"
@@ -248,6 +243,12 @@ class InferenceTestStep(Step):
             stdout, err = self._curl_post(
                 cmd, namespace, url, payload, plan_config,
             )
+
+            if cmd.dry_run:
+                return self._InferenceResult(
+                    success=True, payload=payload,
+                    generated_text="<dry-run>",
+                )
 
             if err:
                 if _is_retryable(err) and attempt < max_retries:
@@ -437,6 +438,9 @@ class InferenceTestStep(Step):
         )
 
         result = cmd.kube(*kubectl_args, check=False)
+
+        if result.dry_run:
+            return "", None  # Command logged, return empty success
 
         if not result.success:
             detail = result.stderr[:300] or result.stdout[:300]

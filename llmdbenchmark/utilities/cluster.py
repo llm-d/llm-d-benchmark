@@ -25,12 +25,12 @@ except ImportError:
 
 
 def resolve_cluster(context: ExecutionContext) -> None:
-    """Connect to the cluster, detect platform, store kubeconfig, and resolve metadata."""
-    if context.dry_run:
-        context.rebuild_cmd()
-        _resolve_username(context)
-        return
+    """Connect to the cluster, detect platform, store kubeconfig, and resolve metadata.
 
+    Runs fully even in dry-run mode so that the stored ``context.ctx``
+    kubeconfig is created and all subsequent dry-run commands show the
+    canonical kubeconfig path.
+    """
     _kube_api_connect(context)
     cmd = context.rebuild_cmd()
     _detect_local_platform(cmd, context)
@@ -421,6 +421,7 @@ def _extract_current_context(cmd: CommandExecutor, target_file: Path) -> bool:
         "--flatten",
         "--raw",
         check=False,
+        force=True,  # Local-only read — must run even in dry-run
     )
     if result.success and result.stdout.strip():
         target_file.write_text(result.stdout)
@@ -458,7 +459,7 @@ def _read_kubeconfig_json(
     if kubeconfig_override:
         args = ["--kubeconfig", kubeconfig_override] + args
 
-    result = cmd.kube(*args, check=False)
+    result = cmd.kube(*args, check=False, force=True)  # Local-only read
     if not result.success:
         return None
 

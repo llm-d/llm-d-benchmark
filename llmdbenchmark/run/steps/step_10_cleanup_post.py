@@ -49,18 +49,6 @@ class RunCleanupPostStep(Step):
             context_value=context.harness_name, default="inference-perf",
         )
 
-        if context.dry_run:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=(
-                    f"[DRY RUN] Would clean up harness pods and "
-                    f"ConfigMaps ('{harness_name}-profiles', "
-                    f"'{HARNESS_SCRIPTS_CONFIGMAP}') in ns={harness_ns}"
-                ),
-            )
-
         context.logger.log_info(
             f"Cleaning up harness resources in ns={harness_ns}..."
         )

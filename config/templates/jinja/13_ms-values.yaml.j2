@@ -219,6 +219,9 @@ requester:
 {# ========================================================================== #}
 {# DECODE SECTION                                                             #}
 {# ========================================================================== #}
+{# When routing proxy is disabled, vLLM binds to servicePort directly;
+   when enabled, vLLM binds to vllm.port and the proxy handles servicePort. #}
+{% set decode_effective_port = decode.vllm.servicePort if (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) else decode.vllm.port -%}
 decode:
   create: {{ decode_create | lower }}
 {% if decode_create %}
@@ -505,20 +508,20 @@ decode:
       startupProbe:
         httpGet:
           path: {{ decode.probes.startup.path }}
-          port: {{ decode.vllm.port }}
+          port: {{ decode_effective_port }}
         failureThreshold: {{ decode.probes.startup.failureThreshold }}
         initialDelaySeconds: {{ decode.probes.startup.initialDelaySeconds }}
         periodSeconds: {{ decode.probes.startup.periodSeconds }}
         timeoutSeconds: {{ decode.probes.startup.timeoutSeconds }}
       livenessProbe:
         tcpSocket:
-          port: {{ decode.vllm.port }}
+          port: {{ decode_effective_port }}
         failureThreshold: {{ decode.probes.liveness.failureThreshold }}
         periodSeconds: {{ decode.probes.liveness.periodSeconds }}
       readinessProbe:
         httpGet:
           path: {{ decode.probes.readiness.path }}
-          port: {{ decode.vllm.port }}
+          port: {{ decode_effective_port }}
         failureThreshold: {{ decode.probes.readiness.failureThreshold }}
         periodSeconds: {{ decode.probes.readiness.periodSeconds }}
 {% if decode.extraContainerConfig is defined and decode.extraContainerConfig %}
@@ -659,6 +662,7 @@ decode:
 {# ========================================================================== #}
 {# PREFILL SECTION                                                            #}
 {# ========================================================================== #}
+{% set prefill_effective_port = (prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort) if (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) else (prefill.vllm.port if prefill.vllm is defined and prefill.vllm.port is defined else decode.vllm.port) -%}
 prefill:
   create: {{ prefill_create | lower }}
 {% if prefill_create %}
@@ -945,20 +949,20 @@ prefill:
       startupProbe:
         httpGet:
           path: {{ prefill.probes.startup.path }}
-          port: {{ prefill.vllm.port if prefill.vllm is defined and prefill.vllm.port is defined else decode.vllm.port }}
+          port: {{ prefill_effective_port }}
         failureThreshold: {{ prefill.probes.startup.failureThreshold }}
         initialDelaySeconds: {{ prefill.probes.startup.initialDelaySeconds }}
         periodSeconds: {{ prefill.probes.startup.periodSeconds }}
         timeoutSeconds: {{ prefill.probes.startup.timeoutSeconds }}
       livenessProbe:
         tcpSocket:
-          port: {{ prefill.vllm.port if prefill.vllm is defined and prefill.vllm.port is defined else decode.vllm.port }}
+          port: {{ prefill_effective_port }}
         failureThreshold: {{ prefill.probes.liveness.failureThreshold }}
         periodSeconds: {{ prefill.probes.liveness.periodSeconds }}
       readinessProbe:
         httpGet:
           path: {{ prefill.probes.readiness.path }}
-          port: {{ prefill.vllm.port if prefill.vllm is defined and prefill.vllm.port is defined else decode.vllm.port }}
+          port: {{ prefill_effective_port }}
         failureThreshold: {{ prefill.probes.readiness.failureThreshold }}
         periodSeconds: {{ prefill.probes.readiness.periodSeconds }}
 {% if prefill.extraContainerConfig is defined and prefill.extraContainerConfig %}

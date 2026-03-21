@@ -77,18 +77,6 @@ class WaitCompletionStep(Step):
                 stack_name=stack_name,
             )
 
-        if context.dry_run:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=(
-                    f"[DRY RUN] Would wait for {len(pod_names)} "
-                    f"pod(s) (timeout={timeout}s)"
-                ),
-                stack_name=stack_name,
-            )
-
         harness_ns = context.harness_namespace or context.namespace or ""
         errors: list[str] = []
         succeeded = 0

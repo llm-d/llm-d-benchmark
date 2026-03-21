@@ -56,10 +56,15 @@
 {# Use default vllm serve command #}
 {% set effective_max_model_len = model.maxModelLen -%}
 {% set effective_block_size = model.blockSize -%}
+{# When routing proxy is disabled, vLLM must bind to the service port (8000)
+   directly since there is no sidecar to bridge servicePort→vllmPort.
+   When proxy is enabled, vLLM binds to vllm.port (8200) and the proxy
+   handles the servicePort (8000) → vllmPort (8200) forwarding. #}
+{% set effective_port = config.vllm.servicePort if (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) else config.vllm.port -%}
 {{ preprocess_script }}; vllm serve {{ model.cacheBase }}/{{ model.path }} \
   --host {{ vllmCommon.host }} \
   --served-model-name {{ model.name }} \
-  --port {{ config.vllm.port }} \
+  --port {{ effective_port }} \
   --block-size {{ effective_block_size }} \
   --max-model-len {{ effective_max_model_len }}
 {%- set tp_size = config.parallelism.tensor | int %}

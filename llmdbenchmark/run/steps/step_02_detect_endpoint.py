@@ -74,15 +74,6 @@ class DetectEndpointStep(Step):
             plan_config, "release", context_value=context.release,
         )
 
-        if context.dry_run:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=f"[DRY RUN] Would detect endpoint for {stack_name}",
-                stack_name=stack_name,
-            )
-
         service_ip = None
         service_name = None
         gateway_port = "80"
@@ -121,20 +112,25 @@ class DetectEndpointStep(Step):
             stack_type = "llm-d"
 
         if not service_ip:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message=f"Could not detect endpoint for {stack_name}",
-                errors=[
-                    f"No service/gateway IP found in namespace '{namespace}'. "
-                    f"Is the model deployed? (standalone={is_standalone}). "
-                    f"Tip: If the stack was not deployed via standup, use "
-                    f"--methods <string-matching-service-or-pod-name> or "
-                    f"--endpoint-url <URL>."
-                ],
-                stack_name=stack_name,
-            )
+            if context.dry_run:
+                service_ip = "<dry-run-endpoint>"
+                service_name = "<dry-run>"
+                gateway_port = "80"
+            else:
+                return StepResult(
+                    step_number=self.number,
+                    step_name=self.name,
+                    success=False,
+                    message=f"Could not detect endpoint for {stack_name}",
+                    errors=[
+                        f"No service/gateway IP found in namespace '{namespace}'. "
+                        f"Is the model deployed? (standalone={is_standalone}). "
+                        f"Tip: If the stack was not deployed via standup, use "
+                        f"--methods <string-matching-service-or-pod-name> or "
+                        f"--endpoint-url <URL>."
+                    ],
+                    stack_name=stack_name,
+                )
 
         # Build full URL
         protocol = "https" if gateway_port == "443" else "http"

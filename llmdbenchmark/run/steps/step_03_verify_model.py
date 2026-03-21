@@ -69,18 +69,6 @@ class VerifyModelStep(Step):
                 stack_name=stack_name,
             )
 
-        if context.dry_run:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=(
-                    f"[DRY RUN] Would verify model '{model_name}' "
-                    f"at {endpoint_url}"
-                ),
-                stack_name=stack_name,
-            )
-
         # Parse host and port from endpoint URL
         host, port = self._parse_endpoint(endpoint_url)
         namespace = context.harness_namespace or context.namespace or ""

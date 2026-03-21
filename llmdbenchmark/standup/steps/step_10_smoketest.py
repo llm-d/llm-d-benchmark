@@ -58,15 +58,6 @@ class SmoketestStep(Step):
         service_ip = None
         service_name = None
 
-        if context.dry_run:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=(f"[DRY RUN] Smoketest commands logged for {stack_name}"),
-                stack_name=stack_name,
-            )
-
         if is_standalone:
             service_ip, service_name, gateway_port = find_standalone_endpoint(
                 cmd, namespace, inference_port
@@ -77,7 +68,11 @@ class SmoketestStep(Step):
             )
 
         if not service_ip:
-            errors.append("Could not find service/gateway IP for smoketest")
+            if context.dry_run:
+                service_ip = "<dry-run-endpoint>"
+                gateway_port = "80"
+            else:
+                errors.append("Could not find service/gateway IP for smoketest")
 
         model_short = self._require_config(plan_config, "model", "shortName")
         standalone_role = self._require_config(plan_config, "standalone", "role")
@@ -102,16 +97,17 @@ class SmoketestStep(Step):
             check=False,
         )
 
-        if pod_check.success:
-            phases = pod_check.stdout.strip().split()
-            if not phases:
-                errors.append(f"No pods found with selector '{pod_selector}'")
-            elif not all(p == "Running" for p in phases):
-                errors.append("Not all pods running " f"(found: {', '.join(phases)})")
+        if not pod_check.dry_run:
+            if pod_check.success:
+                phases = pod_check.stdout.strip().split()
+                if not phases:
+                    errors.append(f"No pods found with selector '{pod_selector}'")
+                elif not all(p == "Running" for p in phases):
+                    errors.append("Not all pods running " f"(found: {', '.join(phases)})")
+                else:
+                    context.logger.log_info(f"All {len(phases)} pod(s) running ✓")
             else:
-                context.logger.log_info(f"All {len(phases)} pod(s) running ✓")
-        else:
-            errors.append(f"Failed to check pod status: {pod_check.stderr}")
+                errors.append(f"Failed to check pod status: {pod_check.stderr}")
 
         if service_ip and not errors:
             health_err = self._check_health(
@@ -168,7 +164,13 @@ class SmoketestStep(Step):
             check=False,
         )
 
-        if pod_ips_result.success and pod_ips_result.stdout.strip():
+        if context.dry_run:
+            # Log a representative pod IP test command
+            test_model_serving(
+                cmd, namespace, "<dry-run-pod-ip>", inference_port,
+                model_name, plan_config, max_retries=1,
+            )
+        elif pod_ips_result.success and pod_ips_result.stdout.strip():
             pod_ips = pod_ips_result.stdout.strip().split()
             for i, pod_ip in enumerate(pod_ips, 1):
                 context.logger.log_info(
@@ -292,6 +294,10 @@ class SmoketestStep(Step):
             )
 
             result = cmd.kube(*kubectl_args, check=False)
+
+            if result.dry_run:
+                return None  # Command logged, skip polling
+
             status_code = result.stdout.strip() if result.success else ""
 
             if status_code == "200":
@@ -346,6 +352,10 @@ class SmoketestStep(Step):
                 cmd, namespace, host, port, expected_model, plan_config,
                 max_retries=1,
             )
+
+            if cmd.dry_run:
+                return  # Command logged, skip polling
+
             if result is None:
                 context.logger.log_info(
                     f"Model ready at {host}:{port} ✓ "
