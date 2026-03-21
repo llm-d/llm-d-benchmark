@@ -352,9 +352,9 @@ def _extract_params(
     if hf_token in ("", "REPLACE_TOKEN"):
         hf_token = None
 
-    parallelism = method_config["parallelism"]
-    tp = int(parallelism["tensor"])
-    dp = int(parallelism["data"])
+    parallelism = method_config.get("parallelism", {})
+    tp = int(parallelism.get("tensor", 1))
+    dp = int(parallelism.get("data", 1))
     pp = 1  # Pipeline parallelism not yet exposed per-method
 
     accelerator_nr = int(

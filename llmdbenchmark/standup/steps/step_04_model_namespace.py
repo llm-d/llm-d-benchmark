@@ -62,6 +62,8 @@ class ModelNamespaceStep(Step):
             self._launch_download_job(cmd, context, errors, plan_config)
 
         if errors:
+            for err in errors:
+                context.logger.log_error(f"    {err}")
             return StepResult(
                 step_number=self.number,
                 step_name=self.name,

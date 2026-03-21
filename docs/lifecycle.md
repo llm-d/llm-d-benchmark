@@ -76,6 +76,23 @@ llmdbenchmark standup -s 3-5
 llmdbenchmark standup -s 5,7
 ```
 
+#### Smoketests
+
+After standup, smoketests run automatically to validate the deployment. They can also be run independently:
+
+```
+llmdbenchmark --spec guides/pd-disaggregation smoketest -p <namespace>
+```
+
+Smoketests include three steps:
+- **Step 00** — Health check: pods running, `/health` responds, `/v1/models` returns expected model, service/gateway/route reachable
+- **Step 01** — Inference test: sends a sample `/v1/completions` request, logs generated text and a demo curl command
+- **Step 02** — Config validation: per-scenario checks that compare deployed pod configuration against the rendered scenario config (resources, parallelism, env vars, probes, volumes, security, vLLM flags, etc.)
+
+Well-lit-path scenarios (pd-disaggregation, precise-prefix-cache-aware, inference-scheduling, tiered-prefix-cache, wide-ep-lws, simulated-accelerators) have dedicated validators with scenario-specific checks. Other scenarios run steps 00 and 01 only.
+
+#### Run
+
 Once `llm-d` is fully deployed, an experiment can be run. This script takes in different options where you can specify the harness, workload, etc. if they are not specified as a part of your scenario.
 
 ```

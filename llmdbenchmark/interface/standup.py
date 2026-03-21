@@ -80,3 +80,9 @@ def add_subcommands(parser: argparse._SubParsersAction):
         default=env("LLMDBENCH_KUBECONFIG") or env("KUBECONFIG"),
         help="Path to kubeconfig file for kubectl/helm/helmfile commands.",
     )
+    standup_parser.add_argument(
+        "--skip-smoketest",
+        action="store_true",
+        default=False,
+        help="Skip automatic smoketest after standup completes.",
+    )

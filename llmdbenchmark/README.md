@@ -16,6 +16,7 @@ llmdbenchmark/
 ├── logging/                 -- Logger with emoji formatting, file output, and stream separation
 ├── parser/                  -- Config parsing, Jinja2 rendering, version/resource resolution
 ├── run/                     -- Run phase steps (deploy harness, collect results, analyze)
+├── smoketests/              -- Post-deployment validation (health, inference, config checks)
 ├── standup/                 -- Standup phase steps (provision infrastructure, deploy models)
 ├── teardown/                -- Teardown phase steps (uninstall, clean up resources)
 ├── utilities/               -- Shared helpers (Kubernetes, endpoint detection, cloud upload)
@@ -30,6 +31,7 @@ The package exposes five subcommands via `cli.py`:
 |--------------|-------------|
 | `plan`       | Generate deployment plans (YAML/Helm manifests) without executing |
 | `standup`    | Provision infrastructure and deploy model-serving stacks |
+| `smoketest`  | Validate deployment health, run inference test, check pod config against scenario |
 | `run`        | Execute benchmark workloads against deployed stacks |
 | `teardown`   | Remove deployed resources and clean up |
 | `experiment` | Orchestrate full DoE experiments (standup + run + teardown per treatment) |
@@ -39,9 +41,10 @@ The package exposes five subcommands via `cli.py`:
 A typical benchmark session follows this pipeline:
 
 1. **Plan** -- Render Jinja2 templates into per-stack YAML plans from a specification file, merging defaults with scenario overrides.
-2. **Standup** -- Execute standup steps: validate infrastructure, create namespaces, deploy model-serving pods, run smoketests.
-3. **Run** -- Execute run steps: detect endpoints, render workload profiles, deploy harness pods, wait for completion, collect and analyze results.
-4. **Teardown** -- Execute teardown steps: uninstall Helm releases, delete pods/secrets/ConfigMaps, clean cluster-scoped resources.
+2. **Standup** -- Execute standup steps: validate infrastructure, create namespaces, deploy model-serving pods.
+3. **Smoketest** -- Validate deployment: health checks, sample inference, per-scenario config validation. Runs automatically after standup; also available as a standalone command.
+4. **Run** -- Execute run steps: detect endpoints, render workload profiles, deploy harness pods, wait for completion, collect and analyze results.
+5. **Teardown** -- Execute teardown steps: uninstall Helm releases, delete pods/secrets/ConfigMaps, clean cluster-scoped resources.
 
 The `experiment` command automates this lifecycle across multiple setup treatments (Design of Experiments).
 
@@ -51,6 +54,7 @@ The `experiment` command automates this lifecycle across multiple setup treatmen
 - **parser** renders specification files and stack plans; the rendered output is consumed by **executor**.
 - **executor** provides the step framework (`Step`, `StepExecutor`, `ExecutionContext`) used by **standup**, **run**, and **teardown**.
 - **standup/run/teardown** each register ordered steps that the executor runs sequentially (global) or in parallel (per-stack).
+- **smoketests** provides post-deployment validation with per-scenario validators that check deployed pods against rendered config. Runs after standup or independently.
 - **experiment** wraps the standup/run/teardown cycle, iterating over setup treatments with config overrides.
 - **analysis** is invoked at the end of the run phase to convert raw harness output into standardized benchmark reports and plots.
 - **utilities** provides shared Kubernetes, endpoint, and filesystem helpers used across all phases.

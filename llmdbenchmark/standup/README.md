@@ -17,9 +17,12 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 | 07 | `DeploySetupStep` | Set up Helm repos and deploy gateway infrastructure for modelservice mode |
 | 08 | `DeployGaieStep` | Deploy GAIE (Gateway API Inference Extension) |
 | 09 | `DeployModelserviceStep` | Deploy the model via the llm-d modelservice Helm chart |
-| 10 | `SmoketestStep` | Smoketest deployment health and model serving via `/v1/models` endpoint checks |
+| 10 | `SmoketestStep` | Health check, inference test, and config validation (delegates to `llmdbenchmark.smoketests`) |
+| 11 | `InferenceTestStep` | Run sample inference request against deployed model |
 
 Note: Step 01 is intentionally absent (reserved or removed).
+
+After standup completes, smoketests run automatically. They can also be run independently via `llmdbenchmark smoketest`. See [smoketests/README.md](../smoketests/README.md) for details.
 
 ## preprocess/ Subdirectory
 
@@ -49,5 +52,6 @@ standup/
     ├── step_07_deploy_setup.py
     ├── step_08_deploy_gaie.py
     ├── step_09_deploy_modelservice.py
-    └── step_10_smoketest.py
+    ├── step_10_smoketest.py
+    └── step_11_inference_test.py
 ```

@@ -405,6 +405,24 @@ decode:
       - name: VLLM_SERVER_DEV_MODE
         value: "{{ vllmCommon.flags.serverDevMode }}"
 {% endif %}
+      - name: VLLM_INFERENCE_PORT
+        value: "{{ decode.vllm.servicePort | default(vllmCommon.inferencePort) }}"
+      - name: VLLM_METRICS_PORT
+        value: "{{ decode.vllm.port | default(vllmCommon.vllmPort) }}"
+      - name: VLLM_BLOCK_SIZE
+        value: "{{ model.blockSize | default(vllmCommon.blockSize | default('16')) }}"
+      - name: VLLM_MAX_MODEL_LEN
+        value: "{{ model.maxModelLen | default(vllmCommon.maxModelLen | default('4096')) }}"
+      - name: VLLM_LOAD_FORMAT
+        value: "{{ vllmCommon.loadFormat | default('auto') }}"
+      - name: VLLM_ACCELERATOR_MEM_UTIL
+        value: "{{ model.gpuMemoryUtilization | default(vllmCommon.gpuMemoryUtilization | default('0.95')) }}"
+      - name: VLLM_MAX_NUM_SEQ
+        value: "{{ model.maxNumSeq | default(vllmCommon.maxNumSeq | default('256')) }}"
+      - name: VLLM_TENSOR_PARALLELISM
+        value: "{{ decode.parallelism.tensor | default('1') }}"
+      - name: VLLM_MAX_NUM_BATCHED_TOKENS
+        value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
       - name: VLLM_NIXL_SIDE_CHANNEL_HOST
         valueFrom:
           fieldRef:
@@ -846,6 +864,24 @@ prefill:
 {% endif %}
       - name: VLLM_IS_PREFILL
         value: "1"
+      - name: VLLM_INFERENCE_PORT
+        value: "{{ prefill.vllm.servicePort | default(vllmCommon.inferencePort) }}"
+      - name: VLLM_METRICS_PORT
+        value: "{{ prefill.vllm.port | default(vllmCommon.vllmPort) }}"
+      - name: VLLM_BLOCK_SIZE
+        value: "{{ model.blockSize | default(vllmCommon.blockSize | default('16')) }}"
+      - name: VLLM_MAX_MODEL_LEN
+        value: "{{ model.maxModelLen | default(vllmCommon.maxModelLen | default('4096')) }}"
+      - name: VLLM_LOAD_FORMAT
+        value: "{{ vllmCommon.loadFormat | default('auto') }}"
+      - name: VLLM_ACCELERATOR_MEM_UTIL
+        value: "{{ model.gpuMemoryUtilization | default(vllmCommon.gpuMemoryUtilization | default('0.95')) }}"
+      - name: VLLM_MAX_NUM_SEQ
+        value: "{{ model.maxNumSeq | default(vllmCommon.maxNumSeq | default('256')) }}"
+      - name: VLLM_TENSOR_PARALLELISM
+        value: "{{ prefill.parallelism.tensor | default('1') }}"
+      - name: VLLM_MAX_NUM_BATCHED_TOKENS
+        value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
       - name: VLLM_NIXL_SIDE_CHANNEL_HOST
         valueFrom:
           fieldRef:

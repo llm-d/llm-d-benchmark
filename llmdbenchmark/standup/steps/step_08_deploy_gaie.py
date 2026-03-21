@@ -110,6 +110,8 @@ class DeployGaieStep(Step):
                 )
 
         if errors:
+            for err in errors:
+                context.logger.log_error(f"    {err}")
             return StepResult(
                 step_number=self.number,
                 step_name=self.name,

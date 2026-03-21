@@ -8,6 +8,7 @@ class Command(Enum):
 
     PLAN = "plan"
     STANDUP = "standup"
+    SMOKETEST = "smoketest"
     RUN = "run"
     TEARDOWN = "teardown"
     EXPERIMENT = "experiment"

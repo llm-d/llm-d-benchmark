@@ -25,6 +25,7 @@ from llmdbenchmark.utilities.os.filesystem import (
 )
 from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface import plan, standup, teardown, run
+from llmdbenchmark.interface import smoketest as smoketest_interface
 from llmdbenchmark.interface import experiment as experiment_interface
 from llmdbenchmark.parser.render_specification import RenderSpecification
 from llmdbenchmark.exceptions.exceptions import TemplateError
@@ -35,6 +36,7 @@ from llmdbenchmark.executor.step import Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.step_executor import StepExecutor
 from llmdbenchmark.standup.steps import get_standup_steps
+from llmdbenchmark.smoketests.steps import get_smoketest_steps
 from llmdbenchmark.teardown.steps import get_teardown_steps
 
 from llmdbenchmark.run.steps import get_run_steps
@@ -72,6 +74,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
     if args.command in (
         Command.PLAN.value,
         Command.STANDUP.value,
+        Command.SMOKETEST.value,
         Command.TEARDOWN.value,
         Command.RUN.value,
     ):
@@ -123,6 +126,9 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
 
     if args.command == Command.STANDUP.value:
         _execute_standup(args, logger, render_plan_errors)
+
+    if args.command == Command.SMOKETEST.value:
+        _execute_smoketest(args, logger, render_plan_errors)
 
     if args.command == Command.TEARDOWN.value:
         _execute_teardown(args, logger, render_plan_errors)
@@ -323,6 +329,80 @@ def _execute_standup(args, logger, render_plan_errors):
         sys.exit(1)
 
     _print_standup_summary(context, result, logger)
+
+    # Auto-chain smoketest after standup unless --skip-smoketest
+    skip_smoketest = getattr(args, "skip_smoketest", False)
+    if not skip_smoketest:
+        logger.log_info("")
+        logger.log_info(
+            "Running smoketests...",
+            emoji="🔍",
+        )
+        try:
+            _do_smoketest(args, logger, render_plan_errors)
+        except PhaseError as e:
+            logger.log_error(str(e))
+            sys.exit(1)
+
+
+def _do_smoketest(args, logger, render_plan_errors):
+    """Core smoketest logic. Returns (context, result). Raises PhaseError on failure."""
+    rendered_paths = getattr(render_plan_errors, "rendered_paths", [])
+    all_stacks_info = _load_all_stacks_info(rendered_paths)
+    plan_info = all_stacks_info[0] if all_stacks_info else {}
+    deployed_methods = _resolve_deploy_methods(args, plan_info, logger, phase="smoketest")
+
+    namespace, harness_ns = _parse_namespaces(
+        getattr(args, "namespace", None), plan_info,
+    )
+
+    if not namespace:
+        raise PhaseError(
+            "No namespace specified. Set 'namespace.name' in your scenario "
+            "YAML, defaults.yaml, or pass --namespace on the CLI."
+        )
+
+    context = ExecutionContext(
+        plan_dir=config.plan_dir,
+        workspace=config.workspace,
+        specification_file=getattr(args, "specification_file", None),
+        rendered_stacks=rendered_paths,
+        dry_run=config.dry_run,
+        verbose=config.verbose,
+        non_admin=getattr(args, "non_admin", False),
+        current_phase=Phase.SMOKETEST,
+        kubeconfig=getattr(args, "kubeconfig", None),
+        deployed_methods=deployed_methods,
+        namespace=namespace,
+        harness_namespace=harness_ns,
+        model_name=plan_info.get("model_name"),
+        logger=logger,
+    )
+
+    executor = StepExecutor(
+        steps=get_smoketest_steps(),
+        context=context,
+        logger=logger,
+        max_parallel_stacks=getattr(args, "parallel", 4),
+    )
+
+    step_spec = getattr(args, "step", None)
+    result = executor.execute(step_spec=step_spec)
+
+    if result.has_errors:
+        raise PhaseError(f"Smoketest failed:\n{result.summary()}")
+
+    logger.log_info("All smoketest steps complete.", emoji="✅")
+    return context, result
+
+
+def _execute_smoketest(args, logger, render_plan_errors):
+    """Build execution context and run smoketest steps."""
+    try:
+        _do_smoketest(args, logger, render_plan_errors)
+    except PhaseError as e:
+        logger.log_error(str(e))
+        sys.exit(1)
 
 
 def _check_model_access(context, all_stacks_info, logger):
@@ -896,6 +976,35 @@ def _execute_experiment(args, logger):
                 break
             continue
 
+        # --- Phase 2b: Smoketest ---
+        try:
+            _do_smoketest(args, logger, render_plan_errors)
+            logger.log_info(
+                f"Smoketest complete for {treatment_name}", emoji="✅"
+            )
+        except PhaseError as e:
+            error_msg = str(e)
+            logger.log_error(
+                f"Smoketest failed for {treatment_name}: {error_msg}"
+            )
+            if not skip_teardown:
+                try:
+                    _do_teardown(args, logger, render_plan_errors)
+                except PhaseError:
+                    pass
+            duration = time.time() - treatment_start
+            summary.record_failure(
+                treatment_name,
+                "smoketest",
+                error_msg,
+                run_total=total_run,
+                workspace_dir=str(treatment_dir),
+                duration=duration,
+            )
+            if stop_on_error:
+                break
+            continue
+
         run_succeeded = False
         run_error_msg = None
         try:
@@ -1197,6 +1306,7 @@ def cli() -> None:
 
     plan.add_subcommands(subparsers)
     standup.add_subcommands(subparsers)
+    smoketest_interface.add_subcommands(subparsers)
     teardown.add_subcommands(subparsers)
     run.add_subcommands(subparsers)
     experiment_interface.add_subcommands(subparsers)

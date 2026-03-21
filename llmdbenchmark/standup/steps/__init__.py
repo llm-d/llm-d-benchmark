@@ -1,4 +1,9 @@
-"""Step registry for the standup phase."""
+"""Step registry for the standup phase.
+
+Note: Smoketest and inference test steps have been moved to the
+``llmdbenchmark.smoketests`` module and run as a separate phase
+after standup (auto-chained by default, skippable with --skip-smoketest).
+"""
 
 from llmdbenchmark.executor.step import Step
 
@@ -17,8 +22,6 @@ from llmdbenchmark.standup.steps.step_08_deploy_gaie import DeployGaieStep
 from llmdbenchmark.standup.steps.step_09_deploy_modelservice import (
     DeployModelserviceStep,
 )
-from llmdbenchmark.standup.steps.step_10_smoketest import SmoketestStep
-from llmdbenchmark.standup.steps.step_11_inference_test import InferenceTestStep
 
 
 def get_standup_steps() -> list[Step]:
@@ -33,6 +36,4 @@ def get_standup_steps() -> list[Step]:
         DeploySetupStep(),
         DeployGaieStep(),
         DeployModelserviceStep(),
-        SmoketestStep(),
-        InferenceTestStep(),
     ]

@@ -111,6 +111,7 @@ See [workload/README.md](workload/README.md) for the full experiment file format
 | Configuration system, defaults, scenarios, overrides | [config/README.md](config/README.md) |
 | Workloads, harnesses, profiles, experiments | [workload/README.md](workload/README.md) |
 | Standup phase, deployment methods, step details | [llmdbenchmark/standup/README.md](llmdbenchmark/standup/README.md) |
+| Smoketests, per-scenario validation, adding validators | [llmdbenchmark/smoketests/README.md](llmdbenchmark/smoketests/README.md) |
 | Run phase, benchmark execution, result collection | [llmdbenchmark/run/README.md](llmdbenchmark/run/README.md) |
 | Teardown phase and deep clean | [llmdbenchmark/teardown/README.md](llmdbenchmark/teardown/README.md) |
 | Design of Experiments (DoE) orchestration | [llmdbenchmark/experiment/README.md](llmdbenchmark/experiment/README.md) |
@@ -319,7 +320,8 @@ Both paths share steps 00-05 (infrastructure, namespaces, secrets) and step 10 (
 | 07 | deploy_setup | Per-stack | Helm repos and gateway infrastructure (helmfile) |
 | 08 | deploy_gaie | Per-stack | GAIE inference extension deployment |
 | 09 | deploy_modelservice | Per-stack | Modelservice deployment (helmfile + LWS) |
-| 10 | smoketest | Per-stack | Smoketest (endpoint health, model serving validation) |
+| 10 | smoketest | Per-stack | Health check, inference test, per-scenario config validation |
+| 11 | inference_test | Per-stack | Sample inference request with demo curl command |
 
 ### [Run Steps](llmdbenchmark/run/README.md)
 
@@ -391,9 +393,15 @@ llmdbenchmark/                Python package
         protocols.py          Structural typing (LoggerProtocol)
         deps.py               System dependency checker
 
+    smoketests/               Post-deployment validation (see smoketests/README.md)
+        base.py               Health checks, inference tests, pod inspection helpers
+        report.py             CheckResult / SmoketestReport tracking
+        steps/                Smoketest step implementations (00-02)
+        validators/           Per-scenario config validators
+
     standup/                  Standup phase (see standup/README.md)
         preprocess/           Scripts mounted as ConfigMaps in vLLM pods
-        steps/                Step implementations (00-10)
+        steps/                Step implementations (00-11)
 
     teardown/                 Teardown phase (see teardown/README.md)
         steps/                Step implementations (00-05)
@@ -419,6 +427,7 @@ llmdbenchmark/                Python package
 See module-level READMEs for detailed documentation:
 
 - [executor/README.md](llmdbenchmark/executor/README.md) -- Execution framework and step contribution guide
+- [smoketests/README.md](llmdbenchmark/smoketests/README.md) -- Post-deployment validation and per-scenario config checking
 - [standup/README.md](llmdbenchmark/standup/README.md) -- Standup phase details
 - [run/README.md](llmdbenchmark/run/README.md) -- Run phase, benchmark execution, result collection
 - [teardown/README.md](llmdbenchmark/teardown/README.md) -- Teardown phase details
