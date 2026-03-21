@@ -439,6 +439,8 @@ scenario:
     # -------------------------------------------------------------------------
     vllmCommon:
       host: "0.0.0.0"
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_PREPROCESS="source /shared-config/llmdbench_env.sh"
+      preprocessScript: "source /shared-config/llmdbench_env.sh"
       # Corresponds to: LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=auto
       networkResource: "auto"
       networkNr: "1"

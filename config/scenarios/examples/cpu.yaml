@@ -36,6 +36,7 @@ scenario:
       huggingfaceId: facebook/opt-125m
       gpuMemoryUtilization: 0
       maxModelLen: 8192
+      maxNumSeq: 32
 
     # -------------------------------------------------------------------------
     # CPU-only Affinity
@@ -58,7 +59,6 @@ scenario:
     # -------------------------------------------------------------------------
     vllmCommon:
       shmMemory: 64Gi
-      maxNumSeq: 32
 
       preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && . $HOME/llmdbench_env.sh"
 

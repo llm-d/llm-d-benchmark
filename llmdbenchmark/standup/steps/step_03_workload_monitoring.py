@@ -52,6 +52,8 @@ class WorkloadMonitoringStep(Step):
             self._apply_monitoring(cmd, context, errors)
 
         if errors:
+            for e in errors:
+                context.logger.log_error(f"Validation error: {e}")
             return StepResult(
                 step_number=self.number,
                 step_name=self.name,
@@ -87,6 +89,28 @@ class WorkloadMonitoringStep(Step):
             context.logger.log_info(f"Network resource from plan: {net_resource}")
 
     @staticmethod
+    def _parse_k8s_quantity(val: str) -> int:
+        """Parse a Kubernetes resource quantity string to an integer.
+
+        Handles suffixes like k (1000), Ki (1024), m (milli), etc.
+        Returns the value as an integer (truncated for milli values).
+        """
+        val = str(val).strip()
+        suffixes = {
+            "k": 1_000, "K": 1_000,
+            "Ki": 1_024,
+            "M": 1_000_000, "Mi": 1_048_576,
+            "G": 1_000_000_000, "Gi": 1_073_741_824,
+            "T": 1_000_000_000_000, "Ti": 1_099_511_627_776,
+        }
+        for suffix, multiplier in sorted(suffixes.items(), key=lambda x: -len(x[0])):
+            if val.endswith(suffix):
+                return int(float(val[: -len(suffix)]) * multiplier)
+        if val.endswith("m"):
+            return max(1, int(float(val[:-1]) / 1000))
+        return int(val)
+
+    @staticmethod
     def _get_node_capacity(cmd: CommandExecutor, resource_key: str) -> tuple[int, int]:
         """Query node capacity for a resource key, returning (total, node_count)."""
         result = cmd.kube("get", "nodes", "-o", "json")
@@ -105,7 +129,7 @@ class WorkloadMonitoringStep(Step):
             val = capacity.get(resource_key)
             if val is not None:
                 try:
-                    total += int(val)
+                    total += WorkloadMonitoringStep._parse_k8s_quantity(val)
                     node_count += 1
                 except (ValueError, TypeError):
                     pass

@@ -115,7 +115,15 @@ class VersionResolver:
         return None
 
     def _resolve_chart_via_url(self, chart_name: str, repo_url: str) -> str | None:
-        """Temporarily add a helm repo, search for the chart version, then clean up."""
+        """Resolve chart version from a repo URL.
+
+        Handles both OCI registries (``oci://``) and traditional Helm repos.
+        For OCI, uses ``helm show chart`` which pulls metadata directly.
+        For traditional repos, temporarily adds the repo, searches, then cleans up.
+        """
+        if repo_url.startswith("oci://"):
+            return self._resolve_oci_chart(repo_url)
+
         tmp_repo_name = f"_llmdbench_tmp_{chart_name.replace('/', '_')}"
         try:
             add_cmd = f"helm repo add {tmp_repo_name} {repo_url} --force-update"
@@ -149,6 +157,26 @@ class VersionResolver:
                 executable="/bin/bash",
                 check=False,
             )
+
+    def _resolve_oci_chart(self, oci_url: str) -> str | None:
+        """Resolve chart version from an OCI registry using ``helm show chart``."""
+        cmd = f"helm show chart {oci_url}"
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                shell=True,
+                executable="/bin/bash",
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                for line in result.stdout.strip().split("\n"):
+                    if line.startswith("version:"):
+                        return line.split(":", 1)[1].strip()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+        return None
 
     def _resolve_image_string(self, image: str) -> str:
         """Resolve an image string like ``registry/repo:auto`` to ``registry/repo:latest_tag``."""

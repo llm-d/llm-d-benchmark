@@ -15,6 +15,10 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
   - [Jinja2 Templates](#templatesjinja)
   - [defaults.yaml](#templatesvaluesdefaultsyaml)
 - [KV Transfer Configuration](#kv-transfer-configuration)
+- [Resource Configuration](#resource-configuration)
+  - [Ephemeral Storage](#ephemeral-storage)
+  - [Network Resources (RDMA/InfiniBand)](#network-resources-rdmainfiniband)
+  - [Accelerator Resources](#accelerator-resources)
 - [Init Containers](#init-containers)
 - [Monitoring and Metrics](#monitoring-and-metrics)
 - [Container Images](#container-images)
@@ -356,6 +360,67 @@ A scenario file overrides any of these fields under `vllmCommon.kvTransfer`. The
 
 ---
 
+## Resource Configuration
+
+Pod resource limits and requests are configured per role (decode/prefill) in the scenario YAML. The template reads `memory` and `cpu` from `resources.limits` and `resources.requests`, but some resource types use dedicated fields.
+
+### Ephemeral Storage
+
+Ephemeral storage is configured via a dedicated field, **not** inside the `resources` block:
+
+```yaml
+vllmCommon:
+  ephemeralStorage: 1Ti    # applied to both decode and prefill
+```
+
+Or per role:
+
+```yaml
+decode:
+  ephemeralStorage: 1Ti
+prefill:
+  ephemeralStorage: 500Gi
+```
+
+The resource name used in the rendered output is controlled by `vllmCommon.ephemeralStorageResource` (default: `ephemeral-storage`). Values placed in `resources.limits.ephemeral-storage` are **not** read by the template and will be silently ignored.
+
+### Network Resources (RDMA/InfiniBand)
+
+Network resources for high-performance interconnects are configured via:
+
+```yaml
+vllmCommon:
+  networkResource: "auto"   # auto-detect from cluster nodes
+  networkNr: "1"            # number of network devices
+```
+
+When `networkResource` is set to `"auto"`, the `ClusterResourceResolver` queries the cluster nodes at render time and discovers available RDMA/IB resources (e.g., `rdma/roce_gdr`, `rdma/ib`). The resolved resource name and count are then rendered into the pod resource limits and requests.
+
+**Requirements:** Auto-detection requires cluster connectivity. Running `plan` without a cluster when `networkResource: "auto"` is set will fail with a clear error. Scenarios that don't need RDMA/IB should not set this field (the default is empty).
+
+### Accelerator Resources
+
+The accelerator resource for GPU/TPU/other devices is configured at the top level:
+
+```yaml
+accelerator:
+  type: nvidia               # accelerator family
+  resource: "nvidia.com/gpu"  # Kubernetes resource name
+```
+
+Per-role overrides are supported:
+
+```yaml
+decode:
+  accelerator:
+    resource: ibm.com/spyre_vf  # override for non-NVIDIA accelerators
+    count: 1                     # explicit device count (defaults to tensor parallelism)
+```
+
+When `count` is not set, it defaults to `decode.parallelism.tensor`. Set `count` explicitly when the accelerator count differs from tensor parallelism (e.g., Spyre devices where 1 device supports multiple tensor parallel ranks).
+
+---
+
 ## Init Containers
 
 Init containers run before the main vLLM container to perform environment setup tasks such as network configuration (RDMA/InfiniBand route tables), hardware detection, and environment variable preparation.
@@ -399,14 +464,15 @@ decode:
           add:
             - IPC_LOCK
             - SYS_RAWIO
-            - NET_ADMIN
-            - NET_RAW
       volumeMounts:
         - name: shared-config
           mountPath: /shared-config
 ```
 
-The `securityContext` capabilities are needed for network configuration (route tables, IB detection). If your environment doesn't need network setup, you can omit the `securityContext` block.
+The `securityContext` capabilities vary by scenario:
+- `IPC_LOCK` and `SYS_RAWIO` are the base capabilities needed for most deployments
+- `NET_ADMIN` and `NET_RAW` are additionally required for scenarios that need network configuration (route tables, InfiniBand detection) — e.g., `precise-prefix-cache-aware` and `tiered-prefix-cache`
+- Scenarios like `inference-scheduling` and `pd-disaggregation` use only the base capabilities
 
 For scenarios with prefill pods (e.g., `pd-disaggregation`, `wide-ep-lws`), add the same block under the `prefill` section as well.
 
@@ -540,7 +606,7 @@ Configured under the top-level `monitoring` section in `defaults.yaml`:
 |---|---|---|
 | `monitoring.enabled` | `true` | Enable monitoring infrastructure |
 | `monitoring.enableUserWorkload` | `true` | Enable OpenShift user workload monitoring |
-| `monitoring.podmonitor.enabled` | `false` | Create PodMonitor resources for Prometheus scraping |
+| `monitoring.podmonitor.enabled` | `true` | Create PodMonitor resources for Prometheus scraping |
 | `monitoring.metricsPath` | `/metrics` | Prometheus scrape path |
 | `monitoring.scrapeInterval` | `"30s"` | Prometheus scrape interval |
 
@@ -653,9 +719,9 @@ All images are defined in `defaults.yaml`. There are two groups: the shared `ima
 
 | Key | Default | Used by |
 |-----|---------|---------|
-| `standalone.image` | `docker.io/vllm/vllm-openai:latest` | Standalone vLLM container |
+| `standalone.image` | `docker.io/vllm/vllm-openai:auto` | Standalone vLLM container |
 | `standalone.launcher.image` | _(falls back to `standalone.image`)_ | Standalone launcher container (repo/tag only) |
-| `wva.image` | `ghcr.io/llm-d/llm-d-workload-variant-autoscaler:v0.5.1-rc.2` | Workload Variant Autoscaler |
+| `wva.image` | `ghcr.io/llm-d/llm-d-workload-variant-autoscaler:auto` | Workload Variant Autoscaler |
 
 Each image key has `repository`, `tag`, and `pullPolicy` sub-fields. The one exception is `standalone.launcher` — its pull policy is set via a separate flat key `standalone.launcher.imagePullPolicy` (defaults to `Always`), not nested under `image`.
 
@@ -686,7 +752,7 @@ standalone.image.tag         →  images.vllm.tag
 standalone.image.pullPolicy  →  images.vllm.pullPolicy
 ```
 
-Since `standalone.image` is explicitly set in `defaults.yaml` (`docker.io/vllm/vllm-openai:latest`), the `images.vllm` fallback only kicks in if you clear `standalone.image` in your scenario. In practice, to change the standalone image you must override `standalone.image` directly.
+Since `standalone.image` is explicitly set in `defaults.yaml` (`docker.io/vllm/vllm-openai:auto`), the `images.vllm` fallback only kicks in if you clear `standalone.image` in your scenario. The `auto` tag is resolved at render time by the `VersionResolver`. In practice, to change the standalone image you must override `standalone.image` directly.
 
 **Standalone launcher container** (three-level chain for repo/tag):
 
@@ -791,6 +857,7 @@ Minimal starting points for common hardware:
 | `cpu.yaml` | CPU-only deployment (no GPU) |
 | `gpu.yaml` | Standard GPU deployment |
 | `spyre.yaml` | IBM Spyre accelerator |
+| `sim-small.yaml` | Simulated small model deployment |
 
 ### `scenarios/cicd/`
 

@@ -18,6 +18,7 @@ from llmdbenchmark.standup.steps.step_09_deploy_modelservice import (
     DeployModelserviceStep,
 )
 from llmdbenchmark.standup.steps.step_10_smoketest import SmoketestStep
+from llmdbenchmark.standup.steps.step_11_inference_test import InferenceTestStep
 
 
 def get_standup_steps() -> list[Step]:
@@ -33,4 +34,5 @@ def get_standup_steps() -> list[Step]:
         DeployGaieStep(),
         DeployModelserviceStep(),
         SmoketestStep(),
+        InferenceTestStep(),
     ]
