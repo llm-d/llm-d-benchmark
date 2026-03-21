@@ -28,7 +28,6 @@ class InferenceSchedulingValidator(BaseSmoketest):
 
         model_short = _nested_get(config, "model", "shortName") or ""
 
-        # ── No prefill pods (decode-only) ─────────────────────────────
         prefill_pods = self.get_pod_specs(
             cmd, namespace,
             f"llm-d.ai/model={model_short},llm-d.ai/role=prefill",
@@ -39,7 +38,6 @@ class InferenceSchedulingValidator(BaseSmoketest):
             message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) — decode-only",
         ))
 
-        # ── Decode pods (comprehensive) ───────────────────────────────
         decode_pods = self.validate_role_pods(
             cmd, namespace, config, "decode", model_short, report, logger=context.logger,
         )
@@ -63,7 +61,6 @@ class InferenceSchedulingValidator(BaseSmoketest):
                     message=f"Metrics port {expected_vllm_port} {'present' if has_metrics else 'not found'}",
                 ))
 
-        # ── Shared memory volume ──────────────────────────────────────
         if decode_pods:
             volumes = self.get_pod_volumes(decode_pods[0])
             report.add(CheckResult(

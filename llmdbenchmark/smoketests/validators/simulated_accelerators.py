@@ -38,7 +38,6 @@ class SimulatedAcceleratorsValidator(BaseSmoketest):
             message=f"Model: {model_name}",
         ))
 
-        # ── Decode pods (if deployed via modelservice) ──────────────
         decode_pods = self.get_pod_specs(
             cmd, namespace,
             f"llm-d.ai/model={model_short},llm-d.ai/role=decode",
@@ -65,7 +64,6 @@ class SimulatedAcceleratorsValidator(BaseSmoketest):
                 message=f"Decode: {'no' if not has_gpu else 'found'} GPU resources — simulated accelerator",
             ))
 
-        # ── Standalone pods ───────────────────────────────────────────
         standalone_enabled = _nested_get(config, "standalone", "enabled")
         if standalone_enabled:
             standalone_role = _nested_get(config, "standalone", "role") or "standalone"
@@ -109,7 +107,6 @@ class SimulatedAcceleratorsValidator(BaseSmoketest):
                                 resources, str(expected), f"{section}.{field}",
                             ))
 
-        # ── Prefill pods (if deployed via modelservice) ──────────────
         prefill_pods = self.get_pod_specs(
             cmd, namespace,
             f"llm-d.ai/model={model_short},llm-d.ai/role=prefill",

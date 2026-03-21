@@ -30,7 +30,7 @@ The scenario parameters can be roughly categorized in four groups:
 | LLMDBENCH_CLUSTER_URL                        | URL to API access to Kubernetes cluster        | "auto" means "current" (e.g. `~/.kube/config`) is used|
 | LLMDBENCH_CLUSTER_TOKEN                      | Used to authenticate to the cluster            | Ignored for LLMDBENCH_CLUSTER_URL="auto"              |
 | LLMDBENCH_HF_TOKEN                           | Hugging face token                             | Required during standup for model downloading         |
-| LLMDBENCH_DEPLOY_SCENARIO                    | File containing multiple environment variables which will override defaults | If not specified, defaults to (empty) `none.sh`. Can be overriden with CLI parameter `-c/--scenario` |
+| LLMDBENCH_DEPLOY_SCENARIO                    | File containing multiple environment variables which will override defaults | If not specified, defaults to (empty) `none.yaml`. Can be overriden with CLI parameter `-c/--scenario` |
 | LLMDBENCH_DEPLOY_MODEL_LIST                  | List (comma-separated values) of models to be run against | Default=`meta-llama/Llama-3.2-1B-Instruct`. Can be overriden with CLI parameter `-m/--models` |
 | LLMDBENCH_DEPLOY_METHODS                       | List (comma-separated values) of standup methods | Default=`modelservice`. Can be overriden with CLI parameter `-t/--methods` |
 

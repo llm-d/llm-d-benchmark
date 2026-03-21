@@ -28,7 +28,6 @@ class TieredPrefixCacheValidator(BaseSmoketest):
 
         model_short = _nested_get(config, "model", "shortName") or ""
 
-        # ── No prefill pods (decode-only) ─────────────────────────────
         prefill_pods = self.get_pod_specs(
             cmd, namespace,
             f"llm-d.ai/model={model_short},llm-d.ai/role=prefill",
@@ -39,7 +38,6 @@ class TieredPrefixCacheValidator(BaseSmoketest):
             message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) — decode-only",
         ))
 
-        # ── Decode pods (comprehensive) ───────────────────────────────
         decode_pods = self.validate_role_pods(
             cmd, namespace, config, "decode", model_short, report, logger=context.logger,
         )
@@ -58,7 +56,6 @@ class TieredPrefixCacheValidator(BaseSmoketest):
                     flag_value = parts[1] if len(parts) > 1 else None
                     report.add(self.assert_arg_contains(args, flag_name, flag_value))
 
-        # ── EPP pod running ───────────────────────────────────────────
         epp_pods = self.get_pod_specs(
             cmd, namespace,
             f"inferencepool={model_short}-gaie-epp",
@@ -69,7 +66,6 @@ class TieredPrefixCacheValidator(BaseSmoketest):
             message=f"EPP pod {'running' if epp_pods else 'not found'}",
         ))
 
-        # ── Shared memory volume ──────────────────────────────────────
         if decode_pods:
             volumes = self.get_pod_volumes(decode_pods[0])
             report.add(CheckResult(

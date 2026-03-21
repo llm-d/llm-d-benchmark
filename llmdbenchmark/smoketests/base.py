@@ -17,8 +17,6 @@ from llmdbenchmark.utilities.endpoint import (
 )
 
 
-# ── Transient error detection ──────────────────────────────────────
-
 _RETRYABLE_INDICATORS = ("502", "503", "504", "ServiceUnavailable", "not ready")
 
 
@@ -34,16 +32,12 @@ def _is_non_transient_error(resp: dict) -> bool:
     return not _is_retryable(msg)
 
 
-# ── Base smoketest class ───────────────────────────────────────────
-
 class BaseSmoketest:
     """Common validation logic shared by all scenarios.
 
     Provides health checks, inference testing, pod inspection, and a
     library of assertion helpers that per-scenario validators build on.
     """
-
-    # ── Endpoint discovery ─────────────────────────────────────────
 
     @staticmethod
     def discover_endpoint(
@@ -75,8 +69,6 @@ class BaseSmoketest:
             gateway_port = "80"
 
         return service_ip, gateway_port, is_standalone
-
-    # ── Health checks (from old step 10) ───────────────────────────
 
     def run_health_checks(
         self,
@@ -233,8 +225,6 @@ class BaseSmoketest:
 
         return report
 
-    # ── Inference test (from old step 11) ──────────────────────────
-
     def run_inference_test(
         self,
         context: ExecutionContext,
@@ -318,8 +308,6 @@ class BaseSmoketest:
 
         return report
 
-    # ── Config validation (overridden by per-scenario validators) ──
-
     def run_config_validation(
         self,
         context: ExecutionContext,
@@ -336,8 +324,6 @@ class BaseSmoketest:
             message="No scenario-specific validator configured — skipping config validation",
         ))
         return report
-
-    # ── Pod inspection helpers ─────────────────────────────────────
 
     @staticmethod
     def get_pod_specs(
@@ -428,8 +414,6 @@ class BaseSmoketest:
             if c.get("name") == container:
                 return c.get("ports", [])
         return []
-
-    # ── Assertion helpers ──────────────────────────────────────────
 
     @staticmethod
     def assert_arg_contains(
@@ -568,8 +552,6 @@ class BaseSmoketest:
             f"resource_{resource_path}", True,
             message=f"container vllm resources.{resource_path}={val}",
         )
-
-    # ── Comprehensive role validation ─────────────────────────────
 
     def validate_role_pods(
         self,
@@ -908,8 +890,6 @@ class BaseSmoketest:
                         ))
             break
 
-    # ── Private: health check polling ──────────────────────────────
-
     def _check_health(
         self,
         cmd: CommandExecutor,
@@ -1078,8 +1058,6 @@ class BaseSmoketest:
             context.logger.log_warning(
                 f"Unable to fetch OpenShift route '{route_name}'"
             )
-
-    # ── Private: inference helpers ─────────────────────────────────
 
     def _try_completions(
         self,
@@ -1348,8 +1326,6 @@ class BaseSmoketest:
 
         return f"{protocol}://{route_host}/{model_short}{endpoint}"
 
-
-# ── Module-level helpers ───────────────────────────────────────────
 
 def _nested_get(d: dict, *keys: str):
     """Safely traverse nested dicts."""

@@ -28,7 +28,6 @@ class SpyreValidator(BaseSmoketest):
 
         model_short = _nested_get(config, "model", "shortName") or ""
 
-        # ── No prefill pods ─────────────────────────────────────────
         prefill_pods = self.get_pod_specs(
             cmd, namespace,
             f"llm-d.ai/model={model_short},llm-d.ai/role=prefill",
@@ -39,7 +38,6 @@ class SpyreValidator(BaseSmoketest):
             message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) — no prefill expected",
         ))
 
-        # ── Find the serving pods (decode or standalone) ────────────
         decode_pods = self.get_pod_specs(
             cmd, namespace,
             f"llm-d.ai/model={model_short},llm-d.ai/role=decode",
@@ -77,7 +75,6 @@ class SpyreValidator(BaseSmoketest):
             ))
             return report
 
-        # ── Spyre-specific checks on whichever pod type exists ──────
         resources = self.get_pod_resources(serving_pod, container=container_name)
         limits = resources.get("limits", {})
 

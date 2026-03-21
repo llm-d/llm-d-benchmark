@@ -117,7 +117,7 @@ The following table displays a comprehensive list of environment variables (and 
 
 | Variable                                       | Meaning                                        | Note                                                |
 | ---------------------------------------------  | ---------------------------------------------- | --------------------------------------------------- |
-| LLMDBENCH_DEPLOY_SCENARIO                      | File containing multiple environment variables which will override defaults | If not specified, defaults to (empty) `none.sh`. Can be overriden with CLI parameter `-c/--scenario` |
+| LLMDBENCH_DEPLOY_SCENARIO                      | File containing multiple environment variables which will override defaults | If not specified, defaults to (empty) `none.yaml`. Can be overriden with CLI parameter `-c/--scenario` |
 | LLMDBENCH_DEPLOY_MODEL_LIST                     | List (comma-separated values) of models to be run against | Default=`meta-llama/Llama-3.2-1B-Instruct`. Can be overriden with CLI parameter `-m/--models` |
 | LLMDBENCH_VLLM_COMMON_NAMESPACE                | Namespace where the `llm-d` stack was stood up | Default=`llmdbench`. Can be overriden with CLI parameter `-p/--namespace` |
 | LLMDBENCH_HARNESS_NAMESPACE                    | The `namespace` where the `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` will be created | Default=`${LLMDBENCH_VLLM_COMMON_NAMESPACE}`. Can be overriden with CLI parameter `-p/--namespace`.|
@@ -126,7 +126,7 @@ The following table displays a comprehensive list of environment variables (and 
 | LLMDBENCH_HARNESS_NAME                         | Specifies harness (load generator) to be used  | Default=`inference-perf`. Can be overriden with CLI parameter `-l/--harness`  |
 | LLMDBENCH_HARNESS_EXPERIMENT_PROFILE           | Specifies workload to be used (by the harness) | Default=`sanity_random.yaml`. Can be overriden with CLI parameter `-w/--workload` |
 | LLMDBENCH_HARNESS_EXPERIMENT_PROFILE_OVERRIDES | A list of key,value pairs overriding entries on the workload file | Default=(empty).Can be overriden with CLI parameter `-o/--overrides`|
-| LLMDBENCH_HARNESS_EXECUTABLE                   | Name of the executable inside `llm-d-benchmark` container | default=`llm-d-benchmark.sh`. Can be overriden for debug/experimentation |
+| LLMDBENCH_HARNESS_EXECUTABLE                   | Name of the executable inside `llm-d-benchmark` container | default=`llm-d-benchmark.sh` (harness entrypoint script). Can be overriden for debug/experimentation |
 | LLMDBENCH_HARNESS_CONDA_ENV_NAME               | Local conda environment name                   | Default=`${LLMDBENCH_HARNESS_NAME}-runner`. Only used when `LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY` is set to `1` (Default=`0`) |
 | LLMDBENCH_HARNESS_WAIT_TIMEOUT                 | How long to wait for `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` to complete its execution | Default=`3600`. Can be overriden with CLI parameter `-s/--wait |
 | LLMDBENCH_HARNESS_CPU_NR                       | How many CPUs should be requested for `pod` `llmdbench-${LLMDBENCH_HARNESS_NAME}-launcher` | Default=`16` |

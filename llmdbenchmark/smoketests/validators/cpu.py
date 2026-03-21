@@ -28,7 +28,6 @@ class CpuValidator(BaseSmoketest):
 
         model_short = _nested_get(config, "model", "shortName") or ""
 
-        # ── No prefill pods ─────────────────────────────────────────
         prefill_pods = self.get_pod_specs(
             cmd, namespace,
             f"llm-d.ai/model={model_short},llm-d.ai/role=prefill",
@@ -39,7 +38,6 @@ class CpuValidator(BaseSmoketest):
             message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) — no prefill expected",
         ))
 
-        # ── Find the serving pods (decode or standalone) ────────────
         decode_pods = self.get_pod_specs(
             cmd, namespace,
             f"llm-d.ai/model={model_short},llm-d.ai/role=decode",
@@ -74,7 +72,6 @@ class CpuValidator(BaseSmoketest):
             ))
             return report
 
-        # ── CPU-specific checks on whichever pod type exists ────────
         # Find the correct container name
         containers = serving_pod.get("spec", {}).get("containers", [])
         container_name = None

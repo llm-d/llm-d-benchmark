@@ -28,7 +28,6 @@ class WideEpLwsValidator(BaseSmoketest):
 
         model_short = _nested_get(config, "model", "shortName") or ""
 
-        # ── Decode pods (comprehensive) ───────────────────────────────
         decode_pods = self.validate_role_pods(
             cmd, namespace, config, "decode", model_short, report, logger=context.logger,
         )
@@ -114,7 +113,6 @@ class WideEpLwsValidator(BaseSmoketest):
                     message=f"Model volume mount correctly {'absent' if 'model-cache' not in mounts and 'model-pvc' not in mounts else 'present (unexpected)'}",
                 ))
 
-        # ── Prefill pods (if enabled) ─────────────────────────────────
         prefill_enabled = _nested_get(config, "prefill", "enabled")
         if prefill_enabled:
             prefill_pods = self.validate_role_pods(
@@ -125,7 +123,6 @@ class WideEpLwsValidator(BaseSmoketest):
                 prefill_args = self.get_pod_args(prefill_pods[0])
                 report.add(self.assert_arg_contains(prefill_args, "--enable-expert-parallel"))
 
-        # ── Summary ───────────────────────────────────────────────────
         total_pods = len(decode_pods) + (len(prefill_pods) if prefill_enabled and 'prefill_pods' in dir() else 0)
         report.add(CheckResult(
             "pods_found",

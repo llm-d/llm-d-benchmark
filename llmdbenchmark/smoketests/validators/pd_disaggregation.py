@@ -28,7 +28,6 @@ class PdDisaggregationValidator(BaseSmoketest):
 
         model_short = _nested_get(config, "model", "shortName") or ""
 
-        # ── Prefill pods ──────────────────────────────────────────────
         prefill_enabled = _nested_get(config, "prefill", "enabled")
         if prefill_enabled:
             prefill_pods = self.validate_role_pods(
@@ -46,12 +45,10 @@ class PdDisaggregationValidator(BaseSmoketest):
                 message=f"Prefill disabled — {'no' if not prefill_pods else len(prefill_pods)} prefill pod(s)",
             ))
 
-        # ── Decode pods ───────────────────────────────────────────────
         decode_pods = self.validate_role_pods(
             cmd, namespace, config, "decode", model_short, report, logger=context.logger,
         )
 
-        # ── Shared memory volume ──────────────────────────────────────
         if decode_pods:
             volumes = self.get_pod_volumes(decode_pods[0])
             shm_size = _nested_get(config, "decode", "shm", "size")

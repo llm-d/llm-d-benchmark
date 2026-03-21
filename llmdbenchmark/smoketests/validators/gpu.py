@@ -28,7 +28,6 @@ class GpuValidator(BaseSmoketest):
 
         model_short = _nested_get(config, "model", "shortName") or ""
 
-        # ── Prefill pods (if enabled) ───────────────────────────────
         prefill_enabled = _nested_get(config, "prefill", "enabled")
         prefill_pods = self.get_pod_specs(
             cmd, namespace,
@@ -45,7 +44,6 @@ class GpuValidator(BaseSmoketest):
                 message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) — prefill disabled",
             ))
 
-        # ── Find the serving pods (decode or standalone) ────────────
         decode_pods = self.get_pod_specs(
             cmd, namespace,
             f"llm-d.ai/model={model_short},llm-d.ai/role=decode",
@@ -79,7 +77,6 @@ class GpuValidator(BaseSmoketest):
             ))
             return report
 
-        # ── GPU-specific checks ─────────────────────────────────────
         # Find the correct container name
         containers = serving_pod.get("spec", {}).get("containers", [])
         container_name = None
