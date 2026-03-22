@@ -8,7 +8,7 @@ accurate to the current codebase.
 
 - [1. Architecture Overview](#1-architecture-overview)
   - [Step-Based Execution Model](#step-based-execution-model)
-  - [Three-Phase Lifecycle](#three-phase-lifecycle)
+  - [Four-Phase Lifecycle](#four-phase-lifecycle)
   - [Experiment Orchestrator](#experiment-orchestrator)
   - [How StepExecutor Partitions Steps](#how-stepexecutor-partitions-steps)
   - [ExecutionContext](#executioncontext)
@@ -43,7 +43,8 @@ accurate to the current codebase.
   - [Step 2: Create the Scenario File](#step-2-create-the-scenario-file)
   - [How Templates Are Rendered](#how-templates-are-rendered)
   - [Custom Jinja2 Templates](#custom-jinja2-templates)
-- [8. How to Add a New Experiment](#8-how-to-add-a-new-experiment)
+- [8. How to Add a Smoketest Validator](#8-how-to-add-a-smoketest-validator)
+- [9. How to Add a New Experiment](#9-how-to-add-a-new-experiment)
   - [Experiment YAML Format](#experiment-yaml-format)
   - [Setup Treatments vs Run Treatments](#setup-treatments-vs-run-treatments)
   - [How to Reference Scenario Overrides](#how-to-reference-scenario-overrides)
@@ -60,17 +61,22 @@ The framework is built around a **Step** abstraction (defined in
 running a smoketest, collecting results -- is a `Step` subclass with a number,
 name, phase, and an `execute()` method.
 
-### Three-Phase Lifecycle
+### Four-Phase Lifecycle
 
-A benchmark run proceeds through three phases, each with its own ordered list of
+A benchmark run proceeds through four phases, each with its own ordered list of
 steps:
 
-1. **Standup** (`Phase.STANDUP`) -- Provisions infrastructure, deploys models,
-   runs smoketests. Steps 00-10 in `llmdbenchmark/standup/steps/`.
-2. **Run** (`Phase.RUN`) -- Detects endpoints, renders workload profiles,
+1. **Standup** (`Phase.STANDUP`) -- Provisions infrastructure, deploys models.
+   Steps 00-09 in `llmdbenchmark/standup/steps/`. Note: smoketest steps
+   (formerly steps 10-11) have been moved to `llmdbenchmark/smoketests/` and
+   run as a separate phase after standup.
+2. **Smoketest** (`Phase.SMOKETEST`) -- Post-deployment validation: health
+   checks, inference tests, per-scenario config validation. Steps 00-02 in
+   `llmdbenchmark/smoketests/steps/`.
+3. **Run** (`Phase.RUN`) -- Detects endpoints, renders workload profiles,
    deploys harness pods, waits for completion, collects and analyzes results.
    Steps 00-11 in `llmdbenchmark/run/steps/`.
-3. **Teardown** (`Phase.TEARDOWN`) -- Uninstalls Helm releases, cleans harness
+4. **Teardown** (`Phase.TEARDOWN`) -- Uninstalls Helm releases, cleans harness
    resources, deletes cluster-scoped objects. Steps 00-04 in
    `llmdbenchmark/teardown/steps/`.
 
@@ -254,6 +260,9 @@ Steps execute in number order. Rules:
   future insertions without renumbering.
 - Within a phase, numbers must be unique.
 
+Note: standup skips step 01 (reserved). Choose numbers that don't conflict with
+existing steps.
+
 ### Complete Examples
 
 #### Standup Example: Deploy a Custom CRD
@@ -335,7 +344,7 @@ from llmdbenchmark.standup.steps.step_11_deploy_custom_crd import DeployCustomCr
 
 def get_standup_steps() -> list[Step]:
     return [
-        # ... existing steps 00-10 ...
+        # ... existing steps 00-09 ...
         DeployCustomCrdStep(),
     ]
 ```
@@ -405,10 +414,11 @@ class WarmupModelStep(Step):
         )
 ```
 
-Note: inserting at number 4 would conflict with the existing
-`RenderProfilesStep` (number=4). You would need to renumber existing steps or
-choose a non-conflicting number such as 3 (between existing steps 03 and 04),
-using a numbering scheme that avoids collisions.
+Note: this example is illustrative. The code uses `number=4` but the comment
+says "Step 03b". In practice, inserting at number 4 would conflict with the
+existing `RenderProfilesStep` (number=4). You would need to renumber existing
+steps or choose a non-conflicting number such as 3 (between existing steps 03
+and 04), using a numbering scheme that avoids collisions.
 
 #### Teardown Example: Archive Results to S3
 
@@ -562,15 +572,22 @@ numbers. Steps not in the set are excluded from partitioning.
 | `deep_clean` | `bool` | CLI flag | Teardown: wipe all resources |
 | `release` | `str` | Default `"llmdbench"` | Helm release name prefix |
 | `cluster_url` | `str \| None` | Step 00 | Kubernetes API server URL |
+| `cluster_token` | `str \| None` | Step 00 | Bearer token for API server auth |
 | `kubeconfig` | `str \| None` | CLI / env | Path to kubeconfig |
 | `is_openshift` | `bool` | Step 00 | True if cluster is OpenShift |
 | `is_kind` | `bool` | Step 00 | True if cluster is Kind |
 | `is_minikube` | `bool` | Step 00 | True if cluster is Minikube |
 | `cluster_name` | `str \| None` | Step 00 | Hostname from API server URL |
+| `cluster_server` | `str \| None` | Step 00 | Full API server URL |
 | `context_name` | `str \| None` | Step 00 | Kube context name |
+| `username` | `str \| None` | Step 00 | Current user for labeling |
 | `namespace` | `str \| None` | Plan config / CLI | Model deployment namespace |
 | `harness_namespace` | `str \| None` | Plan config / CLI | Benchmark harness namespace |
+| `wva_namespace` | `str \| None` | Plan config / CLI | WVA namespace |
+| `proxy_uid` | `int \| None` | Step 00 | OpenShift UID range (first_uid + 1) |
 | `model_name` | `str \| None` | Plan config | Model identifier (e.g. `meta-llama/Llama-3.1-8B`) |
+| `accelerator_resource` | `str \| None` | Step 03 | Node accelerator resource (e.g. `nvidia.com/gpu`) |
+| `network_resource` | `str \| None` | Step 03 | Network resource (e.g. `rdma/rdma_shared_device_a`) |
 | `deployed_endpoints` | `dict[str, str]` | Standup | Endpoint URLs keyed by stack name |
 | `deployed_methods` | `list[str]` | Standup | Deploy methods used (standalone, modelservice) |
 | `deployed_pod_names` | `list[str]` | Run step 06 | Harness pod names deployed |
@@ -579,9 +596,24 @@ numbers. Steps not in the set are excluded from partitioning.
 | `results_dir` | `Path \| None` | Run phase | Where results are written |
 | `harness_name` | `str \| None` | Run phase | Active harness (inference-perf, guidellm, etc.) |
 | `harness_profile` | `str \| None` | Run phase | Workload profile filename |
+| `experiment_treatments_file` | `str \| None` | Run phase | Path to experiment treatments file |
+| `profile_overrides` | `str \| None` | Run phase | Profile override string |
 | `harness_output` | `str` | Default `"local"` | Output destination (local, gs://, s3://) |
 | `harness_parallelism` | `int` | Default `1` | Parallel harness pods per treatment |
 | `harness_wait_timeout` | `int` | Default `3600` | Seconds to wait for harness completion |
+| `harness_debug` | `bool` | Default `False` | Enable debug mode for harness pods |
+| `harness_skip_run` | `bool` | Default `False` | Skip harness run (collect-only mode) |
+| `harness_service_account` | `str \| None` | Run phase | Service account for harness pods |
+| `harness_envvars_to_pod` | `str \| None` | Run phase | Extra env vars forwarded to harness pods |
+| `analyze_locally` | `bool` | Default `False` | Run analysis locally instead of in-cluster |
+| `endpoint_url` | `str \| None` | CLI flag | Existing endpoint URL (run-only mode) |
+| `run_config_file` | `str \| None` | CLI flag | Pre-built run config file (run-only mode) |
+| `generate_config_only` | `bool` | Default `False` | Generate config without executing run |
+| `dataset_url` | `str \| None` | CLI flag | Custom dataset URL for harness |
+| `kubectl_cmd` | `str` | Default `"kubectl"` | Path to kubectl binary |
+| `helm_cmd` | `str` | Default `"helm"` | Path to helm binary |
+| `helmfile_cmd` | `str` | Default `"helmfile"` | Path to helmfile binary |
+| `python_cmd` | `str` | Default `"python3"` | Path to python binary |
 | `logger` | `LoggerProtocol` | CLI init | Logger instance |
 | `cmd` | `CommandExecutor` | `rebuild_cmd()` | Shared command executor for kubectl/helm/shell |
 
@@ -639,8 +671,8 @@ interface: `log_info`, `log_warning`, `log_error`, `set_indent`.
 Steps communicate through `ExecutionContext` fields. For example:
 - Standup step 06 (deploy) writes to `context.deployed_methods` and
   `context.deployed_endpoints`
-- Standup step 10 (smoketest) reads `context.deployed_methods` to determine the
-  pod selector
+- Smoketest phase reads `context.deployed_methods` to determine the pod
+  selector
 - Run step 06 (deploy harness) writes to `context.experiment_ids` and
   `context.deployed_pod_names`
 - Run step 08 (collect results) reads `context.experiment_ids` to know which
@@ -869,6 +901,9 @@ scenario:
       enabled: true
       replicas: 1
 
+    modelservice:
+      enabled: false
+
     harness:
       name: inference-perf
       experimentProfile: sanity_random.yaml
@@ -877,6 +912,10 @@ scenario:
 The `scenario` key is a list. Each entry becomes a "stack" that gets deployed.
 Most scenarios define a single stack. Parameters not specified here inherit from
 `config/templates/values/defaults.yaml`.
+
+The deployment method must be exactly one of `standalone` or `modelservice`.
+Both `standalone.enabled` and `modelservice.enabled` must be explicitly set so
+that the rendered templates know which path to take.
 
 ### How Templates Are Rendered
 
@@ -932,7 +971,78 @@ The `--spec` flag resolves to the specification file by searching
 
 ---
 
-## 8. How to Add a New Experiment
+## 8. How to Add a Smoketest Validator
+
+Smoketest validators run during the `SMOKETEST` phase to verify that a
+scenario's rendered config matches expectations before the benchmark run begins.
+
+### Create the Validator File
+
+Add a new file in `llmdbenchmark/smoketests/validators/`, e.g.,
+`my_scenario.py`. The file name must match the stack directory name -- for
+example, a stack named `my-scenario` maps to `my_scenario.py`.
+
+### Subclass ScenarioValidator
+
+Extend `ScenarioValidator` from `llmdbenchmark/smoketests/validators/base.py`
+and implement the `run_config_validation` method:
+
+```python
+from llmdbenchmark.smoketests.validators.base import ScenarioValidator
+
+
+class MyScenarioValidator(ScenarioValidator):
+    """Validate the my-scenario deployment configuration."""
+
+    def run_config_validation(self, config, cmd, namespace, logger):
+        # Validate that expected pods are running with the correct config.
+        # Checks come from the rendered config.yaml, not hardcoded values.
+        pods = self.get_pod_specs(cmd, namespace, label="app=my-scenario")
+
+        self.validate_role_pods(pods, expected_count=1, role="server")
+        self.assert_env_equals(pods[0], "MODEL_NAME", config["model"]["name"])
+        self.assert_arg_contains(pods[0], "--tensor-parallel-size",
+                                 str(config["vllmCommon"]["tensorParallelism"]))
+```
+
+### Available Helper Methods
+
+- `validate_role_pods(pods, expected_count, role)` -- Assert the expected
+  number of pods exist for a given role.
+- `assert_env_equals(pod_spec, env_var, expected_value)` -- Check that a
+  container environment variable has the expected value.
+- `assert_arg_contains(pod_spec, arg_name, expected_value)` -- Check that a
+  container argument contains the expected value.
+- `get_pod_specs(cmd, namespace, label)` -- Retrieve pod specs filtered by
+  label selector.
+
+### Register the Validator
+
+Add an entry to `VALIDATOR_REGISTRY` in
+`llmdbenchmark/smoketests/validators/__init__.py`:
+
+```python
+from llmdbenchmark.smoketests.validators.my_scenario import MyScenarioValidator
+
+VALIDATOR_REGISTRY = {
+    # ... existing validators ...
+    "my-scenario": MyScenarioValidator,
+}
+```
+
+The registry key must match the stack directory name.
+
+### Key Principles
+
+- All checks should derive from the rendered `config.yaml`, not hardcoded
+  values. This ensures the validator stays in sync with scenario changes.
+- See `llmdbenchmark/smoketests/README.md` for the full check system
+  documentation, including the complete list of built-in assertions and
+  advanced usage patterns.
+
+---
+
+## 9. How to Add a New Experiment
 
 Experiments define a Design of Experiments (DoE) matrix with setup treatments
 (infrastructure variations) and run treatments (workload parameter sweeps).
