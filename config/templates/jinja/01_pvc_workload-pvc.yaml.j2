@@ -10,7 +10,7 @@ spec:
   {% endfor %}
   resources:
     requests:
-      storage: {{ storage.workloadPvc.size }}
+      storage: {{ harness.pvcSize | default(storage.workloadPvc.size) }}
 {% if storage.workloadPvc.storageClassName is defined and storage.workloadPvc.storageClassName not in ["default", "auto", ""] %}
   storageClassName: {{ storage.workloadPvc.storageClassName }}
 {% endif %}

@@ -1,1 +1,1 @@
-"""llmdbenchmark.standup — Standup phase package."""
+"""llmdbenchmark.standup -- Standup phase package."""

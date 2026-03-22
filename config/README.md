@@ -19,6 +19,9 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
   - [Ephemeral Storage](#ephemeral-storage)
   - [Network Resources (RDMA/InfiniBand)](#network-resources-rdmainfiniband)
   - [Accelerator Resources](#accelerator-resources)
+- [Affinity Configuration](#affinity-configuration)
+- [Scenario Organization](#scenario-organization)
+- [vLLM Command Generation](#vllm-command-generation)
 - [Init Containers](#init-containers)
 - [Monitoring and Metrics](#monitoring-and-metrics)
 - [Container Images](#container-images)
@@ -279,7 +282,7 @@ The `vllmCommon.kvTransfer` section controls the `--kv-transfer-config` argument
 
 The `build_kv_transfer_config()` macro in `_macros.j2` assembles the JSON from these fields. When `extraConfig` is omitted or `null`, the output contains only `kv_connector` and `kv_role`. When `extraConfig` is set, it is serialized as `kv_connector_extra_config` inside the same JSON object.
 
-The macro is called automatically when `kvTransfer.enabled: true` — both in the default vLLM serve command and when using `customCommand`.
+The macro is called automatically when `kvTransfer.enabled: true` --both in the default vLLM serve command and when using `customCommand`.
 
 #### Override examples
 
@@ -337,7 +340,7 @@ No `--kv-transfer-config` flag is added to the vLLM serve command.
 
 #### Relationship to customCommand
 
-Before `extraConfig` was available, scenarios that needed `kv_connector_extra_config` had to use `customCommand` and hardcode the entire `--kv-transfer-config` JSON inline (see `tiered-prefix-cache.yaml` for an example). With `extraConfig`, this workaround is no longer necessary — the macro handles it. Note that when `customCommand` is used, the macro still appends `--kv-transfer-config` if `kvTransfer.enabled: true`, so set `enabled: false` if you are handling it in `customCommand` to avoid duplication.
+Before `extraConfig` was available, scenarios that needed `kv_connector_extra_config` had to use `customCommand` and hardcode the entire `--kv-transfer-config` JSON inline (see `tiered-prefix-cache.yaml` for an example). With `extraConfig`, this workaround is no longer necessary --the macro handles it. Note that when `customCommand` is used, the macro still appends `--kv-transfer-config` if `kvTransfer.enabled: true`, so set `enabled: false` if you are handling it in `customCommand` to avoid duplication.
 
 #### Defaults chain
 
@@ -356,7 +359,7 @@ vllmCommon:
     # extraConfig: null         # not set by default
 ```
 
-A scenario file overrides any of these fields under `vllmCommon.kvTransfer`. The override is a full merge — you must include `enabled`, `connector`, and `role` in your scenario if you want them to differ from defaults.
+A scenario file overrides any of these fields under `vllmCommon.kvTransfer`. The override is a full merge --you must include `enabled`, `connector`, and `role` in your scenario if you want them to differ from defaults.
 
 ---
 
@@ -421,6 +424,71 @@ When `count` is not set, it defaults to `decode.parallelism.tensor`. Set `count`
 
 ---
 
+## Affinity Configuration
+
+Node affinity controls which cluster nodes pods are scheduled on. Configured under the top-level `affinity` section in `defaults.yaml` or per scenario.
+
+#### Modes
+
+| Mode | Config | Behavior |
+|------|--------|----------|
+| **Disabled** (default) | `affinity.enabled: false` or omit entirely | Pods schedule on any available node |
+| **Explicit** | `affinity.enabled: true` with `nodeSelector` labels | Pods only schedule on nodes matching the specified labels |
+| **Auto** | Pass `--affinity auto` via CLI or set `LLMDBENCH_AFFINITY=auto` | Auto-detects GPU/accelerator labels from cluster nodes at render time |
+
+#### Explicit example
+
+```yaml
+affinity:
+  enabled: true
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+```
+
+#### Optional pod affinity/anti-affinity
+
+The `affinity` section also supports `podAffinity` and `podAntiAffinity` rules for co-locating or spreading pods across nodes:
+
+```yaml
+affinity:
+  enabled: true
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          topologyKey: kubernetes.io/hostname
+```
+
+---
+
+## Scenario Organization
+
+Scenario files use comment headers to organize settings into three categories:
+
+- **COMMON** -- settings that apply to all deployment methods (model config, namespace, decode/prefill resources, vllmCommon, monitoring, etc.)
+- **STANDALONE** -- settings that only apply when `standalone.enabled: true` (standalone image, replicas, volumes)
+- **MODELSERVICE** -- settings that only apply when `modelservice.enabled: true` (Helm chart values, gateway config, GAIE settings)
+
+Each scenario must set either `standalone.enabled: true` or `modelservice.enabled: true` (or both, though in practice only one is used). Templates use Jinja2 conditionals to skip rendering when the corresponding flag is `false`.
+
+---
+
+## vLLM Command Generation
+
+The `build_vllm_command()` macro in `_macros.j2` assembles the `vllm serve` command from config values. When no `customCommand` is set on a role (decode/prefill), the macro builds the command from:
+
+- Model path and `--served-model-name`
+- Parallelism settings (`--tensor-parallel-size`, `--pipeline-parallel-size`, `--data-parallel-size`)
+- Port (`--port`)
+- KV transfer config (when `kvTransfer.enabled: true`)
+- Additional vLLM flags from `vllmCommon.extraArgs` and per-role `extraArgs`
+
+When `customCommand` is set on a role, it is used verbatim. The KV transfer macro still appends `--kv-transfer-config` if `kvTransfer.enabled: true`, so set `enabled: false` if you handle it in the custom command.
+
+---
+
 ## Init Containers
 
 Init containers run before the main vLLM container to perform environment setup tasks such as network configuration (RDMA/InfiniBand route tables), hardware detection, and environment variable preparation.
@@ -442,9 +510,9 @@ Init container images follow the same `auto` resolution as all other images in t
 2. **Template defaulting** (in `13_ms-values.yaml.j2`): When rendering init containers, if an init container's `image` field is missing or ends with `:auto`, the template automatically replaces it with the resolved `images.benchmark.repository:images.benchmark.tag`.
 
 This means:
-- You can set `image: ghcr.io/llm-d/llm-d-benchmark:auto` — the `:auto` suffix is resolved at render time
-- You can omit the `image` field entirely — it defaults to the benchmark image
-- You can set a specific image (e.g., `image: my-registry/my-init:v1.0`) — it is used as-is
+- You can set `image: ghcr.io/llm-d/llm-d-benchmark:auto` --the `:auto` suffix is resolved at render time
+- You can omit the `image` field entirely --it defaults to the benchmark image
+- You can set a specific image (e.g., `image: my-registry/my-init:v1.0`) --it is used as-is
 
 The resolved image tag is visible in the rendered `ms-values.yaml` in the workspace directory.
 
@@ -471,7 +539,7 @@ decode:
 
 The `securityContext` capabilities vary by scenario:
 - `IPC_LOCK` and `SYS_RAWIO` are the base capabilities needed for most deployments
-- `NET_ADMIN` and `NET_RAW` are additionally required for scenarios that need network configuration (route tables, InfiniBand detection) — e.g., `precise-prefix-cache-aware` and `tiered-prefix-cache`
+- `NET_ADMIN` and `NET_RAW` are additionally required for scenarios that need network configuration (route tables, InfiniBand detection) --e.g., `precise-prefix-cache-aware` and `tiered-prefix-cache`
 - Scenarios like `inference-scheduling` and `pd-disaggregation` use only the base capabilities
 
 For scenarios with prefill pods (e.g., `pd-disaggregation`, `wide-ep-lws`), add the same block under the `prefill` section as well.
@@ -484,14 +552,14 @@ To use a different preprocessing script, change the `command` and/or `image`:
 decode:
   initContainers:
     - name: preprocess
-      image: my-registry/my-init:v1.0  # custom image — used as-is, no auto-resolution
+      image: my-registry/my-init:v1.0  # custom image --used as-is, no auto-resolution
       command: ["my-setup-script.sh", "-o", "/shared-config/llmdbench_env.sh"]
       volumeMounts:
         - name: shared-config
           mountPath: /shared-config
 ```
 
-The script must write a sourceable shell file to `/shared-config/llmdbench_env.sh` — the main container's `preprocessScript` sources it on startup.
+The script must write a sourceable shell file to `/shared-config/llmdbench_env.sh` --the main container's `preprocessScript` sources it on startup.
 
 #### Adding additional init containers
 
@@ -633,12 +701,12 @@ decode:
 When `podmonitor.enabled: true`, the templates `17_standalone-podmonitor.yaml.j2` (standalone) or `18_podmonitor.yaml.j2` (modelservice) render PodMonitor CRDs that tell Prometheus to scrape vLLM pods.
 
 **Metrics exposed by vLLM pods** (scraped via PodMonitor):
-- `vllm:kv_cache_usage_perc` — KV cache utilization
-- `vllm:num_requests_running` — active requests in batch
-- `vllm:num_requests_waiting` — queued requests
-- `vllm:prompt_tokens_total` — prefill token count
-- `vllm:generation_tokens_total` — decode token count
-- `vllm:prefix_cache_hits_total` / `vllm:prefix_cache_queries_total` — cache hit rate
+- `vllm:kv_cache_usage_perc` --KV cache utilization
+- `vllm:num_requests_running` --active requests in batch
+- `vllm:num_requests_waiting` --queued requests
+- `vllm:prompt_tokens_total` --prefill token count
+- `vllm:generation_tokens_total` --decode token count
+- `vllm:prefix_cache_hits_total` / `vllm:prefix_cache_queries_total` --cache hit rate
 
 #### EPP (Inference Scheduler) monitoring
 
@@ -656,14 +724,14 @@ inferenceExtension:
 ```
 
 This creates a ServiceMonitor for the EPP pod, enabling Prometheus to scrape inference scheduler metrics:
-- `inference_extension_scheduler_e2e_duration_seconds` — scheduling latency
-- `inference_pool_average_kv_cache_utilization` — pool-wide cache utilization
-- `inference_pool_average_queue_size` — average request queue depth
-- `inference_pool_ready_pods` — ready pod count
+- `inference_extension_scheduler_e2e_duration_seconds` --scheduling latency
+- `inference_pool_average_kv_cache_utilization` --pool-wide cache utilization
+- `inference_pool_average_queue_size` --average request queue depth
+- `inference_pool_ready_pods` --ready pod count
 
 When flow control is enabled (see [KV Transfer Configuration](#kv-transfer-configuration) for EPP config), additional metrics are emitted:
-- `inference_extension_flow_control_queue_size` — flow control queue depth
-- `inference_extension_flow_control_pool_saturation` — pool saturation level
+- `inference_extension_flow_control_queue_size` --flow control queue depth
+- `inference_extension_flow_control_pool_saturation` --pool saturation level
 
 #### Enabling monitoring in a scenario
 
@@ -723,7 +791,7 @@ All images are defined in `defaults.yaml`. There are two groups: the shared `ima
 | `standalone.launcher.image` | _(falls back to `standalone.image`)_ | Standalone launcher container (repo/tag only) |
 | `wva.image` | `ghcr.io/llm-d/llm-d-workload-variant-autoscaler:auto` | Workload Variant Autoscaler |
 
-Each image key has `repository`, `tag`, and `pullPolicy` sub-fields. The one exception is `standalone.launcher` — its pull policy is set via a separate flat key `standalone.launcher.imagePullPolicy` (defaults to `Always`), not nested under `image`.
+Each image key has `repository`, `tag`, and `pullPolicy` sub-fields. The one exception is `standalone.launcher` --its pull policy is set via a separate flat key `standalone.launcher.imagePullPolicy` (defaults to `Always`), not nested under `image`.
 
 ### Which Template Uses Which Image
 
@@ -747,9 +815,9 @@ Templates use Jinja2 `default()` filters to create fallback chains. If a per-com
 **Standalone main container:**
 
 ```
-standalone.image.repository  →  images.vllm.repository
-standalone.image.tag         →  images.vllm.tag
-standalone.image.pullPolicy  →  images.vllm.pullPolicy
+standalone.image.repository  maps to  images.vllm.repository
+standalone.image.tag         maps to  images.vllm.tag
+standalone.image.pullPolicy  maps to  images.vllm.pullPolicy
 ```
 
 Since `standalone.image` is explicitly set in `defaults.yaml` (`docker.io/vllm/vllm-openai:auto`), the `images.vllm` fallback only kicks in if you clear `standalone.image` in your scenario. The `auto` tag is resolved at render time by the `VersionResolver`. In practice, to change the standalone image you must override `standalone.image` directly.
@@ -757,9 +825,9 @@ Since `standalone.image` is explicitly set in `defaults.yaml` (`docker.io/vllm/v
 **Standalone launcher container** (three-level chain for repo/tag):
 
 ```
-standalone.launcher.image.repository  →  standalone.image.repository  →  images.vllm.repository
-standalone.launcher.image.tag         →  standalone.image.tag         →  images.vllm.tag
-standalone.launcher.imagePullPolicy   →  'Always' (hardcoded default, no fallback chain)
+standalone.launcher.image.repository  maps to  standalone.image.repository  maps to  images.vllm.repository
+standalone.launcher.image.tag         maps to  standalone.image.tag         maps to  images.vllm.tag
+standalone.launcher.imagePullPolicy   maps to  'Always' (hardcoded default, no fallback chain)
 ```
 
 Note: the launcher's `imagePullPolicy` is a flat key on `standalone.launcher`, not nested under `standalone.launcher.image`. It does not inherit from `standalone.image.pullPolicy`.
@@ -942,7 +1010,7 @@ experiments:
 
 ### Specification Auto-Discovery
 
-The `--spec` flag supports three input forms — you don't need to type the full path:
+The `--spec` flag supports three input forms --you don't need to type the full path:
 
 | Form | Example | Resolves to |
 |------|---------|-------------|

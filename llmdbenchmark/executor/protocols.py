@@ -15,7 +15,7 @@ class LoggerProtocol(Protocol):
     """Structural interface for loggers used throughout the pipeline.
 
     Any object that implements these four methods (with compatible
-    signatures) satisfies the protocol — no explicit inheritance needed.
+    signatures) satisfies the protocol -- no explicit inheritance needed.
     Both ``_MinimalLogger`` in ``command.py`` and the rich CLI logger
     in ``cli.py`` conform to this interface.
     """

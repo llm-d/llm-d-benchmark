@@ -89,9 +89,9 @@ llmdbenchmark --spec guides/pd-disaggregation smoketest -p <namespace>
 ```
 
 Smoketests include three steps:
-- **Step 00** — Health check: pods running, `/health` responds, `/v1/models` returns expected model, service/gateway/route reachable
-- **Step 01** — Inference test: sends a sample `/v1/completions` request, logs generated text and a demo curl command
-- **Step 02** — Config validation: per-scenario checks that compare deployed pod configuration against the rendered scenario config (resources, parallelism, env vars, probes, volumes, security, vLLM flags, etc.)
+- **Step 00** -- Health check: pods running, `/health` responds, `/v1/models` returns expected model, service/gateway/route reachable
+- **Step 01** -- Inference test: sends a sample `/v1/completions` request, logs generated text and a demo curl command
+- **Step 02** -- Config validation: per-scenario checks that compare deployed pod configuration against the rendered scenario config (resources, parallelism, env vars, probes, volumes, security, vLLM flags, etc.)
 
 Well-lit-path scenarios (pd-disaggregation, precise-prefix-cache-aware, inference-scheduling, tiered-prefix-cache, wide-ep-lws, simulated-accelerators) have dedicated validators with scenario-specific checks. Other scenarios run steps 00 and 01 only.
 

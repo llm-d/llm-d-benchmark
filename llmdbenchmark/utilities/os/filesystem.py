@@ -91,7 +91,7 @@ def resolve_specification_file(
     """
     input_path = Path(name_or_path).expanduser()
 
-    # Exact path — just use it
+    # Exact path -- just use it
     if input_path.is_file():
         return input_path.resolve()
 
@@ -109,7 +109,7 @@ def resolve_specification_file(
         spec_dir = bd / _SPEC_DIR
         if spec_dir.is_dir():
             search_roots.append(spec_dir)
-    # utilities/os/filesystem.py → 4 parents up = project root
+    # utilities/os/filesystem.py to 4 parents up = project root
     pkg_root = Path(__file__).resolve().parent.parent.parent.parent
     pkg_spec = pkg_root / _SPEC_DIR
     if pkg_spec.is_dir() and pkg_spec not in search_roots:
@@ -121,7 +121,7 @@ def resolve_specification_file(
         if candidate.is_file():
             return candidate.resolve()
 
-    # Bare name — glob for it
+    # Bare name -- glob for it
     target = f"{Path(stem).name}{_SPEC_SUFFIX}"
     matches: list[Path] = []
     for root in search_roots:
@@ -142,7 +142,7 @@ def resolve_specification_file(
             f"'--spec guides/{stem}' or '--spec examples/{stem}'."
         )
 
-    # Not found — list what's available so the user can pick
+    # Not found -- list what's available so the user can pick
     available: list[str] = []
     for root in search_roots:
         for f in sorted(root.rglob(f"*{_SPEC_SUFFIX}")):

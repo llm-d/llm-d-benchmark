@@ -103,7 +103,7 @@ def create_component_observability(
             if 'bytes' in metric_name.lower() and units == Units.GIB:
                 scale = 1.0 / (1024 ** 3)
             elif metric_name.endswith('_gb') and units == Units.GIB:
-                # GB → GiB
+                # GB to GiB
                 scale = (1000 ** 3) / (1024 ** 3)
 
             def _scale(v):

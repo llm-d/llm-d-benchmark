@@ -1,7 +1,7 @@
-"""DoE experiment summary — tracks per-treatment results.
+"""DoE experiment summary -- tracks per-treatment results.
 
 Records the outcome of each setup treatment cycle
-(standup → run → teardown) and writes a structured
+(standup to run to teardown) and writes a structured
 ``experiment-summary.yaml`` at the end of the experiment.
 """
 

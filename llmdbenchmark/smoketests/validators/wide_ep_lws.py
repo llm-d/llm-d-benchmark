@@ -51,7 +51,7 @@ class WideEpLwsValidator(BaseSmoketest):
             else:
                 report.add(CheckResult(
                     "lws_group_size", False,
-                    message="LWS_GROUP_SIZE env var not set — LWS may not be active",
+                    message="LWS_GROUP_SIZE env var not set -- LWS may not be active",
                 ))
 
             if "LWS_LEADER_ADDRESS" in env:

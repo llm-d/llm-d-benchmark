@@ -10,7 +10,7 @@
 # Many commonly defined values were left blank (default) so that this scenario
 # is applicable to as many environments as possible.
 #
-# The model parameter is left commented — uncomment the model you want to deploy.
+# The model parameter is left commented -- uncomment the model you want to deploy.
 # Uncommenting a model here will override the default model from defaults.yaml.
 
 scenario:
@@ -19,9 +19,13 @@ scenario:
   # ============================================================================
   - name: "cpu-example-ms"
 
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods
+    # =========================================================================
+
     # -------------------------------------------------------------------------
     # Model Configuration
-    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST (commented — user selects)
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST (commented -- user selects)
     # -------------------------------------------------------------------------
     # -------------------------------------------------------------------------
     # Model Configuration
@@ -39,8 +43,14 @@ scenario:
       maxNumSeq: 32
 
     # -------------------------------------------------------------------------
-    # CPU-only Affinity
+    # Affinity / Node Selection
     # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY=kubernetes.io/os:linux
+    # By default, affinity is disabled and pods schedule on any available node.
+    # Options:
+    #   1. Leave commented out -- no node selection constraint
+    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+    #   3. Set explicit labels -- pods only schedule on matching nodes
+    # This scenario targets CPU-only nodes (no GPU required).
     # -------------------------------------------------------------------------
     affinity:
       enabled: true
@@ -48,14 +58,28 @@ scenario:
         kubernetes.io/os: linux
 
     # -------------------------------------------------------------------------
-    # Accelerator Configuration — no GPUs
+    # Accelerator Configuration -- no GPUs
     # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR=0
     # -------------------------------------------------------------------------
     accelerator:
       count: 0
 
     # -------------------------------------------------------------------------
-    # vLLM Common Configuration (shared across standalone and modelservice)
+    # vLLM Common Configuration
+    # Shared settings for both decode and prefill pods.
+    # When no customCommand is set on decode/prefill, the vLLM serve command
+    # is auto-generated from these fields:
+    #   - model.maxModelLen, model.blockSize maps to --max-model-len, --block-size
+    #   - model.gpuMemoryUtilization maps to --gpu-memory-utilization
+    #   - decode/prefill.parallelism.tensor maps to --tensor-parallel-size
+    #   - vllmCommon.flags.* maps to --enforce-eager, --no-enable-log-requests, etc.
+    #   - vllmCommon.kvTransfer.* maps to --kv-transfer-config (if enabled)
+    #   - vllmCommon.kvEvents.* maps to --kv-events-config (if enabled)
+    #   - decode/prefill.vllm.additionalFlags maps to appended as extra CLI args
+    # When decode.vllm.customCommand or prefill.vllm.customCommand IS set, it replaces the auto-generated
+    # command entirely. Only --kv-transfer-config and --kv-events-config are
+    # still appended from vllmCommon if enabled. All other vllmCommon.flags
+    # are ignored -- the custom command must include its own flags.
     # -------------------------------------------------------------------------
     vllmCommon:
       shmMemory: 64Gi
@@ -97,6 +121,16 @@ scenario:
         disableUvicornAccessLog: true  # --disable-uvicorn-access-log
         noPrefixCaching: true        # --no-enable-prefix-caching
 
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    # =========================================================================
+    # STANDALONE -- Only applies when standalone.enabled: true
+    # =========================================================================
+
     # -------------------------------------------------------------------------
     # Standalone Deployment Configuration
     # Corresponds to: LLMDBENCH_VLLM_STANDALONE_*
@@ -123,6 +157,10 @@ scenario:
           cpu: "64"
 
 
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
     # -------------------------------------------------------------------------
     # Override images for modelservice (CPU vLLM image)
     # Corresponds to: LLMDBENCH_LLMD_IMAGE_*
@@ -132,8 +170,14 @@ scenario:
         repository: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
         tag: v0.12.0
 
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
+
     # -------------------------------------------------------------------------
-    # Prefill Configuration — disabled (0 prefill pods)
+    # Prefill Configuration -- disabled (0 prefill pods)
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
     # -------------------------------------------------------------------------
     prefill:
@@ -143,8 +187,10 @@ scenario:
         count: 0
 
     # -------------------------------------------------------------------------
-    # Decode Configuration — 2 decode pods on CPU
+    # Decode Configuration -- 2 decode pods on CPU
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
+    # No customCommand -- the vLLM serve command is auto-generated
+    # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
     # -------------------------------------------------------------------------
     decode:
       replicas: 2
@@ -166,6 +212,10 @@ scenario:
       accelerator:
         count: 0
 
+
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
 
     # -------------------------------------------------------------------------
     # Workload/Harness Configuration

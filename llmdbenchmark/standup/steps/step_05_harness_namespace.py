@@ -46,7 +46,8 @@ class HarnessNamespaceStep(Step):
         pvc_yaml = self._find_rendered_yaml(context, "01_pvc_workload-pvc")
         if pvc_yaml:
             pvc_name = plan_config.get("storage", {}).get("workloadPvc", {}).get("name", "workload-pvc") if plan_config else "workload-pvc"
-            pvc_size = plan_config.get("storage", {}).get("workloadPvc", {}).get("size", "20Gi") if plan_config else "20Gi"
+            harness_pvc_size = plan_config.get("harness", {}).get("pvcSize") if plan_config else None
+            pvc_size = harness_pvc_size or (plan_config.get("storage", {}).get("workloadPvc", {}).get("size", "20Gi") if plan_config else "20Gi")
 
             if not context.dry_run and self._check_existing_pvc(
                 cmd, context, pvc_name, pvc_size, harness_ns, errors
@@ -208,7 +209,7 @@ metadata:
 
         if not preprocess_dir or not preprocess_dir.is_dir():
             context.logger.log_warning(
-                "Preprocess directory not found — creating empty ConfigMap"
+                "Preprocess directory not found -- creating empty ConfigMap"
             )
             for ns in namespaces:
                 result = cmd.kube(
@@ -242,7 +243,7 @@ metadata:
 
         if not from_file_args:
             context.logger.log_info(
-                "No preprocess files found — creating empty ConfigMap"
+                "No preprocess files found -- creating empty ConfigMap"
             )
             return
 

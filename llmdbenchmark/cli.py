@@ -187,7 +187,7 @@ def _load_plan_info(rendered_paths):
     """Read key configuration from the first rendered plan config.yaml.
 
     Returns a dict with namespace, harness_namespace, model_name,
-    hf_token, and release — or an empty dict if no config is found.
+    hf_token, and release -- or an empty dict if no config is found.
     """
     all_info = _load_all_stacks_info(rendered_paths)
     return all_info[0] if all_info else {}
@@ -199,8 +199,8 @@ def _parse_namespaces(
     """Parse the ``--namespace`` CLI value into (namespace, harness_namespace).
 
     Supports two formats:
-    - ``"ns"`` — both namespaces use the same value.
-    - ``"ns,harness_ns"`` — first is the infra namespace, second is the
+    - ``"ns"`` -- both namespaces use the same value.
+    - ``"ns,harness_ns"`` -- first is the infra namespace, second is the
       harness namespace.
 
     Falls back to ``plan_info`` if *ns_str* is ``None``.
@@ -228,7 +228,7 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
 
     Priority: CLI --methods > auto-detect from plan config > phase-specific default.
     standalone.enabled defaults to false, so if true the scenario explicitly chose it.
-    For teardown, no fallback — user must specify --methods if config is missing.
+    For teardown, no fallback -- user must specify --methods if config is missing.
     """
     methods_str = getattr(args, "methods", None)
     if methods_str:
@@ -439,7 +439,7 @@ def _check_model_access(context, all_stacks_info, logger):
         if result.ok:
             if result.gated == GatedStatus.NOT_GATED:
                 logger.log_info(
-                    f'{prefix}Model "{model_id}" is not gated — '
+                    f'{prefix}Model "{model_id}" is not gated -- '
                     f"access is authorized by default",
                     emoji="✅",
                 )
@@ -861,7 +861,7 @@ def _execute_experiment(args, logger):
         experiment_plan.setup_treatments = [SetupTreatment(name="default")]
         experiment_plan.has_setup_phase = True
         logger.log_info(
-            f"No setup.treatments in {experiment_file.name} — "
+            f"No setup.treatments in {experiment_file.name} -- "
             f"running a single cycle with spec defaults."
         )
 
@@ -1224,7 +1224,7 @@ def _extract_workspace_from_scenario(
         scenarios = scenario_data.get("scenario", [])
         if scenarios and isinstance(scenarios, list):
             return scenarios[0].get("workDir")
-    except Exception:  # noqa: BLE001 — best-effort; fall through to temp dir
+    except Exception:  # noqa: BLE001 -- best-effort; fall through to temp dir
         pass
     return None
 

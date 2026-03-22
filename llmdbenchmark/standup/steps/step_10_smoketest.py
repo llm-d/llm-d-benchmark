@@ -274,7 +274,7 @@ class SmoketestStep(Step):
             if elapsed > timeout:
                 return (
                     f"vLLM health check failed: /health did not respond "
-                    f"after {timeout}s — process may not be running"
+                    f"after {timeout}s -- process may not be running"
                 )
 
             attempt += 1
@@ -342,7 +342,7 @@ class SmoketestStep(Step):
             elapsed = time.time() - start
             if elapsed > timeout:
                 context.logger.log_warning(
-                    f"Model readiness wait timed out after {timeout}s — "
+                    f"Model readiness wait timed out after {timeout}s -- "
                     f"proceeding with smoketest assertions"
                 )
                 return

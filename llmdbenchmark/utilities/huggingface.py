@@ -84,7 +84,7 @@ def check_model_access(model_id: str, hf_token: str | None = None) -> ModelAcces
             model_id=model_id,
             gated=gated,
             detail=(
-                f'Model "{model_id}" is not gated — '
+                f'Model "{model_id}" is not gated -- '
                 f"access is authorized by default"
             ),
         )
@@ -95,7 +95,7 @@ def check_model_access(model_id: str, hf_token: str | None = None) -> ModelAcces
             gated=gated,
             detail=(
                 f'Could not determine gating status for "{model_id}" '
-                f"(HuggingFace API request failed) — proceeding anyway"
+                f"(HuggingFace API request failed) -- proceeding anyway"
             ),
         )
 
@@ -143,6 +143,6 @@ def check_model_access(model_id: str, hf_token: str | None = None) -> ModelAcces
         access=access,
         detail=(
             f"Could not verify token access to gated model "
-            f'"{model_id}" (request failed) — proceeding anyway'
+            f'"{model_id}" (request failed) -- proceeding anyway'
         ),
     )

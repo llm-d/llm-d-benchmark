@@ -53,7 +53,7 @@ class WaitCompletionStep(Step):
         # No-wait mode
         if timeout == 0:
             context.logger.log_info(
-                "Wait timeout is 0 — returning immediately"
+                "Wait timeout is 0 -- returning immediately"
             )
             return StepResult(
                 step_number=self.number,
@@ -63,7 +63,7 @@ class WaitCompletionStep(Step):
                 stack_name=stack_name,
             )
 
-        # Debug mode — pods have sleep infinity
+        # Debug mode -- pods have sleep infinity
         if context.harness_debug:
             context.logger.log_info(
                 f"Debug mode: {len(pod_names)} pod(s) running with "
@@ -73,7 +73,7 @@ class WaitCompletionStep(Step):
                 step_number=self.number,
                 step_name=self.name,
                 success=True,
-                message="Debug mode — pods running with sleep infinity",
+                message="Debug mode -- pods running with sleep infinity",
                 stack_name=stack_name,
             )
 
@@ -109,7 +109,7 @@ class WaitCompletionStep(Step):
             context.logger.log_warning(
                 f"Some harness pods had issues: {summary}"
             )
-            # Non-fatal — partial results may still be available
+            # Non-fatal -- partial results may still be available
             return StepResult(
                 step_number=self.number,
                 step_name=self.name,

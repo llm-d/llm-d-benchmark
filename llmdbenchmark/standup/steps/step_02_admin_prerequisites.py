@@ -183,7 +183,7 @@ class AdminPrerequisitesStep(Step):
 
             if repo_url.startswith("oci://"):
                 cmd.logger.log_info(
-                    f"📦 OCI registry detected for {repo_name} — no repo add required"
+                    f"📦 OCI registry detected for {repo_name} -- no repo add required"
                 )
                 continue
 
@@ -300,7 +300,7 @@ class AdminPrerequisitesStep(Step):
             self._install_istio(cmd, context, plan_config, errors)
 
         elif gateway_class == "gke":
-            cmd.logger.log_info("✅ GKE gateway is managed — nothing to install")
+            cmd.logger.log_info("✅ GKE gateway is managed -- nothing to install")
 
     def _install_lws_if_needed(
         self,

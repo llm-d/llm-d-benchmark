@@ -345,7 +345,7 @@ class StandaloneDeployStep(Step):
             apply_result = cmd.kube("apply", "-f", str(yaml_path))
             if apply_result.success:
                 context.logger.log_info(
-                    f"📋 Deployment metadata → configmap/{cm_name} in ns/{harness_ns}"
+                    f"📋 Deployment metadata to configmap/{cm_name} in ns/{harness_ns}"
                 )
                 context.logger.log_info(
                     f"   oc get configmap {cm_name} -n {harness_ns} -o yaml"

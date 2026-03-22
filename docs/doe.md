@@ -136,11 +136,11 @@ For example, if you have 3 setup treatments (different replica counts) and 5 run
 
 ```
 Setup treatment 1 (replicas=2):
-    standup → run treatment 1..5 → teardown
+    standup to run treatment 1..5 to teardown
 Setup treatment 2 (replicas=4):
-    standup → run treatment 1..5 → teardown
+    standup to run treatment 1..5 to teardown
 Setup treatment 3 (replicas=8):
-    standup → run treatment 1..5 → teardown
+    standup to run treatment 1..5 to teardown
 ```
 
 This produces 15 result sets total (3 setup x 5 run treatments).

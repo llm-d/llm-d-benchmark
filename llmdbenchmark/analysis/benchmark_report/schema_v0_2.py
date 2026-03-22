@@ -455,7 +455,7 @@ class TimeSeriesPoint(BaseModel):
     model_config = MODEL_CONFIG.copy()
 
     ts: datetime.datetime
-    """ISO‑8601 timestamp."""
+    """ISO-8601 timestamp."""
     value: str | float | int | bool | None = None
     """Value for datapoint."""
     mean: float | None = None
@@ -897,11 +897,11 @@ class RunTime(BaseModel):
     model_config = MODEL_CONFIG.copy()
 
     start: datetime.datetime | None = None
-    """ISO‑8601 timestamp for experiment start."""
+    """ISO-8601 timestamp for experiment start."""
     end: datetime.datetime | None = None
-    """ISO‑8601 timestamp for experiment end."""
+    """ISO-8601 timestamp for experiment end."""
     duration: str | None = None
-    """ISO‑8601 duration for experiment."""
+    """ISO-8601 duration for experiment."""
 
 
 class Run(BaseModel):

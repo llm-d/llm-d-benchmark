@@ -12,7 +12,7 @@ Benchmarking LLM inference stack performance on Kubernetes involves stitching to
 
 - **End-to-end automation** -- A single `llmdbenchmark` CLI covers the full lifecycle from rendering all Kubernetes manifests, to deploying various `llm` and `llm-d` stacks, executing benchmarks, collecting results, and tearing down infrastructure in a safe manner. No shell scripts to chain together, no manual steps to forget, and it's entirely automated.
 
-- **Reproducibility by default** -- Every run starts from a versioned specification file and a deterministic config merge chain (`defaults.yaml` → scenario → CLI overrides). The rendered `config.yaml` in each workspace captures the exact configuration used, so any result can be traced back to its inputs.
+- **Reproducibility by default** -- Every run starts from a versioned specification file and a deterministic config merge chain (`defaults.yaml` to scenario to CLI overrides). The rendered `config.yaml` in each workspace captures the exact configuration used, so any result can be traced back to its inputs.
 
 - **Flexible entry points** -- Use the full pipeline when you want deployment handled for you, or use run-only mode to benchmark an endpoint that already exists. The same workload profiles and experiment definitions work in both modes. Maybe you aren't ready to benchmark, but want to deploy the infrastructure to investigate by hand, no problem, `standup` covers that for you.
 
@@ -206,7 +206,8 @@ llmdbenchmark --version
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
-| `--monitoring` | `LLMDBENCH_MONITORING` | Enable workload monitoring |
+| `-f` / `--monitoring` | `LLMDBENCH_MONITORING` | Enable PodMonitor creation and EPP verbosity during standup |
+| `--skip-smoketest` | | Skip automatic smoketest after standup completes |
 | `--affinity` | `LLMDBENCH_AFFINITY` | Node affinity / tolerations label |
 | `--annotations` | `LLMDBENCH_ANNOTATIONS` | Extra annotations for deployed resources |
 | `--wva` | `LLMDBENCH_WVA` | Workload Variant Autoscaler config |
@@ -257,8 +258,30 @@ llmdbenchmark --version
 | `--generate-config` | | Generate config and exit |
 | `-x DATASET` | `LLMDBENCH_DATASET` | Dataset URL for harness replay |
 | `--wait-timeout N` | `LLMDBENCH_WAIT_TIMEOUT` | Seconds to wait for harness completion |
+| `-f` / `--monitoring` | | Enable metrics scraping and EPP log capture during benchmark |
+| `-q` / `--serviceaccount` | `LLMDBENCH_SERVICE_ACCOUNT` | Service account name for harness pods |
+| `-g` / `--envvarspod` | `LLMDBENCH_HARNESS_ENVVARS_TO_YAML` | Comma-separated env var names to propagate into harness pod |
 | `-z` / `--skip` | `LLMDBENCH_SKIP` | Skip execution, only collect existing results |
 | `-d` / `--debug` | `LLMDBENCH_DEBUG` | Debug mode: start harness pods with sleep infinity |
+
+### Smoketest Options
+
+Run post-deployment validation independently against an already-deployed stack.
+
+```bash
+llmdbenchmark --spec gpu smoketest -p my-namespace
+llmdbenchmark --spec gpu smoketest -p my-namespace -s 2   # config validation only
+```
+
+| Flag | Env Var | Description |
+|------|---------|-------------|
+| `-s STEPS` | | Step filter (e.g., `0,1,2` or `0-2`) |
+| `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
+| `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (standalone, modelservice) |
+| `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
+| `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
+
+Smoketests also run automatically after `standup` unless `--skip-smoketest` is passed. See [llmdbenchmark/smoketests/README.md](llmdbenchmark/smoketests/README.md) for details on what each step validates.
 
 ### Environment Variables
 

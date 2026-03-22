@@ -99,7 +99,7 @@ class ClusterResourceResolver:
                 "ensure the cluster has the expected resources."
             )
             if self.dry_run:
-                # In dry-run the plan won't be applied — warn, don't fail.
+                # In dry-run the plan won't be applied -- warn, don't fail.
                 self.logger.log_warning(f"[DRY RUN] {msg}")
             else:
                 raise RuntimeError(msg)
@@ -137,7 +137,7 @@ class ClusterResourceResolver:
         if self.dry_run:
             self.logger.log_info(
                 "[DRY RUN] Skipping cluster connection for resource "
-                "auto-detection — defaults will be used"
+                "auto-detection -- defaults will be used"
             )
             return False
 
@@ -246,7 +246,7 @@ class ClusterResourceResolver:
     def _resolve_accelerator_resource(
         self, values: dict, unresolved: list[str],
     ) -> None:
-        """``accelerator.resource: "auto"`` → detected GPU resource key."""
+        """``accelerator.resource: "auto"`` to detected GPU resource key."""
         accel = values.get("accelerator", {})
         if accel.get("resource") != "auto":
             return
@@ -265,10 +265,10 @@ class ClusterResourceResolver:
     def _resolve_network_resource(
         self, values: dict, unresolved: list[str],
     ) -> None:
-        """``vllmCommon.networkResource: "auto"`` → detected RDMA resource.
+        """``vllmCommon.networkResource: "auto"`` to detected RDMA resource.
 
         Also sets ``networkNr`` to ``"1"`` when a network resource is found.
-        Network resources are optional — if none are found on the cluster,
+        Network resources are optional -- if none are found on the cluster,
         the fields are cleared (templates will skip the network section).
         """
         vllm_common = values.get("vllmCommon", {})
@@ -293,10 +293,10 @@ class ClusterResourceResolver:
                         "Resolved vllmCommon.networkNr: 1"
                     )
             else:
-                # Network resources are optional — no RDMA/IB is fine
+                # Network resources are optional -- no RDMA/IB is fine
                 vllm_common["networkResource"] = ""
                 self.logger.log_info(
-                    "No RDMA/IB network resource found on cluster — "
+                    "No RDMA/IB network resource found on cluster -- "
                     "network resource disabled"
                 )
                 if net_nr == "auto":
@@ -315,7 +315,7 @@ class ClusterResourceResolver:
     def _resolve_affinity_node_selector(
         self, values: dict, unresolved: list[str],
     ) -> None:
-        """``affinity.nodeSelector: "auto"`` → dict from GPU product labels.
+        """``affinity.nodeSelector: "auto"`` to dict from GPU product labels.
 
         When ``nodeSelector`` is the string ``"auto"``, scan node labels for
         GPU product labels and build a dict, e.g.

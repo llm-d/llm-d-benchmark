@@ -35,7 +35,7 @@ class CpuValidator(BaseSmoketest):
         report.add(CheckResult(
             "no_prefill_pods",
             len(prefill_pods) == 0,
-            message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) — no prefill expected",
+            message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) -- no prefill expected",
         ))
 
         decode_pods = self.get_pod_specs(
@@ -52,7 +52,7 @@ class CpuValidator(BaseSmoketest):
         if decode_pods:
             report.add(CheckResult(
                 "deploy_method", True,
-                message=f"Deployed via modelservice — {len(decode_pods)} decode pod(s)",
+                message=f"Deployed via modelservice -- {len(decode_pods)} decode pod(s)",
             ))
             # Run comprehensive decode checks from base
             self.validate_role_pods(
@@ -62,7 +62,7 @@ class CpuValidator(BaseSmoketest):
         elif standalone_pods:
             report.add(CheckResult(
                 "deploy_method", True,
-                message=f"Deployed via standalone — {len(standalone_pods)} standalone pod(s)",
+                message=f"Deployed via standalone -- {len(standalone_pods)} standalone pod(s)",
             ))
             serving_pod = standalone_pods[0]
         else:
@@ -93,7 +93,7 @@ class CpuValidator(BaseSmoketest):
         report.add(CheckResult(
             "no_gpu_resources",
             not has_gpu,
-            message=f"{'No' if not has_gpu else 'Found'} GPU resources — CPU-only deployment",
+            message=f"{'No' if not has_gpu else 'Found'} GPU resources -- CPU-only deployment",
         ))
 
         # Correct vLLM image

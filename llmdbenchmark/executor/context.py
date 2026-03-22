@@ -52,7 +52,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     harness_namespace: str | None = None
     wva_namespace: str | None = None
 
-    # OpenShift UID range — (first_uid + 1) from openshift.io/sa.scc.uid-range
+    # OpenShift UID range -- (first_uid + 1) from openshift.io/sa.scc.uid-range
     proxy_uid: int | None = None
 
     # Model info (populated from plan config)

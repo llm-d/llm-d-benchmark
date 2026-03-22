@@ -11,7 +11,7 @@ The root model uses ``extra="allow"`` so that unmodeled top-level keys
 pass through without error.  Nested section models use ``extra="forbid"``
 to catch typos within modeled sections.
 
-Fields do not carry default values — ``defaults.yaml`` is the single source
+Fields do not carry default values -- ``defaults.yaml`` is the single source
 of truth for defaults.  The schema only defines types and constraints.
 """
 
@@ -378,6 +378,7 @@ class HarnessConfig(BaseModel):
     output: str
     inferencePerf: InferencePerfConfig
     namespace: str | None = None
+    pvcSize: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +390,7 @@ class BenchmarkConfig(BaseModel):
     """Root validation model for the merged config dict.
 
     Uses ``extra="allow"`` at the root level so that sections not yet
-    modeled are accepted without error.  This enables incremental adoption —
+    modeled are accepted without error.  This enables incremental adoption --
     only the explicitly modeled sections below are validated with
     ``extra="forbid"``.
     """
@@ -446,7 +447,7 @@ def validate_config(
     except ValidationError as exc:
         for error in exc.errors():
             field_path = ".".join(str(loc) for loc in error["loc"])
-            msg = f"Config validation: {field_path} — {error['msg']}"
+            msg = f"Config validation: {field_path} -- {error['msg']}"
             warnings.append(msg)
             if render_logger and hasattr(render_logger, "log_warning"):
                 render_logger.log_warning(msg)

@@ -36,7 +36,7 @@ _RESULT_PATTERNS: dict[str, str] = {
     "inferencemax": "*.json",
 }
 
-# Summary marker per harness — the line in stdout.log where the
+# Summary marker per harness -- the line in stdout.log where the
 # interesting output starts.
 _SUMMARY_MARKERS: dict[str, str] = {
     "guidellm": "Setup complete, starting benchmarks",
@@ -44,7 +44,7 @@ _SUMMARY_MARKERS: dict[str, str] = {
     "inferencemax": "Result ==",
 }
 
-# Harness name → benchmark_report writer name
+# Harness name to benchmark_report writer name
 _WRITER_NAMES: dict[str, str] = {
     "inference-perf": "inference-perf",
     "guidellm": "guidellm",
@@ -83,7 +83,7 @@ def run_analysis(
 
     writer_name = _WRITER_NAMES.get(harness_name)
     if not writer_name:
-        return None  # No analysis registered — not an error
+        return None  # No analysis registered -- not an error
 
     # --- 1. Convert result files to benchmark report format ---
     pattern = _RESULT_PATTERNS.get(harness_name, "*.json")
@@ -91,7 +91,7 @@ def run_analysis(
 
     if not result_files:
         _log(context, f"No result files matching '{pattern}' in {results_dir.name}")
-        return None  # Nothing to convert — not an error
+        return None  # Nothing to convert -- not an error
 
     errors: list[str] = []
     for result_file in result_files:
@@ -150,7 +150,7 @@ def _convert_to_benchmark_report(
     Uses the bundled ``benchmark_report`` library API when available,
     falling back to the ``benchmark-report`` CLI.
     """
-    _log(context, f"Converting {result_file.name} → Benchmark Report v{br_version}")
+    _log(context, f"Converting {result_file.name} to Benchmark Report v{br_version}")
 
     # Try the Python API first (faster, no subprocess)
     err = _convert_via_api(result_file, output_file, writer_name, br_version)
@@ -271,7 +271,7 @@ def _extract_summary(
             summary_path.write_text(
                 "\n".join(summary_lines) + "\n", encoding="utf-8",
             )
-            _log(context, f"Summary extracted → {summary_path.name}")
+            _log(context, f"Summary extracted to {summary_path.name}")
     except Exception as exc:
         _log(context, f"Could not extract summary: {exc}", warning=True)
 
@@ -286,7 +286,7 @@ def _run_inference_perf_analyze(
 ) -> None:
     """Run ``inference-perf --analyze`` if available (matches bash script)."""
     if not shutil.which("inference-perf"):
-        _log(context, "inference-perf CLI not on PATH — skipping --analyze")
+        _log(context, "inference-perf CLI not on PATH -- skipping --analyze")
         return
 
     analysis_dir = results_dir / "analysis"
@@ -327,7 +327,7 @@ def _run_inference_perf_analyze(
 
 
 # ---------------------------------------------------------------------------
-# Metric visualization (Prometheus time series → PNG plots)
+# Metric visualization (Prometheus time series to PNG plots)
 # ---------------------------------------------------------------------------
 
 def _run_metric_visualizations(

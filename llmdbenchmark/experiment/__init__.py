@@ -1,1 +1,1 @@
-"""DoE experiment orchestration — setup + run treatment lifecycle."""
+"""DoE experiment orchestration -- setup + run treatment lifecycle."""

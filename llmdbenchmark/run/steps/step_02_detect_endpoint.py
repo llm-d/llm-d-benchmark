@@ -94,11 +94,11 @@ class DetectEndpointStep(Step):
             )
             stack_type = "vllm-prod"
         elif deploy_method:
-            # Custom deployment — use multi-level fallback discovery
+            # Custom deployment -- use multi-level fallback discovery
             # matching the original bash run.sh logic.
             context.logger.log_info(
                 f"Method '{deploy_method}' is neither standalone nor "
-                f"modelservice — trying custom endpoint discovery...",
+                f"modelservice -- trying custom endpoint discovery...",
                 emoji="🔍",
             )
             service_ip, service_name, gateway_port = find_custom_endpoint(

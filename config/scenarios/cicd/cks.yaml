@@ -15,7 +15,7 @@ scenario:
       path: models/facebook/opt-125m
       huggingfaceId: facebook/opt-125m
 
-    # Namespace — dedicated CI/CD namespace
+    # Namespace -- dedicated CI/CD namespace
     namespace:
       name: llmdbenchcicd
 
@@ -32,6 +32,12 @@ scenario:
     # Accelerator configuration
     accelerator:
       memory: 143
+
+    # Deployment method flags
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
 
     # Storage
     storage:

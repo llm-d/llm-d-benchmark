@@ -112,7 +112,7 @@ class InferenceTestStep(Step):
                     step_number=self.number,
                     step_name=self.name,
                     success=False,
-                    message="Inference test failed — no endpoint found",
+                    message="Inference test failed -- no endpoint found",
                     errors=errors,
                     stack_name=stack_name,
                 )
@@ -271,7 +271,7 @@ class InferenceTestStep(Step):
                     error=f"Non-JSON response from {url}: {stdout[:200]}"
                 )
 
-            # Non-transient API error → signal fallback
+            # Non-transient API error to signal fallback
             if _is_non_transient_error(resp):
                 error_msg = resp["error"]
                 if isinstance(error_msg, dict):
@@ -281,7 +281,7 @@ class InferenceTestStep(Step):
                     should_fallback=True,
                 )
 
-            # Transient error → retry
+            # Transient error to retry
             if "error" in resp:
                 error_msg = resp["error"]
                 if isinstance(error_msg, dict):
@@ -299,7 +299,7 @@ class InferenceTestStep(Step):
                     continue
                 return self._InferenceResult(error=validation_err)
 
-            # Success — extract generated text
+            # Success -- extract generated text
             text = resp["choices"][0].get("text", "").strip()
             return self._InferenceResult(
                 success=True,
@@ -378,7 +378,7 @@ class InferenceTestStep(Step):
                     continue
                 return self._InferenceResult(error=validation_err)
 
-            # Success — extract generated text
+            # Success -- extract generated text
             message = resp["choices"][0].get("message", {})
             text = message.get("content", "").strip()
             return self._InferenceResult(
@@ -409,7 +409,7 @@ class InferenceTestStep(Step):
         Returns (stdout, error_string).  error_string is None on success.
 
         The JSON payload is base64-encoded and decoded inside the pod to
-        avoid shell quoting issues when passing through kubectl → sh -c.
+        avoid shell quoting issues when passing through kubectl to sh -c.
         """
         override_args = _build_overrides(plan_config)
         curl_image = "curlimages/curl"

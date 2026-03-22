@@ -277,7 +277,7 @@ class DeployModelserviceStep(Step):
             self._install_wva(cmd, context, plan_config, stack_path, errors)
         elif wva_config.get("enabled", False) and not context.is_openshift:
             context.logger.log_info(
-                "ℹ️  WVA is enabled but platform is not OpenShift — "
+                "ℹ️  WVA is enabled but platform is not OpenShift -- "
                 "skipping WVA installation (not yet verified on non-OCP)"
             )
 
@@ -404,7 +404,7 @@ class DeployModelserviceStep(Step):
 
         if not needs_elevated:
             context.logger.log_info(
-                "ℹ️  No runAsUser:0 detected — skipping SCC assignment"
+                "ℹ️  No runAsUser:0 detected -- skipping SCC assignment"
             )
             return
 
@@ -485,7 +485,7 @@ class DeployModelserviceStep(Step):
             cmd.kube("apply", "-f", str(ns_yaml), check=False)
         else:
             context.logger.log_warning(
-                "WVA namespace template (23_wva-namespace) not found — "
+                "WVA namespace template (23_wva-namespace) not found -- "
                 "creating namespace inline"
             )
             cmd.kube(
@@ -498,20 +498,20 @@ class DeployModelserviceStep(Step):
         wva_values_yaml = self._find_yaml(stack_path, "19_wva-values")
         if not wva_values_yaml:
             errors.append(
-                "WVA values template (19_wva-values) not found — " "cannot install WVA"
+                "WVA values template (19_wva-values) not found -- " "cannot install WVA"
             )
             return
 
         wva_config = yaml.safe_load(wva_values_yaml.read_text(encoding="utf-8"))
         if not wva_config:
-            errors.append("WVA values template rendered empty — is wva.enabled set?")
+            errors.append("WVA values template rendered empty -- is wva.enabled set?")
             return
 
         prom_ca_cert = self._extract_prometheus_ca_cert(cmd, context)
         if not prom_ca_cert:
             context.logger.log_warning(
                 "Could not extract Prometheus CA cert from "
-                "thanos-querier-tls secret — WVA may not connect to Prometheus"
+                "thanos-querier-tls secret -- WVA may not connect to Prometheus"
             )
         if prom_ca_cert and "wva" in wva_config and "prometheus" in wva_config["wva"]:
             wva_config["wva"]["prometheus"]["caCert"] = prom_ca_cert
@@ -565,7 +565,7 @@ class DeployModelserviceStep(Step):
                 errors.append(f"Failed to install WVA: {result.stderr}")
         else:
             errors.append(
-                "WVA chart URL or version not configured — "
+                "WVA chart URL or version not configured -- "
                 "check helmRepositories.wva and chartVersions.wva"
             )
 
@@ -581,7 +581,7 @@ class DeployModelserviceStep(Step):
             )
         else:
             context.logger.log_warning(
-                "Skipping prometheus-adapter install — no CA cert available"
+                "Skipping prometheus-adapter install -- no CA cert available"
             )
 
     def _install_prometheus_adapters(
@@ -826,7 +826,7 @@ class DeployModelserviceStep(Step):
             apply_result = cmd.kube("apply", "-f", str(yaml_path))
             if apply_result.success:
                 context.logger.log_info(
-                    f"📋 Deployment metadata → configmap/{cm_name} in ns/{harness_ns}"
+                    f"📋 Deployment metadata to configmap/{cm_name} in ns/{harness_ns}"
                 )
                 context.logger.log_info(
                     f"   oc get configmap {cm_name} -n {harness_ns} -o yaml"

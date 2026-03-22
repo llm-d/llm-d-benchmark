@@ -1,4 +1,4 @@
-"""Smoketest step 00 — Health check: pods running, /health, /v1/models, endpoints."""
+"""Smoketest step 00 -- Health check: pods running, /health, /v1/models, endpoints."""
 
 from pathlib import Path
 

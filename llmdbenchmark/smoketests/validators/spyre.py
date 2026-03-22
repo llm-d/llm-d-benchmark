@@ -35,7 +35,7 @@ class SpyreValidator(BaseSmoketest):
         report.add(CheckResult(
             "no_prefill_pods",
             len(prefill_pods) == 0,
-            message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) — no prefill expected",
+            message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) -- no prefill expected",
         ))
 
         decode_pods = self.get_pod_specs(
@@ -52,7 +52,7 @@ class SpyreValidator(BaseSmoketest):
         if decode_pods:
             report.add(CheckResult(
                 "deploy_method", True,
-                message=f"Deployed via modelservice — {len(decode_pods)} decode pod(s)",
+                message=f"Deployed via modelservice -- {len(decode_pods)} decode pod(s)",
             ))
             self.validate_role_pods(
                 cmd, namespace, config, "decode", model_short, report, logger=context.logger,
@@ -62,7 +62,7 @@ class SpyreValidator(BaseSmoketest):
         elif standalone_pods:
             report.add(CheckResult(
                 "deploy_method", True,
-                message=f"Deployed via standalone — {len(standalone_pods)} standalone pod(s)",
+                message=f"Deployed via standalone -- {len(standalone_pods)} standalone pod(s)",
             ))
             serving_pod = standalone_pods[0]
             # Standalone container name varies

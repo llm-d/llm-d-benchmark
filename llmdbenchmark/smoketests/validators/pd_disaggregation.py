@@ -42,7 +42,7 @@ class PdDisaggregationValidator(BaseSmoketest):
             report.add(CheckResult(
                 "prefill_disabled",
                 len(prefill_pods) == 0,
-                message=f"Prefill disabled — {'no' if not prefill_pods else len(prefill_pods)} prefill pod(s)",
+                message=f"Prefill disabled -- {'no' if not prefill_pods else len(prefill_pods)} prefill pod(s)",
             ))
 
         decode_pods = self.validate_role_pods(

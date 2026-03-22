@@ -305,7 +305,7 @@ def validate_vllm_params(
             except (AttributeError, Exception) as exc:
                 msg(f"Cannot estimate model memory or KV cache for " f"{model}: {exc}")
         else:
-            msg("Model architecture info not available — skipping memory checks.")
+            msg("Model architecture info not available -- skipping memory checks.")
 
     return messages
 
@@ -425,7 +425,7 @@ def run_capacity_planner(
             all_messages.extend(validate_vllm_params(params, log))
     else:
         log.log_info(
-            "Deployment method is modelservice — "
+            "Deployment method is modelservice -- "
             "checking decode and prefill configurations"
         )
 
@@ -437,6 +437,6 @@ def run_capacity_planner(
                 )
                 all_messages.extend(validate_vllm_params(params, log))
             else:
-                log.log_info(f"{method} is disabled or has 0 replicas — skipping")
+                log.log_info(f"{method} is disabled or has 0 replicas -- skipping")
 
     return all_messages

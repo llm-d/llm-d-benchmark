@@ -105,7 +105,7 @@ class DeployGaieStep(Step):
                 )
             else:
                 context.logger.log_info(
-                    "GAIE deployed — EPP pod will become Ready after "
+                    "GAIE deployed -- EPP pod will become Ready after "
                     "model servers are deployed in step 09"
                 )
 

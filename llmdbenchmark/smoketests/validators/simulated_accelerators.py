@@ -46,7 +46,7 @@ class SimulatedAcceleratorsValidator(BaseSmoketest):
             report.add(CheckResult(
                 "no_decode_pods",
                 True,
-                message="No decode pod(s) — standalone deployment",
+                message="No decode pod(s) -- standalone deployment",
             ))
         if decode_pods:
             pod = decode_pods[0]
@@ -61,7 +61,7 @@ class SimulatedAcceleratorsValidator(BaseSmoketest):
             report.add(CheckResult(
                 "decode_no_gpu",
                 not has_gpu,
-                message=f"Decode: {'no' if not has_gpu else 'found'} GPU resources — simulated accelerator",
+                message=f"Decode: {'no' if not has_gpu else 'found'} GPU resources -- simulated accelerator",
             ))
 
         standalone_enabled = _nested_get(config, "standalone", "enabled")
@@ -123,13 +123,13 @@ class SimulatedAcceleratorsValidator(BaseSmoketest):
             report.add(CheckResult(
                 "prefill_no_gpu",
                 not has_gpu,
-                message=f"Prefill: {'no' if not has_gpu else 'found'} GPU resources — simulated accelerator",
+                message=f"Prefill: {'no' if not has_gpu else 'found'} GPU resources -- simulated accelerator",
             ))
         elif _nested_get(config, "prefill", "enabled") is False:
             report.add(CheckResult(
                 "prefill_disabled",
                 len(prefill_pods) == 0,
-                message=f"Prefill disabled — {'no' if not prefill_pods else len(prefill_pods)} prefill pod(s)",
+                message=f"Prefill disabled -- {'no' if not prefill_pods else len(prefill_pods)} prefill pod(s)",
             ))
 
         return report

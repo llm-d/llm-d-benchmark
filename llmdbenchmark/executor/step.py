@@ -153,7 +153,7 @@ class Step(ABC):
     ) -> Any:
         """Resolve a value with a three-tier fallback.
 
-        1. *context_value* — runtime override from CLI / ExecutionContext.
+        1. *context_value* -- runtime override from CLI / ExecutionContext.
         2. *plan_config* nested lookup via dotted *config_paths*.
         3. *default*.
 
@@ -304,14 +304,14 @@ class Step(ABC):
         if existing_gi < requested_gi:
             errors.append(
                 f"PVC '{pvc_name}' exists with size {existing_size_str} but "
-                f"{requested_size} is required — existing PVC is too small"
+                f"{requested_size} is required -- existing PVC is too small"
             )
             return True
 
         if existing_gi > requested_gi:
             context.logger.log_warning(
                 f"PVC '{pvc_name}' exists with size {existing_size_str} "
-                f"(requested {requested_size}) — larger than needed, continuing"
+                f"(requested {requested_size}) -- larger than needed, continuing"
             )
             return True
 

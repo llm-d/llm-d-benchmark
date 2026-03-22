@@ -203,7 +203,7 @@ def print_phase_banner(
 
     log.line_break()
     log.log_info("═" * W)
-    title = f"{phase_label} — llm-d-benchmark v{__version__}"
+    title = f"{phase_label} -- llm-d-benchmark v{__version__}"
     log.log_info(f"  {title}")
     log.log_info("─" * W)
 
@@ -364,7 +364,7 @@ def _store_kubeconfig(cmd: CommandExecutor, context: ExecutionContext) -> None:
 
         if not created and log:
             log.log_warning(
-                "Could not create context.ctx — "
+                "Could not create context.ctx -- "
                 "subsequent steps will use default kubeconfig"
             )
 
@@ -386,14 +386,14 @@ def _is_context_stale(
             _server_from_kubeconfig_data(stored_data) if stored_data else None
         )
         if not stored_server:
-            return True  # Can't determine — treat as stale
+            return True  # Can't determine -- treat as stale
 
         current_data = _read_kubeconfig_json(cmd)
         current_server = (
             _server_from_kubeconfig_data(current_data) if current_data else None
         )
         if not current_server:
-            return False  # Can't determine current — keep stored
+            return False  # Can't determine current -- keep stored
 
         return stored_server != current_server
     except Exception:  # pylint: disable=broad-exception-caught
@@ -421,7 +421,7 @@ def _extract_current_context(cmd: CommandExecutor, target_file: Path) -> bool:
         "--flatten",
         "--raw",
         check=False,
-        force=True,  # Local-only read — must run even in dry-run
+        force=True,  # Local-only read -- must run even in dry-run
     )
     if result.success and result.stdout.strip():
         target_file.write_text(result.stdout)

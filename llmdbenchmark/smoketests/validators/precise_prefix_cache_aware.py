@@ -36,7 +36,7 @@ class PrecisePrefixCacheAwareValidator(BaseSmoketest):
             "no_prefill_pods",
             len(prefill_pods) == 0,
             expected="0", actual=str(len(prefill_pods)),
-            message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) — decode-only scenario",
+            message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) -- decode-only scenario",
         ))
 
         decode_pods = self.validate_role_pods(
@@ -67,7 +67,7 @@ class PrecisePrefixCacheAwareValidator(BaseSmoketest):
                         vllm_port_in_args in (str(expected_port), "$VLLM_INFERENCE_PORT"),
                         expected=str(expected_port),
                         actual=vllm_port_in_args,
-                        message=f"vLLM port is {vllm_port_in_args} (expected {expected_port} — no proxy)",
+                        message=f"vLLM port is {vllm_port_in_args} (expected {expected_port} -- no proxy)",
                     ))
 
         epp_pods = self.get_pod_specs(

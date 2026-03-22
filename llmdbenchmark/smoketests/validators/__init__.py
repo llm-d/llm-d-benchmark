@@ -3,7 +3,7 @@
 Every scenario with a dedicated validator gets scenario-specific config
 validation (step 2).  When a stack name is not found in the registry,
 ``get_validator()`` falls back to ``BaseSmoketest`` which still runs
-generic health checks and inference tests (steps 0 and 1) — it just
+generic health checks and inference tests (steps 0 and 1) -- it just
 skips scenario-specific config validation.
 """
 

@@ -114,8 +114,8 @@ class VerifyModelStep(Step):
         """Extract host and port from an endpoint URL.
 
         Examples:
-            http://10.0.0.1:80 → ('10.0.0.1', '80')
-            https://gateway.example.com:443 → ('gateway.example.com', '443')
+            http://10.0.0.1:80 to ('10.0.0.1', '80')
+            https://gateway.example.com:443 to ('gateway.example.com', '443')
         """
         # Strip protocol
         stripped = url

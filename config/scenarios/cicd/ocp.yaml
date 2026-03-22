@@ -16,7 +16,7 @@ scenario:
       path: models/facebook/opt-125m
       huggingfaceId: facebook/opt-125m
 
-    # Namespace — dedicated CI/CD namespace
+    # Namespace -- dedicated CI/CD namespace
     namespace:
       name: llmdbenchcicd
 
@@ -24,7 +24,7 @@ scenario:
     harnessNamespace:
       name: llmdbenchcicd
 
-    # GPU affinity — auto-detected on OpenShift
+    # GPU affinity -- auto-detected on OpenShift
     # Uncomment to select specific GPU:
     # affinity:
     #   enabled: true
@@ -34,6 +34,12 @@ scenario:
     # Accelerator configuration
     accelerator:
       memory: 48
+
+    # Deployment method flags
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
 
     # Storage
     storage:
@@ -45,7 +51,7 @@ scenario:
       replicas: 1
       release: llmdbenchcicd
 
-    # Gateway configuration — Istio for OpenShift
+    # Gateway configuration -- Istio for OpenShift
     gateway:
       className: istio
 

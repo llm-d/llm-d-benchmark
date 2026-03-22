@@ -1,4 +1,4 @@
-"""Smoketest step 01 — Sample inference request against deployed model."""
+"""Smoketest step 01 -- Sample inference request against deployed model."""
 
 from pathlib import Path
 

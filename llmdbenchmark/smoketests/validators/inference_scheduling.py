@@ -35,7 +35,7 @@ class InferenceSchedulingValidator(BaseSmoketest):
         report.add(CheckResult(
             "no_prefill_pods",
             len(prefill_pods) == 0,
-            message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) — decode-only",
+            message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) -- decode-only",
         ))
 
         decode_pods = self.validate_role_pods(

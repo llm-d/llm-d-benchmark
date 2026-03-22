@@ -188,7 +188,7 @@ class ModelNamespaceStep(Step):
 
         if not kubeconfig_path:
             context.logger.log_info(
-                "ℹ️  No kubeconfig available — skipping context secret"
+                "ℹ️  No kubeconfig available -- skipping context secret"
             )
             return
 
@@ -399,7 +399,7 @@ class ModelNamespaceStep(Step):
         )
         if not result.success or not result.stdout.strip():
             context.logger.log_info(
-                "ℹ️  Could not read openshift.io/sa.scc.uid-range — " "proxy_uid not set"
+                "ℹ️  Could not read openshift.io/sa.scc.uid-range -- " "proxy_uid not set"
             )
             return
 

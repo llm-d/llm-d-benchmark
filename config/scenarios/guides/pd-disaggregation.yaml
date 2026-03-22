@@ -13,7 +13,11 @@ scenario:
   # P/D Disaggregation - Qwen3-32B with 2 prefill and 2 decode pods
   # ============================================================================
   - name: "pd-disaggregation"
-    
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods
+    # =========================================================================
+
     # -------------------------------------------------------------------------
     # Model Configuration
     # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
@@ -38,6 +42,12 @@ scenario:
       gpuMemoryUtilization: 0.95
       cacheBase: /model-cache
     
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
+
     # -------------------------------------------------------------------------
     # Routing Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true
@@ -47,21 +57,30 @@ scenario:
       connector: nixlv2
     
     # -------------------------------------------------------------------------
-    # Affinity Configuration
+    # Affinity / Node Selection
     # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left uncommented for auto-detect)
+    # By default, affinity is disabled and pods schedule on any available node.
+    # Options:
+    #   1. Leave commented out -- no node selection constraint
+    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+    #   3. Set explicit labels -- pods only schedule on matching nodes
     # -------------------------------------------------------------------------
-    # Uncomment and modify to select specific GPU types:
     # affinity:
     #   enabled: true
     #   nodeSelector:
-    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3        # OpenShift
-    #     # gpu.nvidia.com/model: H200                         # Kubernetes
-    #     # cloud.google.com/gke-accelerator: nvidia-tesla-a100  # GKE
-    #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb   # GKE
-    #     # nvidia.com/gpu.product: NVIDIA-L40S                  # OpenShift
-    #     # nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB        # OpenShift
-    #     # nvidia.com/gpu                                       # ANY GPU (useful for Minikube)
+    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
+    #     # gpu.nvidia.com/model: H200                        # Kubernetes
+    #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
     
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="default-plugins.yaml"
@@ -69,6 +88,10 @@ scenario:
     inferenceExtension:
       pluginsConfigFile: "default-plugins.yaml"
     
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
     # -------------------------------------------------------------------------
     # Storage Configuration
     # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
@@ -82,6 +105,11 @@ scenario:
         # storageClassName: shared-vast
         # storageClassName: ocs-storagecluster-cephfs
     
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
+    # The following sections configure prefill and decode pods.
+    # =========================================================================
+
     # -------------------------------------------------------------------------
     # Prefill Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_*
@@ -118,12 +146,11 @@ scenario:
           memory: 128Gi
           cpu: "32"
 
-      # vllm serve command is auto-generated from model config + vllmCommon.flags.
-      # The following flags are applied (see vllmCommon.flags below):
-      #   --no-enable-log-requests, --disable-uvicorn-access-log,
-      #   --no-enable-prefix-caching
-      # Plus --kv-transfer-config from vllmCommon.kvTransfer.
-      # To override entirely, set vllm.customCommand.
+      # Custom vLLM command -- replaces the auto-generated command.
+      # Both decode.vllm.customCommand and prefill.vllm.customCommand are supported.
+      # vllmCommon.flags.* are NOT applied when customCommand is set.
+      # Only --kv-transfer-config and --kv-events-config from vllmCommon
+      # are appended if enabled.
 
       # -----------------------------------------------------------------------
       # Extra Environment Variables
@@ -162,7 +189,7 @@ scenario:
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES
       # -----------------------------------------------------------------------
       additionalVolumes: []
-      
+
       # -----------------------------------------------------------------------
       # Multi-NIC Configuration (uncomment to enable)
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS
@@ -172,7 +199,7 @@ scenario:
       #   prefill:
       #     pod:
       #       k8s.v1.cni.cncf.io/networks: multi-nic-compute
-      
+
       # -----------------------------------------------------------------------
       # ROCE/GDR Configuration (uncomment to enable)
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE
@@ -184,7 +211,7 @@ scenario:
       #     rdma/roce_gdr: "1"
       #   requests:
       #     rdma/roce_gdr: "1"
-    
+
     # -------------------------------------------------------------------------
     # Decode Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
@@ -220,12 +247,11 @@ scenario:
           memory: 128Gi
           cpu: "32"
 
-      # vllm serve command is auto-generated from model config + vllmCommon.flags.
-      # The following flags are applied (see vllmCommon.flags below):
-      #   --no-enable-log-requests, --disable-uvicorn-access-log,
-      #   --no-enable-prefix-caching
-      # Plus --kv-transfer-config from vllmCommon.kvTransfer.
-      # To override entirely, set vllm.customCommand.
+      # Custom vLLM command -- replaces the auto-generated command.
+      # Both decode.vllm.customCommand and prefill.vllm.customCommand are supported.
+      # vllmCommon.flags.* are NOT applied when customCommand is set.
+      # Only --kv-transfer-config and --kv-events-config from vllmCommon
+      # are appended if enabled.
 
       # -----------------------------------------------------------------------
       # Extra Environment Variables
@@ -287,8 +313,26 @@ scenario:
       #   requests:
       #     rdma/roce_gdr: "1"
     
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
     # -------------------------------------------------------------------------
     # vLLM Common Configuration
+    # Shared settings for both decode and prefill pods.
+    # When no customCommand is set on decode/prefill, the vLLM serve command
+    # is auto-generated from these fields:
+    #   - model.maxModelLen, model.blockSize maps to --max-model-len, --block-size
+    #   - model.gpuMemoryUtilization maps to --gpu-memory-utilization
+    #   - decode/prefill.parallelism.tensor maps to --tensor-parallel-size
+    #   - vllmCommon.flags.* maps to --enforce-eager, --no-enable-log-requests, etc.
+    #   - vllmCommon.kvTransfer.* maps to --kv-transfer-config (if enabled)
+    #   - vllmCommon.kvEvents.* maps to --kv-events-config (if enabled)
+    #   - decode/prefill.vllm.additionalFlags maps to appended as extra CLI args
+    # When decode.vllm.customCommand or prefill.vllm.customCommand IS set, it replaces the auto-generated
+    # command entirely. Only --kv-transfer-config and --kv-events-config are
+    # still appended from vllmCommon if enabled. All other vllmCommon.flags
+    # are ignored -- the custom command must include its own flags.
     # -------------------------------------------------------------------------
     vllmCommon:
       host: "0.0.0.0"
@@ -339,6 +383,10 @@ scenario:
       controlWait: 900000
       harnessWait: 900000
     
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
+
     # -------------------------------------------------------------------------
     # Workload/Harness Configuration
     # Corresponds to: LLMDBENCH_HARNESS_NAME=vllm-benchmark

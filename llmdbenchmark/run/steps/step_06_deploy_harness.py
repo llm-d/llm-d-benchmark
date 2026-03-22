@@ -190,7 +190,7 @@ class DeployHarnessStep(Step):
                 pod_suffix = self._rand_suffix(8)
                 pod_name = f"{harness_name}-{pod_suffix}"
 
-                # Per-pod results directory — each parallel pod writes to
+                # Per-pod results directory -- each parallel pod writes to
                 # its own sub-directory with an _${i} suffix, matching bash.
                 results_dir = (
                     f"{results_dir_prefix}/{experiment_id}_{parallel_idx}"
@@ -407,7 +407,7 @@ class DeployHarnessStep(Step):
         data_pod = find_data_access_pod(cmd, namespace)
         if not data_pod:
             errors.append(
-                f"Data access pod not found in namespace '{namespace}' — "
+                f"Data access pod not found in namespace '{namespace}' -- "
                 f"cannot collect results for {experiment_id}"
             )
             return errors
@@ -625,7 +625,7 @@ class DeployHarnessStep(Step):
         Pre-computes all paths (harness script, analyzer, results dir)
         and exports them before calling the entrypoint.  This matches
         the old ``run.sh`` approach where the workstation is the source
-        of truth — the entrypoint's auto-discovery block (line 56) is
+        of truth -- the entrypoint's auto-discovery block (line 56) is
         skipped because ``LLMDBENCH_RUN_EXPERIMENT_HARNESS_NAME_AUTO``
         stays at its default value of ``1``.
 
@@ -645,7 +645,7 @@ class DeployHarnessStep(Step):
 
         parts: list[str] = []
 
-        # Pre-compute all vars — entrypoint uses them directly
+        # Pre-compute all vars -- entrypoint uses them directly
         parts.append(
             f"export LLMDBENCH_RUN_EXPERIMENT_HARNESS={harness_script}"
         )

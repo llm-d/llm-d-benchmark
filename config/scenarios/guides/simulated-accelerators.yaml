@@ -7,6 +7,10 @@
 scenario:
   - name: simulated-accelerators
 
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods
+    # =========================================================================
+
     # Model configuration
     model:
       name: facebook/opt-125m
@@ -15,9 +19,14 @@ scenario:
       huggingfaceId: facebook/opt-125m
       gpuMemoryUtilization: 0
 
+    # =========================================================================
+    # STANDALONE -- Only applies when standalone.enabled: true
+    # =========================================================================
+
     # Standalone deployment with simulated accelerators
+    # Disabled by default -- use modelservice. Enable with --methods standalone
     standalone:
-      enabled: true
+      enabled: false
       replicas: 1
 
       image:
@@ -45,7 +54,17 @@ scenario:
         port: 8000
         customCommand: "/app/llm-d-inference-sim --model facebook/opt-125m --port 8000 --served-model-name facebook/opt-125m"
 
-    # Override affinity for CPU-only nodes
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # Affinity / Node Selection
+    # By default, affinity is disabled and pods schedule on any available node.
+    # Options:
+    #   1. Leave commented out -- no node selection constraint
+    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+    #   3. Set explicit labels -- pods only schedule on matching nodes
+    # This scenario overrides affinity for CPU-only nodes (no GPU required).
     affinity:
       enabled: true
       nodeSelector:
@@ -58,7 +77,18 @@ scenario:
         tag: latest
         pullPolicy: Always
 
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
+
+    modelservice:
+      enabled: true
+
     # Decode/prefill use image's default entrypoint (inference-sim)
+    # No customCommand -- the vLLM serve command is auto-generated
+    # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
     decode:
       enabled: true
       replicas: 1
@@ -80,6 +110,15 @@ scenario:
         workers: 1
       vllm:
         modelCommand: imageDefault
+
+    # Sim scenarios do not use the routing proxy sidecar
+    routing:
+      proxy:
+        enabled: false
+
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
 
     # Harness configuration for simulated workloads
     # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR=~/data/simulated-accelerators

@@ -42,7 +42,7 @@ class _MinimalLogger:
         self._log = logging.getLogger("llmdbenchmark.executor.command")
 
     def set_indent(self, level: int) -> None:  # noqa: D401
-        """No-op — indent is only supported by the full logger."""
+        """No-op -- indent is only supported by the full logger."""
 
     def log_info(self, msg, **_kwargs):
         """Log an info message."""
@@ -283,7 +283,7 @@ class CommandExecutor:
                     )
                     return CommandResult(
                         command=cmd_repr, exit_code=1,
-                        stderr=f"Timed out after {timeout}s waiting for {desc} — no pods found",
+                        stderr=f"Timed out after {timeout}s waiting for {desc} -- no pods found",
                     )
                 self.logger.log_error(
                     f"⏱️  Timed out waiting for {desc} after {timeout}s"
@@ -395,7 +395,7 @@ class CommandExecutor:
             if job is None:
                 status_line = self._format_progress(
                     desc, elapsed, timeout,
-                    "job not found — waiting...", 0, 1,
+                    "job not found -- waiting...", 0, 1,
                 )
                 self._print_progress(status_line, last_status_line)
                 last_status_line = status_line
@@ -417,7 +417,7 @@ class CommandExecutor:
                 if cond.get("type") == "Failed" and cond.get("status") == "True":
                     reason = cond.get("reason", "Unknown")
                     self._clear_progress_line(last_status_line)
-                    self.logger.log_error(f"❌ {desc}: Failed — {reason}")
+                    self.logger.log_error(f"❌ {desc}: Failed -- {reason}")
                     return CommandResult(
                         command=cmd_repr, exit_code=1,
                         stderr=f"Job failed: {reason}",
@@ -617,7 +617,7 @@ class CommandExecutor:
         if total > 0:
             count_str = f"{done}/{total}"
         else:
-            count_str = "—"
+            count_str = "--"
 
         return (
             f"  ⏳ [{elapsed_str}/{timeout_str}] {desc}: "

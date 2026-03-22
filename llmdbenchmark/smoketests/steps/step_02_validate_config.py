@@ -1,4 +1,4 @@
-"""Smoketest step 02 — Validate deployed pod config matches scenario expectations."""
+"""Smoketest step 02 -- Validate deployed pod config matches scenario expectations."""
 
 from pathlib import Path
 
@@ -42,7 +42,7 @@ class ValidateConfigStep(Step):
         from llmdbenchmark.smoketests.base import BaseSmoketest
         if type(validator) is BaseSmoketest:
             context.logger.log_info(
-                f"    Skipping config validation — no dedicated validator for '{stack_name}'"
+                f"    Skipping config validation -- no dedicated validator for '{stack_name}'"
             )
             return StepResult(
                 step_number=self.number,
@@ -57,10 +57,10 @@ class ValidateConfigStep(Step):
         # Log checks with grouped indentation under pod headers
         for check in report.checks:
             if check.is_header:
-                # Header line — no indent, acts as group separator
+                # Header line -- no indent, acts as group separator
                 context.logger.log_info(f"    {check}")
             elif check.group:
-                # Grouped check — extra indent under its header
+                # Grouped check -- extra indent under its header
                 if check.passed:
                     context.logger.log_info(f"        {check}")
                 else:

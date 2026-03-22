@@ -17,12 +17,29 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 | 07 | `DeploySetupStep` | Set up Helm repos and deploy gateway infrastructure for modelservice mode |
 | 08 | `DeployGaieStep` | Deploy GAIE (Gateway API Inference Extension) |
 | 09 | `DeployModelserviceStep` | Deploy the model via the llm-d modelservice Helm chart |
-| 10 | `SmoketestStep` | Health check, inference test, and config validation (delegates to `llmdbenchmark.smoketests`) |
+| 10 | `SmoketestStep` | Health check, inference test, per-scenario config validation (delegates to `llmdbenchmark.smoketests`) |
 | 11 | `InferenceTestStep` | Run sample inference request against deployed model |
 
 Note: Step 01 is intentionally absent (reserved or removed).
 
-After standup completes, smoketests run automatically. They can also be run independently via `llmdbenchmark smoketest`. See [smoketests/README.md](../smoketests/README.md) for details.
+## Post-standup smoketests
+
+After standup completes, smoketests run automatically. The smoketest phase has three steps:
+
+1. **Health check** (step 00) -- pod status, `/health`, `/v1/models`, service reachability, pod direct IP, OpenShift route
+2. **Inference test** (step 01) -- sends a sample request via `/v1/completions` (falls back to `/v1/chat/completions`), logs the response and a demo curl command
+3. **Config validation** (step 02) -- per-scenario validators compare live pod specs against the rendered config
+
+Use `--skip-smoketest` to skip the automatic post-standup smoketests. They can also be run independently via `llmdbenchmark smoketest`. See [smoketests/README.md](../smoketests/README.md) for details.
+
+## `-f` / `--monitoring` flag
+
+When passed, `-f` enables monitoring infrastructure during standup:
+
+- Creates PodMonitor resources for Prometheus to scrape vLLM pods
+- Sets EPP (inference scheduler) log verbosity to level 4 for detailed scheduling diagnostics
+
+This is separate from the run-phase `-f` flag, which controls metrics scraping and log capture during benchmark execution.
 
 ## preprocess/ Subdirectory
 

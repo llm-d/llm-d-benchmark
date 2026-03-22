@@ -1,1 +1,1 @@
-"""llmdbenchmark.teardown — Teardown phase package."""
+"""llmdbenchmark.teardown -- Teardown phase package."""

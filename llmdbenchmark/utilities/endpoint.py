@@ -43,7 +43,7 @@ def find_standalone_endpoint(
     Queries for services labelled ``stood-up-from=llm-d-benchmark``.
 
     Returns:
-        (ip, service_name, port) — any may be None/default if not found.
+        (ip, service_name, port) -- any may be None/default if not found.
     """
     result = cmd.kube(
         "get",
@@ -71,7 +71,7 @@ def find_gateway_endpoint(
     """Find the gateway IP and detect HTTPS from the Gateway resource.
 
     Returns:
-        (ip_or_hostname, gateway_name, port) — port is '443' for HTTPS, '80' otherwise.
+        (ip_or_hostname, gateway_name, port) -- port is '443' for HTTPS, '80' otherwise.
     """
     gateway_name = f"infra-{release}-inference-gateway"
     gateway_port = "80"
@@ -222,15 +222,15 @@ def find_custom_endpoint(
     Implements the same multi-level fallback as the original bash run.sh
     for deployments that are neither *standalone* nor *modelservice*:
 
-    1. **Service match** — look for a service whose name contains
+    1. **Service match** -- look for a service whose name contains
        *method_pattern*; extract port from named ports (``default``,
        ``http``, ``https``).
-    2. **Pod match** — look for a pod whose name contains *method_pattern*;
+    2. **Pod match** -- look for a pod whose name contains *method_pattern*;
        extract port from liveness/readiness probes, then fall back to the
        ``metrics`` container port; resolve to the pod IP.
 
     Returns:
-        ``(ip_or_service, name, port)`` — any may be ``None`` if nothing
+        ``(ip_or_service, name, port)`` -- any may be ``None`` if nothing
         matched.
     """
     # --- 1. Try to find a matching Service ---
@@ -246,7 +246,7 @@ def find_custom_endpoint(
             svc_name = svc_name.strip()
             if method_pattern not in svc_name:
                 continue
-            # Found a matching service — try port names: default, http, https
+            # Found a matching service -- try port names: default, http, https
             for port_name in ("default", "http", "https"):
                 port_result = cmd.kube(
                     "get", f"service/{svc_name}",
@@ -285,7 +285,7 @@ def find_custom_endpoint(
             pod_name = pod_line.strip()
             if method_pattern not in pod_name:
                 continue
-            # Found a pod — try probes for port
+            # Found a pod -- try probes for port
             port_val = None
             for probe in ("livenessProbe", "readinessProbe"):
                 probe_result = cmd.kube(

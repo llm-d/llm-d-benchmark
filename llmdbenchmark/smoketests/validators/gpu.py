@@ -41,7 +41,7 @@ class GpuValidator(BaseSmoketest):
             report.add(CheckResult(
                 "no_prefill_pods",
                 len(prefill_pods) == 0,
-                message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) — prefill disabled",
+                message=f"{'No' if not prefill_pods else len(prefill_pods)} prefill pod(s) -- prefill disabled",
             ))
 
         decode_pods = self.get_pod_specs(
@@ -58,7 +58,7 @@ class GpuValidator(BaseSmoketest):
         if decode_pods:
             report.add(CheckResult(
                 "deploy_method", True,
-                message=f"Deployed via modelservice — {len(decode_pods)} decode pod(s)",
+                message=f"Deployed via modelservice -- {len(decode_pods)} decode pod(s)",
             ))
             self.validate_role_pods(
                 cmd, namespace, config, "decode", model_short, report, logger=context.logger,
@@ -67,7 +67,7 @@ class GpuValidator(BaseSmoketest):
         elif standalone_pods:
             report.add(CheckResult(
                 "deploy_method", True,
-                message=f"Deployed via standalone — {len(standalone_pods)} standalone pod(s)",
+                message=f"Deployed via standalone -- {len(standalone_pods)} standalone pod(s)",
             ))
             serving_pod = standalone_pods[0]
         else:

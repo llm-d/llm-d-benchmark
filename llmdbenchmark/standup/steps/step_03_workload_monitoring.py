@@ -39,7 +39,7 @@ class WorkloadMonitoringStep(Step):
         is_local = context.is_kind or context.is_minikube
         if is_local:
             context.logger.log_info(
-                f"Local cluster ({context.platform_type}) detected — "
+                f"Local cluster ({context.platform_type}) detected -- "
                 "skipping resource validation and capacity planning"
             )
         else:
@@ -150,7 +150,7 @@ class WorkloadMonitoringStep(Step):
 
         if not context.accelerator_resource:
             context.logger.log_info(
-                "No accelerator resource configured — "
+                "No accelerator resource configured -- "
                 "pods will not request GPU resources"
             )
             return
@@ -237,16 +237,16 @@ class WorkloadMonitoringStep(Step):
 
         node_labels = self._get_all_node_labels(cmd, context)
         if node_labels is None:
-            # kubectl call failed — warn but don't block
+            # kubectl call failed -- warn but don't block
             context.logger.log_warning(
-                "Could not retrieve node labels — " "skipping node selector validation"
+                "Could not retrieve node labels -- " "skipping node selector validation"
             )
             return
 
         for source, key, value in selectors:
             if self._label_exists_on_nodes(node_labels, key, value):
                 context.logger.log_info(
-                    f"Node selector {key}={value} ({source}) — " "matched on cluster"
+                    f"Node selector {key}={value} ({source}) -- " "matched on cluster"
                 )
             else:
                 errors.append(

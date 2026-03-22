@@ -215,7 +215,7 @@ class BaseSmoketest:
                 else:
                     context.logger.log_info(f"Pod {pod_ip} responding ✓")
 
-        # 6. OpenShift route (only for modelservice — standalone has no gateway route)
+        # 6. OpenShift route (only for modelservice -- standalone has no gateway route)
         if context.is_openshift and not is_standalone:
             context.logger.log_info("Testing OpenShift route...")
             self._test_openshift_route(
@@ -268,7 +268,7 @@ class BaseSmoketest:
             )
             report.add(CheckResult(
                 "inference_completions", True,
-                message=f'Inference passed via /v1/completions — Generated: "{result["generated_text"]}"',
+                message=f'Inference passed via /v1/completions -- Generated: "{result["generated_text"]}"',
             ))
             return report
 
@@ -289,7 +289,7 @@ class BaseSmoketest:
                 )
                 report.add(CheckResult(
                     "inference_chat", True,
-                    message=f'Inference passed via /v1/chat/completions — Generated: "{chat_result["generated_text"]}"',
+                    message=f'Inference passed via /v1/chat/completions -- Generated: "{chat_result["generated_text"]}"',
                 ))
                 return report
 
@@ -321,7 +321,7 @@ class BaseSmoketest:
         report = SmoketestReport()
         report.add(CheckResult(
             "config_validation", True,
-            message="No scenario-specific validator configured — skipping config validation",
+            message="No scenario-specific validator configured -- skipping config validation",
         ))
         return report
 
@@ -917,7 +917,7 @@ class BaseSmoketest:
             if elapsed > timeout:
                 return (
                     f"vLLM health check failed: /health did not respond "
-                    f"after {timeout}s — process may not be running"
+                    f"after {timeout}s -- process may not be running"
                 )
 
             attempt += 1
@@ -979,7 +979,7 @@ class BaseSmoketest:
             elapsed = time.time() - start
             if elapsed > timeout:
                 context.logger.log_warning(
-                    f"Model readiness wait timed out after {timeout}s — "
+                    f"Model readiness wait timed out after {timeout}s -- "
                     f"proceeding with smoketest assertions"
                 )
                 return

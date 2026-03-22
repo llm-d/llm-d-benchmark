@@ -15,7 +15,7 @@ scenario:
       path: models/meta-llama/Llama-3.2-1B
       huggingfaceId: meta-llama/Llama-3.2-1B
 
-    # Namespace — dedicated CI/CD namespace
+    # Namespace -- dedicated CI/CD namespace
     namespace:
       name: llmdbenchcicd
 
@@ -56,7 +56,11 @@ scenario:
         - name: LD_LIBRARY_PATH
           value: "${LD_LIBRARY_PATH}:/usr/local/nvidia/lib64"
 
+    modelservice:
+      enabled: true
+
     standalone:
+      enabled: false
       extraEnvVars:
         - name: LD_LIBRARY_PATH
           value: "${LD_LIBRARY_PATH}:/usr/local/nvidia/lib64"

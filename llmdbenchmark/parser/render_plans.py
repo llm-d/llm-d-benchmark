@@ -198,7 +198,7 @@ class RenderPlans:
 
         for key, value in override.items():
             if value is None:
-                continue  # YAML key with no value — don't clobber defaults
+                continue  # YAML key with no value -- don't clobber defaults
             if (
                 key in result
                 and isinstance(result[key], dict)
@@ -322,10 +322,10 @@ class RenderPlans:
         When the user passes ``-m <model>`` on the command line the model
         fields in the merged values dict are updated:
 
-        - ``model.name`` — the HuggingFace model ID
-        - ``model.huggingfaceId`` — same as name
-        - ``model.path`` — ``models/<model_id>``
-        - ``model.shortName`` — auto-generated K8s-safe label
+        - ``model.name`` -- the HuggingFace model ID
+        - ``model.huggingfaceId`` -- same as name
+        - ``model.path`` -- ``models/<model_id>``
+        - ``model.shortName`` -- auto-generated K8s-safe label
 
         The ``shortName`` is derived from the model ID and the already-
         resolved namespace (``_resolve_namespace`` must run first).
@@ -356,7 +356,7 @@ class RenderPlans:
     def _warn_custom_command_conflicts(self, values: dict) -> None:
         """Warn when CLI overrides won't propagate into hardcoded customCommands.
 
-        customCommand is a verbatim string — CLI flags like --models only
+        customCommand is a verbatim string -- CLI flags like --models only
         update the config dict (model.name, etc.) but cannot modify the
         hardcoded values inside customCommand.  Emit a warning so users
         know to update the customCommand manually.
@@ -401,11 +401,10 @@ class RenderPlans:
         return result
 
     def _resolve_deploy_method(self, values: dict) -> dict:
-        """Override ``standalone.enabled`` based on CLI ``--methods`` flag.
+        """Override deploy method based on CLI ``--methods`` flag.
 
-        When the user passes ``--methods standalone`` or ``--methods modelservice``
-        on the command line, ``standalone.enabled`` is set accordingly so that
-        the Jinja2 template guards render the correct set of YAML files.
+        Accepts ``--methods standalone`` or ``--methods modelservice``.
+        Only one method may be active at a time.
 
         Without ``--methods``, the scenario YAML value is used as-is.
         """
@@ -415,13 +414,23 @@ class RenderPlans:
         result = deepcopy(values)
         methods = [m.strip() for m in self.cli_methods.split(",")]
 
+        if "standalone" in methods and "modelservice" in methods:
+            self.logger.log_warning(
+                "Cannot enable both standalone and modelservice -- "
+                "choose one. Using modelservice."
+            )
+            methods = ["modelservice"]
+
         standalone_config = result.setdefault("standalone", {})
+        modelservice_config = result.setdefault("modelservice", {})
 
         if "standalone" in methods:
             standalone_config["enabled"] = True
+            modelservice_config["enabled"] = False
             self.logger.log_info("Deploy method from CLI: standalone")
         elif "modelservice" in methods:
             standalone_config["enabled"] = False
+            modelservice_config["enabled"] = True
             self.logger.log_info("Deploy method from CLI: modelservice")
 
         return result

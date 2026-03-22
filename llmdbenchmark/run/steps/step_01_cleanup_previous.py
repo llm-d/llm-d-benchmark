@@ -33,7 +33,7 @@ class RunCleanupPreviousStep(Step):
                 step_number=self.number,
                 step_name=self.name,
                 success=True,
-                message="No namespace configured — skipping cleanup",
+                message="No namespace configured -- skipping cleanup",
             )
 
         plan_config = self._load_plan_config(context)

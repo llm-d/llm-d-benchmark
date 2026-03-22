@@ -3,10 +3,10 @@
 Experiment files follow Design of Experiments (DoE) methodology with two
 runtime sections:
 
-- ``setup`` — infrastructure treatments (consumed by the experiment
+- ``setup`` -- infrastructure treatments (consumed by the experiment
   orchestrator).  Each setup treatment triggers a
-  standup → run → teardown cycle.
-- ``treatments`` — workload treatments (consumed by step_04 render_profiles).
+  standup to run to teardown cycle.
+- ``treatments`` -- workload treatments (consumed by step_04 render_profiles).
   Multiple run treatments execute against a single stood-up stack.
 
 The ``setup`` section is optional.  When absent, the experiment file
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SetupTreatment:
-    """A single setup treatment — infrastructure config overrides for deep_merge."""
+    """A single setup treatment -- infrastructure config overrides for deep_merge."""
 
     name: str
     overrides: dict[str, Any] = field(default_factory=dict)
@@ -105,7 +105,7 @@ def _parse_setup_treatments(setup_data: dict) -> list[SetupTreatment]:
     for i, item in enumerate(raw_treatments):
         if not isinstance(item, dict):
             logger.warning(
-                "setup.treatments[%d] is %s, expected dict — skipping",
+                "setup.treatments[%d] is %s, expected dict -- skipping",
                 i, type(item).__name__,
             )
             continue

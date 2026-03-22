@@ -61,7 +61,7 @@ class CollectResultsStep(Step):
         experiment_ids = context.experiment_ids
         if not experiment_ids:
             context.logger.log_warning(
-                "No experiment IDs recorded — attempting to discover results "
+                "No experiment IDs recorded -- attempting to discover results "
                 "from data-access pod..."
             )
 
@@ -128,7 +128,7 @@ class CollectResultsStep(Step):
                         f"{result.stderr[:200]}"
                     )
         else:
-            # Discovery mode — list what's in the results dir
+            # Discovery mode -- list what's in the results dir
             ls_result = cmd.kube(
                 "exec", data_pod,
                 "--namespace", harness_ns,

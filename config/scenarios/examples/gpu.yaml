@@ -10,7 +10,7 @@
 # Many commonly defined values were left blank (default) so that this scenario
 # is applicable to as many environments as possible.
 #
-# The model parameter and affinity are left commented — uncomment the model and
+# The model parameter and affinity are left commented -- uncomment the model and
 # GPU affinity appropriate for your cluster.
 
 scenario:
@@ -18,6 +18,10 @@ scenario:
   # GPU Example - Standard GPU deployment
   # ============================================================================
   - name: "gpu-example"
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods
+    # =========================================================================
 
     # -------------------------------------------------------------------------
     # Model Configuration
@@ -41,24 +45,37 @@ scenario:
     #     size: 1Ti
 
     # -------------------------------------------------------------------------
-    # Affinity Configuration — GPU selection
+    # Affinity / Node Selection
     # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left for auto-detect)
-    # Leave commented for automatic GPU detection. Works for OpenShift, Kubernetes, and GKE.
+    # By default, affinity is disabled and pods schedule on any available node.
+    # Options:
+    #   1. Leave commented out -- no node selection constraint
+    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+    #   3. Set explicit labels -- pods only schedule on matching nodes
     # -------------------------------------------------------------------------
-    # Uncomment ONE of the following GPU affinities:
     # affinity:
     #   enabled: true
     #   nodeSelector:
-    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3        # OpenShift
-    #     # gpu.nvidia.com/model: H200                          # Kubernetes
-    #     # cloud.google.com/gke-accelerator: nvidia-tesla-a100 # GKE
+    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
+    #     # gpu.nvidia.com/model: H200                        # Kubernetes
     #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
-    #     # nvidia.com/gpu.product: NVIDIA-L40S                 # OpenShift
-    #     # nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB       # OpenShift
-    #     # nvidia.com/gpu: ""                                  # ANY GPU (Minikube)
 
     # -------------------------------------------------------------------------
     # vLLM Common Configuration
+    # Shared settings for both decode and prefill pods.
+    # When no customCommand is set on decode/prefill, the vLLM serve command
+    # is auto-generated from these fields:
+    #   - model.maxModelLen, model.blockSize maps to --max-model-len, --block-size
+    #   - model.gpuMemoryUtilization maps to --gpu-memory-utilization
+    #   - decode/prefill.parallelism.tensor maps to --tensor-parallel-size
+    #   - vllmCommon.flags.* maps to --enforce-eager, --no-enable-log-requests, etc.
+    #   - vllmCommon.kvTransfer.* maps to --kv-transfer-config (if enabled)
+    #   - vllmCommon.kvEvents.* maps to --kv-events-config (if enabled)
+    #   - decode/prefill.vllm.additionalFlags maps to appended as extra CLI args
+    # When decode.vllm.customCommand or prefill.vllm.customCommand IS set, it replaces the auto-generated
+    # command entirely. Only --kv-transfer-config and --kv-events-config are
+    # still appended from vllmCommon if enabled. All other vllmCommon.flags
+    # are ignored -- the custom command must include its own flags.
     # -------------------------------------------------------------------------
     vllmCommon:
       # Corresponds to: LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM (default 1)
@@ -73,13 +90,25 @@ scenario:
         disableUvicornAccessLog: true  # --disable-uvicorn-access-log
         noPrefixCaching: true        # --no-enable-prefix-caching
 
-    # -------------------------------------------------------------------------
-    # Standalone Deployment Configuration
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    # =========================================================================
+    # STANDALONE -- Only applies when standalone.enabled: true
+    # =========================================================================
     standalone:
       enabled: false
       replicas: 1
 
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
 
     # -------------------------------------------------------------------------
     # Prefill Configuration
@@ -90,9 +119,15 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Decode Configuration
+    # No customCommand -- the vLLM serve command is auto-generated
+    # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
     # -------------------------------------------------------------------------
     decode:
       # replicas: 1  # default
+
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
 
     # -------------------------------------------------------------------------
     # Workload/Harness Configuration

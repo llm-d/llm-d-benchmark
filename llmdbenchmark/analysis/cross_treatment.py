@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from llmdbenchmark.executor.context import ExecutionContext
 
 # Metrics to extract from benchmark report v0.2
-# (dotted path into the YAML → column name, unit)
+# (dotted path into the YAML to column name, unit)
 METRICS_OF_INTEREST = [
     ("results.request_performance.aggregate.latency.time_to_first_token.mean", "ttft_mean_s"),
     ("results.request_performance.aggregate.latency.time_to_first_token.p50", "ttft_p50_s"),
@@ -320,7 +320,7 @@ def _generate_scatter_plots(
     """Generate scatter/line plots showing metric relationships across treatments.
 
     Produces latency-vs-throughput curves that show how performance
-    degrades under load — useful when treatments sweep concurrency
+    degrades under load -- useful when treatments sweep concurrency
     or request rate.
     """
     try:
@@ -334,7 +334,7 @@ def _generate_scatter_plots(
         return 0
 
     # Try to extract a numeric sort key from treatment names
-    # (e.g., "conc1", "conc8", "conc32" → sorted by number)
+    # (e.g., "conc1", "conc8", "conc32" to sorted by number)
     import re
 
     def _sort_key(row):

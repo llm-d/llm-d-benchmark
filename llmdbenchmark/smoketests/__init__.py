@@ -1,4 +1,4 @@
-"""Smoketest module — health checks, inference tests, and per-scenario validators."""
+"""Smoketest module -- health checks, inference tests, and per-scenario validators."""
 
 from llmdbenchmark.smoketests.base import BaseSmoketest
 

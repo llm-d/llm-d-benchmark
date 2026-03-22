@@ -10,18 +10,18 @@ Standing up an llm-d stack involves many moving parts -- Helm charts, init conta
 
 ```bash
 # Run all smoketest steps against a deployed stack
-llmdbenchmark --spec guides/pd-disaggregation smoketest -p my-namespace
+llmdbenchmark --spec gpu smoketest -p my-namespace
 
 # Run a specific step only
-llmdbenchmark --spec guides/pd-disaggregation smoketest -p my-namespace -s 0   # health check only
-llmdbenchmark --spec guides/pd-disaggregation smoketest -p my-namespace -s 1   # inference test only
-llmdbenchmark --spec guides/pd-disaggregation smoketest -p my-namespace -s 2   # config validation only
+llmdbenchmark --spec gpu smoketest -p my-namespace -s 0   # health check only
+llmdbenchmark --spec gpu smoketest -p my-namespace -s 1   # inference test only
+llmdbenchmark --spec gpu smoketest -p my-namespace -s 2   # config validation only
 
 # Dry-run (shows what would be checked, no cluster access)
-llmdbenchmark --spec guides/pd-disaggregation smoketest -p my-namespace --dry-run
+llmdbenchmark --spec gpu smoketest -p my-namespace --dry-run
 ```
 
-Smoketests also run automatically at the end of `llmdbenchmark standup`.
+Smoketests also run automatically at the end of `llmdbenchmark standup`. Use `--skip-smoketest` to skip them.
 
 ## Steps
 
@@ -33,7 +33,26 @@ Smoketests also run automatically at the end of `llmdbenchmark standup`.
 
 Scenarios without a dedicated validator (cicd paths, sim-small, etc.) run steps 00 and 01 only. Step 02 logs a skip message and passes.
 
-## Config validation (step 02)
+## Step 00: Health check
+
+The health check validates every layer of the serving stack:
+
+- **Pod status** -- all model-serving pods are in Running state with ready containers
+- **`/health` endpoint** -- the vLLM health endpoint returns 200
+- **`/v1/models`** -- the models API returns the expected model name
+- **Service test** -- the Kubernetes Service routes traffic to pods
+- **Pod direct IP test** -- each pod responds on its direct IP (bypassing the Service)
+- **OpenShift route test** -- if running on OpenShift, the external Route is reachable
+
+## Step 01: Inference test
+
+Sends a real inference request to validate end-to-end functionality:
+
+1. Tries `/v1/completions` first with a short prompt
+2. Falls back to `/v1/chat/completions` if the completions endpoint is not supported
+3. Logs the generated text and a copy-pasteable `curl` command for demo and debugging purposes
+
+## Step 02: Config validation
 
 ### How it works
 
@@ -68,6 +87,38 @@ The base class (`validate_role_pods`) handles the common checks that apply to ev
 | `gpu-example` | `GpuValidator` | GPU accelerator resource present, supports both modelservice and standalone |
 | `spyre-example` | `SpyreValidator` | Spyre accelerator (`ibm.com/spyre_vf`), Spyre env vars (FLEX_COMPUTE, FLEX_DEVICE, etc.), precompiled model PVC, AIU image |
 
+### The check system
+
+Each validator produces `CheckResult` objects that track pass/fail status with details:
+
+```python
+CheckResult(
+    name="replica_count",
+    passed=True,
+    expected="2",
+    actual="2",
+    message="Replica count matches config",
+    group="decode",
+)
+```
+
+Results are aggregated into a `SmoketestReport` that provides a summary (`passed_count/total checks passed`) and overall pass/fail status. Failed checks include expected vs. actual values for debugging.
+
+## Running smoketests independently
+
+```bash
+# Against a deployed stack (uses the plan directory for config)
+llmdbenchmark --spec gpu smoketest -p my-namespace
+
+# Just the config validation step
+llmdbenchmark --spec inference-scheduling smoketest -p my-namespace -s 2
+
+# Just the health check
+llmdbenchmark --spec pd-disaggregation smoketest -p my-namespace -s 0
+```
+
+Smoketests use the rendered plan directory from the workspace to find `config.yaml` and the stack paths. The workspace must exist from a prior `plan` or `standup` run.
+
 ## Adding a validator for a new scenario
 
 1. Create `llmdbenchmark/smoketests/validators/<your_scenario>.py`
@@ -90,7 +141,7 @@ smoketests/
 │   ├── step_01_inference_test.py
 │   └── step_02_validate_config.py
 └── validators/
-    ├── __init__.py         -- VALIDATORS dict (stack name → validator class)
+    ├── __init__.py         -- VALIDATORS dict (stack name to validator class)
     ├── cpu.py
     ├── gpu.py
     ├── spyre.py

@@ -102,7 +102,7 @@ class RenderProfilesStep(Step):
         treatments = self._resolve_treatments(context, plan_config)
 
         if not treatments:
-            # Single default treatment — render the profile as-is
+            # Single default treatment -- render the profile as-is
             source_file = profiles_source / profile_name
             if not source_file.exists():
                 # Try with .in extension
@@ -128,7 +128,7 @@ class RenderProfilesStep(Step):
                     f"Profile '{profile_name}' not found in {profiles_source}"
                 )
         else:
-            # Multiple treatments — render one profile per treatment
+            # Multiple treatments -- render one profile per treatment
             for i, treatment in enumerate(treatments):
                 treatment_name = treatment.get("name", f"treatment-{i}")
                 treatment_overrides = treatment.get("overrides", {})

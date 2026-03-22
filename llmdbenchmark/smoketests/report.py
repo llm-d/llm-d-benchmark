@@ -12,7 +12,7 @@ class CheckResult:
     expected: str = ""
     actual: str = ""
     message: str = ""
-    group: str = ""  # e.g. "prefill" or "decode" — used for grouped log output
+    group: str = ""  # e.g. "prefill" or "decode" -- used for grouped log output
     is_header: bool = False  # True for group header lines (not a real check)
 
     def __str__(self) -> str:
