@@ -1,26 +1,16 @@
 # llm-d-benchmark
 
-A single CLI for planning, deploying, benchmarking, data collection, and tearingdown LLM inference stacks across multiple environments and deployment styles using `llm-d`.
+Automated benchmarking for LLM inference on Kubernetes using `llm-d`. One CLI to plan, deploy, benchmark, collect results, and tear down.
 
-## Why llm-d-benchmark
+### Goals
 
-Benchmarking LLM inference stack performance on Kubernetes involves stitching together kubectl commands, Helm installs, load-generator scripts, tweaking many knobs for various different configurations, and collecting results by hand in very different formats depending on harness. Each step of that process is fragile, hard to reproduce, and comparing results across configurations requires careful bookkeeping.
-
-`llm-d-benchmark` **solves this problem by providing**:
-
-- **Transparency through a Declarative Lifecyle** -- Infrastructure, workloads, and experiments are defined upfront, in a `plan`. Everything being deployed for a given specification, scenario, profile, and experiment are all first rendered into human-readable plain text that can be version-controlled, diffed, and reviewed. No imperative scripts encode hidden assumptions. This promomtes transparency for before and after benchmarking, as well as providing a **reliable** method to reproduce results.
-
-- **End-to-end automation** -- A single `llmdbenchmark` CLI covers the full lifecycle from rendering all Kubernetes manifests, to deploying various `llm` and `llm-d` stacks, executing benchmarks, collecting results, and tearing down infrastructure in a safe manner. No shell scripts to chain together, no manual steps to forget, and it's entirely automated.
-
-- **Reproducibility by default** -- Every run starts from a versioned specification file and a deterministic config merge chain (`defaults.yaml` to scenario to CLI overrides). The rendered `config.yaml` in each workspace captures the exact configuration used, so any result can be traced back to its inputs.
-
-- **Flexible entry points** -- Use the full pipeline when you want deployment handled for you, or use run-only mode to benchmark an endpoint that already exists. The same workload profiles and experiment definitions work in both modes. Maybe you aren't ready to benchmark, but want to deploy the infrastructure to investigate by hand, no problem, `standup` covers that for you.
-
-- **Structured experiment support** -- Built-in Design of Experiments (DoE) support lets you define factor sweeps in YAML. The `experiment` command automates the full setup × run treatment matrix -- standing up a different infrastructure configuration for each setup treatment, running all workload variations, tearing down, and producing a summary.
-
-- **Multiple harnesses** -- Swap between [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git), [vllm-benchmark](https://github.com/vllm-project/vllm.git), and others with a simple CLI flag. Each harness uses the same profile and experiment system, as well as APIs to provide the benchmarker a common experience.
-
-- **CI/CD ready** -- Every flag has a `LLMDBENCH_*` environment variable counterpart, `--dry-run` previews without touching the cluster, and `--non-admin` skips steps that require cluster-level privileges.
+- **Declarative lifecycle**: All infrastructure, workloads, and experiments render into reviewable YAML before anything touches the cluster. Every deployment is version-controllable, diffable, and auditable.
+- **End-to-end automation**: A single `llmdbenchmark` CLI covers standup, benchmarking, result collection, and teardown.
+- **Reproducibility**: A deterministic config merge chain (`defaults.yaml` to scenario to CLI overrides) captures the exact configuration in each workspace. Any result traces back to its inputs.
+- **Flexible entry points**: Deploy and benchmark in one pipeline, or point at an existing endpoint with `--endpoint-url`. Stand up infrastructure without benchmarking, or benchmark without standing up.
+- **Structured experiments**: Built-in Design of Experiments (DoE) support automates parameter sweeps across both infrastructure and workload configurations.
+- **Multiple harnesses**: Swap between [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git), [vllm-benchmark](https://github.com/vllm-project/vllm.git), and others with a CLI flag (`-l`).
+- **Post-deployment validation**" Per-scenario smoketests verify that deployed pod configurations match what the scenario defines -- resources, parallelism, env vars, probes, routing, and vLLM flags.
 
 ## Getting Started
 
@@ -35,6 +25,9 @@ llmdbenchmark --version
 ```
 
 The install script creates a virtualenv, validates system tools (kubectl, helm, Python 3.11+), and installs the `llmdbenchmark` package. See [Installation](#installation) for manual install and flags.
+
+> [!TIP]
+> The last line of output from `llmdbenchmark standup` shows the workspace path where all rendered configs, manifests, and results are stored.
 
 ### Choose a specification
 
@@ -67,6 +60,9 @@ llmdbenchmark --spec gpu run -l inference-perf -w sanity_random.yaml
 llmdbenchmark --spec gpu teardown
 ```
 
+> [!NOTE]
+> `--dry-run` renders all manifests and logs every command that *would* execute, without touching the cluster. Use it to review before deploying.
+
 Each command renders Kubernetes manifests from your spec's templates and defaults, then applies them. The workspace directory captures rendered configs, manifests, and results for later inspection.
 
 ### Benchmark an existing endpoint (run-only mode)
@@ -82,7 +78,10 @@ llmdbenchmark --spec gpu run \
   --workload sanity_random.yaml
 ```
 
-This uses the same harness, profile rendering, and result collection pipeline -- just without the standup and teardown phases. Useful when someone else manages the infrastructure, or when you want to test different workloads against a long-lived endpoint.
+This uses the same harness, profile rendering, and result collection pipeline -- just without the standup and teardown phases.
+
+> [!TIP]
+> `run` can also be used in debug mode (`-d` / `--debug`) which starts the harness pod with `sleep infinity` so you can exec into it and run commands interactively. See [this example](docs/tutorials/run/run_interactively_example.md).
 
 ### Run a parameter sweep
 
@@ -136,7 +135,8 @@ Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-
 
 ### Administrative Requirements
 
-Deploying the llm-d stack requires **cluster-level admin** privileges for configuring cluster-level resources. However, **namespace-level admin** users can run the tool as long as [Kubernetes infrastructure components](https://github.com/llm-d-incubation/llm-d-infra) are configured and the target namespace already exists. Use `--non-admin` to skip admin-only steps.
+> [!IMPORTANT]
+> Deploying the llm-d stack requires **cluster-level admin** privileges for configuring cluster-level resources. **Namespace-level admin** users can run the tool if [Kubernetes infrastructure components](https://github.com/llm-d-incubation/llm-d-infra) are configured and the target namespace already exists. Use `--non-admin` to skip admin-only steps.
 
 ## Installation
 
@@ -158,13 +158,7 @@ The install script:
 5. Installs `llmdbenchmark` and `config_explorer` in editable mode
 6. Verifies all Python packages are importable
 
-**Flags:**
-
-- `-y` -- Non-interactive mode (use system Python, skip venv creation)
-- `noreset` -- Reuse cached dependency checks from previous run
-- `-h` -- Show help
-
-### Manual Install
+### Manual Install w/o Install Script
 
 ```bash
 git clone https://github.com/llm-d/llm-d-benchmark.git
@@ -193,6 +187,16 @@ llmdbenchmark --version
 | `--dry-run` / `-n` | `LLMDBENCH_DRY_RUN` | Generate YAML without applying to cluster |
 | `--verbose` / `-v` | `LLMDBENCH_VERBOSE` | Enable debug logging |
 | `--version` | | Show version |
+
+### Plan Options
+
+| Flag | Env Var | Description |
+|------|---------|-------------|
+| `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) to render into the plan |
+| `-m MODELS` | `LLMDBENCH_MODELS` | Model to render the plan for |
+| `-t METHODS` | `LLMDBENCH_METHODS` | Deployment method (`standalone`, `modelservice`) |
+| `-f` / `--monitoring` | | Enable monitoring in rendered templates (PodMonitor, EPP verbosity) |
+| `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path (used for cluster resource auto-detection) |
 
 ### Standup Options
 
@@ -234,8 +238,15 @@ llmdbenchmark --version
 | `-m MODELS` | `LLMDBENCH_MODELS` | Models to deploy |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
+| `-f` / `--monitoring` | | Enable monitoring during standup and run phases |
 | `-l HARNESS` | `LLMDBENCH_HARNESS` | Harness name |
 | `-w PROFILE` | `LLMDBENCH_WORKLOAD` | Workload profile |
+| `-o OVERRIDES` | `LLMDBENCH_OVERRIDES` | Workload parameter overrides |
+| `-r DEST` | `LLMDBENCH_OUTPUT` | Results destination (local, gs://, s3://) |
+| `-j N` | `LLMDBENCH_PARALLELISM` | Parallel harness pods |
+| `--wait-timeout N` | `LLMDBENCH_WAIT_TIMEOUT` | Seconds to wait for harness completion |
+| `-x DATASET` | `LLMDBENCH_DATASET` | Dataset URL for harness replay |
+| `-d` / `--debug` | `LLMDBENCH_DEBUG` | Debug mode: start harness pods with sleep infinity |
 | `--stop-on-error` | | Abort on first setup treatment failure |
 | `--skip-teardown` | | Leave stacks running for debugging |
 
@@ -243,6 +254,7 @@ llmdbenchmark --version
 
 | Flag | Env Var | Description |
 |------|---------|-------------|
+| `-s STEPS` | | Step filter (e.g., `0,1,5` or `2-6`) |
 | `-m MODEL` | `LLMDBENCH_MODEL` | Model name override (e.g. facebook/opt-125m) |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespaces (deploy,benchmark) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deploy method used during standup |
@@ -261,6 +273,7 @@ llmdbenchmark --version
 | `-f` / `--monitoring` | | Enable metrics scraping and EPP log capture during benchmark |
 | `-q` / `--serviceaccount` | `LLMDBENCH_SERVICE_ACCOUNT` | Service account name for harness pods |
 | `-g` / `--envvarspod` | `LLMDBENCH_HARNESS_ENVVARS_TO_YAML` | Comma-separated env var names to propagate into harness pod |
+| `--analyze` | | Run local analysis on results after collection |
 | `-z` / `--skip` | `LLMDBENCH_SKIP` | Skip execution, only collect existing results |
 | `-d` / `--debug` | `LLMDBENCH_DEBUG` | Debug mode: start harness pods with sleep infinity |
 
@@ -471,6 +484,9 @@ llmdbenchmark --spec precise-prefix-cache-aware standup # Precise prefix cache-a
 llmdbenchmark --spec wide-ep-lws standup                # Wide expert-parallel with LWS
 ```
 
+> [!WARNING]
+> `wide-ep-lws` requires RDMA/RoCE networking and LeaderWorkerSet (LWS) controller. Verify your cluster has working RDMA HCAs before deploying.
+
 ## Main Concepts
 
 ### [Scenarios](docs/standup.md#scenarios)
@@ -485,7 +501,8 @@ Load generators that drive benchmark traffic. Supported: [inference-perf](https:
 
 Benchmark load specifications including LLM use case, traffic pattern, input/output distribution, and dataset. Found under [`workload/profiles`](./workload/profiles).
 
-> **Reproducibility:** The triplet `<scenario>`, `<harness>`, `<(workload) profile>`, combined with the standup/teardown capabilities, provides enough information to reproduce any single experiment.
+> [!IMPORTANT]
+> The triplet `<scenario>`, `<harness>`, `<(workload) profile>`, combined with the standup/teardown capabilities, provides enough information to reproduce any single experiment.
 
 ### [Experiments](docs/doe.md)
 
@@ -514,10 +531,13 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 
 ## News
 
+- KubeCon/CloudNativeCon 2025 North America Talk "A Cross-Industry Benchmarking Tutorial for Distributed LLM Inference on Kubernetes", with the [accompanying tutorial](docs/tutorials/kubecon/README.md)
 - `llm-d-benchmark` supports all available [Well-Lit Path Guides](https://github.com/llm-d/llm-d/blob/main/guides/README.md)
 - Data from benchmarking experiments is made available on the [main project's Google Drive](https://drive.google.com/drive/folders/1sqnibn_mFlciV3-qZIFgZYmk-p9zemzH)
 
 ## Topics
+
+<!-- TO BE UPDATED -->
 
 - [Analysis Pipeline](docs/analysis.md)
 - [Metrics Collection](docs/metrics_collection.md)

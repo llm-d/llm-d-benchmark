@@ -284,8 +284,18 @@ spec:
             memory: {{ standalone.resources.limits.memory }}
             cpu: "{{ standalone.resources.limits.cpu }}"
 {% set standalone_accel_resource = (standalone.accelerator.resource if standalone.accelerator is defined and standalone.accelerator.resource is defined else accelerator.resource) %}
-{% if (standalone.parallelism.tensor | int) > 0 %}
-            {{ standalone_accel_resource }}: "{{ standalone.parallelism.tensor }}"
+{# Use standalone.accelerator.count if set, then top-level accelerator.count,
+   then fall back to parallelism.tensor. CPU scenarios set accelerator.count: 0
+   to suppress GPU requests even when TP > 0. #}
+{% if standalone.accelerator is defined and standalone.accelerator.count is defined -%}
+{% set standalone_accel_count = standalone.accelerator.count | int -%}
+{% elif accelerator is defined and accelerator.count is defined -%}
+{% set standalone_accel_count = accelerator.count | int -%}
+{% else -%}
+{% set standalone_accel_count = standalone.parallelism.tensor | int -%}
+{% endif -%}
+{% if standalone_accel_count > 0 %}
+            {{ standalone_accel_resource }}: "{{ standalone_accel_count }}"
 {% endif %}
 {% set eph_storage = standalone.ephemeralStorage | default(vllmCommon.ephemeralStorage) %}
 {% set eph_resource = vllmCommon.ephemeralStorageResource %}
@@ -300,8 +310,8 @@ spec:
           requests:
             memory: {{ standalone.resources.requests.memory }}
             cpu: "{{ standalone.resources.requests.cpu }}"
-{% if (standalone.parallelism.tensor | int) > 0 %}
-            {{ standalone_accel_resource }}: "{{ standalone.parallelism.tensor }}"
+{% if standalone_accel_count > 0 %}
+            {{ standalone_accel_resource }}: "{{ standalone_accel_count }}"
 {% endif %}
 {% if eph_storage and eph_resource %}
             {{ eph_resource }}: "{{ eph_storage }}"

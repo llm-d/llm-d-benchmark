@@ -86,7 +86,7 @@ scenario:
       # To use a fully custom command instead, set decode.vllm.customCommand.
       flags:
         enforceEager: false          # old gpu.sh did not use --enforce-eager
-        disableLogRequests: true     # --no-enable-log-requests
+        disableLogRequests: true     # modelservice only -- upstream vllm-openai (v0.9+) dropped --no-enable-log-requests
         disableUvicornAccessLog: true  # --disable-uvicorn-access-log
         noPrefixCaching: true        # --no-enable-prefix-caching
 
@@ -98,6 +98,12 @@ scenario:
 
     # =========================================================================
     # STANDALONE -- Only applies when standalone.enabled: true
+    # Note: The standalone path uses upstream docker.io/vllm/vllm-openai
+    # (default from defaults.yaml). Upstream vLLM v0.9+ dropped the
+    # --no-enable-log-requests flag, so disableLogRequests (above) is
+    # only applied to the modelservice path which uses llm-d-cuda.
+    # If you need to suppress request logging in standalone, add the
+    # appropriate flag for your vLLM version to standalone.vllm.additionalFlags.
     # =========================================================================
     standalone:
       enabled: false

@@ -52,7 +52,9 @@ scenario:
 
       vllm:
         port: 8000
-        customCommand: "/app/llm-d-inference-sim --model facebook/opt-125m --port 8000 --served-model-name facebook/opt-125m"
+        # Custom command -- sim image uses /app/llm-d-inference-sim, not vllm serve.
+        # Note: model name is hardcoded here. Update if model.name changes.
+        customCommand: "/app/llm-d-inference-sim --model /model-cache/models/facebook/opt-125m --port $VLLM_INFERENCE_PORT --served-model-name facebook/opt-125m"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)

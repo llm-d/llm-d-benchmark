@@ -274,7 +274,7 @@ scenario:
       
       flags:
         enforceEager: true
-        disableLogRequests: true
+        disableLogRequests: true     # modelservice only -- upstream vllm-openai (v0.9+) dropped --no-enable-log-requests
         disableUvicornAccessLog: true
         enablePrefixCaching: true  # Corresponds to: --enable-prefix-caching
         allowLongMaxModelLen: "1"

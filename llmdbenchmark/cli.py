@@ -1118,6 +1118,8 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_AFFINITY": ("affinity", "--affinity"),
         "LLMDBENCH_ANNOTATIONS": ("annotations", "--annotations"),
         "LLMDBENCH_WVA": ("wva", "--wva"),
+        "LLMDBENCH_SERVICE_ACCOUNT": ("serviceaccount", "--serviceaccount"),
+        "LLMDBENCH_HARNESS_ENVVARS_TO_YAML": ("envvarspod", "--envvarspod"),
     }
 
     active = {k: v for k, v in os.environ.items() if k in _ENV_TO_CLI}
@@ -1187,6 +1189,8 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--affinity": ["--affinity"],
         "--annotations": ["--annotations"],
         "--wva": ["--wva"],
+        "--serviceaccount": ["--serviceaccount", "-q"],
+        "--envvarspod": ["--envvarspod", "-g"],
     }
     return _ALIASES.get(flag, [flag])
 

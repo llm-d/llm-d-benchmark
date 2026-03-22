@@ -130,19 +130,45 @@
   --kv-events-config '{{ build_kv_events_config() }}'
 {%- endif %}
 {%- else -%}
-{# Use default vllm serve command #}
+{# Use default vllm serve command -- mirrors the modelservice build_vllm_command #}
+{% set has_enforce_eager = vllmCommon.flags.enforceEager | default(false) -%}
+{% set has_disable_log_requests = vllmCommon.flags.disableLogRequests | default(false) -%}
+{% set has_disable_uvicorn = vllmCommon.flags.disableUvicornAccessLog | default(false) -%}
+{% set has_no_prefix_caching = vllmCommon.flags.noPrefixCaching | default(false) -%}
+{% set has_enable_prefix_caching = vllmCommon.flags.enablePrefixCaching | default(false) -%}
+{% set effective_block_size = model.blockSize -%}
 {{ preprocess_script }}; vllm serve {{ model.name }} \
-  --no-enable-prefix-caching \
-  --load-format {{ standalone.vllm.loadFormat }} \
+  --host {{ vllmCommon.host | default('0.0.0.0') }} \
+  --served-model-name {{ model.name }} \
   --port {{ standalone.vllm.port }} \
+  --block-size {{ effective_block_size }} \
   --max-model-len {{ model.maxModelLen }} \
-  --no-enable-log-requests
+  --load-format {{ standalone.vllm.loadFormat }}
 {%- if gpu_mem_util > 0 %} \
   --gpu-memory-utilization {{ model.gpuMemoryUtilization }}
 {%- endif %}
 {%- set tp_size = standalone.parallelism.tensor | int %}
 {%- if tp_size > 0 %} \
   --tensor-parallel-size {{ tp_size }}
+{%- endif %}
+{%- if model.maxNumSeq is defined and model.maxNumSeq %} \
+  --max-num-seq {{ model.maxNumSeq }}
+{%- endif %}
+{%- if has_no_prefix_caching %} \
+  --no-enable-prefix-caching
+{%- endif %}
+{%- if has_enable_prefix_caching %} \
+  --enable-prefix-caching
+{%- endif %}
+{%- if has_enforce_eager %} \
+  --enforce-eager
+{%- endif %}
+{# --no-enable-log-requests is skipped for standalone because upstream
+   vllm-openai (v0.9+) removed this flag. The modelservice path uses
+   llm-d-cuda which still supports it. If your standalone image supports
+   this flag, add it via standalone.vllm.additionalFlags instead. #}
+{%- if has_disable_uvicorn %} \
+  --disable-uvicorn-access-log
 {%- endif %} \
   --model-loader-extra-config "$LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG"
 {%- if has_kv_transfer %} \

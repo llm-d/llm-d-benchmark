@@ -6,20 +6,22 @@ Run phase of the benchmark lifecycle. Executes benchmark workloads against deplo
 
 Steps are registered in `steps/__init__.py` via `get_run_steps()` and execute in order:
 
-| Step | Name | Description |
-|------|------|-------------|
-| 00 | `RunPreflightStep` | Validate cluster connectivity, harness namespace existence, and output destination reachability |
-| 01 | `RunCleanupPreviousStep` | Clean up leftover harness pods from a previous run |
-| 02 | `DetectEndpointStep` | Detect the model-serving endpoint for each stack (standalone, gateway, or custom) |
-| 03 | `VerifyModelStep` | Verify the expected model is served at the detected endpoint via `/v1/models` |
-| 04 | `RenderProfilesStep` | Render workload profile templates (`REPLACE_ENV_*` tokens) with runtime values; handle experiment treatments |
-| 05 | `CreateProfileConfigmapStep` | Create Kubernetes ConfigMaps for workload profiles and harness scripts |
-| 06 | `DeployHarnessStep` | Deploy harness pod(s), execute treatments sequentially (deploy, wait, collect, clean per treatment) |
-| 07 | `WaitCompletionStep` | Wait for harness pod(s) to complete (used when step 06 does not inline waiting) |
-| 08 | `CollectResultsStep` | Collect results from PVC to local workspace |
-| 09 | `UploadResultsStep` | Upload results to cloud storage (GCS/S3) as a safety-net bulk upload |
-| 10 | `RunCleanupPostStep` | Post-run cleanup of harness pods and ConfigMaps |
-| 11 | `AnalyzeResultsStep` | Run local analysis on collected results using the `analysis` subpackage |
+| Step | Name | Scope | Description |
+|------|------|-------|-------------|
+| 00 | `RunPreflightStep` | global | Validate cluster connectivity, harness namespace existence, and output destination reachability |
+| 01 | `RunCleanupPreviousStep` | global | Clean up leftover harness pods from a previous run |
+| 02 | `DetectEndpointStep` | global | Detect the model-serving endpoint for each stack (standalone, gateway, or custom) |
+| 03 | `VerifyModelStep` | global | Verify the expected model is served at the detected endpoint via `/v1/models` |
+| 04 | `RenderProfilesStep` | global | Render workload profile templates (`REPLACE_ENV_*` tokens) with runtime values; handle experiment treatments |
+| 05 | `CreateProfileConfigmapStep` | global | Create Kubernetes ConfigMaps for workload profiles and harness scripts |
+| 06 | `DeployHarnessStep` | global | Deploy harness pod(s), execute treatments sequentially (deploy, wait, collect, clean per treatment) |
+| 07 | `WaitCompletionStep` | global | Wait for harness pod(s) to complete (used when step 06 does not inline waiting) |
+| 08 | `CollectResultsStep` | global | Collect results from PVC to local workspace |
+| 11 | `AnalyzeResultsStep` | global | Run local analysis on collected results using the `analysis` subpackage |
+| 09 | `UploadResultsStep` | global | Upload results to cloud storage (GCS/S3) as a safety-net bulk upload |
+| 10 | `RunCleanupPostStep` | global | Post-run cleanup of harness pods and ConfigMaps |
+
+Note: The execution order in `get_run_steps()` places `AnalyzeResultsStep` (step 11) before `UploadResultsStep` (step 09) so that analysis artifacts are included in the upload.
 
 ## Key Flags
 
@@ -43,14 +45,30 @@ Accepts a comma-separated list of environment variable names (e.g., `-g MY_TOKEN
 
 Sets the `serviceAccountName` on the harness pod spec. Required when the harness needs RBAC permissions beyond the default service account (e.g., for metrics scraping or PVC access in locked-down namespaces).
 
+## Treatment System
+
+Step 04 handles experiment treatments from the `--experiments` YAML file. Multiple treatments execute against a single stood-up stack. For each treatment, step 06 deploys a harness pod, waits for completion, and collects results before proceeding to the next treatment.
+
 ## Result Collection
 
 Results are collected to two locations:
 
-- **Local workspace** -- step 08 copies results from the harness PVC to the local workspace directory under `results/`. Each treatment gets its own subdirectory.
-- **PVC** -- results are written to the harness PVC by the harness pod during execution. The PVC persists across runs until teardown.
+- **Local workspace** -- Step 08 copies results from the harness PVC to the local workspace directory under `results/`. Each treatment gets its own subdirectory named `{experiment_id}_{parallel_idx}`.
+- **PVC** -- Results are written to the harness PVC by the harness pod during execution. The PVC persists across runs until teardown.
 
 Optionally, step 09 uploads results to cloud storage (GCS or S3) when `-r` points to a `gs://` or `s3://` destination.
+
+## EPP Log Processing
+
+When monitoring is enabled, `capture_infrastructure_logs()` in `kube_helpers.py` captures EPP pod logs and runs `process_epp_logs.py` to extract scheduling and flow control metrics. The script reads the raw EPP logs and produces visualizations in the results directory.
+
+## Dry-Run Behavior
+
+In dry-run mode:
+
+- Steps 00-05 log what they would do without modifying the cluster.
+- Step 06 logs the harness pod spec without deploying. Wait helpers return success immediately.
+- Steps 08-11 skip actual file operations and cloud uploads, logging what would happen.
 
 ## Files
 

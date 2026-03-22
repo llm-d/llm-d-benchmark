@@ -117,7 +117,7 @@ scenario:
       # To use a fully custom command instead, set decode.vllm.customCommand.
       flags:
         enforceEager: false          # old cpu.sh did not use --enforce-eager
-        disableLogRequests: true     # --no-enable-log-requests
+        disableLogRequests: true     # modelservice only -- upstream vllm-openai (v0.9+) dropped --no-enable-log-requests
         disableUvicornAccessLog: true  # --disable-uvicorn-access-log
         noPrefixCaching: true        # --no-enable-prefix-caching
 

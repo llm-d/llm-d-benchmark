@@ -23,6 +23,8 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
 - [Scenario Organization](#scenario-organization)
 - [vLLM Command Generation](#vllm-command-generation)
 - [Init Containers](#init-containers)
+- [Harness Entrypoint Configuration](#harness-entrypoint-configuration)
+- [Flow Control Configuration](#flow-control-configuration)
 - [Monitoring and Metrics](#monitoring-and-metrics)
 - [Container Images](#container-images)
   - [Image Config Paths](#image-config-paths)
@@ -403,12 +405,43 @@ When `networkResource` is set to `"auto"`, the `ClusterResourceResolver` queries
 
 ### Accelerator Resources
 
-The accelerator resource for GPU/TPU/other devices is configured at the top level:
+Two separate settings control GPU/accelerator behavior:
+
+- **`accelerator.count`** -- how many accelerator devices (e.g., GPUs) the pod requests in its Kubernetes resource limits
+- **`parallelism.tensor`** -- how many parallel workers for tensor operations, passed as `--tensor-parallel-size` to vLLM
+
+These are independent values that are often the same but can differ:
+
+| Scenario | accelerator.count | parallelism.tensor | Why they differ |
+|----------|------------------|--------------------|-----------------|
+| Standard GPU | 2 (or unset) | 2 | Same -- 2 GPUs, 2 tensor parallel workers |
+| CPU-only | 0 | 2 | No GPUs, but TP=2 uses CPU threads |
+| Spyre | 1 | 4 | 1 device supports 4 tensor parallel ranks |
+| Expert parallel | unset | 1 | GPUs come from DP_local, not TP |
+
+#### How accelerator count is resolved
+
+When `accelerator.count` is **not set**, it defaults to `parallelism.tensor`. This matches the most common case where each tensor parallel rank needs its own GPU.
+
+When `accelerator.count` is **explicitly set to 0**, no accelerator resources are added to the pod limits. This is required for CPU-only scenarios that use tensor parallelism for CPU threads.
+
+The resolution order for standalone deployments is:
+1. `standalone.accelerator.count` (if set)
+2. Top-level `accelerator.count` (if set)
+3. `standalone.parallelism.tensor` (fallback)
+
+For modelservice deployments:
+1. `decode.accelerator.count` (if set)
+2. `decode.parallelism.tensor` (fallback)
+
+#### Accelerator resource name
+
+The Kubernetes resource name (e.g., `nvidia.com/gpu`, `ibm.com/spyre_vf`) is configured separately:
 
 ```yaml
 accelerator:
   type: nvidia               # accelerator family
-  resource: "nvidia.com/gpu"  # Kubernetes resource name
+  resource: "nvidia.com/gpu"  # Kubernetes resource name (set to "auto" for cluster detection)
 ```
 
 Per-role overrides are supported:
@@ -417,10 +450,10 @@ Per-role overrides are supported:
 decode:
   accelerator:
     resource: ibm.com/spyre_vf  # override for non-NVIDIA accelerators
-    count: 1                     # explicit device count (defaults to tensor parallelism)
+    count: 1                     # explicit device count
 ```
 
-When `count` is not set, it defaults to `decode.parallelism.tensor`. Set `count` explicitly when the accelerator count differs from tensor parallelism (e.g., Spyre devices where 1 device supports multiple tensor parallel ranks).
+When `resource` is set to `"auto"`, the cluster resource resolver detects the accelerator resource name from cluster nodes at plan time (requires cluster connectivity).
 
 ---
 
@@ -471,21 +504,54 @@ Scenario files use comment headers to organize settings into three categories:
 - **STANDALONE** -- settings that only apply when `standalone.enabled: true` (standalone image, replicas, volumes)
 - **MODELSERVICE** -- settings that only apply when `modelservice.enabled: true` (Helm chart values, gateway config, GAIE settings)
 
-Each scenario must set either `standalone.enabled: true` or `modelservice.enabled: true` (or both, though in practice only one is used). Templates use Jinja2 conditionals to skip rendering when the corresponding flag is `false`.
+Each scenario must set exactly one of `standalone.enabled: true` or `modelservice.enabled: true`. Only one deployment method can be active at a time. The CLI `-t` flag overrides the scenario value (e.g., `-t standalone` forces standalone even if the scenario says modelservice). If both are passed via CLI, a warning is logged and modelservice is used. Templates use Jinja2 conditionals to skip rendering when the corresponding flag is `false`.
+
+A fifth section header, **WORKLOAD / HARNESS**, groups the `workDir` and `harness` fields that configure benchmark execution (which harness, workload profile, and where results are stored).
 
 ---
 
 ## vLLM Command Generation
 
-The `build_vllm_command()` macro in `_macros.j2` assembles the `vllm serve` command from config values. When no `customCommand` is set on a role (decode/prefill), the macro builds the command from:
+Two macros in `_macros.j2` generate the vLLM serve command:
 
-- Model path and `--served-model-name`
-- Parallelism settings (`--tensor-parallel-size`, `--pipeline-parallel-size`, `--data-parallel-size`)
-- Port (`--port`)
-- KV transfer config (when `kvTransfer.enabled: true`)
-- Additional vLLM flags from `vllmCommon.extraArgs` and per-role `extraArgs`
+- `build_vllm_command(mode)` -- for modelservice (decode/prefill pods)
+- `build_standalone_vllm_command()` -- for standalone deployments
 
-When `customCommand` is set on a role, it is used verbatim. The KV transfer macro still appends `--kv-transfer-config` if `kvTransfer.enabled: true`, so set `enabled: false` if you handle it in the custom command.
+Both follow the same pattern: if `customCommand` is set, use it verbatim; otherwise auto-generate from config fields.
+
+### Auto-generated command (no customCommand)
+
+When no `customCommand` is set, the command is built from:
+
+| Source | Flag generated |
+|--------|---------------|
+| `model.name` / `model.path` | `vllm serve <path>`, `--served-model-name` |
+| `model.maxModelLen` | `--max-model-len` |
+| `model.blockSize` | `--block-size` |
+| `model.gpuMemoryUtilization` | `--gpu-memory-utilization` (skipped if 0) |
+| `model.maxNumSeq` | `--max-num-seq` (if set) |
+| `decode/prefill.parallelism.tensor` | `--tensor-parallel-size` (skipped if 0) |
+| `vllmCommon.host` | `--host` |
+| `vllmCommon.flags.enforceEager` | `--enforce-eager` |
+| `vllmCommon.flags.disableLogRequests` | `--no-enable-log-requests` |
+| `vllmCommon.flags.disableUvicornAccessLog` | `--disable-uvicorn-access-log` |
+| `vllmCommon.flags.noPrefixCaching` | `--no-enable-prefix-caching` |
+| `vllmCommon.flags.enablePrefixCaching` | `--enable-prefix-caching` |
+| `vllmCommon.kvTransfer.*` | `--kv-transfer-config` (if `enabled: true`) |
+| `vllmCommon.kvEvents.*` | `--kv-events-config` (if `enabled: true`) |
+| `decode/prefill.vllm.additionalFlags` | Appended as extra CLI args |
+
+### Port selection (modelservice only)
+
+When routing proxy is **enabled**, vLLM binds to `decode.vllm.port` (default 8200) and the proxy handles `servicePort` (8000) to `vllmPort` (8200) forwarding. When routing proxy is **disabled**, vLLM binds directly to `decode.vllm.servicePort` (8000).
+
+### Custom command
+
+When `decode.vllm.customCommand` or `prefill.vllm.customCommand` is set, the auto-generated command is replaced entirely. Only `--kv-transfer-config` and `--kv-events-config` from vllmCommon are still appended if enabled. All `vllmCommon.flags.*` are ignored -- the custom command must include its own flags.
+
+### Preprocess script
+
+The preprocess script runs before the vLLM command (separated by `;` or `&&`). Priority: `decode.vllm.customPreprocessCommand` > `vllmCommon.preprocessScript` > default (`/bin/true`).
 
 ---
 
@@ -733,6 +799,22 @@ When flow control is enabled (see [KV Transfer Configuration](#kv-transfer-confi
 - `inference_extension_flow_control_queue_size` --flow control queue depth
 - `inference_extension_flow_control_pool_saturation` --pool saturation level
 
+#### CLI monitoring flag (`-f`)
+
+The `-f` / `--monitoring` flag enables monitoring across both standup and run phases:
+
+**During standup (`-f`):**
+- Creates PodMonitor resources for Prometheus scraping of vLLM pods
+- Sets EPP verbosity to 4 (richer logs for post-run analysis)
+
+**During run (`-f`):**
+- Sets `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED=true` on harness pods
+- The harness runs `collect_metrics.sh` to scrape `/metrics` from all vLLM pods during the benchmark
+- After each treatment, captures model-serving, EPP, and IGW pod logs
+- Runs `process_epp_logs.py` on captured EPP logs to extract scheduling metrics
+
+Without `-f`, metrics scraping is disabled and pod logs are not captured.
+
 #### Enabling monitoring in a scenario
 
 To enable PodMonitor-based metrics collection for a deployment:
@@ -922,10 +1004,11 @@ Minimal starting points for common hardware:
 
 | Scenario | Description |
 |----------|-------------|
-| `cpu.yaml` | CPU-only deployment (no GPU) |
-| `gpu.yaml` | Standard GPU deployment |
+| `cpu.yaml` | CPU-only deployment (no GPU, uses vllm-cpu-release image) |
+| `gpu.yaml` | Standard NVIDIA GPU deployment |
+| `sim.yaml` | Simulated inference (llm-d-inference-sim, no GPU required) |
+| `sim-small.yaml` | Minimal simulated deployment (small PVC, low resources) |
 | `spyre.yaml` | IBM Spyre accelerator |
-| `sim-small.yaml` | Simulated small model deployment |
 
 ### `scenarios/cicd/`
 
@@ -956,8 +1039,11 @@ scenario:
       path: models/meta-llama/Llama-3.1-8B
       huggingfaceId: meta-llama/Llama-3.1-8B
 
-    namespace:
-      name: llm-benchmark
+    # Deployment method -- choose one
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
 
     decode:
       replicas: 2
@@ -968,6 +1054,12 @@ scenario:
         requests:
           memory: 64Gi
           cpu: "16"
+
+    harness:
+      name: inference-perf
+      experimentProfile: sanity_random.yaml
+
+    workDir: "~/data/my-deployment"
 ```
 
 ---
