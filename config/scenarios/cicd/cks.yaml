@@ -1,5 +1,4 @@
 # CKS (Cloud Kubernetes Service) CI/CD Scenario
-# Migrated from bash environment variables to YAML format
 # Based on scenarios/cicd/cks_fb.sh
 #
 # CI/CD scenario for CKS clusters with H200 GPUs.
@@ -9,6 +8,7 @@ scenario:
   - name: "cks-cicd"
 
     # Model
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
     model:
       name: facebook/opt-125m
       shortName: facebook-opt-125m
@@ -16,42 +16,51 @@ scenario:
       huggingfaceId: facebook/opt-125m
 
     # Namespace -- dedicated CI/CD namespace
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_NAMESPACE=llmdbenchcicd
     namespace:
       name: llmdbenchcicd
 
-    # Harness namespace matches model namespace
+    # Harness namespace -- same as deploy namespace for CI/CD
+    # Corresponds to: LLMDBENCH_HARNESS_NAMESPACE=llmdbenchcicd
     harnessNamespace:
       name: llmdbenchcicd
 
+    # Deployment method
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
+
+    # Helm release name
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_RELEASE=llmdbenchcicd
+    release: llmdbenchcicd
+
     # GPU affinity for H200
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY=gpu.nvidia.com/class:H200
     affinity:
       enabled: true
       nodeSelector:
         gpu.nvidia.com/class: H200
 
     # Accelerator configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY=143
     accelerator:
       memory: 143
 
-    # Deployment method flags
-    modelservice:
-      enabled: true
-    standalone:
-      enabled: false
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_REPLICAS=1
+    decode:
+      replicas: 1
 
     # Storage
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=shared-vast
     storage:
       modelPvc:
         storageClassName: shared-vast
 
-    # Deployment
-    deploy:
-      replicas: 1
-      release: llmdbenchcicd
-
+    # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR=/tmp/cicd/
     workDir: /tmp/cicd/
 
-    # Workload
+    # Corresponds to: LLMDBENCH_HARNESS_NAME=vllm-benchmark
     harness:
       name: vllm-benchmark
       experimentProfile: sanity_random.yaml

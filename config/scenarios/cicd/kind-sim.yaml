@@ -18,11 +18,6 @@ scenario:
       maxModelLen: 1024
       gpuMemoryUtilization: 0
 
-    # Deploy method -- modelservice only
-    deploy:
-      methods: modelservice
-      replicas: 1
-
     # CPU-only affinity
     affinity:
       enabled: true
