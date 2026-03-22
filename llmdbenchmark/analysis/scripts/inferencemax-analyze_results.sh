@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# DEPRECATED: This script is superseded by the Python API in
-# llmdbenchmark/analysis/__init__.py (run_analysis function).
-# Kept for reference only.
 
 # Convert results into universal format
 export LLMDBENCH_RUN_EXPERIMENT_CONVERT_RC=0
@@ -37,4 +34,27 @@ mkdir -p "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/analysis"
 result_start=$(grep -nr "Result ==" $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log | tail -1 | cut -d ':' -f 1)
 total_file_lenght=$(cat $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log | wc -l)
 cat $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stdout.log | sed "$result_start,$total_file_lenght!d" > $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/analysis/summary.txt
-exit $?
+_summary_rc=$?
+
+# Integrate vLLM metrics into benchmark report(s) v0.2 and generate plots
+_metrics_dir="$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics"
+if [[ -f "$_metrics_dir/processed/metrics_summary.json" ]]; then
+  echo "Integrating metrics summary into benchmark report(s) v0.2..."
+  for _report in $(find "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" -maxdepth 1 -name 'benchmark_report_v0.2,_*.yaml'); do
+    python3 -c "
+import yaml, sys
+from benchmark_report.metrics_processor import add_metrics_to_benchmark_report
+report_file, metrics_dir = sys.argv[1], sys.argv[2]
+with open(report_file) as f:
+    br_dict = yaml.safe_load(f)
+br_dict = add_metrics_to_benchmark_report(br_dict, metrics_dir)
+with open(report_file, 'w') as f:
+    yaml.dump(br_dict, f, default_flow_style=False, allow_unicode=True)
+print('Metrics integrated into: ' + report_file)
+" "$_report" "$_metrics_dir" 2>&1 | tee -a "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log" || true
+  done
+  echo "Generating metric plots..."
+  python3 /usr/local/bin/visualize_metrics.py "$_metrics_dir" 2>&1 | tee -a "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/stderr.log" || true
+fi
+
+exit $_summary_rc

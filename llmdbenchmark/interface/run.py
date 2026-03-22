@@ -100,6 +100,29 @@ def add_subcommands(parser: argparse._SubParsersAction):
         help="URL for dataset to be replayed by the harness.",
     )
 
+    # Monitoring
+    run_parser.add_argument(
+        "-f",
+        "--monitoring",
+        action="store_true",
+        default=False,
+        help="Enable vLLM /metrics scraping and pod log capture during the run.",
+    )
+
+    # Pod configuration
+    run_parser.add_argument(
+        "-q",
+        "--serviceaccount",
+        default=env("LLMDBENCH_SERVICE_ACCOUNT"),
+        help="Service account for harness pods (env: LLMDBENCH_SERVICE_ACCOUNT).",
+    )
+    run_parser.add_argument(
+        "-g",
+        "--envvarspod",
+        default=env("LLMDBENCH_HARNESS_ENVVARS_TO_YAML"),
+        help="Comma-separated list of env var names to propagate into harness pods (env: LLMDBENCH_HARNESS_ENVVARS_TO_YAML).",
+    )
+
     # Mode flags
     run_parser.add_argument(
         "-z",

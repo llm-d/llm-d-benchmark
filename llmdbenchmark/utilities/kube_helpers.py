@@ -469,3 +469,30 @@ def capture_infrastructure_logs(
         log_dir / "igw_pods.log",
         "IGW", context,
     )
+
+    # Process EPP logs if present
+    epp_log = log_dir / "epp_pods.log"
+    if epp_log.exists() and epp_log.stat().st_size > 0:
+        try:
+            import subprocess
+            script = Path(__file__).resolve().parents[1] / ".." / "workload" / "harnesses" / "process_epp_logs.py"
+            if not script.exists():
+                # Try installed location
+                import shutil
+                script_str = shutil.which("process_epp_logs.py")
+                if script_str:
+                    script = Path(script_str)
+            if script.exists():
+                context.logger.log_info("Processing EPP logs...")
+                result = subprocess.run(
+                    ["python3", str(script), str(log_dir.parent), "--visualize"],
+                    capture_output=True, text=True, timeout=120,
+                )
+                if result.returncode == 0:
+                    context.logger.log_info("EPP log processing complete")
+                else:
+                    context.logger.log_warning(
+                        f"EPP log processing failed (non-fatal): {result.stderr[:200]}"
+                    )
+        except Exception as e:
+            context.logger.log_warning(f"EPP log processing failed (non-fatal): {e}")

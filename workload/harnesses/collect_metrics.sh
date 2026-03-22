@@ -214,8 +214,9 @@ process_collected_metrics() {
     # Get the directory where this script is located
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    # Call the Python script to process metrics files
-    python3 "${SCRIPT_DIR}/process_metrics.py"
+    # Pass METRICS_DIR explicitly: it is a shell variable (not exported), so the
+    # subprocess would otherwise fall back to the relative default 'metrics'.
+    METRICS_DIR="$METRICS_DIR" python3 "${SCRIPT_DIR}/process_metrics.py"
 }
 
 # Main command dispatcher

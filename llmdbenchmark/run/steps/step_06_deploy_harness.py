@@ -243,13 +243,32 @@ class DeployHarnessStep(Step):
 
                 # Ensure required nested keys exist with defaults
                 template_values.setdefault("harness", {})
-                template_values["harness"].setdefault("name", harness_name)
-                template_values["harness"].setdefault("namespace", harness_ns)
+                template_values["harness"]["name"] = harness_name
+                template_values["harness"]["namespace"] = harness_ns
                 template_values.setdefault("namespace", {})
-                template_values["namespace"].setdefault("name", harness_ns)
+                template_values["namespace"]["name"] = harness_ns
                 template_values.setdefault("model", {})
-                template_values["model"].setdefault("name", model_name or "")
+                if model_name:
+                    template_values["model"]["name"] = model_name
                 template_values.setdefault("images", {}).setdefault("benchmark", {})
+
+                # Service account override (-q)
+                if context.harness_service_account:
+                    template_values["harness"]["serviceAccount"] = context.harness_service_account
+
+                # Extra env vars to propagate into pod (-g)
+                if context.harness_envvars_to_pod:
+                    import os
+                    extra_env = []
+                    for var_name in context.harness_envvars_to_pod.split(","):
+                        var_name = var_name.strip()
+                        if var_name and var_name in os.environ:
+                            extra_env.append({
+                                "name": var_name,
+                                "value": os.environ[var_name],
+                            })
+                    if extra_env:
+                        template_values["harness"]["extraEnvVars"] = extra_env
 
                 if context.dry_run:
                     context.logger.log_info(
@@ -317,8 +336,10 @@ class DeployHarnessStep(Step):
                 if collect_errors:
                     errors.extend(collect_errors)
 
-            # --- Phase 4: Capture pod logs ---
-            if not context.dry_run:
+            # --- Phase 4: Capture pod logs (when monitoring is enabled) ---
+            monitoring = (plan_config or {}).get("monitoring", {})
+            metrics_enabled = str(monitoring.get("metricsScrapeEnabled", False)).lower() == "true"
+            if not context.dry_run and metrics_enabled:
                 log_dir = context.run_dir() / "logs"
                 infra_ns = deploy_namespace or context.namespace or harness_ns
                 capture_pod_logs(

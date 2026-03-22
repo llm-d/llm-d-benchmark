@@ -88,6 +88,12 @@ spec:
     - name: LLMDBENCH_VLLM_MONITORING_METRICS_PATH
       value: "{{ monitoring.metricsPath }}"
 {% endif %}
+{% if harness.extraEnvVars is defined and harness.extraEnvVars %}
+{% for env_entry in harness.extraEnvVars %}
+    - name: {{ env_entry.name }}
+      value: "{{ env_entry.value }}"
+{% endfor %}
+{% endif %}
     volumeMounts:
     - name: results
       mountPath: /requests
@@ -109,5 +115,8 @@ spec:
 {% if vllmCommon.pullSecret is defined and vllmCommon.pullSecret %}
   imagePullSecrets:
   - name: {{ vllmCommon.pullSecret }}
+{% endif %}
+{% if harness.serviceAccount is defined and harness.serviceAccount %}
+  serviceAccountName: {{ harness.serviceAccount }}
 {% endif %}
   restartPolicy: Never

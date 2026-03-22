@@ -46,7 +46,11 @@ inferenceExtension:
     {{ key }}: "{{ value }}"
 {% endfor %}
 {% else %}
+{% if monitoring is defined and monitoring.metricsScrapeEnabled is defined and monitoring.metricsScrapeEnabled %}
+    v: "4"
+{% else %}
     v: "{{ inferenceExtension.verbosity | default('1') }}"
+{% endif %}
 {% endif %}
 {% if inferenceExtension.sidecar is defined and inferenceExtension.sidecar.enabled is defined and inferenceExtension.sidecar.enabled %}
   sidecar:

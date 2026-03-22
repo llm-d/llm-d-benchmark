@@ -86,6 +86,8 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     harness_wait_timeout: int = 3600
     harness_debug: bool = False
     harness_skip_run: bool = False
+    harness_service_account: str | None = None
+    harness_envvars_to_pod: str | None = None
     analyze_locally: bool = False
 
     # Run-only mode (existing-stack)
