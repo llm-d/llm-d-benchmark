@@ -1,0 +1,61 @@
+# ============================================
+# BASE: Use Spyre vLLM CPU image (s390x ready)
+# ============================================
+ARG BASE_UBI_IMAGE_TAG=9.6
+FROM registry.access.redhat.com/ubi9/ubi-minimal:${BASE_UBI_IMAGE_TAG} AS base
+
+USER root
+WORKDIR /workspace
+
+# -----------------------------
+# Install additional tools
+# -----------------------------
+RUN microdnf install -y \
+    git jq rsync curl wget \
+    ca-certificates iproute \
+    infiniband-diags \
+    && microdnf clean all
+
+
+# -----------------------------
+# Install OpenShift CLI 
+# -----------------------------
+RUN ARCH=$(uname -m) && \
+    curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux-${ARCH}.tar.gz && \
+    tar -xzf openshift-client-linux-${ARCH}.tar.gz -C /usr/local/bin oc && \
+    chmod +x /usr/local/bin/oc && \
+    rm -f openshift-client-linux-${ARCH}.tar.gz
+
+# -----------------------------
+# Install kubectl
+# -----------------------------
+RUN ARCH=$(uname -m) && \
+    curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/${ARCH}/kubectl" \
+    -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
+
+
+# -----------------------------
+# Clone benchmarking repos
+# -----------------------------
+RUN git clone https://github.com/kubernetes-sigs/inference-perf.git && \
+    cd inference-perf && pip install .
+
+RUN git clone https://github.com/vllm-project/guidellm.git && \
+    cd guidellm && pip install .[recommended]
+
+RUN git clone https://github.com/kimbochen/bench_serving.git
+
+# -----------------------------
+# Copy your scripts
+# -----------------------------
+COPY build/llm-d-benchmark.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/llm-d-benchmark.sh
+
+# -----------------------------
+# Switch back to vllm user
+# -----------------------------
+USER 2000
+WORKDIR /home/vllm
+
+# Override entrypoint (important)
+ENTRYPOINT ["llm-d-benchmark.sh"]
