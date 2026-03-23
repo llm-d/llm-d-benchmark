@@ -40,6 +40,7 @@ Usage: ${_script_name} -c <config-file> [options]
   Options:
     -c/--config path to configuration file
     -o/--output destination for the results. (e.g. local/folder, gs://my-bucket, s3://my-bucket)
+    -R/--repeat number of times to repeat the experiment (default: 1). Results are aggregated with mean/std dev.
     -v/--verbose print the command being executed, and result
     -d/--debug execute harness in "debug-mode"
     -n/--dry-run do not execute commands, just print what would be executed
@@ -231,6 +232,7 @@ _script_name="${0##*/}"
 _control_dir=$(realpath $(pwd)/)
 _root_dir=$(realpath "${_control_dir}/../")
 _uid=$(date +%s)
+_repeat=${LLMDBENCH_HARNESS_REPEAT:-1}
 
 #Parse command line arguments
 # ========================================================
@@ -250,6 +252,13 @@ while [[ $# -gt 0 ]]; do
         ;;
         -o|--output)
         _output_destination="$2"
+        shift
+        ;;
+        -R=*|--repeat=*)
+        _repeat=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -R|--repeat)
+        _repeat="$2"
         shift
         ;;
         -n|--dry-run)
@@ -273,6 +282,12 @@ while [[ $# -gt 0 ]]; do
         esac
         shift
 done
+
+# Validate repeat count
+if ! [[ "$_repeat" =~ ^[1-9][0-9]*$ ]]; then
+  announce "❌ ERROR: --repeat must be a positive integer, got \"$_repeat\""
+  exit 1
+fi
 
 # Read configuration file
 # ========================================================
@@ -455,7 +470,7 @@ set -e
 # ========================================================
 set +e
 announce "ℹ️
-  Running benchmark with Experiment ID ${_uid}.
+  Running benchmark with Experiment ID ${_uid} (repeat=${_repeat}).
   Results will be stored in PVC ${harness_results_pvc}.
 
   Note:
@@ -472,29 +487,87 @@ while IFS= read -r workload; do
   workloads+=("$workload")
 done < <(yq '.workload | keys | .[]' "${_config_file}")
 announce "Workloads in ${_config_file} are ${workloads[*]}"
-for workload in "${workloads[@]}"; do
-  announce "ℹ️ Running benchmark with workload ${workload}."
-  run_workload=$(cat <<RUN_WORKLOAD
+
+for _run_idx in $(seq 1 $_repeat); do
+  if [[ $_repeat -gt 1 ]]; then
+    announce "ℹ️ Starting repeat ${_run_idx} of ${_repeat}"
+  fi
+
+  for workload in "${workloads[@]}"; do
+    if [[ $_repeat -gt 1 ]]; then
+      _run_experiment_id="${_uid}_${workload}_run${_run_idx}"
+    else
+      _run_experiment_id="${_uid}_${workload}"
+    fi
+    announce "ℹ️ Running benchmark with workload ${workload} (experiment_id=${_run_experiment_id})."
+    run_workload=$(cat <<RUN_WORKLOAD
     # redirect to root fds so that kubectl logs can capture output
     exec 1> >(tee /proc/1/fd/1 >&1)
     exec 2> >(tee /proc/1/fd/2 >&2)
 
-    export LLMDBENCH_RUN_EXPERIMENT_ID="${_uid}_${workload}"
+    export LLMDBENCH_RUN_EXPERIMENT_ID="${_run_experiment_id}"
 
     ${HARNESS_EXECUTABLE} --harness="${harness_name}" --workload="${workload}"
 RUN_WORKLOAD
-  )
-  : | ${_timeout} $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "$run_workload"
-  res=$?
-  if [ $res -eq 0 ]; then
-    announce "ℹ️ Benchmark workload ${workload} complete."
-  elif [ $res -eq 124 ]; then
-    announce "⚠️ Warning: workload ${workload} timed out after ${harness_wait_timeout}s."
-  else
-    announce "❌ ERROR: error happened while running workload ${workload}."
-  fi
+    )
+    : | ${_timeout} $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "$run_workload"
+    res=$?
+    if [ $res -eq 0 ]; then
+      announce "ℹ️ Benchmark workload ${workload} (repeat ${_run_idx}/${_repeat}) complete."
+    elif [ $res -eq 124 ]; then
+      announce "⚠️ Warning: workload ${workload} (repeat ${_run_idx}/${_repeat}) timed out after ${harness_wait_timeout}s."
+    else
+      announce "❌ ERROR: error happened while running workload ${workload} (repeat ${_run_idx}/${_repeat})."
+    fi
+  done
 done
 set -e
+
+# Aggregate results across repeated runs
+# ========================================================
+if [[ $_repeat -gt 1 ]]; then
+  announce "ℹ️ Aggregating results across ${_repeat} repeated runs..."
+  _aggregate_script="${_root_dir}/analysis/aggregate_runs.py"
+  if [[ -f "$_aggregate_script" ]]; then
+    for workload in "${workloads[@]}"; do
+      # Collect result directories for all runs of this workload
+      _run_dirs=""
+      for _run_idx in $(seq 1 $_repeat); do
+        _run_dirs="${_run_dirs} ${_uid}_${workload}_run${_run_idx}"
+      done
+
+      if [[ "${_storage_type}" == "pvc" ]]; then
+        # Run aggregation inside the harness pod
+        aggregate_cmd=$(cat <<AGG_CMD
+python3 /workspace/analysis/aggregate_runs.py \
+  --results-prefix "${RESULTS_DIR_PREFIX}" \
+  --harness "${harness_name}" \
+  --stack "${endpoint_stack_name}" \
+  --run-ids ${_run_dirs} \
+  --output "${RESULTS_DIR_PREFIX}/${_uid}_${workload}_aggregated"
+AGG_CMD
+        )
+        $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "$aggregate_cmd"
+      else
+        # Run aggregation locally
+        python3 "$_aggregate_script" \
+          --results-prefix "${_output_destination}/${_uid}" \
+          --harness "${harness_name}" \
+          --stack "${endpoint_stack_name}" \
+          --run-ids ${_run_dirs} \
+          --output "${_output_destination}/${_uid}/${_uid}_${workload}_aggregated"
+      fi
+
+      if [[ $? -eq 0 ]]; then
+        announce "✅ Aggregated results for workload ${workload} written."
+      else
+        announce "⚠️ Warning: aggregation failed for workload ${workload}."
+      fi
+    done
+  else
+    announce "⚠️ Warning: aggregation script not found at ${_aggregate_script}. Skipping aggregation."
+  fi
+fi
 
 # Finalization
 # ========================================================
@@ -519,6 +592,6 @@ esac
 
 announce "✅
   Experiment ID is ${_uid}.
-  All workloads completed.
+  All workloads completed (${_repeat} run(s) per workload).
   Results should be available in ${final_msg}
 "
