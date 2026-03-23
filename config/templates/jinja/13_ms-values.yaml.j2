@@ -83,11 +83,14 @@ accelerator:
 {% endif %}
 {% if accelerator.resources is defined %}
   resources:
-{{ accelerator.resources | toyaml | indent(4) }}
+{{ accelerator.resources | toyaml | indent(4, first=True) }}
+{% elif accelerator.type is defined and accelerator.resource is defined and accelerator.type != 'nvidia' %}
+  resources:
+    {{ accelerator.type }}: "{{ accelerator.resource }}"
 {% endif %}
 {% if accelerator.env is defined %}
   env:
-{{ accelerator.env | toyaml | indent(4) }}
+{{ accelerator.env | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {# -------------------------------------------------------------------------- #}

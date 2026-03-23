@@ -749,18 +749,40 @@ class BaseSmoketest:
         probe_config = role_config.get("probes", {})
         self._validate_probes(pod, prefix, probe_config, report, group=group_name)
 
-        # --- vLLM flags (from vllmCommon.flags) ---
-        flags = _nested_get(config, "vllmCommon", "flags") or {}
-        if flags.get("enforceEager") is True:
-            report.add(_tag(self.assert_arg_contains(args, "--enforce-eager")))
-        if flags.get("noPrefixCaching") is True:
-            report.add(_tag(self.assert_arg_contains(args, "--no-enable-prefix-caching")))
-        if flags.get("disableLogRequests") is True:
-            report.add(_tag(self.assert_arg_contains(args, "--no-enable-log-requests")))
-        if flags.get("disableUvicornAccessLog") is True:
-            report.add(_tag(self.assert_arg_contains(args, "--disable-uvicorn-access-log")))
+        # --- vLLM flags ---
+        # When customCommand is set, the auto-generated flags (from
+        # vllmCommon.flags, model.blockSize, etc.) are not applied --
+        # the custom command is responsible for its own flags.
+        has_custom_command = bool(_nested_get(role_config, "vllm", "customCommand"))
 
-        # --- KV transfer ---
+        if not has_custom_command:
+            flags = _nested_get(config, "vllmCommon", "flags") or {}
+            if flags.get("enforceEager") is True:
+                report.add(_tag(self.assert_arg_contains(args, "--enforce-eager")))
+            if flags.get("noPrefixCaching") is True:
+                report.add(_tag(self.assert_arg_contains(args, "--no-enable-prefix-caching")))
+            if flags.get("disableLogRequests") is True:
+                report.add(_tag(self.assert_arg_contains(args, "--no-enable-log-requests")))
+            if flags.get("disableUvicornAccessLog") is True:
+                report.add(_tag(self.assert_arg_contains(args, "--disable-uvicorn-access-log")))
+
+            # --- Model args (block size, max model len) ---
+            model_config = config.get("model", {})
+            block_size = model_config.get("blockSize")
+            if block_size is not None:
+                report.add(_tag(self.assert_arg_contains(args, "--block-size", str(block_size))))
+
+            max_model_len = model_config.get("maxModelLen")
+            if max_model_len is not None:
+                report.add(_tag(self.assert_arg_contains(args, "--max-model-len", str(max_model_len))))
+
+            # --- Additional flags from role config ---
+            additional_flags = _nested_get(role_config, "vllm", "additionalFlags") or []
+            for flag in additional_flags:
+                if isinstance(flag, str) and flag.startswith("--"):
+                    report.add(_tag(self.assert_arg_contains(args, flag)))
+
+        # --- KV transfer (checked for both auto-generated and custom commands) ---
         kv_transfer = _nested_get(config, "vllmCommon", "kvTransfer") or {}
         if kv_transfer.get("enabled"):
             kv_connector = kv_transfer.get("connector")
@@ -769,7 +791,7 @@ class BaseSmoketest:
                     args, "--kv-transfer-config", str(kv_connector),
                 )))
 
-        # --- KV events ---
+        # --- KV events (checked for both auto-generated and custom commands) ---
         kv_events = _nested_get(config, "vllmCommon", "kvEvents") or {}
         if kv_events.get("enabled"):
             kv_port = kv_events.get("port")
@@ -781,22 +803,6 @@ class BaseSmoketest:
                     expected=str(kv_port),
                     message=f"KV events containerPort {kv_port} {'present' if has_port else 'not found'} in container ports",
                 )))
-
-        # --- Model args (block size, max model len) ---
-        model_config = config.get("model", {})
-        block_size = model_config.get("blockSize")
-        if block_size is not None:
-            report.add(_tag(self.assert_arg_contains(args, "--block-size", str(block_size))))
-
-        max_model_len = model_config.get("maxModelLen")
-        if max_model_len is not None:
-            report.add(_tag(self.assert_arg_contains(args, "--max-model-len", str(max_model_len))))
-
-        # --- Additional flags from role config ---
-        additional_flags = _nested_get(role_config, "vllm", "additionalFlags") or []
-        for flag in additional_flags:
-            if isinstance(flag, str) and flag.startswith("--"):
-                report.add(_tag(self.assert_arg_contains(args, flag)))
 
         # --- Role env vars (injected by helm chart, not from config) ---
         if role == "decode":

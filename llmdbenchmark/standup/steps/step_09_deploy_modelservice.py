@@ -124,7 +124,7 @@ class DeployModelserviceStep(Step):
             decode_wait = cmd.wait_for_pods(
                 label="llm-d.ai/role=decode",
                 namespace=namespace,
-                timeout=900,
+                timeout=1500,
                 poll_interval=10,
                 description="decode pods",
             )
@@ -171,7 +171,7 @@ class DeployModelserviceStep(Step):
                 prefill_wait = cmd.wait_for_pods(
                     label="llm-d.ai/role=prefill",
                     namespace=namespace,
-                    timeout=900,
+                    timeout=1500,
                     poll_interval=10,
                     description="prefill pods",
                 )
@@ -181,7 +181,7 @@ class DeployModelserviceStep(Step):
             pool_wait = cmd.wait_for_pods(
                 label=f"inferencepool={model_short}-gaie-epp",
                 namespace=namespace,
-                timeout=300,
+                timeout=1500,
                 poll_interval=10,
                 description="inference pool",
             )
