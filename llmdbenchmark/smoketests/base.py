@@ -416,6 +416,21 @@ class BaseSmoketest:
         return []
 
     @staticmethod
+    def assert_arg_present(pod_args: str, flag: str) -> CheckResult:
+        """Check that *flag* appears in pod args (ignores value)."""
+        if flag not in pod_args:
+            return CheckResult(
+                f"arg_{flag.lstrip('-')}", False,
+                expected=f"{flag} present",
+                actual="not found",
+                message=f"{flag} not found in container vllm args",
+            )
+        return CheckResult(
+            f"arg_{flag.lstrip('-')}", True,
+            message=f"{flag} present in container vllm args",
+        )
+
+    @staticmethod
     def assert_arg_contains(
         pod_args: str, flag: str, value: str | None = None,
     ) -> CheckResult:
@@ -767,14 +782,26 @@ class BaseSmoketest:
                 report.add(_tag(self.assert_arg_contains(args, "--disable-uvicorn-access-log")))
 
             # --- Model args (block size, max model len) ---
+            # The auto-generated command uses env var references ($VLLM_BLOCK_SIZE,
+            # $VLLM_MAX_MODEL_LEN) instead of hardcoded values. We verify:
+            # 1. The flag is present in the args (with env var or literal value)
+            # 2. The corresponding env var on the pod has the correct value
             model_config = config.get("model", {})
             block_size = model_config.get("blockSize")
             if block_size is not None:
-                report.add(_tag(self.assert_arg_contains(args, "--block-size", str(block_size))))
+                # Check flag present (either $VLLM_BLOCK_SIZE or literal value)
+                report.add(_tag(self.assert_arg_present(args, "--block-size")))
+                # Check env var has the right value
+                report.add(_tag(self.assert_env_equals(
+                    env, "VLLM_BLOCK_SIZE", str(block_size), pod_name=pod_name,
+                )))
 
             max_model_len = model_config.get("maxModelLen")
             if max_model_len is not None:
-                report.add(_tag(self.assert_arg_contains(args, "--max-model-len", str(max_model_len))))
+                report.add(_tag(self.assert_arg_present(args, "--max-model-len")))
+                report.add(_tag(self.assert_env_equals(
+                    env, "VLLM_MAX_MODEL_LEN", str(max_model_len), pod_name=pod_name,
+                )))
 
             # --- Additional flags from role config ---
             additional_flags = _nested_get(role_config, "vllm", "additionalFlags") or []

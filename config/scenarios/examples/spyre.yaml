@@ -170,11 +170,11 @@ scenario:
 
       resources:
         limits:
-          memory: 750Gi
-          cpu: "100"
+          memory: 200Gi
+          cpu: "20"
         requests:
-          memory: 750Gi
-          cpu: "100"
+          memory: 200Gi
+          cpu: "20"
 
       vllm:
         customCommand: |
@@ -271,11 +271,11 @@ scenario:
 
       resources:
         limits:
-          memory: 750Gi
-          cpu: "100"
+          memory: 200Gi
+          cpu: "20"
         requests:
-          memory: 750Gi
-          cpu: "100"
+          memory: 200Gi
+          cpu: "20"
 
       accelerator:
         resource: ibm.com/spyre_vf
