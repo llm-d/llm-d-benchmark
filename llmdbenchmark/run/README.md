@@ -1,74 +1,292 @@
 # llmdbenchmark.run
 
-Run phase of the benchmark lifecycle. Executes benchmark workloads against deployed model-serving infrastructure, collects results, and optionally runs local analysis.
+Run phase of the benchmark lifecycle. Executes benchmark workloads against
+deployed model-serving infrastructure, collects results, and optionally runs
+local analysis.
 
-## Step Ordering
+## Quick Start
 
-Steps are registered in `steps/__init__.py` via `get_run_steps()` and execute in order:
+### Run against a stood-up stack
 
-| Step | Name | Scope | Description |
-|------|------|-------|-------------|
-| 00 | `RunPreflightStep` | global | Validate cluster connectivity, harness namespace existence, and output destination reachability |
-| 01 | `RunCleanupPreviousStep` | global | Clean up leftover harness pods from a previous run |
-| 02 | `DetectEndpointStep` | global | Detect the model-serving endpoint for each stack (standalone, gateway, or custom) |
-| 03 | `VerifyModelStep` | global | Verify the expected model is served at the detected endpoint via `/v1/models` |
-| 04 | `RenderProfilesStep` | global | Render workload profile templates (`REPLACE_ENV_*` tokens) with runtime values; handle experiment treatments |
-| 05 | `CreateProfileConfigmapStep` | global | Create Kubernetes ConfigMaps for workload profiles and harness scripts |
-| 06 | `DeployHarnessStep` | global | Deploy harness pod(s), execute treatments sequentially (deploy, wait, collect, clean per treatment) |
-| 07 | `WaitCompletionStep` | global | Wait for harness pod(s) to complete (used when step 06 does not inline waiting) |
-| 08 | `CollectResultsStep` | global | Collect results from PVC to local workspace |
-| 11 | `AnalyzeResultsStep` | global | Run local analysis on collected results using the `analysis` subpackage |
-| 09 | `UploadResultsStep` | global | Upload results to cloud storage (GCS/S3) as a safety-net bulk upload |
-| 10 | `RunCleanupPostStep` | global | Post-run cleanup of harness pods and ConfigMaps |
+After `standup`, run a benchmark with a specific harness and workload:
 
-Note: The execution order in `get_run_steps()` places `AnalyzeResultsStep` (step 11) before `UploadResultsStep` (step 09) so that analysis artifacts are included in the upload.
+```bash
+# Sanity check with inference-perf
+llmdbenchmark --spec guides/pd-disaggregation run -p llm-d-vezio-ang \
+  -l inference-perf -w sanity_random.yaml
 
-## Key Flags
+# Run with monitoring (metrics scraping + pod log capture)
+llmdbenchmark --spec guides/pd-disaggregation run -p llm-d-vezio-ang \
+  -l inference-perf -w sanity_random.yaml -f
 
-### `-f` / `--monitoring` -- Enable metrics scraping and log capture
+# Run with a different harness
+llmdbenchmark --spec guides/pd-disaggregation run -p llm-d-vezio-ang \
+  -l vllm-benchmark -w random_concurrent.yaml
+```
 
-When passed, `-f` enables three things during the run:
+### Run-only mode (no standup needed)
 
-1. Sets `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED=true` as an environment variable on the harness pod, which tells the harness entrypoint to scrape vLLM `/metrics` before and after each benchmark.
-2. After each treatment completes, captures pod logs from harness pods, EPP (inference scheduler) pods, IGW (inference gateway) pods, and model-serving pods into the `logs/` directory under the run workspace.
-3. Runs `process_epp_logs.py` on captured EPP logs to extract flow control and scheduling metrics.
+Point directly at an existing endpoint -- no `--spec` or prior `standup` required:
 
-### `-l` / `--harness` -- Harness override
+```bash
+# Against a known service URL
+llmdbenchmark run -p my-namespace \
+  -U http://my-model-service.my-namespace.svc.cluster.local:80 \
+  -l inference-perf -w sanity_random.yaml -m Qwen/Qwen3-32B
 
-Overrides the scenario's `harness.name` value for the run. This affects both the ConfigMap name used for workload profiles and the pod template selected for the harness pod. Supported values: `inference-perf`, `guidellm`, `vllm-benchmark`, `inferencemax`, `nop`.
+# Against an external URL
+llmdbenchmark run -p my-namespace \
+  -U https://my-model.example.com/v1 \
+  -l inference-perf -w chatbot_synthetic.yaml -m Qwen/Qwen3-32B
+```
 
-### `-g` / `--envvarspod` -- Propagate env vars into harness pod
+When `-U` is provided, the run skips endpoint auto-detection (step 02) and
+model verification (step 03), and goes straight to profile rendering and
+harness deployment.
 
-Accepts a comma-separated list of environment variable names (e.g., `-g MY_TOKEN,MY_FLAG`). Each named variable is read from the current shell and injected into the harness pod's environment. Useful for passing credentials or feature flags that the harness entrypoint needs at runtime.
+### Generate a run config for reuse
 
-### `-q` / `--serviceaccount` -- Service account for harness pods
+```bash
+# Generate a config YAML from current settings
+llmdbenchmark --spec guides/inference-scheduling run -p llm-d-vezio-ang \
+  -l inference-perf -w sanity_random.yaml --generate-config
 
-Sets the `serviceAccountName` on the harness pod spec. Required when the harness needs RBAC permissions beyond the default service account (e.g., for metrics scraping or PVC access in locked-down namespaces).
+# Use the generated config for subsequent runs
+llmdbenchmark run -c /path/to/run-config.yaml
+```
+
+### Debug mode
+
+Start the harness pod with `sleep infinity` instead of running the benchmark.
+Useful for exec-ing into the pod to debug issues:
+
+```bash
+llmdbenchmark --spec guides/inference-scheduling run -p llm-d-vezio-ang \
+  -l inference-perf -w sanity_random.yaml -d
+
+# Then exec into the pod:
+oc exec -it -n llm-d-vezio-ang $(oc get pod -n llm-d-vezio-ang -l app=llmdbench-harness-launcher -o name) -- bash
+```
+
+### Skip execution, collect existing results
+
+If a previous run left results on the PVC, collect them without re-running:
+
+```bash
+llmdbenchmark --spec guides/inference-scheduling run -p llm-d-vezio-ang -z
+```
+
+## CLI Flags
+
+| Flag | Env Var | Description |
+|------|---------|-------------|
+| `-l HARNESS` | `LLMDBENCH_HARNESS` | Harness name: `inference-perf`, `guidellm`, `vllm-benchmark`, `inferencemax`, `nop` |
+| `-w WORKLOAD` | `LLMDBENCH_WORKLOAD` | Workload profile name (e.g., `sanity_random.yaml`, `chatbot_synthetic.yaml`) |
+| `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) -- `deploy_ns,harness_ns` or single namespace for both |
+| `-m MODEL` | `LLMDBENCH_MODEL` | Model name override (e.g., `Qwen/Qwen3-32B`) |
+| `-t METHODS` | `LLMDBENCH_METHODS` | Deploy method used during standup (`standalone`, `modelservice`) |
+| `-U URL` | `LLMDBENCH_ENDPOINT_URL` | Explicit endpoint URL -- enables run-only mode, skips auto-detection |
+| `-c FILE` | | Run config YAML file -- enables run-only mode |
+| `--generate-config` | | Generate a run config YAML from current settings and exit |
+| `-f` | `LLMDBENCH_MONITORING` | Enable vLLM metrics scraping and pod log capture |
+| `-q SA` | `LLMDBENCH_SERVICE_ACCOUNT` | Service account for harness pods |
+| `-g VARS` | `LLMDBENCH_HARNESS_ENVVARS_TO_YAML` | Comma-separated env var names to propagate into harness pod |
+| `-e FILE` | `LLMDBENCH_EXPERIMENTS` | Experiment treatments YAML for parameter sweeping |
+| `-o OVERRIDES` | `LLMDBENCH_OVERRIDES` | Workload parameter overrides (`param=value,...`) |
+| `-j N` | `LLMDBENCH_PARALLELISM` | Number of parallel harness pods (default: 1) |
+| `-r DEST` | `LLMDBENCH_OUTPUT` | Results destination: local path, `gs://bucket`, or `s3://bucket` |
+| `-x DATASET` | `LLMDBENCH_DATASET` | Dataset URL for harness replay |
+| `--wait-timeout N` | `LLMDBENCH_WAIT_TIMEOUT` | Seconds to wait for harness completion (default: 3600) |
+| `-z` | `LLMDBENCH_SKIP` | Skip execution, only collect existing results from PVC |
+| `-d` | `LLMDBENCH_DEBUG` | Debug mode -- start harness with `sleep infinity` |
+| `--analyze` | | Run local analysis on collected results |
+| `-s STEPS` | | Step filter (e.g., `0,1,6` or `2-8`) |
+| `-k FILE` | `LLMDBENCH_KUBECONFIG` | Kubeconfig path |
+
+## Step Details
+
+Steps are registered in `steps/__init__.py` via `get_run_steps()`:
+
+| Step | Name | Description |
+|------|------|-------------|
+| 00 | `RunPreflightStep` | Validate cluster connectivity, harness namespace, output destination |
+| 01 | `RunCleanupPreviousStep` | Delete leftover harness pods/configmaps from previous runs |
+| 02 | `DetectEndpointStep` | Auto-detect model-serving endpoint (standalone service, gateway, or `-U` override) |
+| 03 | `VerifyModelStep` | Verify model is served at endpoint via `/v1/models` |
+| 04 | `RenderProfilesStep` | Render workload profile templates with runtime values; handle experiment treatments |
+| 05 | `CreateProfileConfigmapStep` | Create ConfigMaps for workload profiles and harness scripts |
+| 06 | `DeployHarnessStep` | Deploy harness pod(s), wait for completion, collect results, capture logs |
+| 07 | `WaitCompletionStep` | Wait for harness pods (used when step 06 does not inline waiting) |
+| 08 | `CollectResultsStep` | Collect results from PVC to local workspace |
+| 11 | `AnalyzeResultsStep` | Run local analysis on results (before upload so artifacts are included) |
+| 09 | `UploadResultsStep` | Upload results to cloud storage (GCS/S3) |
+| 10 | `RunCleanupPostStep` | Delete harness pods and ConfigMaps |
+
+Note: Step 11 (analyze) runs before step 09 (upload) so analysis artifacts are included in the upload.
+
+## Common Patterns
+
+### Run against different harnesses
+
+The `-l` flag overrides the scenario's default harness. The harness name determines
+which scripts run inside the harness pod and which profiles are available:
+
+```bash
+# inference-perf (default for most well-lit paths)
+llmdbenchmark --spec guides/inference-scheduling run -p ns -l inference-perf -w sanity_random.yaml
+
+# vllm-benchmark (built-in vLLM benchmarking)
+llmdbenchmark --spec guides/inference-scheduling run -p ns -l vllm-benchmark -w random_concurrent.yaml
+
+# guidellm
+llmdbenchmark --spec guides/inference-scheduling run -p ns -l guidellm -w chatbot_synthetic.yaml
+
+# nop (no-op -- measures model load time only)
+llmdbenchmark --spec guides/inference-scheduling run -p ns -l nop -w nop.yaml
+```
+
+### Run with workload parameter overrides
+
+Override individual workload profile parameters without editing the profile YAML:
+
+```bash
+llmdbenchmark --spec guides/inference-scheduling run -p ns \
+  -l inference-perf -w sanity_random.yaml \
+  -o "concurrency=32,duration=300,max_tokens=512"
+```
+
+### Run with experiment treatments
+
+Execute a matrix of parameter combinations automatically:
+
+```bash
+llmdbenchmark --spec guides/inference-scheduling run -p ns \
+  -l inference-perf -w sanity_random.yaml \
+  -e experiments/concurrency_sweep.yaml
+```
+
+The experiment YAML defines factors and levels:
+
+```yaml
+run:
+  factors:
+    - name: concurrency
+      levels: [1, 8, 32, 64]
+    - name: max_tokens
+      levels: [128, 512]
+```
+
+Each combination becomes a treatment. Step 06 runs them sequentially:
+deploy pod, wait, collect, clean, then next treatment.
+
+### Run with parallel harness pods
+
+Deploy multiple harness pods per treatment for higher aggregate load:
+
+```bash
+llmdbenchmark --spec guides/inference-scheduling run -p ns \
+  -l inference-perf -w sanity_random.yaml -j 4
+```
+
+Each pod gets a unique experiment ID suffix (`_1`, `_2`, etc.) and writes
+results to a separate subdirectory on the PVC.
+
+### Run with monitoring enabled
+
+```bash
+llmdbenchmark --spec guides/pd-disaggregation run -p ns \
+  -l inference-perf -w sanity_random.yaml -f
+```
+
+With `-f`, the run:
+
+1. Sets `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED=true` on the harness pod --
+   the harness entrypoint scrapes vLLM `/metrics` before and after each benchmark
+2. After each treatment, captures logs from:
+   - Harness pods
+   - EPP (Endpoint Picker) pods
+   - IGW (Inference Gateway) pods
+   - Model-serving (decode/prefill) pods
+3. Runs `process_epp_logs.py` on EPP logs to extract scheduling metrics
+
+Results appear in the workspace under:
+
+```
+results/
+  {experiment_id}/
+    metrics/raw/          -- raw Prometheus-format metrics per pod
+    metrics/processed/    -- aggregated metrics_summary.json
+logs/
+  epp_pods.log            -- EPP pod logs
+  igw_pods.log            -- Gateway pod logs
+  modelserving_pods.log   -- Decode/prefill pod logs
+  pod_status.txt          -- Pod status snapshot
+epp_metrics/              -- EPP analysis output (if available)
+```
+
+### Upload results to cloud storage
+
+```bash
+# Google Cloud Storage
+llmdbenchmark --spec guides/inference-scheduling run -p ns \
+  -l inference-perf -w sanity_random.yaml -r gs://my-bucket/results/
+
+# Amazon S3
+llmdbenchmark --spec guides/inference-scheduling run -p ns \
+  -l inference-perf -w sanity_random.yaml -r s3://my-bucket/results/
+```
+
+### Run specific steps only
+
+```bash
+# Only deploy and wait (skip cleanup, analysis, upload)
+llmdbenchmark --spec guides/inference-scheduling run -p ns \
+  -l inference-perf -w sanity_random.yaml -s 0-8
+
+# Only collect existing results and analyze
+llmdbenchmark --spec guides/inference-scheduling run -p ns -s 8,11
+
+# Only clean up leftover pods
+llmdbenchmark --spec guides/inference-scheduling run -p ns -s 10
+```
 
 ## Treatment System
 
-Step 04 handles experiment treatments from the `--experiments` YAML file. Multiple treatments execute against a single stood-up stack. For each treatment, step 06 deploys a harness pod, waits for completion, and collects results before proceeding to the next treatment.
+The run supports three modes of treatment generation:
+
+1. **Single treatment (default)** -- one harness pod runs the workload profile as-is
+2. **Override treatments** -- `-o` modifies profile parameters for a single treatment
+3. **Experiment treatments** -- `-e` generates a matrix of treatments from factor/level combinations
+
+Step 04 handles the treatment rendering. Step 06 executes them sequentially:
+for each treatment, it deploys harness pod(s), waits for completion, collects
+results and logs, then cleans up before the next treatment.
 
 ## Result Collection
 
 Results are collected to two locations:
 
-- **Local workspace** -- Step 08 copies results from the harness PVC to the local workspace directory under `results/`. Each treatment gets its own subdirectory named `{experiment_id}_{parallel_idx}`.
-- **PVC** -- Results are written to the harness PVC by the harness pod during execution. The PVC persists across runs until teardown.
+- **Local workspace** -- Step 08 copies results from the harness PVC to the local
+  workspace under `results/`. Each treatment gets its own subdirectory named
+  `{experiment_id}_{parallel_idx}`.
+- **PVC** -- Results persist on the harness PVC (`workload-pvc`) until teardown.
 
-Optionally, step 09 uploads results to cloud storage (GCS or S3) when `-r` points to a `gs://` or `s3://` destination.
+The run summary at the end shows both locations:
 
-## EPP Log Processing
-
-When monitoring is enabled, `capture_infrastructure_logs()` in `kube_helpers.py` captures EPP pod logs and runs `process_epp_logs.py` to extract scheduling and flow control metrics. The script reads the raw EPP logs and produces visualizations in the results directory.
+```
+BENCHMARK RUN SUMMARY
+  Local results: /Users/user/data/pd-disaggregation/vezio-20260321-211419-773/results
+  PVC results:   oc exec -n ns $(oc get pod -n ns -l role=llm-d-benchmark-data-access ...) -- ls /requests/
+```
 
 ## Dry-Run Behavior
 
-In dry-run mode:
+In dry-run mode (`--dry-run`):
 
-- Steps 00-05 log what they would do without modifying the cluster.
-- Step 06 logs the harness pod spec without deploying. Wait helpers return success immediately.
-- Steps 08-11 skip actual file operations and cloud uploads, logging what would happen.
+- Steps 00-05 log what they would do without modifying the cluster
+- Step 06 logs the harness pod spec without deploying
+- Steps 08-11 skip file operations and cloud uploads, logging what would happen
+- All logged commands show the exact kubectl/oc command that would execute
 
 ## Files
 
