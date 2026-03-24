@@ -108,6 +108,13 @@ scenario:
     standalone:
       enabled: false
       replicas: 1
+      resources:
+        limits:
+          memory: 40Gi
+          cpu: "4"
+        requests:
+          memory: 40Gi
+          cpu: "4"
 
 
     # =========================================================================

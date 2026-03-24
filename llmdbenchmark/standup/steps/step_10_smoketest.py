@@ -74,14 +74,14 @@ class SmoketestStep(Step):
             else:
                 errors.append("Could not find service/gateway IP for smoketest")
 
-        model_short = self._require_config(plan_config, "model", "shortName")
+        model_id_label = plan_config.get("model_id_label", "")
         standalone_role = self._require_config(plan_config, "standalone", "role")
         if is_standalone:
             pod_selector = (
-                f"llm-d.ai/model={model_short},llm-d.ai/role={standalone_role}"
+                f"llm-d.ai/model={model_id_label},llm-d.ai/role={standalone_role}"
             )
         else:
-            pod_selector = f"llm-d.ai/model={model_short},llm-d.ai/role=decode"
+            pod_selector = f"llm-d.ai/model={model_id_label},llm-d.ai/role=decode"
 
         context.logger.log_info(f"Checking pod status (selector: {pod_selector})...")
 

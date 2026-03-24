@@ -24,7 +24,7 @@ Note: Step 01 is intentionally absent (reserved). Steps 10 and 11 (smoketest and
 
 Steps 06-09 handle two mutually exclusive deployment methods:
 
-- **Standalone** (step 06) -- Deploys vLLM directly as Kubernetes Deployments and Services. Step 06 is skipped when modelservice is the active method.
+- **Standalone** (step 06) -- Deploys vLLM directly as Kubernetes Deployments and Services. OpenShift routes use the naming pattern `sa-{model_id_label}-route` to stay within the 63-character DNS label limit. Step 06 is skipped when modelservice is the active method.
 - **Modelservice** (steps 07-09) -- Deploys via the llm-d modelservice Helm chart with gateway infrastructure and GAIE. Steps 07-09 are skipped when standalone is the active method.
 
 The `should_skip()` method on each step checks `context.deployed_methods` to determine which path to take.

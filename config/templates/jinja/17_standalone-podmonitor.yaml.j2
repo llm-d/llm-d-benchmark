@@ -9,10 +9,10 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
-  name: vllm-standalone-{{ model.shortName }}
+  name: vllm-standalone-{{ model_id_label }}
   namespace: {{ namespace.name }}
   labels:
-    app: vllm-standalone-{{ model.shortName }}
+    app: vllm-standalone-{{ model_id_label }}
 {% if standalone.labels is defined %}
 {% for key, value in standalone.labels.items() %}
     {{ key }}: "{{ value }}"
@@ -21,7 +21,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: vllm-standalone-{{ model.shortName }}
+      app: vllm-standalone-{{ model_id_label }}
   podMetricsEndpoints:
   - port: metrics
     path: {{ monitoring.metricsPath | default('/metrics') }}

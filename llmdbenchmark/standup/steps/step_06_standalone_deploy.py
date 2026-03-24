@@ -238,7 +238,13 @@ class StandaloneDeployStep(Step):
             )
 
             if svc_name:
-                route_name = f"{svc_name}-route"
+                # Use a shorter route name to stay within the 63-char DNS label limit.
+                # The full service name (vllm-standalone-{hash}) can be too long
+                # when combined with namespace and cluster domain.
+                model_id = plan_config.get("model_id_label", "")
+                route_name = f"sa-{model_id}-route" if model_id else f"{svc_name}-route"
+                if len(route_name) > 63:
+                    route_name = route_name[:63]
                 check = cmd.kube(
                     "get", "route", route_name,
                     "-n", namespace, "--ignore-not-found",

@@ -9,7 +9,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ standalone.service.name or standalone.deployment.name or ('vllm-standalone-' ~ model.shortName) }}
+  name: {{ standalone.service.name or standalone.deployment.name or ('vllm-standalone-' ~ model_id_label) }}
   namespace: {{ namespace.name }}
   labels:
 {% if standalone.labels is defined %}
@@ -42,7 +42,7 @@ spec:
 {% endfor %}
 {% endif %}
   selector:
-    app: {{ standalone.deployment.name or ('vllm-standalone-' ~ model.shortName) }}
+    app: {{ standalone.deployment.name or ('vllm-standalone-' ~ model_id_label) }}
   type: {{ standalone.service.type | default('ClusterIP') }}
 {% if standalone.service.type == 'LoadBalancer' %}
 {% if standalone.service.loadBalancerIP is defined %}

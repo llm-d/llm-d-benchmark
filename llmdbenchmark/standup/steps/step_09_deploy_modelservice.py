@@ -51,7 +51,7 @@ class DeployModelserviceStep(Step):
 
         plan_config = self._load_stack_config(stack_path)
         release = self._require_config(plan_config, "release")
-        model_short = self._require_config(plan_config, "model", "shortName")
+        model_id_label = plan_config.get("model_id_label", "")
         inference_port = self._require_config(plan_config, "vllmCommon", "inferencePort")
 
         if not context.dry_run:
@@ -88,7 +88,7 @@ class DeployModelserviceStep(Step):
                 "--namespace",
                 namespace,
                 "--selector",
-                f"name={model_short}-ms",
+                f"name={model_id_label}-ms",
                 "apply",
                 "-f",
                 str(helmfile_work),
@@ -104,7 +104,7 @@ class DeployModelserviceStep(Step):
                     "--namespace",
                     namespace,
                     "--selector",
-                    f"name={model_short}-ms",
+                    f"name={model_id_label}-ms",
                     "apply",
                     "-f",
                     str(main_helmfile),
@@ -179,7 +179,7 @@ class DeployModelserviceStep(Step):
                     errors.append(f"Prefill pods not ready: {prefill_wait.stderr}")
 
             pool_wait = cmd.wait_for_pods(
-                label=f"inferencepool={model_short}-gaie-epp",
+                label=f"inferencepool={model_id_label}-gaie-epp",
                 namespace=namespace,
                 timeout=1500,
                 poll_interval=10,
@@ -222,7 +222,7 @@ class DeployModelserviceStep(Step):
         if gateway_class == "kgateway":
             service_name = f"infra-{release}-inference-gateway"
         else:
-            service_name = f"{model_short}-gaie-epp"
+            service_name = f"{model_id_label}-gaie-epp"
 
         context.deployed_endpoints[stack_name] = service_name
 
@@ -408,13 +408,13 @@ class DeployModelserviceStep(Step):
             )
             return
 
-        # The Helm chart creates a SA named after fullnameOverride (= model.shortName).
+        # The Helm chart creates a SA named after fullnameOverride (= model_id_label).
         # If serviceAccountOverride is set, the chart uses that instead.
         sa_override = plan_config.get("serviceAccountOverride", "")
         if sa_override:
             sa_name = sa_override
         else:
-            sa_name = self._require_config(plan_config, "model", "shortName")
+            sa_name = plan_config.get("model_id_label", "")
 
         context.logger.log_info(
             f"Assigning anyuid/privileged SCCs to SA '{sa_name}' "

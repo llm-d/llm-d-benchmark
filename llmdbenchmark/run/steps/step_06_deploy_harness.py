@@ -87,9 +87,9 @@ class DeployHarnessStep(Step):
         )
         stack_type = "vllm-prod" if is_standalone else "llm-d"
 
-        # Resolve model short name used as the llm-d.ai/model label value
-        # (e.g. "meta-llama-3-1-8b") for infrastructure log capture.
-        model_label = self._resolve(plan_config, "model.shortName")
+        # Resolve model ID label used as the llm-d.ai/model label value
+        # (hashed format matching bash model_attribute) for infrastructure log capture.
+        model_label = plan_config.get("model_id_label", "") or self._resolve(plan_config, "model.shortName")
 
         # The namespace where model-serving infrastructure lives
         deploy_namespace = self._resolve(

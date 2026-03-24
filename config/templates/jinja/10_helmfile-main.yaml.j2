@@ -21,20 +21,20 @@ releases:
     values:
       - infra.yaml
 
-  - name: {{ model.shortName }}-ms
+  - name: {{ model_id_label }}-ms
     namespace: {{ gateway.namespace }}
     chart: llm-d-modelservice/llm-d-modelservice
     version: {{ chartVersions.llmDModelservice }}
     installed: true
     needs:
       - {{ gateway.namespace }}/infra-llmdbench
-      - {{ gateway.namespace }}/{{ model.shortName }}-gaie
+      - {{ gateway.namespace }}/{{ model_id_label }}-gaie
     values:
       - ms-values.yaml
     labels:
       kind: inference-stack
 
-  - name: {{ model.shortName }}-gaie
+  - name: {{ model_id_label }}-gaie
     namespace: {{ gateway.namespace }}
     chart: oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
     version: {{ chartVersions.inferencePool }}

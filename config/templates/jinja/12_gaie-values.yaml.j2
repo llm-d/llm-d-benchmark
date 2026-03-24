@@ -107,7 +107,7 @@ inferencePool:
   modelServers:
     matchLabels:
       llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
-      llm-d.ai/model: {{ model.shortName }}
+      llm-d.ai/model: {{ model_id_label }}
 {% if inferenceExtension.inferencePoolProviderConfig is defined and inferenceExtension.inferencePoolProviderConfig %}
   provider:
     {{ gateway.className | default('istio') }}:

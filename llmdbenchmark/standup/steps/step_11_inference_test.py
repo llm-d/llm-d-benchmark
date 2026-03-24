@@ -533,7 +533,7 @@ class InferenceTestStep(Step):
         """
         try:
             release = self._require_config(plan_config, "release")
-            model_short = self._require_config(plan_config, "model", "shortName")
+            model_id_label = plan_config.get("model_id_label", "")
         except KeyError:
             return None
 
@@ -554,5 +554,5 @@ class InferenceTestStep(Step):
         protocol = "https" if tls_termination else "http"
 
         # External requests go through the HTTPRoute which requires
-        # the model path prefix (e.g., /qwen-qwen3-32b/v1/completions).
-        return f"{protocol}://{route_host}/{model_short}{endpoint}"
+        # the model ID label path prefix.
+        return f"{protocol}://{route_host}/{model_id_label}{endpoint}"

@@ -489,6 +489,10 @@ llmdbenchmark --spec wide-ep-lws standup                # Wide expert-parallel w
 
 ## Main Concepts
 
+### Model ID Label
+
+Kubernetes resource names derived from model IDs use a hashed `model_id_label` format: `{first8}-{sha256_8}-{last8}`. This keeps resource names within DNS length limits while remaining identifiable. The label is computed automatically during the plan phase and used in template rendering for deployment names, service names, and route names. See [config/README.md](config/README.md) for details.
+
 ### [Scenarios](docs/standup.md#scenarios)
 
 Cluster-specific configuration: GPU model, LLM, and `llm-d` parameters. Scenarios are YAML files under `config/scenarios/` that override `defaults.yaml` for a particular deployment context.
@@ -553,6 +557,26 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 - [WVA (Workload Variant Autoscaler)](docs/workload-variant-autoscaler.md)
 - [Upstream Versions](docs/upstream-versions.md)
 - [FAQ](docs/faq.md)
+
+## Testing
+
+Unit tests live under `tests/` and run with `pytest`:
+
+```bash
+pytest tests/ -v
+```
+
+For integration testing against a live cluster, `util/test-scenarios.sh` runs standup/teardown cycles across scenarios:
+
+```bash
+util/test-scenarios.sh --stable     # Run known-stable scenarios
+util/test-scenarios.sh --trouble    # Run scenarios that have had issues
+util/test-scenarios.sh --all        # Run all scenarios
+util/test-scenarios.sh --ms-only    # Modelservice scenarios only
+util/test-scenarios.sh --sa-only    # Standalone scenarios only
+```
+
+See [tests/README.md](tests/README.md) for unit test details.
 
 ## Developing
 

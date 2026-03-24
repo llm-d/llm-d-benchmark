@@ -9,7 +9,7 @@
 
 {# Macro to build kv-events-config JSON #}
 {% macro build_kv_events_config() -%}
-{% set default_service_name = model.shortName ~ '-gaie-epp' -%}
+{% set default_service_name = model_id_label ~ '-gaie-epp' -%}
 {% set service_name = vllmCommon.kvEvents.serviceName | default(default_service_name) -%}
 {% set ns = namespace.name -%}
 {% set port = vllmCommon.kvEvents.port -%}

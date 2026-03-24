@@ -89,14 +89,16 @@ During plan rendering, the following resolvers execute in order on the merged va
 
 1. **Resource preset application** -- Merge named resource preset into decode/prefill configs.
 2. **Version resolution** -- Resolve `"auto"` image tags and chart versions.
-3. **Cluster resource resolution** -- Resolve `"auto"` accelerator, network, affinity, and GPU labels.
-4. **Namespace resolution** -- Apply CLI `--namespace` override or resolve `"auto"` to default `"llmdbench"`. Supports comma-separated `deploy,harness,wva` format.
-5. **Model resolution** -- Apply CLI `--models` override. Generates K8s-safe short name from model ID.
-6. **Custom command conflict warning** -- Warns when CLI `--models` won't propagate into hardcoded `customCommand` values.
-7. **Deploy method resolution** -- Apply CLI `--methods` override (`standalone` or `modelservice`). Only one may be active.
-8. **Monitoring resolution** -- Apply CLI `--monitoring` flag. Enables PodMonitor and metrics scraping.
-9. **HuggingFace token auto-detection** -- Detect HF token from `HF_TOKEN` or `HUGGING_FACE_HUB_TOKEN` env vars when the configured token is a sentinel value (`REPLACE_TOKEN` or empty).
-10. **Config schema validation** -- Non-blocking Pydantic validation.
+3. **Image override logging** (`_log_image_overrides`) -- When a scenario pins an image to a non-auto tag, the renderer logs the override (e.g. `Image override: vllm pinned to us.icr.io/...:v1.1.1`).
+4. **Cluster resource resolution** -- Resolve `"auto"` accelerator, network, affinity, and GPU labels.
+5. **Namespace resolution** -- Apply CLI `--namespace` override or resolve `"auto"` to default `"llmdbench"`. Supports comma-separated `deploy,harness,wva` format.
+6. **Model resolution** -- Apply CLI `--models` override.
+7. **Model ID label resolution** (`_resolve_model_id_label`) -- Compute `model_id_label` from the model name using the hashed format `{first8}-{sha256_8}-{last8}`. This label is used in all templates for Kubernetes resource naming.
+8. **Custom command conflict warning** -- Warns when CLI `--models` won't propagate into hardcoded `customCommand` values.
+9. **Deploy method resolution** -- Apply CLI `--methods` override (`standalone` or `modelservice`). Only one may be active.
+10. **Monitoring resolution** -- Apply CLI `--monitoring` flag. Enables PodMonitor and metrics scraping.
+11. **HuggingFace token auto-detection** -- Detect HF token from `HF_TOKEN` or `HUGGING_FACE_HUB_TOKEN` env vars when the configured token is a sentinel value (`REPLACE_TOKEN` or empty).
+12. **Config schema validation** -- Non-blocking Pydantic validation.
 
 ## Version Resolver (`version_resolver.py`)
 

@@ -19,11 +19,7 @@ common:
 {{ common | toyaml | indent(2) }}
 {% endif %}
 
-{% if modelservice is defined and modelservice.enabled is defined %}
-enabled: {{ modelservice.enabled | lower }}
-{% endif %}
-
-fullnameOverride: {{ model.shortName }}
+fullnameOverride: {{ model_id_label }}
 
 {% if serviceAccountOverride is defined and serviceAccountOverride %}
 serviceAccountOverride: {{ serviceAccountOverride }}
@@ -49,14 +45,10 @@ modelArtifacts:
 {% if huggingface.secretName is defined and huggingface.secretName %}
   authSecretName: "{{ huggingface.secretName }}"
 {% endif %}
-{% if modelArtifacts is defined and modelArtifacts.mountPath is defined %}
-  mountPath: {{ modelArtifacts.mountPath }}
-{% else %}
   mountPath: /model-cache
-{% endif %}
   labels:
     llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
-    llm-d.ai/model: {{ model.shortName }}
+    llm-d.ai/model: {{ model_id_label }}
 {% if modelArtifacts is defined and modelArtifacts.extraLabels is defined %}
 {% for key, value in modelArtifacts.extraLabels.items() %}
     {{ key }}: "{{ value }}"
@@ -254,16 +246,20 @@ decode:
   priorityClassName: {{ decode.priorityClassName }}
 {% endif %}
 
-{% if (decode.parallelism.tensor | int) > 0 and decode.accelerator is defined and (decode.accelerator.count | default(0) | int) > 0 %}
+{% set decode_accel_count = (decode.accelerator.count | default(decode.parallelism.tensor | int) | int) if decode.accelerator is defined else (decode.parallelism.tensor | int) %}
+{% if decode_accel_count > 0 %}
+{% set d_accel_type = decode.acceleratorType if decode.acceleratorType is defined else (standalone.acceleratorType if standalone.acceleratorType is defined else {}) %}
+{% if d_accel_type and d_accel_type.labelKey is defined %}
   acceleratorTypes:
-    labelKey: {{ decode.acceleratorType.labelKey }}
+    labelKey: {{ d_accel_type.labelKey }}
     labelValues:
-{% if decode.acceleratorType.labelValues is defined %}
-{% for value in decode.acceleratorType.labelValues %}
+{% if d_accel_type.labelValues is defined %}
+{% for value in d_accel_type.labelValues %}
     - {{ value }}
 {% endfor %}
-{% elif decode.acceleratorType.labelValue is defined %}
-    - {{ decode.acceleratorType.labelValue }}
+{% elif d_accel_type.labelValue is defined %}
+    - {{ d_accel_type.labelValue }}
+{% endif %}
 {% endif %}
 {% endif %}
 
@@ -713,16 +709,20 @@ prefill:
   priorityClassName: {{ prefill.priorityClassName }}
 {% endif %}
 
-{% if (prefill.parallelism.tensor | int) > 0 and prefill.accelerator is defined and (prefill.accelerator.count | default(0) | int) > 0 %}
+{% set prefill_accel_count = (prefill.accelerator.count | default(prefill.parallelism.tensor | int) | int) if prefill.accelerator is defined else (prefill.parallelism.tensor | int) %}
+{% if prefill_accel_count > 0 %}
+{% set p_accel_type = prefill.acceleratorType if prefill.acceleratorType is defined else (standalone.acceleratorType if standalone.acceleratorType is defined else {}) %}
+{% if p_accel_type and p_accel_type.labelKey is defined %}
   acceleratorTypes:
-    labelKey: {{ prefill.acceleratorType.labelKey }}
+    labelKey: {{ p_accel_type.labelKey }}
     labelValues:
-{% if prefill.acceleratorType.labelValues is defined %}
-{% for value in prefill.acceleratorType.labelValues %}
+{% if p_accel_type.labelValues is defined %}
+{% for value in p_accel_type.labelValues %}
     - {{ value }}
 {% endfor %}
-{% elif prefill.acceleratorType.labelValue is defined %}
-    - {{ prefill.acceleratorType.labelValue }}
+{% elif p_accel_type.labelValue is defined %}
+    - {{ p_accel_type.labelValue }}
+{% endif %}
 {% endif %}
 {% endif %}
 

@@ -27,7 +27,7 @@ Smoketests also run automatically at the end of `llmdbenchmark standup`. Use `--
 
 | Step | Name | What it does | Runs for |
 |------|------|--------------|----------|
-| 00 | `health_check` | Verifies pods are running, `/health` responds, `/v1/models` returns the expected model, service/gateway is reachable, pod IPs respond, OpenShift route works (if applicable) | All scenarios |
+| 00 | `health_check` | Verifies pods are running, `/health` responds, `/v1/models` returns the expected model, service/gateway is reachable, pod IPs respond, OpenShift route works (if applicable). When both decode and prefill are configured, checks both pod groups. | All scenarios |
 | 01 | `inference_test` | Sends a sample `/v1/completions` request (falls back to `/v1/chat/completions`), logs generated text and a copy-pasteable curl command for demo purposes | All scenarios |
 | 02 | `validate_config` | Compares the live pod spec against the rendered `config.yaml` to catch mismatches in resources, parallelism, env vars, probes, volumes, security context, and vLLM flags | Scenarios with a dedicated validator |
 
@@ -37,7 +37,7 @@ Scenarios without a dedicated validator (cicd paths, sim-small, etc.) run steps 
 
 The health check validates every layer of the serving stack:
 
-- **Pod status** -- all model-serving pods are in Running state with ready containers
+- **Pod status** -- all model-serving pods are in Running state with ready containers. When both decode and prefill pods are configured (e.g. pd-disaggregation), both groups are checked independently. Logs explicitly distinguish "decode pod(s)" from "prefill pod(s)".
 - **`/health` endpoint** -- the vLLM health endpoint returns 200
 - **`/v1/models`** -- the models API returns the expected model name
 - **Service test** -- the Kubernetes Service routes traffic to pods

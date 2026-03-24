@@ -26,7 +26,7 @@ class WideEpLwsValidator(BaseSmoketest):
             ))
             return report
 
-        model_short = _nested_get(config, "model", "shortName") or ""
+        model_short = config.get("model_id_label", "") or _nested_get(config, "model", "shortName") or ""
 
         decode_pods = self.validate_role_pods(
             cmd, namespace, config, "decode", model_short, report, logger=context.logger,

@@ -4,7 +4,7 @@
 {# ── GKE: managed gateway with destinationRule ── #}
 gateway:
   gatewayClassName: gke-l7-regional-external-managed
-  destinationRule: {{ model.shortName }}-gaie-epp.{{ namespace.name }}
+  destinationRule: {{ model_id_label }}-gaie-epp.{{ namespace.name }}
 
 provider:
   name: gke

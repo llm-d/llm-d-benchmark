@@ -62,10 +62,10 @@ class DeployGaieStep(Step):
         helmfile_work = helm_dir / "helmfile.yaml"
 
         if helmfile_work.exists():
-            model_short = self._require_config(plan_config, "model", "shortName")
+            model_id_label = plan_config.get("model_id_label", "")
             result = cmd.helmfile(
                 "--namespace", namespace,
-                "--selector", f"name={model_short}-gaie",
+                "--selector", f"name={model_id_label}-gaie",
                 "apply", "-f", str(helmfile_work),
                 "--skip-diff-on-install", "--skip-schema-validation",
             )
@@ -74,10 +74,10 @@ class DeployGaieStep(Step):
         else:
             main_helmfile = self._find_yaml(stack_path, "10_helmfile-main")
             if main_helmfile:
-                model_short = self._require_config(plan_config, "model", "shortName")
+                model_id_label = plan_config.get("model_id_label", "")
                 result = cmd.helmfile(
                     "--namespace", namespace,
-                    "--selector", f"name={model_short}-gaie",
+                    "--selector", f"name={model_id_label}-gaie",
                     "apply", "-f", str(main_helmfile),
                     "--skip-diff-on-install", "--skip-schema-validation",
                 )

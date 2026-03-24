@@ -26,7 +26,7 @@ class PdDisaggregationValidator(BaseSmoketest):
             ))
             return report
 
-        model_short = _nested_get(config, "model", "shortName") or ""
+        model_short = config.get("model_id_label", "") or _nested_get(config, "model", "shortName") or ""
 
         prefill_enabled = _nested_get(config, "prefill", "enabled")
         if prefill_enabled:

@@ -84,55 +84,78 @@ class BaseSmoketest:
         plan_config = _load_config(stack_path)
 
         model_name = _nested_get(plan_config, "model", "name") or ""
-        model_short = _nested_get(plan_config, "model", "shortName") or ""
+        model_id_label = plan_config.get("model_id_label", "") or _nested_get(plan_config, "model", "shortName") or ""
         standalone_role = _nested_get(plan_config, "standalone", "role") or "standalone"
 
         service_ip, gateway_port, is_standalone = self.discover_endpoint(
             cmd, context, plan_config,
         )
 
-        # Build pod selector
+        # 1. Check pods running for each configured role
         if is_standalone:
-            pod_selector = (
-                f"llm-d.ai/model={model_short},llm-d.ai/role={standalone_role}"
-            )
+            roles_to_check = [("standalone", standalone_role)]
         else:
-            pod_selector = f"llm-d.ai/model={model_short},llm-d.ai/role=decode"
-
-        # 1. Check pods running
-        context.logger.log_info(f"Checking pod status (selector: {pod_selector})...")
-        pod_check = cmd.kube(
-            "get", "pods", "-l", pod_selector,
-            "--namespace", namespace,
-            "-o", "jsonpath={.items[*].status.phase}",
-            check=False,
-        )
-        if not pod_check.dry_run:
-            if pod_check.success:
-                phases = pod_check.stdout.strip().split()
-                if not phases:
-                    report.add(CheckResult(
-                        "pods_exist", False,
-                        message=f"No pods found with selector '{pod_selector}'",
-                    ))
-                elif not all(p == "Running" for p in phases):
-                    report.add(CheckResult(
-                        "pods_running", False,
-                        expected="all Running",
-                        actual=", ".join(phases),
-                        message=f"Not all pods running (found: {', '.join(phases)})",
-                    ))
-                else:
-                    context.logger.log_info(f"All {len(phases)} pod(s) running ✓")
-                    report.add(CheckResult(
-                        "pods_running", True,
-                        message=f"{len(phases)} pod(s) running",
-                    ))
+            # Check whichever roles are configured (decode, prefill, or both)
+            roles_to_check = []
+            decode_enabled = _nested_get(plan_config, "decode", "enabled")
+            decode_replicas = _nested_get(plan_config, "decode", "replicas") or 0
+            # decode is enabled by default if not explicitly disabled
+            if decode_enabled is not False and int(decode_replicas) > 0:
+                roles_to_check.append(("decode", "decode"))
             else:
-                report.add(CheckResult(
-                    "pods_check", False,
-                    message=f"Failed to check pod status: {pod_check.stderr}",
-                ))
+                context.logger.log_info("No decode pods configured -- skipping decode health check")
+            prefill_enabled = _nested_get(plan_config, "prefill", "enabled")
+            prefill_replicas = _nested_get(plan_config, "prefill", "replicas") or 0
+            if prefill_enabled and int(prefill_replicas) > 0:
+                roles_to_check.append(("prefill", "prefill"))
+            else:
+                context.logger.log_info("No prefill pods configured -- skipping prefill health check")
+
+        if not roles_to_check:
+            report.add(CheckResult(
+                "pods_configured", False,
+                message="No decode, prefill, or standalone pods configured",
+            ))
+
+        for pod_type, role_label in roles_to_check:
+            role_selector = f"llm-d.ai/model={model_id_label},llm-d.ai/role={role_label}"
+            context.logger.log_info(
+                f"Checking {pod_type} pod status (selector: {role_selector})..."
+            )
+            pod_check = cmd.kube(
+                "get", "pods", "-l", role_selector,
+                "--namespace", namespace,
+                "-o", "jsonpath={.items[*].status.phase}",
+                check=False,
+            )
+            if not pod_check.dry_run:
+                if pod_check.success:
+                    phases = pod_check.stdout.strip().split()
+                    if not phases:
+                        report.add(CheckResult(
+                            f"{pod_type}_pods_exist", False,
+                            message=f"No {pod_type} pods found with selector '{role_selector}'",
+                        ))
+                    elif not all(p == "Running" for p in phases):
+                        report.add(CheckResult(
+                            f"{pod_type}_pods_running", False,
+                            expected="all Running",
+                            actual=", ".join(phases),
+                            message=f"Not all {pod_type} pods running (found: {', '.join(phases)})",
+                        ))
+                    else:
+                        context.logger.log_info(
+                            f"All {len(phases)} {pod_type} pod(s) running ✓"
+                        )
+                        report.add(CheckResult(
+                            f"{pod_type}_pods_running", True,
+                            message=f"{len(phases)} {pod_type} pod(s) running",
+                        ))
+                else:
+                    report.add(CheckResult(
+                        f"{pod_type}_pods_check", False,
+                        message=f"Failed to check {pod_type} pod status: {pod_check.stderr}",
+                    ))
 
         if not service_ip:
             report.add(CheckResult(
@@ -177,10 +200,12 @@ class BaseSmoketest:
             )
             report.add(CheckResult("service_endpoint", True, message="Service responding"))
 
-        # 5. Test pod IPs directly
+        # 5. Test pod IPs directly (use the first role -- decode for ms, standalone for standalone)
         inference_port = _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
+        primary_role = roles_to_check[0] if roles_to_check else ("decode", "decode")
+        primary_selector = f"llm-d.ai/model={model_id_label},llm-d.ai/role={primary_role[1]}"
         pod_ips_result = cmd.kube(
-            "get", "pods", "-l", pod_selector,
+            "get", "pods", "-l", primary_selector,
             "--namespace", namespace,
             "-o", "jsonpath={.items[*].status.podIP}",
             check=False,
@@ -1334,7 +1359,7 @@ class BaseSmoketest:
     ) -> str | None:
         try:
             release = _nested_get(plan_config, "release") or ""
-            model_short = _nested_get(plan_config, "model", "shortName") or ""
+            model_id_label = plan_config.get("model_id_label", "") or _nested_get(plan_config, "model", "shortName") or ""
         except KeyError:
             return None
 
@@ -1357,7 +1382,7 @@ class BaseSmoketest:
         tls_termination = parts[1] if len(parts) > 1 else ""
         protocol = "https" if tls_termination else "http"
 
-        return f"{protocol}://{route_host}/{model_short}{endpoint}"
+        return f"{protocol}://{route_host}/{model_id_label}{endpoint}"
 
 
 def _nested_get(d: dict, *keys: str):

@@ -10,7 +10,7 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
-  name: vllm-{{ model.shortName }}
+  name: vllm-{{ model_id_label }}
   namespace: {{ namespace.name }}
   labels:
 {% if annotations is defined and annotations.common is defined and annotations.common %}
@@ -22,7 +22,7 @@ spec:
   selector:
     matchLabels:
       llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
-      llm-d.ai/model: {{ model.shortName }}
+      llm-d.ai/model: {{ model_id_label }}
   podMetricsEndpoints:
   - port: {{ monitoring.podmonitor.portName | default('metrics') }}
     path: {{ monitoring.metricsPath | default('/metrics') }}

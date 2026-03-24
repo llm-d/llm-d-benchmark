@@ -7,6 +7,7 @@ versions and cluster resources, and writes validated YAML to the output dir.
 import base64
 import hashlib
 import json
+import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Optional, Any
@@ -89,6 +90,7 @@ class RenderPlans:
         env.filters["default_if_empty"] = self._default_if_empty_filter
         env.filters["b64pad"] = self._b64pad_filter
         env.filters["b64encode"] = self._b64encode_filter
+        env.filters["model_id_label"] = self._model_id_label_filter
 
         self._jinja_env = env
         return env
@@ -183,6 +185,25 @@ class RenderPlans:
         if not value or not isinstance(value, str):
             return value
         return base64.b64encode(value.encode("utf-8")).decode("utf-8")
+
+    @staticmethod
+    def _model_id_label_filter(model_name: str, namespace: str = "") -> str:
+        """Generate a hashed model ID label matching the bash implementation.
+
+        Takes a model name like 'Qwen/Qwen3-32B' and a namespace, produces
+        a DNS-safe label in the format: {first8}-{hash8}-{last8}.
+
+        This matches the bash model_attribute() function in setup/functions.py.
+        """
+
+        if not model_name:
+            return model_name
+
+        model_id = model_name.replace("/", "-").replace(".", "-")
+        hash_input = f"{namespace}/{model_id}" if namespace else model_id
+        digest = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()
+        label = f"{model_id[:8]}-{digest[:8]}-{model_id[-8:]}"
+        return label.lower()
 
     def _load_yaml(self, yaml_file: Path) -> dict:
         """Load and parse a YAML file, raising on missing file or invalid syntax."""
@@ -435,7 +456,54 @@ class RenderPlans:
 
         return result
 
+    def _log_image_overrides(self, values: dict) -> None:
+        """Log images that have been explicitly set (not 'auto').
+
+        Called before version resolution so users can see which images
+        were pinned by the scenario or CLI rather than auto-resolved.
+        """
+        images = values.get("images", {})
+        for key, img in images.items():
+            if isinstance(img, dict):
+                tag = img.get("tag", "auto")
+                repo = img.get("repository", "")
+                if tag and tag != "auto" and repo:
+                    self.logger.log_info(
+                        f"Image override: {key} pinned to {repo}:{tag}"
+                    )
+
+        standalone_img = values.get("standalone", {}).get("image", {})
+        if isinstance(standalone_img, dict):
+            tag = standalone_img.get("tag", "auto")
+            repo = standalone_img.get("repository", "")
+            if tag and tag != "auto" and repo:
+                self.logger.log_info(
+                    f"Image override: standalone pinned to {repo}:{tag}"
+                )
+
     # Sentinel values indicating no real HF token has been configured
+    def _resolve_model_id_label(self, values: dict) -> dict:
+        """Compute the hashed model ID label and inject it into the config.
+
+        Matches the bash model_attribute() function: takes the model name,
+        replaces / and . with -, then builds {first8}-{sha256_8}-{last8}.
+        The hash input includes the namespace for uniqueness.
+        """
+        model = values.get("model", {})
+        model_name = model.get("name", "")
+        namespace = values.get("namespace", {}).get("name", "")
+
+        if model_name:
+            model_id = model_name.replace("/", "-").replace(".", "-")
+            hash_input = f"{namespace}/{model_id}" if namespace else model_id
+            digest = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()
+            label = f"{model_id[:8]}-{digest[:8]}-{model_id[-8:]}"
+            values["model_id_label"] = label.lower()
+        else:
+            values["model_id_label"] = model.get("shortName", "")
+
+        return values
+
     _HF_TOKEN_SENTINELS = {"REPLACE_TOKEN", "REPLACE_TOKEN_B64", ""}
 
     def _resolve_hf_token(self, values: dict) -> dict:
@@ -452,8 +520,6 @@ class RenderPlans:
         with its base64-encoded form so that rendered K8s Secret YAMLs
         work correctly.
         """
-        import os
-
         result = deepcopy(values)
         hf_config = result.get("huggingface", {})
         current_token = hf_config.get("token", "")
@@ -582,6 +648,8 @@ class RenderPlans:
 
         merged_values = self._apply_resource_preset(merged_values)
 
+        self._log_image_overrides(merged_values)
+
         if self.version_resolver:
             try:
                 merged_values = self.version_resolver.resolve_all(merged_values)
@@ -602,6 +670,7 @@ class RenderPlans:
         merged_values = self._resolve_deploy_method(merged_values)
         merged_values = self._resolve_monitoring(merged_values)
         merged_values = self._resolve_hf_token(merged_values)
+        merged_values = self._resolve_model_id_label(merged_values)
 
         from llmdbenchmark.parser.config_schema import validate_config
 

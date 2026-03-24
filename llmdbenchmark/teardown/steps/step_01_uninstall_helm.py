@@ -55,13 +55,13 @@ class UninstallHelmStep(Step):
         )
 
     def _collect_model_labels(self, context: ExecutionContext) -> list[str]:
-        """Collect model short names used to match helm releases by model ID label."""
+        """Collect model ID labels used to match helm releases."""
         labels: list[str] = []
         for stack_path in context.rendered_stacks or []:
             cfg = self._load_stack_config(stack_path)
-            short = cfg.get("model", {}).get("shortName", "")
-            if short and short not in labels:
-                labels.append(short)
+            label = cfg.get("model_id_label", "")
+            if label and label not in labels:
+                labels.append(label)
         return labels
 
     def _uninstall_releases(

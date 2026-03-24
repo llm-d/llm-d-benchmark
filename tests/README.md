@@ -58,6 +58,20 @@ Validates the DoE experiment parser (`llmdbenchmark/experiment/parser.py`) and s
 | `TestExperimentSummary` | Result recording, YAML serialization, summary table output |
 | `TestSetupTreatment` | Dataclass defaults and override storage |
 
+## Integration Testing
+
+For end-to-end testing against a live cluster, `util/test-scenarios.sh` runs standup/teardown cycles across scenarios:
+
+```bash
+util/test-scenarios.sh --stable     # Run known-stable scenarios
+util/test-scenarios.sh --trouble    # Run scenarios that have had issues
+util/test-scenarios.sh --all        # Run all scenarios
+util/test-scenarios.sh --ms-only    # Modelservice scenarios only
+util/test-scenarios.sh --sa-only    # Standalone scenarios only
+```
+
+This is useful for validating that template changes do not break deployment across different scenario configurations.
+
 ## Keeping Tests in Sync
 
 The config schema validates `defaults.yaml` and all scenario files automatically. When you make changes to templates or config, run the tests to catch regressions.

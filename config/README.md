@@ -94,7 +94,6 @@ scenario:
   - name: "my-deployment"
     model:
       name: Qwen/Qwen3-32B
-      shortName: qwen-qwen3-32b
     decode:
       replicas: 4
     namespace:
@@ -454,6 +453,20 @@ decode:
 ```
 
 When `resource` is set to `"auto"`, the cluster resource resolver detects the accelerator resource name from cluster nodes at plan time (requires cluster connectivity).
+
+---
+
+## Model ID Label
+
+Kubernetes resource names are derived from the model ID using a hashed `model_id_label` format:
+
+```
+{first8}-{sha256_8}-{last8}
+```
+
+For example, `meta-llama/Llama-3.1-8B` produces `meta-lla-a1b2c3d4-a-3-1-8b`. This format keeps resource names within the 63-character DNS label limit while remaining identifiable. The label is computed automatically by `_resolve_model_id_label` during plan rendering -- scenarios do not need to set it manually. The `model_id_label` field replaces the former `model.shortName` in all templates and Python code.
+
+The hashing matches the bash `model_attribute()` function so that CLI tools and rendered manifests produce consistent names.
 
 ---
 
@@ -973,6 +986,8 @@ scenario:
 
 **How to tell which one to use:** Check whether your specification's scenario has `standalone.enabled: true`. If it does, the vLLM serving image comes from `standalone.image`. Otherwise (modelservice path), it comes from `images.vllm`. You can verify by running `plan` and inspecting the rendered YAML in the stack output directory.
 
+**Image override logging:** When a scenario pins an image to a non-auto tag, the renderer logs the override during plan rendering. For example: `Image override: vllm pinned to us.icr.io/...:v1.1.1`. This makes it easy to see which images differ from the auto-resolved defaults.
+
 After standup, the deployed images are recorded in the `llm-d-benchmark-standup-parameters` ConfigMap:
 
 ```bash
@@ -1035,7 +1050,6 @@ scenario:
 
     model:
       name: meta-llama/Llama-3.1-8B
-      shortName: meta-llama-3-1-8b
       path: models/meta-llama/Llama-3.1-8B
       huggingfaceId: meta-llama/Llama-3.1-8B
 

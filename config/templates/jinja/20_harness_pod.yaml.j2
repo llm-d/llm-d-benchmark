@@ -79,7 +79,7 @@ spec:
     - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX
       value: "{{ harness.resultsDirPrefix | default('/requests') }}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
-      value: "{{ harness.stackName | default(model.shortName) | default('default') }}"
+      value: "{{ harness.stackName | default(model_id_label) | default('default') }}"
 {% if monitoring is defined and monitoring.metricsScrapeEnabled is defined %}
     - name: LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED
       value: "{{ monitoring.metricsScrapeEnabled }}"

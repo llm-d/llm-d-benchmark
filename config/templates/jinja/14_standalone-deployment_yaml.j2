@@ -22,9 +22,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vllm-standalone-{{ model.shortName }}
+  name: vllm-standalone-{{ model_id_label }}
   labels:
-    app: vllm-standalone-{{ model.shortName }}
+    app: vllm-standalone-{{ model_id_label }}
 {% if standalone.labels is defined %}
 {% for key, value in standalone.labels.items() %}
     {{ key }}: "{{ value }}"
@@ -41,13 +41,13 @@ spec:
   replicas: {{ standalone.replicas }}
   selector:
     matchLabels:
-      app: vllm-standalone-{{ model.shortName }}
+      app: vllm-standalone-{{ model_id_label }}
   template:
     metadata:
       labels:
-        app: vllm-standalone-{{ model.shortName }}
+        app: vllm-standalone-{{ model_id_label }}
         llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
-        llm-d.ai/model: {{ model.shortName }}
+        llm-d.ai/model: {{ model_id_label }}
         llm-d.ai/role: {{ standalone.role }}
 {% if standalone.extraPodLabels is defined %}
 {% for key, value in standalone.extraPodLabels.items() %}
@@ -158,7 +158,7 @@ spec:
 {% endif %}
       containers:
 {# ===== MAIN VLLM CONTAINER ===== #}
-      - name: vllm-standalone-{{ model.shortName }}
+      - name: vllm-standalone-{{ model_id_label }}
         image: {{ standalone.image.repository }}:{{ standalone.image.tag }}
         imagePullPolicy: {{ standalone.image.pullPolicy }}
         command:
@@ -357,7 +357,7 @@ spec:
 {# Mirrors bash LLMDBENCH_VLLM_STANDALONE_LAUNCHER feature.                   #}
 {# Shares same volumes, env vars, and resources as the main container.         #}
 {% if standalone.launcher is defined and standalone.launcher.enabled %}
-      - name: vllm-launcher-{{ model.shortName }}
+      - name: vllm-launcher-{{ model_id_label }}
         image: {{ standalone.launcher.image.repository | default(standalone.image.repository) }}:{{ standalone.launcher.image.tag | default(standalone.image.tag) }}
         imagePullPolicy: {{ standalone.launcher.imagePullPolicy }}
         command:
