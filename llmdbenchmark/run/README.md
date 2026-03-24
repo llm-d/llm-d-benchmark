@@ -30,12 +30,12 @@ Point directly at an existing endpoint -- no `--spec` or prior `standup` require
 
 ```bash
 # Against a known service URL
-llmdbenchmark run -p my-namespace \
-  -U http://my-model-service.my-namespace.svc.cluster.local:80 \
+llmdbenchmark run -p <NS> \
+  -U http://my-model-service.<NS>.svc.cluster.local:80 \
   -l inference-perf -w sanity_random.yaml -m Qwen/Qwen3-32B
 
 # Against an external URL
-llmdbenchmark run -p my-namespace \
+llmdbenchmark run -p <NS> \
   -U https://my-model.example.com/v1 \
   -l inference-perf -w chatbot_synthetic.yaml -m Qwen/Qwen3-32B
 ```
@@ -43,6 +43,28 @@ llmdbenchmark run -p my-namespace \
 When `-U` is provided, the run skips endpoint auto-detection (step 02) and
 model verification (step 03), and goes straight to profile rendering and
 harness deployment.
+
+### Finding the service URL from an existing deployment
+
+If a stack is already deployed but you don't know the endpoint URL:
+
+```bash
+# Modelservice -- get the gateway service URL
+oc get svc -n <NS> -l app.kubernetes.io/name=llm-d-infra -o jsonpath='{.items[0].metadata.name}'
+# Typically: http://infra-llmdbench-inference-gateway-istio.<NS>.svc.cluster.local:80
+
+# Standalone -- get the standalone service URL
+oc get svc -n <NS> -l app.kubernetes.io/managed-by=llm-d-benchmark -o jsonpath='{.items[0].metadata.name}'
+# Typically: http://vllm-standalone-<model-id>.<NS>.svc.cluster.local:8000
+
+# OpenShift route (external access)
+oc get route -n <NS> -o jsonpath='{.items[0].spec.host}'
+# Use: http://<route-host>
+
+# Verify the endpoint is serving
+oc exec -n <NS> $(oc get pod -n <NS> -l role=llm-d-benchmark-data-access -o jsonpath='{.items[0].metadata.name}') \
+  -- curl -s http://infra-llmdbench-inference-gateway-istio.<NS>.svc.cluster.local:80/v1/models
+```
 
 ### Generate a run config for reuse
 
