@@ -31,11 +31,13 @@ executables_path = "/usr/local/bin"
 ips_for_fping = []
 curr_hca=''
 
+init_container_commands = []
+
 deps_present = {}
 deps_present["ip"] = False
 deps_present["ibstat"] = False
-deps_present["show_gids"]= False
-deps_present["gemini-arp-fix"] = False
+deps_present["show_gids.sh"]= False
+deps_present["gemini-arp-fix.sh"] = False
 
 nvshmem_remote_transport="ibgda"
 nvshmem_ib_enable_ibgda="true"
@@ -63,11 +65,22 @@ _parser.add_option("-d" , "--debug", \
 
 _parser.add_option("-e" , "--envfile", \
                     dest="envfile", \
-                    default="llmdbench_env.sh", \
+                    default=f"{Path.home()}/llmdbench_env.sh", \
                     help="name of the environment file generated (on user's home directory")
+
+_parser.add_option("-i" , "--initcontainermode", \
+                    action="store_true", \
+                    dest="initcontainermode", \
+                    default=False, \
+                    help="if executed from an initContainer, just dump all commands to envfile for further execution")
 
 _parser.set_defaults()
 (options, _args) = _parser.parse_args()
+
+options.envdir = options.envfile.replace("/llmdbench_env.sh",'')
+
+if options.initcontainermode :
+    print(f"DEBUG: \"initContainer mode\" detected. Will write commands to {options.envfile}, instead of executing those")
 
 if os.getenv('FLEX_DEVICE','PF') == 'VF' :
     env_file_name=f"{Path.home()}/.senlib.json"
@@ -78,11 +91,12 @@ if os.getenv('FLEX_DEVICE','PF') == 'VF' :
         senlib_contents['RISCV']['DOOM']['enable'] = True
         with open(env_file_name, 'w') as senlib_file:
             json.dump(senlib_contents, senlib_file, indent=4)
-
+result = None
 for dep in deps_present.keys() :
     try :
         result = subprocess.run(['which', dep], capture_output=True, text=True, check=True)
         deps_present[dep] = True
+        shutil.copy2(result.stdout.split('\n')[0], f"{options.envdir}/{result.stdout.split('\n')[0].split('/')[-1]}")
     except subprocess.CalledProcessError as e:
         if os.access(executables_path, os.W_OK):
             print(f"WARNING: Dependency \"{dep}\" not available on the image: {e.cmd} returned {e.returncode}. Trying to obtain externally...")
@@ -94,6 +108,7 @@ for dep in deps_present.keys() :
     try :
         result = subprocess.run(['which', dep], capture_output=True, text=True, check=True)
         deps_present[dep] = True
+        shutil.copy2(result.stdout.split('\n')[0], f"{options.envdir}/{result.stdout.split('\n')[0].split('/')[-1]}")
     except subprocess.CalledProcessError as e:
         print(f"WARNING: Dependency \"{dep}\" neither available on the image nor on the config map: {e.cmd} returned {e.returncode}.")
 
@@ -144,7 +159,7 @@ if deps_present["ip"] :
     with open(file_name, 'w') as fh:
         json.dump(ip_route_info, fh)
 
-if deps_present["show_gids"] :
+if deps_present["show_gids.sh"] :
     file_name=f"{Path.home()}/.gid_to_device.json"
     if Path(file_name).is_file():
         with open(file_name, 'r') as fh:
@@ -156,7 +171,7 @@ if deps_present["show_gids"] :
             hcadev_to_gid = json.load(fh)
 
     if not gid_to_device and not hcadev_to_gid :
-        show_gids_command_output = subprocess.run(['show_gids'], capture_output=True, text=True, check=True)
+        show_gids_command_output = subprocess.run(['show_gids.sh'], capture_output=True, text=True, check=True)
         for line in show_gids_command_output.stdout.split('\n')[2:] :
             if len(line.split('\t')) == 7 :
                 hcadev, _, gidnum, gid, ipv4, _, netdev = line.split('\t')
@@ -230,9 +245,10 @@ if deps_present["ibstat"] :
         if line.count('State') :
             hca_info[curr_hca]['status'] = line.split(':')[-1].strip().replace('Active','UP').replace('Down','DOWN')
 
-        hca_info[curr_hca]["gids"] = []
-        if curr_hca in hcadev_to_gid :
-            hca_info[curr_hca]["gids"] = hcadev_to_gid[curr_hca]
+        if curr_hca in hca_info :
+            hca_info[curr_hca]["gids"] = []
+            if curr_hca in hcadev_to_gid :
+                hca_info[curr_hca]["gids"] = hcadev_to_gid[curr_hca]
 
     file_name=f"{Path.home()}/.hca_info.json"
     with open(file_name, 'w') as fh:
@@ -346,29 +362,37 @@ if create_multiple_routing_tables :
                     print(f"WARNING: Command \"{e.cmd}\" returned {e.returncode}.")
 
                 if not new_routing_table_populated :
-                    try :
-                        subprocess.run(['ip', 'route', 'add', network, 'dev', interface, 'src', ip, 'table', table], capture_output=True, text=True, check=True)
-                    except subprocess.CalledProcessError as e:
-                        print(f"WARNING: Command \"{e.cmd}\" returned {e.returncode}.")
+                    if options.initcontainermode :
+                        init_container_commands.append(f"echo \"{new_routing_table_entry}\" >> {rt_tables_path}")
+                        init_container_commands.append(f"ip route add {network} dev {interface} src {ip} table {table}")
+                        init_container_commands.append(f"ip rule add from {ip} lookup {table}")
+                    else :
+                        try :
+                            subprocess.run(['ip', 'route', 'add', network, 'dev', interface, 'src', ip, 'table', table], capture_output=True, text=True, check=True)
+                        except subprocess.CalledProcessError as e:
+                            print(f"WARNING: Command \"{e.cmd}\" returned {e.returncode}.")
 
-                    try :
-                        subprocess.run(['ip', 'rule', 'add', 'from', ip, 'lookup', table], capture_output=True, text=True, check=True)
-                    except subprocess.CalledProcessError as e:
-                        print(f"WARNING: Command \"{e.cmd}\" returned {e.returncode}.")
-
+                        try :
+                            subprocess.run(['ip', 'rule', 'add', 'from', ip, 'lookup', table], capture_output=True, text=True, check=True)
+                        except subprocess.CalledProcessError as e:
+                            print(f"WARNING: Command \"{e.cmd}\" returned {e.returncode}.")
 
                 i=i+1
-    if deps_present["gemini-arp-fix"] :
-        try :
-            subprocess.run(['gemini-arp-fix'], capture_output=True, text=True, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"WARNING: Command \"{e.cmd}\" returned {e.returncode}.")
+
+    if deps_present["gemini-arp-fix.sh"] :
+        if options.initcontainermode :
+            init_container_commands.append(f"{options.envdir }/gemini-arp-fix.sh")
+        else :
+            try :
+                subprocess.run(['gemini-arp-fix.sh'], capture_output=True, text=True, check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"WARNING: Command \"{e.cmd}\" returned {e.returncode}.")
 
     else :
         print("WARNING: unable to find a directory for the file \"rt_tables\"")
 
 env_file_contents=[]
-env_file_name=f"{Path.home()}/{options.envfile}"
+env_file_name=f"{options.envfile}"
 env_file_contents.append("#!/usr/bin/env bash")
 
 print(f"INFO: HCA IDs selected: {nccl_list}")
@@ -399,6 +423,7 @@ if nixl_list :
     env_file_contents.append(f"export NCCL_IB_HCA=\"={nccl_list}\"")
     env_file_contents.append(f"export NCCL_SOCKET_IFNAME=\"{default_interface}\"")
     env_file_contents.append(f"export NCCL_IB_GID_INDEX={s_gid[0]}")
+    env_file_contents.append('\n'.join(init_container_commands))
     if 'NVSHMEM_HCA_LIST' in env_vars != "none" :
         env_file_contents.append(f"export GLOO_SOCKET_IFNAME=\"{default_interface}\"")
         env_file_contents.append(f"export NVSHMEM_DEBUG=\"{nvshmem_debug}\"")

@@ -46,12 +46,12 @@ export LLMDBENCH_VLLM_COMMON_REPLICAS=1
 export LLMDBENCH_VLLM_STANDALONE_IMAGE_REGISTRY=public.ecr.aws
 export LLMDBENCH_VLLM_STANDALONE_IMAGE_REPO=q9t5s3a7
 export LLMDBENCH_VLLM_STANDALONE_IMAGE_NAME=vllm-cpu-release-repo
-export LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG=v0.11.2
+export LLMDBENCH_VLLM_STANDALONE_IMAGE_TAG=v0.12.0
 
 export LLMDBENCH_LLMD_IMAGE_REGISTRY=public.ecr.aws
 export LLMDBENCH_LLMD_IMAGE_REPO=q9t5s3a7
 export LLMDBENCH_LLMD_IMAGE_NAME=vllm-cpu-release-repo
-export LLMDBENCH_LLMD_IMAGE_TAG=v0.11.2
+export LLMDBENCH_LLMD_IMAGE_TAG=v0.12.0
 
 #export LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML=KUBECONFIG
 #export LLMDBENCH_VLLM_COMMON_POD_LABELS=context-length-range_eq_0-8000,context-length-range_eq_8000-32000
@@ -109,7 +109,7 @@ vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --max-num-seq \$VLLM_MAX_NUM_SEQ \
 --load-format \$VLLM_LOAD_FORMAT \
 --tensor-parallel-size \$VLLM_TENSOR_PARALLELISM
---disable-log-requests \
+--no-enable-log-requests \
 --disable-uvicorn-access-log \
 --no-enable-prefix-caching
 EOF
@@ -148,7 +148,7 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --max-model-len \$VLLM_MAX_MODEL_LEN \
 --max-num-seq \$VLLM_MAX_NUM_SEQ \
 --tensor-parallel-size \$VLLM_TENSOR_PARALLELISM \
---disable-log-requests \
+--no-enable-log-requests \
 --disable-uvicorn-access-log \
 --no-enable-prefix-caching
 EOF
@@ -162,3 +162,5 @@ export LLMDBENCH_HARNESS_NAME=inference-perf # (default is "inference-perf")
 
 #export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=sanity_random.yaml # (default is "sanity_random.yaml")
 ######export LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=nop.yaml
+
+export LLMDBENCH_CONTROL_WORK_DIR=~/data/cpu

@@ -283,10 +283,9 @@ def llmdbench_execute_cmd(
     if ecode != 0:
         if not silent:
             announce(f'\nERROR: while executing command "{actual_cmd}"')
-
         if last_stdout_log and last_stdout_log.exists():
             try:
-                announce(last_stdout_log.read_text())
+                print(last_stdout_log.read_text())
             except IOError:
                 announce("(stdout not captured)")
         else:
@@ -295,7 +294,7 @@ def llmdbench_execute_cmd(
         # print stderr log if it exists
         if last_stderr_log and last_stderr_log.exists():
             try:
-                announce(last_stderr_log.read_text())
+                print(last_stderr_log.read_text())
             except IOError:
                 announce("(stderr not captured)")
         else:
@@ -332,7 +331,8 @@ def environment_variable_to_dict(ev: dict = {}):
         "wva_enabled",
         "vllm_modelservice_multinode",
         "vllm_standalone_launcher",
-        "vllm_modelservice_gaie_sidecar_enabled"
+        "vllm_modelservice_gaie_sidecar_enabled",
+        "vllm_modelservice_gaie_monitoring_prometheus_enabled"
     ]:
         if mandatory_boolean_key not in ev:
             ev[mandatory_boolean_key] = 0
@@ -1689,11 +1689,11 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
     else :
         accelerator_type = ev[f"vllm_modelservice_{identifier}_accelerator_resource"].split('.')[0]
 
-    if accelerator_type == "kubernetes" or str(ev[f"vllm_modelservice_{identifier}_accelerator_nr"] == 0) :
+    accelerator_resource = ev[f"vllm_modelservice_{identifier}_accelerator_resource"]
+    if accelerator_type == "kubernetes" or not int(ev[f"vllm_modelservice_{identifier}_accelerator_nr"]) :
         accelerator_type = "cpu"
-        acellerator_resource = "cpu"
+        accelerator_resource = "cpu"
 
-    acellerator_resource = ev[f"vllm_modelservice_{identifier}_accelerator_resource"]
     accelerator_string=f"""accelerator:
   type: {accelerator_type}
     """
@@ -1702,8 +1702,9 @@ def add_accelerator(ev:dict, identifier: str = "decode") -> str:
     if accelerator_type not in ['nvidia', 'intel-i915', 'intel-xe', 'intel-gaudi', 'amd', 'google']:
         accelerator_string = f"""{accelerator_string}
   resources:
-    {accelerator_type}: "{acellerator_resource}"
+    {accelerator_type}: "{accelerator_resource}"
     """
+
     return accelerator_string
 
 def add_pull_secret(ev:dict) -> str:

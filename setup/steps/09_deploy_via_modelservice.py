@@ -127,6 +127,7 @@ decode:
   create: {decode_create}
   replicas: {ev["vllm_modelservice_decode_replicas"]}
 {add_affinity(ev)}
+{conditional_extra_config("vllm_modelservice_decode_init_container_config", 2, "initContainers", ev)}
   parallelism:
     data: {ev["vllm_modelservice_decode_data_parallelism"]}
     dataLocal: {ev["vllm_modelservice_decode_data_local_parallelism"]}
@@ -186,6 +187,7 @@ prefill:
   create: {prefill_create}
   replicas: {ev["vllm_modelservice_prefill_replicas"]}
 {add_affinity(ev)}
+{conditional_extra_config("vllm_modelservice_prefill_init_container_config", 2, "initContainers", ev)}
   parallelism:
     data: {ev["vllm_modelservice_prefill_data_parallelism"]}
     dataLocal: {ev["vllm_modelservice_prefill_data_local_parallelism"]}
@@ -401,6 +403,8 @@ def main():
     auto_detect_version(ev, ev['vllm_modelservice_chart_name'], "vllm_modelservice_chart_version", "vllm_modelservice_helm_repository", True)
     auto_detect_version(ev, ev['vllm_infra_chart_name'], "vllm_infra_chart_version", "vllm_infra_helm_repository", True)
 
+    ev["image"] = get_image(ev, "image", False, True)
+
     for model in model_list:
       if not model.strip():
           continue
@@ -486,11 +490,12 @@ def main():
       )
 
       result = llmdbench_execute_cmd(
-          helmfile_cmd, ev["control_dry_run"], ev["control_verbose"]
+          helmfile_cmd, ev["control_dry_run"], ev["control_verbose"], True, 1, False
       )
+
       if result != 0:
           announce(
-              f"ERROR: Failed to deploy helm chart for model {ev['deploy_current_model']}"
+              f"ERROR: Failed to deploy helm chart for model {ev['deploy_current_model']}\nCommand was \"{helmfile_cmd}\""
           )
           sys.exit(result)
 

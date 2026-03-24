@@ -15,7 +15,16 @@ RUN apt-get update; \
     wget \
     ca-certificates \
     gnupg \
+    infiniband-diags \
+    iproute2 \
     && apt-get clean && rm -rf /var/cache/apt
+
+# Install OpenShift CLI (oc)
+RUN OCPFN=$(echo "-$(uname -m)" | sed -e 's/-x86_64//g' -e 's/-amd64//g' -e 's/aarch64/ppc64le/g' -e 's/s390x/s390x-rhel9/g'); \
+    wget -N https://mirror.openshift.com/pub/openshift-v4/$(uname -m)/clients/ocp/stable/openshift-client-linux$OCPFN.tar.gz && \
+    tar -xzf openshift-client-linux$OCPFN.tar.gz -C /usr/local/bin/ oc && \
+    rm openshift-client-linux$OCPFN.tar.gz && \
+    chmod +x /usr/local/bin/oc
 
 RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
@@ -24,10 +33,6 @@ RUN apt-get update; \
     apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin || true
 # Install kubectl for in-pod cluster operations (e.g. vLLM metrics scraping)
 RUN curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/$(dpkg --print-architecture)/kubectl" \
-    -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
-
-# Install kubectl for in-pod cluster operations (e.g. vLLM metrics scraping)
-RUN curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
     -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
 
 RUN echo "# /etc/rsyncd: configuration file for rsync daemon mode" > /etc/rsyncd.conf; echo -e "\
@@ -52,15 +57,15 @@ WORKDIR /workspace
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
 ARG INFERENCE_PERF_BRANCH=main
-ARG INFERENCE_PERF_COMMIT=e3e690ba3589cfa422138de696f8b5217a3aa854
+ARG INFERENCE_PERF_COMMIT=v0.4.0
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
     pip install .
 
 ARG VLLM_BENCHMARK_REPO=https://github.com/vllm-project/vllm.git
-ARG VLLM_BENCHMARK_BRANCH=main
-ARG VLLM_BENCHMARK_COMMIT=f176443446f659dbab5315e056e605d8984fd976
+ARG VLLM_BENCHMARK_BRANCH=v0.17.1
+ARG VLLM_BENCHMARK_COMMIT=95c0f928cdeeaa21c4906e73cee6a156e1b3b995
 RUN git clone --branch ${VLLM_BENCHMARK_BRANCH} ${VLLM_BENCHMARK_REPO}
 RUN cd vllm; git checkout ${VLLM_BENCHMARK_COMMIT}
 # Patch the pyproject.toml to allow "pip install -e ."
@@ -80,14 +85,14 @@ RUN cd vllm; printf '%s\n' \
     | git apply
 # Install some pre-reqs
 RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
-RUN pip install setuptools-scm scikit-build-core
+RUN pip install setuptools-scm scikit-build-core nanobind
 # Install
 RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install -e . --no-build-isolation
 
 # GuideLLM also requires torch, installed above
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
-ARG GUIDELLM_BRANCH=main
-ARG GUIDELLM_COMMIT=f9f1e3181274b7fecb615158f7bde48b9d20001d
+ARG GUIDELLM_BRANCH=v0.5.3
+ARG GUIDELLM_COMMIT=v0.5.3
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \
@@ -95,7 +100,7 @@ RUN cd guidellm; \
 
 ARG INFERENCEMAX_REPO=https://github.com/kimbochen/bench_serving.git
 ARG INFERENCEMAX_BRANCH=main
-ARG INFERENCEMAX_COMMIT=499c0b171b499b02a1fd546fb2326d2175a5d66e
+ARG INFERENCEMAX_COMMIT=ee867231de0b268e2810a6e31751b23cf5903fc5
 RUN git clone --branch ${INFERENCEMAX_BRANCH} ${INFERENCEMAX_REPO}
 RUN cd bench_serving; \
     git checkout ${INFERENCEMAX_COMMIT}
@@ -113,6 +118,7 @@ COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
 COPY analysis/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
 COPY analysis/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
 COPY analysis/inferencemax-analyze_results.sh /usr/local/bin/inferencemax-analyze_results.sh
+COPY analysis/visualize_metrics.py /usr/local/bin/visualize_metrics.py
 COPY benchmark_report/ /opt/benchmark_report/
 RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
 
@@ -121,8 +127,10 @@ COPY build/requirements-analysis.txt .
 RUN pip install --no-cache-dir -r requirements-analysis.txt
 RUN pip install -e /opt
 
-ADD ../setup/preprocess /preprocess
+ADD ../setup/preprocess /tmp/preprocess/
+RUN chmod +x /tmp/preprocess/* ; cp -f  /tmp/preprocess/* /usr/local/bin/
 
 COPY build/llm-d-benchmark.sh /usr/local/bin/llm-d-benchmark.sh
 
 ENTRYPOINT ["llm-d-benchmark.sh"]
+
