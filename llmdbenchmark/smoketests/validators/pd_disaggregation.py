@@ -50,13 +50,17 @@ class PdDisaggregationValidator(BaseSmoketest):
         )
 
         if decode_pods:
-            volumes = self.get_pod_volumes(decode_pods[0])
-            shm_size = _nested_get(config, "decode", "shm", "size")
-            report.add(CheckResult(
-                "dshm_volume",
-                "dshm" in volumes,
-                expected=f"dshm ({shm_size})" if shm_size else "dshm",
-                message=f"Shared memory volume 'dshm' {'present' if 'dshm' in volumes else 'not found'}",
-            ))
+            # Shared memory volume -- only check if scenario defines it
+            configured_volumes = _nested_get(config, "vllmCommon", "volumes") or []
+            configured_vol_names = [v.get("name", "") for v in configured_volumes if isinstance(v, dict)]
+            if "dshm" in configured_vol_names:
+                volumes = self.get_pod_volumes(decode_pods[0])
+                shm_size = _nested_get(config, "decode", "shm", "size")
+                report.add(CheckResult(
+                    "dshm_volume",
+                    "dshm" in volumes,
+                    expected=f"dshm ({shm_size})" if shm_size else "dshm",
+                    message=f"Shared memory volume 'dshm' {'present' if 'dshm' in volumes else 'not found'}",
+                ))
 
         return report

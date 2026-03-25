@@ -67,11 +67,15 @@ class TieredPrefixCacheValidator(BaseSmoketest):
         ))
 
         if decode_pods:
-            volumes = self.get_pod_volumes(decode_pods[0])
-            report.add(CheckResult(
-                "dshm_volume",
-                "dshm" in volumes,
-                message=f"Shared memory volume 'dshm' {'present' if 'dshm' in volumes else 'not found'}",
-            ))
+            # Shared memory volume -- only check if scenario defines it
+            configured_volumes = _nested_get(config, "vllmCommon", "volumes") or []
+            configured_vol_names = [v.get("name", "") for v in configured_volumes if isinstance(v, dict)]
+            if "dshm" in configured_vol_names:
+                volumes = self.get_pod_volumes(decode_pods[0])
+                report.add(CheckResult(
+                    "dshm_volume",
+                    "dshm" in volumes,
+                    message=f"Shared memory volume 'dshm' {'present' if 'dshm' in volumes else 'not found'}",
+                ))
 
         return report

@@ -123,10 +123,14 @@ class CpuValidator(BaseSmoketest):
             "preprocesses" in volumes,
             message=f"Preprocesses configMap volume {'present' if 'preprocesses' in volumes else 'not found'}",
         ))
-        report.add(CheckResult(
-            "dshm_volume",
-            "dshm" in volumes,
-            message=f"Shared memory volume 'dshm' {'present' if 'dshm' in volumes else 'not found'}",
-        ))
+        # Shared memory volume -- only check if scenario defines it
+        configured_volumes = _nested_get(config, "vllmCommon", "volumes") or []
+        configured_vol_names = [v.get("name", "") for v in configured_volumes if isinstance(v, dict)]
+        if "dshm" in configured_vol_names:
+            report.add(CheckResult(
+                "dshm_volume",
+                "dshm" in volumes,
+                message=f"Shared memory volume 'dshm' {'present' if 'dshm' in volumes else 'not found'}",
+            ))
 
         return report
