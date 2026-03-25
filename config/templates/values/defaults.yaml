@@ -636,6 +636,18 @@ vllmCommon:
   ephemeralStorageResource: "ephemeral-storage"
   ephemeralStorage: ""
 
+  # NIXL side channel port for ZMQ-based KV transfer communication.
+  # Equivalent to bash LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT.
+  nixlSideChannelPort: "5557"
+
+  # UCX transport layer configuration for NCCL inter-node communication.
+  # Equivalent to bash LLMDBENCH_VLLM_COMMON_UCX_TLS.
+  ucxTls: "sm,cuda_ipc,cuda_copy,tcp"
+
+  # UCX socket address transport priority.
+  # Equivalent to bash LLMDBENCH_VLLM_COMMON_UCX_SOCKADDR_TLS_PRIORITY.
+  ucxSockaddrTlsPriority: "tcp"
+
   # Network resource (RDMA/InfiniBand) for pod limits/requests (optional)
   # Only added to pod specs when both networkResource and networkNr are non-empty.
   # Equivalent to bash LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE / _NR.
@@ -652,23 +664,13 @@ vllmCommon:
     # enableChunkedPrefill: false
     # maxNumBatchedTokens: null
   
-  # Common volume configurations
-  volumes:
-    - name: shared-config
-      type: emptyDir
-      emptyDir: {}
-    - name: dshm
-      type: emptyDir
-      emptyDir:
-        medium: Memory
-        sizeLimit: *shm_16gi
-
-  # Common volume mounts
-  volumeMounts:
-    - name: dshm
-      mountPath: /dev/shm
-    - name: shared-config
-      mountPath: /shared-config
+  # Volume configurations -- no defaults.
+  # Each scenario defines its own volumes and volumeMounts explicitly.
+  # Common volumes like dshm (shared memory) and shared-config (preprocess output)
+  # should be defined in the scenario YAML, not inherited from defaults.
+  # This matches the bash implementation where EXTRA_VOLUMES defaults to [].
+  volumes: []
+  volumeMounts: []
 
 # ============================================================================
 # DECODE CONFIGURATION

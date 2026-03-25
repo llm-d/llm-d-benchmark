@@ -306,6 +306,9 @@ class VllmCommonConfig(BaseModel):
     ephemeralStorage: str
     networkResource: str
     networkNr: str
+    nixlSideChannelPort: str
+    ucxTls: str
+    ucxSockaddrTlsPriority: str
     flags: VllmFlagsConfig
     volumes: list[dict[str, Any]]
     volumeMounts: list[dict[str, Any]]
