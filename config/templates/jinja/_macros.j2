@@ -105,6 +105,115 @@
 {%- endmacro %}
 
 
+{# ======================================================================== #}
+{# Macro to build the shared env vars block for a modelservice pod.        #}
+{# Used by BOTH the vllm container AND init containers so they share the   #}
+{# exact same environment. Takes mode ('decode' or 'prefill') and an       #}
+{# optional role_label ('1' for decode, '1' for prefill) for VLLM_IS_*.    #}
+{# ======================================================================== #}
+{% macro build_ms_env_vars(mode='decode') -%}
+{% if mode == 'decode' -%}
+{% set config = decode -%}
+{% set role_env_name = 'VLLM_IS_DECODE' -%}
+{% else -%}
+{% set config = prefill -%}
+{% set role_env_name = 'VLLM_IS_PREFILL' -%}
+{% endif -%}
+- name: {{ role_env_name }}
+  value: "1"
+- name: HOME
+  value: "{{ vllmCommon.containerHome }}"
+- name: HF_HOME
+  value: "{{ vllmCommon.hfHome }}"
+- name: VLLM_CACHE_ROOT
+  value: "{{ config.vllm.cacheRoot | default(vllmCommon.containerHome ~ '/vllm') }}"
+- name: VLLM_WORKER_MULTIPROC_METHOD
+  value: "{{ config.vllm.workerMultiprocMethod | default(vllmCommon.workerMultiprocMethod | default('spawn')) }}"
+- name: VLLM_LOGGING_LEVEL
+  value: "{{ config.vllm.loggingLevel | default(vllmCommon.loggingLevel | default('INFO')) }}"
+{% if vllmCommon.flags.allowLongMaxModelLen is defined and vllmCommon.flags.allowLongMaxModelLen -%}
+- name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+  value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
+{% endif -%}
+{% if vllmCommon.flags.serverDevMode is defined and vllmCommon.flags.serverDevMode -%}
+- name: VLLM_SERVER_DEV_MODE
+  value: "{{ vllmCommon.flags.serverDevMode }}"
+{% endif -%}
+- name: VLLM_INFERENCE_PORT
+  value: "{{ config.vllm.servicePort | default(vllmCommon.inferencePort) }}"
+- name: VLLM_METRICS_PORT
+  value: "{{ config.vllm.port | default(vllmCommon.vllmPort) }}"
+- name: VLLM_BLOCK_SIZE
+  value: "{{ model.blockSize | default(vllmCommon.blockSize | default('16')) }}"
+- name: VLLM_MAX_MODEL_LEN
+  value: "{{ model.maxModelLen | default(vllmCommon.maxModelLen | default('4096')) }}"
+- name: VLLM_LOAD_FORMAT
+  value: "{{ vllmCommon.loadFormat | default('auto') }}"
+- name: VLLM_ACCELERATOR_MEM_UTIL
+  value: "{{ model.gpuMemoryUtilization | default(vllmCommon.gpuMemoryUtilization | default('0.95')) }}"
+- name: VLLM_MAX_NUM_SEQ
+  value: "{{ model.maxNumSeq | default(vllmCommon.maxNumSeq | default('256')) }}"
+- name: VLLM_TENSOR_PARALLELISM
+  value: "{{ config.parallelism.tensor | default('1') }}"
+- name: VLLM_MAX_NUM_BATCHED_TOKENS
+  value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
+- name: VLLM_NIXL_SIDE_CHANNEL_HOST
+  valueFrom:
+    fieldRef:
+      fieldPath: status.podIP
+- name: VLLM_NIXL_SIDE_CHANNEL_PORT
+  value: "{{ vllmCommon.nixlSideChannelPort | default('5557') }}"
+- name: UCX_TLS
+  value: "{{ vllmCommon.ucxTls | default('sm,cuda_ipc,cuda_copy,tcp') }}"
+- name: UCX_SOCKADDR_TLS_PRIORITY
+  value: "{{ vllmCommon.ucxSockaddrTlsPriority | default('tcp') }}"
+- name: POD_IP
+  valueFrom:
+    fieldRef:
+      apiVersion: v1
+      fieldPath: status.podIP
+- name: LLMDBENCH_POD_NS
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.namespace
+- name: DP_SIZE
+  value: "{{ config.parallelism.data | default('1') }}"
+- name: TP_SIZE
+  value: "{{ config.parallelism.tensor | default('1') }}"
+- name: DP_SIZE_LOCAL
+  value: "{{ config.parallelism.dataLocal | default('1') }}"
+{% if config.podLabels is defined and config.podLabels -%}
+- name: LLMDBENCH_POD_LABELS
+  value: "{{ config.podLabels }}"
+{% endif -%}
+{% if config.extraEnvVars is defined and config.extraEnvVars %}
+{% for env in config.extraEnvVars %}
+- name: {{ env.name }}
+{% if env.value is defined %}
+  value: "{{ env.value }}"
+{% elif env.valueFrom is defined %}
+  valueFrom:
+{% if env.valueFrom.secretKeyRef is defined %}
+    secretKeyRef:
+      name: {{ env.valueFrom.secretKeyRef.name }}
+      key: {{ env.valueFrom.secretKeyRef.key }}
+{% elif env.valueFrom.configMapKeyRef is defined %}
+    configMapKeyRef:
+      name: {{ env.valueFrom.configMapKeyRef.name }}
+      key: {{ env.valueFrom.configMapKeyRef.key }}
+{% elif env.valueFrom.fieldRef is defined %}
+    fieldRef:
+      fieldPath: {{ env.valueFrom.fieldRef.fieldPath }}
+{% elif env.valueFrom.resourceFieldRef is defined %}
+    resourceFieldRef:
+      containerName: {{ env.valueFrom.resourceFieldRef.containerName | default('') }}
+      resource: {{ env.valueFrom.resourceFieldRef.resource }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+{%- endmacro %}
+
 {# Macro to build standalone vLLM serve command #}
 {% macro build_standalone_vllm_command() -%}
 {# Determine preprocess script to use #}

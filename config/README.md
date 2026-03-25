@@ -602,6 +602,14 @@ This means:
 
 The resolved image tag is visible in the rendered `ms-values.yaml` in the workspace directory.
 
+#### Environment variable propagation
+
+Init containers receive the same environment variables as the main vLLM container. This is handled by the `build_ms_env_vars()` macro in `_macros.j2`, which is called for both the vLLM container and each init container that does not already define its own `env:` section.
+
+The propagated env vars include all core vLLM configuration (ports, model parameters, parallelism), NCCL/UCX transport settings, pod metadata (POD_IP, namespace), and any scenario-specific `extraEnvVars` (NCCL_EXCLUDE_IB_HCA, FLEX_*, etc.). This ensures preprocess scripts have full access to the deployment configuration for RDMA/HCA detection, NCCL tuning, and other runtime setup.
+
+If an init container defines its own `env:` section in the scenario YAML, the automatic injection is skipped -- the scenario's explicit env vars take precedence.
+
 #### Scenario configuration
 
 Init containers are configured per scenario (the default in `defaults.yaml` is `initContainers: []`). Each guide scenario explicitly defines the preprocess init container:

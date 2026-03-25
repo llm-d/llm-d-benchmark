@@ -128,7 +128,8 @@ spec:
         - {{ arg }}
 {% endfor %}
 {% endif %}
-{% if container.env is defined %}
+{# Propagate core env vars to init containers -- same as modelservice #}
+{% if container.env is defined and container.env %}
         env:
 {% for env in container.env %}
         - name: {{ env.name }}
@@ -139,6 +140,64 @@ spec:
 {{ env.valueFrom | toyaml | indent(12) }}
 {% endif %}
 {% endfor %}
+{% else %}
+        env:
+        - name: HOME
+          value: "{{ vllmCommon.containerHome }}"
+        - name: HF_HOME
+          value: "{{ vllmCommon.hfHome }}"
+        - name: VLLM_CACHE_ROOT
+          value: "{{ vllmCommon.containerHome }}/vllm"
+        - name: VLLM_INFERENCE_PORT
+          value: "{{ standalone.vllm.servicePort | default(vllmCommon.inferencePort | default('8000')) }}"
+        - name: VLLM_METRICS_PORT
+          value: "{{ standalone.vllm.port | default(vllmCommon.vllmPort | default('8200')) }}"
+        - name: VLLM_BLOCK_SIZE
+          value: "{{ model.blockSize | default(vllmCommon.blockSize | default('16')) }}"
+        - name: VLLM_MAX_MODEL_LEN
+          value: "{{ model.maxModelLen | default(vllmCommon.maxModelLen | default('4096')) }}"
+        - name: VLLM_LOAD_FORMAT
+          value: "{{ vllmCommon.loadFormat | default('auto') }}"
+        - name: VLLM_ACCELERATOR_MEM_UTIL
+          value: "{{ model.gpuMemoryUtilization | default(vllmCommon.gpuMemoryUtilization | default('0.95')) }}"
+        - name: VLLM_MAX_NUM_SEQ
+          value: "{{ model.maxNumSeq | default(vllmCommon.maxNumSeq | default('256')) }}"
+        - name: VLLM_TENSOR_PARALLELISM
+          value: "{{ (standalone.parallelism.tensor if standalone.parallelism is defined and standalone.parallelism.tensor is defined else '1') }}"
+        - name: VLLM_MAX_NUM_BATCHED_TOKENS
+          value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
+        - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+          value: "{{ vllmCommon.nixlSideChannelPort | default('5557') }}"
+        - name: UCX_TLS
+          value: "{{ vllmCommon.ucxTls | default('sm,cuda_ipc,cuda_copy,tcp') }}"
+        - name: UCX_SOCKADDR_TLS_PRIORITY
+          value: "{{ vllmCommon.ucxSockaddrTlsPriority | default('tcp') }}"
+        - name: DP_SIZE
+          value: "{{ (standalone.parallelism.data if standalone.parallelism is defined and standalone.parallelism.data is defined else '1') }}"
+        - name: TP_SIZE
+          value: "{{ (standalone.parallelism.tensor if standalone.parallelism is defined and standalone.parallelism.tensor is defined else '1') }}"
+        - name: DP_SIZE_LOCAL
+          value: "{{ (standalone.parallelism.dataLocal if standalone.parallelism is defined and standalone.parallelism.dataLocal is defined else '1') }}"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: LLMDBENCH_POD_NS
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+{% if standalone.extraEnvVars is defined and standalone.extraEnvVars %}
+{% for extra in standalone.extraEnvVars %}
+        - name: {{ extra.name }}
+{% if extra.value is defined %}
+          value: "{{ extra.value }}"
+{% elif extra.valueFrom is defined %}
+          valueFrom:
+{{ extra.valueFrom | toyaml | indent(12) }}
+{% endif %}
+{% endfor %}
+{% endif %}
 {% endif %}
 {% if container.volumeMounts is defined %}
         volumeMounts:

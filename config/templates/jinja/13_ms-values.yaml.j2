@@ -355,7 +355,11 @@ decode:
   subGroupExclusiveTopology: {{ decode.subGroupExclusiveTopology | lower }}
 {% endif %}
 
-{# Init containers — default image to images.benchmark if not specified or set to "auto" #}
+{# Init containers — default image to images.benchmark if not specified or set to "auto".
+   Propagate core env vars so preprocess scripts have access to port numbers,
+   model parameters, and parallelism settings. This was not done in the bash
+   implementation but is needed for preprocess scripts that configure NCCL,
+   HCA detection, and other runtime environment. #}
 {% if decode.initContainers is defined and decode.initContainers %}
   initContainers:
 {% for ic in decode.initContainers %}
@@ -363,8 +367,38 @@ decode:
 {% if not ic_image or ic_image.endswith(':auto') %}
 {% set _ = ic.update({'image': images.benchmark.repository ~ ':' ~ images.benchmark.tag}) %}
 {% endif %}
+{# Render init containers manually so we can inject shared env vars via macro #}
 {% endfor %}
-{{ decode.initContainers | toyaml | indent(2, true) }}
+{% for ic in decode.initContainers %}
+  - name: {{ ic.name }}
+    image: {{ ic.image }}
+{% if ic.imagePullPolicy is defined %}
+    imagePullPolicy: {{ ic.imagePullPolicy }}
+{% endif %}
+{% if ic.command is defined %}
+    command:
+{{ ic.command | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.args is defined %}
+    args:
+{{ ic.args | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.env is defined and ic.env %}
+    env:
+{{ ic.env | toyaml | indent(4, true) }}
+{% else %}
+    env:
+{{ build_ms_env_vars('decode') | indent(4, true) }}
+{% endif %}
+{% if ic.volumeMounts is defined %}
+    volumeMounts:
+{{ ic.volumeMounts | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.securityContext is defined %}
+    securityContext:
+{{ ic.securityContext | toyaml | indent(6) }}
+{% endif %}
+{% endfor %}
 {% endif %}
 
 {# Main containers #}
@@ -386,93 +420,7 @@ decode:
 {{ build_vllm_command('decode') | indent(8, first=True) }}
 {% endif %}
     env:
-      - name: VLLM_IS_DECODE
-        value: "1"
-      - name: HOME
-        value: "{{ vllmCommon.containerHome }}"
-      - name: HF_HOME
-        value: "{{ vllmCommon.hfHome }}"
-      - name: VLLM_CACHE_ROOT
-        value: "{{ decode.vllm.cacheRoot | default(vllmCommon.containerHome ~ '/vllm') }}"
-      - name: VLLM_WORKER_MULTIPROC_METHOD
-        value: "{{ decode.vllm.workerMultiprocMethod }}"
-      - name: VLLM_LOGGING_LEVEL
-        value: "{{ decode.vllm.loggingLevel }}"
-{% if vllmCommon.flags.allowLongMaxModelLen is defined and vllmCommon.flags.allowLongMaxModelLen %}
-      - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
-        value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
-{% endif %}
-{% if vllmCommon.flags.serverDevMode is defined and vllmCommon.flags.serverDevMode %}
-      - name: VLLM_SERVER_DEV_MODE
-        value: "{{ vllmCommon.flags.serverDevMode }}"
-{% endif %}
-      - name: VLLM_INFERENCE_PORT
-        value: "{{ decode.vllm.servicePort | default(vllmCommon.inferencePort) }}"
-      - name: VLLM_METRICS_PORT
-        value: "{{ decode.vllm.port | default(vllmCommon.vllmPort) }}"
-      - name: VLLM_BLOCK_SIZE
-        value: "{{ model.blockSize | default(vllmCommon.blockSize | default('16')) }}"
-      - name: VLLM_MAX_MODEL_LEN
-        value: "{{ model.maxModelLen | default(vllmCommon.maxModelLen | default('4096')) }}"
-      - name: VLLM_LOAD_FORMAT
-        value: "{{ vllmCommon.loadFormat | default('auto') }}"
-      - name: VLLM_ACCELERATOR_MEM_UTIL
-        value: "{{ model.gpuMemoryUtilization | default(vllmCommon.gpuMemoryUtilization | default('0.95')) }}"
-      - name: VLLM_MAX_NUM_SEQ
-        value: "{{ model.maxNumSeq | default(vllmCommon.maxNumSeq | default('256')) }}"
-      - name: VLLM_TENSOR_PARALLELISM
-        value: "{{ decode.parallelism.tensor | default('1') }}"
-      - name: VLLM_MAX_NUM_BATCHED_TOKENS
-        value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
-      - name: VLLM_NIXL_SIDE_CHANNEL_HOST
-        valueFrom:
-          fieldRef:
-            fieldPath: status.podIP
-      - name: VLLM_NIXL_SIDE_CHANNEL_PORT
-        value: "{{ vllmCommon.nixlSideChannelPort | default('5557') }}"
-      - name: UCX_TLS
-        value: "{{ vllmCommon.ucxTls | default('sm,cuda_ipc,cuda_copy,tcp') }}"
-      - name: UCX_SOCKADDR_TLS_PRIORITY
-        value: "{{ vllmCommon.ucxSockaddrTlsPriority | default('tcp') }}"
-      - name: POD_IP
-        valueFrom:
-          fieldRef:
-            apiVersion: v1
-            fieldPath: status.podIP
-      - name: LLMDBENCH_POD_NS
-        valueFrom:
-          fieldRef:
-            fieldPath: metadata.namespace
-{% if decode.podLabels is defined and decode.podLabels %}
-      - name: LLMDBENCH_POD_LABELS
-        value: "{{ decode.podLabels }}"
-{% endif %}
-{% if decode.extraEnvVars is defined and decode.extraEnvVars %}
-{% for env in decode.extraEnvVars %}
-      - name: {{ env.name }}
-{% if env.value is defined %}
-        value: "{{ env.value }}"
-{% elif env.valueFrom is defined %}
-        valueFrom:
-{% if env.valueFrom.secretKeyRef is defined %}
-          secretKeyRef:
-            name: {{ env.valueFrom.secretKeyRef.name }}
-            key: {{ env.valueFrom.secretKeyRef.key }}
-{% elif env.valueFrom.configMapKeyRef is defined %}
-          configMapKeyRef:
-            name: {{ env.valueFrom.configMapKeyRef.name }}
-            key: {{ env.valueFrom.configMapKeyRef.key }}
-{% elif env.valueFrom.fieldRef is defined %}
-          fieldRef:
-            fieldPath: {{ env.valueFrom.fieldRef.fieldPath }}
-{% elif env.valueFrom.resourceFieldRef is defined %}
-          resourceFieldRef:
-            containerName: {{ env.valueFrom.resourceFieldRef.containerName | default('') }}
-            resource: {{ env.valueFrom.resourceFieldRef.resource }}
-{% endif %}
-{% endif %}
-{% endfor %}
-{% endif %}
+{{ build_ms_env_vars('decode') | indent(6, true) }}
 {% if decode.ports is defined and decode.ports %}
     ports:
 {{ decode.ports | toyaml | indent(6) }}
@@ -687,8 +635,10 @@ decode:
 {# ========================================================================== #}
 {# PREFILL SECTION                                                            #}
 {# ========================================================================== #}
-{# Prefill probe port: always use servicePort (8000) to match bash behavior. #}
-{% set prefill_effective_port = prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort -%}
+{# Prefill probe port: prefill pods do NOT get the routing proxy, so vLLM
+   binds directly to vllm.port (8200). Probes must check that port, not
+   servicePort (8000) which has nothing listening on prefill pods. #}
+{% set prefill_effective_port = prefill.vllm.port if prefill.vllm is defined and prefill.vllm.port is defined else decode.vllm.port -%}
 prefill:
   create: {{ prefill_create | lower }}
 {% if prefill_create %}
@@ -825,7 +775,7 @@ prefill:
   subGroupExclusiveTopology: {{ prefill.subGroupExclusiveTopology | lower }}
 {% endif %}
 
-{# Init containers — default image to images.benchmark if not specified or set to "auto" #}
+{# Prefill init containers -- rendered manually with shared env var macro #}
 {% if prefill.initContainers is defined and prefill.initContainers %}
   initContainers:
 {% for ic in prefill.initContainers %}
@@ -833,8 +783,35 @@ prefill:
 {% if not ic_image or ic_image.endswith(':auto') %}
 {% set _ = ic.update({'image': images.benchmark.repository ~ ':' ~ images.benchmark.tag}) %}
 {% endif %}
+  - name: {{ ic.name }}
+    image: {{ ic.image }}
+{% if ic.imagePullPolicy is defined %}
+    imagePullPolicy: {{ ic.imagePullPolicy }}
+{% endif %}
+{% if ic.command is defined %}
+    command:
+{{ ic.command | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.args is defined %}
+    args:
+{{ ic.args | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.env is defined and ic.env %}
+    env:
+{{ ic.env | toyaml | indent(4, true) }}
+{% else %}
+    env:
+{{ build_ms_env_vars('prefill') | indent(4, true) }}
+{% endif %}
+{% if ic.volumeMounts is defined %}
+    volumeMounts:
+{{ ic.volumeMounts | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.securityContext is defined %}
+    securityContext:
+{{ ic.securityContext | toyaml | indent(6) }}
+{% endif %}
 {% endfor %}
-{{ prefill.initContainers | toyaml | indent(2, true) }}
 {% endif %}
 
 {# Main containers #}
@@ -856,93 +833,7 @@ prefill:
 {{ build_vllm_command('prefill') | indent(8, first=True) }}
 {% endif %}
     env:
-      - name: HOME
-        value: "{{ vllmCommon.containerHome }}"
-      - name: HF_HOME
-        value: "{{ vllmCommon.hfHome }}"
-      - name: VLLM_CACHE_ROOT
-        value: "{{ (prefill.vllm.cacheRoot if prefill.vllm is defined and prefill.vllm.cacheRoot is defined else decode.vllm.cacheRoot) | default(vllmCommon.containerHome ~ '/vllm') }}"
-      - name: VLLM_WORKER_MULTIPROC_METHOD
-        value: "{{ (prefill.vllm.workerMultiprocMethod if prefill.vllm is defined and prefill.vllm.workerMultiprocMethod is defined else decode.vllm.workerMultiprocMethod) }}"
-      - name: VLLM_LOGGING_LEVEL
-        value: "{{ (prefill.vllm.loggingLevel if prefill.vllm is defined and prefill.vllm.loggingLevel is defined else decode.vllm.loggingLevel) }}"
-{% if vllmCommon.flags.allowLongMaxModelLen is defined and vllmCommon.flags.allowLongMaxModelLen %}
-      - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
-        value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
-{% endif %}
-{% if vllmCommon.flags.serverDevMode is defined and vllmCommon.flags.serverDevMode %}
-      - name: VLLM_SERVER_DEV_MODE
-        value: "{{ vllmCommon.flags.serverDevMode }}"
-{% endif %}
-      - name: VLLM_IS_PREFILL
-        value: "1"
-      - name: VLLM_INFERENCE_PORT
-        value: "{{ prefill.vllm.servicePort | default(vllmCommon.inferencePort) }}"
-      - name: VLLM_METRICS_PORT
-        value: "{{ prefill.vllm.port | default(vllmCommon.vllmPort) }}"
-      - name: VLLM_BLOCK_SIZE
-        value: "{{ model.blockSize | default(vllmCommon.blockSize | default('16')) }}"
-      - name: VLLM_MAX_MODEL_LEN
-        value: "{{ model.maxModelLen | default(vllmCommon.maxModelLen | default('4096')) }}"
-      - name: VLLM_LOAD_FORMAT
-        value: "{{ vllmCommon.loadFormat | default('auto') }}"
-      - name: VLLM_ACCELERATOR_MEM_UTIL
-        value: "{{ model.gpuMemoryUtilization | default(vllmCommon.gpuMemoryUtilization | default('0.95')) }}"
-      - name: VLLM_MAX_NUM_SEQ
-        value: "{{ model.maxNumSeq | default(vllmCommon.maxNumSeq | default('256')) }}"
-      - name: VLLM_TENSOR_PARALLELISM
-        value: "{{ prefill.parallelism.tensor | default('1') }}"
-      - name: VLLM_MAX_NUM_BATCHED_TOKENS
-        value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
-      - name: VLLM_NIXL_SIDE_CHANNEL_HOST
-        valueFrom:
-          fieldRef:
-            fieldPath: status.podIP
-      - name: VLLM_NIXL_SIDE_CHANNEL_PORT
-        value: "{{ vllmCommon.nixlSideChannelPort | default('5557') }}"
-      - name: UCX_TLS
-        value: "{{ vllmCommon.ucxTls | default('sm,cuda_ipc,cuda_copy,tcp') }}"
-      - name: UCX_SOCKADDR_TLS_PRIORITY
-        value: "{{ vllmCommon.ucxSockaddrTlsPriority | default('tcp') }}"
-      - name: POD_IP
-        valueFrom:
-          fieldRef:
-            apiVersion: v1
-            fieldPath: status.podIP
-      - name: LLMDBENCH_POD_NS
-        valueFrom:
-          fieldRef:
-            fieldPath: metadata.namespace
-{% if prefill.podLabels is defined and prefill.podLabels %}
-      - name: LLMDBENCH_POD_LABELS
-        value: "{{ prefill.podLabels }}"
-{% endif %}
-{% if prefill.extraEnvVars is defined and prefill.extraEnvVars %}
-{% for env in prefill.extraEnvVars %}
-      - name: {{ env.name }}
-{% if env.value is defined %}
-        value: "{{ env.value }}"
-{% elif env.valueFrom is defined %}
-        valueFrom:
-{% if env.valueFrom.secretKeyRef is defined %}
-          secretKeyRef:
-            name: {{ env.valueFrom.secretKeyRef.name }}
-            key: {{ env.valueFrom.secretKeyRef.key }}
-{% elif env.valueFrom.configMapKeyRef is defined %}
-          configMapKeyRef:
-            name: {{ env.valueFrom.configMapKeyRef.name }}
-            key: {{ env.valueFrom.configMapKeyRef.key }}
-{% elif env.valueFrom.fieldRef is defined %}
-          fieldRef:
-            fieldPath: {{ env.valueFrom.fieldRef.fieldPath }}
-{% elif env.valueFrom.resourceFieldRef is defined %}
-          resourceFieldRef:
-            containerName: {{ env.valueFrom.resourceFieldRef.containerName | default('') }}
-            resource: {{ env.valueFrom.resourceFieldRef.resource }}
-{% endif %}
-{% endif %}
-{% endfor %}
-{% endif %}
+{{ build_ms_env_vars('prefill') | indent(6, true) }}
 {% if prefill.ports is defined and prefill.ports %}
     ports:
 {{ prefill.ports | toyaml | indent(6) }}
