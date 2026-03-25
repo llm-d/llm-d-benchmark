@@ -158,6 +158,31 @@ class StackTracer:  # pylint: disable=too-many-instance-attributes
             if service:
                 return service, namespace
 
+            # Istio creates services with a "-istio" suffix for Gateway
+            # resources (e.g. Gateway "my-gw" gets service "my-gw-istio").
+            # When the service lookup fails, strip the suffix and try to
+            # find the underlying Gateway resource directly.
+            parts = hostname.split(".")
+            if len(parts) >= 2:
+                service_name = parts[0]
+                namespace = parts[1]
+                if service_name.endswith("-istio"):
+                    gateway_name = service_name[: -len("-istio")]
+                    logger.info(
+                        "Service not found; trying Gateway %s/%s"
+                        " (stripped Istio suffix)",
+                        namespace,
+                        gateway_name,
+                    )
+                    gateway = get_resource_by_name(
+                        self.api, Gateway, gateway_name, namespace
+                    )
+                    if gateway:
+                        logger.info(
+                            "Found Gateway: %s/%s", namespace, gateway_name
+                        )
+                        return gateway, namespace
+
         # Check OpenShift Routes first (if on OpenShift)
         if self.is_openshift:
             route = self._find_route_by_host(hostname)

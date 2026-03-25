@@ -328,6 +328,52 @@ class TestStackTracer(unittest.TestCase):
 
     @patch("llm_d_stack_discovery.discovery.tracer.list_resources_by_selector")
     @patch("llm_d_stack_discovery.discovery.tracer.get_resource_by_name")
+    def test_dns_entry_point_istio_suffix_fallback(self, mock_get, mock_list):
+        """svc-istio.ns.svc.cluster.local falls back to Gateway when Service missing."""
+        tracer = self._make_tracer()
+
+        gateway = Mock(spec=Gateway)
+        gateway.kind = "Gateway"
+        gateway.name = "my-gateway"
+        gateway.namespace = "model-ns"
+        gateway.obj = {
+            "metadata": {
+                "name": "my-gateway",
+                "namespace": "model-ns",
+                "labels": {},
+                "annotations": {},
+            },
+            "spec": {
+                "gatewayClassName": "istio",
+                "listeners": [{"name": "default", "port": 80, "protocol": "HTTP"}],
+            },
+        }
+
+        def get_side_effect(api, resource_class, name, namespace=None):
+            # Service lookup fails; Gateway lookup succeeds
+            if resource_class == Gateway and name == "my-gateway" and namespace == "model-ns":
+                return gateway
+            return None
+
+        mock_get.side_effect = get_side_effect
+        mock_list.return_value = []
+
+        entry_point, namespace = tracer._find_entry_point(
+            {
+                "hostname": "my-gateway-istio.model-ns.svc.cluster.local",
+                "port": 80,
+                "scheme": "http",
+                "path": "",
+            }
+        )
+
+        self.assertIsNotNone(entry_point)
+        self.assertIsInstance(entry_point, Mock)
+        self.assertEqual(entry_point.name, "my-gateway")
+        self.assertEqual(namespace, "model-ns")
+
+    @patch("llm_d_stack_discovery.discovery.tracer.list_resources_by_selector")
+    @patch("llm_d_stack_discovery.discovery.tracer.get_resource_by_name")
     def test_inferencepool_model_servers_discovers_pods(self, mock_get, mock_list):
         """InferencePool with spec.modelServers.matchLabels discovers Pods."""
         tracer = self._make_tracer()
