@@ -19,7 +19,6 @@ def gateway_values(provider: str, host: str, service: str, ev: dict) -> str:
   gatewayClassName: istio
   gatewayParameters:
     enabled: true
-    accessLogging: false
     logLevel: error
     resources:
       limits:
