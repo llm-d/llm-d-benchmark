@@ -942,7 +942,16 @@ standalone.launcher.imagePullPolicy   maps to  'Always' (hardcoded default, no f
 
 Note: the launcher's `imagePullPolicy` is a flat key on `standalone.launcher`, not nested under `standalone.launcher.image`. It does not inherit from `standalone.image.pullPolicy`.
 
-**Everything else** (modelservice decode/prefill, download job, harness, etc.) reads directly from the `images` section with no fallback chain.
+**Modelservice decode/prefill containers:**
+
+```
+decode container imagePullPolicy:  decode.vllm.imagePullPolicy  maps to  images.vllm.pullPolicy  maps to  'IfNotPresent'
+prefill container imagePullPolicy: prefill.vllm.imagePullPolicy  maps to  images.vllm.pullPolicy  maps to  'IfNotPresent'
+```
+
+Setting `images.vllm.pullPolicy: Always` in your scenario applies to both decode and prefill containers. Per-role overrides via `decode.vllm.imagePullPolicy` or `prefill.vllm.imagePullPolicy` take precedence.
+
+**Everything else** (download job, harness, etc.) reads directly from the `images` section with no fallback chain.
 
 ### Overriding Images
 
@@ -958,19 +967,35 @@ scenario:
       image:
         repository: docker.io/vllm/vllm-openai
         tag: v0.8.5
+        pullPolicy: Always
 ```
 
 **Modelservice deployment** (inference-scheduling, pd-disaggregation, etc.):
 
-Override `images.vllm` in your scenario:
+Override `images.vllm` in your scenario. The `pullPolicy` applies to both decode and prefill containers:
 
 ```yaml
 scenario:
   - name: "my-modelservice"
     images:
       vllm:
-        repository: ghcr.io/llm-d/llm-d-cuda
-        tag: v0.5.0
+        repository: quay.io/myorg/vllm-dev
+        tag: latest
+        pullPolicy: Always
+```
+
+To override pull policy for a specific role only:
+
+```yaml
+scenario:
+  - name: "my-modelservice"
+    images:
+      vllm:
+        repository: quay.io/myorg/vllm-dev
+        tag: latest
+    decode:
+      vllm:
+        imagePullPolicy: Always    # decode only
 ```
 
 **Benchmark harness / download job:**
