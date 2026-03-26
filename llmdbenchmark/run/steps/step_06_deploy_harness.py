@@ -340,14 +340,23 @@ class DeployHarnessStep(Step):
             monitoring = (plan_config or {}).get("monitoring", {})
             metrics_enabled = str(monitoring.get("metricsScrapeEnabled", False)).lower() == "true"
             if not context.dry_run and metrics_enabled:
-                log_dir = context.run_dir() / "logs"
                 infra_ns = deploy_namespace or context.namespace or harness_ns
-                capture_pod_logs(
-                    cmd, treatment_pod_names, harness_ns, log_dir, context,
-                )
-                capture_infrastructure_logs(
-                    cmd, infra_ns, log_dir, model_label, context,
-                )
+                local_results_dir = context.run_results_dir()
+
+                # Capture logs into each parallel pod's results directory,
+                # matching the original bash behavior.
+                for i in range(1, parallelism + 1):
+                    pod_results_dir = local_results_dir / f"{experiment_id}_{i}"
+                    pod_log_dir = pod_results_dir / "logs"
+                    pod_log_dir.mkdir(parents=True, exist_ok=True)
+
+                    capture_pod_logs(
+                        cmd, treatment_pod_names, harness_ns, pod_log_dir, context,
+                    )
+                    capture_infrastructure_logs(
+                        cmd, infra_ns, pod_log_dir, model_label,
+                        pod_results_dir, context,
+                    )
 
             # --- Phase 5: Clean up this treatment's pods ---
             if not context.dry_run and not context.harness_debug:

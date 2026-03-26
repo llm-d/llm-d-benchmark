@@ -82,7 +82,7 @@ spec:
       value: "{{ harness.stackName | default(model_id_label) | default('default') }}"
 {% if monitoring is defined and monitoring.metricsScrapeEnabled is defined %}
     - name: LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED
-      value: "{{ monitoring.metricsScrapeEnabled }}"
+      value: "{{ monitoring.metricsScrapeEnabled | lower }}"
     - name: LLMDBENCH_VLLM_COMMON_METRICS_PORT
       value: "{{ decode.vllm.port }}"
     - name: LLMDBENCH_VLLM_MONITORING_METRICS_PATH

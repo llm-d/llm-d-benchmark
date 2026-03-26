@@ -687,7 +687,7 @@ def main():
         print("No EPP logs to process.")
         sys.exit(0)
 
-    output_dir = args.output_dir or os.path.join(results_dir, 'epp_metrics')
+    output_dir = args.output_dir or os.path.join(results_dir, 'metrics')
 
     print(f"Parsing EPP logs from {log_path} ...")
     entries = parse_log_file(log_path)
