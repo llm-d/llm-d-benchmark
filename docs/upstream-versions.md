@@ -72,7 +72,7 @@
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |-----------|-------------|----------|---------------|---------------|
-| **yq** | `v4.52.4` | release tag | `setup/install_deps.sh` (`install_yq_linux`) | [mikefarah/yq](https://github.com/mikefarah/yq) |
+| **yq** | `v4.52.5` | release tag | `setup/install_deps.sh` (`install_yq_linux`) | [mikefarah/yq](https://github.com/mikefarah/yq) |
 | **helmfile** | `v1.4.1` | release tag | `setup/install_deps.sh` (`install_helmfile_linux`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
 | **helm** | `latest` | floating | `setup/install_deps.sh` (`install_helm_linux`) | [helm/helm](https://github.com/helm/helm) |
 | **kubectl** | `stable` | floating | `build/Dockerfile` | [kubernetes/kubernetes](https://github.com/kubernetes/kubernetes) |
