@@ -419,6 +419,7 @@ def capture_infrastructure_logs(
     namespace: str,
     log_dir: Path,
     model_label: str | None,
+    results_dir: Path,
     context: ExecutionContext,
 ) -> None:
     """Capture pod status snapshot and infrastructure logs.
@@ -485,7 +486,7 @@ def capture_infrastructure_logs(
             if script.exists():
                 context.logger.log_info("Processing EPP logs...")
                 result = subprocess.run(
-                    ["python3", str(script), str(log_dir.parent), "--visualize"],
+                    ["python3", str(script), str(results_dir), "--visualize"],
                     capture_output=True, text=True, timeout=120,
                 )
                 if result.returncode == 0:

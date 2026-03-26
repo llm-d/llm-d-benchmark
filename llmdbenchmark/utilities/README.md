@@ -135,7 +135,7 @@ Shared kubectl patterns for the run phase.
 
 - `capture_pod_logs(cmd, pod_names, namespace, log_dir, context)` -- Capture logs from individual harness pods to files.
 - `capture_label_logs(cmd, namespace, label, dest, label_name, context)` -- Capture aggregated logs for all pods matching a label selector.
-- `capture_infrastructure_logs(cmd, namespace, log_dir, model_label, context)` -- Capture pod status snapshot (`kubectl get pods -o wide`) and logs from model-serving pods, EPP (inference scheduler) pods, and IGW (inference gateway) pods. Runs `process_epp_logs.py` on captured EPP logs if the script is available.
+- `capture_infrastructure_logs(cmd, namespace, log_dir, model_label, results_dir, context)` -- Capture pod status snapshot (`kubectl get pods -o wide`) and logs from model-serving pods, EPP (inference scheduler) pods, and IGW (inference gateway) pods. Runs `process_epp_logs.py` on captured EPP logs if the script is available. *results_dir* is the per-experiment results directory passed to `process_epp_logs.py`.
 
 ## cloud_upload.py -- GCS/S3 Upload
 
