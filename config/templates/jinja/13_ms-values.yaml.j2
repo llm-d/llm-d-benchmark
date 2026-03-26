@@ -405,9 +405,7 @@ decode:
   containers:
   - name: "vllm"
     image: "{{ images.vllm.repository }}:{{ images.vllm.tag }}"
-{% if decode.vllm.imagePullPolicy is defined %}
-    imagePullPolicy: {{ decode.vllm.imagePullPolicy }}
-{% endif %}
+    imagePullPolicy: {{ decode.vllm.imagePullPolicy | default(images.vllm.pullPolicy) | default('IfNotPresent') }}
     mountModelVolume: {{ decode.mountModelVolume | lower }}
 {% set decode_model_command = decode.vllm.modelCommand | default('custom') %}
     modelCommand: {{ decode_model_command }}
@@ -635,10 +633,16 @@ decode:
 {# ========================================================================== #}
 {# PREFILL SECTION                                                            #}
 {# ========================================================================== #}
-{# Prefill probe port: prefill pods do NOT get the routing proxy, so vLLM
-   binds directly to vllm.port (8200). Probes must check that port, not
-   servicePort (8000) which has nothing listening on prefill pods. #}
-{% set prefill_effective_port = prefill.vllm.port if prefill.vllm is defined and prefill.vllm.port is defined else decode.vllm.port -%}
+{# Prefill probe port:
+   The helm chart never injects the routing proxy on prefill pods (only decode).
+   - When proxy is ENABLED: prefill vLLM binds to vllm.port (8200) with no proxy
+     in front. Probes must check 8200 where vLLM actually listens.
+   - When proxy is DISABLED: prefill vLLM binds to servicePort (8000) directly.
+     Probes check 8000.
+   This deviates from the bash (which always used 8000), but fixes prefill pods
+   getting stuck at 0/1 Running due to probes checking a port with nothing listening. #}
+{% set proxy_enabled = not (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) -%}
+{% set prefill_effective_port = (prefill.vllm.port if prefill.vllm is defined and prefill.vllm.port is defined else decode.vllm.port) if proxy_enabled else (prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort) -%}
 prefill:
   create: {{ prefill_create | lower }}
 {% if prefill_create %}
@@ -818,9 +822,7 @@ prefill:
   containers:
   - name: "vllm"
     image: "{{ images.vllm.repository }}:{{ images.vllm.tag }}"
-{% if prefill.vllm is defined and prefill.vllm.imagePullPolicy is defined %}
-    imagePullPolicy: {{ prefill.vllm.imagePullPolicy }}
-{% endif %}
+    imagePullPolicy: {{ (prefill.vllm.imagePullPolicy if prefill.vllm is defined and prefill.vllm.imagePullPolicy is defined else images.vllm.pullPolicy) | default('IfNotPresent') }}
     mountModelVolume: {{ prefill.mountModelVolume | lower }}
 {% set prefill_model_command = prefill.vllm.modelCommand | default('custom') %}
     modelCommand: {{ prefill_model_command }}
