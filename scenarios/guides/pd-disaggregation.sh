@@ -175,8 +175,8 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL \
 --kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}" \
 --no-enable-log-requests \
---disable-uvicorn-access-log \
---no-enable-prefix-caching
+--enable-prefix-caching \
+--disable-uvicorn-access-log
 EOF
 
 # Decode parameters
@@ -208,8 +208,8 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL \
 --kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}" \
 --no-enable-log-requests \
---disable-uvicorn-access-log \
---no-enable-prefix-caching
+--enable-prefix-caching \
+--disable-uvicorn-access-log
 EOF
 
 # Timeout for benchmark operations

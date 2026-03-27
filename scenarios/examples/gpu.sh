@@ -156,7 +156,7 @@ vllm serve REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL \
 --max-num-seqs \$VLLM_MAX_NUM_SEQ \
 --tensor-parallel-size \$VLLM_TENSOR_PARALLELISM \
---no-enable-log-requests \
+--disable-log-requests \
 --disable-uvicorn-access-log \
 --no-enable-prefix-caching
 EOF
