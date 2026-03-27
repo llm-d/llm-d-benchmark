@@ -1,0 +1,190 @@
+ARG BASE_UBI_IMAGE_TAG=9.6
+FROM registry.access.redhat.com/ubi9/ubi-minimal:${BASE_UBI_IMAGE_TAG} AS base
+
+USER root
+WORKDIR /workspace
+
+# -----------------------------
+# Install additional tools
+# -----------------------------
+RUN microdnf install -y \
+    git jq rsync wget tar \
+    gcc gcc-c++ gcc-gfortran make cmake \
+    openssl-devel libffi-devel  zlib-devel libsndfile\
+    freetype-devel bzip2-devel xz-devel lz4-devel snappy-devel \
+    boost-devel  libjpeg-turbo-devel libtiff-devel libpng-devel libwebp-devel \
+    libxml2-devel libxslt-devel  libwebp-devel\
+    openblas openblas-devel autoconf automake libtool \
+    numpy perl-core dnf-plugins-core libxml2 libxml2-devel libxslt libxslt-devel \
+    ca-certificates iproute infiniband-diags \
+    && microdnf clean all
+
+# -----------------------------
+# Python 3.12
+# -----------------------------
+RUN microdnf install -y \
+    python3.12 \
+    python3.12-pip \
+    python3.12-devel \
+    && microdnf clean all
+
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
+    ln -sf /usr/bin/pip3.12 /usr/bin/pip
+
+# -----------------------------
+# Python build tools
+# -----------------------------
+RUN python -m pip install --upgrade pip setuptools wheel cython
+
+# -----------------------------
+# Install Rust (needed for cryptography & tiktoken)
+# -----------------------------
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y && \
+    /root/.cargo/bin/rustup default stable
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# -----------------------------
+# Install yq (manual for s390x)
+# -----------------------------
+RUN ARCH=$(uname -m) && \
+    wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${ARCH} \
+    -O /usr/local/bin/yq && \
+    chmod +x /usr/local/bin/yq
+
+# -----------------------------
+# Install OpenShift CLI 
+# -----------------------------
+RUN ARCH=$(uname -m) && \
+    curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest-4.20/openshift-client-linux-${ARCH}-rhel9.tar.gz && \
+    tar -xzf openshift-client-linux-${ARCH}-rhel9.tar.gz -C /usr/local/bin oc && \
+    chmod +x /usr/local/bin/oc && \
+    rm -f openshift-client-linux-${ARCH}-rhel9.tar.gz
+
+# -----------------------------
+# Install kubectl
+# -----------------------------
+# Download, verify, and install kubectl
+ARG KUBE_VERSION="v1.20.0"
+RUN ARCH=$(uname -m) && \
+    curl -LO https://dl.k8s.io/${KUBE_VERSION}/bin/linux/${ARCH}/kubectl && \
+    chmod +x ./kubectl && \
+    mv ./kubectl /usr/local/bin/kubectl
+
+# -----------------------------
+# Install torch for s390x
+# -----------------------------
+RUN python -m pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cpu
+
+# ============================================
+# BUILD APACHE ARROW (for pyarrow)
+# ============================================
+WORKDIR /tmp
+
+ENV ARROW_HOME=/usr/local
+ENV CMAKE_PREFIX_PATH=/usr/local
+ENV LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH}
+
+RUN git clone https://github.com/apache/arrow.git && \
+    cd arrow/cpp && \
+    mkdir release && cd release && \
+    cmake -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=/usr/local \
+          -DARROW_PYTHON=ON \
+          -DARROW_PARQUET=ON \
+          -DARROW_DATASET=ON \
+          -DARROW_WITH_SNAPPY=ON \
+          -DARROW_WITH_ZSTD=ON \
+          -DARROW_WITH_LZ4=ON \
+          -DARROW_DEPENDENCY_SOURCE=BUNDLED \
+          .. && \
+    make -j$(nproc) && \
+    make install
+
+# -----------------------------
+# Build pyarrow
+# -----------------------------
+RUN cd /tmp/arrow/python && \
+    python -m pip install -r requirements-build.txt && \
+    python -m pip install .
+
+# -----------------------------
+# Install inference-perf (FULL deps now possible)
+# -----------------------------
+ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
+ARG INFERENCE_PERF_BRANCH=main
+ARG INFERENCE_PERF_COMMIT=v0.4.0
+RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
+RUN cd inference-perf; \
+    git checkout ${INFERENCE_PERF_COMMIT}; \
+    python -m pip install .
+
+# --------------------
+# Build vllm ( TO do )
+# --------------------
+
+# ----------------
+# GuideLLM also requires torch, installed above
+# ----------------
+# GuideLLM also requires torch, installed above
+ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
+ARG GUIDELLM_BRANCH=v0.5.3
+ARG GUIDELLM_COMMIT=v0.5.3
+RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
+RUN cd guidellm; \
+    git checkout ${GUIDELLM_COMMIT}; \
+    python -m pip install .[recommended]
+
+# -------------
+# Harness Setup
+# ---------------
+ARG INFERENCEMAX_REPO=https://github.com/kimbochen/bench_serving.git
+ARG INFERENCEMAX_BRANCH=main
+ARG INFERENCEMAX_COMMIT=ee867231de0b268e2810a6e31751b23cf5903fc5
+RUN git clone --branch ${INFERENCEMAX_BRANCH} ${INFERENCEMAX_REPO}
+RUN cd bench_serving; \
+    git checkout ${INFERENCEMAX_COMMIT}
+
+RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \
+    echo "vllm-benchmark: ${VLLM_BENCHMARK_REPO} ${VLLM_BENCHMARK_COMMIT}" >> /workspace/repos.txt; \
+    echo "guidellm: ${GUIDELLM_REPO} ${GUIDELLM_COMMIT}" >> /workspace/repos.txt; \
+    echo "inferencemax: ${INFERENCEMAX_REPO} ${INFERENCEMAX_COMMIT}" >> /workspace/repos.txt;
+
+RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
+
+ADD workload/harnesses/ /usr/local/bin/
+COPY analysis/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
+COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
+COPY analysis/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
+COPY analysis/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
+COPY analysis/inferencemax-analyze_results.sh /usr/local/bin/inferencemax-analyze_results.sh
+COPY analysis/visualize_metrics.py /usr/local/bin/visualize_metrics.py
+COPY benchmark_report/ /opt/benchmark_report/
+RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
+
+# Install requirements for analysis scripts
+COPY build/requirements-analysis.txt .
+RUN pip install --no-cache-dir -r requirements-analysis.txt
+RUN pip install -e /opt
+
+ADD ../setup/preprocess /tmp/preprocess/
+RUN chmod +x /tmp/preprocess/* ; cp -f  /tmp/preprocess/* /usr/local/bin/
+
+# -----------------------------
+# Copy your scripts
+# -----------------------------
+COPY build/llm-d-benchmark.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/llm-d-benchmark.sh
+
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ENV PYTHONUSERBASE=/usr/local
+
+# -----------------------------
+# Switch back to vllm user
+# -----------------------------
+USER 2000
+WORKDIR /home/vllm
+
+# Override entrypoint (important)
+ENTRYPOINT ["llm-d-benchmark.sh"]
