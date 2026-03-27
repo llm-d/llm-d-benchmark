@@ -77,8 +77,11 @@ __pycache__/
 .venv/
 .llmd/
 
-# Build artifacts from pip install
-build/
+# Build artifacts from pip install (keep build/ itself for Dockerfile)
+build/lib/
+build/bdist.*/
+build/lib.*/
+build/temp.*/
 dist/
 *.egg-info/
 
