@@ -68,9 +68,9 @@ export LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=2
 export LLMDBENCH_VLLM_COMMON_DATA_PARALLELISM=1
 
 # Uncomment ( ###### ) the following line to enable multi-nic
-######export LLMDBENCH_VLLM_COMMON_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:multi-nic-compute
+export LLMDBENCH_VLLM_COMMON_PODANNOTATIONS=k8s.v1.cni.cncf.io/networks:multi-nic-compute
 # Uncomment ( ######## ) the following to enable automatic detection of network acceleration (roce/gdr or rdma/ib)
-########export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=auto
+export LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=auto
 
 export LLMDBENCH_VLLM_COMMON_PREPROCESS="source /shared-config/llmdbench_env.sh"
 
@@ -173,7 +173,7 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --max-model-len \$VLLM_MAX_MODEL_LEN \
 --tensor-parallel-size \$VLLM_TENSOR_PARALLELISM \
 --gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL \
---kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}" \
+--kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\",\"kv_ip\":\"\${POD_IP}\"}" \
 --no-enable-log-requests \
 --enable-prefix-caching \
 --disable-uvicorn-access-log
@@ -206,7 +206,7 @@ vllm serve /model-cache/models/REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL \
 --max-model-len \$VLLM_MAX_MODEL_LEN \
 --tensor-parallel-size \$VLLM_TENSOR_PARALLELISM \
 --gpu-memory-utilization \$VLLM_ACCELERATOR_MEM_UTIL \
---kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\"}" \
+--kv-transfer-config "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_both\",\"kv_ip\":\"\${POD_IP}\"}" \
 --no-enable-log-requests \
 --enable-prefix-caching \
 --disable-uvicorn-access-log
