@@ -1,0 +1,255 @@
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: vllm-benchmark-run
+spec:
+  params:
+    - name: harnessName
+    - name: harnessProfile
+    - name: pipelineUID
+  env:
+    - name: REQUESTED_HARNESS_NAME
+      value: "$(params.harnessName)"
+    - name: MY_HARNESS_NAME
+      value: "vllm-benchmark"
+    - name: HARNESS_PROFILE
+      value: "$(params.harnessProfile)"
+
+    - name: GIT_REPO_URL
+      value: "https://github.com/vllm-project/vllm.git"
+    - name: GIT_REVISION
+      value: "main"
+    - name: GIT_COMMIT
+      value: "b6381ced9c52271f799a8348fcc98c5f40528cdf"
+
+    - name: DATA_ROOT_DIR
+      value: $(workspaces.data.path)
+    - name: MY_PIPELINE_UID
+      value: $(params.pipelineUID)
+    - name: MY_TASK_NAME
+      value: $(context.taskRun.name)
+
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-secret
+          key: HF_TOKEN
+
+  # https://github.com/llm-d/llm-d-benchmark/blob/main/build/Dockerfile#L1C6-L1C33
+  image: python:3.12.9-slim-bookworm
+  script: |
+    #!/bin/bash
+
+    # https://github.com/llm-d/llm-d-benchmark/blob/main/workload/harnesses/vllm-benchmark-llm-d-benchmark.sh
+
+    if [ "${REQUESTED_HARNESS_NAME}" != "${MY_HARNESS_NAME}" ]; then
+      echo "Requested harness not ${MY_HARNESS_NAME}, skipping"
+      exit 0
+    fi
+
+    # https://github.com/llm-d/llm-d-benchmark/blob/main/build/Dockerfile#L56-L62
+    # https://github.com/llm-d/llm-d-benchmark/blob/main/setup/run.sh
+
+    EXPERIMENT_ID="experiment-$(echo -n ${MY_PIPELINE_UID} | cut -c1-8)"
+    RESULTS_DIR="${DATA_ROOT_DIR}/${MY_HARNESS_NAME}_${EXPERIMENT_ID}_${MY_TASK_NAME}"
+    CONTROL_DIR="${DATA_ROOT_DIR}/${MY_HARNESS_NAME}_${EXPERIMENT_ID}_${MY_TASK_NAME}"
+    RUN_DIR=$(pwd)
+
+    # TODO figure out which are actually needed for each step
+    echo "🔄 Installing required tools"
+    apt-get update
+    apt-get install -y \
+      git \
+      gpg \
+      pip \
+      yq \
+      && apt-get clean && rm -rf /var/cache/apt
+
+    echo "🔄 Cloning and installing harness: ${MY_HARNESS_NAME}"
+    git clone --branch ${GIT_REVISION} ${GIT_REPO_URL}
+    cd vllm
+    git checkout ${GIT_COMMIT}
+    cd ..
+    mv -f vllm vllm-benchmark
+
+    # TBD pin versions
+    cat <<EOF > requirements-vllm-benchmark.txt
+    aiohttp
+    datasets
+    numpy
+    pandas
+    pillow
+    tqdm
+    transformers
+    EOF
+
+    cat requirements-vllm-benchmark.txt
+    pip --version
+    pip install --no-cache-dir \
+      --disable-pip-version-check  \
+      --upgrade \
+      -r ./requirements-vllm-benchmark.txt \
+      --root-user-action=ignore
+    pip list
+
+    # profile name and location
+    workload=$(echo ${HARNESS_PROFILE} | sed 's^\.yaml^^g' )
+    workload_profile=${workload}.yaml
+    workload_profile_path=${CONTROL_DIR}/workload/profiles/${MY_HARNESS_NAME}/${workload_profile}
+
+    # run vllm-benchmark
+    cp ${workload_profile_path} ${workload_profile}
+    en=$(cat ${workload_profile} | yq -r .executable)
+
+    echo "pwd = $(pwd)"
+    echo "RUN_DIR=$RUN_DIR"
+    echo "running - ${RUN_DIR}/vllm-benchmark/benchmarks/${en}"
+    ls -l ${RUN_DIR}/vllm-benchmark/benchmarks
+    python ${RUN_DIR}/vllm-benchmark/benchmarks/${en} --$(cat ${workload_profile} | grep -v "^executable" | yq -r 'to_entries | map("\(.key)=\(.value)") | join(" --")' | sed -e 's^=none ^^g' -e 's^=none$^^g')  --seed $(date +%s) --save-result > >(tee -a $RESULTS_DIR/stdout.log) 2> >(tee -a $RESULTS_DIR/stderr.log >&2)
+    export LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC=$?
+    find ${RUN_DIR}/vllm-benchmark -maxdepth 1 -mindepth 1 -name '*.json' -exec mv -t "$RESULTS_DIR"/ {} +
+
+    # If benchmark harness returned with an error, exit here
+    if [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC -ne 0 ]]; then
+      echo "❌ Harness returned with error $LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC"
+      exit $LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC
+    fi
+    echo "✅ Harness completed successfully."
+---
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: vllm-benchmark-analyze-results
+spec:
+  params:
+    - name: harnessName
+    - name: pipelineUID
+  env:
+    - name: REQUESTED_HARNESS_NAME
+      value: "$(params.harnessName)"
+    - name: MY_HARNESS_NAME
+      value: "vllm-benchmark"
+
+    - name: GIT_REPO_URL
+      value: "https://github.com/kubernetes-sigs/inference-perf.git"
+    - name: GIT_REVISION
+      value: "main"
+    - name: GIT_COMMIT
+      value: "1ccc48b6bb9c9abb61558b719041fb000b265e59"
+
+    - name: DATA_ROOT_DIR
+      value: $(workspaces.data.path)
+    - name: MY_PIPELINE_UID
+      value: $(params.pipelineUID)
+    - name: MY_TASK_NAME
+      value: $(context.taskRun.name)
+
+# https://github.com/llm-d/llm-d-benchmark/blob/main/build/Dockerfile#L1C6-L1C33
+  image: python:3.12.9-slim-bookworm
+  script: |
+    #!/usr/bin/env bash
+
+    EXPERIMENT_ID="experiment-$(echo -n ${MY_PIPELINE_UID} | cut -c1-8)"
+    RESULTS_DIR="${DATA_ROOT_DIR}/${MY_HARNESS_NAME}_${EXPERIMENT_ID}_${MY_TASK_NAME}"
+ 
+    if [ "${REQUESTED_HARNESS_NAME}" != "${MY_HARNESS_NAME}" ]; then
+      echo "Requested harness not ${MY_HARNESS_NAME}, skipping"
+      exit 0
+    fi
+     
+    echo "🔄 Installing requirements"
+    # apt-get update
+    # apt-get install -y \
+    #   git \
+    #   pip \
+    #   && apt-get clean && rm -rf /var/cache/apt
+
+    cat <<EOF > requirements-analysis.txt
+    matplotlib>=3.7.0
+    numpy>=2.3.1
+    seaborn>=0.12.0
+    pandas>=2.2.3
+    pydantic>=2.11.7
+    PyYAML>=6.0.2
+    scipy>=1.16.0
+    requests>=2.32.5
+    EOF
+
+    cat requirements-analysis.txt
+    pip --version
+    pip install --no-cache-dir \
+      --disable-pip-version-check  \
+      --upgrade \
+      -r ./requirements-analysis.txt \
+      --root-user-action=ignore
+    pip list
+
+    # Download covert python from llm-d-benchmark
+    # TBD: should the python be embedded in the step? A separate step perhaps.
+    export ROOT_DIR=workload/report
+    export BRANCH=main
+
+    cat <<EOF | python
+    import os
+    import requests
+
+    # TBD these should be parameters
+    ROOT_DIR = os.getenv("ROOT_DIR")
+    BRANCH = os.getenv("BRANCH")
+
+    api = f"https://api.github.com/repos/llm-d/llm-d-benchmark/contents/{ROOT_DIR}?ref={BRANCH}"
+    headers = {}
+
+    resp = requests.get(api, headers={})
+    resp.raise_for_status()
+    for item in resp.json():
+        if item.get("type") == "file" and item["name"].endswith(".py"):
+            url = item["download_url"]
+            r = requests.get(url, headers=headers)
+            r.raise_for_status()
+            with open(item["name"], "wb") as f:
+                f.write(r.content)
+            print("Downloaded", item["name"])
+    EOF
+
+    chmod +x convert.py schema.py
+    ls -l
+
+    # https://github.com/llm-d/llm-d-benchmark/blob/main/workload/harnesses/inference-perf-llm-d-benchmark.sh#L17C1-L26C5
+    echo "🔄 Convert results into universal format"
+    for result in $(find $RESULTS_DIR -maxdepth 1 -name 'stage_*.json'); do
+      result_fname=$(echo $result | rev | cut -d '/' -f 1 | rev)
+      ./convert.py $result -w inference-perf $RESULTS_DIR/benchmark_report,_$result_fname.yaml 2> >(tee -a $RESULTS_DIR/stderr.log >&2)
+      # Report errors but don't quit
+      export RUN_EXPERIMENT_CONVERT_RC=$?
+      if [[ $RUN_EXPERIMENT_CONVERT_RC -ne 0 ]]; then
+        echo "./convert.py returned with error $RUN_EXPERIMENT_CONVERT_RC converting: $result"
+      fi
+    done
+
+    # Define function to call analysis so can call multiple times
+    # https://github.com/llm-d/llm-d-benchmark/blob/main/analysis/vllm-benchmark-analyze_results.sh
+    analyze_results () {
+      mkdir -p $RESULTS_DIR/analysis
+      result_start=$(grep -nr "Result ==" $RESULTS_DIR/stdout.log | cut -d ':' -f 1)
+      total_file_lenght=$(cat $RESULTS_DIR/stdout.log | wc -l)
+      cat $RESULTS_DIR/stdout.log | sed "$result_start,$total_file_lenght!d" > $RESULTS_DIR/analysis/summary.txt
+      return $?
+    }
+
+    # https://github.com/llm-d/llm-d-benchmark/blob/main/build/llm-d-benchmark.sh#L63-L74
+    echo "🔄 Running analysis"
+    # Try to run analysis twice then give up
+    analyze_results
+    ec=$?
+    if [[ $ec -ne 0 ]]; then
+      echo "execution of analyzer failed, wating 120 seconds and trying again"
+      sleep 120
+      set -x
+      analyze_results
+    fi
+    # Return with error code of first iteration of experiment analyzer
+    # TBD modify this message depending on success
+    echo "✅ Results analyzed and reports generated"
+    exit $ec
+
