@@ -26,6 +26,10 @@ env:
   - name: RAYON_NUM_THREADS
     value: "4"
 
+# hooks:                            # optional: scripts to run on the harness pod between workloads
+#   pre_workload: "echo 'preparing for workload'"       # runs before each workload
+#   post_workload: "echo 'cleaning up after workload'"  # runs after each workload
+
 workload:                         # yaml configuration for harness workload(s)
   
   # an example workload using random synthetic data
