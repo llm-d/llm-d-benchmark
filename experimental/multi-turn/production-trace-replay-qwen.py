@@ -292,8 +292,8 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
         # Yield LazyLoadInferenceAPIData for each entry
         for i, entry in enumerate(self.trace_entries):
             session_id = str(entry.chat_id) if entry.parent_chat_id == -1 else str(entry.parent_chat_id)
-            prefered_worker_id = hash(session_id)
-            yield LazyLoadInferenceAPIData(data_index=i, prefered_worker_id=prefered_worker_id)
+            preferred_worker_id = hash(session_id)
+            yield LazyLoadInferenceAPIData(data_index=i, preferred_worker_id=preferred_worker_id)
     
     def load_lazy_data(self, data: LazyLoadInferenceAPIData) -> InferenceAPIData:
         entry = self.trace_entries[data.data_index]
@@ -323,7 +323,7 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
     def is_shared_prefix_supported(self) -> bool:
         return True
     
-    def is_prefered_worker_requested(self) -> bool:
+    def is_preferred_worker_requested(self) -> bool:
         return True
 
 
