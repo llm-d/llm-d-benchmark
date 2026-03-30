@@ -28,6 +28,17 @@ However, the scripts can be executed by **namespace-level admin** users, as long
 
 ### Install
 
+**Quick install (one-liner):**
+
+```bash
+curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
+cd llm-d-benchmark
+source .venv/bin/activate
+llmdbenchmark --version
+```
+
+**Or clone manually:**
+
 ```bash
 git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
@@ -36,7 +47,14 @@ source .venv/bin/activate
 llmdbenchmark --version
 ```
 
-The install script creates a virtualenv, validates system tools (kubectl, helm, Python 3.11+), and installs the `llmdbenchmark` package. See [Installation](#installation) for manual install and flags.
+**Install a specific branch:**
+
+```bash
+LLMDBENCH_BRANCH=declarative-python-refactor \
+  curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
+```
+
+The install script auto-detects if the repo is present -- if not, it clones it first. It creates a virtualenv, validates system tools (kubectl, helm, Python 3.11+), and installs the `llmdbenchmark` package. See [Installation](#installation) for manual install and flags.
 
 > [!TIP]
 > The last line of output from `llmdbenchmark standup` shows the workspace path where all rendered configs, manifests, and results are stored.
@@ -153,6 +171,15 @@ Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-
 ## Installation
 
 ### Quick Install (recommended)
+
+```bash
+# One-liner -- auto-clones if needed
+curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
+cd llm-d-benchmark
+source .venv/bin/activate
+```
+
+Or manually:
 
 ```bash
 git clone https://github.com/llm-d/llm-d-benchmark.git
