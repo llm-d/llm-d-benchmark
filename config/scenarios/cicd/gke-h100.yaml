@@ -2,18 +2,12 @@
 # Based on scenarios/cicd/gke_H100_fb.sh
 #
 # CI/CD scenario for Google Kubernetes Engine clusters with H100 GPUs.
-# Uses meta-llama/Llama-3.2-1B for fast validation.
+# Uses the default model (facebook/opt-125m) for fast validation.
+# PR 868: GKE fix for v0.5.1 llm-d-cuda image -- LD_LIBRARY_PATH
+# set inline in custom commands instead of via extraEnvVars.
 
 scenario:
   - name: "gke-h100-cicd"
-
-    # Model
-    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="meta-llama/Llama-3.2-1B"
-    model:
-      name: meta-llama/Llama-3.2-1B
-      shortName: llama-3.2-1b
-      path: models/meta-llama/Llama-3.2-1B
-      huggingfaceId: meta-llama/Llama-3.2-1B
 
     # Namespace -- dedicated CI/CD namespace
     # Corresponds to: LLMDBENCH_VLLM_COMMON_NAMESPACE=llmdbenchcicd
@@ -30,10 +24,6 @@ scenario:
       enabled: true
     standalone:
       enabled: false
-      # GKE-specific env var for standalone path too
-      extraEnvVars:
-        - name: LD_LIBRARY_PATH
-          value: "${LD_LIBRARY_PATH}:/usr/local/nvidia/lib64"
 
     # Helm release name
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_RELEASE=llmdbenchcicd
@@ -51,19 +41,72 @@ scenario:
     accelerator:
       count: 1
 
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_REPLICAS=1
-    # GKE-specific environment variable for LD_LIBRARY_PATH
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML with _LD_LIBRARY_PATH
+    # Disable monitoring for CI/CD
+    # Corresponds to: LLMDBENCH_VLLM_MONITORING_PODMONITOR_ENABLED=false
+    #                 LLMDBENCH_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED=false
+    inferenceExtension:
+      monitoring:
+        prometheus:
+          enabled: false
+
+    # Decode configuration with GKE-specific custom command
+    # LD_LIBRARY_PATH is set inline because the llm-d-cuda:v0.5.1 image
+    # needs the CUDA compat library path on GKE nodes.
     decode:
       replicas: 1
-      extraEnvVars:
-        - name: LD_LIBRARY_PATH
-          value: "${LD_LIBRARY_PATH}:/usr/local/nvidia/lib64"
+      vllm:
+        customCommand: |
+          export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda-12.9/compat; \
+          vllm serve /model-cache/models/$LLMDBENCH_DEPLOY_CURRENT_MODEL \
+          --host 0.0.0.0 \
+          --served-model-name $LLMDBENCH_DEPLOY_CURRENT_MODEL \
+          --port $VLLM_METRICS_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --no-enable-log-requests \
+          --disable-uvicorn-access-log \
+          --no-enable-prefix-caching
 
+    # Prefill with same GKE LD_LIBRARY_PATH fix
     prefill:
-      extraEnvVars:
-        - name: LD_LIBRARY_PATH
-          value: "${LD_LIBRARY_PATH}:/usr/local/nvidia/lib64"
+      replicas: 0
+      vllm:
+        customCommand: |
+          export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda-12.9/compat; \
+          vllm serve /model-cache/models/$LLMDBENCH_DEPLOY_CURRENT_MODEL \
+          --host 0.0.0.0 \
+          --served-model-name $LLMDBENCH_DEPLOY_CURRENT_MODEL \
+          --port $VLLM_INFERENCE_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --no-enable-log-requests \
+          --disable-uvicorn-access-log \
+          --no-enable-prefix-caching
+
+    # Standalone with GKE LD_LIBRARY_PATH (nvidia path, not cuda compat)
+    standalone:
+      enabled: false
+      vllm:
+        customCommand: |
+          export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/nvidia/lib64; \
+          vllm serve $LLMDBENCH_DEPLOY_CURRENT_MODEL \
+          --host 0.0.0.0 \
+          --served-model-name $LLMDBENCH_DEPLOY_CURRENT_MODEL \
+          --port $VLLM_INFERENCE_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --load-format $VLLM_LOAD_FORMAT \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --max-num-seqs $VLLM_MAX_NUM_SEQ \
+          --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
+          --disable-log-requests \
+          --disable-uvicorn-access-log \
+          --no-enable-prefix-caching
 
     # Storage
     # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=standard-rwx

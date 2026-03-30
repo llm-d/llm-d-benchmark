@@ -17,9 +17,9 @@ tokenizer:
 data:
   type: random
   input_distribution:
-    min: 10             # min length of the synthetic prompts
-    max: 100            # max length of the synthetic prompts
-    mean: 50            # mean length of the synthetic prompts
+    min: 256            # min length of the synthetic prompts
+    max: 512            # max length of the synthetic prompts
+    mean: 384           # mean length of the synthetic prompts
     std_dev: 10         # standard deviation of the length of the synthetic prompts
     total_count: 100    # total number of prompts to generate to fit the above mentioned distribution constraints
   output_distribution:

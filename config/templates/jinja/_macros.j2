@@ -272,10 +272,9 @@
 {%- if has_enforce_eager %} \
   --enforce-eager
 {%- endif %}
-{# --no-enable-log-requests is skipped for standalone because upstream
-   vllm-openai (v0.9+) removed this flag. The modelservice path uses
-   llm-d-cuda which still supports it. If your standalone image supports
-   this flag, add it via standalone.vllm.additionalFlags instead. #}
+{%- if has_disable_log_requests %} \
+  --disable-log-requests
+{%- endif %}
 {%- if has_disable_uvicorn %} \
   --disable-uvicorn-access-log
 {%- endif %} \

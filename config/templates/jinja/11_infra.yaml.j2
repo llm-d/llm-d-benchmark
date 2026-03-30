@@ -64,7 +64,6 @@ gateway:
   gatewayClassName: {{ gw_class }}
   gatewayParameters:
     enabled: true
-    accessLogging: {{ gateway.accessLogging | default(false) | lower }}
     logLevel: {{ gateway.logLevel | default('error') }}
     resources:
       limits:

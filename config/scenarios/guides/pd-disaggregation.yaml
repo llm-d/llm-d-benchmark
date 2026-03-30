@@ -351,7 +351,7 @@ scenario:
         enforceEager: false  # Not in original bash script
         disableLogRequests: true     # modelservice only -- upstream vllm-openai (v0.9+) dropped --no-enable-log-requests
         disableUvicornAccessLog: true
-        noPrefixCaching: true  # Corresponds to: --no-enable-prefix-caching
+        enablePrefixCaching: true   # PR 868: P/D enables prefix caching
         allowLongMaxModelLen: "1"
         serverDevMode: "1"
       
