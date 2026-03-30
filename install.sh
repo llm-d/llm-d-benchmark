@@ -1,18 +1,78 @@
 #!/usr/bin/env bash
 #
-# install_deps.sh — Install all dependencies for llm-d-benchmark
+# install.sh -- Install all dependencies for llm-d-benchmark
 #
-# Installs both the llmdbenchmark library and the config_explorer library
-# (editable installs) along with their Python dependencies, and validates
+# Can be run two ways:
+#
+#   1. From inside the repo:
+#      ./install.sh
+#
+#   2. Via curl (auto-clones the repo into ./llm-d-benchmark):
+#      curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
+#
+#      To clone a specific branch:
+#      LLMDBENCH_BRANCH=my-branch curl -sSL ... | bash
+#
+# Installs the llmdbenchmark CLI, config_explorer, and validates
 # that required system tools are available.
 #
 # Usage:
-#   ./install_deps.sh              # interactive — prompts if no venv
-#   ./install_deps.sh -y           # non-interactive — allows system python
-#   ./install_deps.sh noreset      # skip cache reset (re-use previous checks)
-#   source install_deps.sh         # also works when sourced
+#   ./install.sh                   # interactive -- prompts if no venv
+#   ./install.sh -y                # non-interactive -- allows system python
+#   ./install.sh noreset           # skip cache reset (re-use previous checks)
+#   source install.sh              # also works when sourced
 #
 set -euo pipefail
+
+REPO_URL="https://github.com/llm-d/llm-d-benchmark.git"
+REPO_DIR="llm-d-benchmark"
+DEFAULT_BRANCH="main"
+
+# ---------------------------------------------------------------------------
+# Bootstrap: if run via curl (no repo present), clone first
+#   curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
+# ---------------------------------------------------------------------------
+_bootstrap_if_needed() {
+    # Detect curl-pipe-bash: BASH_SOURCE is empty or points to stdin
+    local need_clone=false
+
+    if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]}" == "bash" || "${BASH_SOURCE[0]}" == "/dev/stdin" ]]; then
+        need_clone=true
+    elif [[ ! -f "pyproject.toml" && ! -d "llmdbenchmark" ]]; then
+        # Script exists on disk but not inside the repo
+        need_clone=true
+    fi
+
+    if [[ "$need_clone" == "true" ]]; then
+        echo ""
+        echo "  llm-d-benchmark repository not detected in current directory."
+        echo ""
+
+        # Check if it already exists in cwd
+        if [[ -d "${REPO_DIR}" && -f "${REPO_DIR}/pyproject.toml" ]]; then
+            echo "  Found existing clone at ./${REPO_DIR}"
+            cd "${REPO_DIR}"
+        else
+            # Check for git
+            if ! command -v git &>/dev/null; then
+                echo "  ERROR: git is required but not installed."
+                exit 1
+            fi
+
+            local branch="${LLMDBENCH_BRANCH:-${DEFAULT_BRANCH}}"
+            echo "  Cloning ${REPO_URL} (branch: ${branch})..."
+            git clone --branch "${branch}" "${REPO_URL}" "${REPO_DIR}"
+            cd "${REPO_DIR}"
+            echo "  Cloned to $(pwd)"
+        fi
+
+        echo ""
+        # Re-exec the install script from within the repo
+        exec bash install.sh "$@"
+    fi
+}
+
+_bootstrap_if_needed "$@"
 
 # ---------------------------------------------------------------------------
 # Resolve script directory (works whether sourced or executed)
