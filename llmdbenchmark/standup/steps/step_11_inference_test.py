@@ -330,7 +330,7 @@ class InferenceTestStep(Step):
         url = f"{base_url}/v1/chat/completions"
         payload = {
             "model": model_name,
-            "messages": [{"role": "user", "content": "Say hello in one word."}],
+            "messages": [{"role": "user", "content": "What is the capital of the United States?"}],
             "max_tokens": 5,
             "temperature": 0,
         }

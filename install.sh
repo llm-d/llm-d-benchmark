@@ -88,11 +88,11 @@ fi
 # ---------------------------------------------------------------------------
 show_help() {
     cat <<'HELP'
-install_deps.sh — Install all dependencies for llm-d-benchmark
+install.sh — Install all dependencies for llm-d-benchmark
 
 USAGE
-    ./install_deps.sh [OPTIONS]
-    source install_deps.sh [OPTIONS]
+    ./install.sh [OPTIONS]
+    source install.sh [OPTIONS]
 
 DESCRIPTION
     Sets up the complete development / runtime environment for llm-d-benchmark.
@@ -116,20 +116,6 @@ OPTIONS
                     instead of creating a virtual environment.
     noreset         Reuse the dependency cache (~/.llmdbench_dependencies_checked)
                     from a previous run instead of re-checking everything.
-
-EXAMPLES
-    # First-time setup (auto-creates .venv)
-    ./install_deps.sh
-    source .venv/bin/activate
-
-    # Already have a venv active
-    source .venv/bin/activate && ./install_deps.sh
-
-    # CI / non-interactive (system Python, no venv)
-    ./install_deps.sh -y
-
-    # Quick re-run (skip already-checked items)
-    ./install_deps.sh noreset
 
 CACHE
     The script records which tools and packages have already been verified

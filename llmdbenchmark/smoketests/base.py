@@ -151,6 +151,38 @@ class BaseSmoketest:
                             f"{pod_type}_pods_running", True,
                             message=f"{len(phases)} {pod_type} pod(s) running",
                         ))
+                        # Check pod Ready condition -- catches crash-looping
+                        # sidecar containers (e.g., routing-proxy native
+                        # sidecar with restartPolicy: Always). The Ready
+                        # condition is True only when ALL containers pass
+                        # their readiness probes.
+                        ready_check = cmd.kube(
+                            "get", "pods", "-l", role_selector,
+                            "--namespace", namespace,
+                            "--no-headers",
+                            "-o", "custom-columns=NAME:.metadata.name,READY:.status.containerStatuses[*].ready",
+                            check=False,
+                        )
+                        if ready_check.success and ready_check.stdout.strip():
+                            not_ready = []
+                            for line in ready_check.stdout.strip().splitlines():
+                                parts = line.strip().split()
+                                if len(parts) >= 2:
+                                    pod_name = parts[0]
+                                    ready_values = parts[1]
+                                    if "false" in ready_values.lower():
+                                        not_ready.append(pod_name)
+                                elif parts:
+                                    not_ready.append(parts[0])
+                            if not_ready:
+                                report.add(CheckResult(
+                                    f"{pod_type}_containers_ready", False,
+                                    message=f"Not all {pod_type} pods ready (containers may be crash-looping): {', '.join(not_ready)}",
+                                ))
+                            else:
+                                context.logger.log_info(
+                                    f"All {pod_type} containers ready ✓"
+                                )
                 else:
                     report.add(CheckResult(
                         f"{pod_type}_pods_check", False,
@@ -1216,7 +1248,7 @@ class BaseSmoketest:
         url = f"{base_url}/v1/chat/completions"
         payload = {
             "model": model_name,
-            "messages": [{"role": "user", "content": "Say hello in one word."}],
+            "messages": [{"role": "user", "content": "What is the capital of the United States?"}],
             "max_tokens": 5,
             "temperature": 0,
         }
