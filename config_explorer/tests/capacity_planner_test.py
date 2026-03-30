@@ -816,34 +816,51 @@ def test_get_safetensors_metadata_caching():
 # ---- auto_max_model_len tests ----
 
 def test_auto_max_model_len_basic():
-    """auto_max_model_len returns a positive value for a model that fits on H100."""
-    model = qwen_model
-    config = get_model_config_from_hf(model)
-    result = auto_max_model_len(model, config, gpu_memory=80, gpu_mem_util=0.9, tp=1)
-    assert result > 0, f"Expected positive max_model_len, got {result}"
+    """auto_max_model_len returns a positive value for a model that fits on an H100"""
+    model_config = get_model_config_from_hf(qwen_model)
+    result = auto_max_model_len(
+        qwen_model, model_config,
+        gpu_memory=80, gpu_mem_util=0.9,
+        tp=1, pp=1, dp=1,
+    )
+    assert result > 0
+    assert isinstance(result, int)
 
 
 def test_auto_max_model_len_capped_at_max_position_embeddings():
-    """auto_max_model_len never exceeds model's max_position_embeddings."""
-    model = qwen_model
-    config = get_model_config_from_hf(model)
-    model_max = max_context_len(config)
-    result = auto_max_model_len(model, config, gpu_memory=80, gpu_mem_util=0.9, tp=1)
-    assert result <= model_max, f"Result {result} exceeds max_position_embeddings {model_max}"
+    """auto_max_model_len never exceeds max_position_embeddings"""
+    model_config = get_model_config_from_hf(qwen_model)
+    model_max = max_context_len(model_config)
+    result = auto_max_model_len(
+        qwen_model, model_config,
+        gpu_memory=80, gpu_mem_util=0.9,
+        tp=1, pp=1, dp=1,
+    )
+    assert result <= model_max
 
 
 def test_auto_max_model_len_oom_returns_zero():
-    """auto_max_model_len returns 0 when GPU memory is too small."""
-    model = qwen_model
-    config = get_model_config_from_hf(model)
-    result = auto_max_model_len(model, config, gpu_memory=0.001, gpu_mem_util=0.9, tp=1)
-    assert result == 0, f"Expected 0 for insufficient memory, got {result}"
+    """auto_max_model_len returns 0 when GPU memory is too small to fit model"""
+    model_config = get_model_config_from_hf(qwen_model)
+    result = auto_max_model_len(
+        qwen_model, model_config,
+        gpu_memory=1, gpu_mem_util=0.9,
+        tp=1, pp=1, dp=1,
+    )
+    assert result == 0
 
 
 def test_auto_max_model_len_higher_tp_increases_result():
-    """Higher TP should allow larger max_model_len."""
-    model = qwen_model
-    config = get_model_config_from_hf(model)
-    result_tp1 = auto_max_model_len(model, config, gpu_memory=80, gpu_mem_util=0.9, tp=1)
-    result_tp2 = auto_max_model_len(model, config, gpu_memory=80, gpu_mem_util=0.9, tp=2)
-    assert result_tp2 >= result_tp1, f"TP=2 ({result_tp2}) should be >= TP=1 ({result_tp1})"
+    """Higher TP frees more per-GPU memory, allowing larger max_model_len"""
+    model_config = get_model_config_from_hf(qwen_model)
+    result_tp1 = auto_max_model_len(
+        qwen_model, model_config,
+        gpu_memory=80, gpu_mem_util=0.9,
+        tp=1, pp=1, dp=1,
+    )
+    result_tp2 = auto_max_model_len(
+        qwen_model, model_config,
+        gpu_memory=80, gpu_mem_util=0.9,
+        tp=2, pp=1, dp=1,
+    )
+    assert result_tp2 >= result_tp1

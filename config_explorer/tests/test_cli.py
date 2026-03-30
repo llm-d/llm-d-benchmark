@@ -383,6 +383,33 @@ class TestIntegration:
         assert "allocatable_kv_cache_memory_gb" in data
 
 
+class TestAutoMaxModelLen:
+    """Test auto max-model-len feature"""
+
+    def test_auto_max_model_len_requires_gpu_memory(self):
+        """--max-model-len -1 without --gpu-memory should error"""
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen2.5-0.5B",
+            "--max-model-len", "-1",
+        )
+        assert result.returncode != 0
+        assert "gpu-memory" in result.stderr.lower() or "gpu_memory" in result.stderr.lower()
+
+    def test_auto_max_model_len_with_gpu(self):
+        """--max-model-len -1 with --gpu-memory should auto-calculate"""
+        result = run_cli(
+            "plan",
+            "--model", "Qwen/Qwen2.5-0.5B",
+            "--gpu-memory", "80",
+            "--max-model-len", "-1",
+        )
+        assert result.returncode == 0
+        data = parse_cli_json_output(result.stdout)
+        assert data["input_parameters"]["max_model_len"] > 0
+        assert data["input_parameters"]["max_model_len_auto"] is True
+
+
 class TestEstimateCommand:
     """Test GPU performance estimation command"""
 
@@ -745,24 +772,6 @@ class TestEstimateCommand:
         # Should be able to parse as JSON
         data = parse_cli_json_output(result.stdout)
         assert isinstance(data, dict)
-
-
-class TestAutoMaxModelLen:
-    """Tests for --max-model-len -1 auto-calculation."""
-
-    def test_auto_max_model_len_requires_gpu_memory(self):
-        """--max-model-len -1 without --gpu-memory should fail."""
-        result = run_cli("plan", "--model", "Qwen/Qwen2.5-0.5B", "--max-model-len", "-1")
-        assert result.returncode != 0, "Should fail without --gpu-memory"
-
-    def test_auto_max_model_len_with_gpu(self):
-        """--max-model-len -1 with --gpu-memory should auto-calculate."""
-        result = run_cli("plan", "--model", "Qwen/Qwen2.5-0.5B",
-                         "--max-model-len", "-1", "--gpu-memory", "80")
-        assert result.returncode == 0, f"Failed: {result.stderr}"
-        data = parse_cli_json_output(result.stdout)
-        assert data["input_parameters"]["max_model_len"] > 0
-        assert data["input_parameters"].get("max_model_len_auto") is True
 
 
 if __name__ == "__main__":

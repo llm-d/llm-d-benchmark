@@ -1,8 +1,10 @@
 # llm-d-benchmark
 
-Automated benchmarking for LLM inference on Kubernetes using `llm-d`. One CLI to plan, deploy, benchmark, collect results, and tear down.
+This repository provides an automated workflow for benchmarking LLM inference using the `llm-d` stack. It includes tools for deployment, experiment execution, data collection, and teardown across multiple environments and deployment styles.
 
-### Goals
+### Main Goal
+
+Provide a single source of automation for repeatable and reproducible experiments and performance evaluation on `llm-d`:
 
 - **Declarative lifecycle**: All infrastructure, workloads, and experiments render into reviewable YAML before provisioning.
 - **End-to-end automation**: A single `llmdbenchmark` CLI covers standup, benchmarking, result collection, and teardown.
@@ -10,6 +12,17 @@ Automated benchmarking for LLM inference on Kubernetes using `llm-d`. One CLI to
 - **Structured experiments**: Built-in Design of Experiments (DoE) support automates parameter sweeps across both infrastructure and workload configurations.
 - **Multiple harnesses**: Swap between [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git), [vllm-benchmark](https://github.com/vllm-project/vllm.git), and others with a CLI flag (`-l`).
 - **Post-deployment validation**" Per-scenario smoketests verify that deployed pod configurations match what the scenario defines -- resources, parallelism, env vars, probes, routing, and vLLM flags.
+
+## Prerequisites
+
+Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-d/blob/main/README.md#pre-requisites) for the most up-to-date requirements.
+For the client setup, the provided `install.sh` will install the necessary tools.
+
+### Administrative Requirements
+
+Deploying the llm-d stack requires **cluster-level admin** privileges, as you will be configuring cluster-level resources.
+However, the scripts can be executed by **namespace-level admin** users, as long as the [Kubernetes infrastructure components](https://github.com/llm-d-incubation/llm-d-infra) are configured and the **target namespace already exists**.
+
 
 ## Getting Started
 

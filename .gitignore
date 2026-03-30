@@ -59,6 +59,7 @@ environment/
 workspace*/
 
 .idea/
+.worktrees/
 
 scenarios/none.sh
 

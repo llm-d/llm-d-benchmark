@@ -76,7 +76,7 @@ def plan_capacity(args):
         model_memory = model_memory_req(args.model, model_config, hf_token)
         result["model_memory_gb"] = round(model_memory, 2)
 
-        # Set max_model_len: use provided value, auto-calculate with -1, or default
+        # Set max_model_len: use provided value, auto-calculate, or default from model config
         max_model_len_auto = False
         if args.max_model_len == -1:
             if not args.gpu_memory:

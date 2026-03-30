@@ -841,7 +841,6 @@ def allocatable_kv_cache_memory(model_name: str,
 
     return max(0, available_memory - total_consumed)
 
-
 def auto_max_model_len(
     model_name: str,
     model_config: AutoConfig,
@@ -902,7 +901,6 @@ def auto_max_model_len(
         model_max = max_tokens
 
     return min(max_tokens, model_max)
-
 
 def is_moe(model_config: AutoConfig) -> bool:
     """

@@ -9,26 +9,26 @@ The simplest way to deploy a model that takes advantage of `WVA` is through the 
 
 For example, we can easily standup a model that will take advantage of autoscaling via `WVA` by simply appending the aforementioned `WVA` flag:
 
-    - llmdbenchmark standup -p llm-d-test-exp -m Qwen/Qwen3-0.6B --spec inference-scheduling --wva
+    - ./setup/standup.sh -p llm-d-test-exp -m Qwen/Qwen3-0.6B -c inference-scheduling --wva
 
 Here is a summary of what will occur in that command:
 
 - A model will be stood up and all underlying infra will be provisioned. In this case it is `Qwen/Qwen3-0.6B` - and it will be deployed via the `inference-scheduling` well-lit-path - this is something that is **not** unique, but business as usual.
 
-- `WVA` will either be *installed* or will be idempotent in the `WVA` *controller namespace*  (*llm-d-autoscaler* being the default) depending on if it already exists on the cluster. Do note, that it is actually possible to have multiple installations of `WVA` on a cluster in seperate namespaces - which one you target is dependent on the `namespace` that is configured within `config/defaults.yaml`. As part of this process, we configure `Prometheus Adapters` to allow metrics from `model` to `WVA` controller to flow naturally.
+- `WVA` will either be *installed* or will be idempotent in the `WVA` *controller namespace*  (*llm-d-autoscaler* being the default) depending on if it already exists on the cluster. Do note, that it is actually possible to have multiple installations of `WVA` on a cluster in seperate namespaces - which one you target is dependent on the `namespace` that is configured within the `setup/env.sh`. As part of this process, we configure `Prometheus Adapters` to allow metrics from `model` to `WVA` controller to flow naturally.
 
 - `WVA` model specific components (hpa va servicemonitor vllm-service) will be created in the `model namespace` - in this case, `llm-d-test-exp`.
 
 ## How to Undeploy a Model that uses WVA
 
-There is no difference here, simply run `llmdbenchmark teardown` as per usual with no additional flags for `WVA`. But there a few things you should understand:
+There is no difference here, simply run `teardown.sh` as per usual with no additional flags for `WVA`. But there a few things you should understand:
 
-- `llmdbenchmark teardown` will remove all model specific resources, including the `WVA` model specific resources.
-- `llmdbenchmark teardown` will NOT remove the `WVA` controller from the `llm-d-autoscaler` namespace (or from another namespace) - this is done purposefully as to not interrupt other jobs, since many models can target a single instance of the `WVA` controller.
+- `teardown.sh` will remove all model specific resources, including the `WVA` model specific resources.
+- `teardown.sh` will NOT remove the `WVA` controller from the `llm-d-autoscaler` namespace (or from another namespace) - this is done purposefully as to not interrupt other jobs, since many models can target a single instance of the `WVA` controller.
 
 ## How to Run Workloads on a Model that uses WVA
 
-There is no difference here, and there is no additional `WVA` information needed here. Simply run `llmdbenchmark run` as per usual - with no additional flags for `WVA`. For an example benchmarking scenario see the below real usecase.
+There is no difference here, and there is no additional `WVA` information needed here. Simply run `run.sh` as per usual - with no additional flags for `WVA`. For an example benchmarking scenario see the below real usecase.
 
 ---
 
@@ -48,27 +48,27 @@ it on your local machine, or system you are *driving* the experiments.
 
 1. Deploy a full `llm-d` stack for a target model, in this case, `meta-llama/Llama-3.1-8B`, using the `inference-scheduling` well-lit-path.
 
-    - Template Command: `llmdbenchmark standup -p <namespace> -m <model id> --spec <well-lit-path>`
+    - Template Command: `./setup/standup.sh -p <namespace> -m <model id> -c <well-lit-path>`
 
-        - Example Populated Command: `llmdbenchmark standup -p llm-d-vezio -m meta-llama/Llama-3.1-8B --spec inference-scheduling`
+        - Example Populated Command: `./setup/standup.sh -p llm-d-vezio -m meta-llama/Llama-3.1-8B -c inference-scheduling`
 
 2. Run a workload using the `guidellm` `harness`  and `chatbot_synthetic` `workload profile` against an existing `llm-d` stack, using the `inference-scheduling` well-lit-path.
 
-    - Template Command: `llmdbenchmark run -l <harness> -w <workload profile> -p llm-d-vezio  -m <model id> --spec <well-lit-path>`
+    - Template Command: `./run.sh -l <harness> -w <workload profile> -p llm-d-vezio  -m <model id> -c <well-lit-path>`
 
-        - Example Populated Command: `llmdbenchmark run -l guidellm -w chatbot_synthetic -p llm-d-vezio -m meta-llama/Llama-3.1-8B --spec inference-scheduling`
+        - Example Populated Command: `./run.sh -l guidellm -w chatbot_synthetic -p llm-d-vezio -m meta-llama/Llama-3.1-8B -c inference-scheduling`
 
 3. Repeat `Step 2` to rerun a workload, in our case we reran `Step 2`, a total of 4 times.
 
-4. Collect results from the `analysis` directory that is provided in the logs of the `llmdbenchmark run` command. You can see a detailed and granular report in the `results` directory if needed.
+4. Collect results from the `analysis` directory that is provided in the logs of the `run.sh` command. You can see a detailed and granular report in the `results` directory if needed.
 
     - Make sure you seperate these results into a seperate directory from the WVA experiment - they are not the best named - we will change this - otherwise it will be hard to tell what is what!
 
 5. Tear down the infrastructure (this will not delete the namespace, but will completely purge *all* resources for the model, effectively leaving an empty namespace - it will NOT touch cluster-wide resources.)
 
-    - Template Command: `llmdbenchmark teardown -p <namespace> -d --spec <well-lit-path>`
+    - Template Command: `./setup/teardown.sh -p <namespace> -d -c <well-lit-path>`
 
-        - Example Populated Command: `llmdbenchmark teardown -p llm-d-vezio -d --spec inference-scheduling`
+        - Example Populated Command: `./setup/teardown.sh -p llm-d-vezio -d -c inference-scheduling`
 
 ### With WVA
 
@@ -76,27 +76,27 @@ it on your local machine, or system you are *driving* the experiments.
 
 1. Deploy a full `llm-d` stack for a target model, that will be scaled by `WVA`, in this case, `meta-llama/Llama-3.1-8B`, using the `inference-scheduling` well-lit-path.
 
-    - Template Command: `llmdbenchmark standup -p <namespace> -m <model id> --spec <well-lit-path> --wva`
+    - Template Command: `./setup/standup.sh -p <namespace> -m <model id> -c <well-lit-path> --wva`
 
-        - Example Populated Command: `llmdbenchmark standup -p llm-d-vezio -m meta-llama/Llama-3.1-8B --spec inference-scheduling --wva`
+        - Example Populated Command: `./setup/standup.sh -p llm-d-vezio -m meta-llama/Llama-3.1-8B -c inference-scheduling --wva`
 
 2. Run a workload using the `guidellm` `harness`  and `chatbot_synthetic` `workload profile` against an existing `llm-d` stack, using the `inference-scheduling` well-lit-path.
 
-    - Template Command: `llmdbenchmark run -l <harness> -w <workload profile> -p llm-d-vezio  -m <model id> --spec <well-lit-path>`
+    - Template Command: `./run.sh -l <harness> -w <workload profile> -p llm-d-vezio  -m <model id> -c <well-lit-path>`
 
-        - Example Populated Command: `llmdbenchmark run -l guidellm -w chatbot_synthetic -p llm-d-vezio -m meta-llama/Llama-3.1-8B --spec inference-scheduling`
+        - Example Populated Command: `./run.sh -l guidellm -w chatbot_synthetic -p llm-d-vezio -m meta-llama/Llama-3.1-8B -c inference-scheduling`
 
 3. Repeat `Step 2` to rerun a workload, in our case we reran `Step 2`, a total of 4 times.
 
-4. Collect results from the `analysis` directory that is provided in the logs of the `llmdbenchmark run` command. You can see a detailed and granular report in the `results` directory if needed.
+4. Collect results from the `analysis` directory that is provided in the logs of the `run.sh` command. You can see a detailed and granular report in the `results` directory if needed.
 
     - Make sure you seperate these results into a seperate directory from the non WVA experiment - they are not the best named - we will change this - otherwise it will be hard to tell what is what!
 
 5. Tear down the infrastructure (this will not delete the namespace, but will completely purge *all* resources for the model, including the `wva` variant resources, effectively leaving an empty namespace - it will NOT touch cluster-wide resources.)
 
-    - Template Command: `llmdbenchmark teardown -p <namespace> -d --spec <well-lit-path>`
+    - Template Command: `./setup/teardown.sh -p <namespace> -d -c <well-lit-path>`
 
-        - Example Populated Command: `llmdbenchmark teardown -p llm-d-vezio -d --spec inference-scheduling`
+        - Example Populated Command: `./setup/teardown.sh -p llm-d-vezio -d -c inference-scheduling`
 
 ### Where is the Guidellm chatbot_synthetic Workload Profile Defined?
 

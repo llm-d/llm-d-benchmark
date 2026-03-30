@@ -290,11 +290,10 @@ def workload_specification():
                 key=util.SELECTED_MAX_MODEL_LEN_KEY,
                 on_change=util.on_update_max_model_len,
             )
-        col1.caption(
-            "Maximum model length for the model: how many tokens (input + output) "
-            "the model can process. Higher max model length means fewer concurrent "
-            "requests can be served, because for the same GPU memory available for "
-            "KV cache, each request requires more memory allocation."
+        col1.caption("Maximum model length for the model: how many tokens (input + output) the model can process. "
+            "Higher max model length means fewer concurrent requests can be served, "
+            "because for the same GPU memory available for KV cache, "
+            "each request requires more memory allocation. "
         )
 
         col2.number_input("Input the max number of concurrent requests to process",

@@ -150,7 +150,9 @@ def on_update_max_model_len():
     scenario.concurrency = 1
 
 def on_update_auto_max_model_len():
-    """Toggle auto max model length calculation"""
+    """
+    Toggle auto max model length calculation
+    """
     scenario = st.session_state[USER_SCENARIO_KEY]
     scenario.concurrency = 1
 
