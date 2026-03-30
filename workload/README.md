@@ -310,9 +310,9 @@ server:
 data:
   type: random
   input_distribution:
-    min: 10
-    max: 100
-    mean: 50
+    min: 256
+    max: 512
+    mean: 384
     std_dev: 10
     total_count: 100
 ```

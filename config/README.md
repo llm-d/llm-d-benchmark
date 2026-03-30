@@ -546,7 +546,7 @@ When no `customCommand` is set, the command is built from:
 | `decode/prefill.parallelism.tensor` | `--tensor-parallel-size` (skipped if 0) |
 | `vllmCommon.host` | `--host` |
 | `vllmCommon.flags.enforceEager` | `--enforce-eager` |
-| `vllmCommon.flags.disableLogRequests` | `--no-enable-log-requests` |
+| `vllmCommon.flags.disableLogRequests` | `--disable-log-requests` (standalone) / `--no-enable-log-requests` (modelservice) |
 | `vllmCommon.flags.disableUvicornAccessLog` | `--disable-uvicorn-access-log` |
 | `vllmCommon.flags.noPrefixCaching` | `--no-enable-prefix-caching` |
 | `vllmCommon.flags.enablePrefixCaching` | `--enable-prefix-caching` |

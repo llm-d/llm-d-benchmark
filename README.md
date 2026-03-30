@@ -4,10 +4,9 @@ Automated benchmarking for LLM inference on Kubernetes using `llm-d`. One CLI to
 
 ### Goals
 
-- **Declarative lifecycle**: All infrastructure, workloads, and experiments render into reviewable YAML before anything touches the cluster. Every deployment is version-controllable, diffable, and auditable.
+- **Declarative lifecycle**: All infrastructure, workloads, and experiments render into reviewable YAML before provisioning.
 - **End-to-end automation**: A single `llmdbenchmark` CLI covers standup, benchmarking, result collection, and teardown.
 - **Reproducibility**: A deterministic config merge chain (`defaults.yaml` to scenario to CLI overrides) captures the exact configuration in each workspace. Any result traces back to its inputs.
-- **Flexible entry points**: Deploy and benchmark in one pipeline, or point at an existing endpoint with `--endpoint-url`. Stand up infrastructure without benchmarking, or benchmark without standing up.
 - **Structured experiments**: Built-in Design of Experiments (DoE) support automates parameter sweeps across both infrastructure and workload configurations.
 - **Multiple harnesses**: Swap between [inference-perf](https://github.com/kubernetes-sigs/inference-perf), [guidellm](https://github.com/vllm-project/guidellm.git), [vllm-benchmark](https://github.com/vllm-project/vllm.git), and others with a CLI flag (`-l`).
 - **Post-deployment validation**" Per-scenario smoketests verify that deployed pod configurations match what the scenario defines -- resources, parallelism, env vars, probes, routing, and vLLM flags.
