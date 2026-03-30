@@ -1,0 +1,8 @@
+# Ignore everything
+*
+
+# Allow only what the Dockerfile needs
+!workload/harnesses/
+!llmdbenchmark/analysis/
+!llmdbenchmark/standup/preprocess/
+!build/
