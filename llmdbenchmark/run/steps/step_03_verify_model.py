@@ -86,6 +86,7 @@ class VerifyModelStep(Step):
             plan_config,
             max_retries=3,
             retry_interval=10,
+            service_account=context.harness_service_account,
         )
 
         if error:

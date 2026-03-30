@@ -17,7 +17,7 @@ def _rand_suffix(length: int = 8) -> str:
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
 
-def _build_overrides(plan_config: dict | None) -> list[str]:
+def _build_overrides(plan_config: dict | None, service_account: str | None = None) -> list[str]:
     """Build --overrides args for ephemeral curl pods (imagePullSecrets, serviceAccount)."""
     overrides: dict = {}
     if plan_config:
@@ -26,9 +26,10 @@ def _build_overrides(plan_config: dict | None) -> list[str]:
             overrides.setdefault("spec", {})["imagePullSecrets"] = [
                 {"name": pull_secret}
             ]
-        sa_name = plan_config.get("serviceAccount", {}).get("name")
-        if sa_name:
-            overrides.setdefault("spec", {})["serviceAccountName"] = sa_name
+            
+    sa_name = service_account or (plan_config.get("serviceAccount", {}).get("name") if plan_config else None)
+    if sa_name:
+        overrides.setdefault("spec", {})["serviceAccountName"] = sa_name
 
     if overrides:
         return ["--overrides", f"'{json.dumps(overrides)}'"]
@@ -381,6 +382,7 @@ def test_model_serving(
     plan_config: dict | None = None,
     max_retries: int = 12,
     retry_interval: int = 15,
+    service_account: str | None = None,
 ) -> str | None:
     """Test an endpoint by querying /v1/models via an ephemeral curl pod.
 
@@ -392,7 +394,7 @@ def test_model_serving(
     """
     protocol = "https" if str(port) == "443" else "http"
     url = f"{protocol}://{host}:{port}/v1/models"
-    override_args = _build_overrides(plan_config)
+    override_args = _build_overrides(plan_config, service_account=service_account)
     curl_image = "curlimages/curl"
     last_error: str | None = None
 
