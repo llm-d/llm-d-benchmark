@@ -54,7 +54,7 @@ llmdbenchmark --version
 **Install a specific branch:**
 
 ```bash
-LLMDBENCH_BRANCH=declarative-python-refactor \
+LLMDBENCH_BRANCH=main \
   curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
 ```
 
