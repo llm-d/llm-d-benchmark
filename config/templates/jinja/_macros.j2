@@ -59,8 +59,14 @@
    When proxy is enabled, vLLM binds to vllm.port (8200) and the proxy
    handles the servicePort (8000) to vllmPort (8200) forwarding.
    The port env var is set accordingly: VLLM_INFERENCE_PORT (8000) when no proxy,
-   VLLM_METRICS_PORT (8200) when proxy is enabled. #}
-{% set use_inference_port = (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) -%}
+   VLLM_METRICS_PORT (8200) when proxy is enabled.
+   IMPORTANT: Prefill pods NEVER have the routing proxy (the Helm chart only
+   injects it on decode pods), so prefill must always use VLLM_INFERENCE_PORT
+   (8000) regardless of the proxy setting. Without this, the routing sidecar
+   on decode pods cannot reach the prefill pod (connection refused on 8000
+   while vLLM listens on 8200). #}
+{% set proxy_disabled = (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) -%}
+{% set use_inference_port = proxy_disabled or mode == 'prefill' -%}
 {% set port_var = '$VLLM_INFERENCE_PORT' if use_inference_port else '$VLLM_METRICS_PORT' -%}
 {{ preprocess_script }}; vllm serve {{ model.cacheBase }}/{{ model.path }} \
   --host {{ vllmCommon.host }} \

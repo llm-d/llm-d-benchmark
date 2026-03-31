@@ -635,14 +635,11 @@ decode:
 {# ========================================================================== #}
 {# Prefill probe port:
    The helm chart never injects the routing proxy on prefill pods (only decode).
-   - When proxy is ENABLED: prefill vLLM binds to vllm.port (8200) with no proxy
-     in front. Probes must check 8200 where vLLM actually listens.
-   - When proxy is DISABLED: prefill vLLM binds to servicePort (8000) directly.
-     Probes check 8000.
-   This deviates from the bash (which always used 8000), but fixes prefill pods
-   getting stuck at 0/1 Running due to probes checking a port with nothing listening. #}
-{% set proxy_enabled = not (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) -%}
-{% set prefill_effective_port = (prefill.vllm.port if prefill.vllm is defined and prefill.vllm.port is defined else decode.vllm.port) if proxy_enabled else (prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort) -%}
+   Prefill vLLM always binds to servicePort (8000) directly -- matching the
+   _macros.j2 fix that forces prefill to use VLLM_INFERENCE_PORT. This ensures
+   the routing sidecar on decode pods can reach prefill on port 8000 for P/D
+   disaggregation, and probes check the port where vLLM actually listens. #}
+{% set prefill_effective_port = prefill.vllm.servicePort if prefill.vllm is defined and prefill.vllm.servicePort is defined else decode.vllm.servicePort -%}
 prefill:
   create: {{ prefill_create | lower }}
 {% if prefill_create %}
