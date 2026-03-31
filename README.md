@@ -2,6 +2,10 @@
 
 This repository provides an automated workflow for benchmarking LLM inference using the `llm-d` stack. It includes tools for deployment, experiment execution, data collection, and teardown across multiple environments and deployment styles.
 
+> [!TIP]
+> We acknowledge many users are still utilizing our previous (now deprecated) library, to make the transition easier, we still have that library available. It can be found in our v0.5.2 release tag.
+
+
 ### Main Goal
 
 Provide a single source of automation for repeatable and reproducible experiments and performance evaluation on `llm-d`:
