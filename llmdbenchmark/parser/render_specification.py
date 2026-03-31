@@ -60,7 +60,7 @@ class RenderSpecification:  # pylint: disable=too-few-public-methods
             output_path = self.plan_dir / f"{self.specification_file.stem}"
             yaml_suffix = ".yaml"
             if output_path.suffix != yaml_suffix:
-                output_path = f"{output_path}{yaml_suffix}"
+                output_path = output_path.with_suffix(yaml_suffix)
             output_path.write_text(rendered_yaml)
             return rendered_yaml
 
