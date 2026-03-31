@@ -64,6 +64,45 @@ class HarnessNamespaceStep(Step):
             context, "06_pod_access_to_harness_data"
         )
         if pod_yaml:
+            # When bypassing standup, the model PVC may not exist. 
+            # The data-access pod mounts it by default to help sync datasets,
+            # but if it's missing, we must strip it from the pod spec or it stays Pending.
+            model_pvc_name = plan_config.get("storage", {}).get("modelPvc", {}).get("name", "model-pvc") if plan_config else "model-pvc"
+            model_pvc_exists = False
+            
+            if not context.dry_run:
+                # Check if the model PVC actually exists
+                check_result = cmd.kube("get", "pvc", model_pvc_name, "-n", context.require_namespace(), "--no-headers", check=False)
+                model_pvc_exists = check_result.success
+
+                if not model_pvc_exists:
+                    import yaml
+                    context.logger.log_info(
+                        f"Model PVC '{model_pvc_name}' not found. Stripping 'cache-volume' from data-access pod."
+                    )
+                    with open(pod_yaml, "r") as f:
+                        pod_spec = yaml.safe_load(f)
+                    
+                    if pod_spec and "spec" in pod_spec:
+                        # Strip from volumeMounts
+                        for container in pod_spec["spec"].get("containers", []):
+                            if "volumeMounts" in container:
+                                container["volumeMounts"] = [
+                                    vm for vm in container["volumeMounts"] if vm.get("name") != "cache-volume"
+                                ]
+                        
+                        # Strip from volumes
+                        if "volumes" in pod_spec["spec"]:
+                            pod_spec["spec"]["volumes"] = [
+                                v for v in pod_spec["spec"]["volumes"] if v.get("name") != "cache-volume"
+                            ]
+                    
+                    modified_yaml = pod_yaml.with_name("06_pod_access_to_harness_data_modified.yaml")
+                    with open(modified_yaml, "w") as f:
+                        yaml.dump(pod_spec, f)
+                    
+                    pod_yaml = modified_yaml
+
             result = cmd.kube("apply", "-f", str(pod_yaml))
             if not result.success:
                 errors.append(
@@ -89,7 +128,7 @@ class HarnessNamespaceStep(Step):
         wait_result = cmd.wait_for_pods(
             label="role=llm-d-benchmark-data-access",
             namespace=harness_ns,
-            timeout=120,
+            timeout=600,
             poll_interval=5,
             description="harness data-access pod",
         )
