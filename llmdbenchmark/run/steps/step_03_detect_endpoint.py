@@ -18,7 +18,7 @@ class DetectEndpointStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=2,
+            number=3,
             name="detect_endpoint",
             description="Detect model serving endpoint",
             phase=Phase.RUN,

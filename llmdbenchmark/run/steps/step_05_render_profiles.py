@@ -19,7 +19,7 @@ class RenderProfilesStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=4,
+            number=5,
             name="render_profiles",
             description="Render workload profile templates",
             phase=Phase.RUN,

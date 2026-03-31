@@ -12,7 +12,7 @@ class WaitCompletionStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=7,
+            number=8,
             name="wait_completion",
             description="Wait for harness pod(s) to complete",
             phase=Phase.RUN,

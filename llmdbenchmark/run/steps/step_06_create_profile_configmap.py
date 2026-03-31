@@ -14,7 +14,7 @@ class CreateProfileConfigmapStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=5,
+            number=6,
             name="create_profile_configmap",
             description="Create profile and harness-scripts ConfigMaps",
             phase=Phase.RUN,

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
-from llmdbenchmark.run.steps.step_05_create_profile_configmap import (
+from llmdbenchmark.run.steps.step_06_create_profile_configmap import (
     HARNESS_SCRIPTS_CONFIGMAP,
 )
 from llmdbenchmark.utilities.kube_helpers import delete_pods_by_label
@@ -15,7 +15,7 @@ class RunCleanupPostStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=10,
+            number=11,
             name="run_cleanup_post",
             description="Clean up harness pods and ConfigMaps",
             phase=Phase.RUN,

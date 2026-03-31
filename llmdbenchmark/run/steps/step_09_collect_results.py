@@ -12,7 +12,7 @@ class CollectResultsStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=8,
+            number=9,
             name="collect_results",
             description="Collect results from PVC to local workspace",
             phase=Phase.RUN,

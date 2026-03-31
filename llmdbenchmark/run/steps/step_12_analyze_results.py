@@ -17,7 +17,7 @@ class AnalyzeResultsStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=11,
+            number=12,
             name="analyze_results",
             description="Run local analysis on collected results",
             phase=Phase.RUN,

@@ -36,7 +36,7 @@ class DeployHarnessStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=6,
+            number=7,
             name="deploy_harness",
             description="Deploy harness pod(s) for benchmark execution",
             phase=Phase.RUN,

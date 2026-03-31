@@ -17,7 +17,7 @@ class UploadResultsStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=9,
+            number=10,
             name="upload_results",
             description="Upload results to cloud storage",
             phase=Phase.RUN,

@@ -12,7 +12,7 @@ class VerifyModelStep(Step):
 
     def __init__(self):
         super().__init__(
-            number=3,
+            number=4,
             name="verify_model",
             description="Verify model is served at endpoint",
             phase=Phase.RUN,
