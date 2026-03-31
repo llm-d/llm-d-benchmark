@@ -3,7 +3,7 @@
 This repository provides an automated workflow for benchmarking LLM inference using the `llm-d` stack. It includes tools for deployment, experiment execution, data collection, and teardown across multiple environments and deployment styles.
 
 > [!TIP]
-> We acknowledge many users are still utilizing our previous (now deprecated) library, to make the transition easier, we still have that library available. It can be found in our v0.5.2 release tag.
+> We acknowledge many users are still utilizing our previous (now deprecated) library, to make the transition easier, we still have that library available. It can be found in our [v0.5.2](https://github.com/llm-d/llm-d-benchmark/tree/v0.5.2) version tag.
 
 
 ### Main Goal
