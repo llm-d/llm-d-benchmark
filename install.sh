@@ -105,8 +105,13 @@ DESCRIPTION
     6. Verifies that all Python packages are importable
 
     If no virtual environment is active, the script will automatically
-    create one at .venv/ and activate it for the install. After the
-    script finishes, run "source .venv/bin/activate" in your shell.
+    create one at .venv/ and activate it for the install. If the system
+    Python is missing or older than 3.11, the script uses uv
+    (https://docs.astral.sh/uv/) to download the correct Python version
+    and create the virtual environment — similar to how conda manages
+    Python versions. uv is installed automatically if needed.
+
+    After the script finishes, run "source .venv/bin/activate" in your shell.
 
     Pass -y to skip venv creation and install with system Python instead.
 
@@ -184,13 +189,30 @@ fi
 
 # ---------------------------------------------------------------------------
 # Python / pip detection — auto-creates a .venv if none is active
+#
+# If the system Python is missing or < 3.11, the script uses `uv` to create
+# a virtual environment with the correct Python version (similar to conda).
+# uv is installed automatically if not already present.
 # ---------------------------------------------------------------------------
 VENV_DIR="${SCRIPT_DIR}/.venv"
 CREATED_VENV=false
+MIN_PYTHON="3.11"
 
-_detected_venv="${VIRTUAL_ENV:-${CONDA_PREFIX:-}}"
-if [[ -n "$_detected_venv" && -d "$_detected_venv" ]]; then
-    # Prefer "python", fall back to "python3" (macOS venvs may lack "python")
+# Helper — check whether a python command meets the minimum version requirement
+_python_meets_min() {
+    local cmd="$1"
+    if ! command -v "$cmd" &>/dev/null; then
+        return 1
+    fi
+    local ver major minor
+    ver=$("$cmd" -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null) || return 1
+    major=$(echo "$ver" | cut -d. -f1)
+    minor=$(echo "$ver" | cut -d. -f2)
+    (( major > 3 || (major == 3 && minor >= 11) ))
+}
+
+# Helper — resolve a python command, preferring "python" then "python3"
+_set_python_cmds() {
     if command -v python &>/dev/null; then
         PYTHON_CMD="python"
         PIP_CMD="python -m pip"
@@ -198,6 +220,31 @@ if [[ -n "$_detected_venv" && -d "$_detected_venv" ]]; then
         PYTHON_CMD="python3"
         PIP_CMD="python3 -m pip"
     fi
+}
+
+# Helper — ensure uv is available, install if missing
+_ensure_uv() {
+    if command -v uv &>/dev/null; then
+        return 0
+    fi
+    echo "  uv not found — installing..."
+    if ! curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null; then
+        echo "ERROR: Failed to install uv."
+        exit 1
+    fi
+    # Add uv to PATH for the current session
+    export PATH="${HOME}/.local/bin:${HOME}/.cargo/bin:${PATH}"
+    if ! command -v uv &>/dev/null; then
+        echo "ERROR: uv was installed but not found on PATH."
+        exit 1
+    fi
+    echo "  uv installed: $(uv --version)"
+}
+
+_detected_venv="${VIRTUAL_ENV:-${CONDA_PREFIX:-}}"
+if [[ -n "$_detected_venv" && -d "$_detected_venv" ]]; then
+    # Already inside a venv / conda env — use it as-is
+    _set_python_cmds
     echo "Virtual environment detected: ${_detected_venv}"
 elif [[ "$allow_system_python" == "true" ]]; then
     PYTHON_CMD="python3"
@@ -214,20 +261,29 @@ else
         fi
     else
         echo "No virtual environment detected — creating ${VENV_DIR} ..."
-        python3 -m venv "$VENV_DIR"
+
+        # Determine whether system python3 is good enough
+        if _python_meets_min python3; then
+            python3 -m venv "$VENV_DIR"
+        else
+            # System Python is missing or too old — use uv to get the right version
+            if command -v python3 &>/dev/null; then
+                local_ver=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null || echo "unknown")
+                echo "  System python3 is ${local_ver} (need ${MIN_PYTHON}+) — using uv to obtain the right version."
+            else
+                echo "  python3 not found — using uv to obtain Python ${MIN_PYTHON}."
+            fi
+            _ensure_uv
+            uv venv --seed --python "${MIN_PYTHON}" "$VENV_DIR"
+        fi
+
         CREATED_VENV=true
         echo "Virtual environment created: ${VENV_DIR}"
         echo "venv created." >> "$dependencies_checked_file"
     fi
     # shellcheck disable=SC1091
     source "${VENV_DIR}/bin/activate"
-    if command -v python &>/dev/null; then
-        PYTHON_CMD="python"
-        PIP_CMD="python -m pip"
-    else
-        PYTHON_CMD="python3"
-        PIP_CMD="python3 -m pip"
-    fi
+    _set_python_cmds
 fi
 
 # ---------------------------------------------------------------------------
