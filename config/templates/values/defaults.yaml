@@ -521,7 +521,7 @@ inferenceExtension:
   volumeMounts: []
   # Monitoring configuration for the EPP (Endpoint Picker Pod)
   monitoring:
-    secretName: kv-events-gateway-sa-metrics-reader-secret
+    secretName: inference-gateway-sa-metrics-reader-secret
     interval: "10s"
     prometheus:
       enabled: true

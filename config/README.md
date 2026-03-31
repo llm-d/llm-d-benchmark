@@ -809,7 +809,7 @@ The inference extension has its own monitoring config under `inferenceExtension.
 ```yaml
 inferenceExtension:
   monitoring:
-    secretName: kv-events-gateway-sa-metrics-reader-secret
+    secretName: inference-gateway-sa-metrics-reader-secret
     interval: "10s"
     prometheus:
       enabled: true
