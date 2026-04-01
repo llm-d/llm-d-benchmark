@@ -24,8 +24,10 @@ releases:
     version: {{ chartVersions.istiod }}
     namespace: istio-system
     installed: true
-    needs:
-      - istio-system/istio-base
+    # Note: istio-base must be listed before istiod in this file.
+    # The 'needs' directive is removed because helmfile's cross-namespace
+    # dependency resolution fails when the default namespace differs
+    # from istio-system (e.g., on Kind CI).
     values:
       - meshConfig:
           defaultConfig:

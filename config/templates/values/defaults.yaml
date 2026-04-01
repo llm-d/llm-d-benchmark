@@ -398,8 +398,8 @@ monitoring:
   # OpenShift clusters already have these CRDs via the monitoring stack.
   installPrometheusCrds: false
   prometheusCrdUrls:
-    - https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/jsonnet/prometheus-operator/podmonitorCustomResourceDefinition.json
-    - https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/jsonnet/prometheus-operator/serviceMonitorCustomResourceDefinition.json
+    - https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
+    - https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml
   metricsPath: /metrics
   scrapeInterval: "30s"
   metricsScrapeEnabled: false
