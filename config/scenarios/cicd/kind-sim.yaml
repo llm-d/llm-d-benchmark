@@ -34,11 +34,14 @@ scenario:
       shmMemory: 500Mi
 
     # Storage -- minimal for Kind
+    # Kind uses 'standard' storage class with ReadWriteOnce only
     storage:
       modelPvc:
-        accessMode: ReadWriteOnce
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard
         size: 2Gi
-      harnessPvc:
+      workloadPvc:
         size: 3Gi
 
     # Override images for simulation
