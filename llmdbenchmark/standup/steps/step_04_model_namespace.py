@@ -256,6 +256,9 @@ class ModelNamespaceStep(Step):
                 )
                 return
 
+            # Capture download pod logs before cleanup so we can see why it failed
+            self._log_download_pod_output(cmd, context)
+
             if attempt < max_retries:
                 context.logger.log_warning(
                     f"⚠️  Model download failed (attempt {attempt}), retrying..."
@@ -272,6 +275,38 @@ class ModelNamespaceStep(Step):
                 errors.append(
                     f"Model download job did not complete after "
                     f"{max_retries} attempts: {wait_result.stderr}"
+                )
+
+    def _log_download_pod_output(
+        self, cmd: CommandExecutor, context: ExecutionContext
+    ):
+        """Capture and log the download pod's output before it gets deleted."""
+        namespace = context.require_namespace()
+        result = cmd.kube(
+            "logs", "--selector=job-name=download-model",
+            "--namespace", namespace,
+            "--tail=30", "--all-containers",
+            check=False,
+        )
+        if result.success and result.stdout and result.stdout.strip():
+            context.logger.log_info("Download pod output:")
+            for line in result.stdout.strip().splitlines():
+                context.logger.log_info(f"    {line}")
+        else:
+            # Try previous terminated container
+            result = cmd.kube(
+                "logs", "--selector=job-name=download-model",
+                "--namespace", namespace,
+                "--tail=30", "--all-containers", "--previous",
+                check=False,
+            )
+            if result.success and result.stdout and result.stdout.strip():
+                context.logger.log_info("Download pod output (previous):")
+                for line in result.stdout.strip().splitlines():
+                    context.logger.log_info(f"    {line}")
+            else:
+                context.logger.log_warning(
+                    "Could not retrieve download pod logs"
                 )
 
     def _cleanup_download_pods(self, cmd: CommandExecutor, context: ExecutionContext):

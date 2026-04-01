@@ -62,7 +62,7 @@ jobs:
       # -- Standalone deployment --
       - name: Standup (standalone) -- inference-sim
         run: |
-          llmdbenchmark --spec cicd/kind-sim standup -p "$NS" -t standalone --skip-smoketest
+          llmdbenchmark --spec cicd/kind-sim --verbose standup -p "$NS" -t standalone --skip-smoketest
 
       - name: Debug standup (standalone)
         if: failure()
@@ -75,6 +75,16 @@ jobs:
           echo ""
           echo "=== Download job logs ==="
           kubectl logs job/download-model -n "$NS" --tail=50 || true
+          echo ""
+          echo "=== Download pod logs (previous) ==="
+          for pod in $(kubectl get pods -n "$NS" -l job-name=download-model -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=50 2>/dev/null || true
+            kubectl logs -n "$NS" "$pod" --previous --tail=50 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Disk usage on node ==="
+          kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: allocatable ephemeral={.status.allocatable.ephemeral-storage}, capacity={.status.capacity.ephemeral-storage}{"\n"}{end}' || true
           echo ""
           echo "=== Failed pod descriptions ==="
           for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
@@ -107,7 +117,7 @@ jobs:
       # tolerated these failures with || true. We do the same here.
       - name: Standup (modelservice) -- inference-sim
         run: |
-          llmdbenchmark --spec cicd/kind-sim standup -p "$NS" --skip-smoketest || true
+          llmdbenchmark --spec cicd/kind-sim --verbose standup -p "$NS" --skip-smoketest || true
 
       - name: Smoketest (modelservice)
         run: |
