@@ -11,8 +11,9 @@ jobs:
 
     env:
       NS: llmdbenchcicd-${{ github.event.number }}
-      HF_TOKEN: "ci-placeholder"
       LLMDBENCH_WORKSPACE: /tmp/cicd-${{ github.event.number }}
+      # HF_TOKEN intentionally unset -- facebook/opt-125m is public.
+      # Setting a placeholder token causes hf auth login to fail.
 
     steps:
       - name: Checkout Code
