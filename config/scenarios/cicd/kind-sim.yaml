@@ -64,6 +64,14 @@ scenario:
         tag: latest
         pullPolicy: Always
 
+      # No GPU on Kind -- use OS label instead of nvidia GPU selector
+      acceleratorType:
+        labelKey: kubernetes.io/os
+        labelValue: linux
+
+      accelerator:
+        count: 0
+
       resources:
         limits:
           memory: 100Mi
