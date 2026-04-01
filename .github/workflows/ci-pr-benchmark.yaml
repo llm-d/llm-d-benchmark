@@ -39,9 +39,6 @@ jobs:
           sudo mv helmfile /usr/local/bin/
           rm -f helmfile.tar.gz
 
-      - name: Install llmdbenchmark
-        run: ./install.sh -y
-
       - name: Create Kind cluster
         uses: helm/kind-action@v1
         with:
@@ -52,6 +49,9 @@ jobs:
           NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
           echo "Labeling node: $NODE"
           kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
+
+      - name: Install llmdbenchmark
+        run: ./install.sh -y
 
       # -- Unit tests --
       - name: Run unit tests
