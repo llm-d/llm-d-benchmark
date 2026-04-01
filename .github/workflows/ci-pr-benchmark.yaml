@@ -32,7 +32,7 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
         with:
-          version: v3.17.3
+          version: v3.18.4
 
       - name: Install helmfile and helm-diff
         run: |
@@ -41,7 +41,7 @@ jobs:
           tar xzf helmfile.tar.gz
           sudo mv helmfile /usr/local/bin/
           rm -f helmfile.tar.gz
-          helm plugin install https://github.com/databus23/helm-diff --version v3.9.14
+          helm plugin install https://github.com/databus23/helm-diff
 
       - name: Create Kind cluster
         uses: helm/kind-action@v1
