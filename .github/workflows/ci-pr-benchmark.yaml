@@ -29,22 +29,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Helm
-        uses: azure/setup-helm@v4
-        with:
-          version: v3.18.4
-
-      - name: Install helmfile
-        run: |
-          set -e
-          HELMFILE_VERSION=$(curl -sL https://api.github.com/repos/helmfile/helmfile/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-          if [ -z "$HELMFILE_VERSION" ]; then echo "ERROR: Failed to fetch helmfile version"; exit 1; fi
-          curl -sSL -o helmfile.tar.gz "https://github.com/helmfile/helmfile/releases/download/${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION#v}_linux_amd64.tar.gz"
-          tar xzf helmfile.tar.gz
-          sudo mv helmfile /usr/local/bin/
-          rm -f helmfile.tar.gz
-          helmfile --version
-
       - name: Create Kind cluster
         uses: helm/kind-action@v1
         with:
