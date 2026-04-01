@@ -16,7 +16,7 @@ inferenceExtension:
       port: {{ inferenceExtension.zmqPort }}
       targetPort: {{ inferenceExtension.zmqPort }}
       protocol: TCP
-{% if huggingface is defined and huggingface.secretName is defined and huggingface.secretName %}
+{% if huggingface.enabled %}
   env:
     - name: HF_TOKEN
       valueFrom:

@@ -42,7 +42,7 @@ modelArtifacts:
   uri: pvc://{{ storage.modelPvc.name }}/{{ model.path }}
 {% endif %}
   size: {{ model.size }}
-{% if huggingface.secretName is defined and huggingface.secretName %}
+{% if huggingface.enabled and huggingface.secretName is defined and huggingface.secretName %}
   authSecretName: "{{ huggingface.secretName }}"
 {% endif %}
   mountPath: /model-cache

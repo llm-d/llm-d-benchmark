@@ -298,6 +298,12 @@ storage:
 # HUGGINGFACE CONFIGURATION
 # ============================================================================
 huggingface:
+  # Auto-computed at render time based on whether a valid HF token is available.
+  # When true: the HF token secret is created, download job authenticates,
+  # and EPP/harness pods mount the secret.
+  # When false: no secret, no auth -- works for public (non-gated) models.
+  # Gated models without a token fail early at the model access check.
+  enabled: true
   secretName: llm-d-hf-token
   tokenKey: HF_TOKEN
   token: ""  # Plain-text HF token; auto-detected from HF_TOKEN env var if empty

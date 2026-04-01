@@ -248,7 +248,7 @@ The base configuration file containing every configurable parameter with sensibl
 | `release` | Helm release name prefix |
 | `gateway` | Gateway class and provider configuration |
 | `serviceAccount` | Service account name and configuration |
-| `huggingface` | HuggingFace token secret name and key |
+| `huggingface` | HuggingFace token, secret name, and enabled flag |
 | `storage` | PVC sizes, storage class, download settings |
 | `decode` | Decode pod configuration (replicas, resources, vLLM settings) |
 | `prefill` | Prefill pod configuration (disabled by default) |
