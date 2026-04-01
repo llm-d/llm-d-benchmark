@@ -188,6 +188,15 @@ scenario:
           memory: 128Gi
           cpu: "32"
 
+      # -----------------------------------------------------------------------
+      # ROCE/GDR Configuration (uncomment to enable)
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE
+      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR
+      # To enable roce/gdr for prefill pods, add networkResource and networkNr below.
+      # -----------------------------------------------------------------------
+      # networkResource: "rdma/roce_gdr"
+      # networkNr: 1
+
       # Custom vLLM command -- replaces the auto-generated command.
       # Both decode.vllm.customCommand and prefill.vllm.customCommand are supported.
       # vllmCommon.flags.* are NOT applied when customCommand is set.
@@ -232,28 +241,6 @@ scenario:
       # -----------------------------------------------------------------------
       additionalVolumes: []
 
-      # -----------------------------------------------------------------------
-      # Multi-NIC Configuration (uncomment to enable)
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS
-      # -----------------------------------------------------------------------
-      # To enable multi-nic, add to annotations.prefill.pod:
-      # annotations:
-      #   prefill:
-      #     pod:
-      #       k8s.v1.cni.cncf.io/networks: multi-nic-compute
-
-      # -----------------------------------------------------------------------
-      # ROCE/GDR Configuration (uncomment to enable)
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE
-      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR
-      # -----------------------------------------------------------------------
-      # To enable roce/gdr, add to resources:
-      # resources:
-      #   limits:
-      #     rdma/roce_gdr: "1"
-      #   requests:
-      #     rdma/roce_gdr: "1"
-
     # -------------------------------------------------------------------------
     # Decode Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
@@ -288,6 +275,15 @@ scenario:
         requests:
           memory: 128Gi
           cpu: "32"
+
+      # -----------------------------------------------------------------------
+      # ROCE/GDR Configuration (uncomment to enable)
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR
+      # To enable roce/gdr for decode pods, add networkResource and networkNr below.
+      # -----------------------------------------------------------------------
+      # networkResource: "rdma/roce_gdr"
+      # networkNr: 1
 
       # Custom vLLM command -- replaces the auto-generated command.
       # Both decode.vllm.customCommand and prefill.vllm.customCommand are supported.
@@ -332,32 +328,24 @@ scenario:
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
       # -----------------------------------------------------------------------
       additionalVolumes: []
-      
-      # -----------------------------------------------------------------------
-      # Multi-NIC Configuration (uncomment to enable)
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS
-      # -----------------------------------------------------------------------
-      # To enable multi-nic, add to annotations.decode.pod:
-      # annotations:
-      #   decode:
-      #     pod:
-      #       k8s.v1.cni.cncf.io/networks: multi-nic-compute
-      
-      # -----------------------------------------------------------------------
-      # ROCE/GDR Configuration (uncomment to enable)
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR
-      # -----------------------------------------------------------------------
-      # To enable roce/gdr, add to resources:
-      # resources:
-      #   limits:
-      #     rdma/roce_gdr: "1"
-      #   requests:
-      #     rdma/roce_gdr: "1"
-    
+
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Multi-NIC Pod Annotations (uncomment to enable)
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS
+    #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS
+    # To enable multi-nic, add annotations.prefill.pod / annotations.decode.pod below.
+    # -------------------------------------------------------------------------
+    # annotations:
+    #   prefill:
+    #     pod:
+    #       k8s.v1.cni.cncf.io/networks: multi-nic-compute
+    #   decode:
+    #     pod:
+    #       k8s.v1.cni.cncf.io/networks: multi-nic-compute
 
     # -------------------------------------------------------------------------
     # vLLM Common Configuration
