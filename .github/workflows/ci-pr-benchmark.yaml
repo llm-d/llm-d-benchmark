@@ -51,7 +51,9 @@ jobs:
           kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
 
       - name: Install llmdbenchmark
-        run: ./install.sh -y
+        run: |
+          ./install.sh -y
+          pip install pytest
 
       # -- Unit tests --
       - name: Run unit tests
