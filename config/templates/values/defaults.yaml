@@ -393,6 +393,13 @@ monitoring:
   enableUserWorkload: true
   podmonitor:
     enabled: true
+  # Install PodMonitor/ServiceMonitor CRDs if they don't exist on the cluster.
+  # Set to true for clusters without Prometheus Operator (e.g., Kind, vanilla K8s).
+  # OpenShift clusters already have these CRDs via the monitoring stack.
+  installPrometheusCrds: false
+  prometheusCrdUrls:
+    - https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/jsonnet/prometheus-operator/podmonitorCustomResourceDefinition.json
+    - https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/jsonnet/prometheus-operator/serviceMonitorCustomResourceDefinition.json
   metricsPath: /metrics
   scrapeInterval: "30s"
   metricsScrapeEnabled: false
