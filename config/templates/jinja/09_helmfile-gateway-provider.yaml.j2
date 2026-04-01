@@ -4,6 +4,7 @@
   data-science-gateway-class) are platform-managed or pre-installed.
 #}
 {% set gw_class = gateway.className | default('istio') %}
+{% set gw_ns = gateway.providerNamespace | default('istio-system') %}
 {% if standalone.enabled is defined and not standalone.enabled and gw_class == 'istio' %}
 repositories:
   - name: istio
@@ -13,7 +14,7 @@ releases:
   - name: istio-base
     chart: istio/base
     version: {{ chartVersions.istioBase }}
-    namespace: istio-system
+    namespace: {{ gw_ns }}
     createNamespace: true
     installed: true
     labels:
@@ -23,11 +24,11 @@ releases:
   - name: istiod
     chart: istio/istiod
     version: {{ chartVersions.istiod }}
-    namespace: istio-system
+    namespace: {{ gw_ns }}
     createNamespace: true
     installed: true
     needs:
-      - istio-system/istio-base
+      - {{ gw_ns }}/istio-base
     values:
       - meshConfig:
           defaultConfig:
