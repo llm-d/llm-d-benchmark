@@ -20,7 +20,7 @@ accurate to the current codebase.
   - [Pre-Global / Per-Stack / Post-Global Partition](#pre-global--per-stack--post-global-partition)
   - [Parallel Execution Across Stacks](#parallel-execution-across-stacks)
   - [Error Handling](#error-handling)
-  - [should_skip() Behavior](#shouldskip-behavior)
+  - [should_skip() Behavior](#should_skip-behavior)
   - [Dry Run Mode](#dry-run-mode)
   - [Step Filtering](#step-filtering)
 - [4. ExecutionContext Deep Dive](#4-executioncontext-deep-dive)
