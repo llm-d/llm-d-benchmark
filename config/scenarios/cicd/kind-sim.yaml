@@ -42,6 +42,9 @@ scenario:
         storageClassName: standard
         size: 2Gi
       workloadPvc:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard
         size: 3Gi
 
     # Override images for simulation
