@@ -24,6 +24,17 @@ jobs:
       - name: Display Python version
         run: python -c "import sys; print(sys.version)"
 
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install helmfile
+        run: |
+          HELMFILE_VERSION=$(curl -sL https://api.github.com/repos/helmfile/helmfile/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+          curl -sSL -o helmfile.tar.gz "https://github.com/helmfile/helmfile/releases/download/${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION#v}_linux_amd64.tar.gz"
+          tar xzf helmfile.tar.gz
+          sudo mv helmfile /usr/local/bin/
+          rm -f helmfile.tar.gz
+
       - name: Install llmdbenchmark and config_explorer
         run: ./install.sh -y
 
