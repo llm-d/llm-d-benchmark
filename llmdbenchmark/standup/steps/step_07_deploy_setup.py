@@ -57,10 +57,17 @@ class DeploySetupStep(Step):
         if context.is_openshift and gateway_class == "kgateway" and helm_dir:
             self._patch_infra_for_openshift_kgateway(helm_dir, context)
 
-        # No --namespace: releases define their own namespaces (e.g. istio-system)
+        # Gateway provider releases target istio-system namespace.
+        # Pass --namespace explicitly to override the kubeconfig context
+        # namespace, which may differ (e.g., llmdbenchcicd on Kind CI).
         gw_helmfile = self._find_yaml(stack_path, "09_helmfile-gateway-provider")
         if gw_helmfile and self._has_yaml_content(gw_helmfile):
+            gw_namespace = self._require_config(
+                plan_config, "gateway", "providerNamespace"
+            ) if plan_config else "istio-system"
             result = cmd.helmfile(
+                "--namespace",
+                gw_namespace,
                 "apply",
                 "-f",
                 str(gw_helmfile),
@@ -68,7 +75,9 @@ class DeploySetupStep(Step):
                 "--skip-schema-validation",
             )
             if not result.success:
-                errors.append(f"Failed to apply gateway helmfile: {result.stderr}")
+                errors.append(
+                    f"Failed to install Istio via helmfile: {result.stderr}"
+                )
 
         # Helmfile is copied to helm working dir so relative value paths resolve
         main_helmfile = self._find_yaml(stack_path, "10_helmfile-main")

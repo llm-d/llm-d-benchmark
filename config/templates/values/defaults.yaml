@@ -483,6 +483,7 @@ gateway:
   namespace: auto  # Synced with namespace.name; resolved at plan time
   className: istio
   provider: istio
+  providerNamespace: istio-system
   version: *istio_version
   logLevel: error
   service:
