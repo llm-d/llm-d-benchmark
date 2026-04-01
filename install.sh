@@ -275,10 +275,24 @@ echo ""
 echo "=== System tools ==="
 
 # Tools required for cluster operations
-tools="curl git kubectl helm"
+tools="curl git helm helmfile skopeo kustomize jq yq"
 
-# Optional tools — checked but not fatal if missing
-optional_tools="oc helmfile kustomize jq yq skopeo"
+# One of kubectl or oc is required
+kube_tool=""
+if command -v kubectl &>/dev/null; then
+    kube_tool="kubectl"
+elif command -v oc &>/dev/null; then
+    kube_tool="oc"
+fi
+if [ -z "$kube_tool" ]; then
+    echo "  kubectl/oc -- NOT FOUND, attempting kubectl install..."
+    tools="$tools kubectl"
+else
+    printf "  %-14s %-20s %s\n" "$kube_tool" "$($kube_tool version --client --short 2>/dev/null || $kube_tool version --client 2>/dev/null | head -1)" ""
+fi
+
+# Optional tools -- checked but not fatal if missing
+optional_tools="oc"
 
 # ---------------------------------------------------------------------------
 # Version helper — returns version string for a given tool
