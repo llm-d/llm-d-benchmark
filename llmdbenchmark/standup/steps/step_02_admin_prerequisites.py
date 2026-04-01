@@ -488,19 +488,17 @@ class AdminPrerequisitesStep(Step):
 
         cmd.logger.log_info("📦 Installing Istio via helmfile...")
 
-        namespace = plan_config.get("namespace", {}).get("name", "")
-        hf_args = []
-        if namespace:
-            hf_args.extend(["--namespace", namespace])
-        hf_args.extend(
-            [
-                "apply",
-                "-f",
-                str(helmfile_yaml),
-                "--skip-diff-on-install",
-            ]
+        # Match bash behavior: call helmfile WITHOUT --kubeconfig and
+        # WITHOUT --namespace so helmfile resolves release namespaces
+        # from the helmfile itself (istio-system), not from the
+        # kubeconfig context namespace (e.g., llmdbenchcicd).
+        result = cmd.helmfile(
+            "apply",
+            "-f",
+            str(helmfile_yaml),
+            "--skip-diff-on-install",
+            use_kubeconfig=False,
         )
-        result = cmd.helmfile(*hf_args)
         if not result.success:
             errors.append(f"Failed to install Istio via helmfile: {result.stderr}")
 
