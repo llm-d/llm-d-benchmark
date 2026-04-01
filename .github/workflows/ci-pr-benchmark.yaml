@@ -34,13 +34,14 @@ jobs:
         with:
           version: v3.17.3
 
-      - name: Install helmfile
+      - name: Install helmfile and helm-diff
         run: |
           HELMFILE_VERSION=$(curl -sL https://api.github.com/repos/helmfile/helmfile/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
           curl -sSL -o helmfile.tar.gz "https://github.com/helmfile/helmfile/releases/download/${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION#v}_linux_amd64.tar.gz"
           tar xzf helmfile.tar.gz
           sudo mv helmfile /usr/local/bin/
           rm -f helmfile.tar.gz
+          helm plugin install https://github.com/databus23/helm-diff
 
       - name: Create Kind cluster
         uses: helm/kind-action@v1
@@ -115,21 +116,18 @@ jobs:
           llmdbenchmark --spec cicd/kind-sim teardown -p "$NS" -t standalone || true
 
       # -- Modelservice deployment --
-      # Note: modelservice with inference-sim on Kind has known limitations
-      # (port conflicts with routing proxy, probe mismatches). The bash CI
-      # tolerated these failures with || true. We do the same here.
       - name: Standup (modelservice) -- inference-sim
         run: |
-          llmdbenchmark --spec cicd/kind-sim --verbose standup -p "$NS" --skip-smoketest || true
+          llmdbenchmark --spec cicd/kind-sim --verbose standup -p "$NS" --skip-smoketest
 
       - name: Smoketest (modelservice)
         run: |
-          llmdbenchmark --spec cicd/kind-sim smoketest -p "$NS" || true
+          llmdbenchmark --spec cicd/kind-sim smoketest -p "$NS"
 
       - name: Run harness (modelservice, dry-run)
         run: |
           llmdbenchmark --spec cicd/kind-sim --dry-run run -p "$NS" \
-            -l inference-perf -w sanity_random.yaml || true
+            -l inference-perf -w sanity_random.yaml
 
       - name: Teardown (modelservice)
         if: always()
