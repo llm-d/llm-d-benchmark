@@ -324,7 +324,7 @@ install_helmfile_linux() {
 install_helm_linux() {
     curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     if ! helm plugin list | grep -q "^diff"; then
-        helm plugin install https://github.com/databus23/helm-diff
+        helm plugin install https://github.com/databus23/helm-diff --version v3.9.14
     fi
 }
 

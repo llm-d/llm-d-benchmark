@@ -41,7 +41,7 @@ jobs:
           tar xzf helmfile.tar.gz
           sudo mv helmfile /usr/local/bin/
           rm -f helmfile.tar.gz
-          helm plugin install https://github.com/databus23/helm-diff
+          helm plugin install https://github.com/databus23/helm-diff --version v3.9.14
 
       - name: Create Kind cluster
         uses: helm/kind-action@v1
