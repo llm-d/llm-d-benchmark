@@ -131,6 +131,6 @@ The GPU Recommender displays cost information to help you find cost-effective GP
 
 ## Library
 
-Configuration exploration and benchmark sweep performance comparison is best demonstrated in the Jupyter notebook [analysis.ipynb](../analysis/analysis.ipynb). This notebook can be used for interactive analysis of benchmarking data results, and it utilizes the same core functions as the "Sweep Visualizer" page of the web app. For instructions on using the notebook see [../analysis/README.md](../analysis/README.md).
+Configuration exploration and benchmark sweep performance comparison is best demonstrated in the Jupyter notebook [analysis.ipynb](../docs/analysis/analysis.ipynb). This notebook can be used for interactive analysis of benchmarking data results, and it utilizes the same core functions as the "Sweep Visualizer" page of the web app. For instructions on using the notebook see [docs/analysis/README.md](../docs/analysis/README.md).
 
 For GPU recommender API usage see [./examples/gpu_recommender_example.py](./examples/gpu_recommender_example.py).
