@@ -1,0 +1,2065 @@
+{
+  "$defs": {
+    "AggregateLatency": {
+      "additionalProperties": false,
+      "description": "Aggregate response latency performance metrics.",
+      "properties": {
+        "time_to_first_token": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Time to generate the first token (TTFT)."
+        },
+        "normalized_time_per_output_token": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Typical time to generate an output token, including first (NTPOT)."
+        },
+        "time_per_output_token": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Time to generate an output token, excluding first (TPOT, may differ from ITL depending on tool)."
+        },
+        "inter_token_latency": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Latency between generated tokens, excluding first (ITL, may differ from TPOT depending on tool)."
+        },
+        "request_latency": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "End-to-end request latency."
+        }
+      },
+      "title": "AggregateLatency",
+      "type": "object"
+    },
+    "AggregateRequestPerformance": {
+      "additionalProperties": false,
+      "description": "Aggregate performance metrics.",
+      "properties": {
+        "requests": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AggregateRequests"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aggregate request details."
+        },
+        "latency": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AggregateLatency"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aggregate response latency performance metrics."
+        },
+        "throughput": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AggregateThroughput"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aggregate response throughput performance metrics."
+        }
+      },
+      "title": "AggregateRequestPerformance",
+      "type": "object"
+    },
+    "AggregateRequests": {
+      "additionalProperties": false,
+      "description": "Request statistics.",
+      "properties": {
+        "total": {
+          "description": "Total number of requests sent.",
+          "minimum": 0,
+          "title": "Total",
+          "type": "integer"
+        },
+        "failures": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of requests which responded with an error.",
+          "title": "Failures"
+        },
+        "incomplete": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of requests which were not completed.",
+          "title": "Incomplete"
+        },
+        "input_length": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Input sequence length."
+        },
+        "output_length": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Output sequence length."
+        }
+      },
+      "required": [
+        "total"
+      ],
+      "title": "AggregateRequests",
+      "type": "object"
+    },
+    "AggregateThroughput": {
+      "additionalProperties": false,
+      "description": "Aggregate response throughput performance metrics.",
+      "properties": {
+        "input_token_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Input token rate."
+        },
+        "output_token_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Output token rate."
+        },
+        "total_token_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total token rate (input + output)."
+        },
+        "request_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Request (query) processing rate."
+        }
+      },
+      "title": "AggregateThroughput",
+      "type": "object"
+    },
+    "Component": {
+      "additionalProperties": false,
+      "description": "Component details.",
+      "properties": {
+        "metadata": {
+          "$ref": "#/$defs/ComponentMetadata"
+        },
+        "standardized": {
+          "description": "Component configuration details in standardized format.",
+          "discriminator": {
+            "mapping": {
+              "generic": "#/$defs/Generic",
+              "inference_engine": "#/$defs/InferenceEngine"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Generic"
+            },
+            {
+              "$ref": "#/$defs/InferenceEngine"
+            }
+          ],
+          "title": "Standardized"
+        },
+        "native": {
+          "$ref": "#/$defs/ComponentNative"
+        }
+      },
+      "required": [
+        "metadata",
+        "standardized",
+        "native"
+      ],
+      "title": "Component",
+      "type": "object"
+    },
+    "ComponentHealth": {
+      "additionalProperties": false,
+      "description": "Health and reliability metrics for a component during the benchmark.",
+      "properties": {
+        "component_label": {
+          "description": "References the component's label from scenario.stack[].metadata.label",
+          "title": "Component Label",
+          "type": "string"
+        },
+        "total_restarts": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total restarts across all replicas during benchmark.",
+          "title": "Total Restarts"
+        },
+        "failed_replicas": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of replicas that hand one or more failures during benchmark.",
+          "title": "Failed Replicas"
+        },
+        "replica_health": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ReplicaHealth"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-replica health details.",
+          "title": "Replica Health"
+        }
+      },
+      "required": [
+        "component_label"
+      ],
+      "title": "ComponentHealth",
+      "type": "object"
+    },
+    "ComponentMetadata": {
+      "additionalProperties": false,
+      "description": "Component metadata.",
+      "properties": {
+        "schema_version": {
+          "default": "0.0.1",
+          "description": "Schema version for the component.",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "label": {
+          "description": "Unique name for this particular component.",
+          "title": "Label",
+          "type": "string"
+        },
+        "cfg_id": {
+          "description": "Configuration ID, a hash of this component's configuration.",
+          "title": "Cfg Id",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Description of this component.",
+          "title": "Description"
+        }
+      },
+      "required": [
+        "label",
+        "cfg_id"
+      ],
+      "title": "ComponentMetadata",
+      "type": "object"
+    },
+    "ComponentNative": {
+      "additionalProperties": false,
+      "description": "Component configuration in native format.",
+      "properties": {
+        "args": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Command line arguments.",
+          "title": "Args"
+        },
+        "envars": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variables.",
+          "title": "Envars"
+        },
+        "config": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Configuration file details.",
+          "title": "Config"
+        }
+      },
+      "title": "ComponentNative",
+      "type": "object"
+    },
+    "Distribution": {
+      "description": "Distribution type.\n\nAttributes\n    FIXED: str\n        Length is a fixed value.\n    GAUSSIAN: str\n        Gaussian distribution, with a mean and standard deviation.\n    UNIFORM: str\n        Uniform distribution between a minimum and maximum value.\n    OTHER: str\n        An otherwise undefined distribution.",
+      "enum": [
+        "fixed",
+        "gaussian",
+        "uniform",
+        "other"
+      ],
+      "title": "Distribution",
+      "type": "string"
+    },
+    "Generic": {
+      "additionalProperties": true,
+      "description": "Component configuration for a generic component.\n\nThis class  allows for extra attributes to be added without validation.\nUse this for development of new component classes, or when a class for your\ncomponent does not exist but you don't want to write your own class.",
+      "properties": {
+        "kind": {
+          "const": "generic",
+          "description": "The type of component.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "tool": {
+          "description": "Particular tool used for this component.",
+          "title": "Tool",
+          "type": "string"
+        },
+        "tool_version": {
+          "description": "Version of tool.",
+          "title": "Tool Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "tool",
+        "tool_version"
+      ],
+      "title": "Generic",
+      "type": "object"
+    },
+    "HostType": {
+      "description": "Enumeration of supported workload generators\n\nAttributes\n    REPLICA: str\n        Standard instance of an inference service\n    PREFILL: str\n        Prefill instance of an inference service\n    DECODE: str\n        Decode instance of an inference service",
+      "enum": [
+        "replica",
+        "prefill",
+        "decode"
+      ],
+      "title": "HostType",
+      "type": "string"
+    },
+    "InferenceEngine": {
+      "additionalProperties": false,
+      "description": "Component configuration for an inference engine.",
+      "properties": {
+        "kind": {
+          "const": "inference_engine",
+          "description": "The type of component.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "tool": {
+          "description": "Particular tool used for this component.",
+          "title": "Tool",
+          "type": "string"
+        },
+        "tool_version": {
+          "description": "Version of tool.",
+          "title": "Tool Version",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/HostType",
+          "description": "Type of model serving host."
+        },
+        "replicas": {
+          "description": "Number of replicas.",
+          "minimum": 1,
+          "title": "Replicas",
+          "type": "integer"
+        },
+        "model": {
+          "$ref": "#/$defs/InferenceEngineModel"
+        },
+        "accelerator": {
+          "$ref": "#/$defs/InferenceEngineAccelerator"
+        }
+      },
+      "required": [
+        "kind",
+        "tool",
+        "tool_version",
+        "role",
+        "replicas",
+        "model",
+        "accelerator"
+      ],
+      "title": "InferenceEngine",
+      "type": "object"
+    },
+    "InferenceEngineAccelerator": {
+      "additionalProperties": false,
+      "description": "Accelerator hardware details.",
+      "properties": {
+        "model": {
+          "description": "Hardware model name.",
+          "title": "Model",
+          "type": "string"
+        },
+        "count": {
+          "description": "Total utilized accelerator count.",
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "parallelism": {
+          "$ref": "#/$defs/InferenceEngineParallelism",
+          "description": "Parallelism utilized."
+        }
+      },
+      "required": [
+        "model",
+        "count",
+        "parallelism"
+      ],
+      "title": "InferenceEngineAccelerator",
+      "type": "object"
+    },
+    "InferenceEngineModel": {
+      "additionalProperties": false,
+      "description": "Hosted model details.",
+      "properties": {
+        "name": {
+          "description": "Model name.",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "InferenceEngineModel",
+      "type": "object"
+    },
+    "InferenceEngineParallelism": {
+      "additionalProperties": false,
+      "description": "Parallelism details.",
+      "properties": {
+        "tp": {
+          "default": 1,
+          "description": "Tensor parallelism.",
+          "minimum": 1,
+          "title": "Tp",
+          "type": "integer"
+        },
+        "dp": {
+          "default": 1,
+          "description": "Data parallelism.",
+          "minimum": 1,
+          "title": "Dp",
+          "type": "integer"
+        },
+        "dp_local": {
+          "default": 1,
+          "description": "Local data parallelism for this engine instance.",
+          "minimum": 1,
+          "title": "Dp Local",
+          "type": "integer"
+        },
+        "workers": {
+          "default": 1,
+          "description": "Number of workers.",
+          "minimum": 1,
+          "title": "Workers",
+          "type": "integer"
+        },
+        "ep": {
+          "default": 1,
+          "description": "Expert parallelism.",
+          "minimum": 1,
+          "title": "Ep",
+          "type": "integer"
+        },
+        "pp": {
+          "default": 1,
+          "description": "Pipeline parallelism.",
+          "minimum": 1,
+          "title": "Pp",
+          "type": "integer"
+        }
+      },
+      "title": "InferenceEngineParallelism",
+      "type": "object"
+    },
+    "Load": {
+      "additionalProperties": false,
+      "description": "Experimental workload details.",
+      "properties": {
+        "metadata": {
+          "$ref": "#/$defs/LoadMetadata"
+        },
+        "standardized": {
+          "$ref": "#/$defs/LoadStandardized"
+        },
+        "native": {
+          "$ref": "#/$defs/LoadNative"
+        }
+      },
+      "required": [
+        "metadata",
+        "standardized",
+        "native"
+      ],
+      "title": "Load",
+      "type": "object"
+    },
+    "LoadMetadata": {
+      "additionalProperties": false,
+      "description": "Workload metadata.",
+      "properties": {
+        "schema_version": {
+          "default": "0.0.1",
+          "description": "Version of workload description schema.",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "cfg_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Configuration ID, a hash of the workload configuration.",
+          "title": "Cfg Id"
+        },
+        "description": {
+          "default": null,
+          "description": "Descriptin of workload.",
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "title": "LoadMetadata",
+      "type": "object"
+    },
+    "LoadNative": {
+      "additionalProperties": false,
+      "description": "Workload generator configuration in native format.",
+      "properties": {
+        "args": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Command line arguments.",
+          "title": "Args"
+        },
+        "envars": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variables.",
+          "title": "Envars"
+        },
+        "config": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Configuration file details.",
+          "title": "Config"
+        }
+      },
+      "title": "LoadNative",
+      "type": "object"
+    },
+    "LoadPrefix": {
+      "additionalProperties": false,
+      "description": "Input sequence prefix details.",
+      "properties": {
+        "prefix_len": {
+          "$ref": "#/$defs/SequenceLength",
+          "description": "Length of common prefix."
+        },
+        "num_groups": {
+          "description": "Number of groups of \"users\" that share common prefixes.",
+          "minimum": 1,
+          "title": "Num Groups",
+          "type": "integer"
+        },
+        "num_users_per_group": {
+          "description": "Number of users per group.",
+          "minimum": 1,
+          "title": "Num Users Per Group",
+          "type": "integer"
+        },
+        "num_prefixes": {
+          "description": "Number of common prefixes within a group.",
+          "minimum": 1,
+          "title": "Num Prefixes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "prefix_len",
+        "num_groups",
+        "num_users_per_group",
+        "num_prefixes"
+      ],
+      "title": "LoadPrefix",
+      "type": "object"
+    },
+    "LoadSource": {
+      "description": "How input tokens are generated.\n\nAttributes\n    RANDOM: str\n        Tokens are randomly generated from vocabulary.\n    SAMPLED: str\n        Tokens are sampled from some data.\n    UNKNOWN: str\n        The source of tokens used is unknown.",
+      "enum": [
+        "random",
+        "sampled",
+        "unknown"
+      ],
+      "title": "LoadSource",
+      "type": "string"
+    },
+    "LoadStandardized": {
+      "additionalProperties": false,
+      "description": "Workload generator configuration details in standardized format.",
+      "properties": {
+        "tool": {
+          "description": "Particular tool used for this component.",
+          "title": "Tool",
+          "type": "string"
+        },
+        "tool_version": {
+          "description": "Version of tool.",
+          "title": "Tool Version",
+          "type": "string"
+        },
+        "parallelism": {
+          "default": 1,
+          "description": "Number of parallel workload generators.",
+          "minimum": 1,
+          "title": "Parallelism",
+          "type": "integer"
+        },
+        "source": {
+          "$ref": "#/$defs/LoadSource",
+          "description": "How input tokens are generated."
+        },
+        "stage": {
+          "default": 0,
+          "description": "Workload stage number (if multi-stage).",
+          "minimum": 0,
+          "title": "Stage",
+          "type": "integer"
+        },
+        "input_seq_len": {
+          "$ref": "#/$defs/SequenceLength",
+          "description": "Input sequence length."
+        },
+        "output_seq_len": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SequenceLength"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Output sequence length (if enforced)."
+        },
+        "prefix": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LoadPrefix"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Input sequence prefix details."
+        },
+        "multi_turn": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MultiTurn"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multi-turn request configuration."
+        },
+        "rate_qps": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Request rate, in queries per second.",
+          "title": "Rate Qps"
+        },
+        "concurrency": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "ge": 1
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Request concurrency.",
+          "title": "Concurrency"
+        }
+      },
+      "required": [
+        "tool",
+        "tool_version",
+        "source",
+        "input_seq_len"
+      ],
+      "title": "LoadStandardized",
+      "type": "object"
+    },
+    "MultiTurn": {
+      "additionalProperties": false,
+      "description": "Multi-turn request configuration.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "description": "Multi-turn requests are enabled.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_turns": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SequenceLength"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum number of requests per session."
+        }
+      },
+      "title": "MultiTurn",
+      "type": "object"
+    },
+    "Observability": {
+      "additionalProperties": true,
+      "description": "Observability metrics.",
+      "properties": {},
+      "title": "Observability",
+      "type": "object"
+    },
+    "ReplicaHealth": {
+      "additionalProperties": false,
+      "description": "Health information for a specific replica.",
+      "properties": {
+        "replica_id": {
+          "description": "Unique identifier for this replica (e.g., pod name).",
+          "title": "Replica Id",
+          "type": "string"
+        },
+        "restarts": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of times this replica restarted during the benchmark.",
+          "title": "Restarts"
+        },
+        "healthy": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Healthy status at completion of benchmark.",
+          "title": "Healthy"
+        },
+        "logs": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reference to logs for this specific replica.",
+          "title": "Logs"
+        }
+      },
+      "required": [
+        "replica_id"
+      ],
+      "title": "ReplicaHealth",
+      "type": "object"
+    },
+    "RequestPerformance": {
+      "additionalProperties": false,
+      "description": "Request-level performance metrics.",
+      "properties": {
+        "aggregate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AggregateRequestPerformance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aggregate performance metrics."
+        },
+        "time_series": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesRequestPerformance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Time series metrics."
+        }
+      },
+      "title": "RequestPerformance",
+      "type": "object"
+    },
+    "Results": {
+      "additionalProperties": false,
+      "description": "Benchmark run details.",
+      "properties": {
+        "request_performance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestPerformance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Request-level performance metrics."
+        },
+        "observability": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Observability"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Observability metrics."
+        },
+        "profiling": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Profiling results.",
+          "title": "Profiling"
+        },
+        "component_health": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ComponentHealth"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Component health and reliability metrics during benchmark.",
+          "title": "Component Health"
+        }
+      },
+      "title": "Results",
+      "type": "object"
+    },
+    "Run": {
+      "additionalProperties": false,
+      "description": "Benchmark run details.",
+      "properties": {
+        "uid": {
+          "description": "Unique ID for this specific benchmark report.",
+          "title": "Uid",
+          "type": "string"
+        },
+        "eid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Experiment ID, common across benchmark reports from a particular experiment.",
+          "title": "Eid"
+        },
+        "cid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cluster ID, unique to a particular cluster.",
+          "title": "Cid"
+        },
+        "pid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pod ID, unique to a workload generating and/or data collecting pod.",
+          "title": "Pid"
+        },
+        "time": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunTime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Time details of experiment."
+        },
+        "user": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Username that executed experiment.",
+          "title": "User"
+        }
+      },
+      "required": [
+        "uid"
+      ],
+      "title": "Run",
+      "type": "object"
+    },
+    "RunTime": {
+      "additionalProperties": false,
+      "description": "Time details of experiment.",
+      "properties": {
+        "start": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ISO\u20118601 timestamp for experiment start.",
+          "title": "Start"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ISO\u20118601 timestamp for experiment end.",
+          "title": "End"
+        },
+        "duration": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ISO\u20118601 duration for experiment.",
+          "title": "Duration"
+        }
+      },
+      "title": "RunTime",
+      "type": "object"
+    },
+    "Scenario": {
+      "additionalProperties": false,
+      "description": "Benchmark run details.",
+      "properties": {
+        "stack": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Component"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "List of components used to build the stack.",
+          "title": "Stack"
+        },
+        "load": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Load"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Experimental workload details."
+        }
+      },
+      "title": "Scenario",
+      "type": "object"
+    },
+    "SequenceLength": {
+      "additionalProperties": false,
+      "description": "Sequence length.",
+      "properties": {
+        "distribution": {
+          "$ref": "#/$defs/Distribution",
+          "description": "Sequence length distribution type."
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "Primary value.",
+          "ge": 1,
+          "title": "Value"
+        },
+        "std_dev": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Standard deviation (if Gaussian).",
+          "title": "Std Dev"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum value.",
+          "title": "Min"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum value.",
+          "title": "Max"
+        }
+      },
+      "required": [
+        "distribution",
+        "value"
+      ],
+      "title": "SequenceLength",
+      "type": "object"
+    },
+    "Statistics": {
+      "description": "Statistical information about a property.",
+      "properties": {
+        "units": {
+          "$ref": "#/$defs/Units"
+        },
+        "mean": {
+          "title": "Mean",
+          "type": "number"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mode"
+        },
+        "stddev": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stddev"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min"
+        },
+        "p0p1": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P0P1"
+        },
+        "p1": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P1"
+        },
+        "p5": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P5"
+        },
+        "p10": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P10"
+        },
+        "p25": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P25"
+        },
+        "p50": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P50"
+        },
+        "p75": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P75"
+        },
+        "p90": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P90"
+        },
+        "p95": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P95"
+        },
+        "p99": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P99"
+        },
+        "p99p9": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P99P9"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max"
+        }
+      },
+      "required": [
+        "units",
+        "mean"
+      ],
+      "title": "Statistics",
+      "type": "object"
+    },
+    "TimeSeriesData": {
+      "additionalProperties": false,
+      "description": "Time series data.",
+      "properties": {
+        "units": {
+          "$ref": "#/$defs/Units",
+          "description": "Units for time series."
+        },
+        "series": {
+          "description": "Time series data points.",
+          "items": {
+            "$ref": "#/$defs/TimeSeriesPoint"
+          },
+          "title": "Series",
+          "type": "array"
+        }
+      },
+      "required": [
+        "units",
+        "series"
+      ],
+      "title": "TimeSeriesData",
+      "type": "object"
+    },
+    "TimeSeriesLatency": {
+      "additionalProperties": false,
+      "description": "Time series latency metrics.",
+      "properties": {
+        "time_to_first_token": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Time to generate the first token (TTFT)."
+        },
+        "normalized_time_per_output_token": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Typical time to generate an output token, including first (NTPOT)."
+        },
+        "time_per_output_token": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Time to generate an output token, excluding first (TPOT, may differ from ITL depending on tool)."
+        },
+        "inter_token_latency": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Latency between generated tokens, excluding first (ITL, may differ from TPOT depending on tool)."
+        },
+        "request_latency": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "End-to-end request latency."
+        }
+      },
+      "title": "TimeSeriesLatency",
+      "type": "object"
+    },
+    "TimeSeriesPoint": {
+      "additionalProperties": false,
+      "description": "Time series data point.",
+      "properties": {
+        "ts": {
+          "description": "ISO\u20118601 timestamp.",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Value for datapoint.",
+          "title": "Value"
+        },
+        "mean": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mode"
+        },
+        "stddev": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stddev"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min"
+        },
+        "p0p1": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P0P1"
+        },
+        "p1": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P1"
+        },
+        "p5": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P5"
+        },
+        "p10": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P10"
+        },
+        "p25": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P25"
+        },
+        "p50": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P50"
+        },
+        "p75": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P75"
+        },
+        "p90": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P90"
+        },
+        "p95": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P95"
+        },
+        "p99": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P99"
+        },
+        "p99p9": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P99P9"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max"
+        }
+      },
+      "required": [
+        "ts"
+      ],
+      "title": "TimeSeriesPoint",
+      "type": "object"
+    },
+    "TimeSeriesRequestPerformance": {
+      "additionalProperties": false,
+      "description": "Time series performance metrics.",
+      "properties": {
+        "latency": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesLatency"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Time series latency metrics."
+        },
+        "throughput": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesThroughput"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Time series throughput metrics."
+        }
+      },
+      "title": "TimeSeriesRequestPerformance",
+      "type": "object"
+    },
+    "TimeSeriesThroughput": {
+      "additionalProperties": false,
+      "description": "Time series throughput metrics.",
+      "properties": {
+        "units": {
+          "$ref": "#/$defs/Units",
+          "default": "tokens/s"
+        },
+        "input_token_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Input token rate."
+        },
+        "output_token_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Output token rate."
+        },
+        "total_token_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total token rate (input + output)."
+        },
+        "request_rate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeSeriesData"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Request (query) processing rate."
+        }
+      },
+      "title": "TimeSeriesThroughput",
+      "type": "object"
+    },
+    "Units": {
+      "description": "Enumeration of units\n\nAttributes\n    COUNT: str\n        Count\n    MS: str\n        Milliseconds\n    S: str\n        Seconds\n    MB: str\n        Megabytes\n    GB: str\n        Gigabytes\n    TB: str\n        Terabytes\n    MIB: str\n        Mebibytes\n    GIB: str\n        Gibibytes\n    TIB: str\n        Tebibytes\n    MBIT_PER_S: str\n        Megabbits per second\n    GBIT_PER_S: str\n        Gigabits per second\n    TBIT_PER_S: str\n        Terabits per second\n    MB_PER_S: str\n        Megabytes per second\n    GB_PER_S: str\n        Gigabytes per second\n    TB_PER_S: str\n        Terabytes per second\n    GIB_PER_S: str\n        GiB per second\n    MS_PER_TOKEN: str\n        Milliseconds per token\n    S_PER_TOKEN: str\n        Seconds per token\n    TOKEN_PER_S: str\n        Tokens per second\n    WATTS: str\n        Watts",
+      "enum": [
+        "count",
+        "percent",
+        "fraction",
+        "ms",
+        "s",
+        "MB",
+        "GB",
+        "TB",
+        "MiB",
+        "GiB",
+        "TiB",
+        "Mbit/s",
+        "Gbit/s",
+        "Tbit/s",
+        "GiB/s",
+        "MB/s",
+        "GB/s",
+        "TB/s",
+        "ms/token",
+        "s/token",
+        "tokens/s",
+        "queries/s",
+        "Watts"
+      ],
+      "title": "Units",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Base class for a benchmark report.",
+  "properties": {
+    "version": {
+      "default": "0.2",
+      "description": "Version of the schema.",
+      "title": "Version",
+      "type": "string"
+    },
+    "run": {
+      "$ref": "#/$defs/Run"
+    },
+    "scenario": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Scenario"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Stack configuration and workload details of experiment"
+    },
+    "results": {
+      "$ref": "#/$defs/Results",
+      "description": "Experiment results."
+    }
+  },
+  "required": [
+    "run",
+    "results"
+  ],
+  "title": "Benchmark Report v0.2",
+  "type": "object"
+}

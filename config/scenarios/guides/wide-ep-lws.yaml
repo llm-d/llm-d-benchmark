@@ -1,0 +1,552 @@
+# WIDE EP/DP WITH LWS WELL LIT PATH
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/wide-ep-lws/README.md
+# Migrated from bash environment variables to YAML format
+#
+# Notes:
+# - Removed pod monitoring; can be added using decode.extraContainerConfig / prefill.extraContainerConfig
+# - Removed extra volumes metrics-volume and torch-compile-volume (not needed for this model/hardware)
+# - Use decode.additionalVolumeMounts and decode.additionalVolumes to add them if needed
+# - Use prefill.additionalVolumeMounts and prefill.additionalVolumes to add them if needed
+
+scenario:
+  # ============================================================================
+  # Wide EP/DP with LWS - Qwen3-30B-A3B with multinode support
+  # ============================================================================
+  - name: "wide-ep-lws"
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-30B-A3B"
+    # -------------------------------------------------------------------------
+    model:
+      name: Qwen/Qwen3-30B-A3B
+      shortName: qwen-qwen3-30b-a3b
+      path: models/Qwen/Qwen3-30B-A3B
+      huggingfaceId: Qwen/Qwen3-30B-A3B
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=2Ti
+      size: 2Ti
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=4000
+      maxModelLen: 4000
+      blockSize: 64
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEM_UTIL=0.75
+      gpuMemoryUtilization: 0.75
+      cacheBase: /model-cache
+    
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Multinode Configuration (LeaderWorkerSet)
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_MULTINODE=true
+    # -------------------------------------------------------------------------
+    multinode:
+      enabled: true
+    
+    # -------------------------------------------------------------------------
+    # Scheduler Configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_POD_SCHEDULER=custom-binpack-scheduler
+    # (commented out in original -- uncomment to enable)
+    # -------------------------------------------------------------------------
+    # schedulerName: custom-binpack-scheduler
+
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Routing Configuration
+    # Corresponds to: LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR=nixlv2 (default)
+    # -------------------------------------------------------------------------
+    routing:
+      connector: nixlv2
+    
+    # -------------------------------------------------------------------------
+    # Affinity / Node Selection
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left uncommented for auto-detect)
+    # By default, affinity is disabled and pods schedule on any available node.
+    # Options:
+    #   1. Leave commented out -- no node selection constraint
+    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+    #   3. Set explicit labels -- pods only schedule on matching nodes
+    # -------------------------------------------------------------------------
+    # affinity:
+    #   enabled: true
+    #   nodeSelector:
+    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
+    #     # gpu.nvidia.com/model: H200                        # Kubernetes
+    #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
+    
+    # -------------------------------------------------------------------------
+    # Routing / GAIE Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="custom-plugins.yaml"
+    #                 LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS
+    # -------------------------------------------------------------------------
+    inferenceExtension:
+      pluginsConfigFile: "custom-plugins.yaml"
+      pluginsCustomConfig:
+        custom-plugins.yaml: |
+          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+          - type: prefill-header-handler
+          - type: prefill-filter
+          - type: decode-filter
+          - type: random-picker
+            parameters:
+              maxNumOfEndpoints: 1
+          - type: pd-profile-handler
+            parameters:
+              threshold: 0
+              hashBlockSize: 5
+          schedulingProfiles:
+          - name: prefill
+            plugins:
+            - pluginRef: prefill-filter
+            - pluginRef: random-picker
+          - name: decode
+            plugins:
+            - pluginRef: decode-filter
+            - pluginRef: random-picker
+      # Inference Pool Provider Configuration
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG
+      inferencePoolProviderConfig:
+        destinationRule:
+          host: qwen-qwen3-30b-a3b-gaie-epp
+          trafficPolicy:
+            connectionPool:
+              http:
+                http1MaxPendingRequests: 256000
+                maxRequestsPerConnection: 256000
+                http2MaxRequests: 256000
+                idleTimeout: "900s"
+              tcp:
+                maxConnections: 256000
+                maxConnectionDuration: "1800s"
+                connectTimeout: "900s"
+    
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Storage Configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=2Ti
+    #                 LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS (auto-detect if not set)
+    # -------------------------------------------------------------------------
+    storage:
+      modelPvc:
+        size: 2Ti
+        # Uncomment to specify storage class:
+        # storageClassName: standard-rwx
+        # storageClassName: shared-vast
+        # storageClassName: ocs-storagecluster-cephfs
+    
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Prefill Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_*
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: true
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1
+      replicas: 1
+
+      initContainers:
+        - name: preprocess
+          image: ghcr.io/llm-d/llm-d-benchmark:auto
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_*_PARALLELISM
+      parallelism:
+        tensor: 1      # LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=1
+        data: 1        # LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_PARALLELISM=1
+        dataLocal: 8   # LLMDBENCH_VLLM_MODELSERVICE_PREFILL_DATA_LOCAL_PARALLELISM=8
+        workers: 2     # LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NUM_WORKERS_PARALLELISM=2
+      
+      # Resource configuration
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=32
+      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=512Gi
+      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE=auto (auto-detect)
+      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR=1
+      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EPHEMERAL_STORAGE=1Ti
+      resources:
+        limits:
+          memory: 512Gi
+          cpu: "32"
+        requests:
+          memory: 512Gi
+          cpu: "32"
+      
+      # Accelerator configuration
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_RESOURCE=nvidia
+      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ACCELERATOR_MEM_UTIL=0.75
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+        labelValue: NVIDIA-H100-80GB-HBM3
+      
+      # Mount model volume override
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_MOUNT_MODEL_VOLUME_OVERRIDE=false
+      mountModelVolume: false
+
+      # Startup probe overrides
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_STARTUP_PROBE_*
+      probes:
+        startup:
+          failureThreshold: 2700
+          initialDelaySeconds: 240
+          periodSeconds: 30
+          timeoutSeconds: 5
+          path: /v1/models
+        liveness:
+          failureThreshold: 3
+          periodSeconds: 5
+        readiness:
+          failureThreshold: 3
+          periodSeconds: 5
+          path: /v1/models
+
+      # Pod annotations
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_PODANNOTATIONS
+      annotations:
+        k8s.v1.cni.cncf.io/networks: multi-nic-inference
+
+      vllm:
+        imagePullPolicy: Always
+        # Custom vLLM command -- replaces the auto-generated command.
+      # Both decode.vllm.customCommand and prefill.vllm.customCommand are supported.
+        # vllmCommon.flags.* are NOT applied when customCommand is set.
+        # Only --kv-transfer-config and --kv-events-config from vllmCommon
+        # are appended if enabled.
+        customCommand: |
+          exec vllm serve /model-cache/models/Qwen/Qwen3-30B-A3B \
+            --served-model-name Qwen/Qwen3-30B-A3B \
+            --port $VLLM_INFERENCE_PORT \
+            --trust-remote-code \
+            --disable-uvicorn-access-log \
+            --data-parallel-hybrid-lb \
+            --enable-expert-parallel \
+            --tensor-parallel-size $TP_SIZE \
+            --data-parallel-size $((LWS_GROUP_SIZE * DP_SIZE_LOCAL)) \
+            --data-parallel-size-local $DP_SIZE_LOCAL \
+            --data-parallel-address ${LWS_LEADER_ADDRESS} \
+            --data-parallel-rpc-port 5555 \
+            --data-parallel-start-rank $START_RANK \
+            --kv-transfer-config '{"kv_connector":"NixlConnector","kv_role":"kv_both","kv_load_failure_policy":"fail"}' \
+            --async-scheduling \
+            --enable-dbo \
+            --dbo-prefill-token-threshold 32 \
+            --enable-eplb \
+            --eplb-config '{"window_size":"1000","step_interval":"3000","num_redundant_experts":"32","log_balancedness":"False"}' \
+            --gpu-memory-utilization 0.75
+      
+      # -----------------------------------------------------------------------
+      # Extra Environment Variables
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_ENVVARS_TO_YAML
+      # -----------------------------------------------------------------------
+      extraEnvVars:
+        - name: TRITON_LIBCUDA_PATH
+          value: "/usr/lib64"
+        - name: VLLM_SKIP_P2P_CHECK
+          value: "1"
+        - name: VLLM_RANDOMIZE_DP_DUMMY_INPUTS
+          value: "1"
+        - name: VLLM_USE_DEEP_GEMM
+          value: "1"
+        - name: VLLM_ALL2ALL_BACKEND
+          value: "deepep_high_throughput"
+        - name: NVIDIA_GDRCOPY
+          value: "enabled"
+        - name: NCCL_EXCLUDE_IB_HCA
+          value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
+        - name: NVSHMEM_DEBUG
+          value: "INFO"
+        - name: HF_HUB_DISABLE_XET
+          value: "1"
+        - name: NCCL_DEBUG
+          value: "INFO"
+        - name: NCCL_DEBUG_SUBSYS
+          value: "INIT,NET"
+        - name: NCCL_DEBUG_FILE
+          value: "/tmp/nccl.%h.%p.log"
+
+      # -----------------------------------------------------------------------
+      # Extra Container Configuration
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_CONTAINER_CONFIG
+      # -----------------------------------------------------------------------
+      extraContainerConfig:
+        securityContext:
+          capabilities:
+            add:
+              - IPC_LOCK
+              - SYS_RAWIO
+              - NET_ADMIN
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: Always
+      
+      # -----------------------------------------------------------------------
+      # Additional Volumes
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES
+      # -----------------------------------------------------------------------
+      additionalVolumes: []
+
+    # -------------------------------------------------------------------------
+    # Decode Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
+    # -------------------------------------------------------------------------
+    decode:
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=1
+      replicas: 1
+
+      initContainers:
+        - name: preprocess
+          image: ghcr.io/llm-d/llm-d-benchmark:auto
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*_PARALLELISM
+      parallelism:
+        tensor: 1      # LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1
+        data: 1        # LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_PARALLELISM=1
+        dataLocal: 8   # LLMDBENCH_VLLM_MODELSERVICE_DECODE_DATA_LOCAL_PARALLELISM=8
+        workers: 2     # LLMDBENCH_VLLM_MODELSERVICE_DECODE_NUM_WORKERS_PARALLELISM=2
+      
+      # Resource configuration
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=32
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=512Gi
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE=auto (auto-detect)
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR=1
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_EPHEMERAL_STORAGE=1Ti
+      resources:
+        limits:
+          memory: 512Gi
+          cpu: "32"
+        requests:
+          memory: 512Gi
+          cpu: "32"
+      
+      # Accelerator configuration
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_ACCELERATOR_RESOURCE=nvidia
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+        labelValue: NVIDIA-H100-80GB-HBM3
+      
+      # Mount model volume override
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_MOUNT_MODEL_VOLUME_OVERRIDE=false
+      mountModelVolume: false
+
+      # Startup probe overrides
+      probes:
+        startup:
+          failureThreshold: 2700
+          initialDelaySeconds: 240
+          periodSeconds: 30
+          timeoutSeconds: 5
+          path: /v1/models
+        liveness:
+          failureThreshold: 3
+          periodSeconds: 5
+        readiness:
+          failureThreshold: 3
+          periodSeconds: 5
+          path: /v1/models
+
+      # Pod annotations
+      annotations:
+        k8s.v1.cni.cncf.io/networks: multi-nic-inference
+
+      vllm:
+        imagePullPolicy: Always
+        # Custom vLLM command -- replaces the auto-generated command.
+      # Both decode.vllm.customCommand and prefill.vllm.customCommand are supported.
+        # vllmCommon.flags.* are NOT applied when customCommand is set.
+        # Only --kv-transfer-config and --kv-events-config from vllmCommon
+        # are appended if enabled.
+        customCommand: |
+          exec vllm serve /model-cache/models/Qwen/Qwen3-30B-A3B \
+            --served-model-name Qwen/Qwen3-30B-A3B \
+            --port $VLLM_METRICS_PORT \
+            --trust-remote-code \
+            --disable-uvicorn-access-log \
+            --data-parallel-hybrid-lb \
+            --enable-expert-parallel \
+            --tensor-parallel-size $TP_SIZE \
+            --data-parallel-size $((LWS_GROUP_SIZE * DP_SIZE_LOCAL)) \
+            --data-parallel-size-local $DP_SIZE_LOCAL \
+            --data-parallel-address ${LWS_LEADER_ADDRESS} \
+            --data-parallel-rpc-port 5555 \
+            --data-parallel-start-rank $START_RANK \
+            --kv-transfer-config '{"kv_connector":"NixlConnector","kv_role":"kv_both","kv_load_failure_policy":"fail"}' \
+            --async-scheduling \
+            --enable-dbo \
+            --dbo-decode-token-threshold 32 \
+            --enable-eplb \
+            --eplb-config '{"window_size":"1000","step_interval":"3000","num_redundant_experts":"32","log_balancedness":"False"}' \
+            --compilation_config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
+            --kv-cache-memory-bytes=${KV_CACHE_MEMORY_BYTES-}
+      
+      # -----------------------------------------------------------------------
+      # Extra Environment Variables
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_ENVVARS_TO_YAML
+      # Same as prefill (both use LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML)
+      # -----------------------------------------------------------------------
+      extraEnvVars:
+        - name: TRITON_LIBCUDA_PATH
+          value: "/usr/lib64"
+        - name: VLLM_SKIP_P2P_CHECK
+          value: "1"
+        - name: VLLM_RANDOMIZE_DP_DUMMY_INPUTS
+          value: "1"
+        - name: VLLM_USE_DEEP_GEMM
+          value: "1"
+        - name: VLLM_ALL2ALL_BACKEND
+          value: "deepep_high_throughput"
+        - name: NVIDIA_GDRCOPY
+          value: "enabled"
+        - name: NCCL_EXCLUDE_IB_HCA
+          value: "mlx5_0,mlx5_2,mlx5_4,mlx5_8,mlxl5_7,mlx5_10,mlx5_12,mlx5_14,mlx5_16"
+        - name: NVSHMEM_DEBUG
+          value: "INFO"
+        - name: HF_HUB_DISABLE_XET
+          value: "1"
+        - name: NCCL_DEBUG
+          value: "INFO"
+        - name: NCCL_DEBUG_SUBSYS
+          value: "INIT,NET"
+        - name: NCCL_DEBUG_FILE
+          value: "/tmp/nccl.%h.%p.log"
+
+      # -----------------------------------------------------------------------
+      # Extra Container Configuration
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_CONTAINER_CONFIG
+      # -----------------------------------------------------------------------
+      extraContainerConfig:
+        securityContext:
+          capabilities:
+            add:
+              - IPC_LOCK
+              - SYS_RAWIO
+              - NET_ADMIN
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: Always
+      
+      # -----------------------------------------------------------------------
+      # Additional Volume Mounts
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
+      # -----------------------------------------------------------------------
+      additionalVolumeMounts: []
+
+      # -----------------------------------------------------------------------
+      # Additional Volumes
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
+      # -----------------------------------------------------------------------
+      additionalVolumes: []
+    
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # vLLM Common Configuration
+    # Shared settings for both decode and prefill pods.
+    # When no customCommand is set on decode/prefill, the vLLM serve command
+    # is auto-generated from these fields:
+    #   - model.maxModelLen, model.blockSize maps to --max-model-len, --block-size
+    #   - model.gpuMemoryUtilization maps to --gpu-memory-utilization
+    #   - decode/prefill.parallelism.tensor maps to --tensor-parallel-size
+    #   - vllmCommon.flags.* maps to --enforce-eager, --no-enable-log-requests, etc.
+    #   - vllmCommon.kvTransfer.* maps to --kv-transfer-config (if enabled)
+    #   - vllmCommon.kvEvents.* maps to --kv-events-config (if enabled)
+    #   - decode/prefill.vllm.additionalFlags maps to appended as extra CLI args
+    # When decode.vllm.customCommand or prefill.vllm.customCommand IS set, it replaces the auto-generated
+    # command entirely. Only --kv-transfer-config and --kv-events-config are
+    # still appended from vllmCommon if enabled. All other vllmCommon.flags
+    # are ignored -- the custom command must include its own flags.
+    # -------------------------------------------------------------------------
+    vllmCommon:
+      host: "0.0.0.0"
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_PREPROCESS="source /shared-config/llmdbench_env.sh"
+      preprocessScript: "source /shared-config/llmdbench_env.sh"
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_NETWORK_RESOURCE=auto
+      networkResource: "auto"
+      networkNr: "1"
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_*_EPHEMERAL_STORAGE=1Ti
+      ephemeralStorage: 1Ti
+      # KV Transfer Configuration
+      # Note: kv-transfer-config is in customCommand for this scenario due to extra options
+      kvTransfer:
+        enabled: false  # Handled in customCommand
+      
+      # KV Events not enabled in this scenario
+      kvEvents:
+        enabled: false
+      
+      flags:
+        enforceEager: false
+        disableLogRequests: false
+        disableUvicornAccessLog: true
+        allowLongMaxModelLen: "1"
+        serverDevMode: "1"
+      
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_*_EXTRA_VOLUMES
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            # Corresponds to: LLMDBENCH_VLLM_COMMON_SHM_MEM=32Gi
+            # roughly 32MB per local DP plus scratch space
+            sizeLimit: 32Gi
+
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_*_EXTRA_VOLUME_MOUNTS
+      volumeMounts:
+        - name: shared-config
+          mountPath: /shared-config
+        - name: dshm
+          mountPath: /dev/shm
+    
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Workload/Harness Configuration
+    # Corresponds to: LLMDBENCH_HARNESS_NAME=vllm-benchmark
+    #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=random_concurrent.yaml
+    #                 LLMDBENCH_CONTROL_WORK_DIR=~/data/wide_ep_lws
+    # -------------------------------------------------------------------------
+    workDir: "~/data/wide_ep_lws"
+
+    harness:
+      name: vllm-benchmark
+      experimentProfile: random_concurrent.yaml

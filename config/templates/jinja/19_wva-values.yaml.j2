@@ -1,0 +1,55 @@
+{# ============================================================================
+   19_wva-values.yaml.j2
+
+   Helm values for the Workload Variant Autoscaler (WVA) chart.
+   Only rendered when wva.enabled is true.
+
+   Three values are runtime-computed and injected by step_09 at deploy time:
+     - wva.prometheus.caCert   (extracted from thanos-querier-tls secret)
+     - va.accelerator          (auto-detected from GPU affinity)
+     - vllmService.nodePort    (random available NodePort)
+   ============================================================================ #}
+{% if wva is defined and wva.enabled | default(false) %}
+wva:
+  controllerInstance: {{ wva.namespace | default(namespace.name) }}
+  enabled: {{ wva.controller.enabled | default(true) | lower }}
+  image:
+    repository: {{ wva.image.repository }}
+    tag: {{ wva.image.tag }}
+  metrics:
+    enabled: {{ wva.metrics.enabled | default(true) | lower }}
+    port: {{ wva.metrics.port | default(8443) }}
+    secure: {{ wva.metrics.secure | default(true) | lower }}
+  prometheus:
+    baseURL: "{{ wva.prometheus.baseUrl | default('https://thanos-querier.openshift-monitoring.svc.cluster.local') }}:{{ wva.prometheus.port | default(9091) }}"
+    caCert: ""
+    monitoringNamespace: {{ openshiftMonitoring.userWorkloadMonitoringNamespace | default('openshift-user-workload-monitoring') }}
+    serviceAccountName: prometheus-k8s
+    tls:
+      insecureSkipVerify: "true"
+      caCertPath: /etc/ssl/certs/prometheus-ca.crt
+  reconcileInterval: "60s"
+  scaleToZero: "false"
+
+llmd:
+  namespace: {{ namespace.name }}
+  modelName: {{ model_id_label }}
+  modelID: {{ model.name }}
+
+va:
+  enabled: {{ wva.variantAutoscaling.enabled | default(true) | lower }}
+  accelerator: ""
+  sloTpot: {{ wva.variantAutoscaling.slo.tpot | default(10) }}
+  sloTtft: {{ wva.variantAutoscaling.slo.ttft | default(1000) }}
+
+hpa:
+  enabled: {{ wva.hpa.enabled | default(true) | lower }}
+  maxReplicas: {{ wva.hpa.maxReplicas | default(10) }}
+  targetAverageValue: {{ wva.hpa.targetAvgValue | default(1) }}
+
+vllmService:
+  enabled: {{ wva.vllmService.enabled | default(true) | lower }}
+  nodePort: 0
+  interval: {{ wva.vllmService.interval | default('15s') }}
+  scheme: {{ wva.vllmService.scheme | default('http') }}
+{% endif %}

@@ -1,0 +1,42 @@
+{% if standalone.enabled is defined and not standalone.enabled %}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ model_id_label }}
+  namespace: {{ gateway.namespace }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ gateway.name }}
+  rules:
+    - backendRefs:
+      - group: inference.networking.k8s.io
+        kind: InferencePool
+        name: {{ model_id_label }}-gaie
+        port: {{ decode.vllm.servicePort }}
+        weight: 1
+      timeouts:
+        backendRequest: 0s
+        request: 0s
+      matches:
+        - path:
+            type: PathPrefix
+            value: /{{ model_id_label }}/
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+
+    - backendRefs:
+      - group: inference.networking.k8s.io
+        kind: InferencePool
+        name: {{ model_id_label }}-gaie
+        port: {{ decode.vllm.servicePort }}
+        weight: 1
+      timeouts:
+        backendRequest: 0s
+        request: 0s
+{% endif %}

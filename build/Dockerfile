@@ -113,13 +113,14 @@ RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /w
 RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
 
 ADD workload/harnesses/ /usr/local/bin/
-COPY analysis/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
-COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
-COPY analysis/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
-COPY analysis/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
-COPY analysis/inferencemax-analyze_results.sh /usr/local/bin/inferencemax-analyze_results.sh
-COPY analysis/visualize_metrics.py /usr/local/bin/visualize_metrics.py
-COPY benchmark_report/ /opt/benchmark_report/
+COPY llmdbenchmark/analysis/scripts/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
+COPY llmdbenchmark/analysis/scripts/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
+COPY llmdbenchmark/analysis/scripts/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
+COPY llmdbenchmark/analysis/scripts/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
+COPY llmdbenchmark/analysis/scripts/inferencemax-analyze_results.sh /usr/local/bin/inferencemax-analyze_results.sh
+COPY llmdbenchmark/analysis/visualize_metrics.py /usr/local/bin/visualize_metrics.py
+
+COPY llmdbenchmark/analysis/benchmark_report/ /opt/benchmark_report/
 RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
 
 # Install requirements for analysis scripts
@@ -127,10 +128,9 @@ COPY build/requirements-analysis.txt .
 RUN pip install --no-cache-dir -r requirements-analysis.txt
 RUN pip install -e /opt
 
-ADD ../setup/preprocess /tmp/preprocess/
+ADD llmdbenchmark/standup/preprocess/ /tmp/preprocess/
 RUN chmod +x /tmp/preprocess/* ; cp -f  /tmp/preprocess/* /usr/local/bin/
 
 COPY build/llm-d-benchmark.sh /usr/local/bin/llm-d-benchmark.sh
 
 ENTRYPOINT ["llm-d-benchmark.sh"]
-

@@ -1,0 +1,202 @@
+# =====================================================================
+# Experiment: Prefill-Decode Disaggregation Load Curve
+# =====================================================================
+#
+# Measures how a disaggregated prefill-decode architecture handles
+# increasing concurrency.  Each treatment scales concurrency and the
+# number of prompts proportionally (10 prompts per concurrency slot)
+# to keep per-worker load consistent while increasing overall system
+# pressure.  This produces a load curve showing how latency and
+# throughput change as the system saturates.
+#
+# Usage (full DoE — automatic standup/run/teardown per setup treatment):
+#   llmdbenchmark --spec pd-disaggregation experiment \
+#     --experiments workload/experiments/pd-disaggregation.yaml
+#
+# Usage (run-only — targets an already-running endpoint):
+#   llmdbenchmark --spec pd-disaggregation run \
+#     --endpoint-url http://<HOST>:<PORT> \
+#     --model <MODEL_NAME> \
+#     --namespace <NAMESPACE> \
+#     --harness vllm-benchmark \
+#     --workload random_concurrent.yaml \
+#     --experiments workload/experiments/pd-disaggregation.yaml
+#
+# The experiment form auto-detects the endpoint from stood-up stacks
+# and reads harness/profile defaults from the plan config.
+# The run-only form requires explicit --endpoint-url, --model, and
+# --namespace since there is no stood-up stack to detect from.
+#
+# =====================================================================
+
+# --- DoE Metadata (informational — not consumed by the runtime) ------
+
+experiment:
+  name: pd-disaggregation
+  description: >
+    Proportional load scaling curve for prefill-decode disaggregated
+    inference.  Concurrency and prompt count scale together (ratio
+    1:10) to measure system behavior from minimal load through
+    saturation.
+  harness: vllm-benchmark
+  profile: random_concurrent.yaml
+
+design:
+  type: proportional_scaling
+
+  setup:
+    factors:
+      - name: deploy_method
+        key: deploy_method
+        levels: [modelservice, standalone]
+        description: Deployment method
+      - name: decode_replicas
+        key: decode.replicas
+        levels: [1, 2, 3, 4]
+        description: Number of decode replicas
+      - name: decode_tensor_parallelism
+        key: decode.parallelism.tensor
+        levels: [2, 4, 8]
+        description: Tensor parallelism for decode pods
+      - name: prefill_replicas
+        key: prefill.replicas
+        levels: [2, 4, 6, 8]
+        description: Number of prefill replicas
+      - name: prefill_tensor_parallelism
+        key: prefill.parallelism.tensor
+        levels: [1, 2, 4]
+        description: Tensor parallelism for prefill pods
+
+  run:
+    factors:
+      - name: max-concurrency
+        key: max-concurrency
+        levels: [1, 8, 32, 64, 128, 256]
+        description: >
+          Maximum number of concurrent in-flight requests.  Controls
+          the degree of parallelism hitting the serving endpoint.
+
+      - name: num-prompts
+        key: num-prompts
+        levels: [10, 80, 320, 640, 1280, 2560]
+        description: >
+          Total number of prompts to send.  Scaled proportionally with
+          concurrency (10x) so each concurrency slot processes roughly
+          the same number of requests.
+
+    factor_relationship: >
+      num-prompts = max-concurrency * 10.  This proportional scaling
+      keeps the per-worker load constant across treatments, isolating
+      the effect of concurrency on system throughput and tail latency.
+
+    constants:
+      - key: dataset-name
+        value: random
+        description: Random synthetic dataset
+      - key: random-input-len
+        value: 10000
+        description: Input token length (held fixed at 10K)
+      - key: random-output-len
+        value: 1000
+        description: Output token length (held fixed at 1K)
+
+  total_setup_treatments: 9
+  total_run_treatments: 6
+  total_matrix: 54
+
+  response_variables:
+    - TTFT (Time to First Token)
+    - TPOT (Time per Output Token)
+    - ITL (Inter-Token Latency)
+    - E2EL (End-to-End Latency)
+    - Throughput (tokens/sec)
+    - p99 / p99.9 latency percentiles
+
+# --- Runtime: Setup treatments (consumed by experiment orchestrator) -------
+#
+# Fractional factorial: 9 selected topologies from the full factor space.
+
+setup:
+  treatments:
+    - name: ms-d1xTP8-p8xTP1
+      decode.replicas: 1
+      decode.parallelism.tensor: 8
+      prefill.replicas: 8
+      prefill.parallelism.tensor: 1
+
+    - name: ms-d1xTP8-p4xTP2
+      decode.replicas: 1
+      decode.parallelism.tensor: 8
+      prefill.replicas: 4
+      prefill.parallelism.tensor: 2
+
+    - name: ms-d1xTP8-p2xTP4
+      decode.replicas: 1
+      decode.parallelism.tensor: 8
+      prefill.replicas: 2
+      prefill.parallelism.tensor: 4
+
+    - name: ms-d1xTP4-p6xTP2
+      decode.replicas: 1
+      decode.parallelism.tensor: 4
+      prefill.replicas: 6
+      prefill.parallelism.tensor: 2
+
+    - name: ms-d2xTP4-p4xTP2
+      decode.replicas: 2
+      decode.parallelism.tensor: 4
+      prefill.replicas: 4
+      prefill.parallelism.tensor: 2
+
+    - name: ms-d3xTP4-p2xTP2
+      decode.replicas: 3
+      decode.parallelism.tensor: 4
+      prefill.replicas: 2
+      prefill.parallelism.tensor: 2
+
+    - name: sa-d1xTP2
+      standalone.enabled: true
+      decode.replicas: 1
+      decode.parallelism.tensor: 2
+
+    - name: sa-d1xTP4
+      standalone.enabled: true
+      decode.replicas: 1
+      decode.parallelism.tensor: 4
+
+    - name: sa-d1xTP8
+      standalone.enabled: true
+      decode.replicas: 1
+      decode.parallelism.tensor: 8
+
+# --- Treatments (consumed by step_04 render_profiles) ----------------
+#
+# Proportional scaling: concurrency and num-prompts scale together
+# at a fixed 1:10 ratio.  6 treatments from light to heavy load.
+#
+# Naming: conc{max-concurrency}
+
+treatments:
+  - name: conc1
+    max-concurrency: 1
+    num-prompts: 10
+
+  - name: conc8
+    max-concurrency: 8
+    num-prompts: 80
+
+  - name: conc32
+    max-concurrency: 32
+    num-prompts: 320
+
+  - name: conc64
+    max-concurrency: 64
+    num-prompts: 640
+
+  - name: conc128
+    max-concurrency: 128
+    num-prompts: 1280
+
+  - name: conc256
+    max-concurrency: 256
+    num-prompts: 2560

@@ -1,0 +1,122 @@
+{# Harness pod template for benchmark execution.
+   This template is rendered programmatically by step_04_run_experiment.py
+   with runtime values (endpoint URL, experiment ID, results directory).
+   It is NOT rendered during the plan phase.
+#}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ pod_name }}
+  namespace: {{ harness.namespace | default(namespace.name) }}
+  labels:
+    app: {{ harness.podLabel }}
+    function: load_generator
+spec:
+  containers:
+  - name: harness
+    image: {{ images.benchmark.repository }}:{{ images.benchmark.tag }}
+    imagePullPolicy: {{ images.benchmark.pullPolicy }}
+    securityContext:
+      runAsUser: 0
+    command: ["sh", "-c"]
+    args:
+    - "{{ harness_command }}"
+    resources:
+      limits:
+        cpu: "{{ harness.resources.cpu }}"
+        memory: {{ harness.resources.memory }}
+      requests:
+        cpu: "{{ harness.resources.cpu }}"
+        memory: {{ harness.resources.memory }}
+    env:
+    - name: LLMDBENCH_RUN_EXPERIMENT_LAUNCHER
+      value: "1"
+    - name: LLMDBENCH_MAGIC_ENVAR
+      value: "harness_pod"
+    - name: LLMDBENCH_DEPLOY_METHODS
+      value: "{{ deploy_method | default('modelservice') }}"
+    - name: LLMDBENCH_RUN_WORKSPACE_DIR
+      value: "{{ experiment.workspaceDir }}"
+    - name: LLMDBENCH_CONTROL_WORK_DIR
+      value: "{{ results_dir }}"
+    - name: LLMDBENCH_DEPLOY_CURRENT_MODEL
+      value: "{{ model.name }}"
+    - name: LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+      value: "{{ model.name }}"
+    - name: LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+      value: "{{ endpoint_url }}"
+    - name: LLMDBENCH_HARNESS_STACK_TYPE
+      value: "{{ stack_type }}"
+    - name: LLMDBENCH_HARNESS_NAME
+      value: "{{ harness.name }}"
+    - name: LLMDBENCH_RUN_EXPERIMENT_ID
+      value: "{{ experiment_id }}"
+    - name: RAYON_NUM_THREADS
+      value: "{{ harness.inferencePerf.rayonNumThreads }}"
+    - name: HF_TOKEN_SECRET
+      value: "{{ huggingface.secretName }}"
+    - name: HUGGING_FACE_HUB_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: {{ huggingface.secretName }}
+          key: {{ huggingface.tokenKey }}
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    - name: POD_UID
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.uid
+    - name: LLMDBENCH_VLLM_COMMON_NAMESPACE
+      value: "{{ namespace.name }}"
+{% if base64_context_contents is defined and base64_context_contents %}
+    - name: LLMDBENCH_BASE64_CONTEXT_CONTENTS
+      value: "{{ base64_context_contents }}"
+{% endif %}
+    - name: LLMDBENCH_VLLM_COMMON_INFERENCE_PORT
+      value: "{{ vllmCommon.inferencePort }}"
+    - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX
+      value: "{{ harness.resultsDirPrefix | default('/requests') }}"
+    - name: LLMDBENCH_HARNESS_STACK_NAME
+      value: "{{ harness.stackName | default(model_id_label) | default('default') }}"
+{% if monitoring is defined and monitoring.metricsScrapeEnabled is defined %}
+    - name: LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED
+      value: "{{ monitoring.metricsScrapeEnabled | lower }}"
+    - name: LLMDBENCH_VLLM_COMMON_METRICS_PORT
+      value: "{{ decode.vllm.port }}"
+    - name: LLMDBENCH_VLLM_MONITORING_METRICS_PATH
+      value: "{{ monitoring.metricsPath }}"
+{% endif %}
+{% if harness.extraEnvVars is defined and harness.extraEnvVars %}
+{% for env_entry in harness.extraEnvVars %}
+    - name: {{ env_entry.name }}
+      value: "{{ env_entry.value }}"
+{% endfor %}
+{% endif %}
+    volumeMounts:
+    - name: results
+      mountPath: /requests
+    - name: {{ harness.name }}-profiles
+      mountPath: /workspace/profiles/{{ harness.name }}
+    - name: harness-scripts
+      mountPath: /workspace/harnesses
+  volumes:
+  - name: results
+    persistentVolumeClaim:
+      claimName: {{ storage.workloadPvc.name }}
+  - name: {{ harness.name }}-profiles
+    configMap:
+      name: {{ harness.name }}-profiles
+  - name: harness-scripts
+    configMap:
+      name: llmdbench-harness-scripts
+      defaultMode: 0755
+{% if vllmCommon.pullSecret is defined and vllmCommon.pullSecret %}
+  imagePullSecrets:
+  - name: {{ vllmCommon.pullSecret }}
+{% endif %}
+{% if harness.serviceAccount is defined and harness.serviceAccount %}
+  serviceAccountName: {{ harness.serviceAccount }}
+{% endif %}
+  restartPolicy: Never

@@ -1,0 +1,125 @@
+# GKE H100 CI/CD Scenario
+# Based on scenarios/cicd/gke_H100_fb.sh
+#
+# CI/CD scenario for Google Kubernetes Engine clusters with H100 GPUs.
+# Uses the default model (facebook/opt-125m) for fast validation.
+# PR 868: GKE fix for v0.5.1 llm-d-cuda image -- LD_LIBRARY_PATH
+# set inline in custom commands instead of via extraEnvVars.
+
+scenario:
+  - name: "gke-h100-cicd"
+
+    # Namespace -- dedicated CI/CD namespace
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_NAMESPACE=llmdbenchcicd
+    namespace:
+      name: llmdbenchcicd
+
+    # Harness namespace -- same as deploy namespace for CI/CD
+    # Corresponds to: LLMDBENCH_HARNESS_NAMESPACE=llmdbenchcicd
+    harnessNamespace:
+      name: llmdbenchcicd
+
+    # Deployment method
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
+
+    # Helm release name
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_RELEASE=llmdbenchcicd
+    release: llmdbenchcicd
+
+    # GPU affinity for GKE H100
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY=cloud.google.com/gke-accelerator:nvidia-h100-80gb
+    affinity:
+      enabled: true
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-h100-80gb
+
+    # Accelerator configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR=1
+    accelerator:
+      count: 1
+
+    # Disable monitoring for CI/CD
+    # Corresponds to: LLMDBENCH_VLLM_MONITORING_PODMONITOR_ENABLED=false
+    #                 LLMDBENCH_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED=false
+    inferenceExtension:
+      monitoring:
+        prometheus:
+          enabled: false
+
+    # Decode configuration with GKE-specific custom command
+    # LD_LIBRARY_PATH is set inline because the llm-d-cuda:v0.5.1 image
+    # needs the CUDA compat library path on GKE nodes.
+    decode:
+      replicas: 1
+      vllm:
+        customCommand: |
+          export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda-12.9/compat; \
+          vllm serve /model-cache/models/$LLMDBENCH_DEPLOY_CURRENT_MODEL \
+          --host 0.0.0.0 \
+          --served-model-name $LLMDBENCH_DEPLOY_CURRENT_MODEL \
+          --port $VLLM_METRICS_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --no-enable-log-requests \
+          --disable-uvicorn-access-log \
+          --no-enable-prefix-caching
+
+    # Prefill with same GKE LD_LIBRARY_PATH fix
+    prefill:
+      replicas: 0
+      vllm:
+        customCommand: |
+          export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda-12.9/compat; \
+          vllm serve /model-cache/models/$LLMDBENCH_DEPLOY_CURRENT_MODEL \
+          --host 0.0.0.0 \
+          --served-model-name $LLMDBENCH_DEPLOY_CURRENT_MODEL \
+          --port $VLLM_INFERENCE_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --no-enable-log-requests \
+          --disable-uvicorn-access-log \
+          --no-enable-prefix-caching
+
+    # Standalone with GKE LD_LIBRARY_PATH (nvidia path, not cuda compat)
+    standalone:
+      enabled: false
+      vllm:
+        customCommand: |
+          export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/nvidia/lib64; \
+          vllm serve $LLMDBENCH_DEPLOY_CURRENT_MODEL \
+          --host 0.0.0.0 \
+          --served-model-name $LLMDBENCH_DEPLOY_CURRENT_MODEL \
+          --port $VLLM_INFERENCE_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --load-format $VLLM_LOAD_FORMAT \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --max-num-seqs $VLLM_MAX_NUM_SEQ \
+          --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
+          --disable-log-requests \
+          --disable-uvicorn-access-log \
+          --no-enable-prefix-caching
+
+    # Storage
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=standard-rwx
+    #                 LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
+    storage:
+      modelPvc:
+        storageClassName: standard-rwx
+        size: 1Ti
+
+    # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR=/tmp/cicd/
+    workDir: /tmp/cicd/
+
+    # Corresponds to: LLMDBENCH_HARNESS_NAME=inference-perf
+    harness:
+      name: inference-perf
+      experimentProfile: sanity_random.yaml

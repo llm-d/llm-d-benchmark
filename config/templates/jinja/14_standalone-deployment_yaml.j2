@@ -1,0 +1,701 @@
+{% if standalone.enabled %}
+
+{# ============================================================================
+   standalone-deployment.yaml.j2
+
+   Standalone vLLM deployment without llm-d routing infrastructure.
+   Useful for simple single-model deployments or testing.
+
+   Volume handling:
+     Uses vllmCommon.volumes/volumeMounts as the dynamic base (shared with
+     modelservice), plus a conditional model-storage PVC and any additional
+     volumes defined in standalone.additionalVolumes/additionalVolumeMounts.
+     This matches the original bash behavior where ALL volumes are injected
+     dynamically — no hard-coded volumes.
+
+   Launcher container:
+     Optional second container (standalone.launcher.enabled) that shares
+     the same pod and volumes. Mirrors the bash LLMDBENCH_VLLM_STANDALONE_LAUNCHER
+     feature.
+   ============================================================================ #}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-standalone-{{ model_id_label }}
+  labels:
+    app: vllm-standalone-{{ model_id_label }}
+{% if standalone.labels is defined %}
+{% for key, value in standalone.labels.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if annotations is defined and annotations.common is defined and annotations.common %}
+  annotations:
+{% for key, value in annotations.common.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+  namespace: {{ namespace.name }}
+spec:
+  replicas: {{ standalone.replicas }}
+  selector:
+    matchLabels:
+      app: vllm-standalone-{{ model_id_label }}
+  template:
+    metadata:
+      labels:
+        app: vllm-standalone-{{ model_id_label }}
+        llm-d.ai/inferenceServing: "{{ labels.inferenceServing }}"
+        llm-d.ai/model: {{ model_id_label }}
+        llm-d.ai/role: {{ standalone.role }}
+{% if standalone.extraPodLabels is defined %}
+{% for key, value in standalone.extraPodLabels.items() %}
+        {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if standalone.podAnnotations is defined and standalone.podAnnotations %}
+      annotations:
+{% for key, value in standalone.podAnnotations.items() %}
+        {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+
+    spec:
+      schedulerName: {{ standalone.schedulerName }}
+{% set pc = standalone.priorityClassName | default(vllmCommon.priorityClassName) %}
+{% if pc and pc | lower != 'none' %}
+      priorityClassName: {{ pc }}
+{% endif %}
+{% if vllmCommon.pullSecret is defined and vllmCommon.pullSecret %}
+      imagePullSecrets:
+      - name: {{ vllmCommon.pullSecret }}
+{% endif %}
+{% if standalone.nodeSelector is defined and standalone.nodeSelector %}
+      nodeSelector:
+{% for key, value in standalone.nodeSelector.items() %}
+        {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if (standalone.parallelism.tensor | int) > 0 %}
+{# GPU scenario — use acceleratorType-based nodeAffinity #}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: {{ standalone.acceleratorType.labelKey }}
+                operator: In
+                values:
+{% if standalone.acceleratorType is defined and standalone.acceleratorType.labelValues is defined %}
+{% for value in standalone.acceleratorType.labelValues %}
+                - {{ value }}
+{% endfor %}
+{% elif standalone.acceleratorType is defined and standalone.acceleratorType.labelValue is defined %}
+                - {{ standalone.acceleratorType.labelValue }}
+{% endif %}
+{% elif affinity is defined and affinity.enabled and affinity.nodeSelector is defined and affinity.nodeSelector %}
+{# CPU / non-GPU scenario — use top-level affinity nodeSelector as nodeAffinity #}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+{% for key, value in affinity.nodeSelector.items() %}
+              - key: {{ key }}
+                operator: In
+                values:
+                - "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if standalone.initContainers is defined and standalone.initContainers %}
+      initContainers:
+{% for container in standalone.initContainers %}
+      - name: {{ container.name }}
+        image: {{ container.image }}
+{% if container.imagePullPolicy is defined %}
+        imagePullPolicy: {{ container.imagePullPolicy }}
+{% endif %}
+{% if container.command is defined %}
+        command:
+{% for cmd in container.command %}
+        - {{ cmd }}
+{% endfor %}
+{% endif %}
+{% if container.args is defined %}
+        args:
+{% for arg in container.args %}
+        - {{ arg }}
+{% endfor %}
+{% endif %}
+{# Propagate core env vars to init containers -- same as modelservice #}
+{% if container.env is defined and container.env %}
+        env:
+{% for env in container.env %}
+        - name: {{ env.name }}
+{% if env.value is defined %}
+          value: "{{ env.value }}"
+{% elif env.valueFrom is defined %}
+          valueFrom:
+{{ env.valueFrom | toyaml | indent(12) }}
+{% endif %}
+{% endfor %}
+{% else %}
+        env:
+        - name: HOME
+          value: "{{ vllmCommon.containerHome }}"
+        - name: HF_HOME
+          value: "{{ vllmCommon.hfHome }}"
+        - name: VLLM_CACHE_ROOT
+          value: "{{ vllmCommon.containerHome }}/vllm"
+        - name: VLLM_INFERENCE_PORT
+          value: "{{ standalone.vllm.servicePort | default(vllmCommon.inferencePort | default('8000')) }}"
+        - name: VLLM_METRICS_PORT
+          value: "{{ standalone.vllm.port | default(vllmCommon.vllmPort | default('8200')) }}"
+        - name: VLLM_BLOCK_SIZE
+          value: "{{ model.blockSize | default(vllmCommon.blockSize | default('16')) }}"
+        - name: VLLM_MAX_MODEL_LEN
+          value: "{{ model.maxModelLen | default(vllmCommon.maxModelLen | default('4096')) }}"
+        - name: VLLM_LOAD_FORMAT
+          value: "{{ vllmCommon.loadFormat | default('auto') }}"
+        - name: VLLM_ACCELERATOR_MEM_UTIL
+          value: "{{ model.gpuMemoryUtilization | default(vllmCommon.gpuMemoryUtilization | default('0.95')) }}"
+        - name: VLLM_MAX_NUM_SEQ
+          value: "{{ model.maxNumSeq | default(vllmCommon.maxNumSeq | default('256')) }}"
+        - name: VLLM_TENSOR_PARALLELISM
+          value: "{{ (standalone.parallelism.tensor if standalone.parallelism is defined and standalone.parallelism.tensor is defined else '1') }}"
+        - name: VLLM_MAX_NUM_BATCHED_TOKENS
+          value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
+        - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+          value: "{{ vllmCommon.nixlSideChannelPort | default('5557') }}"
+        - name: UCX_TLS
+          value: "{{ vllmCommon.ucxTls | default('sm,cuda_ipc,cuda_copy,tcp') }}"
+        - name: UCX_SOCKADDR_TLS_PRIORITY
+          value: "{{ vllmCommon.ucxSockaddrTlsPriority | default('tcp') }}"
+        - name: DP_SIZE
+          value: "{{ (standalone.parallelism.data if standalone.parallelism is defined and standalone.parallelism.data is defined else '1') }}"
+        - name: TP_SIZE
+          value: "{{ (standalone.parallelism.tensor if standalone.parallelism is defined and standalone.parallelism.tensor is defined else '1') }}"
+        - name: DP_SIZE_LOCAL
+          value: "{{ (standalone.parallelism.dataLocal if standalone.parallelism is defined and standalone.parallelism.dataLocal is defined else '1') }}"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: LLMDBENCH_POD_NS
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+{% if standalone.extraEnvVars is defined and standalone.extraEnvVars %}
+{% for extra in standalone.extraEnvVars %}
+        - name: {{ extra.name }}
+{% if extra.value is defined %}
+          value: "{{ extra.value }}"
+{% elif extra.valueFrom is defined %}
+          valueFrom:
+{{ extra.valueFrom | toyaml | indent(12) }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if container.volumeMounts is defined %}
+        volumeMounts:
+{% for mount in container.volumeMounts %}
+        - name: {{ mount.name }}
+          mountPath: {{ mount.mountPath }}
+{% if mount.readOnly is defined %}
+          readOnly: {{ mount.readOnly | lower }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if container.resources is defined %}
+        resources:
+{{ container.resources | toyaml | indent(10) }}
+{% endif %}
+{% endfor %}
+{% endif %}
+      containers:
+{# ===== MAIN VLLM CONTAINER ===== #}
+      - name: vllm-standalone-{{ model_id_label }}
+        image: {{ standalone.image.repository }}:{{ standalone.image.tag }}
+        imagePullPolicy: {{ standalone.image.pullPolicy }}
+        command:
+        - /bin/bash
+        - "-c"
+        args:
+        - |
+{{ build_standalone_vllm_command() | indent(10, first=True) }}
+        env:
+        - name: LLMDBENCH_VLLM_STANDALONE_MODEL
+          value: "{{ model.name }}"
+        - name: LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT
+          value: "{{ standalone.vllm.loadFormat }}"
+        - name: LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG
+          value: "{{ standalone.vllm.modelLoaderExtraConfig }}"
+        - name: LLMDBENCH_VLLM_COMMON_AFFINITY
+{% if (standalone.parallelism.tensor | int) > 0 %}
+          value: "nvidia.com/gpu:{{ standalone.acceleratorType.labelKey }}:{{ standalone.acceleratorType.labelValue }}"
+{% elif affinity is defined and affinity.enabled and affinity.nodeSelector is defined and affinity.nodeSelector %}
+{% set ns_items = affinity.nodeSelector.items() | list %}
+          value: "{{ ns_items[0][0] }}:{{ ns_items[0][1] }}"
+{% else %}
+          value: ""
+{% endif %}
+{% if huggingface is defined and huggingface.secretName is defined and huggingface.secretName %}
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ huggingface.secretName }}
+              key: {{ huggingface.tokenKey }}
+{% endif %}
+        - name: HOME
+          value: "{{ vllmCommon.containerHome }}"
+        - name: HF_HOME
+          value: "{{ vllmCommon.hfHome }}"
+        - name: VLLM_WORKER_MULTIPROC_METHOD
+          value: "{{ standalone.vllm.workerMultiprocMethod }}"
+        - name: VLLM_LOGGING_LEVEL
+          value: "{{ standalone.vllm.loggingLevel }}"
+        - name: VLLM_CACHE_ROOT
+          value: "{{ standalone.vllm.cacheRoot | default(vllmCommon.containerHome ~ '/vllm') }}"
+        - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+          value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
+        - name: VLLM_SERVER_DEV_MODE
+          value: "{{ vllmCommon.flags.serverDevMode }}"
+        - name: VLLM_LOAD_FORMAT
+          value: "{{ standalone.vllm.loadFormat }}"
+        - name: VLLM_INFERENCE_PORT
+          value: "{{ standalone.vllm.servicePort | default(vllmCommon.inferencePort) }}"
+        - name: VLLM_METRICS_PORT
+          value: "{{ standalone.vllm.port | default(vllmCommon.vllmPort) }}"
+        - name: VLLM_BLOCK_SIZE
+          value: "{{ model.blockSize | default(vllmCommon.blockSize | default('16')) }}"
+        - name: VLLM_MAX_MODEL_LEN
+          value: "{{ model.maxModelLen | default(vllmCommon.maxModelLen | default('4096')) }}"
+        - name: VLLM_ACCELERATOR_MEM_UTIL
+          value: "{{ model.gpuMemoryUtilization | default(vllmCommon.gpuMemoryUtilization | default('0.95')) }}"
+        - name: VLLM_MAX_NUM_SEQ
+          value: "{{ model.maxNumSeq | default(vllmCommon.maxNumSeq | default('256')) }}"
+        - name: VLLM_TENSOR_PARALLELISM
+          value: "{{ standalone.parallelism.tensor | default('1') }}"
+        - name: VLLM_MAX_NUM_BATCHED_TOKENS
+          value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
+        - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+          value: "{{ vllmCommon.nixlSideChannelPort | default('5557') }}"
+        - name: UCX_TLS
+          value: "{{ vllmCommon.ucxTls | default('sm,cuda_ipc,cuda_copy,tcp') }}"
+        - name: UCX_SOCKADDR_TLS_PRIORITY
+          value: "{{ vllmCommon.ucxSockaddrTlsPriority | default('tcp') }}"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: LLMDBENCH_POD_NS
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+{% if standalone.podLabels is defined and standalone.podLabels %}
+        - name: LLMDBENCH_POD_LABELS
+          value: "{{ standalone.podLabels }}"
+{% endif %}
+{% if standalone.extraEnvVars is defined %}
+{% for env in standalone.extraEnvVars %}
+        - name: {{ env.name }}
+{% if env.value is defined %}
+          value: "{{ env.value }}"
+{% elif env.valueFrom is defined %}
+          valueFrom:
+{% if env.valueFrom.secretKeyRef is defined %}
+            secretKeyRef:
+              name: {{ env.valueFrom.secretKeyRef.name }}
+              key: {{ env.valueFrom.secretKeyRef.key }}
+{% elif env.valueFrom.configMapKeyRef is defined %}
+            configMapKeyRef:
+              name: {{ env.valueFrom.configMapKeyRef.name }}
+              key: {{ env.valueFrom.configMapKeyRef.key }}
+{% elif env.valueFrom.fieldRef is defined %}
+            fieldRef:
+              fieldPath: {{ env.valueFrom.fieldRef.fieldPath }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+        ports:
+        - containerPort: {{ standalone.vllm.port }}
+          name: metrics
+        startupProbe:
+          httpGet:
+            path: {{ standalone.probes.startup.path | default('/health') }}
+            port: {{ standalone.vllm.port }}
+          failureThreshold: {{ standalone.probes.startup.failureThreshold }}
+          initialDelaySeconds: {{ standalone.probes.startup.initialDelaySeconds }}
+          periodSeconds: {{ standalone.probes.startup.periodSeconds }}
+          timeoutSeconds: {{ standalone.probes.startup.timeoutSeconds }}
+        livenessProbe:
+          tcpSocket:
+            port: {{ standalone.vllm.port }}
+          failureThreshold: {{ standalone.probes.liveness.failureThreshold }}
+          periodSeconds: {{ standalone.probes.liveness.periodSeconds }}
+        readinessProbe:
+          httpGet:
+            path: {{ standalone.probes.readiness.path | default('/health') }}
+            port: {{ standalone.vllm.port }}
+          failureThreshold: {{ standalone.probes.readiness.failureThreshold }}
+          periodSeconds: {{ standalone.probes.readiness.periodSeconds }}
+        resources:
+          limits:
+            memory: {{ standalone.resources.limits.memory }}
+            cpu: "{{ standalone.resources.limits.cpu }}"
+{% set standalone_accel_resource = (standalone.accelerator.resource if standalone.accelerator is defined and standalone.accelerator.resource is defined else accelerator.resource) %}
+{# Use standalone.accelerator.count if set, then top-level accelerator.count,
+   then fall back to parallelism.tensor. CPU scenarios set accelerator.count: 0
+   to suppress GPU requests even when TP > 0. #}
+{% if standalone.accelerator is defined and standalone.accelerator.count is defined -%}
+{% set standalone_accel_count = standalone.accelerator.count | int -%}
+{% elif accelerator is defined and accelerator.count is defined -%}
+{% set standalone_accel_count = accelerator.count | int -%}
+{% else -%}
+{% set standalone_accel_count = standalone.parallelism.tensor | int -%}
+{% endif -%}
+{% if standalone_accel_count > 0 %}
+            {{ standalone_accel_resource }}: "{{ standalone_accel_count }}"
+{% endif %}
+{% set eph_storage = standalone.ephemeralStorage | default(vllmCommon.ephemeralStorage) %}
+{% set eph_resource = vllmCommon.ephemeralStorageResource %}
+{% if eph_storage and eph_resource %}
+            {{ eph_resource }}: "{{ eph_storage }}"
+{% endif %}
+{% set net_resource = standalone.networkResource | default(vllmCommon.networkResource) %}
+{% set net_nr = standalone.networkNr | default(vllmCommon.networkNr) %}
+{% if net_resource and net_nr %}
+            {{ net_resource }}: "{{ net_nr }}"
+{% endif %}
+          requests:
+            memory: {{ standalone.resources.requests.memory }}
+            cpu: "{{ standalone.resources.requests.cpu }}"
+{% if standalone_accel_count > 0 %}
+            {{ standalone_accel_resource }}: "{{ standalone_accel_count }}"
+{% endif %}
+{% if eph_storage and eph_resource %}
+            {{ eph_resource }}: "{{ eph_storage }}"
+{% endif %}
+{% if net_resource and net_nr %}
+            {{ net_resource }}: "{{ net_nr }}"
+{% endif %}
+        volumeMounts:
+{# Dynamic volume mounts from vllmCommon (shared base — preprocesses, dshm, etc.) #}
+{% for mount in vllmCommon.volumeMounts %}
+        - name: {{ mount.name }}
+          mountPath: {{ mount.mountPath }}
+{% if mount.subPath is defined %}
+          subPath: {{ mount.subPath }}
+{% endif %}
+{% if mount.readOnly is defined %}
+          readOnly: {{ mount.readOnly | lower }}
+{% endif %}
+{% endfor %}
+{# Conditional model storage volume mount #}
+{% if standalone.mountModelVolume %}
+        - name: model-storage
+          mountPath: {{ standalone.modelMountPath }}
+          readOnly: true
+{% endif %}
+{# Additional volume mounts (per-deployment extras) #}
+{% if standalone.additionalVolumeMounts is defined %}
+{% for mount in standalone.additionalVolumeMounts %}
+        - name: {{ mount.name }}
+          mountPath: {{ mount.mountPath }}
+{% if mount.subPath is defined %}
+          subPath: {{ mount.subPath }}
+{% endif %}
+{% if mount.readOnly is defined %}
+          readOnly: {{ mount.readOnly | lower }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if standalone.extraContainerConfig is defined and standalone.extraContainerConfig %}
+{{ standalone.extraContainerConfig | toyaml | indent(8) }}
+{% endif %}
+{# ===== LAUNCHER CONTAINER (optional second container sharing same pod) ===== #}
+{# Mirrors bash LLMDBENCH_VLLM_STANDALONE_LAUNCHER feature.                   #}
+{# Shares same volumes, env vars, and resources as the main container.         #}
+{% if standalone.launcher is defined and standalone.launcher.enabled %}
+      - name: vllm-launcher-{{ model_id_label }}
+        image: {{ standalone.launcher.image.repository | default(standalone.image.repository) }}:{{ standalone.launcher.image.tag | default(standalone.image.tag) }}
+        imagePullPolicy: {{ standalone.launcher.imagePullPolicy }}
+        command:
+        - /bin/bash
+        - "-c"
+        args:
+        - |
+{% if standalone.launcher.args is defined and standalone.launcher.args is not none %}
+{{ standalone.launcher.args | indent(10, first=True) }}
+{% else %}
+          uvicorn launcher:app --host 0.0.0.0 --log-level info --port {{ standalone.launcher.port }}
+{% endif %}
+        env:
+        - name: LLMDBENCH_VLLM_STANDALONE_MODEL
+          value: "{{ model.name }}"
+        - name: LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT
+          value: "{{ standalone.vllm.loadFormat }}"
+        - name: LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG
+          value: "{{ standalone.vllm.modelLoaderExtraConfig }}"
+        - name: LLMDBENCH_VLLM_COMMON_AFFINITY
+{% if (standalone.parallelism.tensor | int) > 0 %}
+          value: "nvidia.com/gpu:{{ standalone.acceleratorType.labelKey }}:{{ standalone.acceleratorType.labelValue }}"
+{% elif affinity is defined and affinity.enabled and affinity.nodeSelector is defined and affinity.nodeSelector %}
+{% set ns_items = affinity.nodeSelector.items() | list %}
+          value: "{{ ns_items[0][0] }}:{{ ns_items[0][1] }}"
+{% else %}
+          value: ""
+{% endif %}
+{% if huggingface is defined and huggingface.secretName is defined and huggingface.secretName %}
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ huggingface.secretName }}
+              key: {{ huggingface.tokenKey }}
+{% endif %}
+        - name: HOME
+          value: "{{ vllmCommon.containerHome }}"
+        - name: HF_HOME
+          value: "{{ vllmCommon.hfHome }}"
+        - name: VLLM_WORKER_MULTIPROC_METHOD
+          value: "{{ standalone.vllm.workerMultiprocMethod }}"
+        - name: VLLM_LOGGING_LEVEL
+          value: "{{ standalone.vllm.loggingLevel }}"
+        - name: VLLM_CACHE_ROOT
+          value: "{{ standalone.vllm.cacheRoot | default(vllmCommon.containerHome ~ '/vllm') }}"
+        - name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+          value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
+        - name: VLLM_SERVER_DEV_MODE
+          value: "{{ vllmCommon.flags.serverDevMode }}"
+        - name: VLLM_LOAD_FORMAT
+          value: "{{ standalone.vllm.loadFormat }}"
+        - name: VLLM_INFERENCE_PORT
+          value: "{{ standalone.vllm.servicePort | default(vllmCommon.inferencePort) }}"
+        - name: VLLM_METRICS_PORT
+          value: "{{ standalone.vllm.port | default(vllmCommon.vllmPort) }}"
+        - name: VLLM_BLOCK_SIZE
+          value: "{{ model.blockSize | default(vllmCommon.blockSize | default('16')) }}"
+        - name: VLLM_MAX_MODEL_LEN
+          value: "{{ model.maxModelLen | default(vllmCommon.maxModelLen | default('4096')) }}"
+        - name: VLLM_ACCELERATOR_MEM_UTIL
+          value: "{{ model.gpuMemoryUtilization | default(vllmCommon.gpuMemoryUtilization | default('0.95')) }}"
+        - name: VLLM_MAX_NUM_SEQ
+          value: "{{ model.maxNumSeq | default(vllmCommon.maxNumSeq | default('256')) }}"
+        - name: VLLM_TENSOR_PARALLELISM
+          value: "{{ standalone.parallelism.tensor | default('1') }}"
+        - name: VLLM_MAX_NUM_BATCHED_TOKENS
+          value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
+        - name: VLLM_NIXL_SIDE_CHANNEL_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: VLLM_NIXL_SIDE_CHANNEL_PORT
+          value: "{{ vllmCommon.nixlSideChannelPort | default('5557') }}"
+        - name: UCX_TLS
+          value: "{{ vllmCommon.ucxTls | default('sm,cuda_ipc,cuda_copy,tcp') }}"
+        - name: UCX_SOCKADDR_TLS_PRIORITY
+          value: "{{ vllmCommon.ucxSockaddrTlsPriority | default('tcp') }}"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        - name: LLMDBENCH_POD_NS
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+{% if standalone.podLabels is defined and standalone.podLabels %}
+        - name: LLMDBENCH_POD_LABELS
+          value: "{{ standalone.podLabels }}"
+{% endif %}
+{% if standalone.extraEnvVars is defined %}
+{% for env in standalone.extraEnvVars %}
+        - name: {{ env.name }}
+{% if env.value is defined %}
+          value: "{{ env.value }}"
+{% elif env.valueFrom is defined %}
+          valueFrom:
+{% if env.valueFrom.secretKeyRef is defined %}
+            secretKeyRef:
+              name: {{ env.valueFrom.secretKeyRef.name }}
+              key: {{ env.valueFrom.secretKeyRef.key }}
+{% elif env.valueFrom.configMapKeyRef is defined %}
+            configMapKeyRef:
+              name: {{ env.valueFrom.configMapKeyRef.name }}
+              key: {{ env.valueFrom.configMapKeyRef.key }}
+{% elif env.valueFrom.fieldRef is defined %}
+            fieldRef:
+              fieldPath: {{ env.valueFrom.fieldRef.fieldPath }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+        ports:
+        - containerPort: {{ standalone.launcher.port }}
+{# Launcher probes: startup/readiness use main vllm port, liveness uses launcher port #}
+        startupProbe:
+          httpGet:
+            path: {{ standalone.probes.startup.path | default('/health') }}
+            port: {{ standalone.vllm.port }}
+          failureThreshold: {{ standalone.probes.startup.failureThreshold }}
+          initialDelaySeconds: {{ standalone.probes.startup.initialDelaySeconds }}
+          periodSeconds: 30
+          timeoutSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: {{ standalone.launcher.port }}
+          failureThreshold: 3
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: {{ standalone.probes.readiness.path | default('/health') }}
+            port: {{ standalone.vllm.port }}
+          failureThreshold: 3
+          periodSeconds: 5
+        resources:
+          limits:
+            memory: {{ standalone.resources.limits.memory }}
+            cpu: "{{ standalone.resources.limits.cpu }}"
+{% if (standalone.parallelism.tensor | int) > 0 %}
+            {{ standalone_accel_resource }}: "{{ standalone.parallelism.tensor }}"
+{% endif %}
+{% if eph_storage and eph_resource %}
+            {{ eph_resource }}: "{{ eph_storage }}"
+{% endif %}
+{% if net_resource and net_nr %}
+            {{ net_resource }}: "{{ net_nr }}"
+{% endif %}
+          requests:
+            memory: {{ standalone.resources.requests.memory }}
+            cpu: "{{ standalone.resources.requests.cpu }}"
+{% if (standalone.parallelism.tensor | int) > 0 %}
+            {{ standalone_accel_resource }}: "{{ standalone.parallelism.tensor }}"
+{% endif %}
+{% if eph_storage and eph_resource %}
+            {{ eph_resource }}: "{{ eph_storage }}"
+{% endif %}
+{% if net_resource and net_nr %}
+            {{ net_resource }}: "{{ net_nr }}"
+{% endif %}
+{# Launcher shares same volume mounts as main container #}
+        volumeMounts:
+{% for mount in vllmCommon.volumeMounts %}
+        - name: {{ mount.name }}
+          mountPath: {{ mount.mountPath }}
+{% if mount.subPath is defined %}
+          subPath: {{ mount.subPath }}
+{% endif %}
+{% if mount.readOnly is defined %}
+          readOnly: {{ mount.readOnly | lower }}
+{% endif %}
+{% endfor %}
+{% if standalone.mountModelVolume %}
+        - name: model-storage
+          mountPath: {{ standalone.modelMountPath }}
+          readOnly: true
+{% endif %}
+{% if standalone.additionalVolumeMounts is defined %}
+{% for mount in standalone.additionalVolumeMounts %}
+        - name: {{ mount.name }}
+          mountPath: {{ mount.mountPath }}
+{% if mount.subPath is defined %}
+          subPath: {{ mount.subPath }}
+{% endif %}
+{% if mount.readOnly is defined %}
+          readOnly: {{ mount.readOnly | lower }}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endif %}
+{# ===== VOLUMES (pod-level, shared by all containers) ===== #}
+      volumes:
+{# Dynamic volumes from vllmCommon (shared base — dshm, preprocesses, etc.) #}
+{% for volume in vllmCommon.volumes %}
+      - name: {{ volume.name }}
+{% if volume.type == 'configMap' %}
+        configMap:
+          name: {{ volume.configMap.name }}
+{% if volume.configMap.defaultMode is defined %}
+          defaultMode: {{ volume.configMap.defaultMode }}
+{% endif %}
+{% elif volume.type == 'emptyDir' %}
+        emptyDir:
+{% if volume.emptyDir.medium is defined %}
+          medium: {{ volume.emptyDir.medium }}
+{% endif %}
+{% if volume.emptyDir.sizeLimit is defined %}
+          sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif %}
+{% elif volume.type == 'persistentVolumeClaim' %}
+        persistentVolumeClaim:
+          claimName: {{ volume.persistentVolumeClaim.claimName }}
+{% elif volume.type == 'secret' %}
+        secret:
+          secretName: {{ volume.secret.secretName }}
+{% if volume.secret.defaultMode is defined %}
+          defaultMode: {{ volume.secret.defaultMode }}
+{% endif %}
+{% elif volume.type == 'hostPath' %}
+        hostPath:
+          path: {{ volume.hostPath.path }}
+{% if volume.hostPath.type is defined %}
+          type: {{ volume.hostPath.type }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{# Conditional model storage PVC volume #}
+{% if standalone.mountModelVolume %}
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: {{ standalone.modelPvcName }}
+{% endif %}
+{# Additional volumes (per-deployment extras) #}
+{% if standalone.additionalVolumes is defined %}
+{% for volume in standalone.additionalVolumes %}
+      - name: {{ volume.name }}
+{% if volume.type == 'configMap' %}
+        configMap:
+          name: {{ volume.configMap.name }}
+{% if volume.configMap.defaultMode is defined %}
+          defaultMode: {{ volume.configMap.defaultMode }}
+{% endif %}
+{% elif volume.type == 'emptyDir' %}
+        emptyDir:
+{% if volume.emptyDir.medium is defined %}
+          medium: {{ volume.emptyDir.medium }}
+{% endif %}
+{% if volume.emptyDir.sizeLimit is defined %}
+          sizeLimit: {{ volume.emptyDir.sizeLimit }}
+{% endif %}
+{% elif volume.type == 'persistentVolumeClaim' %}
+        persistentVolumeClaim:
+          claimName: {{ volume.persistentVolumeClaim.claimName }}
+{% elif volume.type == 'secret' %}
+        secret:
+          secretName: {{ volume.secret.secretName }}
+{% if volume.secret.defaultMode is defined %}
+          defaultMode: {{ volume.secret.defaultMode }}
+{% endif %}
+{% elif volume.type == 'hostPath' %}
+        hostPath:
+          path: {{ volume.hostPath.path }}
+{% if volume.hostPath.type is defined %}
+          type: {{ volume.hostPath.type }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% if standalone.extraPodConfig is defined and standalone.extraPodConfig %}
+{{ standalone.extraPodConfig | toyaml | indent(6) }}
+{% endif %}
+
+{% endif %}

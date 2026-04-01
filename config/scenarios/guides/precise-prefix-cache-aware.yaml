@@ -1,0 +1,348 @@
+# ============================================================================
+# PRECISE PREFIX CACHE AWARE ROUTING WELL LIT PATH
+# Converted from bash environment variables to YAML format
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/precise-prefix-cache-aware/README.md
+#
+# Notes:
+# - Removed pod monitoring; can be added using decode.extraContainerConfig
+# - Removed extra volumes metrics-volume and torch-compile-volume (not needed for this model/hardware)
+# - Use decode.additionalVolumeMounts and decode.additionalVolumes to add them if needed
+# ============================================================================
+
+scenario:
+  - name: "precise-prefix-cache-aware"
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
+    # -------------------------------------------------------------------------
+    model:
+      name: Qwen/Qwen3-32B
+      shortName: qwen-qwen3-32b
+      path: models/Qwen/Qwen3-32B
+      huggingfaceId: Qwen/Qwen3-32B
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
+      size: 1Ti
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
+      maxModelLen: 16000
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+    
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Routing Configuration
+    # Corresponds to: LLMDBENCH_LLMD_ROUTINGSIDECAR_ENABLED=false
+    # -------------------------------------------------------------------------
+    routing:
+      proxy:
+        enabled: false
+
+    # -------------------------------------------------------------------------
+    # Routing / GAIE Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="precise-prefix-cache-config.yaml"
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_SIDECAR_ENABLED=true
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_FLAGS
+    # -------------------------------------------------------------------------
+    inferenceExtension:
+      pluginsConfigFile: "precise-prefix-cache-config.yaml"
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_SIDECAR_ENABLED=true
+      sidecar:
+        enabled: true
+      flags:
+        kv-cache-usage-percentage-metric: "vllm:kv_cache_usage_perc"
+        v: 4  # log verbosity
+      pluginsCustomConfig:
+        precise-prefix-cache-config.yaml: |
+          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+            - type: single-profile-handler
+            - type: precise-prefix-cache-scorer
+              parameters:
+                tokenProcessorConfig:
+                  blockSize: 64
+                indexerConfig:
+                  tokenizersPoolConfig:
+                    modelName: "Qwen/Qwen3-32B"
+                    local: null
+                    hf: null
+                    uds:
+                      socketFile: /tmp/tokenizer/tokenizer-uds.socket
+                kvEventsConfig:
+                  topicFilter: "kv@"
+                  concurrency: 4
+                  discoverPods: false
+                  zmqEndpoint: "tcp://*:5557"
+            - type: kv-cache-utilization-scorer
+            - type: queue-scorer
+            - type: max-score-picker
+          schedulingProfiles:
+            - name: default
+              plugins:
+                - pluginRef: precise-prefix-cache-scorer
+                  weight: 3.0
+                - pluginRef: kv-cache-utilization-scorer
+                  weight: 2.0
+                - pluginRef: queue-scorer
+                  weight: 2.0
+                - pluginRef: max-score-picker
+      # InferencePool Provider Configuration
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG
+      inferencePoolProviderConfig:
+        destinationRule:
+          host: qwen-qwen3-32b-gaie-epp
+          trafficPolicy:
+            connectionPool:
+              http:
+                http1MaxPendingRequests: 256000
+                maxRequestsPerConnection: 256000
+                http2MaxRequests: 256000
+                idleTimeout: "900s"
+              tcp:
+                maxConnections: 256000
+                maxConnectionDuration: "1800s"
+                connectTimeout: "900s"
+    
+    # -------------------------------------------------------------------------
+    # Affinity / Node Selection
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left uncommented for auto-detect)
+    # By default, affinity is disabled and pods schedule on any available node.
+    # Options:
+    #   1. Leave commented out -- no node selection constraint
+    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+    #   3. Set explicit labels -- pods only schedule on matching nodes
+    # -------------------------------------------------------------------------
+    # affinity:
+    #   enabled: true
+    #   nodeSelector:
+    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
+    #     # gpu.nvidia.com/model: H200                        # Kubernetes
+    #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
+    
+    # -------------------------------------------------------------------------
+    # Prefill Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: false
+      replicas: 0
+    
+    # -------------------------------------------------------------------------
+    # Decode Configuration
+    # -------------------------------------------------------------------------
+    decode:
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
+      replicas: 2
+
+      initContainers:
+        - name: preprocess
+          image: ghcr.io/llm-d/llm-d-benchmark:auto
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=2
+      parallelism:
+        tensor: 2
+        data: 1
+        dataLocal: 1
+        workers: 1
+      
+      # Resource configuration
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR (env.sh default=4)
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=$LLMDBENCH_VLLM_COMMON_CPU_MEM (=64Gi)
+      resources:
+        limits:
+          memory: 64Gi
+          cpu: "4"
+        requests:
+          memory: 64Gi
+          cpu: "4"
+
+      vllm:
+        # Custom vLLM command -- replaces the auto-generated command.
+      # Both decode.vllm.customCommand and prefill.vllm.customCommand are supported.
+        # vllmCommon.flags.* are NOT applied when customCommand is set.
+        # Only --kv-transfer-config and --kv-events-config from vllmCommon
+        # are appended if enabled.
+        additionalFlags:
+          - "--prefix-caching-hash-algo sha256_cbor"
+
+      # -----------------------------------------------------------------------
+      # Extra Environment Variables
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
+      # Only PYTHONHASHSEED is explicitly set; other vars (UCX_TLS, POD_IP, etc.)
+      # are auto-populated by the preprocess script at pod runtime.
+      # -----------------------------------------------------------------------
+      extraEnvVars:
+        - name: PYTHONHASHSEED
+          value: "42"
+
+      # -----------------------------------------------------------------------
+      # Extra Container Configuration
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG
+      # -----------------------------------------------------------------------
+      extraContainerConfig:
+        ports:
+          - containerPort: 5557  # NIXL side channel port
+            protocol: TCP
+          - containerPort: 8200  # Metrics port
+            name: metrics
+            protocol: TCP
+        securityContext:
+          capabilities:
+            add:
+              - "IPC_LOCK"
+              - "SYS_RAWIO"
+              - "NET_ADMIN"
+              - "NET_RAW"
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: Always
+      
+      # -----------------------------------------------------------------------
+      # Additional Volume Mounts
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
+      # -----------------------------------------------------------------------
+      additionalVolumeMounts: []
+
+      # -----------------------------------------------------------------------
+      # Additional Volumes
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
+      # -----------------------------------------------------------------------
+      additionalVolumes: []
+      
+      # -----------------------------------------------------------------------
+      # Multi-NIC Configuration (uncomment to enable)
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS
+      # -----------------------------------------------------------------------
+      # extraPodLabels: {}
+      # To enable multi-nic, add to annotations.decode.pod:
+      # annotations:
+      #   decode:
+      #     pod:
+      #       k8s.v1.cni.cncf.io/networks: multi-nic-compute
+      
+      # -----------------------------------------------------------------------
+      # ROCE/GDR Configuration (uncomment to enable)
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR
+      # -----------------------------------------------------------------------
+      # To enable roce/gdr, add to resources:
+      # resources:
+      #   limits:
+      #     rdma/roce_gdr: "16"
+      #   requests:
+      #     rdma/roce_gdr: "16"
+    
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # vLLM Common Configuration
+    # Shared settings for both decode and prefill pods.
+    # When no customCommand is set on decode/prefill, the vLLM serve command
+    # is auto-generated from these fields:
+    #   - model.maxModelLen, model.blockSize maps to --max-model-len, --block-size
+    #   - model.gpuMemoryUtilization maps to --gpu-memory-utilization
+    #   - decode/prefill.parallelism.tensor maps to --tensor-parallel-size
+    #   - vllmCommon.flags.* maps to --enforce-eager, --no-enable-log-requests, etc.
+    #   - vllmCommon.kvTransfer.* maps to --kv-transfer-config (if enabled)
+    #   - vllmCommon.kvEvents.* maps to --kv-events-config (if enabled)
+    #   - decode/prefill.vllm.additionalFlags maps to appended as extra CLI args
+    # When decode.vllm.customCommand or prefill.vllm.customCommand IS set, it replaces the auto-generated
+    # command entirely. Only --kv-transfer-config and --kv-events-config are
+    # still appended from vllmCommon if enabled. All other vllmCommon.flags
+    # are ignored -- the custom command must include its own flags.
+    # -------------------------------------------------------------------------
+    vllmCommon:
+      kvTransfer:
+        enabled: true
+        connector: NixlConnector
+        role: kv_both
+
+      kvEvents:
+        enabled: true
+        publisher: zmq
+        port: 5557
+        topicPrefix: kv
+        # serviceName defaults to model.shortName if not specified
+        # serviceName: custom-service-name
+      
+      flags:
+        enforceEager: true
+        disableLogRequests: false
+        disableUvicornAccessLog: false
+        allowLongMaxModelLen: "1"
+        serverDevMode: "1"
+      
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            # Corresponds to: LLMDBENCH_VLLM_COMMON_SHM_MEM
+            sizeLimit: 16Gi
+
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
+      volumeMounts:
+        - name: shared-config
+          mountPath: /shared-config
+        - name: dshm
+          mountPath: /dev/shm
+    
+    # -------------------------------------------------------------------------
+    # Storage Configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
+    #                 LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS (auto-detect if not set)
+    # -------------------------------------------------------------------------
+    storage:
+      modelPvc:
+        size: 1Ti
+        # Uncomment to specify storage class:
+        # storageClassName: standard-rwx
+        # storageClassName: shared-vast
+        # storageClassName: ocs-storagecluster-cephfs
+    
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Workload/Harness Configuration
+    # Corresponds to: LLMDBENCH_HARNESS_NAME=inference-perf
+    #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic.yaml
+    #                 LLMDBENCH_CONTROL_WORK_DIR=~/data/precise_prefix_cache_aware
+    # -------------------------------------------------------------------------
+    workDir: "~/data/precise_prefix_cache_aware"
+
+    harness:
+      name: inference-perf
+      experimentProfile: shared_prefix_synthetic.yaml

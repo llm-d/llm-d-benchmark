@@ -1,0 +1,300 @@
+{# Macro to build kv-transfer-config JSON #}
+{% macro build_kv_transfer_config() -%}
+{% if vllmCommon.kvTransfer.extraConfig is defined and vllmCommon.kvTransfer.extraConfig -%}
+{"kv_connector":"{{ vllmCommon.kvTransfer.connector }}","kv_role":"{{ vllmCommon.kvTransfer.role }}","kv_connector_extra_config":{{ vllmCommon.kvTransfer.extraConfig | tojson }}}
+{%- else -%}
+{"kv_connector":"{{ vllmCommon.kvTransfer.connector }}","kv_role":"{{ vllmCommon.kvTransfer.role }}"}
+{%- endif %}
+{%- endmacro %}
+
+{# Macro to build kv-events-config JSON #}
+{% macro build_kv_events_config() -%}
+{% set default_service_name = model_id_label ~ '-gaie-epp' -%}
+{% set service_name = vllmCommon.kvEvents.serviceName | default(default_service_name) -%}
+{% set ns = namespace.name -%}
+{% set port = vllmCommon.kvEvents.port -%}
+{% set publisher = vllmCommon.kvEvents.publisher -%}
+{% set topic_prefix = vllmCommon.kvEvents.topicPrefix -%}
+{"enable_kv_cache_events":true,"publisher":"{{ publisher }}","endpoint":"tcp://{{ service_name }}.{{ ns }}.svc.cluster.local:{{ port }}","topic":"{{ topic_prefix }}@${POD_IP}@{{ model.name }}"}
+{%- endmacro %}
+
+{# Macro to build vLLM serve command with templated arguments #}
+{% macro build_vllm_command(mode='decode') -%}
+{% if mode == 'decode' -%}
+{% set config = decode -%}
+{% else -%}
+{% set config = prefill -%}
+{% endif -%}
+
+{# Determine preprocess script to use #}
+{% if config.vllm.customPreprocessCommand is defined and config.vllm.customPreprocessCommand is not none -%}
+{% set preprocess_script = config.vllm.customPreprocessCommand -%}
+{% else -%}
+{% set preprocess_script = vllmCommon.preprocessScript -%}
+{% endif -%}
+
+{# Pre-calculate which optional flags are enabled #}
+{% set has_enforce_eager = vllmCommon.flags.enforceEager | default(false) -%}
+{% set has_disable_log_requests = vllmCommon.flags.disableLogRequests | default(false) -%}
+{% set has_disable_uvicorn = vllmCommon.flags.disableUvicornAccessLog | default(false) -%}
+{% set has_no_prefix_caching = vllmCommon.flags.noPrefixCaching | default(false) -%}
+{% set has_enable_prefix_caching = vllmCommon.flags.enablePrefixCaching | default(false) -%}
+{% set has_kv_transfer = vllmCommon.kvTransfer is defined and vllmCommon.kvTransfer.enabled -%}
+{% set has_kv_events = vllmCommon.kvEvents is defined and vllmCommon.kvEvents.enabled -%}
+{% set gpu_mem_util = model.gpuMemoryUtilization | float -%}
+
+{# Custom command provided #}
+{% if config.vllm.customCommand is defined and config.vllm.customCommand is not none -%}
+{{ preprocess_script }}; {{ config.vllm.customCommand | trim }}
+{%- if has_kv_transfer %} \
+  --kv-transfer-config '{{ build_kv_transfer_config() }}'
+{%- endif %}
+{%- if has_kv_events %} \
+  --kv-events-config '{{ build_kv_events_config() }}'
+{%- endif %}
+{%- else -%}
+{# Use default vllm serve command -- uses container env vars at runtime #}
+{# When routing proxy is disabled, vLLM must bind to the service port (8000)
+   directly since there is no sidecar to bridge servicePort to vllmPort.
+   When proxy is enabled, vLLM binds to vllm.port (8200) and the proxy
+   handles the servicePort (8000) to vllmPort (8200) forwarding.
+   The port env var is set accordingly: VLLM_INFERENCE_PORT (8000) when no proxy,
+   VLLM_METRICS_PORT (8200) when proxy is enabled.
+   IMPORTANT: Prefill pods NEVER have the routing proxy (the Helm chart only
+   injects it on decode pods), so prefill must always use VLLM_INFERENCE_PORT
+   (8000) regardless of the proxy setting. Without this, the routing sidecar
+   on decode pods cannot reach the prefill pod (connection refused on 8000
+   while vLLM listens on 8200). #}
+{% set proxy_disabled = (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) -%}
+{% set use_inference_port = proxy_disabled or mode == 'prefill' -%}
+{% set port_var = '$VLLM_INFERENCE_PORT' if use_inference_port else '$VLLM_METRICS_PORT' -%}
+{{ preprocess_script }}; vllm serve {{ model.cacheBase }}/{{ model.path }} \
+  --host {{ vllmCommon.host }} \
+  --served-model-name {{ model.name }} \
+  --port {{ port_var }} \
+  --block-size $VLLM_BLOCK_SIZE \
+  --max-model-len $VLLM_MAX_MODEL_LEN
+{%- set tp_size = config.parallelism.tensor | int %}
+{%- if tp_size > 0 %} \
+  --tensor-parallel-size $VLLM_TENSOR_PARALLELISM
+{%- endif %}
+{%- if gpu_mem_util > 0 %} \
+  --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL
+{%- endif %}
+{%- if has_enforce_eager %} \
+  --enforce-eager
+{%- endif %}
+{%- if has_disable_log_requests %} \
+  --no-enable-log-requests
+{%- endif %}
+{%- if has_disable_uvicorn %} \
+  --disable-uvicorn-access-log
+{%- endif %}
+{%- if has_no_prefix_caching %} \
+  --no-enable-prefix-caching
+{%- endif %}
+{%- if has_enable_prefix_caching %} \
+  --enable-prefix-caching
+{%- endif %}
+{%- if has_kv_transfer %} \
+  --kv-transfer-config '{{ build_kv_transfer_config() }}'
+{%- endif %}
+{%- if has_kv_events %} \
+  --kv-events-config '{{ build_kv_events_config() }}'
+{%- endif %}
+{%- if config.vllm.additionalFlags is defined %}
+{% for flag in config.vllm.additionalFlags %} \
+  {{ flag }}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- endmacro %}
+
+
+{# ======================================================================== #}
+{# Macro to build the shared env vars block for a modelservice pod.        #}
+{# Used by BOTH the vllm container AND init containers so they share the   #}
+{# exact same environment. Takes mode ('decode' or 'prefill') and an       #}
+{# optional role_label ('1' for decode, '1' for prefill) for VLLM_IS_*.    #}
+{# ======================================================================== #}
+{% macro build_ms_env_vars(mode='decode') -%}
+{% if mode == 'decode' -%}
+{% set config = decode -%}
+{% set role_env_name = 'VLLM_IS_DECODE' -%}
+{% else -%}
+{% set config = prefill -%}
+{% set role_env_name = 'VLLM_IS_PREFILL' -%}
+{% endif -%}
+- name: {{ role_env_name }}
+  value: "1"
+- name: HOME
+  value: "{{ vllmCommon.containerHome }}"
+- name: HF_HOME
+  value: "{{ vllmCommon.hfHome }}"
+- name: VLLM_CACHE_ROOT
+  value: "{{ config.vllm.cacheRoot | default(vllmCommon.containerHome ~ '/vllm') }}"
+- name: VLLM_WORKER_MULTIPROC_METHOD
+  value: "{{ config.vllm.workerMultiprocMethod | default(vllmCommon.workerMultiprocMethod | default('spawn')) }}"
+- name: VLLM_LOGGING_LEVEL
+  value: "{{ config.vllm.loggingLevel | default(vllmCommon.loggingLevel | default('INFO')) }}"
+{% if vllmCommon.flags.allowLongMaxModelLen is defined and vllmCommon.flags.allowLongMaxModelLen -%}
+- name: VLLM_ALLOW_LONG_MAX_MODEL_LEN
+  value: "{{ vllmCommon.flags.allowLongMaxModelLen }}"
+{% endif -%}
+{% if vllmCommon.flags.serverDevMode is defined and vllmCommon.flags.serverDevMode -%}
+- name: VLLM_SERVER_DEV_MODE
+  value: "{{ vllmCommon.flags.serverDevMode }}"
+{% endif -%}
+- name: VLLM_INFERENCE_PORT
+  value: "{{ config.vllm.servicePort | default(vllmCommon.inferencePort) }}"
+- name: VLLM_METRICS_PORT
+  value: "{{ config.vllm.port | default(vllmCommon.vllmPort) }}"
+- name: VLLM_BLOCK_SIZE
+  value: "{{ model.blockSize | default(vllmCommon.blockSize | default('16')) }}"
+- name: VLLM_MAX_MODEL_LEN
+  value: "{{ model.maxModelLen | default(vllmCommon.maxModelLen | default('4096')) }}"
+- name: VLLM_LOAD_FORMAT
+  value: "{{ vllmCommon.loadFormat | default('auto') }}"
+- name: VLLM_ACCELERATOR_MEM_UTIL
+  value: "{{ model.gpuMemoryUtilization | default(vllmCommon.gpuMemoryUtilization | default('0.95')) }}"
+- name: VLLM_MAX_NUM_SEQ
+  value: "{{ model.maxNumSeq | default(vllmCommon.maxNumSeq | default('256')) }}"
+- name: VLLM_TENSOR_PARALLELISM
+  value: "{{ config.parallelism.tensor | default('1') }}"
+- name: VLLM_MAX_NUM_BATCHED_TOKENS
+  value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
+- name: VLLM_NIXL_SIDE_CHANNEL_HOST
+  valueFrom:
+    fieldRef:
+      fieldPath: status.podIP
+- name: VLLM_NIXL_SIDE_CHANNEL_PORT
+  value: "{{ vllmCommon.nixlSideChannelPort | default('5557') }}"
+- name: UCX_TLS
+  value: "{{ vllmCommon.ucxTls | default('sm,cuda_ipc,cuda_copy,tcp') }}"
+- name: UCX_SOCKADDR_TLS_PRIORITY
+  value: "{{ vllmCommon.ucxSockaddrTlsPriority | default('tcp') }}"
+- name: POD_IP
+  valueFrom:
+    fieldRef:
+      apiVersion: v1
+      fieldPath: status.podIP
+- name: LLMDBENCH_POD_NS
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.namespace
+- name: DP_SIZE
+  value: "{{ config.parallelism.data | default('1') }}"
+- name: TP_SIZE
+  value: "{{ config.parallelism.tensor | default('1') }}"
+- name: DP_SIZE_LOCAL
+  value: "{{ config.parallelism.dataLocal | default('1') }}"
+{% if config.podLabels is defined and config.podLabels -%}
+- name: LLMDBENCH_POD_LABELS
+  value: "{{ config.podLabels }}"
+{% endif -%}
+{% if config.extraEnvVars is defined and config.extraEnvVars %}
+{% for env in config.extraEnvVars %}
+- name: {{ env.name }}
+{% if env.value is defined %}
+  value: "{{ env.value }}"
+{% elif env.valueFrom is defined %}
+  valueFrom:
+{% if env.valueFrom.secretKeyRef is defined %}
+    secretKeyRef:
+      name: {{ env.valueFrom.secretKeyRef.name }}
+      key: {{ env.valueFrom.secretKeyRef.key }}
+{% elif env.valueFrom.configMapKeyRef is defined %}
+    configMapKeyRef:
+      name: {{ env.valueFrom.configMapKeyRef.name }}
+      key: {{ env.valueFrom.configMapKeyRef.key }}
+{% elif env.valueFrom.fieldRef is defined %}
+    fieldRef:
+      fieldPath: {{ env.valueFrom.fieldRef.fieldPath }}
+{% elif env.valueFrom.resourceFieldRef is defined %}
+    resourceFieldRef:
+      containerName: {{ env.valueFrom.resourceFieldRef.containerName | default('') }}
+      resource: {{ env.valueFrom.resourceFieldRef.resource }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% endif %}
+{%- endmacro %}
+
+{# Macro to build standalone vLLM serve command #}
+{% macro build_standalone_vllm_command() -%}
+{# Determine preprocess script to use #}
+{% if standalone.vllm.customPreprocessCommand is defined and standalone.vllm.customPreprocessCommand is not none -%}
+{% set preprocess_script = standalone.vllm.customPreprocessCommand -%}
+{% elif vllmCommon.preprocessScript is defined -%}
+{% set preprocess_script = vllmCommon.preprocessScript -%}
+{% else -%}
+{% set preprocess_script = standalone.vllm.preprocessCommand -%}
+{% endif -%}
+
+{# Pre-calculate which optional flags are enabled #}
+{% set has_kv_transfer = vllmCommon.kvTransfer is defined and vllmCommon.kvTransfer.enabled -%}
+{% set has_kv_events = vllmCommon.kvEvents is defined and vllmCommon.kvEvents.enabled -%}
+{% set gpu_mem_util = model.gpuMemoryUtilization | float -%}
+
+{# Custom command provided #}
+{% if standalone.vllm.customCommand is defined and standalone.vllm.customCommand is not none -%}
+{{ preprocess_script }}; {{ standalone.vllm.customCommand }}
+{%- if has_kv_transfer %} \
+  --kv-transfer-config '{{ build_kv_transfer_config() }}'
+{%- endif %}
+{%- if has_kv_events %} \
+  --kv-events-config '{{ build_kv_events_config() }}'
+{%- endif %}
+{%- else -%}
+{# Use default vllm serve command -- uses container env vars at runtime #}
+{% set has_enforce_eager = vllmCommon.flags.enforceEager | default(false) -%}
+{% set has_disable_log_requests = vllmCommon.flags.disableLogRequests | default(false) -%}
+{% set has_disable_uvicorn = vllmCommon.flags.disableUvicornAccessLog | default(false) -%}
+{% set has_no_prefix_caching = vllmCommon.flags.noPrefixCaching | default(false) -%}
+{% set has_enable_prefix_caching = vllmCommon.flags.enablePrefixCaching | default(false) -%}
+{{ preprocess_script }}; vllm serve {{ model.name }} \
+  --host {{ vllmCommon.host | default('0.0.0.0') }} \
+  --served-model-name {{ model.name }} \
+  --port $VLLM_INFERENCE_PORT \
+  --block-size $VLLM_BLOCK_SIZE \
+  --max-model-len $VLLM_MAX_MODEL_LEN \
+  --load-format $VLLM_LOAD_FORMAT
+{%- if gpu_mem_util > 0 %} \
+  --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL
+{%- endif %}
+{%- set tp_size = standalone.parallelism.tensor | int %}
+{%- if tp_size > 0 %} \
+  --tensor-parallel-size $VLLM_TENSOR_PARALLELISM
+{%- endif %}
+{%- if model.maxNumSeq is defined and model.maxNumSeq %} \
+  --max-num-seq $VLLM_MAX_NUM_SEQ
+{%- endif %}
+{%- if has_no_prefix_caching %} \
+  --no-enable-prefix-caching
+{%- endif %}
+{%- if has_enable_prefix_caching %} \
+  --enable-prefix-caching
+{%- endif %}
+{%- if has_enforce_eager %} \
+  --enforce-eager
+{%- endif %}
+{%- if has_disable_log_requests %} \
+  --disable-log-requests
+{%- endif %}
+{%- if has_disable_uvicorn %} \
+  --disable-uvicorn-access-log
+{%- endif %} \
+  --model-loader-extra-config "$LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG"
+{%- if has_kv_transfer %} \
+  --kv-transfer-config '{{ build_kv_transfer_config() }}'
+{%- endif %}
+{%- if has_kv_events %} \
+  --kv-events-config '{{ build_kv_events_config() }}'
+{%- endif %}
+{%- if standalone.vllm.additionalFlags is defined %}
+{% for flag in standalone.vllm.additionalFlags %} \
+  {{ flag }}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- endmacro %}

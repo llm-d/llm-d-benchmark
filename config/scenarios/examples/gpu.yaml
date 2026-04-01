@@ -1,0 +1,155 @@
+# GPU Example Scenario for LLM-D Deployment
+# Migrated from bash environment variables to YAML format
+# Based on scenarios/examples/gpu.sh
+#
+# This scenario deploys a model on GPU-accelerated nodes.
+# Uses the standard vLLM image with GPU memory utilization.
+#
+# IMPORTANT NOTE:
+# All parameters not defined here will use the default values from defaults.yaml.
+# Many commonly defined values were left blank (default) so that this scenario
+# is applicable to as many environments as possible.
+#
+# The model parameter and affinity are left commented -- uncomment the model and
+# GPU affinity appropriate for your cluster.
+
+scenario:
+  # ============================================================================
+  # GPU Example - Standard GPU deployment
+  # ============================================================================
+  - name: "gpu-example"
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # -------------------------------------------------------------------------
+    model:
+      name: facebook/opt-125m
+      shortName: facebook-opt-125m
+      path: models/facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
+
+    # -------------------------------------------------------------------------
+    # PVC Configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS (left for auto-detect)
+    # -------------------------------------------------------------------------
+    # Uncomment to override storage class:
+    # storage:
+    #   modelPvc:
+    #     storageClassName: standard-rwx       # GKE
+    #     # storageClassName: shared-vast       # Kubernetes
+    #     # storageClassName: ocs-storagecluster-cephfs  # OpenShift
+    #     size: 1Ti
+
+    # -------------------------------------------------------------------------
+    # Affinity / Node Selection
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left for auto-detect)
+    # By default, affinity is disabled and pods schedule on any available node.
+    # Options:
+    #   1. Leave commented out -- no node selection constraint
+    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+    #   3. Set explicit labels -- pods only schedule on matching nodes
+    # -------------------------------------------------------------------------
+    # affinity:
+    #   enabled: true
+    #   nodeSelector:
+    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
+    #     # gpu.nvidia.com/model: H200                        # Kubernetes
+    #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
+
+    # -------------------------------------------------------------------------
+    # vLLM Common Configuration
+    # Shared settings for both decode and prefill pods.
+    # When no customCommand is set on decode/prefill, the vLLM serve command
+    # is auto-generated from these fields:
+    #   - model.maxModelLen, model.blockSize maps to --max-model-len, --block-size
+    #   - model.gpuMemoryUtilization maps to --gpu-memory-utilization
+    #   - decode/prefill.parallelism.tensor maps to --tensor-parallel-size
+    #   - vllmCommon.flags.* maps to --enforce-eager, --no-enable-log-requests, etc.
+    #   - vllmCommon.kvTransfer.* maps to --kv-transfer-config (if enabled)
+    #   - vllmCommon.kvEvents.* maps to --kv-events-config (if enabled)
+    #   - decode/prefill.vllm.additionalFlags maps to appended as extra CLI args
+    # When decode.vllm.customCommand or prefill.vllm.customCommand IS set, it replaces the auto-generated
+    # command entirely. Only --kv-transfer-config and --kv-events-config are
+    # still appended from vllmCommon if enabled. All other vllmCommon.flags
+    # are ignored -- the custom command must include its own flags.
+    # -------------------------------------------------------------------------
+    vllmCommon:
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM (default 1)
+      # tensorParallelism: 2
+
+      # These flags control the auto-generated vllm serve command.
+      # Flags not listed here inherit from defaults.yaml (e.g. allowLongMaxModelLen, serverDevMode).
+      # To use a fully custom command instead, set decode.vllm.customCommand.
+      flags:
+        enforceEager: false          # old gpu.sh did not use --enforce-eager
+        disableLogRequests: true     # modelservice only -- upstream vllm-openai (v0.9+) dropped --no-enable-log-requests
+        disableUvicornAccessLog: true  # --disable-uvicorn-access-log
+        noPrefixCaching: true        # --no-enable-prefix-caching
+
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    # =========================================================================
+    # STANDALONE -- Only applies when standalone.enabled: true
+    # Note: The standalone path uses upstream docker.io/vllm/vllm-openai
+    # (default from defaults.yaml). Upstream vLLM v0.9+ dropped the
+    # --no-enable-log-requests flag, so disableLogRequests (above) is
+    # only applied to the modelservice path which uses llm-d-cuda.
+    # If you need to suppress request logging in standalone, add the
+    # appropriate flag for your vLLM version to standalone.vllm.additionalFlags.
+    # =========================================================================
+    standalone:
+      enabled: false
+      replicas: 1
+      resources:
+        limits:
+          memory: 40Gi
+          cpu: "4"
+        requests:
+          memory: 40Gi
+          cpu: "4"
+
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Prefill Configuration
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: true
+      # replicas: 1  # default
+
+    # -------------------------------------------------------------------------
+    # Decode Configuration
+    # No customCommand -- the vLLM serve command is auto-generated
+    # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
+    # -------------------------------------------------------------------------
+    decode:
+      # replicas: 1  # default
+
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Workload/Harness Configuration
+    # Corresponds to: LLMDBENCH_HARNESS_NAME=inference-perf
+    # -------------------------------------------------------------------------
+    # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR=~/data/gpu
+    # Used as workspace when --workspace is not specified on the CLI.
+    workDir: "~/data/gpu"
+
+    harness:
+      name: inference-perf
+      experimentProfile: sanity_random.yaml

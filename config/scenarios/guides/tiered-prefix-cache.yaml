@@ -1,0 +1,326 @@
+# TIERED PREFIX CACHE / PREFIX CACHE OFFLOADING WELL LIT PATH
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/tiered-prefix-cache/README.md
+# Migrated from bash environment variables to YAML format
+#
+# Notes:
+# - Removed pod monitoring; can be added using decode.extraContainerConfig
+# - Removed extra volumes metrics-volume and torch-compile-volume (not needed for this model/hardware)
+# - Use decode.additionalVolumeMounts and decode.additionalVolumes to add them if needed
+
+scenario:
+  # ============================================================================
+  # Tiered Prefix Cache - Llama 3.1 8B Instruct with 2 decode pods (no prefill)
+  # ============================================================================
+  - name: "tiered-prefix-cache"
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
+    # Alternative models (commented out in original):
+    #   - Qwen/Qwen3-0.6B
+    #   - facebook/opt-125m
+    #   - meta-llama/Llama-3.1-70B-Instruct
+    #   - deepseek-ai/DeepSeek-R1-0528
+    # -------------------------------------------------------------------------
+    model:
+      name: Qwen/Qwen3-32B
+      shortName: qwen-qwen3-32b
+      path: models/Qwen/Qwen3-32B
+      huggingfaceId: Qwen/Qwen3-32B
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
+      size: 1Ti
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
+      maxModelLen: 16000
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+      cacheBase: /model-cache
+    
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Routing Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true
+    # -------------------------------------------------------------------------
+    routing:
+      connector: nixlv2
+    
+    # -------------------------------------------------------------------------
+    # Affinity / Node Selection
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left uncommented for auto-detect)
+    # By default, affinity is disabled and pods schedule on any available node.
+    # Options:
+    #   1. Leave commented out -- no node selection constraint
+    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+    #   3. Set explicit labels -- pods only schedule on matching nodes
+    # -------------------------------------------------------------------------
+    # affinity:
+    #   enabled: true
+    #   nodeSelector:
+    #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
+    #     # gpu.nvidia.com/model: H200                        # Kubernetes
+    #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
+    
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
+    # The following sections configure routing, GAIE, prefill, and decode.
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Routing / GAIE Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="default-plugins.yaml"
+    # -------------------------------------------------------------------------
+    inferenceExtension:
+      pluginsConfigFile: "default-plugins.yaml"
+    
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Storage Configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
+    #                 LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS (auto-detect if not set)
+    # -------------------------------------------------------------------------
+    storage:
+      modelPvc:
+        size: 1Ti
+        # Uncomment to specify storage class:
+        # storageClassName: standard-rwx
+        # storageClassName: shared-vast
+        # storageClassName: ocs-storagecluster-cephfs
+    
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Prefill Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: false
+      replicas: 0
+    
+    # -------------------------------------------------------------------------
+    # Decode Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
+    # -------------------------------------------------------------------------
+    decode:
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
+      replicas: 2
+
+      initContainers:
+        - name: preprocess
+          image: ghcr.io/llm-d/llm-d-benchmark:auto
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+      
+      # Resource configuration
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=48
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=400Gi
+      resources:
+        limits:
+          memory: 400Gi
+          cpu: "48"
+        requests:
+          memory: 400Gi
+          cpu: "48"
+      
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_MODEL_COMMAND=custom
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_PREPROCESS
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_ARGS
+      vllm:
+        # Custom vLLM command -- replaces the auto-generated command.
+      # Both decode.vllm.customCommand and prefill.vllm.customCommand are supported.
+        # vllmCommon.flags.* are NOT applied when customCommand is set.
+        # Only --kv-transfer-config and --kv-events-config from vllmCommon
+        # are appended if enabled.
+        additionalFlags:
+          - "--max-num-seq 1024"
+      
+      # -----------------------------------------------------------------------
+      # Extra Environment Variables
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
+      # Only PYTHONHASHSEED and LMCACHE_MAX_LOCAL_CPU_SIZE are explicitly set;
+      # other vars (UCX_TLS, VLLM_NIXL_*, etc.) are auto-populated by the
+      # preprocess script at pod runtime.
+      # -----------------------------------------------------------------------
+      extraEnvVars:
+        - name: PYTHONHASHSEED
+          value: "123"
+        - name: LMCACHE_MAX_LOCAL_CPU_SIZE
+          value: "200.0"
+
+      # -----------------------------------------------------------------------
+      # Extra Container Configuration
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG
+      # -----------------------------------------------------------------------
+      extraContainerConfig:
+        ports:
+          - containerPort: 5557  # NIXL side channel port
+            protocol: TCP
+          - containerPort: 8200  # Metrics port
+            name: metrics
+            protocol: TCP
+        securityContext:
+          capabilities:
+            add:
+              - "IPC_LOCK"
+              - "SYS_RAWIO"
+              - "NET_ADMIN"
+              - "NET_RAW"
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: Always
+      
+      # -----------------------------------------------------------------------
+      # Additional Volume Mounts
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
+      # -----------------------------------------------------------------------
+      additionalVolumeMounts: []
+
+      # -----------------------------------------------------------------------
+      # Additional Volumes
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
+      # -----------------------------------------------------------------------
+      additionalVolumes: []
+      
+      # -----------------------------------------------------------------------
+      # Multi-NIC Configuration (uncomment to enable)
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS
+      # -----------------------------------------------------------------------
+      # To enable multi-nic, add to annotations.decode.pod:
+      # annotations:
+      #   decode:
+      #     pod:
+      #       k8s.v1.cni.cncf.io/networks: multi-nic-compute
+      
+      # -----------------------------------------------------------------------
+      # ROCE/GDR Configuration (uncomment to enable)
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE
+      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR
+      # -----------------------------------------------------------------------
+      # To enable roce/gdr, add to resources:
+      # resources:
+      #   limits:
+      #     rdma/roce_gdr: "16"
+      #   requests:
+      #     rdma/roce_gdr: "16"
+    
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # vLLM Common Configuration
+    # Shared settings for both decode and prefill pods.
+    # When no customCommand is set on decode/prefill, the vLLM serve command
+    # is auto-generated from these fields:
+    #   - model.maxModelLen, model.blockSize maps to --max-model-len, --block-size
+    #   - model.gpuMemoryUtilization maps to --gpu-memory-utilization
+    #   - decode/prefill.parallelism.tensor maps to --tensor-parallel-size
+    #   - vllmCommon.flags.* maps to --enforce-eager, --no-enable-log-requests, etc.
+    #   - vllmCommon.kvTransfer.* maps to --kv-transfer-config (if enabled)
+    #   - vllmCommon.kvEvents.* maps to --kv-events-config (if enabled)
+    #   - decode/prefill.vllm.additionalFlags maps to appended as extra CLI args
+    # When decode.vllm.customCommand or prefill.vllm.customCommand IS set, it replaces the auto-generated
+    # command entirely. Only --kv-transfer-config and --kv-events-config are
+    # still appended from vllmCommon if enabled. All other vllmCommon.flags
+    # are ignored -- the custom command must include its own flags.
+    # -------------------------------------------------------------------------
+    vllmCommon:
+      host: "0.0.0.0"
+      # KV Transfer Configuration -- OffloadingConnector with extra config for
+      # tiered prefix cache offloading (num_cpu_blocks + cpu_bytes_to_use).
+      kvTransfer:
+        enabled: true
+        connector: OffloadingConnector
+        role: kv_both
+        extraConfig:
+          num_cpu_blocks: 5000
+          cpu_bytes_to_use: 1000000000
+      
+      # KV Events not enabled in this scenario
+      kvEvents:
+        enabled: false 
+      
+      flags:
+        enforceEager: true
+        disableLogRequests: true     # modelservice only -- upstream vllm-openai (v0.9+) dropped --no-enable-log-requests
+        disableUvicornAccessLog: true
+        enablePrefixCaching: true  # Corresponds to: --enable-prefix-caching
+        allowLongMaxModelLen: "1"
+        serverDevMode: "1"
+      
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            # Corresponds to: LLMDBENCH_VLLM_COMMON_SHM_MEM (using default 16Gi)
+            sizeLimit: 16Gi
+
+      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
+      volumeMounts:
+        - name: shared-config
+          mountPath: /shared-config
+        - name: dshm
+          mountPath: /dev/shm
+    
+    # -------------------------------------------------------------------------
+    # Custom Image Configuration (optional)
+    # Corresponds to commented out LLMDBENCH_LLMD_IMAGE_* variables
+    # -------------------------------------------------------------------------
+    # Uncomment to use lmcache image:
+    # images:
+    #   vllm:
+    #     repository: docker.io/lmcache/vllm-openai
+    #     tag: v0.3.7
+    
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Workload/Harness Configuration
+    # Corresponds to: LLMDBENCH_HARNESS_NAME=inference-perf
+    #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic.yaml
+    #                 LLMDBENCH_CONTROL_WORK_DIR=~/data/tiered-prefix-cache
+    # -------------------------------------------------------------------------
+    workDir: "~/data/tiered-prefix-cache"
+
+    harness:
+      name: inference-perf
+      experimentProfile: shared_prefix_synthetic.yaml

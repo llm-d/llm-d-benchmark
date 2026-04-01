@@ -2,22 +2,26 @@
 
 #### Standing up llm-d for experimentation and benchmarking
 
-```
-export LLMDBENCH_CLUSTER_URL="https://api.fmaas-platform-eval.fmaas.res.ibm.com"
-export LLMDBENCH_CLUSTER_TOKEN="..."
+Cluster access and authentication are configured in the scenario YAML file or via CLI flags. By default, the tool uses your current kubeconfig context.
+
+```yaml
+# In your scenario YAML (or set via environment variables)
+cluster:
+  url: "https://api.fmaas-platform-eval.fmaas.res.ibm.com"
+  token: "..."
 ```
 
 > [!TIP]
-> You can simply use your current context. **After running kubectl/oc login**, leaving `LLMDBENCH_CLUSTER_URL` undefined (or setting `export LLMDBENCH_CLUSTER_URL=auto`) will use your current context, with no need to configure `LLMDBENCH_CLUSTER_TOKEN`.
+> You can simply use your current context. **After running kubectl/oc login**, the tool will use your current context automatically, with no need to configure cluster URL or token.
 
 > [!IMPORTANT]
-> No matter which method used (i.e., fully specify `LLMDBENCH_CLUSTER_URL` and `LLMDBENCH_CLUSTER_TOKEN` or simply use the current context), there is an additional variable which will always require definition: `LLMDBENCH_HF_TOKEN`
+> No matter which method used, the HuggingFace token (`LLMDBENCH_HF_TOKEN` environment variable or `huggingface.token` in YAML) is always required for model downloading.
 
-A complete list of available variables (and its default values) can be found by running
- `cat setup/env.sh | grep "^export LLMDBENCH_" | sort`
+A complete list of available options (and their default values) can be found by running
+ `llmdbenchmark standup --help`
 
 > [!NOTE]
-> The `namespaces` specified by the environment variables `LLMDBENCH_VLLM_COMMON_NAMESPACE` and `LLMDBENCH_HARNESS_NAMESPACE` will be automatically created.
+> The `namespaces` specified by `namespace.name` and `namespace.harness` in the scenario YAML (or via `-p/--namespace`) will be automatically created.
 
 > [!TIP]
 > If you want all generated `yaml` files and all data collected to reside on the same directory, set the environment variable `LLMDBENCH_CONTROL_WORK_DIR` explicitly before starting execution.
@@ -27,11 +31,11 @@ A complete list of available variables (and its default values) can be found by 
 Run the command line with the option `-h` in order to produce a list of steps
 
 ```
-./setup/standup.sh -h
+llmdbenchmark standup -h
 ```
 
 > [!NOTE]
-> Each individual "step file" is named in a way that briefly describes each one the multiple steps required for a full standup.
+> Each standup step is numbered (00-11) and named in a way that briefly describes its purpose.
 
 > [!TIP]
 > Steps 0-5 can be considered "preparation" and can be skipped in most standups.
@@ -39,7 +43,7 @@ Run the command line with the option `-h` in order to produce a list of steps
 #### to dry-run
 
 ```
-./setup/standup.sh -n
+llmdbenchmark standup -n
 ```
 
 ### Standup
@@ -49,51 +53,68 @@ vLLM instances can be deployed by one of the following methods:
 - "standalone" (a simple (`Kubernetes`) `deployment` with a (`Kubernetes`) `service` associated to it)
 - "modelservice" (invoking a combination of [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git) and [llm-d-modelservice](https://github.com/llm-d/llm-d-model-service.git)).
 
-This is controlled by the environment variable LLMDBENCH_DEPLOY_METHODS (default "modelservice"). The value of the environment variable can be overriden by the paraemeter `-t/--methods` (applicable for both `teardown.sh` and `standup.sh`)
+This is controlled by the `deploy.methods` config key (default "modelservice"), which can be set in the scenario YAML or overridden by the parameter `-t/--methods` (applicable for both `llmdbenchmark teardown` and `llmdbenchmark standup`)
 
 > [!WARNING]
 > At this time, only **one simultaneous** deployment method is supported
 
-All available models are listed and controlled by the variable `LLMDBENCH_DEPLOY_MODEL_LIST`. The value of the above mentioned environment variable can be overriden by the paraemeter `-m/--model` (applicable for both `teardown.sh` and `standup.sh`).
+All available models are listed and controlled by the `model.name` config key. The value can be overridden by the parameter `-m/--model` (applicable for both `llmdbenchmark teardown` and `llmdbenchmark standup`).
 
 ### Full cycle (Standup/Run/Teardown)
 
-At this point, with all the environment variables set (tip, `env | grep ^LLMDBENCH_ | sort`) you should be ready to deploy and test
+At this point, with your scenario YAML configured, you should be ready to deploy and test
 
 ```
-./setup/standup.sh
+llmdbenchmark standup
 ```
 
 > [!NOTE]
-> The scenario can also be indicated as part of the command line optios for `standup.sh` (e.g. `./setup/standup.sh -c ocp_H100MIG_modelservice_llama-3b`)
+> The scenario can also be indicated as part of the command line options for `llmdbenchmark standup` (e.g. `llmdbenchmark standup --spec ocp_H100MIG_modelservice_llama-3b`)
 
-To re-execute only individual steps (full name or number):
+To re-execute only individual steps (by number):
 
 ```
-./setup/standup.sh --step 10_smoketest.sh
-./setup/standup.sh -s 7
-./setup/standup.sh -s 3-5
-./setup/standup.sh -s 5,7
+llmdbenchmark standup -s 10
+llmdbenchmark standup -s 7
+llmdbenchmark standup -s 3-5
+llmdbenchmark standup -s 5,7
 ```
+
+#### Smoketests
+
+After standup, smoketests run automatically to validate the deployment. They can also be run independently:
+
+```
+llmdbenchmark --spec guides/pd-disaggregation smoketest -p <namespace>
+```
+
+Smoketests include three steps:
+- **Step 00** -- Health check: pods running, `/health` responds, `/v1/models` returns expected model, service/gateway/route reachable
+- **Step 01** -- Inference test: sends a sample `/v1/completions` request, logs generated text and a demo curl command
+- **Step 02** -- Config validation: per-scenario checks that compare deployed pod configuration against the rendered scenario config (resources, parallelism, env vars, probes, volumes, security, vLLM flags, etc.)
+
+Well-lit-path scenarios (pd-disaggregation, precise-prefix-cache-aware, inference-scheduling, tiered-prefix-cache, wide-ep-lws, simulated-accelerators) have dedicated validators with scenario-specific checks. Other scenarios run steps 00 and 01 only.
+
+#### Run
 
 Once `llm-d` is fully deployed, an experiment can be run. This script takes in different options where you can specify the harness, workload, etc. if they are not specified as a part of your scenario.
 
 ```
-./run.sh
-./run.sh --harness inference-perf --workload chatbot_synthetic.yaml
+llmdbenchmark run
+llmdbenchmark run --harness inference-perf --workload chatbot_synthetic.yaml
 ```
 
 > [!IMPORTANT]
 > This command will run an experiment, collect data and perform an initial analysis (generating statistics and plots). One can go straight to the analysis by adding the option `-z`/`--skip` to the above command
 
 > [!NOTE]
-> The scenario can also be indicated as part of the command line optios for `run.sh` (e.g., `./run.sh -c ocp_L40_standalone_llama-8b`)
+> The scenario can also be indicated as part of the command line options for `llmdbenchmark run` (e.g., `llmdbenchmark run --spec ocp_L40_standalone_llama-8b`)
 
 Finally, cleanup everything
 
 ```
-./setup/teardown.sh
+llmdbenchmark teardown
 ```
 
 > [!NOTE]
-> The scenario can also be indicated as part of the command line optios for `teardown.sh` (e.g., `./teardown.sh -c kubernetes_H200_modelservice_llama-8b`)
+> The scenario can also be indicated as part of the command line options for `llmdbenchmark teardown` (e.g., `llmdbenchmark teardown --spec kubernetes_H200_modelservice_llama-8b`)

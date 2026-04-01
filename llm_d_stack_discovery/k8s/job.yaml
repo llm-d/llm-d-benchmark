@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: llm-d-stack-discovery
+  namespace: default
+spec:
+  template:
+    metadata:
+      labels:
+        app: llm-d-stack-discovery
+    spec:
+      serviceAccountName: llm-d-stack-discovery
+      restartPolicy: Never
+      containers:
+        - name: discovery
+          image: llm-d-stack-discovery:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - "$(DISCOVERY_URL)"
+            - "--output-format"
+            - "json"
+          env:
+            - name: DISCOVERY_URL
+              value: "https://model.example.com/v1"  # Override this
+          volumeMounts:
+            - name: output
+              mountPath: /output
+          command:
+            - python
+            - -m
+            - llm_d_stack_discovery.cli
+            - "--output"
+            - "/output/discovery-result.json"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: output
+          emptyDir: {}

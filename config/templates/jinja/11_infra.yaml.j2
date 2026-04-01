@@ -1,0 +1,78 @@
+{% if standalone.enabled is defined and not standalone.enabled %}
+{% set gw_class = gateway.className | default('istio') %}
+{% if gw_class == 'gke' %}
+{# ── GKE: managed gateway with destinationRule ── #}
+gateway:
+  gatewayClassName: gke-l7-regional-external-managed
+  destinationRule: {{ model_id_label }}-gaie-epp.{{ namespace.name }}
+
+provider:
+  name: gke
+
+{% elif gw_class == 'data-science-gateway-class' %}
+{# ── OpenDataHub / OpenShift AI ── #}
+gateway:
+  gatewayClassName: data-science-gateway-class
+  labels:
+    istio.io/rev: openshift-gateway
+    platform.opendatahub.io/part-of: gatewayconfig
+  listeners:
+    - name: https
+      port: 443
+      protocol: HTTPS
+      allowedRoutes:
+        namespaces:
+          from: All
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: data-science-gateway-service-tls
+            namespace: openshift-ingress
+  destinationRule:
+    enabled: true
+    trafficPolicy:
+      connectionPool:
+        http:
+          http1MaxPendingRequests: 256000
+          maxRequestsPerConnection: 256000
+          http2MaxRequests: 256000
+          idleTimeout: "900s"
+        tcp:
+          maxConnections: 256000
+          maxConnectionDuration: "1800s"
+          connectTimeout: "900s"
+  tls:
+    referenceGrant:
+      enabled: true
+      secretNamespace: openshift-ingress
+      secretName: data-science-gateway-service-tls
+  service:
+    type: {{ gateway.service.type | default('ClusterIP') }}
+
+{% elif gw_class == 'kgateway' %}
+{# ── kgateway: base config (step_07 patches for OpenShift) ── #}
+gateway:
+  gatewayClassName: kgateway
+  service:
+    type: {{ gateway.service.type | default('NodePort') }}
+
+{% else %}
+{# ── Istio (default) ── #}
+gateway:
+  gatewayClassName: {{ gw_class }}
+  gatewayParameters:
+    enabled: true
+    logLevel: {{ gateway.logLevel | default('error') }}
+    resources:
+      limits:
+        cpu: "{{ gateway.resources.limits.cpu }}"
+        memory: {{ gateway.resources.limits.memory }}
+      requests:
+        cpu: "{{ gateway.resources.requests.cpu }}"
+        memory: {{ gateway.resources.requests.memory }}
+  service:
+    type: {{ gateway.service.type }}
+{% endif %}
+{% endif %}

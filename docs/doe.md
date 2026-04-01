@@ -5,10 +5,10 @@ A `yaml` file which contains a list of `standup` and `run` parameters of interes
 While the triplet `<scenario>`,`<harness>`,`<(workload) profile>`, contains all information required for the `llm-d-benchmark` to be able to carry out a `standup`->`run`->`teardown` [lifecycle](lifecycle.md), in order to compare and validate the performance of different stacks, a large number of parameters on `llm-d` must be swept. Hence, the need for an automated mechanism to loop through this (potentially) large parameter space.
 
 ## Use
-An experiment file has to be manually crafted as a `yaml`. Once crafted, it can used by the `e2e.sh` executable. It access is controlled by the following parameters:
+An experiment file has to be manually crafted as a `yaml`. Once crafted, it can be used by the `llmdbenchmark experiment` command. Its access is controlled by the following parameters:
 
 > [!NOTE]
-> `./e2e.sh` (executable which **combines** `./setup/standup.sh`, `run.sh` and `setup/teardown.sh`) is the only one that can have an experiment file supplied to it.
+> `llmdbenchmark experiment` (which **combines** `llmdbenchmark standup`, `llmdbenchmark run` and `llmdbenchmark teardown`) is the only command that can have an experiment file supplied to it.
 
 
 | Variable                                     | Meaning                                        | Note                                                  |
@@ -17,6 +17,9 @@ An experiment file has to be manually crafted as a `yaml`. Once crafted, it can 
 
 > [!TIP]
 > In case the full path is ommited for the experiment file (either by setting `LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS` or CLI parameter `-e/--experiments`, it is assumed that the file exists inside the `experiments` folder
+
+> [!NOTE]
+> For detailed information on the experiment lifecycle, including how treatments are executed and results are collected, see [llmdbenchmark/experiment/README.md](../llmdbenchmark/experiment/README.md).
 
 ## Illustrative examples
 
@@ -77,7 +80,7 @@ run:
 ** This particular example can be used with the following command :
 
 ```
-./e2e.sh --scenario disaggregated_vs_llmd --experiments disaggregated_vs_llmd
+llmdbenchmark experiment --spec disaggregated_vs_llmd --experiments disaggregated_vs_llmd
 ```
 
 2) Compare different parameters for GAIE (Gateway API Inference Extension), using a fixed set of `decode` `pods`. Once deployed, run a workload profile varying `num_groups` and `system_prompt_len`)
@@ -111,5 +114,59 @@ run:
 ** This particular example can be used with the following command
 
 ```
-./e2e.sh --scenario precise-prefix-cache-aware --experiments precise-prefix-cache-aware
+llmdbenchmark experiment --spec precise-prefix-cache-aware --experiments precise-prefix-cache-aware
 ```
+
+## Treatment Execution Lifecycle
+
+The `experiment` command orchestrates a nested loop of setup and run treatments. Understanding this lifecycle is important for designing experiments and interpreting results.
+
+### Setup Treatment Cycling
+
+Each **setup treatment** represents a distinct infrastructure configuration. The experiment command cycles through setup treatments sequentially, performing the full standup/run/teardown lifecycle for each:
+
+```
+For each setup treatment:
+    1. standup   -- Deploy the stack with this treatment's infrastructure parameters
+    2. run       -- Execute ALL run treatments against this stack
+    3. teardown  -- Tear down the stack before moving to the next setup treatment
+```
+
+For example, if you have 3 setup treatments (different replica counts) and 5 run treatments (different concurrency levels), the experiment executes:
+
+```
+Setup treatment 1 (replicas=2):
+    standup to run treatment 1..5 to teardown
+Setup treatment 2 (replicas=4):
+    standup to run treatment 1..5 to teardown
+Setup treatment 3 (replicas=8):
+    standup to run treatment 1..5 to teardown
+```
+
+This produces 15 result sets total (3 setup x 5 run treatments).
+
+### Run Treatments Within Each Cycle
+
+Within a single setup treatment, run treatments are executed sequentially against the same deployed stack. Each run treatment applies its factor values as workload profile overrides (e.g., `max-concurrency=64, num-prompts=640`). The harness pod is deployed, executes the workload, collects results, and is cleaned up before the next run treatment begins.
+
+### Step Ordering
+
+During each lifecycle phase, steps execute in three partitions:
+
+1. **Pre-global steps** -- Global steps that run before any per-stack work (e.g., preflight checks, cleanup of previous runs)
+2. **Per-stack steps** -- Steps that operate on each stack individually (e.g., endpoint detection, profile rendering, harness deployment, result collection)
+3. **Post-global steps** -- Global steps that run after all per-stack work completes (e.g., result upload, post-run cleanup, local analysis)
+
+For the run phase specifically, steps 00-01 are pre-global, steps 02-08 are per-stack, and steps 09-11 are post-global. This ensures that operations like result upload and analysis happen only after all per-stack collection is complete.
+
+## Parallelism Levels
+
+The benchmark supports parallelism at three levels:
+
+| Level | Flag | Description |
+|-------|------|-------------|
+| **Pod parallelism** | `-j/--parallelism` | Number of identical harness pods running the same workload profile concurrently. Useful for increasing aggregate load or reducing statistical variance. Each pod writes results to its own subdirectory (`<experiment_id>_1`, `<experiment_id>_2`, etc.). |
+| **Treatment parallelism** | (sequential) | Run treatments within a setup cycle execute sequentially. Each treatment waits for the previous to complete before starting. |
+| **Setup parallelism** | `--parallel N` | Maximum number of stacks to deploy in parallel during standalone `standup` (not used during `experiment`, which processes setup treatments sequentially to avoid resource contention). |
+
+Pod parallelism is the most commonly used level. With `-j 4`, four harness pods are created simultaneously, each executing the same workload profile. Results from all pods are collected and can be analyzed together for statistical significance.

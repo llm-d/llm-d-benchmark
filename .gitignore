@@ -56,6 +56,7 @@ ENV/
 env.bak/
 venv.bak/
 environment/
+workspace*/
 
 .idea/
 .worktrees/
@@ -66,3 +67,25 @@ scenarios/none.sh
 **/*.egg-info
 config_explorer/build/
 .pytest
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment (if inside repo)
+.env/
+.venv/
+.llmd/
+
+# Build artifacts from pip install (keep build/ itself for Dockerfile)
+build/lib/
+build/bdist.*/
+build/lib.*/
+build/temp.*/
+dist/
+*.egg-info/
+
+# Optional: cache files
+pip-log.txt
+

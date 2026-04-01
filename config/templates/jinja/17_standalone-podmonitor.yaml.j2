@@ -1,0 +1,29 @@
+{# ============================================================================
+   17_standalone-podmonitor.yaml.j2
+
+   PodMonitor for Prometheus to scrape vLLM standalone model metrics.
+   Only rendered when standalone is enabled and monitoring.podmonitor.enabled
+   is true. Matches bash step 06 generate_podmonitor_yaml().
+   ============================================================================ #}
+{% if standalone.enabled and monitoring.podmonitor.enabled | default(false) %}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: vllm-standalone-{{ model_id_label }}
+  namespace: {{ namespace.name }}
+  labels:
+    app: vllm-standalone-{{ model_id_label }}
+{% if standalone.labels is defined %}
+{% for key, value in standalone.labels.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+spec:
+  selector:
+    matchLabels:
+      app: vllm-standalone-{{ model_id_label }}
+  podMetricsEndpoints:
+  - port: metrics
+    path: {{ monitoring.metricsPath | default('/metrics') }}
+    interval: {{ monitoring.scrapeInterval | default('30s') }}
+{% endif %}
