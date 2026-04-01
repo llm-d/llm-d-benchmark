@@ -42,7 +42,7 @@ jobs:
 
       - name: Install llmdbenchmark
         run: |
-          ./install.sh -y
+          ./install.sh -y 2>&1
           pip install pytest
 
       # -- Unit tests --
