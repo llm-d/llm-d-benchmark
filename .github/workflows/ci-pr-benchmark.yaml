@@ -33,8 +33,11 @@ jobs:
 
       - name: Install helmfile
         run: |
-          curl -sSL https://github.com/helmfile/helmfile/releases/latest/download/helmfile_linux_amd64.tar.gz | tar xz
+          HELMFILE_VERSION=$(curl -sL https://api.github.com/repos/helmfile/helmfile/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+          curl -sSL -o helmfile.tar.gz "https://github.com/helmfile/helmfile/releases/download/${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION#v}_linux_amd64.tar.gz"
+          tar xzf helmfile.tar.gz
           sudo mv helmfile /usr/local/bin/
+          rm -f helmfile.tar.gz
 
       - name: Install llmdbenchmark
         run: ./install.sh -y

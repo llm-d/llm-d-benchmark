@@ -1036,6 +1036,51 @@ oc get configmap llm-d-benchmark-standup-parameters -n <namespace> -o yaml
 
 ---
 
+## Pod Scheduling
+
+### Priority Class
+
+Set `priorityClassName` to control pod scheduling priority. This maps to the Kubernetes `priorityClassName` field on the pod spec.
+
+**Set for all pods (recommended):**
+
+```yaml
+vllmCommon:
+  priorityClassName: "high-priority"
+```
+
+This applies to decode, prefill, and standalone pods. Matches the bash `LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME`.
+
+**Override per role:**
+
+```yaml
+decode:
+  priorityClassName: "high-priority"
+prefill:
+  priorityClassName: "low-priority"
+```
+
+Per-role values override `vllmCommon.priorityClassName`.
+
+**Disable (default):**
+
+Leave empty or set to `"none"`. No `priorityClassName` is rendered and pods use the cluster default priority.
+
+> [!NOTE]
+> The PriorityClass must already exist on the cluster. Create it with `kubectl apply` before standup. Example: `kubectl create priorityclass high-priority --value=1000 --global-default=false`
+
+### Scheduler Name
+
+Override the pod scheduler (e.g., for Spyre which requires `spyre-scheduler`):
+
+```yaml
+schedulerName: spyre-scheduler
+```
+
+This sets `schedulerName` on all modelservice pods. If not set, Kubernetes uses the default scheduler.
+
+---
+
 ## Scenarios
 
 Scenario files provide deployment-specific overrides that are merged on top of `defaults.yaml`. They configure things like model name, GPU count, namespace, image tags, and deployment topology.
