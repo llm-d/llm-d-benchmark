@@ -29,6 +29,16 @@ scenario:
       count: 0
       memory: 24  # To pass capacity planner sanity checking
 
+    # Minimal gateway resources for Kind
+    gateway:
+      resources:
+        limits:
+          cpu: "2"
+          memory: 2Gi
+        requests:
+          cpu: "500m"
+          memory: 512Mi
+
     # Install Prometheus CRDs on Kind (no Prometheus Operator by default)
     monitoring:
       installPrometheusCrds: true

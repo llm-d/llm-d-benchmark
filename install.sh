@@ -322,10 +322,11 @@ install_helmfile_linux() {
 }
 
 install_helm_linux() {
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash || { echo "ERROR: Failed to install Helm"; exit 1; }
     if ! helm plugin list | grep -q "^diff"; then
-        helm plugin install https://github.com/databus23/helm-diff
+        helm plugin install https://github.com/databus23/helm-diff || { echo "ERROR: Failed to install helm-diff plugin"; exit 1; }
     fi
+    helm version --short || { echo "ERROR: Helm installation verification failed"; exit 1; }
 }
 
 install_oc_linux() {

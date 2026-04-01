@@ -34,14 +34,16 @@ jobs:
         with:
           version: v3.18.4
 
-      - name: Install helmfile and helm-diff
+      - name: Install helmfile
         run: |
+          set -e
           HELMFILE_VERSION=$(curl -sL https://api.github.com/repos/helmfile/helmfile/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+          if [ -z "$HELMFILE_VERSION" ]; then echo "ERROR: Failed to fetch helmfile version"; exit 1; fi
           curl -sSL -o helmfile.tar.gz "https://github.com/helmfile/helmfile/releases/download/${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION#v}_linux_amd64.tar.gz"
           tar xzf helmfile.tar.gz
           sudo mv helmfile /usr/local/bin/
           rm -f helmfile.tar.gz
-          helm plugin install https://github.com/databus23/helm-diff
+          helmfile --version
 
       - name: Create Kind cluster
         uses: helm/kind-action@v1
@@ -66,7 +68,7 @@ jobs:
       # -- Standalone deployment --
       - name: Standup (standalone) -- inference-sim
         run: |
-          llmdbenchmark --spec cicd/kind-sim --verbose standup -p "$NS" -t standalone --skip-smoketest
+          llmdbenchmark --spec cicd/kind-sim standup -p "$NS" -t standalone --skip-smoketest
 
       - name: Debug standup (standalone)
         if: failure()
@@ -118,7 +120,7 @@ jobs:
       # -- Modelservice deployment --
       - name: Standup (modelservice) -- inference-sim
         run: |
-          llmdbenchmark --spec cicd/kind-sim --verbose standup -p "$NS" --skip-smoketest
+          llmdbenchmark --spec cicd/kind-sim standup -p "$NS" --skip-smoketest
 
       - name: Smoketest (modelservice)
         run: |
