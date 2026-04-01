@@ -45,14 +45,14 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from .benchmark_report import get_nested, import_benchmark_report
-from .benchmark_report.schema_v0_1 import (
+from benchmark_report import get_nested, import_benchmark_report
+from benchmark_report.schema_v0_1 import (
     BenchmarkReport,
     HostType,
     Units,
     WorkloadGenerator,
 )
-from .constants import (
+from constants import (
     BOUND_PREFIX_LEN,
     COLUMN_BOUND_STR,
     STR_TO_COLUMN_BOUND,
