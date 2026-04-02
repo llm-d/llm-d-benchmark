@@ -99,7 +99,7 @@ DESCRIPTION
 
     1. Validates Python 3.11+ and pip
     2. Checks for required system tools  (curl, git, kubectl, helm)
-    3. Checks for optional system tools   (oc, helmfile, kustomize, jq, yq, skopeo)
+    3. Checks for optional system tools   (oc)
     4. Installs llmdbenchmark             (editable: pip install -e .)
     5. Installs config_explorer           (editable: pip install -e config_explorer/)
     6. Verifies that all Python packages are importable
@@ -275,7 +275,7 @@ echo ""
 echo "=== System tools ==="
 
 # Tools required for cluster operations
-tools="curl git helm helmfile skopeo kustomize jq yq"
+tools="curl git helm helmfile skopeo kustomize jq yq crane"
 
 # One of kubectl or oc is required
 kube_tool=""
@@ -312,6 +312,7 @@ tool_version() {
         jq)         jq --version 2>&1 ;;
         yq)         yq --version 2>&1 | awk '{print $NF}' ;;
         skopeo)     skopeo --version 2>&1 | awk '{print $NF}' ;;
+        crane)      crane version 2>&1 | tr -d '\n' ;;
         *)          echo "(unknown)" ;;
     esac
 }
@@ -355,6 +356,19 @@ install_oc_linux() {
 install_kustomize_linux() {
     curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
     sudo mv kustomize /usr/local/bin/
+}
+
+install_crane_linux() {
+    local version=v0.20.3
+    local arch
+    arch=$(uname -m)
+    local go_arch="x86_64"
+    [[ "$arch" == "aarch64" ]] && go_arch="arm64"
+    local pkg="go-containerregistry_Linux_${go_arch}"
+    curl -sL "https://github.com/google/go-containerregistry/releases/download/${version}/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz"
+    tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane
+    sudo cp -f /tmp/crane /usr/local/bin/crane
+    sudo chmod +x /usr/local/bin/crane
 }
 
 install_oc_mac() { brew install openshift-cli; }
