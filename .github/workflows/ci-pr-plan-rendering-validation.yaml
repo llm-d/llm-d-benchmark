@@ -1,4 +1,4 @@
-name: CI - PR Template Rendering
+name: CI - PR Plan Rendering Validation
 
 on:
   pull_request:
