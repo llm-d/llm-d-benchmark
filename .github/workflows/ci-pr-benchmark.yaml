@@ -4,16 +4,11 @@ on:
   pull_request:
 
 jobs:
-  benchmark-kind-sim:
-    name: Inference Simulation Benchmark (Kind)
+  # -- Unit tests (no cluster needed) --
+  unit-tests:
+    name: Unit Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    env:
-      NS: llmdbenchcicd-${{ github.event.number }}
-      LLMDBENCH_WORKSPACE: /tmp/cicd-${{ github.event.number }}
-      # HF_TOKEN intentionally unset -- facebook/opt-125m is public.
-      # Setting a placeholder token causes hf auth login to fail.
+    timeout-minutes: 5
 
     steps:
       - name: Checkout Code
@@ -21,8 +16,35 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Display OS
-        run: cat /etc/*os-*
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install llmdbenchmark
+        run: |
+          ./install.sh -y 2>&1
+          pip install pytest
+
+      - name: Run unit tests
+        run: python -m pytest tests/ -x -q
+
+  # -- Standalone deployment (own Kind cluster) --
+  benchmark-standalone:
+    name: Benchmark - Standalone (Kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: unit-tests
+
+    env:
+      NS: llmdbenchcicd-sa-${{ github.event.number }}
+      LLMDBENCH_WORKSPACE: /tmp/cicd-sa-${{ github.event.number }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -43,14 +65,8 @@ jobs:
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
-          pip install pytest
 
-      # -- Unit tests --
-      - name: Run unit tests
-        run: python -m pytest tests/ -x -q
-
-      # -- Standalone deployment --
-      - name: Standup (standalone) -- inference-sim
+      - name: Standup (standalone)
         run: |
           llmdbenchmark --spec cicd/kind-sim standup -p "$NS" -t standalone --skip-smoketest
 
@@ -101,8 +117,65 @@ jobs:
         run: |
           llmdbenchmark --spec cicd/kind-sim teardown -p "$NS" -t standalone || true
 
-      # -- Modelservice deployment --
-      - name: Standup (modelservice) -- inference-sim
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          echo "=== Pod status ==="
+          kubectl get pods -n "$NS" -o wide || true
+          echo ""
+          echo "=== Pod descriptions (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n "$NS" "$pod" || true
+          done
+          echo ""
+          echo "=== Pod logs (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=200 --all-containers || true
+          done
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true
+
+  # -- Modelservice deployment (own Kind cluster) --
+  benchmark-modelservice:
+    name: Benchmark - Modelservice (Kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: unit-tests
+
+    env:
+      NS: llmdbenchcicd-ms-${{ github.event.number }}
+      LLMDBENCH_WORKSPACE: /tmp/cicd-ms-${{ github.event.number }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          version: v0.31.0
+
+      - name: Label node for simulated accelerators
+        run: |
+          NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+          echo "Labeling node: $NODE"
+          kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
+
+      - name: Install llmdbenchmark
+        run: |
+          ./install.sh -y 2>&1
+
+      - name: Standup (modelservice)
         run: |
           llmdbenchmark --spec cicd/kind-sim standup -p "$NS" --skip-smoketest
 
@@ -120,7 +193,6 @@ jobs:
         run: |
           llmdbenchmark --spec cicd/kind-sim teardown -p "$NS" || true
 
-      # -- Debug on failure --
       - name: Debug info (on failure)
         if: failure()
         run: |
