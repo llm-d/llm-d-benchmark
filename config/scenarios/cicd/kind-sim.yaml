@@ -5,6 +5,22 @@
 # CI/CD scenario for Kind clusters using llm-d-inference-sim.
 # No GPU required -- runs inference simulation on CPU-only nodes.
 # Uses facebook/opt-125m with minimal resource requirements.
+#
+# How inference-sim works with the modelservice Helm chart:
+#
+#   The llm-d-modelservice chart detects "llm-d-inference-sim" in the image
+#   name and returns an empty accelerator resource, so no GPU limits/requests
+#   are added to the pod spec.  This allows the sim to run on CPU-only nodes.
+#
+#   The routing proxy sidecar is still injected into decode pods (it is never
+#   injected into prefill pods).  There is no port conflict because the chart
+#   shifts the vLLM listen port when the proxy is present:
+#
+#     decode  (proxy enabled):  vLLM listens on 8200, proxy on 8000
+#     prefill (no proxy):       vLLM listens on 8000
+#
+#   Therefore routing.proxy.enabled does NOT need to be disabled for sim
+#   scenarios -- the chart handles the port assignment automatically.
 
 scenario:
   - name: "kind-sim-cicd"
