@@ -17,8 +17,6 @@ spec:
     volumeMounts:
     - name: requests
       mountPath: /requests
-    - name: cache-volume
-      mountPath: /model-storage
 {% if vllmCommon.pullSecret is defined and vllmCommon.pullSecret %}
   imagePullSecrets:
   - name: {{ vllmCommon.pullSecret }}
@@ -27,6 +25,3 @@ spec:
   - name: requests
     persistentVolumeClaim:
       claimName: {{ storage.workloadPvc.name }}
-  - name: cache-volume
-    persistentVolumeClaim:
-      claimName: {{ storage.modelPvc.name }}
