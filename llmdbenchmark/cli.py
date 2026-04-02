@@ -702,10 +702,11 @@ def _execute_run(args, logger, render_plan_errors):
                 if local_path.exists():
                     file_count = sum(1 for f in local_path.rglob("*") if f.is_file())
                     logger.log_info(f"      [{i}/{parallelism}] {local_path.name} ({file_count} files)")
+    kube_bin = "oc" if context.is_openshift else "kubectl"
     logger.log_info(f"  Local results: {results_dir}")
     logger.log_info(
-        f"  PVC results:   oc exec -n {namespace} "
-        f"$(oc get pod -n {namespace} -l role=llm-d-benchmark-data-access "
+        f"  PVC results:   {kube_bin} exec -n {namespace} "
+        f"$({kube_bin} get pod -n {namespace} -l role=llm-d-benchmark-data-access "
         f"-o jsonpath='{{.items[0].metadata.name}}') -- ls /requests/"
     )
     logger.log_info("=" * 60)
