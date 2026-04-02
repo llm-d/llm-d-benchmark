@@ -155,7 +155,10 @@ scenario:
     control:
       waitTimeout: 20
 
-    # Workload -- uses default harness
+    # Workload -- minimal resources for Kind
     harness:
       name: inference-perf
       experimentProfile: sanity_random.yaml
+      resources:
+        cpu: "1"
+        memory: 2Gi

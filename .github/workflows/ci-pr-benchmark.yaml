@@ -91,9 +91,9 @@ jobs:
         run: |
           llmdbenchmark --spec cicd/kind-sim smoketest -p "$NS" -t standalone || true
 
-      - name: Run harness (standalone, dry-run)
+      - name: Run harness (standalone)
         run: |
-          llmdbenchmark --spec cicd/kind-sim --dry-run run -p "$NS" -t standalone \
+          llmdbenchmark --spec cicd/kind-sim run -p "$NS" -t standalone \
             -l inference-perf -w sanity_random.yaml
 
       - name: Teardown (standalone)
@@ -110,9 +110,9 @@ jobs:
         run: |
           llmdbenchmark --spec cicd/kind-sim smoketest -p "$NS"
 
-      - name: Run harness (modelservice, dry-run)
+      - name: Run harness (modelservice)
         run: |
-          llmdbenchmark --spec cicd/kind-sim --dry-run run -p "$NS" \
+          llmdbenchmark --spec cicd/kind-sim run -p "$NS" \
             -l inference-perf -w sanity_random.yaml
 
       - name: Teardown (modelservice)
