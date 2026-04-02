@@ -100,6 +100,13 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             dry_run=args.dry_run,
         )
 
+        setup_overrides = {}
+        if args.command == Command.RUN.value:
+            endpoint_url = getattr(args, "endpoint_url", None)
+            run_config_file = getattr(args, "run_config", None)
+            if endpoint_url or run_config_file:
+                setup_overrides = {"harness": {"mountModelCache": False}}
+
         render_plan_errors = RenderPlans(
             template_dir=specification_as_dict["template_dir"]["path"],
             defaults_file=specification_as_dict["values_file"]["path"],
@@ -111,6 +118,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             cli_model=getattr(args, "models", None),
             cli_methods=getattr(args, "methods", None),
             cli_monitoring=getattr(args, "monitoring", False),
+            setup_overrides=setup_overrides,
         ).eval()
 
         try:

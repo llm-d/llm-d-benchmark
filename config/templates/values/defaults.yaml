@@ -1226,6 +1226,7 @@ harness:
   loadParallelism: 1
   podLabel: llmdbench-harness-launcher
   debug: false
+  mountModelCache: true
   resources:
     cpu: 16
     memory: 32Gi

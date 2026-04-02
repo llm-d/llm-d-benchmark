@@ -381,6 +381,7 @@ class HarnessConfig(BaseModel):
     output: str
     inferencePerf: InferencePerfConfig
     namespace: str | None = None
+    mountModelCache: bool | None = None
     pvcSize: str | None = None
 
 

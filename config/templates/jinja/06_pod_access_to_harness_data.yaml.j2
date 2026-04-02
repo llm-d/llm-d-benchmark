@@ -17,8 +17,10 @@ spec:
     volumeMounts:
     - name: requests
       mountPath: /requests
+{% if harness.mountModelCache %}
     - name: cache-volume
       mountPath: /model-storage
+{% endif %}
 {% if vllmCommon.pullSecret is defined and vllmCommon.pullSecret %}
   imagePullSecrets:
   - name: {{ vllmCommon.pullSecret }}
@@ -27,6 +29,8 @@ spec:
   - name: requests
     persistentVolumeClaim:
       claimName: {{ storage.workloadPvc.name }}
+{% if harness.mountModelCache %}
   - name: cache-volume
     persistentVolumeClaim:
       claimName: {{ storage.modelPvc.name }}
+{% endif %}
