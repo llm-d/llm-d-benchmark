@@ -64,7 +64,6 @@ class HarnessNamespaceStep(Step):
             context, "06_pod_access_to_harness_data"
         )
         if pod_yaml:
-
             result = cmd.kube("apply", "-f", str(pod_yaml))
             if not result.success:
                 errors.append(
