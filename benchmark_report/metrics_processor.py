@@ -129,7 +129,7 @@ def create_component_observability(
         component_label=component_label,
         replica_id=pod_name,
         aggregate=aggregate,
-        raw_data_path=f"{metrics_dir}/raw/{pod_name}_*.txt",
+        raw_data_path=f"{metrics_dir}/raw/{pod_name}_*.log",
     )
 
 

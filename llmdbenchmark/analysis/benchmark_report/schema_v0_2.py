@@ -661,6 +661,12 @@ class ResourceMetrics(BaseModel):
     """Number of requests waiting in queue."""
     swapped_requests: Statistics | None = None
     """Number of swapped out requests."""
+    prompt_throughput: Statistics | None = None
+    """Prompt (prefill) throughput in tokens per second."""
+    generation_throughput: Statistics | None = None
+    """Generation (decode) throughput in tokens per second."""
+    preemptions: Statistics | None = None
+    """Number of request preemptions due to memory pressure."""
 
     @model_validator(mode="after")
     def check_units(self):
@@ -727,6 +733,21 @@ class ResourceMetrics(BaseModel):
         if self.swapped_requests and self.swapped_requests.units not in UNITS_QUANTITY:
             raise ValueError(
                 f'Invalid units "{self.swapped_requests.units}", must be one of:'
+                f" {' '.join(UNITS_QUANTITY)}"
+            )
+        if self.prompt_throughput and self.prompt_throughput.units not in UNITS_GEN_THROUGHPUT:
+            raise ValueError(
+                f'Invalid units "{self.prompt_throughput.units}", must be one of:'
+                f" {' '.join(UNITS_GEN_THROUGHPUT)}"
+            )
+        if self.generation_throughput and self.generation_throughput.units not in UNITS_GEN_THROUGHPUT:
+            raise ValueError(
+                f'Invalid units "{self.generation_throughput.units}", must be one of:'
+                f" {' '.join(UNITS_GEN_THROUGHPUT)}"
+            )
+        if self.preemptions and self.preemptions.units not in UNITS_QUANTITY:
+            raise ValueError(
+                f'Invalid units "{self.preemptions.units}", must be one of:'
                 f" {' '.join(UNITS_QUANTITY)}"
             )
         return self

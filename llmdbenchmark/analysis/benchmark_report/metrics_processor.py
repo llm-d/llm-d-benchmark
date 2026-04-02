@@ -80,6 +80,13 @@ def create_component_observability(
         'waiting_requests': ('waiting_requests', Units.COUNT),
         'vllm:num_requests_swapped': ('swapped_requests', Units.COUNT),
         'swapped_requests': ('swapped_requests', Units.COUNT),
+        # Throughput metrics
+        'prompt_throughput_tokens_per_sec': ('prompt_throughput', Units.TOKEN_PER_S),
+        'generation_throughput_tokens_per_sec': ('generation_throughput', Units.TOKEN_PER_S),
+        # Preemption metrics
+        'vllm:num_preemptions_total': ('preemptions', Units.COUNT),
+        # Power consumption (from log parsing)
+        'power_consumption_watts': ('power_consumption', Units.WATTS),
     }
 
     for metric_name, metric_data in metrics_summary.items():
@@ -129,7 +136,7 @@ def create_component_observability(
         component_label=component_label,
         replica_id=pod_name,
         aggregate=aggregate,
-        raw_data_path=f"{metrics_dir}/raw/{pod_name}_*.txt",
+        raw_data_path=f"{metrics_dir}/raw/{pod_name}_*.log",
     )
 
 
