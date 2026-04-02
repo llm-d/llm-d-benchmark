@@ -241,10 +241,20 @@ class CommandExecutor:
         parts.extend(args)
         return self.execute(" ".join(parts), check=check)
 
-    def helmfile(self, *args: str) -> CommandResult:
-        """Execute a helmfile command."""
+    def helmfile(self, *args: str, use_kubeconfig: bool = True) -> CommandResult:
+        """Execute a helmfile command.
+
+        Args:
+            *args: helmfile arguments
+            use_kubeconfig: When True (default), injects --kubeconfig from
+                the stored context. Set to False for gateway provider
+                installs that need helmfile to resolve release namespaces
+                from the helmfile itself (e.g., istio-system), not from
+                the kubeconfig context namespace.
+        """
         parts = ["helmfile"]
-        parts.extend(self._kubeconfig_args())
+        if use_kubeconfig:
+            parts.extend(self._kubeconfig_args())
         parts.extend(args)
         return self.execute(" ".join(parts))
 

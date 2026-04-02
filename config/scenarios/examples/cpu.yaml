@@ -43,6 +43,19 @@ scenario:
       maxNumSeq: 32
 
     # -------------------------------------------------------------------------
+    # PVC Configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS (left for auto-detect)
+    # -------------------------------------------------------------------------
+    # Uncomment to override storage class:
+    # storage:
+    #   workloadPvc:
+    #     storageClassName: standard-rwx       # GKE
+    #   modelPvc:
+    #     storageClassName: standard-rwx       # GKE
+    #     # storageClassName: shared-vast       # Kubernetes
+    #     # storageClassName: ocs-storagecluster-cephfs  # OpenShift
+    #     size: 1Ti
+    # -------------------------------------------------------------------------
     # Affinity / Node Selection
     # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY=kubernetes.io/os:linux
     # By default, affinity is disabled and pods schedule on any available node.

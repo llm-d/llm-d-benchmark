@@ -20,7 +20,7 @@ spec:
               mkdir -p "${MOUNT_PATH}/${MODEL_PATH}" && \
               pip install huggingface_hub && \
               export PATH="${PATH}:${HOME}/.local/bin" && \
-{% if (huggingface.token is defined and huggingface.token) or (huggingface.tokenBase64 is defined and huggingface.tokenBase64) %}
+{% if huggingface.enabled %}
               hf auth login --token "${HF_TOKEN}" && \
 {% endif %}
               hf download "${HF_MODEL_ID}" --local-dir "{{ downloadJob.mountPath }}/${MODEL_PATH}"
@@ -29,7 +29,7 @@ spec:
               value: {{ model.path }}
             - name: HF_MODEL_ID
               value: {{ model.huggingfaceId }}
-{% if (huggingface.token is defined and huggingface.token) or (huggingface.tokenBase64 is defined and huggingface.tokenBase64) %}
+{% if huggingface.enabled %}
             - name: HF_TOKEN
               valueFrom:
                 secretKeyRef:

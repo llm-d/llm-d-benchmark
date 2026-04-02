@@ -507,7 +507,7 @@ class RenderPlans:
     _HF_TOKEN_SENTINELS = {"REPLACE_TOKEN", "REPLACE_TOKEN_B64", ""}
 
     def _resolve_hf_token(self, values: dict) -> dict:
-        """Auto-detect HuggingFace token from environment variables.
+        """Auto-detect HuggingFace token and set huggingface.enabled.
 
         When the configured ``huggingface.token`` is still a sentinel
         value (``REPLACE_TOKEN`` or empty), this method checks the
@@ -519,6 +519,11 @@ class RenderPlans:
         If a token is found, it is injected into the values dict along
         with its base64-encoded form so that rendered K8s Secret YAMLs
         work correctly.
+
+        Sets ``huggingface.enabled`` to control whether HF token secrets
+        and auth are rendered. Public models work without a token --
+        the secret and auth blocks are skipped entirely. Gated models
+        without a token cause an immediate error.
         """
         result = deepcopy(values)
         hf_config = result.get("huggingface", {})
@@ -526,6 +531,8 @@ class RenderPlans:
 
         # Only auto-detect if the current token is a sentinel / empty
         if current_token and current_token not in self._HF_TOKEN_SENTINELS:
+            hf_config["enabled"] = True
+            result["huggingface"] = hf_config
             return result
 
         # Check environment variables (order matches HuggingFace SDK convention)
@@ -533,6 +540,18 @@ class RenderPlans:
             "HUGGING_FACE_HUB_TOKEN"
         )
         if not env_token:
+            # No token available -- disable HF secret/auth rendering.
+            # Public models will work fine; gated models are caught at
+            # standup time by the model access check.
+            hf_config["enabled"] = False
+            hf_config["token"] = ""
+            hf_config["tokenBase64"] = ""
+            result["huggingface"] = hf_config
+            self.logger.log_info(
+                "No HuggingFace token found -- HF secret will not be created. "
+                "Public models will work; gated models will fail at standup.",
+                emoji="ℹ️",
+            )
             return result
 
         # Inject the token and its base64-encoded form
@@ -540,6 +559,7 @@ class RenderPlans:
         hf_config["tokenBase64"] = base64.b64encode(env_token.encode("utf-8")).decode(
             "utf-8"
         )
+        hf_config["enabled"] = True
         result["huggingface"] = hf_config
 
         self.logger.log_info(

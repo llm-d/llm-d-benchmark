@@ -16,7 +16,7 @@ inferenceExtension:
       port: {{ inferenceExtension.zmqPort }}
       targetPort: {{ inferenceExtension.zmqPort }}
       protocol: TCP
-{% if huggingface is defined and huggingface.secretName is defined and huggingface.secretName %}
+{% if huggingface.enabled %}
   env:
     - name: HF_TOKEN
       valueFrom:
@@ -34,7 +34,7 @@ inferenceExtension:
 {% endif %}
   monitoring:
     secret:
-      name: {{ inferenceExtension.monitoring.secretName | default('kv-events-gateway-sa-metrics-reader-secret') }}
+      name: {{ inferenceExtension.monitoring.secretName | default('inference-gateway-sa-metrics-reader-secret') }}
     interval: "{{ inferenceExtension.monitoring.interval | default('10s') }}"
     prometheus:
       enabled: {{ inferenceExtension.monitoring.prometheus.enabled | default(true) | lower }}

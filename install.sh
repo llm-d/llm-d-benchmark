@@ -99,7 +99,7 @@ DESCRIPTION
 
     1. Validates Python 3.11+ and pip
     2. Checks for required system tools  (curl, git, kubectl, helm)
-    3. Checks for optional system tools   (oc, helmfile, kustomize, jq, yq, skopeo)
+    3. Checks for optional system tools   (oc)
     4. Installs llmdbenchmark             (editable: pip install -e .)
     5. Installs config_explorer           (editable: pip install -e config_explorer/)
     6. Verifies that all Python packages are importable
@@ -275,10 +275,24 @@ echo ""
 echo "=== System tools ==="
 
 # Tools required for cluster operations
-tools="curl git kubectl helm"
+tools="curl git helm helmfile skopeo kustomize jq yq crane"
 
-# Optional tools — checked but not fatal if missing
-optional_tools="oc helmfile kustomize jq yq skopeo"
+# One of kubectl or oc is required
+kube_tool=""
+if command -v kubectl &>/dev/null; then
+    kube_tool="kubectl"
+elif command -v oc &>/dev/null; then
+    kube_tool="oc"
+fi
+if [ -z "$kube_tool" ]; then
+    echo "  kubectl/oc -- NOT FOUND, attempting kubectl install..."
+    tools="$tools kubectl"
+else
+    printf "  %-14s %-20s %s\n" "$kube_tool" "$($kube_tool version --client --short 2>/dev/null || $kube_tool version --client 2>/dev/null | head -1)" ""
+fi
+
+# Optional tools -- checked but not fatal if missing
+optional_tools="oc"
 
 # ---------------------------------------------------------------------------
 # Version helper — returns version string for a given tool
@@ -298,6 +312,7 @@ tool_version() {
         jq)         jq --version 2>&1 ;;
         yq)         yq --version 2>&1 | awk '{print $NF}' ;;
         skopeo)     skopeo --version 2>&1 | awk '{print $NF}' ;;
+        crane)      crane version 2>&1 | tr -d '\n' ;;
         *)          echo "(unknown)" ;;
     esac
 }
@@ -322,10 +337,8 @@ install_helmfile_linux() {
 }
 
 install_helm_linux() {
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    if ! helm plugin list | grep -q "^diff"; then
-        helm plugin install https://github.com/databus23/helm-diff
-    fi
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash || { echo "ERROR: Failed to install Helm"; exit 1; }
+    helm version --short || { echo "ERROR: Helm installation verification failed"; exit 1; }
 }
 
 install_oc_linux() {
@@ -343,6 +356,19 @@ install_oc_linux() {
 install_kustomize_linux() {
     curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
     sudo mv kustomize /usr/local/bin/
+}
+
+install_crane_linux() {
+    local version=v0.20.3
+    local arch
+    arch=$(uname -m)
+    local go_arch="x86_64"
+    [[ "$arch" == "aarch64" ]] && go_arch="arm64"
+    local pkg="go-containerregistry_Linux_${go_arch}"
+    curl -sL "https://github.com/google/go-containerregistry/releases/download/${version}/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz"
+    tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane
+    sudo cp -f /tmp/crane /usr/local/bin/crane
+    sudo chmod +x /usr/local/bin/crane
 }
 
 install_oc_mac() { brew install openshift-cli; }
@@ -374,6 +400,20 @@ for tool in $tools; do
         fi
     fi
 done
+
+# ---------------------------------------------------------------------------
+# Ensure helm-diff plugin is installed (required by helmfile apply).
+# Runs regardless of whether helm was just installed or already existed.
+# ---------------------------------------------------------------------------
+if command -v helm &>/dev/null; then
+    if ! helm plugin list 2>/dev/null | grep -q "^diff"; then
+        echo "  helm-diff    -- NOT FOUND, installing..."
+        helm plugin install https://github.com/databus23/helm-diff || { echo "ERROR: Failed to install helm-diff plugin"; exit 1; }
+        printf "  %-14s %-20s %s\n" "helm-diff" "$(helm plugin list | grep '^diff' | awk '{print $2}')" "(newly installed)"
+    else
+        printf "  %-14s %-20s %s\n" "helm-diff" "$(helm plugin list | grep '^diff' | awk '{print $2}')" ""
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # Check optional tools (warn but don't fail)

@@ -86,15 +86,6 @@ The Streamlit frontend includes the following pages:
 2. **GPU Recommender** - Get optimal GPU recommendations based on model and workload requirements
 3. **Sweep Visualizer** - Visualize benchmark results and configuration sweeps
 
-### Using the Sweep Visualizer
-
-The Sweep Visualizer page supports visualizing a collection of `llm-d-benchmark` report files. To get started easily, you may download the data from the [public llm-d-benchmark community Google Drive](https://drive.google.com/drive/u/0/folders/1r2Z2Xp1L0KonUlvQHvEzed8AO9Xj8IPm). Preset options have been selected for each scenario. For example, we recommend viewing
-
-- `qwen-qwen-3-0-6b` using the Chatbot application highlight Inference Scheduling
-- `meta-llama/Llama-3.1-70B-Instruct` using the Document Summarization application highlight PD Disaggregation
-
-Default values will be populated once those options are selected. Advanced users may further conduct their own configuration.
-
 ### Using the GPU Recommender
 
 The GPU Recommender page helps you find the optimal GPU for running LLM inference. To use it:
@@ -130,7 +121,5 @@ The GPU Recommender displays cost information to help you find cost-effective GP
 **⚠️ IMPORTANT**: Default costs are **reference values for relative comparison only**. They do **NOT** represent actual pricing from any provider. Lower values indicate better value. Use custom costs that reflect your actual infrastructure pricing.
 
 ## Library
-
-Configuration exploration and benchmark sweep performance comparison is best demonstrated in the Jupyter notebook [analysis.ipynb](../analysis/analysis.ipynb). This notebook can be used for interactive analysis of benchmarking data results, and it utilizes the same core functions as the "Sweep Visualizer" page of the web app. For instructions on using the notebook see [../analysis/README.md](../analysis/README.md).
 
 For GPU recommender API usage see [./examples/gpu_recommender_example.py](./examples/gpu_recommender_example.py).

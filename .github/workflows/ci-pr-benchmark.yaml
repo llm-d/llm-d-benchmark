@@ -4,17 +4,11 @@ on:
   pull_request:
 
 jobs:
-
-  run-benchmark-sh:
-    name: Inference Simulation Benchmark Test
+  # -- Unit tests (no cluster needed) --
+  unit-tests:
+    name: Unit Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 240
-
-    env:
-      LLMDBENCH_HF_TOKEN: "ci-placeholder"
-      LLMDBENCH_CONTROL_WORK_DIR: /tmp/cicd-${{ github.event.number }}/
-      LLMDBENCH_VLLM_COMMON_NAMESPACE: llmdbenchcicd-${{ github.event.number }}
-      LLMDBENCH_HARNESS_NAMESPACE: llmdbenchcicd-${{ github.event.number }}
+    timeout-minutes: 5
 
     steps:
       - name: Checkout Code
@@ -22,60 +16,200 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Display OS
-        run: |
-          cat /etc/*os-*
-        shell: bash
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
-      - name: Create k8s Kind Cluster
+      - name: Install llmdbenchmark
+        run: |
+          ./install.sh -y 2>&1
+          pip install pytest
+
+      - name: Run unit tests
+        run: python -m pytest tests/ -x -q
+
+  # -- Standalone deployment (own Kind cluster) --
+  benchmark-standalone:
+    name: Benchmark - Standalone (Kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: unit-tests
+
+    env:
+      NS: llmdbenchcicd-sa-${{ github.event.number }}
+      LLMDBENCH_WORKSPACE: /tmp/cicd-sa-${{ github.event.number }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Create Kind cluster
         uses: helm/kind-action@v1
         with:
           version: v0.31.0
 
-      - name: Label Node Affinity from inference-sim Scenario
+      - name: Label node for simulated accelerators
         run: |
           NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
           echo "Labeling node: $NODE"
           kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
 
-      - name: Run install_deps
+      - name: Install llmdbenchmark
         run: |
-          sudo apt-get update
-          ./setup/install_deps.sh -y
-        shell: bash
+          ./install.sh -y 2>&1
 
-      - name: Install config explorer dependencies
-        run: pip install ./config_explorer
-        shell: bash
-
-      - name: Standup (standalone) using llm-d-inference-sim
+      - name: Standup (standalone)
         run: |
-          ./setup/standup.sh -c kind_sim_fb -t standalone || ./setup/standup.sh -c kind_sim_fb -t standalone -s 10
-        shell: bash
+          llmdbenchmark --spec cicd/kind-sim standup -p "$NS" -t standalone --skip-smoketest
+
+      - name: Debug standup (standalone)
+        if: failure()
+        run: |
+          echo "=== PVC status ==="
+          kubectl get pvc -n "$NS" -o wide || true
+          echo ""
+          echo "=== All pods ==="
+          kubectl get pods -n "$NS" -o wide || true
+          echo ""
+          echo "=== Download job logs ==="
+          kubectl logs job/download-model -n "$NS" --tail=50 || true
+          echo ""
+          echo "=== Download pod logs (previous) ==="
+          for pod in $(kubectl get pods -n "$NS" -l job-name=download-model -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=50 2>/dev/null || true
+            kubectl logs -n "$NS" "$pod" --previous --tail=50 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Disk usage on node ==="
+          kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: allocatable ephemeral={.status.allocatable.ephemeral-storage}, capacity={.status.capacity.ephemeral-storage}{"\n"}{end}' || true
+          echo ""
+          echo "=== Failed pod descriptions ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n "$NS" "$pod" 2>/dev/null | tail -20
+            echo "--- logs ---"
+            kubectl logs -n "$NS" "$pod" --tail=30 --all-containers 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -20 || true
+
+      - name: Smoketest (standalone)
+        run: |
+          llmdbenchmark --spec cicd/kind-sim smoketest -p "$NS" -t standalone || true
 
       - name: Run harness (standalone)
         run: |
-          ./setup/run.sh -c kind_sim_fb --dry-run
-        shell: bash
+          llmdbenchmark --spec cicd/kind-sim run -p "$NS" -t standalone \
+            -l inference-perf -w sanity_random.yaml
 
       - name: Teardown (standalone)
+        if: always()
         run: |
-          ./setup/teardown.sh -c kind_sim_fb -t standalone
-        shell: bash
+          llmdbenchmark --spec cicd/kind-sim teardown -p "$NS" -t standalone || true
 
-      - name: Standup (modelservice) using llm-d-inference-sim
+      - name: Debug info (on failure)
+        if: failure()
         run: |
-          ./setup/standup.sh -c kind_sim_fb -t modelservice || ./setup/standup.sh -c kind_sim_fb -t modelservice -s 10 || true
-        shell: bash
+          echo "=== Pod status ==="
+          kubectl get pods -n "$NS" -o wide || true
+          echo ""
+          echo "=== Pod descriptions (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n "$NS" "$pod" || true
+          done
+          echo ""
+          echo "=== Pod logs (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=200 --all-containers || true
+          done
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true
 
-      - name: Run harness (mock)
-        env:
-          LLMD_CONTROL_DRY_RUN: 1 # TODO: harness doesn't work now for kind bc no harness endpoint
+  # -- Modelservice deployment (own Kind cluster) --
+  benchmark-modelservice:
+    name: Benchmark - Modelservice (Kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: unit-tests
+
+    env:
+      NS: llmdbenchcicd-ms-${{ github.event.number }}
+      LLMDBENCH_WORKSPACE: /tmp/cicd-ms-${{ github.event.number }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          version: v0.31.0
+
+      - name: Label node for simulated accelerators
         run: |
-          ./setup/run.sh -c kind_sim_fb --dry-run
-        shell: bash
+          NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+          echo "Labeling node: $NODE"
+          kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
+
+      - name: Install llmdbenchmark
+        run: |
+          ./install.sh -y 2>&1
+
+      - name: Standup (modelservice)
+        run: |
+          llmdbenchmark --spec cicd/kind-sim standup -p "$NS" --skip-smoketest
+
+      - name: Smoketest (modelservice)
+        run: |
+          llmdbenchmark --spec cicd/kind-sim smoketest -p "$NS"
+
+      - name: Run harness (modelservice)
+        run: |
+          llmdbenchmark --spec cicd/kind-sim run -p "$NS" \
+            -l inference-perf -w sanity_random.yaml
 
       - name: Teardown (modelservice)
+        if: always()
         run: |
-          ./setup/teardown.sh -c kind_sim_fb
-        shell: bash
+          llmdbenchmark --spec cicd/kind-sim teardown -p "$NS" || true
+
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          echo "=== Pod status ==="
+          kubectl get pods -n "$NS" -o wide || true
+          echo ""
+          echo "=== Pod descriptions (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n "$NS" "$pod" || true
+          done
+          echo ""
+          echo "=== Pod logs (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=200 --all-containers || true
+          done
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true

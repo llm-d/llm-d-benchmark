@@ -5,6 +5,22 @@
 # CI/CD scenario for Kind clusters using llm-d-inference-sim.
 # No GPU required -- runs inference simulation on CPU-only nodes.
 # Uses facebook/opt-125m with minimal resource requirements.
+#
+# How inference-sim works with the modelservice Helm chart:
+#
+#   The llm-d-modelservice chart detects "llm-d-inference-sim" in the image
+#   name and returns an empty accelerator resource, so no GPU limits/requests
+#   are added to the pod spec.  This allows the sim to run on CPU-only nodes.
+#
+#   The routing proxy sidecar is still injected into decode pods (it is never
+#   injected into prefill pods).  There is no port conflict because the chart
+#   shifts the vLLM listen port when the proxy is present:
+#
+#     decode  (proxy enabled):  vLLM listens on 8200, proxy on 8000
+#     prefill (no proxy):       vLLM listens on 8000
+#
+#   Therefore routing.proxy.enabled does NOT need to be disabled for sim
+#   scenarios -- the chart handles the port assignment automatically.
 
 scenario:
   - name: "kind-sim-cicd"
@@ -29,16 +45,36 @@ scenario:
       count: 0
       memory: 24  # To pass capacity planner sanity checking
 
+    # Minimal gateway resources for Kind
+    gateway:
+      resources:
+        limits:
+          cpu: "2"
+          memory: 2Gi
+        requests:
+          cpu: "500m"
+          memory: 512Mi
+
+    # Install Prometheus CRDs on Kind (no Prometheus Operator by default)
+    monitoring:
+      installPrometheusCrds: true
+
     # Minimal resources for Kind cluster
     vllmCommon:
       shmMemory: 500Mi
 
     # Storage -- minimal for Kind
+    # Kind uses 'standard' storage class with ReadWriteOnce only
     storage:
       modelPvc:
-        accessMode: ReadWriteOnce
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard
         size: 2Gi
-      harnessPvc:
+      workloadPvc:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard
         size: 3Gi
 
     # Override images for simulation
@@ -57,6 +93,14 @@ scenario:
         repository: ghcr.io/llm-d/llm-d-inference-sim
         tag: latest
         pullPolicy: Always
+
+      # No GPU on Kind -- use OS label instead of nvidia GPU selector
+      acceleratorType:
+        labelKey: kubernetes.io/os
+        labelValue: linux
+
+      accelerator:
+        count: 0
 
       resources:
         limits:
@@ -127,7 +171,10 @@ scenario:
     control:
       waitTimeout: 20
 
-    # Workload -- uses default harness
+    # Workload -- minimal resources for Kind
     harness:
       name: inference-perf
       experimentProfile: sanity_random.yaml
+      resources:
+        cpu: "1"
+        memory: 2Gi

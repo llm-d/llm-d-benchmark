@@ -248,7 +248,7 @@ The base configuration file containing every configurable parameter with sensibl
 | `release` | Helm release name prefix |
 | `gateway` | Gateway class and provider configuration |
 | `serviceAccount` | Service account name and configuration |
-| `huggingface` | HuggingFace token secret name and key |
+| `huggingface` | HuggingFace token, secret name, and enabled flag |
 | `storage` | PVC sizes, storage class, download settings |
 | `decode` | Decode pod configuration (replicas, resources, vLLM settings) |
 | `prefill` | Prefill pod configuration (disabled by default) |
@@ -265,6 +265,27 @@ The base configuration file containing every configurable parameter with sensibl
 | `inferenceExtension` | GAIE plugin configuration |
 
 **YAML anchors:** The file uses anchors (`&name`) and aliases (`*name`) to ensure consistency. For example, `&vllm_service_port` is defined once as `8000` and referenced by `decode.vllm.servicePort`, `prefill.vllm.servicePort`, and `vllmCommon.inferencePort`.
+
+## HuggingFace Configuration
+
+The `huggingface` section controls authentication for downloading models from HuggingFace Hub.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `huggingface.enabled` | `bool` | `true` | Enable HuggingFace authentication. Auto-set to `false` at render time when no token is found |
+| `huggingface.token` | `str` | `""` | HuggingFace API token (typically set via `HF_TOKEN` or `LLMDBENCH_HF_TOKEN` env var) |
+| `huggingface.secretName` | `str` | `hf-token` | Name of the Kubernetes secret storing the token |
+| `huggingface.secretKey` | `str` | `HF_TOKEN` | Key within the secret |
+
+When `huggingface.enabled` is `false`, the following are skipped:
+- HuggingFace token secret creation in the model namespace
+- `hf auth login` in the download job
+- `secretKeyRef` mounts for `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` on vLLM and harness pods
+- `authSecretName` on the ModelService CR
+
+This allows public models (e.g. `facebook/opt-125m`) to be deployed without a token. Gated models (e.g. `meta-llama/Llama-3.1-8B`) require a valid token and will fail at the model access check if one is not provided.
+
+The `enabled` flag is auto-computed during plan rendering by `_resolve_hf_token()` in `render_plans.py`. It checks `HF_TOKEN`, `LLMDBENCH_HF_TOKEN`, and the scenario YAML in that order.
 
 ## KV Transfer Configuration
 
@@ -771,6 +792,7 @@ Configured under the top-level `monitoring` section in `defaults.yaml`:
 | `monitoring.podmonitor.enabled` | `true` | Create PodMonitor resources for Prometheus scraping |
 | `monitoring.metricsPath` | `/metrics` | Prometheus scrape path |
 | `monitoring.scrapeInterval` | `"30s"` | Prometheus scrape interval |
+| `monitoring.installPrometheusCrds` | `false` | Install Prometheus CRDs (PodMonitor, ServiceMonitor) during standup. Required for clusters without Prometheus Operator (e.g. Kind). |
 
 When `monitoring.enabled` is `true` and running on OpenShift, the `03_cluster-monitoring-config.yaml.j2` template renders a ConfigMap to enable user workload monitoring.
 
@@ -809,7 +831,7 @@ The inference extension has its own monitoring config under `inferenceExtension.
 ```yaml
 inferenceExtension:
   monitoring:
-    secretName: kv-events-gateway-sa-metrics-reader-secret
+    secretName: inference-gateway-sa-metrics-reader-secret
     interval: "10s"
     prometheus:
       enabled: true
@@ -1036,6 +1058,51 @@ oc get configmap llm-d-benchmark-standup-parameters -n <namespace> -o yaml
 
 ---
 
+## Pod Scheduling
+
+### Priority Class
+
+Set `priorityClassName` to control pod scheduling priority. This maps to the Kubernetes `priorityClassName` field on the pod spec.
+
+**Set for all pods (recommended):**
+
+```yaml
+vllmCommon:
+  priorityClassName: "high-priority"
+```
+
+This applies to decode, prefill, and standalone pods. Matches the bash `LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME`.
+
+**Override per role:**
+
+```yaml
+decode:
+  priorityClassName: "high-priority"
+prefill:
+  priorityClassName: "low-priority"
+```
+
+Per-role values override `vllmCommon.priorityClassName`.
+
+**Disable (default):**
+
+Leave empty or set to `"none"`. No `priorityClassName` is rendered and pods use the cluster default priority.
+
+> [!NOTE]
+> The PriorityClass must already exist on the cluster. Create it with `kubectl apply` before standup. Example: `kubectl create priorityclass high-priority --value=1000 --global-default=false`
+
+### Scheduler Name
+
+Override the pod scheduler (e.g., for Spyre which requires `spyre-scheduler`):
+
+```yaml
+schedulerName: spyre-scheduler
+```
+
+This sets `schedulerName` on all modelservice pods. If not set, Kubernetes uses the default scheduler.
+
+---
+
 ## Scenarios
 
 Scenario files provide deployment-specific overrides that are merged on top of `defaults.yaml`. They configure things like model name, GPU count, namespace, image tags, and deployment topology.
@@ -1071,7 +1138,7 @@ Used by automated CI/CD pipelines:
 
 | Scenario | Description |
 |----------|-------------|
-| `kind-sim.yaml` | Kind cluster with simulated accelerators |
+| `kind-sim.yaml` | Kind cluster with `llm-d-inference-sim` (no GPU, CPU-only, public model). Exercises the full modelservice and standalone paths in CI. |
 | `gke-h100.yaml` | Google Kubernetes Engine with H100 |
 | `cks.yaml` | Cloud Kubernetes Service with H200 |
 | `ocp.yaml` | OpenShift Container Platform with Istio |

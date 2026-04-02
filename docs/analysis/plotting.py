@@ -8,7 +8,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from .explorer import (
+from explorer import (
     COLUMNS,
     SLO,
     col_base,
@@ -17,7 +17,7 @@ from .explorer import (
     get_pareto_front_df,
     rebound_scenario,
 )
-from .constants import (
+from constants import (
     BOUND_PREFIX_LEN,
     COLUMN_BOUND_STR,
 )

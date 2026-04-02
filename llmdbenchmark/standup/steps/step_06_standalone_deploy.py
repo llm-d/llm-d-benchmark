@@ -82,14 +82,27 @@ class StandaloneDeployStep(Step):
 
         podmonitor_yaml = self._find_yaml(stack_path, "17_standalone-podmonitor")
         if podmonitor_yaml and self._has_yaml_content(podmonitor_yaml):
-            result = cmd.kube("apply", "-f", str(podmonitor_yaml))
-            if not result.success:
-                context.logger.log_warning(
-                    f"PodMonitor apply failed (non-fatal): {result.stderr}"
-                )
+            # Check if PodMonitor CRD exists before attempting to apply
+            crd_check = cmd.kube(
+                "get", "crd", "podmonitors.monitoring.coreos.com",
+                check=False,
+            )
+            if crd_check.success:
+                result = cmd.kube("apply", "-f", str(podmonitor_yaml))
+                if result.success:
+                    context.logger.log_info(
+                        "PodMonitor created for Prometheus scraping"
+                    )
+                else:
+                    context.logger.log_warning(
+                        f"PodMonitor apply failed (non-fatal): {result.stderr}"
+                    )
             else:
-                context.logger.log_info(
-                    "PodMonitor created for Prometheus scraping"
+                context.logger.log_warning(
+                    "PodMonitor CRD (monitoring.coreos.com/v1) not found on cluster -- "
+                    "skipping PodMonitor creation. Install Prometheus Operator CRDs "
+                    "or set monitoring.podMonitorCrds.install: true in the scenario "
+                    "to enable metrics collection."
                 )
         else:
             context.logger.log_info(
@@ -354,5 +367,5 @@ class StandaloneDeployStep(Step):
                     f"📋 Deployment metadata to configmap/{cm_name} in ns/{harness_ns}"
                 )
                 context.logger.log_info(
-                    f"   oc get configmap {cm_name} -n {harness_ns} -o yaml"
+                    f"   {cmd._kube_bin} get configmap {cm_name} -n {harness_ns} -o yaml"
                 )

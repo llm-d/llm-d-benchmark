@@ -24,6 +24,11 @@ class VersionResolver:
             self.logger.log_info(f"📦 Resolved {image_ref} to {tag}")
             return tag
 
+        tag = self._resolve_via_crane(image_ref)
+        if tag:
+            self.logger.log_info(f"📦 Resolved {image_ref} to {tag} (via crane)")
+            return tag
+
         tag = self._resolve_via_podman(image_ref)
         if tag:
             self.logger.log_info(f"📦 Resolved {image_ref} to {tag} (via podman)")
@@ -31,8 +36,23 @@ class VersionResolver:
 
         raise RuntimeError(
             f'Unable to resolve latest tag for image "{image_ref}". '
-            "Ensure skopeo or podman is installed and the image exists."
+            "Ensure skopeo, crane, or podman is installed and the image exists."
         )
+
+    def _resolve_via_crane(self, image_ref: str) -> str | None:
+        """Resolve latest tag using crane ls."""
+        cmd = f"crane ls {image_ref}"
+        try:
+            result = subprocess.run(
+                cmd.split(), capture_output=True, text=True, check=False
+            )
+            if result.returncode == 0:
+                lines = [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
+                if lines:
+                    return lines[-1]
+        except FileNotFoundError:
+            pass
+        return None
 
     def _resolve_via_skopeo(self, image_ref: str) -> str | None:
         """Resolve latest tag using skopeo list-tags."""
