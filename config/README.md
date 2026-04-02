@@ -266,6 +266,27 @@ The base configuration file containing every configurable parameter with sensibl
 
 **YAML anchors:** The file uses anchors (`&name`) and aliases (`*name`) to ensure consistency. For example, `&vllm_service_port` is defined once as `8000` and referenced by `decode.vllm.servicePort`, `prefill.vllm.servicePort`, and `vllmCommon.inferencePort`.
 
+## HuggingFace Configuration
+
+The `huggingface` section controls authentication for downloading models from HuggingFace Hub.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `huggingface.enabled` | `bool` | `true` | Enable HuggingFace authentication. Auto-set to `false` at render time when no token is found |
+| `huggingface.token` | `str` | `""` | HuggingFace API token (typically set via `HF_TOKEN` or `LLMDBENCH_HF_TOKEN` env var) |
+| `huggingface.secretName` | `str` | `hf-token` | Name of the Kubernetes secret storing the token |
+| `huggingface.secretKey` | `str` | `HF_TOKEN` | Key within the secret |
+
+When `huggingface.enabled` is `false`, the following are skipped:
+- HuggingFace token secret creation in the model namespace
+- `hf auth login` in the download job
+- `secretKeyRef` mounts for `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` on vLLM and harness pods
+- `authSecretName` on the ModelService CR
+
+This allows public models (e.g. `facebook/opt-125m`) to be deployed without a token. Gated models (e.g. `meta-llama/Llama-3.1-8B`) require a valid token and will fail at the model access check if one is not provided.
+
+The `enabled` flag is auto-computed during plan rendering by `_resolve_hf_token()` in `render_plans.py`. It checks `HF_TOKEN`, `LLMDBENCH_HF_TOKEN`, and the scenario YAML in that order.
+
 ## KV Transfer Configuration
 
 The `vllmCommon.kvTransfer` section controls the `--kv-transfer-config` argument passed to the `vllm serve` command. This is how vLLM knows which KV cache transfer connector to use and how to configure it.
@@ -771,6 +792,7 @@ Configured under the top-level `monitoring` section in `defaults.yaml`:
 | `monitoring.podmonitor.enabled` | `true` | Create PodMonitor resources for Prometheus scraping |
 | `monitoring.metricsPath` | `/metrics` | Prometheus scrape path |
 | `monitoring.scrapeInterval` | `"30s"` | Prometheus scrape interval |
+| `monitoring.installPrometheusCrds` | `false` | Install Prometheus CRDs (PodMonitor, ServiceMonitor) during standup. Required for clusters without Prometheus Operator (e.g. Kind). |
 
 When `monitoring.enabled` is `true` and running on OpenShift, the `03_cluster-monitoring-config.yaml.j2` template renders a ConfigMap to enable user workload monitoring.
 
@@ -1116,7 +1138,7 @@ Used by automated CI/CD pipelines:
 
 | Scenario | Description |
 |----------|-------------|
-| `kind-sim.yaml` | Kind cluster with simulated accelerators |
+| `kind-sim.yaml` | Kind cluster with `llm-d-inference-sim` (no GPU, CPU-only, public model). Exercises the full modelservice and standalone paths in CI. |
 | `gke-h100.yaml` | Google Kubernetes Engine with H100 |
 | `cks.yaml` | Cloud Kubernetes Service with H200 |
 | `ocp.yaml` | OpenShift Container Platform with Istio |

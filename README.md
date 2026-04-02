@@ -164,8 +164,9 @@ Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-
 - **kubectl** -- Kubernetes CLI
 - **helm** -- Helm package manager
 - **curl**, **git** -- Standard system tools
-- **helmfile** (optional) -- Required for modelservice deployments
-- **oc** (optional) -- Required for OpenShift clusters
+- **helmfile** -- Required for modelservice deployments
+- **kustomize**, **jq**, **yq**, **skopeo** -- Required for template rendering and image management
+- **oc** (optional) -- Required for OpenShift clusters (either `kubectl` or `oc` must be present)
 
 ### Administrative Requirements
 
@@ -196,8 +197,8 @@ The install script:
 
 1. Creates a Python virtual environment at `.venv/`
 2. Validates Python 3.11+ and pip
-3. Checks for required system tools (curl, git, kubectl, helm)
-4. Checks for optional tools (oc, helmfile, kustomize, jq, yq, skopeo)
+3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile, kustomize, jq, yq, skopeo)
+4. Installs the `helm-diff` plugin (required by helmfile)
 5. Installs `llmdbenchmark` and `config_explorer` in editable mode
 6. Verifies all Python packages are importable
 
