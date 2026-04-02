@@ -829,5 +829,5 @@ class DeployModelserviceStep(Step):
                     f"📋 Deployment metadata to configmap/{cm_name} in ns/{harness_ns}"
                 )
                 context.logger.log_info(
-                    f"   oc get configmap {cm_name} -n {harness_ns} -o yaml"
+                    f"   {cmd._kube_bin} get configmap {cm_name} -n {harness_ns} -o yaml"
                 )

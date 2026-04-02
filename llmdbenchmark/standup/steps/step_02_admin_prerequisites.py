@@ -132,6 +132,16 @@ class AdminPrerequisitesStep(Step):
                 existing_crds,
             )
 
+            self._install_prometheus_crds_if_needed(
+                cmd, plan_config, existing_crds,
+            )
+
+        # Also install Prometheus CRDs for standalone (outside modelservice block)
+        if not modelservice_active:
+            self._install_prometheus_crds_if_needed(
+                cmd, plan_config, existing_crds,
+            )
+
         self._apply_namespace_yaml(cmd, context, errors)
         self._apply_openshift_sccs(cmd, context, plan_config)
 
@@ -309,7 +319,15 @@ class AdminPrerequisitesStep(Step):
         errors: list,
         existing_crds: list[str],
     ):
-        """Install LWS if configuration is present and CRDs are missing."""
+        """Install LWS only when multinode is enabled and CRDs are missing.
+
+        The bash implementation only installed LWS when
+        LLMDBENCH_VLLM_MODELSERVICE_MULTINODE was true (e.g., wide-ep-lws).
+        """
+        multinode = plan_config.get("multinode", {})
+        if not multinode.get("enabled", False):
+            return
+
         lws_config = plan_config.get("lws", {})
         if not lws_config:
             return
@@ -322,6 +340,55 @@ class AdminPrerequisitesStep(Step):
             return
 
         self._install_lws(cmd, lws_config, errors)
+
+    def _install_prometheus_crds_if_needed(
+        self,
+        cmd: CommandExecutor,
+        plan_config: dict,
+        existing_crds: list[str],
+    ):
+        """Install Prometheus Operator CRDs (PodMonitor, ServiceMonitor) if requested.
+
+        Only installs when monitoring.installPrometheusCrds is true and the
+        CRDs don't already exist. Useful for Kind or vanilla K8s clusters
+        that don't have the Prometheus Operator installed.
+        """
+        monitoring = plan_config.get("monitoring", {})
+        if not monitoring.get("installPrometheusCrds", False):
+            return
+
+        prometheus_crds = [
+            "podmonitors.monitoring.coreos.com",
+            "servicemonitors.monitoring.coreos.com",
+        ]
+
+        if not _any_crds_missing(prometheus_crds, existing_crds):
+            cmd.logger.log_info(
+                "✅ Prometheus Operator CRDs already installed "
+                "(podmonitors.monitoring.coreos.com found)"
+            )
+            return
+
+        cmd.logger.log_info(
+            "Installing Prometheus Operator CRDs (PodMonitor, ServiceMonitor)..."
+        )
+        urls = monitoring.get("prometheusCrdUrls", [])
+        if not urls:
+            cmd.logger.log_warning(
+                "monitoring.prometheusCrdUrls is empty -- cannot install CRDs"
+            )
+            return
+        for url in urls:
+            result = cmd.kube("apply", "-f", url, check=False)
+            if not result.success:
+                cmd.logger.log_warning(
+                    f"Failed to install Prometheus CRD from {url}: {result.stderr}"
+                )
+                return
+
+        cmd.logger.log_info(
+            "✅ Prometheus Operator CRDs installed (PodMonitor, ServiceMonitor)"
+        )
 
     def _apply_namespace_yaml(
         self, cmd: CommandExecutor, context: ExecutionContext, errors: list
@@ -421,19 +488,17 @@ class AdminPrerequisitesStep(Step):
 
         cmd.logger.log_info("📦 Installing Istio via helmfile...")
 
-        namespace = plan_config.get("namespace", {}).get("name", "")
-        hf_args = []
-        if namespace:
-            hf_args.extend(["--namespace", namespace])
-        hf_args.extend(
-            [
-                "apply",
-                "-f",
-                str(helmfile_yaml),
-                "--skip-diff-on-install",
-            ]
+        # Match bash behavior: call helmfile WITHOUT --kubeconfig and
+        # WITHOUT --namespace so helmfile resolves release namespaces
+        # from the helmfile itself (istio-system), not from the
+        # kubeconfig context namespace (e.g., llmdbenchcicd).
+        result = cmd.helmfile(
+            "apply",
+            "-f",
+            str(helmfile_yaml),
+            "--skip-diff-on-install",
+            use_kubeconfig=False,
         )
-        result = cmd.helmfile(*hf_args)
         if not result.success:
             errors.append(f"Failed to install Istio via helmfile: {result.stderr}")
 

@@ -233,7 +233,13 @@ scenario:
     #                 LLMDBENCH_VLLM_COMMON_PVC_ACCESS_MODE=ReadWriteOnce
     # -------------------------------------------------------------------------
     storage:
+      # Uncomment to override storage class:
+      # workloadPvc:
+      #   storageClassName: standard-rwx       # GKE
       modelPvc:
+        # storageClassName: standard-rwx       # GKE
+        # storageClassName: shared-vast       # Kubernetes
+        # storageClassName: ocs-storagecluster-cephfs  # OpenShift
         size: 2Gi
         accessMode: ReadWriteOnce
       uriProtocol: hf

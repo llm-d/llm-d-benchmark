@@ -1,0 +1,14 @@
+{
+  "retryOn429": true,
+  "retryCount": 3,
+  "timeout": "10s",
+  "ignorePatterns": [
+    { "pattern": "^https://kccncna2025\\.sched\\.com" },
+    { "pattern": "^https://drive\\.google\\.com" },
+    { "pattern": "^https://docs\\.google\\.com" },
+    { "pattern": "^https://calendar\\.google\\.com" },
+    { "pattern": "^https://groups\\.google\\.com" },
+    { "pattern": "^https://llm-d\\.ai" }
+  ],
+  "aliveStatusCodes": [200, 206, 301, 302, 307, 308]
+}

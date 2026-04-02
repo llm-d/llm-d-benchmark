@@ -298,6 +298,12 @@ storage:
 # HUGGINGFACE CONFIGURATION
 # ============================================================================
 huggingface:
+  # Auto-computed at render time based on whether a valid HF token is available.
+  # When true: the HF token secret is created, download job authenticates,
+  # and EPP/harness pods mount the secret.
+  # When false: no secret, no auth -- works for public (non-gated) models.
+  # Gated models without a token fail early at the model access check.
+  enabled: true
   secretName: llm-d-hf-token
   tokenKey: HF_TOKEN
   token: ""  # Plain-text HF token; auto-detected from HF_TOKEN env var if empty
@@ -387,6 +393,13 @@ monitoring:
   enableUserWorkload: true
   podmonitor:
     enabled: true
+  # Install PodMonitor/ServiceMonitor CRDs if they don't exist on the cluster.
+  # Set to true for clusters without Prometheus Operator (e.g., Kind, vanilla K8s).
+  # OpenShift clusters already have these CRDs via the monitoring stack.
+  installPrometheusCrds: false
+  prometheusCrdUrls:
+    - https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
+    - https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml
   metricsPath: /metrics
   scrapeInterval: "30s"
   metricsScrapeEnabled: false
@@ -470,6 +483,7 @@ gateway:
   namespace: auto  # Synced with namespace.name; resolved at plan time
   className: istio
   provider: istio
+  providerNamespace: istio-system
   version: *istio_version
   logLevel: error
   service:

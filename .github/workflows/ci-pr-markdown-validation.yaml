@@ -1,4 +1,4 @@
-name: CI - PR Checks
+name: CI - PR Markdown Validation Check
 
 on:
   pull_request:

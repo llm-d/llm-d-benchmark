@@ -200,7 +200,7 @@ And see results in the output directory `~/data/shared-prefix-cache-aware`
 ## PD Disaggregation with vllm-benchmark
 
 - Scenario: [pd-disaggregation.sh](./scenarios/pd-disaggregation.sh)
-- Experiment: [pd-disaggregation.yaml](https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/experiments/pd-disaggregation.yaml)
+- Experiment: [pd-disaggregation.yaml](https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/workload/experiments/pd-disaggregation.yaml)
 
 Command (from `llm-d-benchmark` root directory):
 

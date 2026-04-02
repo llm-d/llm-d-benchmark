@@ -53,6 +53,7 @@ spec:
       value: "{{ experiment_id }}"
     - name: RAYON_NUM_THREADS
       value: "{{ harness.inferencePerf.rayonNumThreads }}"
+{% if huggingface.enabled %}
     - name: HF_TOKEN_SECRET
       value: "{{ huggingface.secretName }}"
     - name: HUGGING_FACE_HUB_TOKEN
@@ -60,6 +61,7 @@ spec:
         secretKeyRef:
           name: {{ huggingface.secretName }}
           key: {{ huggingface.tokenKey }}
+{% endif %}
     - name: POD_NAME
       valueFrom:
         fieldRef:
