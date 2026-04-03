@@ -140,6 +140,31 @@ def aggregate_metrics():
             for metric_name, values in metrics.items():
                 pod_metrics[pod_name][metric_name].extend(values)
 
+    # Compute ratio metrics per-file before aggregation
+    # Structure: {pod_name: {ratio_metric_name: [per-file ratio values]}}
+    ratio_definitions = [
+        ('vllm:prefix_cache_hit_rate', 'vllm:prefix_cache_hits_total',
+         'vllm:prefix_cache_queries_total'),
+        ('vllm:external_prefix_cache_hit_rate',
+         'vllm:external_prefix_cache_hits_total',
+         'vllm:external_prefix_cache_queries_total'),
+    ]
+    for pod_name, metrics in pod_metrics.items():
+        for ratio_name, num_metric, den_metric in ratio_definitions:
+            if num_metric in metrics and den_metric in metrics:
+                num_vals = metrics[num_metric]
+                den_vals = metrics[den_metric]
+                # Values are collected in file order; pair by index
+                ratio_vals = []
+                for i in range(min(len(num_vals), len(den_vals))):
+                    if den_vals[i] > 0:
+                        ratio_vals.append(
+                            num_vals[i] / den_vals[i] * 100)
+                    else:
+                        ratio_vals.append(0.0)
+                if ratio_vals:
+                    metrics[ratio_name] = ratio_vals
+
     # Calculate statistics for each metric
     results = {}
     for pod_name, metrics in pod_metrics.items():
@@ -208,6 +233,9 @@ def get_metric_unit(metric_name):
         'vllm:num_requests_running': 'count',
         'vllm:num_requests_waiting': 'count',
         'vllm:num_requests_swapped': 'count',
+        # Computed ratio metrics
+        'vllm:prefix_cache_hit_rate': '%',
+        'vllm:external_prefix_cache_hit_rate': '%',
     }
     return units.get(metric_name, '')
 
