@@ -255,6 +255,8 @@ class DeployHarnessStep(Step):
                 # Service account override (-q)
                 if context.harness_service_account:
                     template_values["harness"]["serviceAccount"] = context.harness_service_account
+                elif plan_config and "serviceAccount" in plan_config:
+                    template_values["harness"]["serviceAccount"] = plan_config["serviceAccount"].get("name", "default")
 
                 # Extra env vars to propagate into pod (-g)
                 if context.harness_envvars_to_pod:

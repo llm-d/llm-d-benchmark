@@ -394,6 +394,38 @@ def test_model_serving(
     """
     protocol = "https" if str(port) == "443" else "http"
     url = f"{protocol}://{host}:{port}/v1/models"
+    
+    # Auto-ensure service account and RBAC
+    sa_name = service_account or (plan_config.get("serviceAccount", {}).get("name") if plan_config else "default")
+    if sa_name:
+        if sa_name != "default":
+            sa_check = cmd.kube("get", "sa", sa_name, "--namespace", namespace, check=False)
+            if not sa_check.success or "not found" in (sa_check.stderr + sa_check.stdout).lower():
+                cmd.logger.log_info(f"ServiceAccount '{sa_name}' not found, auto-creating it...")
+                cmd.kube("create", "sa", sa_name, "--namespace", namespace, check=False)
+        
+        # Always ensure the required RBAC role exists
+        role_name = f"{sa_name}-role"
+        role_check = cmd.kube("get", "role", role_name, "--namespace", namespace, check=False)
+        if not role_check.success or "not found" in (role_check.stderr + role_check.stdout).lower():
+            cmd.logger.log_info(f"RBAC Role '{role_name}' missing for ServiceAccount '{sa_name}', auto-creating it...")
+            cmd.kube(
+                "create", "role", role_name,
+                "--verb=get,list", "--resource=configmaps,pods,pods/log",
+                "--namespace", namespace,
+                check=False
+            )
+            
+            # Always ensure RoleBinding
+            binding_name = f"{sa_name}-binding"
+            cmd.kube(
+                "create", "rolebinding", binding_name,
+                f"--role={role_name}",
+                f"--serviceaccount={namespace}:{sa_name}",
+                "--namespace", namespace,
+                check=False
+            )
+
     override_args = _build_overrides(plan_config, service_account=service_account)
     curl_image = "curlimages/curl"
     last_error: str | None = None
