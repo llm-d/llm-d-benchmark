@@ -56,30 +56,24 @@ def create_component_observability(
     metric_mapping = {
         # Cache metrics
         'vllm:kv_cache_usage_perc': ('kv_cache_usage', Units.PERCENT),
-        'kv_cache_usage_percent': ('kv_cache_usage', Units.PERCENT),
-        'cache_hit_rate_percent': ('cache_hit_rate', Units.PERCENT),
         'vllm:gpu_cache_usage_perc': ('gpu_cache_usage', Units.PERCENT),
         'vllm:cpu_cache_usage_perc': ('cpu_cache_usage', Units.PERCENT),
         # Memory metrics
         'vllm:gpu_memory_usage_bytes': ('gpu_memory_usage', Units.GIB),
         'DCGM_FI_DEV_FB_USED': ('gpu_memory_usage', Units.GIB),
-        'gpu_memory_used_gb': ('gpu_memory_usage', Units.GIB),
         'vllm:cpu_memory_usage_bytes': ('cpu_memory_usage', Units.GIB),
         'container_memory_usage_bytes': ('cpu_memory_usage', Units.GIB),
-        'cpu_memory_used_gb': ('cpu_memory_usage', Units.GIB),
         # Compute metrics
         'DCGM_FI_DEV_GPU_UTIL': ('gpu_utilization', Units.PERCENT),
-        'gpu_utilization_percent': ('gpu_utilization', Units.PERCENT),
         'container_cpu_usage_seconds_total': ('cpu_utilization', Units.PERCENT),
         # Performance metrics
         'DCGM_FI_DEV_POWER_USAGE': ('power_consumption', Units.WATTS),
         # Queue metrics
         'vllm:num_requests_running': ('running_requests', Units.COUNT),
-        'running_requests': ('running_requests', Units.COUNT),
         'vllm:num_requests_waiting': ('waiting_requests', Units.COUNT),
-        'waiting_requests': ('waiting_requests', Units.COUNT),
         'vllm:num_requests_swapped': ('swapped_requests', Units.COUNT),
-        'swapped_requests': ('swapped_requests', Units.COUNT),
+        # Preemption metrics
+        'vllm:num_preemptions_total': ('preemptions', Units.COUNT),
     }
 
     for metric_name, metric_data in metrics_summary.items():

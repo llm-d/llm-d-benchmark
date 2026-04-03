@@ -181,39 +181,33 @@ def get_metric_unit(metric_name):
     units = {
         # Cache metrics
         'vllm:kv_cache_usage_perc': '%',
-        'kv_cache_usage_percent': '%',
-        'cache_hit_rate_percent': '%',
         'vllm:gpu_cache_usage_perc': '%',
         'vllm:cpu_cache_usage_perc': '%',
-        'cache_hits': 'count',
-        'cache_misses': 'count',
+        'vllm:prefix_cache_hits_total': 'tokens',
+        'vllm:prefix_cache_queries_total': 'tokens',
+        'vllm:external_prefix_cache_hits_total': 'tokens',
+        'vllm:external_prefix_cache_queries_total': 'tokens',
         # Memory metrics
         'vllm:gpu_memory_usage_bytes': 'bytes',
         'DCGM_FI_DEV_FB_USED': 'bytes',
         'vllm:cpu_memory_usage_bytes': 'bytes',
         'container_memory_usage_bytes': 'bytes',
-        'gpu_memory_used_gb': 'GB',
-        'gpu_memory_total_gb': 'GB',
-        'gpu_memory_usage_percent': '%',
-        'cpu_memory_used_gb': 'GB',
         # Compute metrics
         'DCGM_FI_DEV_GPU_UTIL': '%',
         'container_cpu_usage_seconds_total': 'seconds',
-        'gpu_utilization_percent': '%',
         # Performance metrics
         'DCGM_FI_DEV_POWER_USAGE': 'watts',
-        'power_consumption_watts': 'watts',
-        'prompt_throughput_tokens_per_sec': 'tokens/s',
-        'generation_throughput_tokens_per_sec': 'tokens/s',
+        # NIXL KV transfer metrics
+        'vllm:nixl_xfer_time_seconds_sum': 'seconds',
+        'vllm:nixl_xfer_time_seconds_count': 'count',
+        'vllm:nixl_bytes_transferred_sum': 'bytes',
+        'vllm:nixl_bytes_transferred_count': 'count',
         # Preemption metrics
         'vllm:num_preemptions_total': 'count',
         # Queue metrics
         'vllm:num_requests_running': 'count',
         'vllm:num_requests_waiting': 'count',
         'vllm:num_requests_swapped': 'count',
-        'running_requests': 'count',
-        'waiting_requests': 'count',
-        'swapped_requests': 'count',
     }
     return units.get(metric_name, '')
 
