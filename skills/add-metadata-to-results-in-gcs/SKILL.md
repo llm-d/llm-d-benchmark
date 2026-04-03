@@ -23,7 +23,7 @@ Inject stack metadata (discovered from a live Kubernetes service or provided exp
 
 ```bash
 # Add stack metadata to a specific benchmark run folder in GCS
-/add-metadata gs://my-bucket/benchmark_results with endpoint http://35.212.211.79
+/add-metadata gs://my-bucket/benchmark_results with endpoint http://192.0.2.1
 ```
 
 ## Workflow
@@ -32,7 +32,7 @@ Inject stack metadata (discovered from a live Kubernetes service or provided exp
 
 Extract from the user's command:
 - **GCS Source**: Path to the benchmark results folder in GCS (e.g., `gs://my-bucket/benchmark_results`)
-- **Endpoint**: URL of the ModelService or GAIE endpoint serving the benchmarked model (e.g., `http://35.212.211.79`)
+- **Endpoint**: URL of the ModelService or GAIE endpoint serving the benchmarked model (e.g., `http://192.0.2.1`)
 
 ### Step 2: Verify Cluster Context
 

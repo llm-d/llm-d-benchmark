@@ -147,20 +147,23 @@ def get_configmap(
     Returns:
         dict: ConfigMap contents as a dict, or empty dict if retrieval fails.
     """
-    if not context_dict:
-        sys.stderr.write("Empty context dictionary provided\n")
-        return {}
-
     try:
         from kubernetes import client, config as k8s_config
 
-        # Write context to a temporary file
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            yaml.dump(context_dict, f)
-            kubeconfig_path = f.name
+        # Try in-cluster config first
+        try:
+            k8s_config.load_incluster_config()
+        except k8s_config.ConfigException:
+            if not context_dict:
+                sys.stderr.write("Empty context dictionary provided and not in-cluster\n")
+                return {}
+            # Write context to a temporary file
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+                yaml.dump(context_dict, f)
+                kubeconfig_path = f.name
 
-        # Load the Kubernetes config from the temporary file
-        k8s_config.load_kube_config(config_file=kubeconfig_path)
+            # Load the Kubernetes config from the temporary file
+            k8s_config.load_kube_config(config_file=kubeconfig_path)
 
         # Create API client
         v1 = client.CoreV1Api()
