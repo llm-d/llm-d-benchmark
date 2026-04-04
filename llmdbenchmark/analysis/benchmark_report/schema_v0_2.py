@@ -921,6 +921,10 @@ class Run(BaseModel):
     """Time details of experiment."""
     user: str | None = None
     """Username that executed experiment."""
+    description: str | None = None
+    """User-provided description of the experiment."""
+    keywords: list[str] | None = None
+    """User-provided keywords/tags for the experiment."""
 
 
 class Scenario(BaseModel):

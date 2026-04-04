@@ -227,6 +227,9 @@ def _populate_run(ev_dict: dict) -> dict:
     except FileNotFoundError:
         namespace = ev_dict.get("vllm_common_namespace", "")
 
+    description_text = os.environ.get("LLMDBENCH_DESCRIPTION_TEXT")
+    description_keywords = os.environ.get("LLMDBENCH_DESCRIPTION_KEYWORDS")
+
     br_dict = {
         "run": {
             "eid": eid,
@@ -238,6 +241,12 @@ def _populate_run(ev_dict: dict) -> dict:
                 "end": _get_harness_meta("harness_stop", "LLMDBENCH_HARNESS_STOP"),
                 "duration": _get_harness_meta("harness_delta", "LLMDBENCH_HARNESS_DELTA"),
             },
+            "description": description_text if description_text else None,
+            "keywords": (
+                [k.strip() for k in description_keywords.split(",") if k.strip()]
+                if description_keywords
+                else None
+            ),
         },
     }
     return br_dict
