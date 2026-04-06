@@ -287,6 +287,68 @@ This allows public models (e.g. `facebook/opt-125m`) to be deployed without a to
 
 The `enabled` flag is auto-computed during plan rendering by `_resolve_hf_token()` in `render_plans.py`. It checks `HF_TOKEN`, `LLMDBENCH_HF_TOKEN`, and the scenario YAML in that order.
 
+## Chart Versions
+
+All Helm chart and component versions are centralized in the `chartVersions` section of `defaults.yaml`. This is the single place to bump versions when upgrading components.
+
+| Field | Default | Description |
+|---|---|---|
+| `chartVersions.istioBase` | `1.29.1` | Istio base chart version |
+| `chartVersions.istiod` | `1.29.1` | Istiod chart version (also used as gateway version) |
+| `chartVersions.llmDInfra` | `auto` | llm-d-infra Helm chart (auto-resolved via helm) |
+| `chartVersions.llmDModelservice` | `auto` | llm-d-modelservice Helm chart (auto-resolved via helm) |
+| `chartVersions.inferencePool` | `v1.3.0` | Inference pool chart version |
+| `chartVersions.gaie` | `v1.3.1` | GAIE chart version |
+| `chartVersions.wva` | `auto` | Workload Variant Autoscaler chart (auto-resolved) |
+| `chartVersions.kgateway` | `v2.2.1` | kgateway chart version |
+| `chartVersions.lws` | `0.8.0` | LeaderWorkerSet chart version |
+
+Versions set to `auto` are resolved at plan time by `VersionResolver` using `helm search repo` or OCI registry queries (skopeo/crane). Fixed versions are used as-is.
+
+### Overriding versions in a scenario
+
+Add a `chartVersions` section to your scenario YAML. Only include the versions you want to change — the rest inherit from defaults:
+
+```yaml
+scenario:
+  - name: "my-upgrade-test"
+    chartVersions:
+      llmDModelservice: "0.5.0"    # pin to specific version
+      kgateway: "v2.3.0"           # upgrade kgateway
+```
+
+### Pinning all versions for reproducibility
+
+To ensure a benchmark run is fully reproducible, pin every `auto` version to a specific value. Run `plan` first to see what `auto` resolves to, then copy those values into your scenario:
+
+```yaml
+scenario:
+  - name: "reproducible-bench"
+    chartVersions:
+      llmDInfra: "v1.4.0"          # was auto
+      llmDModelservice: "v0.4.9"   # was auto
+      wva: "0.5.1"                 # was auto
+```
+
+### Upgrading Istio
+
+Istio uses two charts (`istio-base` and `istiod`) that must be the same version. Override both:
+
+```yaml
+chartVersions:
+  istioBase: "1.30.0"
+  istiod: "1.30.0"
+```
+
+### How `auto` resolution works
+
+1. For charts with a `helmRepositories` entry: queries the repo via `helm search repo` or OCI registry
+2. Falls back to `skopeo list-tags` or `crane ls` for OCI registries
+3. Selects the latest semver-compatible tag
+4. Resolved versions are logged during `plan`: `📦 Resolved chart llmDInfra to v1.4.0 (via repo URL)`
+
+> **Note:** `auto` versions may change between runs as upstream charts release new versions. Pin versions in your scenario for consistent results across runs.
+
 ## KV Transfer Configuration
 
 The `vllmCommon.kvTransfer` section controls the `--kv-transfer-config` argument passed to the `vllm serve` command. This is how vLLM knows which KV cache transfer connector to use and how to configure it.

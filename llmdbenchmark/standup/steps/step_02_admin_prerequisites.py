@@ -339,7 +339,7 @@ class AdminPrerequisitesStep(Step):
             )
             return
 
-        self._install_lws(cmd, lws_config, errors)
+        self._install_lws(cmd, lws_config, errors, plan_config=plan_config)
 
     def _install_prometheus_crds_if_needed(
         self,
@@ -422,7 +422,7 @@ class AdminPrerequisitesStep(Step):
 
     def _install_kgateway(self, cmd: CommandExecutor, plan_config: dict, errors: list):
         kgw = plan_config.get("gatewayProviders", {}).get("kgateway", {})
-        chart_version = kgw.get("chartVersion", "")
+        chart_version = plan_config.get("chartVersions", {}).get("kgateway", "") or kgw.get("chartVersion", "")
         namespace = self._require_config(kgw, "namespace")
         helm_repo = kgw.get("helmRepository", "")
 
@@ -502,8 +502,11 @@ class AdminPrerequisitesStep(Step):
         if not result.success:
             errors.append(f"Failed to install Istio via helmfile: {result.stderr}")
 
-    def _install_lws(self, cmd: CommandExecutor, lws_config: dict, errors: list):
-        version = lws_config.get("chartVersion", "")
+    def _install_lws(self, cmd: CommandExecutor, lws_config: dict, errors: list, plan_config: dict | None = None):
+        version = ""
+        if plan_config:
+            version = plan_config.get("chartVersions", {}).get("lws", "")
+        version = version or lws_config.get("chartVersion", "")
         namespace = self._require_config(lws_config, "namespace")
         helm_repo = lws_config.get("helmRepository", "")
 

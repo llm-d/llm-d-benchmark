@@ -378,6 +378,8 @@ chartVersions:
   inferencePool: v1.3.0
   gaie: v1.3.1
   wva: auto
+  kgateway: v2.2.1
+  lws: "0.8.0"
 
 # ============================================================================
 # SERVICE ACCOUNT CONFIGURATION
@@ -484,7 +486,7 @@ gateway:
   className: istio
   provider: istio
   providerNamespace: istio-system
-  version: *istio_version
+  # Gateway version is derived from chartVersions.istiod at plan time
   logLevel: error
   service:
     type: NodePort
@@ -1209,7 +1211,7 @@ wva:
 # ============================================================================
 gatewayProviders:
   kgateway:
-    chartVersion: v2.2.1
+    # Chart version managed in chartVersions.kgateway
     namespace: kgateway-system
     helmRepository: oci://cr.kgateway.dev/kgateway-dev/charts
 
@@ -1217,7 +1219,7 @@ gatewayProviders:
 # LWS (LeaderWorkerSet)
 # ============================================================================
 lws:
-  chartVersion: "0.8.0"
+  # Chart version managed in chartVersions.lws
   namespace: lws-system
   helmRepository: oci://ghcr.io/kubernetes-sigs/lws
 

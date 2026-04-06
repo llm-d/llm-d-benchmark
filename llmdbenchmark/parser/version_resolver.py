@@ -318,7 +318,12 @@ class VersionResolver:
                     unresolved.append(f"chartVersions.{chart_key}")
 
     def _resolve_gateway_version(self, values: dict) -> None:
-        """Resolve gateway version from the istio chart version."""
+        """Resolve gateway version from the istio chart version.
+
+        Kept for backward compatibility with configs that still set
+        ``gateway.version``.  New configs should use ``chartVersions.istiod``
+        directly.
+        """
         gateway = values.get("gateway", {})
         if gateway.get("version") == "auto":
             istio_version = values.get("chartVersions", {}).get("istiod")
@@ -340,7 +345,8 @@ class VersionResolver:
         standalone = values.get("standalone", {}).get("image", {})
         if isinstance(standalone, dict) and standalone.get("tag") == "auto":
             unresolved.append("standalone.image.tag")
-        if values.get("gateway", {}).get("version") == "auto":
+        gw_ver = values.get("gateway", {}).get("version")
+        if gw_ver == "auto":
             unresolved.append("gateway.version")
         wva = values.get("wva", {}).get("image", {})
         if isinstance(wva, dict) and wva.get("tag") == "auto":
