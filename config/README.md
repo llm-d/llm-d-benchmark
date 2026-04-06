@@ -330,12 +330,6 @@ scenario:
       uriProtocol: hf     # No PVC, no download job — fetch at runtime
 ```
 
-### Code path
-
-1. `llmdbenchmark/standup/steps/step_04_model_namespace.py` — `_requires_pvc_download()` returns `False` when `uriProtocol != "pvc"`
-2. `config/templates/jinja/13_ms-values.yaml.j2` — conditionally generates `hf://` or `pvc://` URI
-3. `config/templates/jinja/04_download_job.yaml.j2` — only rendered/applied when protocol is `pvc`
-
 ## KV Transfer Configuration
 
 The `vllmCommon.kvTransfer` section controls the `--kv-transfer-config` argument passed to the `vllm serve` command. This is how vLLM knows which KV cache transfer connector to use and how to configure it.
