@@ -5,6 +5,7 @@ from pathlib import Path
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.smoketests import get_validator
+from llmdbenchmark.utilities.endpoint import cleanup_ephemeral_pods
 
 
 class InferenceTestStep(Step):
@@ -35,6 +36,13 @@ class InferenceTestStep(Step):
         stack_name = stack_path.name
         validator = get_validator(stack_name)
         report = validator.run_inference_test(context, stack_path)
+
+        # Clean up ephemeral curl pods left behind by health + inference checks
+        if not context.dry_run:
+            namespace = context.harness_namespace or context.namespace
+            if namespace:
+                cmd = context.require_cmd()
+                cleanup_ephemeral_pods(cmd, namespace, context.logger)
 
         if report.passed:
             return StepResult(

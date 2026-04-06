@@ -12,6 +12,8 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.utilities.endpoint import (
     _rand_suffix,
     _build_overrides,
+    _ephemeral_label_args,
+    cleanup_ephemeral_pods,
     find_standalone_endpoint,
     find_gateway_endpoint,
     test_model_serving,
@@ -222,6 +224,10 @@ class SmoketestStep(Step):
                 else:
                     errors.extend(route_errors)
 
+        # Clean up any ephemeral curl pods left behind by smoketest checks
+        if not context.dry_run:
+            cleanup_ephemeral_pods(cmd, namespace, context.logger)
+
         if errors:
             for err in errors:
                 context.logger.log_error(f"Smoketest: {err}")
@@ -289,6 +295,7 @@ class SmoketestStep(Step):
                     "--restart=Never", "--namespace", namespace,
                     f"--image={curl_image}",
                 ]
+                + _ephemeral_label_args()
                 + override_args
                 + ["--command", "--", "sh", "-c", curl_cmd]
             )
