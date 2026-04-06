@@ -287,6 +287,55 @@ This allows public models (e.g. `facebook/opt-125m`) to be deployed without a to
 
 The `enabled` flag is auto-computed during plan rendering by `_resolve_hf_token()` in `render_plans.py`. It checks `HF_TOKEN`, `LLMDBENCH_HF_TOKEN`, and the scenario YAML in that order.
 
+## Model Artifact Protocol (`modelservice.uriProtocol`)
+
+Controls how the modelservice Helm chart locates and loads model weights. Set via `modelservice.uriProtocol` in your scenario or defaults.
+
+| Protocol | `modelArtifacts.uri` Generated | PVC Created | Download Job | Model Loading |
+|----------|-------------------------------|-------------|--------------|---------------|
+| `pvc` (default) | `pvc://<modelPvc.name>/<model.path>` | Yes | Yes (pre-download to PVC) | Served from PVC mount |
+| `hf` | `hf://<model.huggingfaceId>` | No | No | Downloaded at runtime by modelservice |
+
+### How it works
+
+**`pvc://` protocol (default):**
+
+1. Step 04 creates a PersistentVolumeClaim (`storage.modelPvc`)
+2. Step 04 launches a download Job (`04_download_job.yaml.j2`) that runs `hf download` to fetch the model from HuggingFace Hub into the PVC
+3. Step 04 waits for the download to complete
+4. Template 13 generates `modelArtifacts.uri: pvc://<pvc-name>/<model-path>`
+5. The modelservice Helm chart mounts the PVC and serves from it
+
+This is the recommended protocol for production — models are pre-cached and startup is fast.
+
+**`hf://` protocol:**
+
+1. Step 04 skips PVC creation and download job entirely
+2. Template 13 generates `modelArtifacts.uri: hf://<model.huggingfaceId>`
+3. The modelservice Helm chart downloads the model at pod startup time from HuggingFace Hub
+4. For gated models, `huggingface.secretName` is passed as `authSecretName` so the chart can authenticate
+
+This is useful for CI/CD (no PVC needed), quick testing, or when storage provisioning is unavailable.
+
+### Scenario example
+
+```yaml
+scenario:
+  - name: "my-hf-deploy"
+    model:
+      name: facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
+    modelservice:
+      enabled: true
+      uriProtocol: hf     # No PVC, no download job — fetch at runtime
+```
+
+### Code path
+
+1. `llmdbenchmark/standup/steps/step_04_model_namespace.py` — `_requires_pvc_download()` returns `False` when `uriProtocol != "pvc"`
+2. `config/templates/jinja/13_ms-values.yaml.j2` — conditionally generates `hf://` or `pvc://` URI
+3. `config/templates/jinja/04_download_job.yaml.j2` — only rendered/applied when protocol is `pvc`
+
 ## Chart Versions
 
 All Helm chart and component versions are centralized in the `chartVersions` section of `defaults.yaml`. This is the single place to bump versions when upgrading components.
@@ -348,7 +397,6 @@ chartVersions:
 4. Resolved versions are logged during `plan`: `📦 Resolved chart llmDInfra to v1.4.0 (via repo URL)`
 
 > **Note:** `auto` versions may change between runs as upstream charts release new versions. Pin versions in your scenario for consistent results across runs.
-
 ## KV Transfer Configuration
 
 The `vllmCommon.kvTransfer` section controls the `--kv-transfer-config` argument passed to the `vllm serve` command. This is how vLLM knows which KV cache transfer connector to use and how to configure it.
