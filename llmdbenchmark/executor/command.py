@@ -250,9 +250,17 @@ class CommandExecutor:
                 the stored context. Set to False for gateway provider
                 installs that need helmfile to resolve release namespaces
                 from the helmfile itself (e.g., istio-system), not from
-                the kubeconfig context namespace.
+                the kubeconfig context namespace. When False, the stored
+                kubeconfig path is exported as KUBECONFIG env var so helm
+                can still reach the cluster.
         """
-        parts = ["helmfile"]
+        parts = []
+        if not use_kubeconfig and self.kubeconfig:
+            # Export KUBECONFIG env var so helm/helmfile can find the
+            # cluster without injecting --kubeconfig (which would set
+            # the namespace context and break helmfile 'needs:' resolution).
+            parts.append(f"KUBECONFIG={self.kubeconfig}")
+        parts.append("helmfile")
         if use_kubeconfig:
             parts.extend(self._kubeconfig_args())
         parts.extend(args)

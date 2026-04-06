@@ -24,6 +24,7 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.utilities.endpoint import (
     _rand_suffix,
     _build_overrides,
+    _ephemeral_label_args,
     find_standalone_endpoint,
     find_gateway_endpoint,
 )
@@ -433,6 +434,7 @@ class InferenceTestStep(Step):
                 "--restart=Never", "--namespace", namespace,
                 f"--image={curl_image}",
             ]
+            + _ephemeral_label_args()
             + override_args
             + ["--command", "--", "sh", "-c", curl_cmd]
         )

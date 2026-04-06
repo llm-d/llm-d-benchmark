@@ -4,7 +4,7 @@ from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
-from llmdbenchmark.utilities.endpoint import test_model_serving
+from llmdbenchmark.utilities.endpoint import test_model_serving, cleanup_ephemeral_pods
 
 
 class VerifyModelStep(Step):
@@ -88,6 +88,10 @@ class VerifyModelStep(Step):
             retry_interval=10,
             service_account=context.harness_service_account,
         )
+
+        # Clean up ephemeral smoketest/curl pods
+        if not context.dry_run:
+            cleanup_ephemeral_pods(cmd, namespace, context.logger)
 
         if error:
             return StepResult(

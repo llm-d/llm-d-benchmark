@@ -17,6 +17,10 @@ def _rand_suffix(length: int = 8) -> str:
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
 
+EPHEMERAL_POD_LABEL = "llm-d-benchmark/ephemeral=true"
+"""Label applied to all ephemeral curl/smoketest pods for cleanup."""
+
+
 def _build_overrides(plan_config: dict | None, service_account: str | None = None) -> list[str]:
     """Build --overrides args for ephemeral curl pods (imagePullSecrets, serviceAccount)."""
     overrides: dict = {}
@@ -26,7 +30,7 @@ def _build_overrides(plan_config: dict | None, service_account: str | None = Non
             overrides.setdefault("spec", {})["imagePullSecrets"] = [
                 {"name": pull_secret}
             ]
-            
+
     sa_name = service_account or (plan_config.get("serviceAccount", {}).get("name") if plan_config else None)
     if sa_name:
         overrides.setdefault("spec", {})["serviceAccountName"] = sa_name
@@ -34,6 +38,34 @@ def _build_overrides(plan_config: dict | None, service_account: str | None = Non
     if overrides:
         return ["--overrides", f"'{json.dumps(overrides)}'"]
     return []
+
+
+def _ephemeral_label_args() -> list[str]:
+    """Return kubectl args to label ephemeral pods for cleanup."""
+    return [f"--labels={EPHEMERAL_POD_LABEL}"]
+
+
+def cleanup_ephemeral_pods(
+    cmd: CommandExecutor, namespace: str, logger=None,
+) -> None:
+    """Delete all completed ephemeral pods created by smoketest/endpoint checks.
+
+    Targets pods with the ``llm-d-benchmark/ephemeral=true`` label that are
+    in Succeeded or Failed phase.
+    """
+    for phase in ("Succeeded", "Failed"):
+        result = cmd.kube(
+            "delete", "pods",
+            f"-l", EPHEMERAL_POD_LABEL,
+            f"--field-selector=status.phase={phase}",
+            "--namespace", namespace,
+            check=False,
+        )
+        if result.success and result.stdout.strip() and "No resources" not in result.stdout:
+            if logger:
+                logger.log_info(
+                    f"Cleaned up ephemeral pods ({phase}) in ns/{namespace}"
+                )
 
 
 def find_standalone_endpoint(
@@ -450,6 +482,7 @@ def test_model_serving(
                 namespace,
                 f"--image={curl_image}",
             ]
+            + _ephemeral_label_args()
             + override_args
             + [
                 "--command",
