@@ -39,6 +39,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
 
     # Platform detection flags (set by step 00)
     is_openshift: bool = False
+    is_gke: bool = False
     is_kind: bool = False
     is_minikube: bool = False
     # Resolved cluster metadata
@@ -156,6 +157,8 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
         """Human-readable platform label (e.g. 'OpenShift', 'Kind')."""
         if self.is_openshift:
             return "OpenShift"
+        if self.is_gke:
+            return "GKE"
         if self.is_kind:
             return "Kind"
         if self.is_minikube:
