@@ -306,19 +306,6 @@ class WorkloadMonitoringStep(Step):
     ) -> bool:
         """Return True if the Jinja template will actually render acceleratorType
         for the given method given its config.
-
-        Mirrors the guards in the templates so the validator does not flag
-        labels that are never actually used:
-
-        - standalone: ``standalone.enabled and standalone.parallelism.tensor > 0``
-          (see 14_standalone-deployment_yaml.j2 lines 1, 80)
-        - decode:     ``decode_create and decode_accel_count > 0`` where
-          ``decode_create = decode.enabled or decode.replicas > 0`` and
-          ``decode_accel_count = decode.accelerator.count if defined else
-          decode.parallelism.tensor``
-          (see 13_ms-values.yaml.j2 lines 11, 252)
-        - prefill:    same logic as decode, with ``prefill`` (see 13_ms-values.yaml.j2
-          lines 12, 674)
         """
         def _coerce_int(value, default: int = 0) -> int:
             try:
