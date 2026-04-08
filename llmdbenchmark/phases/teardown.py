@@ -5,6 +5,8 @@ Public API:
         by the experiment orchestrator (for per-treatment cleanup).
     ``execute_teardown(args, logger, render_plan_errors)`` -- top-level CLI
         entry point.
+
+The teardown completion banner lives in ``phases.banners``.
 """
 
 import sys
@@ -15,6 +17,7 @@ from llmdbenchmark.executor.step import Phase
 from llmdbenchmark.executor.step_executor import StepExecutor
 from llmdbenchmark.teardown.steps import get_teardown_steps
 
+from llmdbenchmark.phases.banners import print_teardown_banner
 from llmdbenchmark.phases.common import (
     PhaseError,
     load_plan_info,
@@ -83,14 +86,4 @@ def execute_teardown(args, logger, render_plan_errors):
         logger.log_error(str(e))
         sys.exit(1)
 
-    ns = context.namespace or "unknown"
-    harness_ns = context.harness_namespace or ns
-    mode = "deep clean" if context.deep_clean else "normal"
-    logger.line_break()
-    logger.log_info(
-        f"Teardown complete ({mode}). "
-        f'Namespaces: "{ns}", "{harness_ns}". '
-        f"Methods: {', '.join(context.deployed_methods)}. "
-        f"Release: {context.release}.",
-        emoji="✅",
-    )
+    print_teardown_banner(context, logger)

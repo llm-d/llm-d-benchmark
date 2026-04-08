@@ -15,7 +15,7 @@ from ``llmdbenchmark.cli`` (both would create import cycles).
 
 import json
 
-import yaml as _yaml
+import yaml
 
 from llmdbenchmark.config import config
 from llmdbenchmark.parser.render_specification import RenderSpecification
@@ -34,7 +34,7 @@ def load_stack_info_from_config(config_file, stack_name=""):
     """Parse a single stack's config.yaml into a plan-info dict."""
     try:
         with open(config_file, encoding="utf-8") as f:
-            plan_config = _yaml.safe_load(f)
+            plan_config = yaml.safe_load(f)
         if plan_config:
             return {
                 "stack_name": stack_name,
@@ -53,7 +53,7 @@ def load_stack_info_from_config(config_file, stack_name=""):
                     plan_config.get("modelservice", {}).get("enabled", False)
                 ),
             }
-    except (OSError, _yaml.YAMLError):
+    except (OSError, yaml.YAMLError):
         pass
     return {}
 

@@ -4,8 +4,9 @@ Public API:
     ``do_run(args, logger, render_plan_errors, experiment_file_override=None)`` --
         re-entrant core used by the experiment orchestrator.
     ``execute_run(args, logger, render_plan_errors)`` -- top-level CLI entry
-        point.  Prints the BENCHMARK RUN SUMMARY banner and stores run
-        parameters as a ConfigMap in the namespace.
+        point.  Prints the BENCHMARK RUN SUMMARY banner (via
+        ``phases.banners``) and stores run parameters as a ConfigMap in the
+        namespace.
     ``store_run_parameters_configmap(...)`` -- append a timestamped run entry
         to the ``llm-d-benchmark-run-parameters`` ConfigMap for auditability.
 """
@@ -16,7 +17,7 @@ import socket
 import sys
 from datetime import datetime, timezone
 
-import yaml as _yaml
+import yaml
 
 from llmdbenchmark.config import config
 from llmdbenchmark.executor.context import ExecutionContext
@@ -24,6 +25,7 @@ from llmdbenchmark.executor.step import Phase
 from llmdbenchmark.executor.step_executor import StepExecutor
 from llmdbenchmark.run.steps import get_run_steps
 
+from llmdbenchmark.phases.banners import print_run_banner
 from llmdbenchmark.phases.common import (
     PhaseError,
     load_all_stacks_info,
@@ -113,58 +115,16 @@ def execute_run(args, logger, render_plan_errors):
         logger.log_error(str(e))
         sys.exit(1)
 
-    endpoint_url = getattr(args, "endpoint_url", None)
-    run_config_file = getattr(args, "run_config", None)
-    is_run_only = bool(endpoint_url or run_config_file)
-    mode = "run-only" if is_run_only else "full"
-    if context.generate_config_only:
-        mode = "generate-config"
-    harness = context.harness_name or "inference-perf"
-
-    # --- Summary banner ---
-    results_dir = context.run_results_dir()
-    namespace = context.harness_namespace or context.namespace or "unknown"
-    model_name = context.model_name or "unknown"
-    workload = context.harness_profile or "unknown"
-    experiment_ids = getattr(context, "experiment_ids", [])
-    parallelism = context.harness_parallelism or 1
-
-    logger.line_break()
-    logger.log_info("=" * 60)
-    logger.log_info("BENCHMARK RUN SUMMARY")
-    logger.log_info("=" * 60)
-    logger.log_info(f"  Harness:       {harness}")
-    logger.log_info(f"  Workload:      {workload}")
-    logger.log_info(f"  Model:         {model_name}")
-    logger.log_info(f"  Namespace:     {namespace}")
-    logger.log_info(f"  Mode:          {mode}")
-    logger.log_info(f"  Parallelism:   {parallelism}")
-    if experiment_ids:
-        logger.log_info(f"  Treatments:    {len(experiment_ids)}")
-        for eid in experiment_ids:
-            logger.log_info(f"    - {eid}")
-            # Show per-parallelism result dirs
-            for i in range(1, parallelism + 1):
-                local_path = results_dir / f"{eid}_{i}"
-                if local_path.exists():
-                    file_count = sum(1 for f in local_path.rglob("*") if f.is_file())
-                    logger.log_info(f"      [{i}/{parallelism}] {local_path.name} ({file_count} files)")
-    kube_bin = "oc" if context.is_openshift else "kubectl"
-    logger.log_info(f"  Local results: {results_dir}")
-    logger.log_info(
-        f"  PVC results:   {kube_bin} exec -n {namespace} "
-        f"$({kube_bin} get pod -n {namespace} -l role=llm-d-benchmark-data-access "
-        f"-o jsonpath='{{.items[0].metadata.name}}') -- ls /requests/"
-    )
-    logger.log_info("=" * 60)
-    logger.log_info(
-        f"Run complete (mode={mode}, harness={harness}).",
-        emoji="✅",
-    )
+    print_run_banner(context, logger)
 
     # --- Store run parameters as ConfigMap in namespace ---
     if not context.dry_run:
-        store_run_parameters_configmap(context, harness, workload, experiment_ids, logger)
+        harness = context.harness_name or "inference-perf"
+        workload = context.harness_profile or "unknown"
+        experiment_ids = getattr(context, "experiment_ids", []) or []
+        store_run_parameters_configmap(
+            context, harness, workload, experiment_ids, logger,
+        )
 
 
 def store_run_parameters_configmap(context, harness, workload, experiment_ids, logger):
@@ -225,8 +185,8 @@ def store_run_parameters_configmap(context, harness, workload, experiment_ids, l
 
         # Add this run keyed by timestamp (also update "latest")
         run_key = f"run-{timestamp}"
-        existing_data[run_key] = _yaml.dump(run_entry, default_flow_style=False)
-        existing_data["latest"] = _yaml.dump(run_entry, default_flow_style=False)
+        existing_data[run_key] = yaml.dump(run_entry, default_flow_style=False)
+        existing_data["latest"] = yaml.dump(run_entry, default_flow_style=False)
 
         # Build configmap YAML
         cm = {
@@ -241,7 +201,7 @@ def store_run_parameters_configmap(context, harness, workload, experiment_ids, l
 
         cm_path = context.run_dir() / "run-parameters-configmap.yaml"
         cm_path.parent.mkdir(parents=True, exist_ok=True)
-        cm_path.write_text(_yaml.dump(cm, default_flow_style=False), encoding="utf-8")
+        cm_path.write_text(yaml.dump(cm, default_flow_style=False), encoding="utf-8")
 
         cmd.kube(
             "apply", "-f", str(cm_path),

@@ -23,6 +23,7 @@ from pathlib import Path
 
 from llmdbenchmark.config import config
 
+from llmdbenchmark.phases.banners import print_experiment_start_banner
 from llmdbenchmark.phases.common import (
     PhaseError,
     render_plans_for_experiment,
@@ -68,22 +69,9 @@ def execute_experiment(args, logger):
         total_run_treatments=total_run,
     )
 
-    W = 62
-    logger.log_info("=" * W)
-    logger.log_info("  DoE EXPERIMENT")
-    logger.log_info("=" * W)
-    logger.log_info(f"  Name:             {experiment_plan.name}")
-    logger.log_info(f"  Setup treatments: {total_setup}")
-    logger.log_info(f"  Run treatments:   {total_run}")
-    logger.log_info(f"  Total matrix:     {experiment_plan.total_matrix}")
-    if experiment_plan.harness:
-        logger.log_info(f"  Harness:          {experiment_plan.harness}")
-    if experiment_plan.profile:
-        logger.log_info(f"  Profile:          {experiment_plan.profile}")
-    logger.log_info(f"  Continue on error: {not stop_on_error}")
-    logger.log_info(f"  Skip teardown:    {skip_teardown}")
-    logger.log_info("=" * W)
-    logger.line_break()
+    print_experiment_start_banner(
+        experiment_plan, stop_on_error, skip_teardown, logger,
+    )
 
     base_workspace = config.workspace
     base_plan_dir = config.plan_dir

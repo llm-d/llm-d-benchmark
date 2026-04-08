@@ -8,7 +8,8 @@ Public API:
         ``do_smoketest`` unless ``--skip-smoketest`` is set.
     ``check_model_access(...)`` -- verify HuggingFace access for each unique
         model before running any cluster operations.
-    ``print_standup_summary(...)`` -- print the "STANDUP COMPLETE" banner.
+
+The "STANDUP COMPLETE" banner lives in ``phases.banners``.
 
 ``execute_standup`` imports ``do_smoketest`` from ``phases.smoketest`` to
 implement the auto-chain.  The import direction is one-way
@@ -25,6 +26,7 @@ from llmdbenchmark.executor.step_executor import StepExecutor
 from llmdbenchmark.standup.steps import get_standup_steps
 from llmdbenchmark.utilities.huggingface import check_model_access as _check_access, GatedStatus
 
+from llmdbenchmark.phases.banners import print_standup_banner
 from llmdbenchmark.phases.common import (
     PhaseError,
     load_all_stacks_info,
@@ -94,7 +96,7 @@ def execute_standup(args, logger, render_plan_errors):
         logger.log_error(str(e))
         sys.exit(1)
 
-    print_standup_summary(context, result, logger)
+    print_standup_banner(context, result, logger)
 
     # Auto-chain smoketest after standup unless --skip-smoketest
     skip_smoketest = getattr(args, "skip_smoketest", False)
@@ -156,58 +158,3 @@ def check_model_access(context, all_stacks_info, logger):
             raise PhaseError(f"{prefix}{result.detail}")
 
 
-def print_standup_summary(context, result, logger):
-    """Print the standup completion banner with namespace, method, and endpoint info."""
-    logger.line_break()
-
-    ns = context.namespace or "unknown"
-    harness_ns = context.harness_namespace or ns
-    username = context.username or "unknown"
-    platform = context.platform_type
-    model = context.model_name or "unknown"
-    methods = (
-        ", ".join(context.deployed_methods) if context.deployed_methods else "default"
-    )
-    stacks = len(context.rendered_stacks)
-    mode = "dry-run" if context.dry_run else "live"
-    endpoints = context.deployed_endpoints or {}
-
-    W = 62
-    logger.log_info("═" * W)
-    logger.log_info(f"  STANDUP COMPLETE")
-    logger.log_info("═" * W)
-    logger.log_info(f"  User:       {username}")
-    logger.log_info(f"  Platform:   {platform}")
-    logger.log_info(f"  Mode:       {mode}")
-    logger.log_info(f"  Model:      {model}")
-    logger.log_info(f"  Namespace:  {ns}")
-    if harness_ns != ns:
-        logger.log_info(f"  Harness NS: {harness_ns}")
-    logger.log_info(f"  Methods:    {methods}")
-    logger.log_info(f"  Stacks:     {stacks}")
-
-    total_steps = len(result.global_results)
-    for sr in result.stack_results:
-        total_steps += len(sr.step_results)
-    passed = sum(1 for r in result.global_results if r.success)
-    for sr in result.stack_results:
-        passed += sum(1 for r in sr.step_results if r.success)
-    skipped = sum(1 for r in result.global_results if r.message == "Skipped")
-    for sr in result.stack_results:
-        skipped += sum(1 for r in sr.step_results if r.message == "Skipped")
-
-    steps_summary = f"{passed}/{total_steps} passed"
-    if skipped:
-        steps_summary += f", {skipped} skipped"
-    logger.log_info(f"  Steps:      {steps_summary}")
-
-    if endpoints:
-        logger.log_info("─" * W)
-        logger.log_info(f"  Deployed Endpoints:")
-        for name, url in endpoints.items():
-            logger.log_info(f"    {name}: {url}")
-
-    logger.log_info("═" * W)
-    logger.line_break()
-    logger.log_info(f"Workspace: {context.workspace}")
-    logger.log_info("All standup steps complete.", emoji="✅")
