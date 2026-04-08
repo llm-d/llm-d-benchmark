@@ -95,7 +95,7 @@ _anchors:
   pull_if_not_present: &pull_if_not_present IfNotPresent
   
   # Chart versions
-  istio_version: &istio_version 1.29.1
+  istio_version: &istio_version 1.27.9
   
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
