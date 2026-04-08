@@ -28,17 +28,12 @@ class DetectEndpointStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
-
-        stack_name = stack_path.name
-        cmd = context.require_cmd()
+        prologue = self.start(context, stack_path)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        plan_config = prologue.plan_config
+        stack_name = prologue.stack_name
 
         # Run-only mode: use the explicit endpoint URL
         if context.endpoint_url:
@@ -49,17 +44,13 @@ class DetectEndpointStep(Step):
             context.logger.log_info(
                 f"Using explicit endpoint URL: {url} (stack_type={stack_type})"
             )
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=f"Endpoint set from CLI: {url}",
+            return self.success_result(
+                f"Endpoint set from CLI: {url}",
                 stack_name=stack_name,
                 context={"endpoint_url": url, "stack_type": stack_type},
             )
 
         # Auto-detect from cluster
-        plan_config = self._load_stack_config(stack_path)
         namespace = context.namespace or self._require_config(
             plan_config, "namespace", "name"
         )
@@ -117,12 +108,9 @@ class DetectEndpointStep(Step):
                 service_name = "<dry-run>"
                 gateway_port = "80"
             else:
-                return StepResult(
-                    step_number=self.number,
-                    step_name=self.name,
-                    success=False,
-                    message=f"Could not detect endpoint for {stack_name}",
-                    errors=[
+                return self.failure_result(
+                    f"Could not detect endpoint for {stack_name}",
+                    [
                         f"No service/gateway IP found in namespace '{namespace}'. "
                         f"Is the model deployed? (standalone={is_standalone}). "
                         f"Tip: If the stack was not deployed via standup, use "
@@ -130,6 +118,7 @@ class DetectEndpointStep(Step):
                         f"--endpoint-url <URL>."
                     ],
                     stack_name=stack_name,
+                    log_errors=False,
                 )
 
         # Build full URL
@@ -149,11 +138,8 @@ class DetectEndpointStep(Step):
         if deploy_method and not context.dry_run:
             self._discover_hf_token(cmd, namespace, context)
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"Endpoint detected: {endpoint_url}",
+        return self.success_result(
+            f"Endpoint detected: {endpoint_url}",
             stack_name=stack_name,
             context={"endpoint_url": endpoint_url, "stack_type": stack_type},
         )

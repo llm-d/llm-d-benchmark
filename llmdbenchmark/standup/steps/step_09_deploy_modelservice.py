@@ -34,22 +34,15 @@ class DeployModelserviceStep(Step):
     def execute(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
-
-        errors = []
-        cmd = context.require_cmd()
-
+        prologue = self.start(context, stack_path)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        plan_config = prologue.plan_config
+        errors = prologue.errors
+        stack_name = prologue.stack_name
         namespace = context.require_namespace()
-        stack_name = stack_path.name
 
-        plan_config = self._load_stack_config(stack_path)
         release = self._require_config(plan_config, "release")
         model_id_label = plan_config.get("model_id_label", "")
         inference_port = self._require_config(plan_config, "vllmCommon", "inferencePort")
@@ -58,13 +51,11 @@ class DeployModelserviceStep(Step):
             pc_error = self._check_priority_class(cmd, plan_config, context)
             if pc_error:
                 errors.append(pc_error)
-                return StepResult(
-                    step_number=self.number,
-                    step_name=self.name,
-                    success=False,
-                    message="PriorityClass validation failed",
-                    errors=errors,
+                return self.failure_result(
+                    "PriorityClass validation failed",
+                    errors,
                     stack_name=stack_name,
+                    log_errors=False,
                 )
 
         if context.is_openshift and not context.non_admin:
@@ -72,11 +63,8 @@ class DeployModelserviceStep(Step):
 
         ms_values = self._find_yaml(stack_path, "13_ms-values")
         if not ms_values:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message="No modelservice values found, skipping",
+            return self.success_result(
+                "No modelservice values found, skipping",
                 stack_name=stack_name,
             )
 
@@ -307,22 +295,15 @@ class DeployModelserviceStep(Step):
             )
 
         if errors:
-            for err in errors:
-                context.logger.log_error(f"    {err}")
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Modelservice deployment had errors",
-                errors=errors,
+            return self.failure_result(
+                "Modelservice deployment had errors",
+                errors,
                 stack_name=stack_name,
+                logger=context.logger,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"Modelservice deployed for {stack_name}",
+        return self.success_result(
+            f"Modelservice deployed for {stack_name}",
             stack_name=stack_name,
         )
 

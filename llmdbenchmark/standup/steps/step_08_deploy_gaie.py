@@ -27,33 +27,24 @@ class DeployGaieStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
-
-        errors = []
-        cmd = context.require_cmd()
+        prologue = self.start(context, stack_path)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        plan_config = prologue.plan_config
+        errors = prologue.errors
+        stack_name = prologue.stack_name
 
         gaie_values = self._find_yaml(stack_path, "12_gaie-values")
 
         if not gaie_values:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message="No GAIE values found, skipping",
-                stack_name=stack_path.name,
+            return self.success_result(
+                "No GAIE values found, skipping",
+                stack_name=stack_name,
             )
 
-        plan_config = self._load_stack_config(stack_path)
         release = self._require_config(plan_config, "release")
         namespace = context.require_namespace()
-        stack_name = stack_path.name
 
         if context.non_admin:
             self._patch_gaie_for_non_admin(context, stack_name)
@@ -110,23 +101,16 @@ class DeployGaieStep(Step):
                 )
 
         if errors:
-            for err in errors:
-                context.logger.log_error(f"    {err}")
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="GAIE deployment had errors",
-                errors=errors,
-                stack_name=stack_path.name,
+            return self.failure_result(
+                "GAIE deployment had errors",
+                errors,
+                stack_name=stack_name,
+                logger=context.logger,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"GAIE deployed for {stack_path.name}",
-            stack_name=stack_path.name,
+        return self.success_result(
+            f"GAIE deployed for {stack_name}",
+            stack_name=stack_name,
         )
 
     def _patch_gaie_for_non_admin(

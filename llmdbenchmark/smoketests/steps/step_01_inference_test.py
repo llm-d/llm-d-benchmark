@@ -24,16 +24,15 @@ class InferenceTestStep(Step):
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
         """Send a sample inference request and verify the model responds."""
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
+        # load_config=False/require_cmd=False: this step delegates to the
+        # validator and only acquires cmd below when cleaning up pods.
+        prologue = self.start(
+            context, stack_path, load_config=False, require_cmd=False,
+        )
+        if isinstance(prologue, StepResult):
+            return prologue
+        stack_name = prologue.stack_name
 
-        stack_name = stack_path.name
         validator = get_validator(stack_name)
         report = validator.run_inference_test(context, stack_path)
 
@@ -45,22 +44,17 @@ class InferenceTestStep(Step):
                 cleanup_ephemeral_pods(cmd, namespace, context.logger)
 
         if report.passed:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=f"Inference test passed for {stack_name}",
+            return self.success_result(
+                f"Inference test passed for {stack_name}",
                 stack_name=stack_name,
             )
 
         for err in report.errors():
             context.logger.log_error(f"Inference test: {err}")
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=False,
-            message=f"Inference test failed for {stack_name}",
-            errors=report.errors(),
+        return self.failure_result(
+            f"Inference test failed for {stack_name}",
+            report.errors(),
             stack_name=stack_name,
+            log_errors=False,
         )

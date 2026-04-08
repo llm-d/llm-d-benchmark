@@ -31,31 +31,20 @@ class UploadResultsStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        cmd = context.require_cmd()
+        # load_config=False: this step only works with local files and cloud URIs.
+        prologue = self.start(context, stack_path, load_config=False)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+
         output = context.harness_output
         results_dir = context.run_results_dir()
 
         if not results_dir.exists() or not any(results_dir.iterdir()):
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message="No results to upload",
-            )
+            return self.success_result("No results to upload")
 
         error = upload_all_results(cmd, results_dir, output, context)
         if error:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message=error,
-                errors=[error],
-            )
+            return self.failure_result(error, [error], log_errors=False)
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"Results uploaded to {output}",
-        )
+        return self.success_result(f"Results uploaded to {output}")

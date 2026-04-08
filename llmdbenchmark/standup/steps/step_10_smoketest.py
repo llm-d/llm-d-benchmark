@@ -35,23 +35,16 @@ class SmoketestStep(Step):
     def execute(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
-
-        errors = []
-        cmd = context.require_cmd()
-
+        prologue = self.start(context, stack_path)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        plan_config = prologue.plan_config
+        errors = prologue.errors
+        stack_name = prologue.stack_name
         namespace = context.require_namespace()
-        stack_name = stack_path.name
         is_standalone = "standalone" in context.deployed_methods
 
-        plan_config = self._load_stack_config(stack_path)
         model_name = self._require_config(plan_config, "model", "name")
         inference_port = self._require_config(plan_config, "vllmCommon", "inferencePort")
         release = self._require_config(plan_config, "release")
@@ -231,20 +224,15 @@ class SmoketestStep(Step):
         if errors:
             for err in errors:
                 context.logger.log_error(f"Smoketest: {err}")
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Smoketest failed",
-                errors=errors,
+            return self.failure_result(
+                "Smoketest failed",
+                errors,
                 stack_name=stack_name,
+                log_errors=False,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"All smoketests passed for {stack_name}",
+        return self.success_result(
+            f"All smoketests passed for {stack_name}",
             stack_name=stack_name,
         )
 

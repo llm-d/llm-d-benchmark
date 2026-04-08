@@ -29,15 +29,17 @@ class RunCleanupPostStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        cmd = context.require_cmd()
+        # load_config=False because this step tolerates missing plan_config
+        # (falls back to defaults via _resolve()).
+        prologue = self.start(context, stack_path, load_config=False)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
 
         harness_ns = context.harness_namespace or context.namespace
         if not harness_ns:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message="No namespace configured -- skipping cleanup",
+            return self.success_result(
+                "No namespace configured -- skipping cleanup",
             )
 
         plan_config = self._load_plan_config(context)
@@ -65,11 +67,8 @@ class RunCleanupPostStep(Step):
             cmd, HARNESS_SCRIPTS_CONFIGMAP, harness_ns, context,
         )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"Post-run cleanup completed (ns={harness_ns})",
+        return self.success_result(
+            f"Post-run cleanup completed (ns={harness_ns})",
         )
 
     @staticmethod

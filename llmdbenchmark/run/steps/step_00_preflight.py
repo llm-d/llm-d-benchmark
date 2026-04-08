@@ -109,25 +109,9 @@ class RunPreflightStep(Step):
                 )
 
         if context.dry_run:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message="[DRY RUN] Preflight checks logged",
-            )
+            return self.success_result("[DRY RUN] Preflight checks logged")
 
         if errors:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Preflight checks failed",
-                errors=errors,
-            )
+            return self.failure_result("Preflight checks failed", errors)
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message="Preflight checks passed",
-        )
+        return self.success_result("Preflight checks passed")

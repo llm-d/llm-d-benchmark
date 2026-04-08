@@ -23,36 +23,26 @@ class HealthCheckStep(Step):
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
         """Run health checks for the given stack and return pass/fail."""
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
+        prologue = self.start(context, stack_path, load_config=False, require_cmd=False)
+        if isinstance(prologue, StepResult):
+            return prologue
+        stack_name = prologue.stack_name
 
-        stack_name = stack_path.name
         validator = get_validator(stack_name)
         report = validator.run_health_checks(context, stack_path)
 
         if report.passed:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=f"Health checks passed for {stack_name} ({report.summary()})",
+            return self.success_result(
+                f"Health checks passed for {stack_name} ({report.summary()})",
                 stack_name=stack_name,
             )
 
         for err in report.errors():
             context.logger.log_error(f"Health check: {err}")
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=False,
-            message=f"Health checks failed for {stack_name}",
-            errors=report.errors(),
+        return self.failure_result(
+            f"Health checks failed for {stack_name}",
+            report.errors(),
             stack_name=stack_name,
+            log_errors=False,
         )

@@ -29,18 +29,14 @@ class CollectResultsStep(Step):
     def execute(  # pylint: disable=too-many-locals,too-many-branches
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
-
-        stack_name = stack_path.name
-        cmd = context.require_cmd()
-        errors: list[str] = []
+        # load_config=False because this step tolerates a missing config.yaml
+        # (it falls back to context-level namespace when plan_config is empty).
+        prologue = self.start(context, stack_path, load_config=False)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        errors = prologue.errors
+        stack_name = prologue.stack_name
 
         harness_ns = context.harness_namespace or context.namespace
         if not harness_ns:
@@ -49,13 +45,11 @@ class CollectResultsStep(Step):
                 plan_config, "harness.namespace", "namespace.name",
             )
         if not harness_ns:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No harness namespace configured for result collection",
-                errors=["Cannot collect results without a namespace"],
+            return self.failure_result(
+                "No harness namespace configured for result collection",
+                ["Cannot collect results without a namespace"],
                 stack_name=stack_name,
+                log_errors=False,
             )
 
         experiment_ids = context.experiment_ids
@@ -77,16 +71,14 @@ class CollectResultsStep(Step):
             if context.dry_run:
                 data_pod = "<dry-run-data-pod>"
             else:
-                return StepResult(
-                    step_number=self.number,
-                    step_name=self.name,
-                    success=False,
-                    message="Data access pod not found",
-                    errors=[
+                return self.failure_result(
+                    "Data access pod not found",
+                    [
                         f"No pod with label 'role=llm-d-benchmark-data-access' "
                         f"found in namespace '{harness_ns}'"
                     ],
                     stack_name=stack_name,
+                    log_errors=False,
                 )
 
         local_results_dir = context.run_results_dir()
@@ -166,13 +158,11 @@ class CollectResultsStep(Step):
                 errors.append("No results found on PVC")
 
         if errors and total_collected == 0:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Failed to collect results",
-                errors=errors,
+            return self.failure_result(
+                "Failed to collect results",
+                errors,
                 stack_name=stack_name,
+                log_errors=False,
             )
 
         # Log any non-fatal errors
@@ -183,13 +173,8 @@ class CollectResultsStep(Step):
             f"Collected {total_collected} total file(s) to "
             f"{local_results_dir}"
         )
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=(
-                f"Collected {total_collected} file(s) for {stack_name}"
-            ),
+        return self.success_result(
+            f"Collected {total_collected} file(s) for {stack_name}",
             stack_name=stack_name,
         )
 

@@ -26,16 +26,15 @@ class ValidateConfigStep(Step):
 
         Skips validation for stacks without a dedicated validator subclass.
         """
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
+        # load_config=False/require_cmd=False: this step delegates to the
+        # scenario validator which handles its own cluster/config access.
+        prologue = self.start(
+            context, stack_path, load_config=False, require_cmd=False,
+        )
+        if isinstance(prologue, StepResult):
+            return prologue
+        stack_name = prologue.stack_name
 
-        stack_name = stack_path.name
         validator = get_validator(stack_name)
 
         # Only well-lit-path scenarios have dedicated validators
@@ -44,11 +43,8 @@ class ValidateConfigStep(Step):
             context.logger.log_info(
                 f"    Skipping config validation -- no dedicated validator for '{stack_name}'"
             )
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=f"Skipped config validation for {stack_name} (no dedicated validator)",
+            return self.success_result(
+                f"Skipped config validation for {stack_name} (no dedicated validator)",
                 stack_name=stack_name,
             )
 
@@ -73,19 +69,14 @@ class ValidateConfigStep(Step):
                     context.logger.log_error(f"    {check}")
 
         if report.passed:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=f"Config validation passed for {stack_name} ({report.summary()})",
+            return self.success_result(
+                f"Config validation passed for {stack_name} ({report.summary()})",
                 stack_name=stack_name,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=False,
-            message=f"Config validation failed for {stack_name} ({report.summary()})",
-            errors=report.errors(),
+        return self.failure_result(
+            f"Config validation failed for {stack_name} ({report.summary()})",
+            report.errors(),
             stack_name=stack_name,
+            log_errors=False,
         )

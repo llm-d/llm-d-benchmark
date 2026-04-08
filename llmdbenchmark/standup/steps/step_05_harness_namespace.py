@@ -25,8 +25,13 @@ class HarnessNamespaceStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        errors = []
-        cmd = context.require_cmd()
+        # load_config=False because this step tolerates a missing plan_config
+        # (uses hard-coded defaults in several places when plan_config is None).
+        prologue = self.start(context, stack_path, load_config=False)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        errors = prologue.errors
 
         plan_config = self._load_plan_config(context)
 
@@ -103,21 +108,14 @@ class HarnessNamespaceStep(Step):
             )
 
         if errors:
-            for err in errors:
-                context.logger.log_error(f"    {err}")
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Harness namespace preparation had errors",
-                errors=errors,
+            return self.failure_result(
+                "Harness namespace preparation had errors",
+                errors,
+                logger=context.logger,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"Harness namespace prepared (ns={harness_ns})",
+        return self.success_result(
+            f"Harness namespace prepared (ns={harness_ns})",
         )
 
     def _create_harness_namespace(

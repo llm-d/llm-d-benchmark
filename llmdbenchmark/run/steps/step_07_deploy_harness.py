@@ -50,19 +50,13 @@ class DeployHarnessStep(Step):
     def execute(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
-
-        stack_name = stack_path.name
-        errors: list[str] = []
-        cmd = context.require_cmd()
-        plan_config = self._load_stack_config(stack_path)
+        prologue = self.start(context, stack_path)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        plan_config = prologue.plan_config
+        errors = prologue.errors
+        stack_name = prologue.stack_name
 
         # Resolve key configuration
         harness_name = self._resolve(
@@ -101,13 +95,11 @@ class DeployHarnessStep(Step):
         base_dir = context.base_dir or Path(__file__).resolve().parents[3]
         template_path = base_dir / "config" / "templates" / "jinja" / "20_harness_pod.yaml.j2"
         if not template_path.exists():
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Harness pod template not found",
-                errors=[f"Expected: {template_path}"],
+            return self.failure_result(
+                "Harness pod template not found",
+                [f"Expected: {template_path}"],
                 stack_name=stack_name,
+                log_errors=False,
             )
 
         # Load macros if present
@@ -377,23 +369,16 @@ class DeployHarnessStep(Step):
             )
 
         if errors:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Some treatments had errors",
-                errors=errors,
+            return self.failure_result(
+                "Some treatments had errors",
+                errors,
                 stack_name=stack_name,
+                log_errors=False,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=(
-                f"Completed {total_treatments} treatment(s), "
-                f"{total_deployed} pod(s) total for {stack_name}"
-            ),
+        return self.success_result(
+            f"Completed {total_treatments} treatment(s), "
+            f"{total_deployed} pod(s) total for {stack_name}",
             stack_name=stack_name,
         )
 
