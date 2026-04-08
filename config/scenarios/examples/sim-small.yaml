@@ -307,4 +307,4 @@ scenario:
     # Workload Configuration
     # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR
     # -------------------------------------------------------------------------
-    workDir: "~/llm-d-benchmark/benchmark-results"
+    workDir: "~/data/sim-small""
