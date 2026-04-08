@@ -5,10 +5,11 @@ from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env, env_int
 
 
-def add_subcommands(parser: argparse._SubParsersAction):
+def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []):
     """Register the ``run`` subcommand and its arguments."""
     run_parser = parser.add_parser(
         Command.RUN.value,
+        parents=parents,
         description=(
             "The `run` command executes benchmark experiments against model infrastructure. "
             "It auto-detects endpoints from stood-up stacks (default) or can target "
