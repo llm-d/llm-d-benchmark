@@ -43,6 +43,7 @@ class WorkloadMonitoringStep(Step):
                 "skipping resource validation and capacity planning"
             )
         else:
+            self._warn_not_ready_nodes(cmd, context)
             if plan_config and not self._any_method_uses_accelerator(plan_config):
                 context.logger.log_info(
                     "Skipping accelerator validator: no method requests "
@@ -93,6 +94,45 @@ class WorkloadMonitoringStep(Step):
             except (ValueError, TypeError):
                 continue
         return False
+
+    @staticmethod
+    def _is_node_ready(node: dict) -> bool:
+        """Return True if the node has a Ready condition with status True."""
+        for cond in node.get("status", {}).get("conditions", []):
+            if cond.get("type") == "Ready":
+                return cond.get("status") == "True"
+        return False
+
+    def _warn_not_ready_nodes(
+        self, cmd: CommandExecutor, context: ExecutionContext
+    ) -> None:
+        """Log a warning for any cluster nodes that are not in Ready state."""
+        if context.dry_run:
+            return
+
+        result = cmd.kube("get", "nodes", "-o", "json")
+        if not result.success or not result.stdout.strip():
+            return
+
+        try:
+            data = json.loads(result.stdout)
+        except (json.JSONDecodeError, ValueError):
+            return
+
+        not_ready: list[str] = []
+        for node in data.get("items", []):
+            if self._is_node_ready(node):
+                continue
+            name = node.get("metadata", {}).get("name")
+            if name:
+                not_ready.append(name)
+
+        if not_ready:
+            context.logger.log_warning(
+                f"NotReady node(s) detected and excluded from validation: "
+                f"{', '.join(not_ready)}. "
+                "Pods will not be scheduled on these nodes."
+            )
 
     def _load_resource_config(
         self, context: ExecutionContext, plan_config: dict
@@ -145,6 +185,8 @@ class WorkloadMonitoringStep(Step):
         total = 0
         node_count = 0
         for node in data.get("items", []):
+            if not WorkloadMonitoringStep._is_node_ready(node):
+                continue
             capacity = node.get("status", {}).get("capacity", {})
             val = capacity.get(resource_key)
             if val is not None:
@@ -312,6 +354,7 @@ class WorkloadMonitoringStep(Step):
             return [
                 node.get("metadata", {}).get("labels", {})
                 for node in data.get("items", [])
+                if self._is_node_ready(node)
             ]
         except (json.JSONDecodeError, ValueError):
             return None
