@@ -39,7 +39,7 @@ scenario:
       path: models/facebook/opt-125m
       huggingfaceId: facebook/opt-125m
       gpuMemoryUtilization: 0
-      maxModelLen: 8192
+      maxModelLen: 2048
       maxNumSeq: 32
 
     # -------------------------------------------------------------------------
@@ -163,11 +163,11 @@ scenario:
 
       resources:
         limits:
-          memory: 16Gi
-          cpu: "8"
+          memory: 8Gi
+          cpu: "2"
         requests:
-          memory: 16Gi
-          cpu: "8"
+          memory: 8Gi
+          cpu: "2"
 
 
     # =========================================================================
@@ -216,11 +216,11 @@ scenario:
 
       resources:
         limits:
-          memory: 16Gi
-          cpu: "8"
+          memory: 8Gi
+          cpu: "2"
         requests:
-          memory: 16Gi
-          cpu: "8"
+          memory: 8Gi
+          cpu: "2"
 
       accelerator:
         count: 0
