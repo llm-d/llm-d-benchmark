@@ -39,8 +39,7 @@ scenario:
       path: models/facebook/opt-125m
       huggingfaceId: facebook/opt-125m
       gpuMemoryUtilization: 0
-      maxModelLen: 2048
-      maxNumSeq: 32
+      maxModelLen: 1024
 
     # -------------------------------------------------------------------------
     # PVC Configuration
@@ -157,9 +156,12 @@ scenario:
         tag: v0.12.0
         pullPolicy: IfNotPresent
 
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=2
-      parallelism:
-        tensor: 2
+      accelerator:
+        count: 0
+
+      acceleratorType:
+        labelKey: kubernetes.io/os
+        labelValue: linux
 
       resources:
         limits:
@@ -221,6 +223,10 @@ scenario:
         requests:
           memory: 8Gi
           cpu: "2"
+
+      acceleratorType:
+        labelKey: kubernetes.io/os
+        labelValue: linux
 
       accelerator:
         count: 0
