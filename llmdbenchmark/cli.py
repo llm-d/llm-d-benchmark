@@ -8,9 +8,12 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
+
+import yaml as _yaml
 
 from llmdbenchmark import __version__, __package_name__, __package_home__
 from llmdbenchmark.interface.env import env, env_bool
@@ -114,6 +117,13 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         except TemplateError as e:
             logger.log_error(f"Rendering failed: {e}")
             sys.exit(1)
+
+        # Pre-render Helm chart manifests so the plan directory contains
+        # all K8s resources (both Jinja2-rendered and Helm-rendered).
+        # This enables kustomize overlays and full manifest inspection.
+        # Runs even in dry-run mode — helmfile template is purely local
+        # and does not touch the cluster.
+        _render_helm_manifests(config.plan_dir, logger)
 
     if args.command == Command.STANDUP.value:
         execute_standup(args, logger, render_plan_errors)
