@@ -43,7 +43,14 @@ class WorkloadMonitoringStep(Step):
                 "skipping resource validation and capacity planning"
             )
         else:
-            self._validate_accelerator(cmd, context, errors)
+            if plan_config and not self._any_method_uses_accelerator(plan_config):
+                context.logger.log_info(
+                    "Skipping accelerator validator: no method requests "
+                    "accelerators (accelerator.count=0 across methods) and "
+                    "default 'nvidia.com/gpu' is inherited from defaults.yaml"
+                )
+            else:
+                self._validate_accelerator(cmd, context, errors)
             self._validate_network(cmd, context, plan_config, errors)
             self._validate_node_selectors(cmd, context, plan_config, errors)
             self._capacity_planner_sanity_check(cmd, context, plan_config, errors)
@@ -73,6 +80,19 @@ class WorkloadMonitoringStep(Step):
     def _is_modelservice(context: ExecutionContext) -> bool:
         """Check if the deployment includes modelservice."""
         return "modelservice" in getattr(context, "deployed_methods", [])
+
+    @staticmethod
+    def _any_method_uses_accelerator(plan_config: dict) -> bool:
+        """Return True if any deployment method requests accelerators (count > 0)."""
+        for method in ("standalone", "decode", "prefill"):
+            method_config = plan_config.get(method, {}) or {}
+            count = method_config.get("accelerator", {}).get("count", 0)
+            try:
+                if int(count) > 0:
+                    return True
+            except (ValueError, TypeError):
+                continue
+        return False
 
     def _load_resource_config(
         self, context: ExecutionContext, plan_config: dict
