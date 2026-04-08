@@ -5,10 +5,11 @@ from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env
 
 
-def add_subcommands(parser: argparse._SubParsersAction):
+def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []):
     """Register the ``teardown`` subcommand and its arguments."""
     teardown_parser = parser.add_parser(
         Command.TEARDOWN.value,
+        parents=parents,
         description=(
             "The `teardown` command removes resources deployed by a previous standup. "
             "It uninstalls Helm releases, deletes namespaced resources, and optionally "
