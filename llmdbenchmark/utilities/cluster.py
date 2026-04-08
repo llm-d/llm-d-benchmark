@@ -74,18 +74,23 @@ def kube_connect(
 
 
 def is_openshift(api_client: client.ApiClient) -> bool:
-    """Return True if the cluster has OpenShift API groups."""
+    """Return True if the cluster is an OpenShift cluster.
+
+    Queries the ``clusterversions`` resource under ``config.openshift.io``,
+    which only exists on actual OpenShift clusters.
+    """
     if not _KUBE_AVAILABLE:
         return False
     try:
-        api = client.ApisApi(api_client)
-        groups = api.get_api_versions()
-        for group in groups.groups:
-            if group.name and "openshift" in group.name.lower():
-                return True
+        custom_api = client.CustomObjectsApi(api_client)
+        custom_api.list_cluster_custom_object(
+            group="config.openshift.io",
+            version="v1",
+            plural="clusterversions",
+        )
+        return True
     except ApiException:
-        pass
-    return False
+        return False
 
 
 def get_service_endpoint(
@@ -284,10 +289,16 @@ def _kube_api_connect(context: ExecutionContext) -> None:
             "and that the cluster is running."
         ) from exc
 
-    context.is_openshift = any(
-        g.name and "openshift" in g.name.lower()
-        for g in (groups.groups or [])
-    )
+    try:
+        custom_api = client.CustomObjectsApi(api_client)
+        custom_api.list_cluster_custom_object(
+            group="config.openshift.io",
+            version="v1",
+            plural="clusterversions",
+        )
+        context.is_openshift = True
+    except Exception:  # pylint: disable=broad-exception-caught
+        context.is_openshift = False
 
 
 def _detect_local_platform(cmd: CommandExecutor, context: ExecutionContext) -> None:
