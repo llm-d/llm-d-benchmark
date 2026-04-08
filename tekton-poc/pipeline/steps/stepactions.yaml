@@ -1,0 +1,354 @@
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: create-rwx-pvc
+spec:
+  params:
+    - name: name
+      type: string
+    - name: namespace
+      type: string
+    - name: size
+      type: string
+      default: "1Gi"
+    - name: storage-class
+      type: string
+      default: "default"
+
+    - name: dry-run
+      type: string
+      default: "false"
+  env:
+    - name: NAME
+      value: $(params.name)
+    # - name: TARGET_NAMESPACE_RESULT
+    #   value: $(results.targetNamespace.path)
+    - name: NAMESPACE
+      value: $(params.namespace)
+    - name: SIZE
+      value: $(params.size)
+    - name: STORAGE_CLASS
+      value: $(params.storage-class)
+    - name: DRY_RUN
+      value: $(params.dry-run)
+  image: alpine/kubectl:1.34.1
+  script: |
+    #!/bin/sh
+    if [ "${DRY_RUN}" = "true" ]; then
+      echo ">> skipping"
+      exit 0
+    fi
+
+    # NAMESPACE=$(cat $TARGET_NAMESPACE_RESULT)
+
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name:  ${NAME}
+      namespace: ${NAMESPACE}
+    spec:
+      accessModes:
+        - ReadWriteMany
+      resources:
+        requests:
+          storage:  ${SIZE}
+      storageClassName:  ${STORAGE_CLASS}
+      volumeMode: Filesystem
+    EOF
+---
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: helm-upgrade-install
+  annotations:
+    tekton.dev/displayName: "Helm upgrade --install with repo add/update"
+spec:
+  # image: alpine/helm:3.14.0
+  image: dtzar/helm-kubectl:3.19
+
+  # ---------- Parameters ----------
+  params:
+    # Git repository (optional)
+    - name: git_url
+      type: string
+      default: ""
+      description: HTTPS URL of the public Git repo
+    - name: git_revision
+      type: string
+      default: main
+      description: Branch / tag / commit
+    - name: depth
+      type: string
+      default: "1"
+      description: Shallow clone depth
+    - name: checkout_dir
+      type: string
+      default: /tmp
+      description: Absolute path to clone into (e.g., /workspace/source/repo)
+
+    # Release + chart
+    - name: releaseName
+      type: string
+      description: Helm release name (required)
+    - name: chart
+      type: string
+      description: >-
+        Chart ref or name. Examples:
+        - "nginx" (used with repoName to form repoName/nginx)
+        - "bitnami/nginx"
+        - "oci://registry.example.com/myorg/mychart"
+    - name: version
+      type: string
+      default: ""
+      description: Optional chart version
+
+    # Repo management (add/update)
+    - name: repoName
+      type: string
+      default: ""
+      description: If set with repoUrl, the action will 'helm repo add' and 'helm repo update'
+    - name: repoUrl
+      type: string
+      default: ""
+      description: Chart repository URL
+    - name: updateRepo
+      type: string
+      default: "true"
+      description: '"true" to run helm repo update'
+
+    # Repo auth/TLS (optional)
+    - name: repoUsername
+      type: string
+      default: ""
+    - name: repoPassword
+      type: string
+      default: ""
+    - name: repoPassCredentials
+      type: string
+      default: "false"
+      description: '"true" to pass credentials to all domains'
+    - name: repoInsecureSkipTLSVerify
+      type: string
+      default: "false"
+    - name: repoCAFile
+      type: string
+      default: ""
+    - name: repoCertFile
+      type: string
+      default: ""
+    - name: repoKeyFile
+      type: string
+      default: ""
+
+    # Install/upgrade behavior
+    - name: namespace
+      type: string
+      default: "default"
+    - name: createNamespace
+      type: string
+      default: "true"
+    - name: wait
+      type: string
+      default: "true"
+    - name: timeout
+      type: string
+      default: "10m0s"
+
+    # Values and extra args
+    - name: valuesYaml
+      type: string
+      default: ""
+    - name: valuesYamlUrl
+      type: string
+      default: ""
+    - name: extraArgs
+      type: string
+      default: ""
+    - name: extraValues
+      type: string
+      default: ""
+    - name: treatmentAnalysis
+      type: string
+      default: ""
+
+    - name: dry-run
+      type: string
+      default: "false"
+  # ---------- Params -> env (StepActions don't interpolate $(params.*) directly in script) ----------
+  env:
+    - name: GIT_URL
+      value: $(params.git_url)
+    - name: GIT_REVISION
+      value: $(params.git_revision)
+    - name: GIT_DEPTH
+      value: $(params.depth)
+    - name: CHECKOUT_DIR
+      value: $(params.checkout_dir)
+
+    - name: HELM_RELEASE
+      value: "$(params.releaseName)"
+    - name: HELM_CHART
+      value: "$(params.chart)"
+    - name: HELM_VERSION
+      value: "$(params.version)"
+
+    - name: HELM_REPO_NAME
+      value: "$(params.repoName)"
+    - name: HELM_REPO_URL
+      value: "$(params.repoUrl)"
+    - name: HELM_REPO_UPDATE
+      value: "$(params.updateRepo)"
+
+    - name: HELM_REPO_USERNAME
+      value: "$(params.repoUsername)"
+    - name: HELM_REPO_PASSWORD
+      value: "$(params.repoPassword)"
+    - name: HELM_REPO_PASS_CREDS
+      value: "$(params.repoPassCredentials)"
+    - name: HELM_REPO_INSECURE
+      value: "$(params.repoInsecureSkipTLSVerify)"
+    - name: HELM_REPO_CA_FILE
+      value: "$(params.repoCAFile)"
+    - name: HELM_REPO_CERT_FILE
+      value: "$(params.repoCertFile)"
+    - name: HELM_REPO_KEY_FILE
+      value: "$(params.repoKeyFile)"
+
+    - name: HELM_NAMESPACE
+      value: "$(params.namespace)"
+    - name: HELM_CREATE_NAMESPACE
+      value: "$(params.createNamespace)"
+    - name: HELM_WAIT
+      value: "$(params.wait)"
+    - name: HELM_TIMEOUT
+      value: "$(params.timeout)"
+    - name: HELM_VALUES_YAML
+      value: "$(params.valuesYaml)"
+    - name: HELM_VALUES_YAML_URL
+      value: "$(params.valuesYamlUrl)"
+    - name: HELM_EXTRA_ARGS
+      value: "$(params.extraArgs)"
+    - name: HELM_EXTRA_VALUES
+      value: "$(params.extraValues)"
+
+    - name: TREATMENT_ANALYSIS
+      value: "$(params.treatmentAnalysis)"
+
+    - name: DRY_RUN
+      value: $(params.dry-run)
+
+  script: |
+    #!/usr/bin/env sh
+    set -eu
+
+    if [ "${DRY_RUN}" = "true" ]; then
+      echo ">> skipping"
+      exit 0
+    fi
+
+    apk add --no-cache jq >/dev/null
+
+    echo ">>> helm step: treatment"
+    printf "%s" "${TREATMENT_ANALYSIS}"
+
+    SHA256CMD=$(type -p gsha256sum || type -p sha256sum)
+    NAMESPACE_HASH=$(echo -n "$HELM_NAMESPACE" | $SHA256CMD | awk '{print $1}' | cut -c1-8)
+    HELM_RELEASE=$(echo "$HELM_RELEASE" | sed "s/NAMESPACE_HASH/$NAMESPACE_HASH/g")
+  
+    # if a GIT_URL is defined, clone the project; we will use helm chart from this
+    if [ -n "${GIT_URL:-}" ]; then
+      mkdir -p "$CHECKOUT_DIR"
+      rm -rf "$CHECKOUT_DIR/.git" || true
+      echo "Cloning $GIT_URL @ $GIT_REVISION into $CHECKOUT_DIR"
+      git init "$CHECKOUT_DIR"
+      git -C "$CHECKOUT_DIR" remote add origin "$GIT_URL"
+      git -C "$CHECKOUT_DIR" fetch --depth "$GIT_DEPTH" origin "$GIT_REVISION"
+      git -C "$CHECKOUT_DIR" checkout FETCH_HEAD
+      COMMIT=$(git -C "$CHECKOUT_DIR" rev-parse HEAD)
+      echo "Checked out commit: $COMMIT"
+    fi
+
+    # Construct optional values file; values overrides url
+    VALUES_FLAG=""
+    if [ -n "${HELM_VALUES_YAML_URL:-}" ]; then
+      VALUES_FLAG="-f ${HELM_VALUES_YAML_URL}"
+    fi
+    
+    if [ -n "${HELM_VALUES_YAML:-}" ]; then
+      printf "%s" "${HELM_VALUES_YAML}" > /tmp/${HELM_RELEASE}-values.yaml
+      VALUES_FLAG="-f /tmp/${HELM_RELEASE}-values.yaml"
+    fi 
+
+    if [ -n "${HELM_EXTRA_VALUES:-}" ]; then
+      echo ">>> HELM_EXTRA_VALUES"
+      printf "%s" "${HELM_EXTRA_VALUES}"
+      printf "%s" "${HELM_EXTRA_VALUES}" > /tmp/${HELM_RELEASE}-extra-values.yaml
+      VALUES_FLAG="${VALUES_FLAG} -f /tmp/${HELM_RELEASE}-extra-values.yaml"
+    fi 
+
+
+    # Optional repo add (idempotent via --force-update)
+    if [ -n "${HELM_REPO_NAME:-}" ] && [ -n "${HELM_REPO_URL:-}" ]; then
+      REPO_ADD_FLAGS="--force-update"
+      [ -n "${HELM_REPO_USERNAME:-}" ] && REPO_ADD_FLAGS="$REPO_ADD_FLAGS --username ${HELM_REPO_USERNAME}"
+      [ -n "${HELM_REPO_PASSWORD:-}" ] && REPO_ADD_FLAGS="$REPO_ADD_FLAGS --password ${HELM_REPO_PASSWORD}"
+      [ "${HELM_REPO_PASS_CREDS:-false}" = "true" ] && REPO_ADD_FLAGS="$REPO_ADD_FLAGS --pass-credentials"
+      [ "${HELM_REPO_INSECURE:-false}" = "true" ] && REPO_ADD_FLAGS="$REPO_ADD_FLAGS --insecure-skip-tls-verify"
+      [ -n "${HELM_REPO_CA_FILE:-}" ] && REPO_ADD_FLAGS="$REPO_ADD_FLAGS --ca-file ${HELM_REPO_CA_FILE}"
+      [ -n "${HELM_REPO_CERT_FILE:-}" ] && REPO_ADD_FLAGS="$REPO_ADD_FLAGS --cert-file ${HELM_REPO_CERT_FILE}"
+      [ -n "${HELM_REPO_KEY_FILE:-}" ] && REPO_ADD_FLAGS="$REPO_ADD_FLAGS --key-file ${HELM_REPO_KEY_FILE}"
+
+      echo "==> Adding/refreshing repo ${HELM_REPO_NAME} -> ${HELM_REPO_URL}"
+      # shellcheck disable=SC2086
+      helm repo add bitnami https://charts.bitnami.com/bitnami
+      helm repo add "${HELM_REPO_NAME}" "${HELM_REPO_URL}" ${REPO_ADD_FLAGS}
+      # (helm repo add flags documented by Helm)  # docs: https://helm.sh/docs/helm/helm_repo_add/
+
+      if [ "${HELM_REPO_UPDATE:-true}" = "true" ]; then
+        echo "==> Updating Helm repo cache"
+        # Update all repos for portability across Helm versions
+        helm repo update
+      fi
+    fi
+
+    # Build common flags
+    CREATE_NS_FLAG=""; [ "${HELM_CREATE_NAMESPACE:-true}" = "true" ] && CREATE_NS_FLAG="--create-namespace"
+    WAIT_FLAG="";      [ "${HELM_WAIT:-true}" = "true" ] && WAIT_FLAG="--wait"
+    VERSION_FLAG="";   [ -n "${HELM_VERSION:-}" ] && VERSION_FLAG="--version ${HELM_VERSION}"
+    TIMEOUT_FLAG="";   [ -n "${HELM_TIMEOUT:-}" ] && TIMEOUT_FLAG="--timeout ${HELM_TIMEOUT}"
+
+    # Decide final chart reference:
+    # - If user passed repoName and a bare chart, use repoName/chart.
+    # - If user passed repo/chart or oci://..., use as-is.
+    CHART_REF="${HELM_CHART}"
+    case "${HELM_CHART}" in
+      */*|oci://*) : ;;
+      *) if [ -n "${HELM_REPO_NAME:-}" ]; then CHART_REF="${HELM_REPO_NAME}/${HELM_CHART}"; fi ;;
+    esac
+
+    if [ -n "${TREATMENT_ANALYSIS:-}" ]; then
+      HELM_EXTRA_ARGS="${HELM_EXTRA_ARGS} $(echo ${TREATMENT_ANALYSIS} | jq -r '.setArgs')"
+    fi
+
+    if [ -n "${HELM_EXTRA_ARGS:-}" ]; then
+      HELM_EXTRA_ARGS=$(echo "$HELM_EXTRA_ARGS" | sed "s/NAMESPACE_HASH/$NAMESPACE_HASH/g")
+    fi
+
+    echo "==> helm upgrade --install ${HELM_RELEASE} ${CHART_REF} --namespace ${HELM_NAMESPACE} ${VERSION_FLAG} ${CREATE_NS_FLAG} ${WAIT_FLAG} ${TIMEOUT_FLAG} ${VALUES_FLAG} ${HELM_EXTRA_ARGS}"
+    # shellcheck disable=SC2086
+    helm template \
+      "${HELM_RELEASE}" "${CHART_REF}" \
+      --namespace "${HELM_NAMESPACE}" \
+      ${VERSION_FLAG} ${CREATE_NS_FLAG} ${WAIT_FLAG} ${TIMEOUT_FLAG} ${VALUES_FLAG} ${HELM_EXTRA_ARGS}
+    # shellcheck disable=SC2086
+    helm template \
+      "${HELM_RELEASE}" "${CHART_REF}" \
+      --namespace "${HELM_NAMESPACE}" \
+      ${VERSION_FLAG} ${CREATE_NS_FLAG} ${WAIT_FLAG} ${TIMEOUT_FLAG} ${VALUES_FLAG} ${HELM_EXTRA_ARGS} \
+      | kubectl --namespace "${HELM_NAMESPACE}" apply -f -
+    # helm upgrade --install \
+    #   "${HELM_RELEASE}" "${CHART_REF}" \
+    #   --namespace "${HELM_NAMESPACE}" \
+    #   ${VERSION_FLAG} ${CREATE_NS_FLAG} ${WAIT_FLAG} ${TIMEOUT_FLAG} ${VALUES_FLAG} ${HELM_EXTRA_ARGS}
+
