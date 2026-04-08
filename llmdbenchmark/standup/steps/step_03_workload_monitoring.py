@@ -226,6 +226,15 @@ class WorkloadMonitoringStep(Step):
                 for key, value in ns.items():
                     selectors.append((f"{method}.nodeSelector", key, str(value)))
 
+            # Only validate acceleratorType labels if the template will actually
+            # render them. This mirrors the Jinja guards in 13_ms-values.yaml.j2
+            # and 14_standalone-deployment_yaml.j2 so CPU scenarios (which leave
+            # the nvidia acceleratorType defaults untouched because they set
+            # accelerator.count=0) don't flag spurious "nvidia label not found"
+            # errors against pure-CPU clusters.
+            if not self._method_renders_accelerator_type(method, method_config):
+                continue
+
             accel_type = method_config.get("acceleratorType", {})
             label_key = accel_type.get("labelKey", "")
             label_value = accel_type.get("labelValue", "")
@@ -290,6 +299,58 @@ class WorkloadMonitoringStep(Step):
             if labels.get(key) == value:
                 return True
         return False
+
+    @staticmethod
+    def _method_renders_accelerator_type(
+        method: str, method_config: dict
+    ) -> bool:
+        """Return True if the Jinja template will actually render acceleratorType
+        for the given method given its config.
+
+        Mirrors the guards in the templates so the validator does not flag
+        labels that are never actually used:
+
+        - standalone: ``standalone.enabled and standalone.parallelism.tensor > 0``
+          (see 14_standalone-deployment_yaml.j2 lines 1, 80)
+        - decode:     ``decode_create and decode_accel_count > 0`` where
+          ``decode_create = decode.enabled or decode.replicas > 0`` and
+          ``decode_accel_count = decode.accelerator.count if defined else
+          decode.parallelism.tensor``
+          (see 13_ms-values.yaml.j2 lines 11, 252)
+        - prefill:    same logic as decode, with ``prefill`` (see 13_ms-values.yaml.j2
+          lines 12, 674)
+        """
+        def _coerce_int(value, default: int = 0) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        def _accel_count(cfg: dict) -> int:
+            accel = cfg.get("accelerator")
+            if isinstance(accel, dict) and "count" in accel:
+                return _coerce_int(accel.get("count"), 0)
+            return _coerce_int(
+                cfg.get("parallelism", {}).get("tensor"), 0
+            )
+
+        if method == "standalone":
+            if not method_config.get("enabled", False):
+                return False
+            tensor = _coerce_int(
+                method_config.get("parallelism", {}).get("tensor"), 0
+            )
+            return tensor > 0
+
+        # decode and prefill share the same create/accel_count logic
+        if "enabled" in method_config:
+            created = bool(method_config.get("enabled"))
+        else:
+            created = _coerce_int(method_config.get("replicas"), 0) > 0
+        if not created:
+            return False
+
+        return _accel_count(method_config) > 0
 
     def _capacity_planner_sanity_check(
         self,

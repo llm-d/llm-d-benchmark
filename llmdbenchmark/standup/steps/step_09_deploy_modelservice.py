@@ -568,15 +568,21 @@ class DeployModelserviceStep(Step):
         if prom_ca_cert and "wva" in wva_config and "prometheus" in wva_config["wva"]:
             wva_config["wva"]["prometheus"]["caCert"] = prom_ca_cert
 
+        # Only extract an accelerator prefix for WVA if decode actually runs
+        # on accelerators. For CPU scenarios (accelerator.count=0) the
+        # acceleratorType defaults inherited from defaults.yaml are unused,
+        # so WVA's ``va.accelerator`` is left blank instead of picking up
+        # a stale "H100" / "A100" prefix from the nvidia defaults.
         affinity_str = ""
         decode_cfg = plan_config.get("decode", {})
-        accel_types = decode_cfg.get("acceleratorType", {})
-        if accel_types:
-            label_values = accel_types.get("labelValues", [])
-            if label_values:
-                affinity_str = str(label_values[0])
-            elif accel_types.get("labelValue"):
-                affinity_str = str(accel_types["labelValue"])
+        if self._decode_uses_accelerator(decode_cfg):
+            accel_types = decode_cfg.get("acceleratorType", {})
+            if accel_types:
+                label_values = accel_types.get("labelValues", [])
+                if label_values:
+                    affinity_str = str(label_values[0])
+                elif accel_types.get("labelValue"):
+                    affinity_str = str(accel_types["labelValue"])
         accelerator_type = self._find_accelerator_prefix(affinity_str) or ""
         if "va" in wva_config:
             wva_config["va"]["accelerator"] = accelerator_type
@@ -757,6 +763,29 @@ class DeployModelserviceStep(Step):
             if prefix in affinity_string:
                 return prefix
         return None
+
+    @staticmethod
+    def _decode_uses_accelerator(decode_cfg: dict) -> bool:
+        """Return True if decode will request GPU accelerators at render time.
+
+        Mirrors the guard in ``13_ms-values.yaml.j2`` (``decode_accel_count > 0``)
+        so callers do not pick up the nvidia ``acceleratorType`` defaults
+        from ``defaults.yaml`` when decode is configured for CPU
+        (``decode.accelerator.count == 0``).
+        """
+        if not decode_cfg:
+            return False
+
+        def _to_int(value, default: int = 0) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        accel = decode_cfg.get("accelerator")
+        if isinstance(accel, dict) and "count" in accel:
+            return _to_int(accel.get("count"), 0) > 0
+        return _to_int(decode_cfg.get("parallelism", {}).get("tensor"), 0) > 0
 
     @staticmethod
     def _get_random_node_port(
