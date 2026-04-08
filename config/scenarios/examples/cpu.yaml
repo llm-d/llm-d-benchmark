@@ -157,6 +157,16 @@ scenario:
         tag: v0.12.0
         pullPolicy: IfNotPresent
 
+      # No GPU on CPU scenarios -- override the nvidia default from defaults.yaml
+      # so the standalone template's nodeAffinity block targets an OS label that
+      # actually exists on cluster nodes instead of nvidia.com/gpu.product.
+      acceleratorType:
+        labelKey: kubernetes.io/os
+        labelValue: linux
+
+      accelerator:
+        count: 0
+
       # Corresponds to: LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=2
       parallelism:
         tensor: 2
