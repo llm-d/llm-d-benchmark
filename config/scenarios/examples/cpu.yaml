@@ -17,7 +17,7 @@ scenario:
   # ============================================================================
   # CPU Example - CPU-only deployment with no GPU accelerators
   # ============================================================================
-  - name: "cpu-example-ms"
+  - name: "cpu-example"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
