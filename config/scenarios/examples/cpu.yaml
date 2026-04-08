@@ -95,7 +95,7 @@ scenario:
     # are ignored -- the custom command must include its own flags.
     # -------------------------------------------------------------------------
     vllmCommon:
-      shmMemory: 64Gi
+      shmMemory: 16Gi
 
       preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && . $HOME/llmdbench_env.sh"
 
@@ -105,7 +105,7 @@ scenario:
           type: emptyDir
           emptyDir:
             medium: Memory
-            sizeLimit: 64Gi
+            sizeLimit: 16Gi
         - name: preprocesses
           type: configMap
           configMap:
@@ -163,11 +163,11 @@ scenario:
 
       resources:
         limits:
-          memory: 256Gi
-          cpu: "64"
+          memory: 16Gi
+          cpu: "8"
         requests:
-          memory: 256Gi
-          cpu: "64"
+          memory: 16Gi
+          cpu: "8"
 
 
     # =========================================================================
@@ -216,11 +216,11 @@ scenario:
 
       resources:
         limits:
-          memory: 256Gi
-          cpu: "64"
+          memory: 16Gi
+          cpu: "8"
         requests:
-          memory: 256Gi
-          cpu: "64"
+          memory: 16Gi
+          cpu: "8"
 
       accelerator:
         count: 0
