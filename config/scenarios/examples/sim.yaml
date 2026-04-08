@@ -1,6 +1,5 @@
-# Sim Small Example Scenario for LLM-D Deployment
+# Sim Example Scenario for LLM-D Deployment
 # Migrated from bash environment variables to YAML format
-# Based on scenarios/examples/sim_small.sh
 #
 # A scenario to capture running inference-sim on a resource limited
 # Kind/OpenShift cluster without requiring GPUs.
@@ -10,9 +9,9 @@
 
 scenario:
   # ============================================================================
-  # Sim Small - Resource-limited simulated inference (no GPUs)
+  # Sim - Resource-limited simulated inference (no GPUs)
   # ============================================================================
-  - name: "sim-small"
+  - name: "sim"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
