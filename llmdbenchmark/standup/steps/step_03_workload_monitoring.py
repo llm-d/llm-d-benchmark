@@ -246,6 +246,21 @@ class WorkloadMonitoringStep(Step):
                 for key, value in ns.items():
                     selectors.append((f"{method}.nodeSelector", key, str(value)))
 
+            try:
+                method_accel_count = int(
+                    method_config.get("accelerator", {}).get("count", 0)
+                )
+            except (ValueError, TypeError):
+                method_accel_count = 0
+
+            if method_accel_count == 0:
+                context.logger.log_info(
+                    f"Skipping {method}.acceleratorType validation: "
+                    f"{method}.accelerator.count=0 "
+                    "(label inherited from defaults.yaml)"
+                )
+                continue
+
             accel_type = method_config.get("acceleratorType", {})
             label_key = accel_type.get("labelKey", "")
             label_value = accel_type.get("labelValue", "")
