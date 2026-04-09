@@ -151,6 +151,10 @@ scenario:
       enabled: false
       replicas: 1
 
+      acceleratorType:
+        labelKey: kubernetes.io/os
+        labelValue: linux
+
       image:
         repository: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
         tag: v0.12.0

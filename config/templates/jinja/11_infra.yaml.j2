@@ -51,10 +51,10 @@ gateway:
   service:
     type: {{ gateway.service.type | default('ClusterIP') }}
 
-{% elif gw_class == 'kgateway' %}
-{# ── kgateway: base config (step_07 patches for OpenShift) ── #}
+{% elif gw_class == 'agentgateway' %}
+{# ── agentgateway: base config (step_07 patches for OpenShift) ── #}
 gateway:
-  gatewayClassName: kgateway
+  gatewayClassName: agentgateway
   service:
     type: {{ gateway.service.type | default('NodePort') }}
 

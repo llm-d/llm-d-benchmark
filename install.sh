@@ -321,7 +321,7 @@ tool_version() {
 # Per-tool Linux install helpers
 # ---------------------------------------------------------------------------
 install_yq_linux() {
-    local version=v4.45.4
+    local version=v4.52.5
     local binary=yq_linux_amd64
     curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}"
     chmod +x "/tmp/${binary}"

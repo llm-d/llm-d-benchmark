@@ -12,14 +12,14 @@ _anchors:
   model_short_name: &model_short_name facebook-opt-125m
   model_path: &model_path models/facebook/opt-125m
   model_cache_base: &model_cache_base /model-cache
-  
+
   # Common ports
   vllm_port: &vllm_port 8200
   vllm_service_port: &vllm_service_port 8000
   ext_proc_port: &ext_proc_port 9002
   zmq_port: &zmq_port 5557
   rsync_port: &rsync_port 20873
-  
+
   # Common resource values
   cpu_16: &cpu_16 "16"
   cpu_4: &cpu_4 "4"
@@ -33,12 +33,12 @@ _anchors:
   shm_16gi: &shm_16gi 16Gi
   shm_32gi: &shm_32gi 32Gi
   shm_64gi: &shm_64gi 64Gi
-  
+
   # GPU configuration
   gpu_label_key: &gpu_label_key nvidia.com/gpu.product
   gpu_label_value: &gpu_label_value NVIDIA-H100-80GB-HBM3
   gpu_memory_util: &gpu_memory_util 0.95
-  
+
   # Common vLLM settings
   block_size: &block_size 64
   max_model_len: &max_model_len 16384
@@ -46,11 +46,11 @@ _anchors:
   logging_level: &logging_level INFO
   container_home: &container_home /tmp
   hf_home: &hf_home /tmp/huggingface
-  
+
   # vLLM KV Transfer config
   kv_connector: &kv_connector NixlConnector
   kv_role: &kv_role kv_both
-  
+
   # Common probe settings
   probe_startup: &probe_startup
     path: /health
@@ -67,14 +67,14 @@ _anchors:
     path: /health
     failureThreshold: 3
     periodSeconds: 5
-  
+
   # Common parallelism
   parallelism_single: &parallelism_single
     data: 1
     dataLocal: 1
     tensor: 1
     workers: 1
-  
+
   parallelism_4gpu: &parallelism_4gpu
     data: 1
     dataLocal: 1
@@ -86,34 +86,34 @@ _anchors:
     dataLocal: 1
     tensor: 8
     workers: 8
-  
+
   # Storage class: "auto"/"default" = use cluster default; set explicitly to override
   storage_class: &storage_class auto
-  
+
   # Image pull policies
   pull_always: &pull_always Always
   pull_if_not_present: &pull_if_not_present IfNotPresent
-  
+
   # Chart versions
   istio_version: &istio_version 1.29.1
-  
+
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
   inference_serving_label: &inference_serving_label "true"
-  
+
   # Preprocessing script (sourced from init container output)
   preprocess_script: &preprocess_script /bin/true
 
 # ============================================================================
 # RESOURCE PRESETS - For different model sizes (as we get understanding...)
-# 
+#
 # Idea:
-# 
+#
 # These can be referenced in scenarios via resourcePreset: <name>
-# 
+#
 # I kind of have this implemented in the renderer. But I have not extensively
 # tested it.x
-# 
+#
 # ============================================================================
 resourcePresets:
   small:
@@ -275,7 +275,7 @@ storage:
     accessModes:
       - ReadWriteMany
     storageClassName: *storage_class
-  
+
   modelPvc:
     name: model-pvc
     size: 300Gi
@@ -363,9 +363,9 @@ helmRepositories:
   prometheusAdapter:
     name: prometheus-adapter
     url: https://prometheus-community.github.io/helm-charts
-  kgateway:
-    name: kgateway
-    url: oci://cr.kgateway.dev/kgateway-dev/charts
+  agentgateway:
+    name: agentgateway
+    url: oci://cr.agentgateway.dev/charts/
 
 # ============================================================================
 # CHART VERSIONS
@@ -378,7 +378,7 @@ chartVersions:
   inferencePool: v1.3.0
   gaie: v1.3.1
   wva: auto
-  kgateway: v2.2.1
+  agentgateway: v1.0.1
   lws: "0.8.0"
 
 # ============================================================================
@@ -453,10 +453,10 @@ affinity:
   # nodeSelector:
   #   nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
   #   topology.kubernetes.io/zone: us-east-1a
-  
+
   # Pod affinity rules (optional)
   podAffinity: {}
-  
+
   # Pod anti-affinity rules (optional)
   podAntiAffinity: {}
 
@@ -466,13 +466,13 @@ affinity:
 annotations:
   # Common annotations applied to all pods
   common: {}
-  
+
   decode:
     # Pod-level annotations
     pod: {}
     # Container-level annotations (if supported)
     container: {}
-  
+
   prefill:
     pod: {}
     container: {}
@@ -564,7 +564,7 @@ routing:
   connector: nixlv2
   debugLevel: 3
   secure: false
-  
+
   # Proxy configuration
   proxy:
     enabled: true
@@ -678,7 +678,7 @@ vllmCommon:
     # Additional vLLM flags (optional)
     # enableChunkedPrefill: false
     # maxNumBatchedTokens: null
-  
+
   # Volume configurations -- no defaults.
   # Each scenario defines its own volumes and volumeMounts explicitly.
   # Common volumes like dshm (shared memory) and shared-config (preprocess output)
@@ -693,13 +693,13 @@ vllmCommon:
 decode:
   enabled: true
   replicas: 1
-  
+
   # Autoscaling (optional)
   autoscaling:
     enabled: false
     # minReplicas: 1
     # maxReplicas: 10
-  
+
   # Node selector (optional - for direct nodeSelector, not affinity)
   nodeSelector: {}
 
@@ -741,17 +741,17 @@ decode:
       memory: *memory_40gi
       cpu: *cpu_4
       # nvidia.com/gpu: "1"
-  
+
   # Shared memory
   shm:
     size: *shm_16gi
-  
+
   # Probe configuration
   probes:
     startup: *probe_startup
     liveness: *probe_liveness
     readiness: *probe_readiness
-  
+
   # vLLM configuration
   vllm:
     port: *vllm_port
@@ -767,16 +767,16 @@ decode:
       # - "--no-enable-log-requests"
       # - "--max-model-len 16000"
       # - "--tensor-parallel-size 1"
-  
+
   # Mount model volume
   mountModelVolume: true
-  
+
   # Additional volume mounts
   additionalVolumeMounts: []
-  
+
   # Additional volumes
   additionalVolumes: []
-  
+
   # Extra environment variables
   extraEnvVars: []
   # Example:
@@ -790,13 +790,13 @@ decode:
   #       secretKeyRef:
   #         name: my-secret
   #         key: password
-  
+
   # Extra ports (optional)
   # ports:
   #   - containerPort: 8200
   #     name: metrics
   #     protocol: TCP
-  
+
   # Extra container config
   extraContainerConfig: {}
   # Example:
@@ -806,10 +806,10 @@ decode:
   #     capabilities:
   #       add:
   #         - IPC_LOCK
-  
+
   # Extra pod config
   extraPodConfig: {}
-  
+
   # Init containers (optional, configured per scenario)
   initContainers: []
 
@@ -821,7 +821,7 @@ decode:
   # subGroupPolicy:
   #   subGroupSize: 8
   # subGroupExclusiveTopology: false
-  
+
   # Monitoring / PodMonitor (optional)
   monitoring:
     podmonitor:
@@ -841,16 +841,16 @@ decode:
 prefill:
   enabled: false
   replicas: 0
-  
+
   # Autoscaling (optional)
   autoscaling:
     enabled: false
     # minReplicas: 1
     # maxReplicas: 10
-  
+
   # Node selector (optional)
   nodeSelector: {}
-  
+
   # Scheduler name override global schedulerName (optional)
   # schedulerName: default-scheduler
 
@@ -905,19 +905,19 @@ prefill:
 
   # Mount model volume
   mountModelVolume: true
-  
+
   # Additional volume mounts
   additionalVolumeMounts: []
-  
+
   # Additional volumes
   additionalVolumes: []
-  
+
   # Extra environment variables
   extraEnvVars: []
-  
+
   # Extra container config
   extraContainerConfig: {}
-  
+
   # Extra pod config
   extraPodConfig: {}
 
@@ -945,11 +945,11 @@ standalone:
   enabled: false
   replicas: 1
   role: both  # Options: prefill, decode, both
-  
+
   # Deployment naming
   deployment:
     name: null  # Auto-generated if null: vllm-standalone-<model.shortName>
-  
+
   # Service configuration
   service:
     name: null  # Uses deployment name if null
@@ -967,19 +967,19 @@ standalone:
     #   - name: metrics
     #     port: 9090
     #     targetPort: 9090
-  
+
   # Labels applied to deployment and service
   labels:
     stood-up-by: "auto" # Should be automatically configured to user
     stood-up-from: llm-d-benchmark
     stood-up-via: "standalone"
-  
+
   # Extra labels for pod template
   extraPodLabels: {}
-  
+
   # Pod annotations
   podAnnotations: {}
-  
+
   # Scheduler name override global schedulerName (optional)
   schedulerName: default-scheduler
 
@@ -1003,17 +1003,17 @@ standalone:
     # labelValues:  # Use for multiple GPU types
     #   - NVIDIA-H100-80GB-HBM3
     #   - NVIDIA-A100-SXM4-80GB
-  
+
   # Image configuration (inherits from images.vllm if not specified)
   image:
     repository: docker.io/vllm/vllm-openai
     tag: auto
     pullPolicy: Always
-  
+
   # Parallelism configuration
   parallelism:
     tensor: 1
-  
+
   # Resource configuration (inherits from decode if not specified)
   resources:
     limits:
@@ -1022,7 +1022,7 @@ standalone:
     requests:
       memory: 40Gi
       cpu: "4"
-  
+
   # Probe configuration
   probes:
     startup:
@@ -1036,7 +1036,7 @@ standalone:
     readiness:
       failureThreshold: 3
       periodSeconds: 5
-  
+
   # vLLM configuration
   vllm:
     port: 8000
@@ -1055,7 +1055,7 @@ standalone:
     # additionalFlags:
     #   - "--enable-chunked-prefill"
     #   - "--max-num-batched-tokens 8192"
-  
+
   # Model volume configuration
   # NOTE: The model PVC is standalone-specific (not in vllmCommon.volumes)
   # because modelservice handles its own model volume via the Helm chart.
@@ -1088,7 +1088,7 @@ standalone:
   #   - name: custom-config
   #     mountPath: /config
   #     readOnly: true
-  
+
   # Additional volumes
   additionalVolumes: []
   # Example:
@@ -1097,7 +1097,7 @@ standalone:
   #     type: configMap
   #     configMap:
   #       name: my-config
-  
+
   # Extra environment variables
   extraEnvVars: []
   # Example:
@@ -1109,7 +1109,7 @@ standalone:
   #       secretKeyRef:
   #         name: my-secret
   #         key: password
-  
+
   # Init containers (optional)
   initContainers: []
   # Example:
@@ -1117,14 +1117,14 @@ standalone:
   #   - name: download-model
   #     image: python:3.10
   #     command: ["python", "-c", "print('downloading...')"]
-  
+
   # Extra container config (merged into container spec)
   extraContainerConfig: {}
   # Example:
   # extraContainerConfig:
   #   securityContext:
   #     privileged: true
-  
+
   # Extra pod config (merged into pod spec)
   extraPodConfig: {}
 
@@ -1210,10 +1210,10 @@ wva:
 # GATEWAY PROVIDERS
 # ============================================================================
 gatewayProviders:
-  kgateway:
-    # Chart version managed in chartVersions.kgateway
-    namespace: kgateway-system
-    helmRepository: oci://cr.kgateway.dev/kgateway-dev/charts
+  agentgateway:
+    # Chart version managed in chartVersions.agentgateway
+    namespace: agentgateway-system
+    helmRepository: oci://cr.agentgateway.dev/charts/
 
 # ============================================================================
 # LWS (LeaderWorkerSet)
@@ -1227,8 +1227,8 @@ lws:
 # GATEWAY API CRD VERSIONS
 # ============================================================================
 gatewayApiCrd:
-  revision: v1.4.0
-  inferenceExtensionRevision: v1.3.1
+  revision: v1.5.1
+  inferenceExtensionRevision: v1.4.0
 
 # ============================================================================
 # HARNESS CONFIGURATION
