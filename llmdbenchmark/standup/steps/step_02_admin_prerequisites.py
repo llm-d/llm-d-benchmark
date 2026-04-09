@@ -9,11 +9,14 @@ from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
 
 GATEWAY_API_CRDS = [
+    "backendtlspolicies.gateway.networking.k8s.io",
     "gatewayclasses.gateway.networking.k8s.io",
     "gateways.gateway.networking.k8s.io",
     "grpcroutes.gateway.networking.k8s.io",
     "httproutes.gateway.networking.k8s.io",
+    "listenersets.gateway.networking.k8s.io",
     "referencegrants.gateway.networking.k8s.io",
+    "tlsroutes.gateway.networking.k8s.io"
 ]
 
 # Inference extension CRDs may use the graduated (.k8s.io) or
@@ -30,15 +33,13 @@ GATEWAY_API_EXTENSION_CRDS_XK8S = [
     "inferenceobjectives.inference.networking.x-k8s.io",
     "inferencepoolimports.inference.networking.x-k8s.io",
     "inferencepools.inference.networking.x-k8s.io",
+    "inferencepools.inference.networking.k8s.io",
 ]
 
-KGATEWAY_CRDS = [
-    "backends.gateway.kgateway.dev",
-    "directresponses.gateway.kgateway.dev",
-    "gatewayextensions.gateway.kgateway.dev",
-    "gatewayparameters.gateway.kgateway.dev",
-    "httplistenerpolicies.gateway.kgateway.dev",
-    "trafficpolicies.gateway.kgateway.dev",
+AGENTGATEWAY_CRDS = [
+    "agentgatewaybackends.agentgateway.dev",
+    "agentgatewayparameters.agentgateway.dev",
+    "agentgatewaypolicies.agentgateway.dev"
 ]
 
 ISTIO_CRDS = [
@@ -292,14 +293,14 @@ class AdminPrerequisitesStep(Step):
         gateway_config = plan_config.get("gateway", {})
         gateway_class = self._require_config(plan_config, "gateway", "className")
 
-        if gateway_class == "kgateway":
-            if not _any_crds_missing(KGATEWAY_CRDS, existing_crds):
+        if gateway_class == "agentgateway":
+            if not _any_crds_missing(AGENTGATEWAY_CRDS, existing_crds):
                 cmd.logger.log_info(
-                    "✅ kgateway already installed "
-                    "(*.gateway.kgateway.dev CRDs found)"
+                    "✅ agentgateway already installed "
+                    "(*.agentgateway.dev CRDs found)"
                 )
                 return
-            self._install_kgateway(cmd, plan_config, errors)
+            self._install_agentgateway(cmd, plan_config, errors)
 
         elif gateway_class == "istio":
             if not _any_crds_missing(ISTIO_CRDS, existing_crds):
@@ -420,57 +421,48 @@ class AdminPrerequisitesStep(Step):
                         namespace,
                     )
 
-    def _install_kgateway(self, cmd: CommandExecutor, plan_config: dict, errors: list):
-        kgw = plan_config.get("gatewayProviders", {}).get("kgateway", {})
-        chart_version = plan_config.get("chartVersions", {}).get("kgateway", "") or kgw.get("chartVersion", "")
-        namespace = self._require_config(kgw, "namespace")
-        helm_repo = kgw.get("helmRepository", "")
+    def _install_agentgateway(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        errors: list,
+    ):
+        """Install agentgateway CRDs + controller via the rendered helmfile.
 
-        if not (helm_repo and chart_version):
+        The helmfile itself is rendered by
+        ``config/templates/jinja/09_helmfile-gateway-provider.yaml.j2``
+        during the ``plan`` phase -- we just locate the rendered file
+        and hand it to ``helmfile apply``. This is the same pattern
+        ``_install_istio`` uses, and it keeps all YAML assembly in the
+        templates rather than in Python string-concatenation here.
+
+        The canonical upstream helmfile this mirrors is:
+          https://raw.githubusercontent.com/llm-d-incubation/llm-d-infra/refs/heads/main/quickstart/gateway-control-plane-providers/kgateway.helmfile.yaml
+
+        We deliberately pass ``use_kubeconfig=False`` for the same
+        reason ``_install_istio`` does: helmfile must resolve release
+        namespaces from the helmfile itself (``kgateway-system``), not
+        from whatever namespace context the kubeconfig carries, or the
+        ``needs:`` wiring between the CRDs release and the controller
+        release will not resolve correctly.
+        """
+        helmfile_yaml = self._find_rendered_yaml(
+            context, "09_helmfile-gateway-provider"
+        )
+        if not helmfile_yaml or not self._has_yaml_content(helmfile_yaml):
             return
 
-        def chart_ref(chart_name: str) -> str:
-            if helm_repo.startswith("oci://"):
-                return f"{helm_repo.rstrip('/')}/{chart_name}"
-            return f"{helm_repo}/{chart_name}"
+        cmd.logger.log_info("📦 Installing agentgateway via helmfile...")
 
-        cmd.logger.log_info(f"📦 Installing kgateway {chart_version}...")
-
-        result = cmd.helm(
-            "upgrade",
-            "--install",
-            "kgateway-crds",
-            chart_ref("kgateway-crds"),
-            "--version",
-            chart_version,
-            "--namespace",
-            namespace,
-            "--create-namespace",
-            "--wait",
+        result = cmd.helmfile(
+            "apply",
+            "-f",
+            str(helmfile_yaml),
+            "--skip-diff-on-install",
+            use_kubeconfig=False,
         )
         if not result.success:
-            errors.append(f"Failed to install kgateway-crds: {result.stderr}")
-            return
-
-        result = cmd.helm(
-            "upgrade",
-            "--install",
-            "kgateway",
-            chart_ref("kgateway"),
-            "--version",
-            chart_version,
-            "--namespace",
-            namespace,
-            "--create-namespace",
-            "--set", "inferenceExtension.enabled=true",
-            "--set", "controller.deployment.container.securityContext.seccompProfile.type=RuntimeDefault",
-            "--set", "controller.deployment.container.securityContext.runAsNonRoot=true",
-            "--set", "controller.deployment.container.securityContext.capabilities.drop={ALL}",
-            "--wait",
-        )
-
-        if not result.success:
-            errors.append(f"Failed to install kgateway: {result.stderr}")
+            errors.append(f"Failed to install agentgateway via helmfile: {result.stderr}")
 
     def _install_istio(
         self,

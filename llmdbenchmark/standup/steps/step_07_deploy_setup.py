@@ -54,8 +54,8 @@ class DeploySetupStep(Step):
         helm_dir = self._prepare_helm_dir(context, stack_path, errors)
 
         gateway_class = self._require_config(plan_config, "gateway", "className")
-        if context.is_openshift and gateway_class == "kgateway" and helm_dir:
-            self._patch_infra_for_openshift_kgateway(helm_dir, context)
+        if context.is_openshift and gateway_class == "agentgateway" and helm_dir:
+            self._patch_infra_for_openshift_agentgateway(helm_dir, context)
 
         # Gateway provider helmfile (Istio) -- matches bash behavior:
         # call helmfile WITHOUT --kubeconfig so it uses the default context.
@@ -141,10 +141,10 @@ class DeploySetupStep(Step):
             errors.append(f"Failed to prepare helm directory: {exc}")
             return None
 
-    def _patch_infra_for_openshift_kgateway(
+    def _patch_infra_for_openshift_agentgateway(
         self, helm_dir: Path, context: ExecutionContext
     ):
-        """Patch infra.yaml to add floatingUserId for kgateway on OpenShift."""
+        """Patch infra.yaml to add floatingUserId for agentgateway on OpenShift."""
         infra_file = helm_dir / "infra.yaml"
         if not infra_file.exists():
             return
@@ -155,7 +155,7 @@ class DeploySetupStep(Step):
                 return
 
             gw = content["gateway"]
-            if gw.get("gatewayClassName") != "kgateway":
+            if gw.get("gatewayClassName") != "agentgateway":
                 return
 
             gw.setdefault("gatewayParameters", {})
@@ -166,7 +166,7 @@ class DeploySetupStep(Step):
                 yaml.dump(content, f, default_flow_style=False)
 
             context.logger.log_info(
-                "Patched infra.yaml: kgateway to kgateway-openshift "
+                "Patched infra.yaml: agentgateway to agentgateway-openshift "
                 "(floatingUserId=true)"
             )
         except (OSError, yaml.YAMLError):
