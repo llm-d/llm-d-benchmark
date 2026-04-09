@@ -283,23 +283,41 @@ class WorkloadMonitoringStep(Step):
             if not method_config:
                 continue
 
+            # Skip methods the scenario has explicitly disabled. Previously
+            # we walked every method and relied on ``accelerator.count == 0``
+            # as a de facto skip signal, which produced noisy "Skipping
+            # standalone.acceleratorType validation" logs on modelservice-
+            # only scenarios like ``inference-scheduling``.
+            if method_config.get("enabled") is False:
+                context.logger.log_debug(
+                    f"Skipping {method} node-selector validation: "
+                    f"{method}.enabled is false"
+                )
+                continue
+
             ns = method_config.get("nodeSelector")
             if isinstance(ns, dict):
                 for key, value in ns.items():
                     selectors.append((f"{method}.nodeSelector", key, str(value)))
 
-            try:
-                method_accel_count = int(
-                    method_config.get("accelerator", {}).get("count", 0)
-                )
-            except (ValueError, TypeError):
-                method_accel_count = 0
+            # Resolve the effective accelerator count the same way the
+            # Jinja render pipeline does (see 13_ms-values.yaml.j2:252):
+            #   1. explicit ``<method>.accelerator.count`` wins,
+            #   2. otherwise fall back to ``<method>.parallelism.tensor``
+            #      (the canonical vLLM pattern: tensor-parallel degree
+            #      equals the per-pod GPU count).
+            # Only scenarios that *explicitly* set count to 0 (e.g. the
+            # CPU example) are treated as CPU-only and have their GPU
+            # label validation skipped.
+            method_accel_count, accel_count_source = self._effective_accelerator_count(
+                method_config
+            )
 
             if method_accel_count == 0:
                 context.logger.log_info(
                     f"Skipping {method}.acceleratorType validation: "
-                    f"{method}.accelerator.count=0 "
-                    "(label inherited from defaults.yaml)"
+                    f"effective accelerator count is 0 "
+                    f"(source: {accel_count_source})"
                 )
                 continue
 
@@ -331,6 +349,40 @@ class WorkloadMonitoringStep(Step):
                     f"(from {source}) not found on any cluster node. "
                     "Pods using this selector will be stuck in Pending."
                 )
+
+    @staticmethod
+    def _effective_accelerator_count(method_config: dict) -> tuple[int, str]:
+        """Resolve the per-pod accelerator count for a method.
+
+        Mirrors the fallback chain in ``config/templates/jinja/13_ms-values.yaml.j2``
+        line 252:
+
+            decode.accelerator.count   (explicit)
+              ↓ (if unset)
+            decode.parallelism.tensor  (canonical vLLM pattern)
+
+        Returns a ``(count, source)`` tuple where ``source`` describes
+        which field was consulted, for informative logging. Any parsing
+        failure returns ``(0, "parse-error")`` so the caller treats the
+        method as CPU-only and skips GPU-label validation — the safe
+        choice when the config is unintelligible.
+        """
+        accel = method_config.get("accelerator")
+        if isinstance(accel, dict) and "count" in accel:
+            try:
+                return int(accel["count"]), "accelerator.count (explicit)"
+            except (ValueError, TypeError):
+                return 0, "parse-error"
+
+        parallelism = method_config.get("parallelism")
+        if isinstance(parallelism, dict) and "tensor" in parallelism:
+            try:
+                return int(parallelism["tensor"]), "parallelism.tensor (fallback)"
+            except (ValueError, TypeError):
+                return 0, "parse-error"
+
+        # Neither field present at all — assume no accelerators.
+        return 0, "unset"
 
     def _get_all_node_labels(
         self, cmd: CommandExecutor, context: ExecutionContext

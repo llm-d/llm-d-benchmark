@@ -49,15 +49,88 @@ More controversial design changes (e.g., breaking changes to workload profiles, 
 
 We welcome contributions to any aspect of `llm-d-benchmark`! If you have a bug fix, feature request, or improvement, please submit a pull request (PR) to the repository.
 
-Before submitting a pull request, please ensure that you have following dependencies installed and set up:
-
-- [pre-commit](https://pre-commit.com/)
-
-Then run:
-
-```./util/setup_precommit.sh```
-
 For every Pull Request submitted, ensure the following steps have been done:
 
 1. [Sign your commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits)
-2. Make sure that [pre-commit](https://pre-commit.com/) hook has been run, and passes, before push the contents of your PR.
+2. Make sure that the [pre-commit](https://pre-commit.com/) hooks have been run and pass **before you push** the contents of your PR. See [Local Development Checks](#local-development-checks-pre-commit) below.
+
+### Local Development Checks (pre-commit)
+
+The repository ships a [pre-commit](https://pre-commit.com/) configuration that runs the **same checks CI runs on your PR**, locally, before you push. Setting this up once means you catch regressions without waiting for CI and never push a PR that will fail the PR-benchmark or plan-rendering CI workflows.
+
+#### One-time setup
+
+```bash
+./util/setup_precommit.sh
+```
+
+That script:
+
+1. Delegates to `./install.sh` (no `-y` flag — we deliberately want a virtualenv, not system Python) to create/reuse `.venv/`, install the `llmdbenchmark` CLI and `config_explorer` editably, and provision all required system tools (`helm`, `helmfile`, `kubectl`, `skopeo`, `crane`, `helm-diff`, `jq`, `yq`, `kustomize`). This is the same bootstrap CI uses (see [`.github/workflows/ci-pr-benchmark.yaml`](.github/workflows/ci-pr-benchmark.yaml)), with `-y` omitted so local development stays in `.venv/` instead of polluting your system Python.
+2. Installs `pre-commit`, `pytest`, and `detect-secrets` from [`.pre-commit_requirements.txt`](.pre-commit_requirements.txt).
+3. Registers both the `pre-commit` and `pre-push` hook types.
+
+You only need to run this once per clone. On subsequent invocations `install.sh` uses its `~/.llmdbench_dependencies_checked` cache to skip dependencies that have already been verified.
+
+#### What runs, when, and why
+
+| Hook | Stage | Command | Mirrors CI |
+|---|---|---|---|
+| `py-compile` | `pre-commit`, `pre-push` | `python -m compileall -q llmdbenchmark` (only on changed `llmdbenchmark/**.py`) | — (fast local-only syntax gate) |
+| `pytest` | `pre-commit`, `pre-push` | `python -m pytest tests/ -x -q` | `unit-tests` job in [`ci-pr-benchmark.yaml`](.github/workflows/ci-pr-benchmark.yaml) |
+| `render-validation-kind-sim` | `pre-commit`, `pre-push` | `llmdbenchmark --spec cicd/kind-sim --dry-run plan -p precommit` | Scoped subset of [`ci-pr-plan-rendering-validation.yaml`](.github/workflows/ci-pr-plan-rendering-validation.yaml) |
+| `render-validation-all` | **`pre-push` only** | Loop over every `config/specification/**/*.yaml.j2` and dry-run plan | Full [`ci-pr-plan-rendering-validation.yaml`](.github/workflows/ci-pr-plan-rendering-validation.yaml) |
+| `detect-secrets` | `pre-commit` | [`ibm/detect-secrets`](https://github.com/ibm/detect-secrets) against `.secrets.baseline` with `--use-all-plugins` | — (local-only secrets scan) |
+
+Stages explained:
+
+- **`pre-commit`** fires on every `git commit`. Only fast checks live here — byte-compile, unit tests, and a single-spec render. This is your "catch the typo" layer.
+- **`pre-push`** fires on every `git push`. The full render-validation loop across every specification runs here. This is your "catch the scenario regression" layer and matches the CI render job exactly.
+
+Splitting the layers keeps `git commit` fast enough to use naturally while still guaranteeing that nothing broken ever leaves your machine.
+
+#### Running hooks manually
+
+```bash
+# Run the full pre-commit suite against every tracked file (what CI effectively does):
+pre-commit run --all-files
+
+# Run one specific hook by id:
+pre-commit run pytest --all-files
+pre-commit run render-validation-kind-sim --all-files
+pre-commit run render-validation-all --all-files --hook-stage pre-push
+
+# Run against only the files in your current diff (what `git commit` does):
+pre-commit run
+```
+
+#### Debugging a hook failure
+
+If a hook fails, the first line of output tells you which hook and exits with the underlying tool's output. Common cases:
+
+- **`pytest` failure** — run `pytest tests/ -x -q` directly and fix the failing test. The CI `unit-tests` job runs exactly this command, so a fix here is guaranteed to green CI.
+- **`render-validation-*` failure** — run the failing spec interactively to see the full error:
+  ```bash
+  llmdbenchmark --spec <the-failing-spec> --dry-run plan -p debug
+  ```
+  Render failures are usually caused by Jinja template changes or missing keys in `config/scenarios/**/<name>.yaml`.
+- **`detect-secrets` failure** — either your change added a secret (remove it) or added a new pattern the baseline doesn't know about. To update the baseline after reviewing the finding:
+  ```bash
+  detect-secrets scan --baseline .secrets.baseline --use-all-plugins
+  detect-secrets audit .secrets.baseline
+  ```
+
+#### Bypassing hooks (use sparingly)
+
+The hooks exist to catch regressions before they reach CI. Bypass only in genuine emergencies:
+
+```bash
+git commit --no-verify    # skips pre-commit stage
+git push --no-verify      # skips pre-push stage
+```
+
+If you find yourself reaching for `--no-verify` to get around a legitimate bug, **fix the bug instead** — the same check will fail on CI when you open the PR.
+
+#### Updating the hook configuration
+
+The hooks are defined in [`.pre-commit-config.yaml`](.pre-commit-config.yaml). If you add a new hook there or change an existing one, re-run `./util/setup_precommit.sh` (or just `pre-commit install && pre-commit install --hook-type pre-push`) so git picks up the change.

@@ -1,12 +1,75 @@
 repos:
   - repo: local
     hooks:
-      - id: basic_unit_test
-        name: Basic Unit Test
-        entry: bash -c './setup/standup.sh -c kind_sim_fb -n'
-        require_serial: true
-        pass_filenames: false
+      # ----------------------------------------------------------------
+      # Fast syntax sanity check -- only runs when llmdbenchmark/**.py
+      # changes. Catches import errors and syntax regressions before
+      # anything heavier runs.
+      # ----------------------------------------------------------------
+      - id: py-compile
+        name: Byte-compile llmdbenchmark
+        entry: .venv/bin/python -m compileall -q llmdbenchmark
         language: system
+        pass_filenames: false
+        files: ^llmdbenchmark/.*\.py$
+        stages: [pre-commit, pre-push]
+
+      # ----------------------------------------------------------------
+      # Unit tests -- mirrors the `unit-tests` job in
+      # .github/workflows/ci-pr-benchmark.yaml.
+      # ----------------------------------------------------------------
+      - id: pytest
+        name: Unit tests (pytest tests/ -x -q)
+        entry: .venv/bin/python -m pytest tests/ -x -q
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+      # ----------------------------------------------------------------
+      # Render-validation sanity check -- single kind-sim spec on
+      # pre-commit for speed. Mirrors ci-pr-plan-rendering-validation.yaml
+      # but scoped to one spec so it stays fast enough to run on every
+      # commit. The full per-spec loop runs on pre-push below.
+      # ----------------------------------------------------------------
+      - id: render-validation-kind-sim
+        name: Render sanity check (cicd/kind-sim, dry-run)
+        entry: .venv/bin/llmdbenchmark
+        args: ["--spec", "cicd/kind-sim", "--dry-run", "plan", "-p", "precommit"]
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+      # ----------------------------------------------------------------
+      # Full render-validation loop -- mirrors
+      # ci-pr-plan-rendering-validation.yaml exactly. Too slow for every
+      # commit, so gated behind pre-push.
+      # ----------------------------------------------------------------
+      - id: render-validation-all
+        name: Render all specification templates (dry-run)
+        entry: bash
+        args:
+          - -c
+          - |
+            set -e
+            FAILED=0
+            PASSED=0
+            for spec_path in $(find config/specification -name "*.yaml.j2" | sort); do
+              spec_name="${spec_path#config/specification/}"
+              spec_name="${spec_name%.yaml.j2}"
+              echo "Rendering: $spec_name"
+              if .venv/bin/llmdbenchmark --spec "$spec_name" --dry-run plan -p precommit >/dev/null 2>&1; then
+                PASSED=$((PASSED + 1))
+              else
+                echo "  FAIL: $spec_name"
+                FAILED=$((FAILED + 1))
+              fi
+            done
+            echo "Render results: $PASSED passed, $FAILED failed"
+            [ "$FAILED" -eq 0 ]
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
   - repo: https://github.com/ibm/detect-secrets
     # If you desire to use a specific version of detect-secrets, you can replace `master` with other git revisions such as branch, tag or commit sha.
     # You are encouraged to use static refs such as tags, instead of branch name
