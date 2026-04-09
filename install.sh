@@ -405,10 +405,17 @@ done
 # Ensure helm-diff plugin is installed (required by helmfile apply).
 # Runs regardless of whether helm was just installed or already existed.
 # ---------------------------------------------------------------------------
+helm_diff_url="https://github.com/databus23/helm-diff"
+
 if command -v helm &>/dev/null; then
     if ! helm plugin list 2>/dev/null | grep -q "^diff"; then
         echo "  helm-diff    -- NOT FOUND, installing..."
-        helm plugin install https://github.com/databus23/helm-diff || { echo "ERROR: Failed to install helm-diff plugin"; exit 1; }
+        if ! helm plugin install ${helm_diff_url}; then
+            echo "First attempt failed, retrying without signature verification..."
+            if ! helm plugin install ${helm_diff_url} --verify=false; then
+                echo "ERROR: Failed to install helm-diff plugin"; exit 1
+            fi
+        fi
         printf "  %-14s %-20s %s\n" "helm-diff" "$(helm plugin list | grep '^diff' | awk '{print $2}')" "(newly installed)"
     else
         printf "  %-14s %-20s %s\n" "helm-diff" "$(helm plugin list | grep '^diff' | awk '{print $2}')" ""
