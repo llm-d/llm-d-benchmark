@@ -31,6 +31,9 @@ scenario:
       maxModelLen: 1024
       size: 2Gi
 
+    gateway:
+      className: agentgateway
+
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
     # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY=kubernetes.io/os:linux
