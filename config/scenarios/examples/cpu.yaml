@@ -12,7 +12,7 @@
 #
 # The model parameter is left commented -- uncomment the model you want to deploy.
 # Uncommenting a model here will override the default model from defaults.yaml.
-
+#TEST
 scenario:
   # ============================================================================
   # CPU Example - CPU-only deployment with no GPU accelerators

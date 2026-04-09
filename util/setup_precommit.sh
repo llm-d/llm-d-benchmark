@@ -77,7 +77,7 @@ pre-commit install --hook-type pre-push
 
 echo ""
 echo "pre-commit hooks installed."
-echo "  pre-commit stage: py-compile, pytest, render-validation-kind-sim"
+echo "  pre-commit stage: py-compile, pytest, render-validation-changed"
 echo "  pre-push stage:   render-validation-all"
 echo ""
 echo "Run 'pre-commit run --all-files' to exercise the pre-commit hooks now."

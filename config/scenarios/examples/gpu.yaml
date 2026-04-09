@@ -12,7 +12,7 @@
 #
 # The model parameter and affinity are left commented -- uncomment the model and
 # GPU affinity appropriate for your cluster.
-
+# TEST
 scenario:
   # ============================================================================
   # GPU Example - Standard GPU deployment

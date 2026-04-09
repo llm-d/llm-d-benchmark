@@ -26,17 +26,52 @@ repos:
         stages: [pre-commit, pre-push]
 
       # ----------------------------------------------------------------
-      # Render-validation sanity check -- single kind-sim spec on
-      # pre-commit for speed. Mirrors ci-pr-plan-rendering-validation.yaml
-      # but scoped to one spec so it stays fast enough to run on every
-      # commit. The full per-spec loop runs on pre-push below.
+      # Render-validation smart check -- detects which scenarios the
+      # commit actually touched (via util/precommit_render_changed.py)
+      # and renders only those. Scope:
+      #
+      #   - config/specification/<path>.yaml.j2   -> render <path>
+      #   - config/scenarios/<path>.yaml          -> render <path>
+      #   - shared render path (templates, parser, plan, executor,
+      #     utilities, standup, run, teardown, smoketests, cli.py,
+      #     config.py) -> render the cicd/kind-sim canary
+      #   - nothing resolved (docs-only commit, test-only commit, ...)
+      #     -> render the cicd/kind-sim canary as a baseline sanity
+      #     check, so every commit proves the render path is healthy
+      #
+      # The script prints each spec it is about to render along with
+      # the reason it was picked, so it is always obvious what the
+      # hook is doing. The full per-spec loop runs on pre-push below
+      # as the safety net.
+      #
+      # Important knobs:
+      #
+      #   pass_filenames: false
+      #     We do NOT want pre-commit to hand us the file list. With
+      #     pass_filenames: true, pre-commit batches large file lists
+      #     across multiple subprocess invocations (to stay under the
+      #     OS argv limit) and runs those batches in parallel, which
+      #     both duplicates work and scrambles the tty output. With
+      #     pass_filenames: false, pre-commit invokes us exactly once
+      #     with zero file arguments and the script asks git directly
+      #     for the real staged-file list via
+      #     ``git diff --cached --name-only --diff-filter=ACMR``. This
+      #     also means ``pre-commit run --all-files`` correctly renders
+      #     only what's staged (instead of every scenario in the repo)
+      #     -- the "--all-files" intent is meaningless for a
+      #     change-detecting hook.
+      #
+      #   require_serial: true
+      #     Defensive. With pass_filenames: false there's only one
+      #     invocation anyway, but this makes it explicit that the
+      #     hook must never be run in parallel with copies of itself.
       # ----------------------------------------------------------------
-      - id: render-validation-kind-sim
-        name: Render sanity check (cicd/kind-sim, dry-run)
-        entry: .venv/bin/llmdbenchmark
-        args: ["--spec", "cicd/kind-sim", "--dry-run", "plan", "-p", "precommit"]
+      - id: render-validation-changed
+        name: Render changed scenarios (dry-run)
+        entry: .venv/bin/python util/precommit_render_changed.py
         language: system
         pass_filenames: false
+        require_serial: true
         stages: [pre-commit, pre-push]
 
       # ----------------------------------------------------------------
@@ -84,3 +119,26 @@ repos:
         # when "--baseline" with "--use-all-plugins", pre-commit scan with all available plugins
         # add "--fail-on-unaudited" to fail pre-commit for unaudited potential secrets
         args: [--baseline, .secrets.baseline, --use-all-plugins]
+        # Files the scanner skips entirely. Each entry is a file
+        # whose hits are known false positives and whose content
+        # changes too often for a baseline audit to be stable.
+        # Scope is narrow on purpose — one entry per file — so a
+        # new file added alongside these still gets scanned.
+        exclude: |
+          (?x)^(
+            # Docs notebook: cell outputs contain base64-encoded
+            # matplotlib PNG figures. Can't use inline pragmas (JSON,
+            # no comments) and clearing outputs isn't an option
+            # because the rendered figures are the point.
+            docs/analysis/analysis\.ipynb
+            |
+            # BenchmarkReport v0.2 example: the single hit is a
+            # synthetic storage path with a unix timestamp and run
+            # identifier. Illustrative reference, not a credential.
+            llmdbenchmark/analysis/benchmark_report/br_v0_2_example\.yaml
+            |
+            # BenchmarkReport README: three hits are 32-hex
+            # example uid / cfg_id values in a Python code block
+            # showing how to construct a BenchmarkReport.
+            llmdbenchmark/analysis/benchmark_report/README\.md
+          )$

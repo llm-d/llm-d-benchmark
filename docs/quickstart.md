@@ -106,12 +106,7 @@ kubectl get nodes
 # Expected: one node in Ready state
 ```
 
-Label the node so the scenario's `affinity.nodeSelector: kubernetes.io/os: linux` is satisfied explicitly. (Kind nodes ship with this label already, but CI sets it defensively and we mirror CI here.)
-
-```bash
-NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
-kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
-```
+That's all the cluster prep you need. The `cicd/kind-sim` scenario uses `affinity.nodeSelector: kubernetes.io/os: linux`, and Kubernetes sets that label automatically on every node via the kubelet (it is one of the [well-known labels](https://kubernetes.io/docs/reference/labels-annotations-taints/#kubernetes-io-os)), so no manual labeling step is required.
 
 ## 3. Install llmdbenchmark
 
@@ -239,9 +234,9 @@ kind delete cluster --name llmd-quickstart
 
 ### Pods stuck in `Pending` during standup
 
-- **Node not labeled**: re-run the `kubectl label node ... kubernetes.io/os=linux --overwrite` from [step 2](#2-create-the-kind-cluster).
 - **PVC stuck**: `kubectl get pvc -n "$NS"` — the `standard` Kind storage class should provision immediately. If it does not, you're probably out of disk; see above.
 - **Image pull backoff**: check `kubectl describe pod -n "$NS" <pod>` for the failing image and make sure your machine has network access to `ghcr.io`.
+- **Node selector mismatch**: if `kubectl describe pod -n "$NS" <pod>` shows `0/1 nodes are available: 1 node(s) didn't match Pod's node affinity/selector`, print the node's labels with `kubectl get node -o jsonpath='{.items[0].metadata.labels}' | jq` and cross-check against the scenario's `affinity.nodeSelector` in `config/scenarios/cicd/kind-sim.yaml`. On a standard Kind cluster this should always match because `kubernetes.io/os=linux` is a well-known label the kubelet sets automatically.
 
 ### `llmdbenchmark: command not found`
 
