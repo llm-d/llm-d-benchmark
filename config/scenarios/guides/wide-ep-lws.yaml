@@ -241,8 +241,8 @@ scenario:
         # Only --kv-transfer-config and --kv-events-config from vllmCommon
         # are appended if enabled.
         customCommand: |
-          exec vllm serve /model-cache/models/Qwen/Qwen3-30B-A3B \
-            --served-model-name Qwen/Qwen3-30B-A3B \
+          exec vllm serve /model-cache/${model.path} \
+            --served-model-name ${model.name} \
             --port $VLLM_INFERENCE_PORT \
             --trust-remote-code \
             --disable-uvicorn-access-log \
@@ -389,8 +389,8 @@ scenario:
         # Only --kv-transfer-config and --kv-events-config from vllmCommon
         # are appended if enabled.
         customCommand: |
-          exec vllm serve /model-cache/models/Qwen/Qwen3-30B-A3B \
-            --served-model-name Qwen/Qwen3-30B-A3B \
+          exec vllm serve /model-cache/${model.path} \
+            --served-model-name ${model.name} \
             --port $VLLM_METRICS_PORT \
             --trust-remote-code \
             --disable-uvicorn-access-log \

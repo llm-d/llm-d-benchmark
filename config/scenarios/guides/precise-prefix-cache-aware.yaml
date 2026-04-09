@@ -83,7 +83,7 @@ scenario:
                   blockSize: 64
                 indexerConfig:
                   tokenizersPoolConfig:
-                    modelName: "Qwen/Qwen3-32B"
+                    modelName: "${model.name}"
                     local: null
                     hf: null
                     uds:

@@ -115,7 +115,7 @@ scenario:
         pullPolicy: IfNotPresent
 
       vllm:
-        customCommand: "/app/llm-d-inference-sim --model /model-cache/models/facebook/opt-125m --port 8000 --served-model-name facebook/opt-125m"
+        customCommand: "/app/llm-d-inference-sim --model /model-cache/${model.path} --port 8000 --served-model-name ${model.name}"
 
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
