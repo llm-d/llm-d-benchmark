@@ -50,14 +50,28 @@ class Step(ABC):
     per_stack: bool      # False = global, True = runs once per rendered stack
 ```
 
-Key methods:
+Key abstract / override hooks:
 
 - `execute(context, stack_path=None) -> StepResult` -- Abstract. Run the step logic and return a result.
 - `should_skip(context) -> bool` -- Override for conditional skip logic (e.g., skip standalone steps in modelservice mode).
+
+Prologue and result builders (consolidate the boilerplate every step
+needs at the top and bottom of `execute()`):
+
+- `start(context, stack_path=None, *, load_config=True, require_cmd=True) -> StepPrologue | StepResult` -- Standard step prologue. Returns a `StepPrologue` on success or a failed `StepResult` on prerequisite failure. Callers must check the return type with `isinstance(prologue, StepResult)`. Handles:
+  - Per-stack steps that were invoked without a `stack_path` (auto-fail with a clear error).
+  - Loading plan config (per-stack uses `_load_stack_config(stack_path)`; global uses `_load_plan_config(context)`). Can be skipped with `load_config=False`.
+  - Acquiring the shared `CommandExecutor` via `context.require_cmd()`. Can be skipped with `require_cmd=False` for steps that only touch local files.
+  - Pre-allocating an empty `errors` list and resolving `stack_name` from `stack_path.name`.
+- `success_result(message="", *, stack_name=None, context=None) -> StepResult` -- Build a successful `StepResult` with `step_number` and `step_name` pre-filled from `self`. Replaces the ~6-line `return StepResult(step_number=self.number, step_name=self.name, success=True, ...)` constructor.
+- `failure_result(message, errors, *, stack_name=None, log_errors=True, logger=None) -> StepResult` -- Build a failed `StepResult`. When `log_errors=True` and a `logger` is passed, each error message is written to `logger.log_error` before the result is returned -- replacing the common `for err in errors: logger.log_error(...); return StepResult(...)` epilogue.
+
+Config lookup and discovery helpers:
+
 - `_resolve(plan_config, *config_paths, context_value=None, default=None)` -- Three-tier value resolution: (1) runtime override from CLI/context, (2) nested lookup in plan config via dotted paths, (3) default value. Supports fallback chains with multiple config paths.
 - `_require_config(config, *keys)` -- Traverse a nested key path, raising `KeyError` if any key is missing.
-- `_load_plan_config(context)` -- Load `config.yaml` from the first rendered stack.
-- `_load_stack_config(stack_path)` -- Load `config.yaml` from a specific stack directory.
+- `_load_plan_config(context)` -- Load `config.yaml` from the first rendered stack. Called by `start(load_config=True)` for global steps; can be called directly by steps that need more control.
+- `_load_stack_config(stack_path)` -- Load `config.yaml` from a specific stack directory. Called by `start(load_config=True)` for per-stack steps.
 - `_all_target_namespaces(context)` -- Collect deduplicated namespaces from all rendered stacks with context-level fallback. Raises `RuntimeError` if no namespace is configured.
 - `_find_rendered_yaml(context, prefix)` -- Find a rendered YAML file by filename prefix across all stacks.
 - `_find_yaml(stack_path, prefix)` -- Find a YAML file by prefix in a single stack directory.
@@ -68,6 +82,7 @@ Key methods:
 ### Result Types
 
 - `StepResult` -- Result of a single step: `step_number`, `step_name`, `success`, `message`, `errors`, `stack_name`, `context`.
+- `StepPrologue` -- Return type of `Step.start()` on success. Carries the boilerplate every step needs at the top of `execute()`: `plan_config` (loaded config dict or `None`), `cmd` (the `CommandExecutor` or `None`), `errors` (pre-allocated empty list to append to), `stack_name` (resolved from `stack_path.name`), and `stack_path` (the original path). `start()` returns either a `StepPrologue` on success or a failed `StepResult` on prerequisite failure, so callers must check with `isinstance(prologue, StepResult)`.
 - `StackExecutionResult` -- Aggregated results for one stack: `stack_name`, `stack_path`, `step_results`. Exposes `has_errors` and `failed_steps`.
 - `ExecutionResult` -- Full phase result: `phase`, `global_results`, `stack_results`, `errors`. Provides `summary()` for human-readable output.
 
@@ -256,11 +271,14 @@ def check_python_version() -> tuple[bool, str]: ...  # Requires Python >= 3.11
 4. Optionally override `should_skip(self, context) -> bool` for conditional execution.
 5. Register the step in the phase's `steps/__init__.py` `get_*_steps()` function.
 
-Example:
+### Minimal per-stack step using the prologue helpers
 
 ```python
+from pathlib import Path
+
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
+
 
 class MyStep(Step):
     def __init__(self):
@@ -272,16 +290,80 @@ class MyStep(Step):
             per_stack=True,  # runs once per stack
         )
 
-    def execute(self, context, stack_path=None):
-        cmd = context.require_cmd()
-        config = self._load_stack_config(stack_path)
-        # ... step logic ...
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message="Done",
+    def execute(
+        self, context: ExecutionContext, stack_path: Path | None = None
+    ) -> StepResult:
+        prologue = self.start(context, stack_path)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        plan_config = prologue.plan_config
+        errors = prologue.errors
+        stack_name = prologue.stack_name
+
+        # ... step logic that may append to `errors` ...
+        result = cmd.kube(
+            "get", "pods",
+            namespace=context.require_namespace(),
+            check=False,
         )
+        if not result.success:
+            errors.append(f"Failed to list pods: {result.stderr}")
+
+        if errors:
+            return self.failure_result(
+                "My step had errors",
+                errors,
+                stack_name=stack_name,
+                logger=context.logger,
+            )
+        return self.success_result("Done", stack_name=stack_name)
 ```
 
-Use `_resolve()` for three-tier config lookups and `_require_config()` for mandatory keys. Use `cmd.kube()`, `cmd.helm()`, or `cmd.execute()` for shell commands -- they handle kubeconfig injection, dry-run, retry, and logging automatically.
+The `self.start(...)` call handles four things in one shot:
+
+1. Per-stack guard: if `per_stack=True` but `stack_path` is `None`, it
+   returns a failed `StepResult` immediately. The `isinstance` check
+   forwards that failure to the caller.
+2. Config loading: `_load_stack_config(stack_path)` for per-stack steps,
+   `_load_plan_config(context)` for global steps. Pass `load_config=False`
+   to skip this entirely (e.g. for delegator steps that hand off to a
+   smoketest validator).
+3. Acquiring the shared `CommandExecutor` via `context.require_cmd()`.
+   Pass `require_cmd=False` for steps that only touch local files.
+4. Pre-allocating an empty `errors` list and resolving `stack_name`.
+
+`success_result` and `failure_result` are thin wrappers that pre-fill
+`step_number=self.number` and `step_name=self.name`. `failure_result`
+also logs each error via `logger.log_error` as a side effect, so you
+don't have to write the `for err in errors: logger.log_error(...)`
+epilogue yourself.
+
+### Writing a step without the helpers
+
+The old explicit form still works -- `start`, `success_result`, and
+`failure_result` are opt-in. If your step has unusual requirements
+(e.g. it loads two different configs, or needs to construct the errors
+list at a specific point), fall back to calling the individual helpers
+directly:
+
+```python
+def execute(self, context, stack_path=None):
+    errors: list[str] = []
+    cmd = context.require_cmd()
+    plan_config = self._load_plan_config(context)
+    stack_config = self._load_stack_config(stack_path)  # separate call
+    # ... custom logic ...
+    return StepResult(
+        step_number=self.number,
+        step_name=self.name,
+        success=not errors,
+        message="Done" if not errors else "Failed",
+        errors=errors,
+    )
+```
+
+Use `_resolve()` for three-tier config lookups and `_require_config()`
+for mandatory keys. Use `cmd.kube()`, `cmd.helm()`, or `cmd.execute()`
+for shell commands -- they handle kubeconfig injection, dry-run,
+retry, and logging automatically.

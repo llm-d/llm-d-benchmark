@@ -82,16 +82,23 @@ steps:
 
 ### Experiment Orchestrator
 
-The `experiment` subcommand (implemented in `_execute_experiment` in
-`llmdbenchmark/cli.py`) drives a Design of Experiments (DoE) matrix. For each
-**setup treatment** it:
+The `experiment` subcommand (implemented in `execute_experiment` in
+`llmdbenchmark/phases/experiment.py`) drives a Design of Experiments (DoE)
+matrix. For each **setup treatment** it:
 
-1. Renders plans with config overrides from the experiment YAML
-2. Runs the full standup phase
-3. Runs all **run treatments** (each is a separate run phase invocation)
-4. Tears down the stack
+1. Renders plans with config overrides from the experiment YAML (via
+   `render_plans_for_experiment` in `llmdbenchmark/phases/common.py`)
+2. Runs the full standup phase (via `do_standup`)
+3. Runs smoketests (via `do_smoketest`)
+4. Runs all **run treatments** (each is a separate `do_run` invocation)
+5. Tears down the stack (via `do_teardown`, unless `--skip-teardown`)
 
-Results are collected into `experiment-summary.yaml`.
+Results are collected into `experiment-summary.yaml`. Each lifecycle phase
+lives in its own module under `llmdbenchmark/phases/` and exposes a
+`do_<phase>` re-entrant core that the experiment orchestrator composes.
+See [`llmdbenchmark/phases/README.md`](../llmdbenchmark/phases/README.md)
+for the full set of phase modules and the import rules that keep the
+package cycle-free.
 
 ### How StepExecutor Partitions Steps
 
@@ -183,16 +190,82 @@ class Step(ABC):
 
 #### 3. Implement execute()
 
-The method must return a `StepResult`. Collect errors into a list, then return
-success or failure:
+The method must return a `StepResult`. The `Step` base class provides three
+helpers that consolidate the boilerplate every step needs -- `start()` for
+the prologue, `success_result()` and `failure_result()` for the epilogue.
+**Prefer the helper form for new steps** unless you have an unusual reason
+not to:
 
 ```python
-def execute(self, context: ExecutionContext, stack_path: Path | None = None) -> StepResult:
+def execute(
+    self, context: ExecutionContext, stack_path: Path | None = None
+) -> StepResult:
+    prologue = self.start(context, stack_path)
+    if isinstance(prologue, StepResult):
+        return prologue
+    cmd = prologue.cmd
+    plan_config = prologue.plan_config
+    errors = prologue.errors
+    stack_name = prologue.stack_name
+
+    # Do work...
+    result = cmd.kube(
+        "get", "pods",
+        namespace=context.require_namespace(),
+        check=False,
+    )
+    if not result.success:
+        errors.append(f"Failed to list pods: {result.stderr}")
+
+    if errors:
+        return self.failure_result(
+            "Step failed", errors,
+            stack_name=stack_name,
+            logger=context.logger,
+        )
+    return self.success_result(
+        "Step completed successfully", stack_name=stack_name
+    )
+```
+
+What `self.start(...)` does in one call:
+
+| Behavior | Controlled by |
+|----------|---------------|
+| If `per_stack=True` and `stack_path` is `None`, returns a failed `StepResult` immediately. | (automatic) |
+| Loads plan config: per-stack → `_load_stack_config(stack_path)`, global → `_load_plan_config(context)`. Returns a failed `StepResult` if no config is found. | `load_config=True` (default) |
+| Acquires the shared `CommandExecutor` via `context.require_cmd()`. | `require_cmd=True` (default) |
+| Pre-allocates an empty `errors` list and resolves `stack_name = stack_path.name`. | (automatic) |
+
+Pass `load_config=False` for steps that don't need the plan config (e.g.
+delegators that call into a validator) and `require_cmd=False` for steps
+that only touch local files. The `isinstance(prologue, StepResult)` check
+is how the caller forwards prerequisite failures.
+
+`success_result()` and `failure_result()` pre-fill `step_number=self.number`
+and `step_name=self.name` so the caller does not have to repeat them.
+`failure_result()` additionally logs each error via `logger.log_error(...)`
+as a side effect when a logger is passed -- replacing the common
+`for err in errors: logger.log_error(...)` epilogue.
+
+##### Explicit form (for unusual steps)
+
+The old explicit form still works and is sometimes clearer for steps that
+load two configs, construct the errors list lazily, or delegate to a
+helper. Use it when the helper pattern would obscure the logic:
+
+```python
+def execute(
+    self, context: ExecutionContext, stack_path: Path | None = None
+) -> StepResult:
     errors: list[str] = []
     cmd = context.require_cmd()
 
-    # Do work...
-    result = cmd.kube("get", "pods", "--namespace", context.require_namespace(), check=False)
+    result = cmd.kube(
+        "get", "pods",
+        namespace=context.require_namespace(),
+        check=False,
+    )
     if not result.success:
         errors.append(f"Failed to list pods: {result.stderr}")
 
@@ -1141,16 +1214,20 @@ llmdbenchmark --spec my-scenario experiment \
   --experiments workload/experiments/my-experiment.yaml
 ```
 
-The experiment orchestrator (`_execute_experiment` in `llmdbenchmark/cli.py`):
+The experiment orchestrator (`execute_experiment` in
+`llmdbenchmark/phases/experiment.py`):
 
 1. Parses the experiment YAML via `parse_experiment()`
 2. Falls back experiment-level `harness` and `profile` to CLI args if not
    provided
 3. For each setup treatment:
-   - Renders plans with the treatment's config overrides
-   - Runs standup
-   - Runs all run treatments (each as a separate run phase)
-   - Runs teardown (unless `--skip-teardown`)
+   - Renders plans with the treatment's config overrides (via
+     `render_plans_for_experiment` in `phases/common.py`)
+   - Runs `do_standup` (builds the execution context, checks HuggingFace
+     access, runs the standup steps)
+   - Runs `do_smoketest`
+   - Runs all run treatments (each as a separate `do_run` invocation)
+   - Runs `do_teardown` (unless `--skip-teardown`)
 4. Records success/failure per treatment in `ExperimentSummary`
 5. Writes `experiment-summary.yaml` to the workspace
 
