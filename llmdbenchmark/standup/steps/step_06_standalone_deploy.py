@@ -27,44 +27,33 @@ class StandaloneDeployStep(Step):
     def execute(  # pylint: disable=too-many-branches,too-many-locals
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
-
-        errors = []
-        cmd = context.require_cmd()
-
-        plan_config = self._load_stack_config(stack_path)
+        prologue = self.start(context, stack_path)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        plan_config = prologue.plan_config
+        errors = prologue.errors
+        stack_name = prologue.stack_name
         namespace = context.require_namespace()
 
         if not context.dry_run:
             pc_error = self._check_priority_class(cmd, plan_config, context)
             if pc_error:
                 errors.append(pc_error)
-                return StepResult(
-                    step_number=self.number,
-                    step_name=self.name,
-                    success=False,
-                    message="PriorityClass validation failed",
-                    errors=errors,
-                    stack_name=stack_path.name,
+                return self.failure_result(
+                    "PriorityClass validation failed",
+                    errors,
+                    stack_name=stack_name,
+                    log_errors=False,
                 )
 
         deploy_yaml = self._find_yaml(stack_path, "14_standalone-deployment")
         service_yaml = self._find_yaml(stack_path, "15_standalone-service")
 
         if not deploy_yaml or not self._has_yaml_content(deploy_yaml):
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message="No standalone deployment YAML found, skipping",
-                stack_name=stack_path.name,
+            return self.success_result(
+                "No standalone deployment YAML found, skipping",
+                stack_name=stack_name,
             )
 
         result = cmd.kube("apply", "-f", str(deploy_yaml))
@@ -185,25 +174,16 @@ class StandaloneDeployStep(Step):
         self._propagate_standup_parameters(cmd, context, plan_config)
 
         if errors:
-            for err in errors:
-                context.logger.log_error(f"    {err}")
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Standalone deployment had errors",
-                errors=errors,
-                stack_name=stack_path.name,
+            return self.failure_result(
+                "Standalone deployment had errors",
+                errors,
+                stack_name=stack_name,
+                logger=context.logger,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=(
-                f"Standalone deployment applied from {stack_path.name}"
-            ),
-            stack_name=stack_path.name,
+        return self.success_result(
+            f"Standalone deployment applied from {stack_name}",
+            stack_name=stack_name,
         )
 
     def _collect_logs(

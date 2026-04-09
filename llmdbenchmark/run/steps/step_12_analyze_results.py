@@ -33,16 +33,19 @@ class AnalyzeResultsStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
+        # load_config=False, require_cmd=False: this step only runs local analysis.
+        prologue = self.start(
+            context, stack_path, load_config=False, require_cmd=False,
+        )
+        if isinstance(prologue, StepResult):
+            return prologue
+        errors = prologue.errors
+
         harness_name = context.harness_name or "inference-perf"
         results_dir = context.run_results_dir()
 
         if not results_dir.exists() or not any(results_dir.iterdir()):
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message="No results to analyze",
-            )
+            return self.success_result("No results to analyze")
 
         if context.dry_run:
             # Log what would be analyzed (local Python, no kubectl commands)
@@ -52,17 +55,11 @@ class AnalyzeResultsStep(Step):
                 f"{len(subdirs)} result set(s) in {results_dir}: "
                 f"{', '.join(subdirs) or '(none)'}"
             )
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=(
-                    f"[DRY RUN] Would analyze {len(subdirs)} result set(s)"
-                ),
+            return self.success_result(
+                f"[DRY RUN] Would analyze {len(subdirs)} result set(s)",
             )
 
         # Run analysis for each result sub-directory
-        errors: list[str] = []
         analyzed = 0
 
         for result_subdir in sorted(results_dir.iterdir()):
@@ -80,12 +77,10 @@ class AnalyzeResultsStep(Step):
                 analyzed += 1
 
         if errors and analyzed == 0:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="All analysis runs failed",
-                errors=errors,
+            return self.failure_result(
+                "All analysis runs failed",
+                errors,
+                log_errors=False,
             )
 
         for err in errors:
@@ -115,9 +110,4 @@ class AnalyzeResultsStep(Step):
                     f"Cross-treatment comparison failed: {exc}"
                 )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"Analyzed {analyzed} result set(s)",
-        )
+        return self.success_result(f"Analyzed {analyzed} result set(s)")

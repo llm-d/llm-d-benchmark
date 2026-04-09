@@ -24,18 +24,13 @@ class CreateProfileConfigmapStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
-
-        stack_name = stack_path.name
-        cmd = context.require_cmd()
-        plan_config = self._load_stack_config(stack_path)
+        prologue = self.start(context, stack_path)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        plan_config = prologue.plan_config
+        errors = prologue.errors
+        stack_name = prologue.stack_name
 
         # Resolve harness name
         harness_name = self._resolve(
@@ -49,19 +44,15 @@ class CreateProfileConfigmapStep(Step):
             context_value=context.harness_namespace or context.namespace,
         )
         if not harness_ns:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No harness namespace configured",
-                errors=["Cannot create ConfigMap without a namespace"],
+            return self.failure_result(
+                "No harness namespace configured",
+                ["Cannot create ConfigMap without a namespace"],
                 stack_name=stack_name,
+                log_errors=False,
             )
 
         if context.dry_run:
             return self._dry_run(context, harness_name, harness_ns, stack_name)
-
-        errors: list[str] = []
 
         profile_ok, profile_msg = self._create_profiles_configmap(
             context, cmd, harness_name, harness_ns,
@@ -76,23 +67,16 @@ class CreateProfileConfigmapStep(Step):
             errors.append(scripts_msg)
 
         if errors:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Failed to create one or more ConfigMaps",
-                errors=errors,
+            return self.failure_result(
+                "Failed to create one or more ConfigMaps",
+                errors,
                 stack_name=stack_name,
+                log_errors=False,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=(
-                f"ConfigMaps created (profiles + harness-scripts) "
-                f"in ns={harness_ns}"
-            ),
+        return self.success_result(
+            f"ConfigMaps created (profiles + harness-scripts) "
+            f"in ns={harness_ns}",
             stack_name=stack_name,
         )
 
@@ -221,15 +205,10 @@ class CreateProfileConfigmapStep(Step):
             sum(1 for f in harnesses_dir.iterdir() if f.is_file())
             if harnesses_dir.is_dir() else 0
         )
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=(
-                f"[DRY RUN] Would create ConfigMaps: "
-                f"'{harness_name}-profiles' and "
-                f"'{HARNESS_SCRIPTS_CONFIGMAP}' ({script_count} scripts) "
-                f"in ns={harness_ns}"
-            ),
+        return self.success_result(
+            f"[DRY RUN] Would create ConfigMaps: "
+            f"'{harness_name}-profiles' and "
+            f"'{HARNESS_SCRIPTS_CONFIGMAP}' ({script_count} scripts) "
+            f"in ns={harness_ns}",
             stack_name=stack_name,
         )

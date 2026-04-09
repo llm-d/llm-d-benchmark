@@ -71,22 +71,16 @@ class InferenceTestStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
-
-        errors: list[str] = []
-        cmd = context.require_cmd()
+        prologue = self.start(context, stack_path)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        plan_config = prologue.plan_config
+        errors = prologue.errors
+        stack_name = prologue.stack_name
         namespace = context.require_namespace()
-        stack_name = stack_path.name
         is_standalone = "standalone" in context.deployed_methods
 
-        plan_config = self._load_stack_config(stack_path)
         model_name = self._require_config(plan_config, "model", "name")
         inference_port = self._require_config(
             plan_config, "vllmCommon", "inferencePort"
@@ -109,13 +103,11 @@ class InferenceTestStep(Step):
                 gateway_port = "80"
             else:
                 errors.append("Could not find service/gateway IP for inference test")
-                return StepResult(
-                    step_number=self.number,
-                    step_name=self.name,
-                    success=False,
-                    message="Inference test failed -- no endpoint found",
-                    errors=errors,
+                return self.failure_result(
+                    "Inference test failed -- no endpoint found",
+                    errors,
                     stack_name=stack_name,
+                    log_errors=False,
                 )
 
         protocol = "https" if str(gateway_port) == "443" else "http"
@@ -137,11 +129,8 @@ class InferenceTestStep(Step):
                 base_url, "/v1/completions",
                 completions_result.payload, completions_result.generated_text,
             )
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message=f"Inference test passed for {stack_name} (via /v1/completions)",
+            return self.success_result(
+                f"Inference test passed for {stack_name} (via /v1/completions)",
                 stack_name=stack_name,
             )
 
@@ -162,14 +151,9 @@ class InferenceTestStep(Step):
                     base_url, "/v1/chat/completions",
                     chat_result.payload, chat_result.generated_text,
                 )
-                return StepResult(
-                    step_number=self.number,
-                    step_name=self.name,
-                    success=True,
-                    message=(
-                        f"Inference test passed for {stack_name} "
-                        f"(via /v1/chat/completions)"
-                    ),
+                return self.success_result(
+                    f"Inference test passed for {stack_name} "
+                    f"(via /v1/chat/completions)",
                     stack_name=stack_name,
                 )
 
@@ -183,13 +167,11 @@ class InferenceTestStep(Step):
         for err in errors:
             context.logger.log_error(f"Inference test: {err}")
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=False,
-            message=f"Inference test failed for {stack_name}",
-            errors=errors,
+        return self.failure_result(
+            f"Inference test failed for {stack_name}",
+            errors,
             stack_name=stack_name,
+            log_errors=False,
         )
 
     # ------------------------------------------------------------------

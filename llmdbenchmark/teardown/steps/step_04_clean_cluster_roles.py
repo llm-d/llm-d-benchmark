@@ -39,8 +39,13 @@ class CleanClusterRolesStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        errors = []
-        cmd = context.require_cmd()
+        # load_config=False: this step only needs context.release (already
+        # populated by the preflight step) and does not consume plan_config.
+        prologue = self.start(context, stack_path, load_config=False)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        errors = prologue.errors
 
         release = context.release
 
@@ -86,20 +91,13 @@ class CleanClusterRolesStep(Step):
                     )
 
         if errors:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Cluster role cleanup had errors",
-                errors=errors,
+            return self.failure_result(
+                "Cluster role cleanup had errors",
+                errors,
+                log_errors=False,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message="Cluster-scoped resources cleaned",
-        )
+        return self.success_result("Cluster-scoped resources cleaned")
 
     def _delete_matching(
         self, cmd: CommandExecutor, context: ExecutionContext,

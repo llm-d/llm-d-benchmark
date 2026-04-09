@@ -26,47 +26,33 @@ class VerifyModelStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
-
-        stack_name = stack_path.name
-        cmd = context.require_cmd()
+        prologue = self.start(context, stack_path)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        plan_config = prologue.plan_config
+        stack_name = prologue.stack_name
 
         # Determine model name
-        plan_config = self._load_stack_config(stack_path)
         model_name = self._resolve(
             plan_config, "model.name", context_value=context.model_name,
         )
         if not model_name:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No model name configured",
-                errors=[
-                    "Set 'model.name' in your scenario, or pass --model on the CLI."
-                ],
+            return self.failure_result(
+                "No model name configured",
+                ["Set 'model.name' in your scenario, or pass --model on the CLI."],
                 stack_name=stack_name,
+                log_errors=False,
             )
 
         # Get endpoint from previous step
         endpoint_url = context.deployed_endpoints.get(stack_name)
         if not endpoint_url:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No endpoint URL available",
-                errors=[
-                    "Endpoint detection (step 02) must run first."
-                ],
+            return self.failure_result(
+                "No endpoint URL available",
+                ["Endpoint detection (step 02) must run first."],
                 stack_name=stack_name,
+                log_errors=False,
             )
 
         # Parse host and port from endpoint URL
@@ -94,23 +80,18 @@ class VerifyModelStep(Step):
             cleanup_ephemeral_pods(cmd, namespace, context.logger)
 
         if error:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message=f"Model verification failed: {error}",
-                errors=[error],
+            return self.failure_result(
+                f"Model verification failed: {error}",
+                [error],
                 stack_name=stack_name,
+                log_errors=False,
             )
 
         context.logger.log_info(
             f"Model '{model_name}' verified at {endpoint_url}"
         )
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"Model '{model_name}' verified at {endpoint_url}",
+        return self.success_result(
+            f"Model '{model_name}' verified at {endpoint_url}",
             stack_name=stack_name,
         )
 

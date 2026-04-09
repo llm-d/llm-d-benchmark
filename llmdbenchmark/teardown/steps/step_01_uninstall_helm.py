@@ -25,8 +25,13 @@ class UninstallHelmStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        errors = []
-        cmd = context.require_cmd()
+        # load_config=False: this step walks all stacks via _collect_model_labels
+        # and does not consume a single plan_config at the top.
+        prologue = self.start(context, stack_path, load_config=False)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        errors = prologue.errors
 
         release = context.release
         namespaces = self._all_target_namespaces(context)
@@ -39,20 +44,13 @@ class UninstallHelmStep(Step):
             self._delete_download_job(cmd, context, ns)
 
         if errors:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Helm uninstall had errors",
-                errors=errors,
+            return self.failure_result(
+                "Helm uninstall had errors",
+                errors,
+                log_errors=False,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message="Helm releases uninstalled",
-        )
+        return self.success_result("Helm releases uninstalled")
 
     def _collect_model_labels(self, context: ExecutionContext) -> list[str]:
         """Collect model ID labels used to match helm releases."""

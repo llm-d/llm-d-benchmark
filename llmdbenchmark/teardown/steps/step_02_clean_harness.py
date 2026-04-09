@@ -22,16 +22,13 @@ class CleanHarnessStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        errors = []
-        cmd = context.require_cmd()
+        prologue = self.start(context, stack_path)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        plan_config = prologue.plan_config
 
         # Use the same context secret name that standup created
-        plan_config = self._load_plan_config(context)
-        if not plan_config:
-            raise KeyError(
-                "Required plan config not found. Cannot determine context "
-                "secret name for harness cleanup."
-            )
         context_secret_name = self._require_config(
             plan_config, "control", "contextSecretName"
         )
@@ -89,12 +86,7 @@ class CleanHarnessStep(Step):
             )
 
         ns_list = ", ".join(harness_namespaces)
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"Harness resources cleaned (ns={ns_list})",
-        )
+        return self.success_result(f"Harness resources cleaned (ns={ns_list})")
 
     def _harness_namespaces(self, context: ExecutionContext) -> list[str]:
         """Collect unique harness namespaces, falling back to context defaults."""

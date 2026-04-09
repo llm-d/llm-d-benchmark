@@ -26,25 +26,18 @@ class WaitCompletionStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
-
-        stack_name = stack_path.name
-        cmd = context.require_cmd()
+        # load_config=False because this step only needs cmd and pod metadata
+        # already on the context.
+        prologue = self.start(context, stack_path, load_config=False)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        stack_name = prologue.stack_name
 
         pod_names = context.deployed_pod_names
         if not pod_names:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message="No harness pods to wait for",
+            return self.success_result(
+                "No harness pods to wait for",
                 stack_name=stack_name,
             )
 
@@ -55,11 +48,8 @@ class WaitCompletionStep(Step):
             context.logger.log_info(
                 "Wait timeout is 0 -- returning immediately"
             )
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message="No-wait mode (timeout=0)",
+            return self.success_result(
+                "No-wait mode (timeout=0)",
                 stack_name=stack_name,
             )
 
@@ -69,11 +59,8 @@ class WaitCompletionStep(Step):
                 f"Debug mode: {len(pod_names)} pod(s) running with "
                 f"'sleep infinity'. Use kubectl exec to interact."
             )
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message="Debug mode -- pods running with sleep infinity",
+            return self.success_result(
+                "Debug mode -- pods running with sleep infinity",
                 stack_name=stack_name,
             )
 
@@ -122,11 +109,8 @@ class WaitCompletionStep(Step):
         context.logger.log_info(
             f"All harness pods completed successfully ({summary})"
         )
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"All {total} harness pod(s) completed",
+        return self.success_result(
+            f"All {total} harness pod(s) completed",
             stack_name=stack_name,
         )
 

@@ -55,8 +55,13 @@ class DeleteResourcesStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        errors = []
-        cmd = context.require_cmd()
+        # load_config=False: _normal_clean loads plan_config itself when
+        # needed and _deep_clean does not need it at all.
+        prologue = self.start(context, stack_path, load_config=False)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        errors = prologue.errors
 
         namespaces = self._all_target_namespaces(context)
 
@@ -66,22 +71,15 @@ class DeleteResourcesStep(Step):
             self._normal_clean(cmd, context, namespaces, errors)
 
         if errors:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Resource deletion had errors",
-                errors=errors,
+            return self.failure_result(
+                "Resource deletion had errors",
+                errors,
+                log_errors=False,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=(
-                f"Namespaced resources deleted "
-                f"({'deep' if context.deep_clean else 'normal'} mode)"
-            ),
+        return self.success_result(
+            f"Namespaced resources deleted "
+            f"({'deep' if context.deep_clean else 'normal'} mode)",
         )
 
     def _deep_clean(

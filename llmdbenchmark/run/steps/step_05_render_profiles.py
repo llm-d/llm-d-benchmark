@@ -29,18 +29,13 @@ class RenderProfilesStep(Step):
     def execute(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        if stack_path is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="No stack path provided for per-stack step",
-                errors=["stack_path is required"],
-            )
-
-        stack_name = stack_path.name
-        errors: list[str] = []
-        plan_config = self._load_stack_config(stack_path)
+        # require_cmd=False: this step only touches local files and templates.
+        prologue = self.start(context, stack_path, require_cmd=False)
+        if isinstance(prologue, StepResult):
+            return prologue
+        plan_config = prologue.plan_config
+        errors = prologue.errors
+        stack_name = prologue.stack_name
 
         # Resolve harness name
         harness_name = self._resolve(
@@ -61,13 +56,11 @@ class RenderProfilesStep(Step):
             errors.append(
                 f"Profiles directory not found: {profiles_source}"
             )
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Profile source directory not found",
-                errors=errors,
+            return self.failure_result(
+                "Profile source directory not found",
+                errors,
                 stack_name=stack_name,
+                log_errors=False,
             )
 
         # CLI flags and runtime values override plan_config defaults
@@ -175,23 +168,18 @@ class RenderProfilesStep(Step):
             context.experiment_treatments = treatments
 
         if errors:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Some profiles could not be rendered",
-                errors=errors,
+            return self.failure_result(
+                "Some profiles could not be rendered",
+                errors,
                 stack_name=stack_name,
+                log_errors=False,
             )
 
         context.logger.log_info(
             f"Profiles rendered to {output_dir}"
         )
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"Profiles rendered for {stack_name}",
+        return self.success_result(
+            f"Profiles rendered for {stack_name}",
             stack_name=stack_name,
         )
 

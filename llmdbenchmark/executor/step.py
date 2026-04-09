@@ -47,6 +47,27 @@ class StepResult:
 
 
 @dataclass
+class StepPrologue:
+    """Result of a successful ``Step.start()`` call.
+
+    Carries the boilerplate that nearly every step needs at the top of
+    its ``execute()`` method: the loaded plan config, the
+    ``CommandExecutor``, an empty errors list to append to, and (for
+    per-stack steps) the resolved ``stack_name``.
+
+    ``Step.start()`` returns one of these on success or a failed
+    ``StepResult`` on prerequisite failure -- callers must check the
+    return type with ``isinstance(prologue, StepResult)``.
+    """
+
+    plan_config: dict | None
+    cmd: Any  # CommandExecutor | None  (avoid circular import)
+    errors: list[str]
+    stack_name: str | None
+    stack_path: Path | None
+
+
+@dataclass
 class StackExecutionResult:
     """Aggregated results for a single stack's step execution."""
 
@@ -143,6 +164,132 @@ class Step(ABC):
     def should_skip(self, context: "ExecutionContext") -> bool:  # pylint: disable=unused-argument
         """Override to implement conditional skip logic."""
         return False
+
+    # ------------------------------------------------------------------
+    # Result builders -- consolidate the boilerplate of constructing a
+    # StepResult with step_number / step_name pre-filled.
+    # ------------------------------------------------------------------
+
+    def success_result(
+        self,
+        message: str = "",
+        *,
+        stack_name: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> StepResult:
+        """Build a successful StepResult with step_number/step_name pre-filled."""
+        return StepResult(
+            step_number=self.number,
+            step_name=self.name,
+            success=True,
+            message=message,
+            stack_name=stack_name,
+            context=context if context is not None else {},
+        )
+
+    def failure_result(
+        self,
+        message: str,
+        errors: list[str],
+        *,
+        stack_name: str | None = None,
+        log_errors: bool = True,
+        logger: Any = None,
+    ) -> StepResult:
+        """Build a failed StepResult with optional error logging side-effect.
+
+        When *log_errors* is True (default) and *logger* is provided, each
+        error message is written to ``logger.log_error`` before the result
+        is returned.  This consolidates the common
+        ``for err in errors: logger.log_error(...)`` epilogue.
+        """
+        if log_errors and logger is not None and errors:
+            for err in errors:
+                logger.log_error(f"    {err}")
+        return StepResult(
+            step_number=self.number,
+            step_name=self.name,
+            success=False,
+            message=message,
+            errors=list(errors),
+            stack_name=stack_name,
+        )
+
+    def start(
+        self,
+        context: "ExecutionContext",
+        stack_path: Path | None = None,
+        *,
+        load_config: bool = True,
+        require_cmd: bool = True,
+    ) -> "StepPrologue | StepResult":
+        """Standard step prologue.
+
+        Returns a :class:`StepPrologue` on success, or a failed
+        :class:`StepResult` on prerequisite failure.  Callers must check
+        the return type::
+
+            prologue = self.start(context, stack_path)
+            if isinstance(prologue, StepResult):
+                return prologue
+            cmd = prologue.cmd
+            plan_config = prologue.plan_config
+            errors = prologue.errors
+
+        Behavior:
+
+        * If this step is ``per_stack`` and ``stack_path`` is None,
+          returns a failed StepResult immediately.
+        * If ``load_config`` is True, loads the per-stack config (when
+          ``stack_path`` is provided) or the global plan config (otherwise).
+          Returns a failed StepResult if the config cannot be loaded.
+        * If ``require_cmd`` is True, calls ``context.require_cmd()`` to
+          obtain the shared CommandExecutor.
+
+        Args:
+            context: The execution context.
+            stack_path: Per-stack steps receive a stack directory path.
+            load_config: Set False for steps that don't need plan config.
+            require_cmd: Set False for steps that don't need kubectl/helm.
+        """
+        # Per-stack steps require a stack_path
+        if self.per_stack and stack_path is None:
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=False,
+                message="No stack path provided for per-stack step",
+                errors=["stack_path is required"],
+            )
+
+        plan_config: dict | None = None
+        if load_config:
+            if stack_path is not None:
+                loaded = self._load_stack_config(stack_path)
+                plan_config = loaded if loaded else None
+            else:
+                plan_config = self._load_plan_config(context)
+
+            if plan_config is None:
+                return StepResult(
+                    step_number=self.number,
+                    step_name=self.name,
+                    success=False,
+                    message="Could not load plan configuration",
+                    errors=["No rendered stack configuration found"],
+                    stack_name=stack_path.name if stack_path else None,
+                )
+
+        cmd = context.require_cmd() if require_cmd else None
+        stack_name = stack_path.name if stack_path else None
+
+        return StepPrologue(
+            plan_config=plan_config,
+            cmd=cmd,
+            errors=[],
+            stack_name=stack_name,
+            stack_path=stack_path,
+        )
 
     def _resolve(
         self,

@@ -25,15 +25,17 @@ class RunCleanupPreviousStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        cmd = context.require_cmd()
+        # load_config=False because this step tolerates a missing plan_config
+        # (uses a default pod label via _resolve() when not configured).
+        prologue = self.start(context, stack_path, load_config=False)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
 
         harness_ns = context.harness_namespace or context.namespace
         if not harness_ns:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=True,
-                message="No namespace configured -- skipping cleanup",
+            return self.success_result(
+                "No namespace configured -- skipping cleanup",
             )
 
         plan_config = self._load_plan_config(context)
@@ -58,9 +60,6 @@ class RunCleanupPreviousStep(Step):
                 f"Cleanup of previous pods failed (non-fatal): {result.stderr}"
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=f"Previous harness pods cleaned up (ns={harness_ns})",
+        return self.success_result(
+            f"Previous harness pods cleaned up (ns={harness_ns})",
         )

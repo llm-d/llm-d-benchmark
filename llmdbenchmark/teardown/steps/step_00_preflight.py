@@ -24,17 +24,21 @@ class TeardownPreflightStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
+        # load_config=False/require_cmd=False: this preflight loads config
+        # itself (with a custom error message) and does not need a cmd.
+        prologue = self.start(
+            context, stack_path, load_config=False, require_cmd=False,
+        )
+        if isinstance(prologue, StepResult):
+            return prologue
+
         plan_config = self._load_plan_config(context)
         if not plan_config:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message=(
-                    "No rendered plan config found. Run 'llmdbenchmark plan' "
-                    "first, or ensure the rendered output directory is accessible."
-                ),
-                errors=["plan config (config.yaml) not found"],
+            return self.failure_result(
+                "No rendered plan config found. Run 'llmdbenchmark plan' "
+                "first, or ensure the rendered output directory is accessible.",
+                ["plan config (config.yaml) not found"],
+                log_errors=False,
             )
 
         context.namespace = (
@@ -62,14 +66,9 @@ class TeardownPreflightStep(Step):
 
         print_phase_banner(context, extra_fields=extra)
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message=(
-                f"Preflight complete "
-                f"(ns={context.namespace}, platform={context.platform_type})"
-            ),
+        return self.success_result(
+            f"Preflight complete "
+            f"(ns={context.namespace}, platform={context.platform_type})",
         )
 
     def _load_plan_config(self, context: ExecutionContext) -> dict | None:

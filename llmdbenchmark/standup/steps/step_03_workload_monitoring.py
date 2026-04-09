@@ -29,8 +29,13 @@ class WorkloadMonitoringStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        cmd = context.require_cmd()
-        errors: list[str] = []
+        # load_config=False because this step tolerates a missing plan_config
+        # (it simply skips resource-config loading rather than failing).
+        prologue = self.start(context, stack_path, load_config=False)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        errors = prologue.errors
 
         plan_config = self._load_plan_config(context)
         if plan_config:
@@ -62,19 +67,14 @@ class WorkloadMonitoringStep(Step):
         if errors:
             for e in errors:
                 context.logger.log_error(f"Validation error: {e}")
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Resource validation / monitoring had errors",
-                errors=errors,
+            return self.failure_result(
+                "Resource validation / monitoring had errors",
+                errors,
+                log_errors=False,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message="Cluster resources validated and monitoring configured",
+        return self.success_result(
+            "Cluster resources validated and monitoring configured",
         )
 
     @staticmethod

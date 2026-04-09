@@ -84,18 +84,12 @@ class AdminPrerequisitesStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        errors = []
-        cmd = context.require_cmd()
-
-        plan_config = self._load_plan_config(context)
-        if plan_config is None:
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Could not load plan configuration",
-                errors=["No rendered stack configuration found"],
-            )
+        prologue = self.start(context, stack_path)
+        if isinstance(prologue, StepResult):
+            return prologue
+        cmd = prologue.cmd
+        plan_config = prologue.plan_config
+        errors = prologue.errors
 
         self._add_helm_repos(cmd, plan_config, errors)
 
@@ -146,22 +140,13 @@ class AdminPrerequisitesStep(Step):
         self._apply_openshift_sccs(cmd, context, plan_config)
 
         if errors:
-            for err in errors:
-                context.logger.log_error(f"    {err}")
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Some admin prerequisites failed",
-                errors=errors,
+            return self.failure_result(
+                "Some admin prerequisites failed",
+                errors,
+                logger=context.logger,
             )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
-            message="Admin prerequisites installed",
-        )
+        return self.success_result("Admin prerequisites installed")
 
     def _get_existing_crds(
         self, cmd: CommandExecutor, context: ExecutionContext

@@ -41,14 +41,10 @@ class EnsureInfraStep(Step):
                     context.logger.log_warning(f"Optional tool not found: {tool}")
 
         if errors:
-            for err in errors:
-                context.logger.log_error(f"    {err}")
-            return StepResult(
-                step_number=self.number,
-                step_name=self.name,
-                success=False,
-                message="Infrastructure checks failed",
-                errors=errors,
+            return self.failure_result(
+                "Infrastructure checks failed",
+                errors,
+                logger=context.logger,
             )
 
         print_phase_banner(
@@ -58,10 +54,7 @@ class EnsureInfraStep(Step):
             },
         )
 
-        return StepResult(
-            step_number=self.number,
-            step_name=self.name,
-            success=True,
+        return self.success_result(
             message=(
                 f"All checks passed. "
                 f"Tools: {', '.join(dep_result.available)}. "
