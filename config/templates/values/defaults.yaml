@@ -363,9 +363,9 @@ helmRepositories:
   prometheusAdapter:
     name: prometheus-adapter
     url: https://prometheus-community.github.io/helm-charts
-  kgateway:
-    name: kgateway
-    url: oci://cr.kgateway.dev/kgateway-dev/charts
+  agentgateway:
+    name: agentgateway
+    url: oci://cr.agentgateway.dev/charts/
 
 # ============================================================================
 # CHART VERSIONS
@@ -378,7 +378,7 @@ chartVersions:
   inferencePool: v1.3.0
   gaie: v1.3.1
   wva: auto
-  kgateway: v2.2.1
+  agentgateway: v1.0.1
   lws: "0.8.0"
 
 # ============================================================================
@@ -1279,10 +1279,10 @@ wva:
 # GATEWAY PROVIDERS
 # ============================================================================
 gatewayProviders:
-  kgateway:
-    # Chart version managed in chartVersions.kgateway
-    namespace: kgateway-system
-    helmRepository: oci://cr.kgateway.dev/kgateway-dev/charts
+  agentgateway:
+    # Chart version managed in chartVersions.agentgateway
+    namespace: agentgateway-system
+    helmRepository: oci://cr.agentgateway.dev/charts/
 
 # ============================================================================
 # LWS (LeaderWorkerSet)
@@ -1296,8 +1296,8 @@ lws:
 # GATEWAY API CRD VERSIONS
 # ============================================================================
 gatewayApiCrd:
-  revision: v1.4.0
-  inferenceExtensionRevision: v1.3.1
+  revision: v1.5.1
+  inferenceExtensionRevision: v1.4.0
 
 # ============================================================================
 # HARNESS CONFIGURATION
