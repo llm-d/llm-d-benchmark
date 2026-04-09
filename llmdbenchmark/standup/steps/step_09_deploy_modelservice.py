@@ -72,14 +72,6 @@ class DeployModelserviceStep(Step):
         helmfile_work = helm_dir / "helmfile.yaml"
 
         if helmfile_work.exists():
-            # Render modelservice manifests to workspace for inspection
-            # before applying.  This gives full visibility into what the
-            # Helm chart produces and enables post-render patching.
-            self._render_ms_manifests(
-                cmd, context, helmfile_work, namespace,
-                model_id_label, stack_name, helm_dir,
-            )
-
             result = cmd.helmfile(
                 "--namespace",
                 namespace,
@@ -96,10 +88,6 @@ class DeployModelserviceStep(Step):
         else:
             main_helmfile = self._find_yaml(stack_path, "10_helmfile-main")
             if main_helmfile:
-                self._render_ms_manifests(
-                    cmd, context, main_helmfile, namespace,
-                    model_id_label, stack_name, helm_dir,
-                )
                 result = cmd.helmfile(
                     "--namespace",
                     namespace,
@@ -306,46 +294,6 @@ class DeployModelserviceStep(Step):
             f"Modelservice deployed for {stack_name}",
             stack_name=stack_name,
         )
-
-    def _render_ms_manifests(
-        self,
-        cmd: CommandExecutor,
-        context: ExecutionContext,
-        helmfile_path,
-        namespace: str,
-        model_id_label: str,
-        stack_name: str,
-        helm_dir: Path,
-    ) -> None:
-        """Render modelservice Helm chart manifests to workspace for inspection.
-
-        Runs ``helmfile template`` to produce the fully rendered K8s manifests
-        that the chart would create, and writes them to
-        ``{helm_dir}/rendered-modelservice.yaml``.  This gives users full
-        visibility into decode/prefill Deployments, Services, ConfigMaps, etc.
-        before they are applied to the cluster.
-        """
-        if context.dry_run:
-            return
-
-        rendered_path = helm_dir / "rendered-modelservice.yaml"
-        result = cmd.helmfile(
-            "--namespace", namespace,
-            "--selector", f"name={model_id_label}-ms",
-            "template", "-f", str(helmfile_path),
-            "--skip-schema-validation",
-        )
-        if result.success and result.stdout.strip():
-            rendered_path.write_text(result.stdout, encoding="utf-8")
-            context.logger.log_info(
-                f"📄 Rendered modelservice manifests to {rendered_path.name} "
-                f"({len(result.stdout.splitlines())} lines)"
-            )
-        elif not result.success:
-            context.logger.log_warning(
-                f"Could not render modelservice manifests (non-fatal): "
-                f"{result.stderr[:200]}"
-            )
 
     def _check_priority_class(
         self,
