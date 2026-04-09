@@ -287,6 +287,76 @@ This allows public models (e.g. `facebook/opt-125m`) to be deployed without a to
 
 The `enabled` flag is auto-computed during plan rendering by `_resolve_hf_token()` in `render_plans.py`. It checks `HF_TOKEN`, `LLMDBENCH_HF_TOKEN`, and the scenario YAML in that order.
 
+## Config Variable Substitution
+
+Scenario files support `${dotted.path}` references that are resolved at render time against the merged config. This avoids hard-coding values like model names in multiple places.
+
+### Syntax
+
+Use `${section.key}` to reference any scalar value in the config. The path must contain at least one dot — this distinguishes config variables from shell variables, which are left untouched.
+
+| Pattern | Resolved? | Why |
+|---|---|---|
+| `${model.name}` | Yes | Dotted path → config lookup |
+| `${model.path}` | Yes | Dotted path → config lookup |
+
+### Available variables
+
+Any scalar value in the merged config (defaults + scenario) can be referenced. Common examples:
+
+| Variable | Resolves to | Example value |
+|---|---|---|
+| `${model.name}` | `model.name` | `facebook/opt-125m` |
+| `${model.path}` | `model.path` | `models/facebook/opt-125m` |
+| `${model.huggingfaceId}` | `model.huggingfaceId` | `facebook/opt-125m` |
+| `${model.maxModelLen}` | `model.maxModelLen` | `32768` |
+| `${namespace.name}` | `namespace.name` | `my-namespace` |
+
+### Where to use
+
+Config variables work in any string field in the scenario YAML, including fields that are normally passed through as raw text:
+
+- `customCommand` — vLLM serve commands for decode/prefill/standalone
+- `extraEnvVars` — environment variable values
+- `pluginsCustomConfig` — inline EPP plugin configuration
+
+### Example
+
+```yaml
+scenario:
+  - name: my-scenario
+    model:
+      name: meta-llama/Llama-3.1-8B
+      path: models/meta-llama/Llama-3.1-8B
+
+    decode:
+      vllm:
+        customCommand: |
+          vllm serve /model-cache/${model.path} \
+            --served-model-name ${model.name} \
+            --port $VLLM_METRICS_PORT
+      extraEnvVars:
+        - name: SERVED_MODEL_NAME
+          value: "${model.name}"
+
+    inferenceExtension:
+      pluginsCustomConfig:
+        my-config.yaml: |
+          plugins:
+            - type: tokenizer
+              parameters:
+                modelName: "${model.name}"
+```
+
+Shell variables like `$VLLM_METRICS_PORT` are preserved for runtime resolution. Config variables like `${model.name}` are substituted at render time.
+
+### Behavior
+
+- Substitution runs after all resolvers (model, namespace, version, etc.) so all values are available.
+- If a reference cannot be resolved, it is left as-is and a warning is logged.
+- Non-string values (integers, booleans) are converted to strings when embedded.
+- The original config dict is not mutated — a deep copy is used.
+
 ## Model Artifact Protocol (`modelservice.uriProtocol`)
 
 Controls how the modelservice Helm chart locates and loads model weights. Set via `modelservice.uriProtocol` in your scenario or defaults.
