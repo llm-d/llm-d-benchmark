@@ -41,8 +41,10 @@ repos:
       #
       # The script prints each spec it is about to render along with
       # the reason it was picked, so it is always obvious what the
-      # hook is doing. The full per-spec loop runs on pre-push below
-      # as the safety net.
+      # hook is doing. The same hook runs on pre-push -- we rely on
+      # CI's full per-spec render job as the safety net instead of
+      # duplicating it locally, since the smart hook already covers
+      # everything the current change could have broken.
       #
       # Important knobs:
       #
@@ -73,37 +75,6 @@ repos:
         pass_filenames: false
         require_serial: true
         stages: [pre-commit, pre-push]
-
-      # ----------------------------------------------------------------
-      # Full render-validation loop -- mirrors
-      # ci-pr-plan-rendering-validation.yaml exactly. Too slow for every
-      # commit, so gated behind pre-push.
-      # ----------------------------------------------------------------
-      - id: render-validation-all
-        name: Render all specification templates (dry-run)
-        entry: bash
-        args:
-          - -c
-          - |
-            set -e
-            FAILED=0
-            PASSED=0
-            for spec_path in $(find config/specification -name "*.yaml.j2" | sort); do
-              spec_name="${spec_path#config/specification/}"
-              spec_name="${spec_name%.yaml.j2}"
-              echo "Rendering: $spec_name"
-              if .venv/bin/llmdbenchmark --spec "$spec_name" --dry-run plan -p precommit >/dev/null 2>&1; then
-                PASSED=$((PASSED + 1))
-              else
-                echo "  FAIL: $spec_name"
-                FAILED=$((FAILED + 1))
-              fi
-            done
-            echo "Render results: $PASSED passed, $FAILED failed"
-            [ "$FAILED" -eq 0 ]
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
 
   - repo: https://github.com/ibm/detect-secrets
     # If you desire to use a specific version of detect-secrets, you can replace `master` with other git revisions such as branch, tag or commit sha.

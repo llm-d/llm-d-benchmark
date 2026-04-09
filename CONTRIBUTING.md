@@ -79,15 +79,12 @@ You only need to run this once per clone. On subsequent invocations `install.sh`
 | `py-compile` | `pre-commit`, `pre-push` | `python -m compileall -q llmdbenchmark` (only on changed `llmdbenchmark/**.py`) | — (fast local-only syntax gate) |
 | `pytest` | `pre-commit`, `pre-push` | `python -m pytest tests/ -x -q` | `unit-tests` job in [`ci-pr-benchmark.yaml`](.github/workflows/ci-pr-benchmark.yaml) |
 | `render-validation-changed` | `pre-commit`, `pre-push` | [`util/precommit_render_changed.py`](util/precommit_render_changed.py) — detects which scenarios the commit actually touched and renders only those (falls back to `cicd/kind-sim` canary for shared-path changes) | Scoped subset of [`ci-pr-plan-rendering-validation.yaml`](.github/workflows/ci-pr-plan-rendering-validation.yaml) |
-| `render-validation-all` | **`pre-push` only** | Loop over every `config/specification/**/*.yaml.j2` and dry-run plan | Full [`ci-pr-plan-rendering-validation.yaml`](.github/workflows/ci-pr-plan-rendering-validation.yaml) |
 | `detect-secrets` | `pre-commit` | [`ibm/detect-secrets`](https://github.com/ibm/detect-secrets) against `.secrets.baseline` with `--use-all-plugins` | — (local-only secrets scan) |
 
 Stages explained:
 
-- **`pre-commit`** fires on every `git commit`. Only fast checks live here — byte-compile, unit tests, and a **scoped** render of whichever scenarios your diff actually touched. This is your "catch the typo" layer.
-- **`pre-push`** fires on every `git push`. The full render-validation loop across every specification runs here. This is your "catch the scenario regression" layer and matches the CI render job exactly.
-
-Splitting the layers keeps `git commit` fast enough to use naturally while still guaranteeing that nothing broken ever leaves your machine.
+- **`pre-commit`** fires on every `git commit`. Byte-compile, unit tests, a **scoped** render of whichever scenarios your diff actually touched, and a secrets scan. This is your "catch the typo and the scenario regression" layer.
+- **`pre-push`** fires on every `git push`. Runs the same hooks again as a last-chance gate before the change leaves your machine. We intentionally do **not** run the full per-spec render loop here — if your diff didn't touch a spec, re-rendering every spec on every push is wasted work. CI still does the exhaustive per-spec render on the PR, so any shared-path regression a local run missed is caught there.
 
 ##### How `render-validation-changed` picks scenarios
 
@@ -95,7 +92,7 @@ The helper script [`util/precommit_render_changed.py`](util/precommit_render_cha
 
 1. `config/specification/<path>.yaml.j2` → render `<path>`.
 2. `config/scenarios/<path>.yaml` → render `<path>` (the `scenarios/` and `specification/` trees are kept 1:1).
-3. Any change under a shared render path (`config/templates/`, `llmdbenchmark/{parser,plan,executor,utilities,standup,run,teardown,smoketests}/`, `llmdbenchmark/cli.py`, `llmdbenchmark/config.py`) → render the `cicd/kind-sim` canary. We do **not** expand shared-path changes into every scenario on every commit — that's what `render-validation-all` does on pre-push.
+3. Any change under a shared render path (`config/templates/`, `llmdbenchmark/{parser,plan,executor,utilities,standup,run,teardown,smoketests}/`, `llmdbenchmark/cli.py`, `llmdbenchmark/config.py`) → render the `cicd/kind-sim` canary. We do **not** expand shared-path changes into every scenario locally — that's what CI's full per-spec render job does on the PR.
 4. **Nothing resolved** (docs-only commit, test-only commit, anything else that doesn't touch a scenario or shared render path) → render the `cicd/kind-sim` canary as a **baseline sanity check**. Every commit proves the render path is healthy, even when the diff has nothing to do with scenarios.
 
 The script always prints exactly which scenarios it is about to render and why, e.g.:
@@ -120,7 +117,6 @@ pre-commit run --all-files
 # Run one specific hook by id:
 pre-commit run pytest --all-files
 pre-commit run render-validation-changed --all-files
-pre-commit run render-validation-all --all-files --hook-stage pre-push
 
 # Run against only the files in your current diff (what `git commit` does):
 pre-commit run
@@ -131,11 +127,11 @@ pre-commit run
 If a hook fails, the first line of output tells you which hook and exits with the underlying tool's output. Common cases:
 
 - **`pytest` failure** — run `pytest tests/ -x -q` directly and fix the failing test. The CI `unit-tests` job runs exactly this command, so a fix here is guaranteed to green CI.
-- **`render-validation-*` failure** — the hook output prints which spec(s) it tried to render and their pass/fail status. Reproduce the failing spec interactively to see the full error:
+- **`render-validation-changed` failure** — the hook output prints which spec(s) it tried to render and their pass/fail status. Reproduce the failing spec interactively to see the full error:
   ```bash
   llmdbenchmark --spec <the-failing-spec> --dry-run plan -p debug
   ```
-  Render failures are usually caused by Jinja template changes or missing keys in `config/scenarios/**/<name>.yaml`. If `render-validation-changed` says it rendered `cicd/kind-sim` and you were expecting a different spec, it means your change touched a shared render path and the hook fell back to the canary — push the change and let `render-validation-all` exercise every spec.
+  Render failures are usually caused by Jinja template changes or missing keys in `config/scenarios/**/<name>.yaml`. If the hook says it rendered `cicd/kind-sim` and you were expecting a different spec, it means your change touched a shared render path and the hook fell back to the canary — the exhaustive per-spec render runs in CI on the PR.
 - **`detect-secrets` failure** — either your change added a secret (remove it) or added a new pattern the baseline doesn't know about. To update the baseline after reviewing the finding:
   ```bash
   detect-secrets scan --baseline .secrets.baseline --use-all-plugins

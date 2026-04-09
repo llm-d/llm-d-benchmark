@@ -18,9 +18,9 @@
 #     for local development we want a real virtualenv so hook execution
 #     stays reproducible and does not pollute the user's system Python.
 #
-# Installs both pre-commit and pre-push hooks:
-#   - pre-commit: fast checks (compile, unit tests, single-spec render)
-#   - pre-push:   full render-validation loop across all specifications
+# Installs both pre-commit and pre-push hooks. Same hook set runs on
+# both stages -- the pre-push stage is a last-chance gate, not an
+# expanded one. The exhaustive per-spec render lives in CI.
 # -----------------------------------------------------------------------
 set -euo pipefail
 
@@ -77,9 +77,8 @@ pre-commit install --hook-type pre-push
 
 echo ""
 echo "pre-commit hooks installed."
-echo "  pre-commit stage: py-compile, pytest, render-validation-changed"
-echo "  pre-push stage:   render-validation-all"
+echo "  pre-commit + pre-push: py-compile, pytest, render-validation-changed, detect-secrets"
 echo ""
-echo "Run 'pre-commit run --all-files' to exercise the pre-commit hooks now."
+echo "Run 'pre-commit run --all-files' to exercise the hooks now."
 
 popd > /dev/null

@@ -9,8 +9,8 @@ the staged file list and map paths to specs:
     llmdbenchmark/<shared>/**, templates -> cicd/kind-sim (canary)
     nothing / docs-only                  -> cicd/kind-sim (baseline)
 
-The full per-spec loop lives in the ``render-validation-all`` pre-push
-hook; this is the fast path that only renders what actually changed.
+The exhaustive per-spec render lives in CI (ci-pr-plan-rendering-
+validation.yaml); locally we only render what actually changed.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from typing import TextIO
 CANARY_SPEC = "cicd/kind-sim"
 
 # Touching anything starting with one of these means "this could affect
-# every spec". We render the canary only — the full loop runs on pre-push.
+# every spec". We render the canary only — CI handles the full loop.
 CANARY_TRIGGER_PREFIXES: tuple[str, ...] = (
     "config/templates/",
     "llmdbenchmark/parser/",
