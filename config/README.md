@@ -1238,8 +1238,7 @@ Minimal starting points for common hardware:
 |----------|-------------|
 | `cpu.yaml` | CPU-only deployment (no GPU, uses vllm-cpu-release image) |
 | `gpu.yaml` | Standard NVIDIA GPU deployment |
-| `sim.yaml` | Simulated inference (llm-d-inference-sim, no GPU required) |
-| `sim-small.yaml` | Minimal simulated deployment (small PVC, low resources) |
+| `sim.yaml` | Simulated inference (llm-d-inference-sim, no GPU required; minimal PVC and resources) |
 | `spyre.yaml` | IBM Spyre accelerator |
 
 ### `scenarios/cicd/`

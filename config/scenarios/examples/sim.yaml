@@ -306,4 +306,4 @@ scenario:
     # Workload Configuration
     # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR
     # -------------------------------------------------------------------------
-    workDir: "~/data/sim""
+    workDir: "~/data/sim"
