@@ -190,7 +190,7 @@ scenario:
 
       vllm:
         customCommand: |
-          /home/senuser/container-scripts/simple_vllm_serve.sh ibm-ai-platform/micro-g3.3-8b-instruct-1b \
+          /home/senuser/container-scripts/simple_vllm_serve.sh ${model.name} \
           --port $VLLM_INFERENCE_PORT \
           --max-model-len $VLLM_MAX_MODEL_LEN \
           --max-num-seq $VLLM_MAX_NUM_SEQ \
@@ -207,7 +207,7 @@ scenario:
         - name: PORT
           value: "8000"
         - name: SERVED_MODEL_NAME
-          value: "ibm-ai-platform/micro-g3.3-8b-instruct-1b"
+          value: "${model.name}"
         - name: FLEX_COMPUTE
           value: SENTIENT
         - name: FLEX_DEVICE
@@ -287,8 +287,8 @@ scenario:
 
       vllm:
         customCommand: |
-          /home/senuser/container-scripts/simple_vllm_serve.sh /model-cache/models/ibm-ai-platform/micro-g3.3-8b-instruct-1b \
-          --served-model-name ibm-ai-platform/micro-g3.3-8b-instruct-1b \
+          /home/senuser/container-scripts/simple_vllm_serve.sh /model-cache/${model.path} \
+          --served-model-name ${model.name} \
           --port $VLLM_METRICS_PORT \
           --max-model-len $VLLM_MAX_MODEL_LEN \
           --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
@@ -305,7 +305,7 @@ scenario:
         - name: PORT
           value: "8000"
         - name: SERVED_MODEL_NAME
-          value: "ibm-ai-platform/micro-g3.3-8b-instruct-1b"
+          value: "${model.name}"
         - name: FLEX_COMPUTE
           value: SENTIENT
         - name: FLEX_DEVICE
