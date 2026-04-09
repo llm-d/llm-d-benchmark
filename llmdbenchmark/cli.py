@@ -151,10 +151,15 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
 def _render_helm_manifests(plan_dir: Path, logger) -> None:
     """Pre-render modelservice Helm chart manifests into each stack's plan directory.
 
-    For each rendered stack, runs ``helmfile template`` against the
-    modelservice release to produce the full K8s manifests the chart
-    would create.  Output is saved as ``helm-modelservice.yaml`` in
-    the stack directory alongside the Jinja2-rendered templates.
+    For each rendered stack that deploys via ``modelservice``, runs
+    ``helmfile template`` against the modelservice release to produce
+    the full K8s manifests the chart would create.  Output is saved as
+    ``helm-modelservice.yaml`` in the stack directory alongside the
+    Jinja2-rendered templates.
+
+    Stacks that deploy via ``standalone`` are skipped entirely — they
+    do not use the modelservice Helm chart, so pre-rendering it would
+    produce an empty helmfile and fail with "no top-level config keys".
 
     This runs during the plan phase so that:
     - Users can inspect exactly what Helm will apply
@@ -174,6 +179,37 @@ def _render_helm_manifests(plan_dir: Path, logger) -> None:
         if not helmfile_src.exists() or not ms_values.exists():
             continue
 
+        # Read config once per stack — we need it both to decide
+        # whether modelservice rendering applies and to extract the
+        # model_id_label used by the helmfile selector.
+        config_file = stack_dir / "config.yaml"
+        cfg: dict = {}
+        if config_file.exists():
+            with open(config_file, encoding="utf-8") as f:
+                cfg = _yaml.safe_load(f) or {}
+
+        # Skip standalone-only stacks: the modelservice Helm chart is
+        # not used, and running `helmfile template` against a helmfile
+        # with no matching release yields an empty document that
+        # subsequently fails to parse.
+        modelservice_enabled = bool(
+            (cfg.get("modelservice") or {}).get("enabled", False)
+        )
+        if not modelservice_enabled:
+            logger.log_debug(
+                f"Skipping Helm pre-render for {stack_dir.name}: "
+                f"modelservice.enabled is false (standalone-only stack)"
+            )
+            continue
+
+        model_id = cfg.get("model_id_label", "")
+        if not model_id:
+            logger.log_debug(
+                f"Skipping Helm pre-render for {stack_dir.name}: "
+                f"model_id_label not found in config.yaml"
+            )
+            continue
+
         # Output directory for pre-rendered Helm manifests
         helm_dir = stack_dir / "helm"
         helm_dir.mkdir(parents=True, exist_ok=True)
@@ -185,24 +221,7 @@ def _render_helm_manifests(plan_dir: Path, logger) -> None:
 
         # Only the modelservice values file is needed — the selector
         # targets only the -ms release so infra/gaie values are not read.
-        if ms_values.exists():
-            shutil.copy2(ms_values, helm_dir / "ms-values.yaml")
-
-        # Read config to get the model_id_label for the selector.
-        # Without it we can't target only the modelservice release.
-        config_file = stack_dir / "config.yaml"
-        model_id = ""
-        if config_file.exists():
-            with open(config_file, encoding="utf-8") as f:
-                cfg = _yaml.safe_load(f) or {}
-            model_id = cfg.get("model_id_label", "")
-
-        if not model_id:
-            logger.log_debug(
-                f"Skipping Helm pre-render for {stack_dir.name}: "
-                f"model_id_label not found in config.yaml"
-            )
-            continue
+        shutil.copy2(ms_values, helm_dir / "ms-values.yaml")
 
         # Use CommandExecutor for consistent logging and error handling
         cmd = CommandExecutor(
