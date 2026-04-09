@@ -245,7 +245,7 @@ class DeployModelserviceStep(Step):
         if context.is_openshift and gateway_class != "data-science-gateway-class":
             route_name = f"{release}-inference-gateway-route"
 
-            if gateway_class == "kgateway":
+            if gateway_class == "agentgateway":
                 route_service = f"infra-{release}-inference-gateway"
             else:  # istio
                 route_service = f"infra-{release}-inference-gateway-istio"
