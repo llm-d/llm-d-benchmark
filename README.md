@@ -137,6 +137,12 @@ The `experiment` command goes even further by providing an interface to variy in
 
 See [workload/README.md](workload/README.md) for the full experiment file format and all pre-built experiments, as well as advanced functionality.
 
+## Get started without accelerators
+
+No GPU? No problem. The **[Quickstart](docs/quickstart.md)** walks you through the full `standup → smoketest → run → teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine — no accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind-sim` scenario that CI runs on every PR, so if it works locally it works in CI.
+
+All you need is Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.11+.
+
 ## Next Steps
 
 | Topic | Where to look |
