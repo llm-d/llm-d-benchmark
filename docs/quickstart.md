@@ -51,6 +51,9 @@ You need these installed before starting:
 | Docker or Podman | any recent version | `docker info` or `podman info` |
 | Python | 3.11+ | `python3 --version` |
 | `git` | any | `git --version` |
+| Container runtime resources | **4 CPUs / 8 GiB RAM** | `docker info \| grep -E "CPUs\|Total Memory"` |
+
+> **Resource note:** The `cicd/kind-sim` scenario deploys ~7 pods on a single Kind node. With the default 2 CPUs that Docker Desktop, Colima, and Podman ship with, the harness pod (and sometimes the gateway) cannot schedule due to `Insufficient cpu`. Bump your container runtime to **4 CPUs** before creating the Kind cluster. See [Troubleshooting](#pods-stuck-in-pending-during-standup-or-run) if you hit this.
 
 Everything else — `kubectl`, `helm`, `helmfile`, `kind`, `skopeo`, `crane`, `helm-diff`, `jq`, `yq`, `kustomize` — will be installed for you by `./install.sh` in [step 3](#3-install-llmdbenchmark), with one exception: `kind` itself, which we install first below because we want the cluster up before the installer runs.
 
@@ -232,7 +235,49 @@ kind delete cluster --name llmd-quickstart
 - **Low disk space**: Kind needs free space in `/tmp` and `/var/lib/docker`. `docker system prune -a` frees cache space.
 - **Previous cluster still around**: `kind get clusters` then `kind delete cluster --name <name>`.
 
-### Pods stuck in `Pending` during standup
+### Pods stuck in `Pending` during standup or run
+
+- **Insufficient CPU or memory on the Kind node**: this is the most common issue on laptops. Run `kubectl describe pod -n "$NS" <pod>` and look for events like:
+
+  ```
+  Warning  FailedScheduling  0/1 nodes are available: 1 Insufficient cpu, 1 Insufficient memory.
+  ```
+
+  The `cicd/kind-sim` scenario needs roughly **2.5 CPU** across all pods (decode, prefill, EPP, gateway, harness). If your container runtime (Docker Desktop, Colima, Podman) defaults to 2 CPUs, the harness pod won't fit alongside everything else.
+
+  **Check your current allocation:**
+
+  ```bash
+  # Docker Desktop / Colima / Podman — any of these will work:
+  docker info 2>/dev/null | grep -E "CPUs|Total Memory"
+  podman info 2>/dev/null | grep -E "cpus|memTotal"
+  colima status 2>/dev/null
+
+  # Or check what Kubernetes actually sees:
+  kubectl describe node | grep -A6 "Allocated resources"
+  ```
+
+  **Fix — increase CPUs to at least 4 (8 GiB RAM recommended):**
+
+  ```bash
+  # Docker Desktop: Settings > Resources > CPUs: 4, Memory: 8 GiB
+  # (no CLI option — must be done through the GUI)
+
+  # Colima
+  colima stop && colima start --cpu 4 --memory 8
+
+  # Podman
+  podman machine stop && podman machine set --cpus 4 --memory 8192 && podman machine start
+  ```
+
+  After changing resources, **recreate the Kind cluster** (the kubelet captures allocatable resources at node boot):
+
+  ```bash
+  kind delete cluster --name llmd-quickstart
+  kind create cluster --name llmd-quickstart
+  ```
+
+  Then re-run standup from scratch.
 
 - **PVC stuck**: `kubectl get pvc -n "$NS"` — the `standard` Kind storage class should provision immediately. If it does not, you're probably out of disk; see above.
 - **Image pull backoff**: check `kubectl describe pod -n "$NS" <pod>` for the failing image and make sure your machine has network access to `ghcr.io`.
@@ -264,9 +309,21 @@ The `facebook/opt-125m` model is public and small. If the download fails, you mo
 - **No network access from inside Kind pods** (corporate proxy, air-gapped laptop): run `kubectl logs -n "$NS" job/download-model --tail=50` to see the actual error.
 - **HuggingFace rate limiting**: retry after a short wait, or set a `HUGGING_FACE_HUB_TOKEN` via `-v HUGGING_FACE_HUB_TOKEN=<token>`.
 
-### Run phase hangs on `waiting for harness pod`
+### Run phase hangs on `waiting for harness pod` or reports `No pods deployed`
 
-- `kubectl get pods -n "$NS"` — check if the harness pod is pending for resources. On very small Kind setups, the harness pod's default CPU/memory requests may not fit. Either give Docker more resources or lower the harness request in `config/scenarios/cicd/kind-sim.yaml` (`harness.resources`).
+- `kubectl get pods -n "$NS"` — check if the harness pod is `Pending`. If `kubectl describe pod -n "$NS" <harness-pod>` shows `Insufficient cpu` or `Insufficient memory`, see [Pods stuck in Pending](#pods-stuck-in-pending-during-standup-or-run) above.
+- If a previous run failed and left a stale harness pod, clean it up before retrying:
+
+  ```bash
+  kubectl delete pod -n "$NS" -l app=llmdbench-harness-launcher --ignore-not-found
+  ```
+
+- If you edited `harness.resources` in your scenario to reduce requests, you must re-run `plan` before `run` (no standup needed — the cluster infra is unchanged):
+
+  ```bash
+  llmdbenchmark --spec cicd/kind-sim plan -p "$NS"
+  llmdbenchmark --spec cicd/kind-sim run  -p "$NS"
+  ```
 
 ### Anything else
 
