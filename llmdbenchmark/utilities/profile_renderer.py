@@ -41,6 +41,10 @@ PROFILE_TOKENS: dict[str, TokenDef] = {
         config_path="experiment.datasetDir",
         description="Dataset directory path or URL",
     ),
+    "LLMDBENCH_RUN_DATASET_FILE": TokenDef(
+        config_path="experiment.datasetFile",
+        description="Dataset filename (basename of the dataset path/URL)",
+    ),
 }
 
 
