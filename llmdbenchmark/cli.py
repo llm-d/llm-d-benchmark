@@ -27,6 +27,8 @@ from llmdbenchmark.utilities.os.filesystem import (
     resolve_specification_file,
 )
 from llmdbenchmark.interface.commands import Command
+from llmdbenchmark.telemetry import init_telemetry, get_telemetry
+import getpass
 from llmdbenchmark.interface import plan, standup, teardown, run
 from llmdbenchmark.interface import smoketest as smoketest_interface
 from llmdbenchmark.interface import experiment as experiment_interface
@@ -1208,6 +1210,9 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_WORKSPACE": ("workspace", "--workspace"),
         "LLMDBENCH_BASE_DIR": ("base_dir", "--base-dir"),
         "LLMDBENCH_SPEC": ("specification_file", "--spec"),
+        "LLMDBENCH_TELEMETRY_ENABLED": ("telemetry_enabled", "--telemetry-enabled"),
+        "LLMDBENCH_TELEMETRY_PROVIDER": ("telemetry_provider", "--telemetry-provider"),
+        "LLMDBENCH_TELEMETRY_ENDPOINT": ("telemetry_endpoint", "--telemetry-endpoint"),
         "LLMDBENCH_DRY_RUN": ("dry_run", "--dry-run"),
         "LLMDBENCH_VERBOSE": ("verbose", "--verbose"),
         "LLMDBENCH_NON_ADMIN": ("non_admin", "--non-admin"),
@@ -1413,6 +1418,24 @@ def cli() -> None:
     )
 
     parser.add_argument(
+        "--telemetry-enabled",
+        action="store_true",
+        help="Enable telemetry reporting.",
+    )
+
+    parser.add_argument(
+        "--telemetry-provider",
+        default=env("LLMDBENCH_TELEMETRY_PROVIDER", "http"),
+        help="Telemetry provider (e.g., http).",
+    )
+
+    parser.add_argument(
+        "--telemetry-endpoint",
+        default=env("LLMDBENCH_TELEMETRY_ENDPOINT"),
+        help="Telemetry endpoint URL.",
+    )
+
+    parser.add_argument(
         "--version",
         "--ver",
         action="version",
@@ -1441,6 +1464,8 @@ def cli() -> None:
         args.dry_run = env_bool("LLMDBENCH_DRY_RUN")
     if not args.verbose:
         args.verbose = env_bool("LLMDBENCH_VERBOSE")
+    if not args.telemetry_enabled:
+        args.telemetry_enabled = env_bool("LLMDBENCH_TELEMETRY_ENABLED")
     if not args.non_admin:
         args.non_admin = env_bool("LLMDBENCH_NON_ADMIN")
     if hasattr(args, "monitoring") and not args.monitoring:
@@ -1527,6 +1552,32 @@ def cli() -> None:
     )
 
     logger.line_break()
+
+    # Telemetry Hook
+    config.telemetry_enabled = args.telemetry_enabled
+    config.telemetry_provider = args.telemetry_provider
+    config.telemetry_endpoint = args.telemetry_endpoint
+    config.telemetry_api_key = env("LLMDBENCH_TELEMETRY_API_KEY")
+
+    if config.telemetry_enabled:
+        init_telemetry(logger=logger)
+
+    if telemetry := get_telemetry():
+        telemetry_data = {
+            "user": getpass.getuser(),
+            "time": int(time.time() * 1000),
+            "command": args.command,
+            "config": {
+                "specification_file": str(args.specification_file),
+                "workspace": str(config.workspace),
+                "dry_run": config.dry_run,
+                "verbose": config.verbose,
+            },
+            "environment": {
+                "LLMDBENCH_BASE_DIR": str(args.base_dir),
+            }
+        }
+        telemetry.push(telemetry_data)
 
     dispatch_cli(args, logger)
 
