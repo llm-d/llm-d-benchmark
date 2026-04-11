@@ -27,6 +27,8 @@ from llmdbenchmark.utilities.os.filesystem import (
     resolve_specification_file,
 )
 from llmdbenchmark.interface.commands import Command
+from llmdbenchmark.telemetry import init_telemetry, get_telemetry
+import getpass
 from llmdbenchmark.interface import plan, standup, teardown, run
 from llmdbenchmark.interface import smoketest as smoketest_interface
 from llmdbenchmark.interface import experiment as experiment_interface
@@ -1527,6 +1529,32 @@ def cli() -> None:
     )
 
     logger.line_break()
+
+    # Telemetry Hook
+    config.telemetry_enabled = env_bool("LLMDBENCH_TELEMETRY_ENABLED")
+    config.telemetry_provider = env("LLMDBENCH_TELEMETRY_PROVIDER", "http")
+    config.telemetry_endpoint = env("LLMDBENCH_TELEMETRY_ENDPOINT")
+    config.telemetry_api_key = env("LLMDBENCH_TELEMETRY_API_KEY")
+
+    if config.telemetry_enabled:
+        init_telemetry(logger=logger)
+
+    if telemetry := get_telemetry():
+        telemetry_data = {
+            "user": getpass.getuser(),
+            "time": int(time.time() * 1000),
+            "command": args.command,
+            "config": {
+                "specification_file": str(args.specification_file),
+                "workspace": str(config.workspace),
+                "dry_run": config.dry_run,
+                "verbose": config.verbose,
+            },
+            "environment": {
+                "LLMDBENCH_BASE_DIR": os.environ.get("LLMDBENCH_BASE_DIR"),
+            }
+        }
+        telemetry.push(telemetry_data)
 
     dispatch_cli(args, logger)
 
