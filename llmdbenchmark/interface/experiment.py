@@ -6,10 +6,11 @@ from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env, env_int
 
 
-def add_subcommands(parser: argparse._SubParsersAction):
+def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []):
     """Register the ``experiment`` subcommand and its arguments."""
     exp_parser = parser.add_parser(
         Command.EXPERIMENT.value,
+        parents=parents,
         description=(
             "The `experiment` command orchestrates a full Design of Experiments (DoE) "
             "lifecycle.  For each setup treatment in the experiment YAML, it renders "
