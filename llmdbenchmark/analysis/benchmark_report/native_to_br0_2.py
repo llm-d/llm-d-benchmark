@@ -633,7 +633,7 @@ def _populate_benchmark_report_from_envars() -> dict:
         "run": {
             "uid": str(uuid.uuid4()),  # Initial UID, may be updated
         },
-        "scenario": {"load": {"standardized": {"tool_version": ""}}},
+        "scenario": {"load": {"standardized": {"tool_version": ""}, "native": {}}},
     }
 
     # We make the assumption that if the environment variable
