@@ -85,7 +85,11 @@ class DeployHarnessStep(Step):
             "standalone" in context.deployed_methods
             or self._resolve(plan_config, "standalone.enabled", default=False)
         )
-        stack_type = "vllm-prod" if is_standalone else "llm-d"
+        is_fma = (
+            "fma" in context.deployed_methods
+            or self._resolve(plan_config, "fma.enabled", default=False)
+        )
+        stack_type = "vllm-prod" if is_standalone or is_fma else "llm-d"
 
         # Resolve model ID label used as the llm-d.ai/model label value
         # (hashed format matching bash model_attribute) for infrastructure log capture.
@@ -219,9 +223,10 @@ class DeployHarnessStep(Step):
                 if context.deployed_methods:
                     deploy_method = ",".join(context.deployed_methods)
                 elif plan_config:
-                    dm = plan_config.get("standalone", {}).get("enabled")
-                    if dm:
+                    if plan_config.get("standalone", {}).get("enabled"):
                         deploy_method = "standalone"
+                    elif plan_config.get("fma", {}).get("enabled"):
+                        deploy_method = "fma"
 
                 template_values.update({
                     "pod_name": pod_name,

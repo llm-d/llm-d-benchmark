@@ -1,0 +1,173 @@
+{% if fma is defined and fma.enabled | default(false) %}
+
+{# ============================================================================
+   fma-deployment.yaml.j2
+
+   Fast Model Actuation Deployment.
+   ============================================================================ #}
+
+apiVersion: fma.llm-d.ai/v1alpha1
+kind: InferenceServerConfig
+metadata:
+  name: fma-{{ model_id_label }}
+  labels:
+    app: fma-{{ model_id_label }}
+{% if standalone.labels is defined %}
+{% for key, value in fma.labels.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+  namespace: {{ namespace.name }}
+spec:
+  launcherConfigName: fma-{{ model_id_label }}
+  modelServerConfig:
+    labels:
+      component: inference
+    env_vars:
+      HF_HOME: "{{ fma.modelMountPath }}"
+      VLLM_LOGGING_LEVEL: DEBUG
+      VLLM_SERVER_DEV_MODE: "1"
+      VLLM_USE_V1: "1"
+    options: "--model {{ model.name }} --enable-sleep-mode --no-enable-prefix-caching --load-format auto --max-model-len 16384 --gpu-memory-utilization 0.95 --tensor-parallel-size 1"
+    port: 8005
+---
+apiVersion: fma.llm-d.ai/v1alpha1
+kind: LauncherConfig
+metadata:
+  name: fma-{{ model_id_label }}
+  labels:
+    app: fma-{{ model_id_label }}
+{% if standalone.labels is defined %}
+{% for key, value in fma.labels.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+  namespace: {{ namespace.name }}
+spec:
+  maxSleepingInstances: 3
+  podTemplate:
+    spec:
+      runtimeClassName: nvidia-legacy
+      containers:
+        - name: inference-server
+          image: {{ fma.launcher.image.repository }}:{{ fma.launcher.image.tag }}
+          imagePullPolicy: {{ fma.launcher.image.pullPolicy }}
+          command:
+            - /app/launcher.py
+            - --host=0.0.0.0
+            - --log-level=info
+            - --port={{ fma.launcherConfigurator.port }}
+          env:
+          - name: HOME
+            value: "{{ fma.modelMountPath }}"
+          - name: VLLM_CACHE_ROOT
+            value: "{{ fma.modelMountPath }}/vllm"
+          - name: FLASHINFER_WORKSPACE_DIR
+            value: "{{ fma.modelMountPath }}/flashinfer"
+          - name: TRITON_CACHE_DIR
+            value: "{{ fma.modelMountPath }}/triton"
+          - name: XDG_CACHE_HOME
+            value: "{{ fma.modelMountPath }}"
+          - name: XDG_CONFIG_HOME
+            value: "{{ fma.modelMountPath }}/config"
+          - name: HF_HOME
+            value: "{{ fma.modelMountPath }}"
+          - name: HF_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: {{ huggingface.secretName }}
+                key:  {{ huggingface.tokenKey }}
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+            requests:
+              nvidia.com/gpu: "1"
+          volumeMounts:
+{% if fma.mountModelVolume %}
+          - name: model-storage
+            mountPath: {{ fma.modelMountPath }}
+            readOnly: False
+{% endif %}
+      volumes:
+{% if fma.mountModelVolume %}
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: {{ fma.modelPvcName }}
+{% endif %}
+---
+apiVersion: fma.llm-d.ai/v1alpha1
+kind: LauncherPopulationPolicy
+metadata:
+  name: fma-{{ model_id_label }}
+  labels:
+    app: fma-{{ model_id_label }}
+{% if standalone.labels is defined %}
+{% for key, value in fma.labels.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+  namespace: {{ namespace.name }}
+spec:
+  enhancedNodeSelector:
+    labelSelector:
+      matchLabels:
+        nvidia.com/gpu.present: "true"
+  countForLauncher:
+    - launcherConfigName: fma-{{ model_id_label }}
+      launcherCount: 1
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: fma-requester-{{ model_id_label }}
+  labels:
+    app: fma-requester-{{ model_id_label }}
+{% if standalone.labels is defined %}
+{% for key, value in fma.labels.items() %}
+    {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+  namespace: {{ namespace.name }}
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: dp-app
+      llm-d.ai/inference-serving: "true"
+      llm-d.ai/model: {{ model_id_label }}
+      llm-d.ai/role: requester
+  template:
+    metadata:
+      labels:
+        app: dp-app
+        llm-d.ai/inference-serving: "true"
+        llm-d.ai/model: {{ model_id_label }}
+        llm-d.ai/role: requester
+      annotations:
+        dual-pods.llm-d.ai/admin-port: "8081"
+        dual-pods.llm-d.ai/inference-server-config: fma-{{ model_id_label }}
+    spec:
+      containers:
+        - name: inference-server
+          image: {{ fma.requester.image.repository }}:{{ fma.requester.image.tag }}
+          imagePullPolicy: {{ fma.requester.image.pullPolicy }}
+          command:
+          - /app/requester
+          ports:
+          - name: probes
+            containerPort: {{ fma.requester.probePort }}
+          - name: spi
+            containerPort: {{ fma.requester.spiPort }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            limits:
+              nvidia.com/gpu: {{ fma.requester.limitsGPU }}
+              cpu: {{ fma.requester.limitsCPU }}
+              memory: {{ fma.requester.limitsMemory }}
+
+{% endif %}

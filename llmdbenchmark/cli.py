@@ -274,6 +274,9 @@ def _load_stack_info_from_config(config_file, stack_name=""):
                 "standalone_enabled": (
                     plan_config.get("standalone", {}).get("enabled", False)
                 ),
+                "fma_enabled": (
+                    plan_config.get("fma", {}).get("enabled", False)
+                ),
                 "modelservice_enabled": (
                     plan_config.get("modelservice", {}).get("enabled", False)
                 ),
@@ -351,6 +354,7 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
         return [m.strip() for m in methods_str.split(",")]
 
     standalone = plan_info.get("standalone_enabled", False)
+    fma = plan_info.get("fma_enabled", False)
     modelservice = plan_info.get("modelservice_enabled", False)
 
     if phase == "run":
@@ -358,6 +362,8 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
         methods = []
         if standalone:
             methods.append("standalone")
+        if fma:
+            methods.append("fma")
         if modelservice:
             methods.append("modelservice")
         if methods:
@@ -370,6 +376,9 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
         if standalone:
             logger.log_info("Auto-detected deploy method from plan: standalone")
             return ["standalone"]
+        if fma:
+            logger.log_info("Auto-detected deploy method from plan: fma")
+            return ["fma"]
         if modelservice:
             logger.log_info("Auto-detected deploy method from plan: modelservice")
             return ["modelservice"]

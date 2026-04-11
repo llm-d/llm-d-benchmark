@@ -20,8 +20,8 @@ class VerifyModelStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        """Skip model verification in skip-run mode."""
-        return context.harness_skip_run
+        """Skip model verification in skip-run mode or fma."""
+        return context.harness_skip_run or "fma" in context.deployed_methods
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None

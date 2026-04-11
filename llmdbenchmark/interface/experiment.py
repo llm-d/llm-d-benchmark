@@ -37,7 +37,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
         "-t",
         "--methods",
         default=env("LLMDBENCH_METHODS"),
-        help="Deploy method (standalone, modelservice).",
+        help="Deploy method (standalone, modelservice, fma).",
     )
     exp_parser.add_argument(
         "-m",
