@@ -142,6 +142,12 @@ class AdminPrerequisitesStep(Step):
                 cmd, plan_config, existing_crds,
             )
 
+        # After any auto-install attempt, validate that monitoring CRDs are
+        # present when monitoring is enabled.  Re-fetch CRDs so we pick up
+        # anything that was just installed above.
+        refreshed_crds = self._get_existing_crds(cmd, context)
+        self._validate_monitoring_crds(cmd, context, plan_config, refreshed_crds, errors)
+
         self._apply_namespace_yaml(cmd, context, errors)
         self._apply_openshift_sccs(cmd, context, plan_config)
 
@@ -388,6 +394,101 @@ class AdminPrerequisitesStep(Step):
 
         cmd.logger.log_info(
             "✅ Prometheus Operator CRDs installed (PodMonitor, ServiceMonitor)"
+        )
+
+    def _validate_monitoring_crds(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        plan_config: dict,
+        existing_crds: list[str],
+        errors: list,
+    ):
+        """Fail early when monitoring is enabled but required CRDs are missing.
+
+        Checks for ``podmonitors.monitoring.coreos.com`` and
+        ``servicemonitors.monitoring.coreos.com``.  If either is absent the
+        step records an error with platform-aware remediation guidance.
+        """
+        monitoring = plan_config.get("monitoring", {})
+        podmonitor_enabled = monitoring.get("podmonitor", {}).get("enabled", False)
+        scrape_enabled = monitoring.get("metricsScrapeEnabled", False)
+
+        if not podmonitor_enabled and not scrape_enabled:
+            return
+
+        required_crds = [
+            "podmonitors.monitoring.coreos.com",
+            "servicemonitors.monitoring.coreos.com",
+        ]
+        missing = [c for c in required_crds if c not in existing_crds]
+        if not missing:
+            cmd.logger.log_info(
+                "✅ Monitoring CRDs present on cluster"
+            )
+            return
+
+        missing_str = ", ".join(missing)
+        guidance = self._monitoring_guidance(context)
+        msg = (
+            f"Monitoring is enabled but the following required CRDs are missing "
+            f"from the cluster: {missing_str}.\n{guidance}"
+        )
+        cmd.logger.log_error(msg)
+        errors.append(msg)
+
+    @staticmethod
+    def _monitoring_guidance(context: ExecutionContext) -> str:
+        """Return platform-specific remediation guidance for missing monitoring CRDs."""
+        common_tail = (
+            "Alternatively, pass '--no-monitoring' to disable monitoring."
+        )
+
+        if context.is_gke:
+            return (
+                "On GKE, enable Google Managed Prometheus with managed collection:\n"
+                "  gcloud container clusters update <CLUSTER> \\\n"
+                "    --enable-managed-prometheus \\\n"
+                "    --location=<LOCATION>\n"
+                "This lets GKE natively scrape PodMonitor resources.\n"
+                "See: https://cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed\n"
+                f"{common_tail}"
+            )
+
+        if context.is_kind or context.is_minikube:
+            return (
+                f"On {context.platform_type}, install the kube-prometheus-stack Helm chart:\n"
+                "  helm repo add prometheus-community "
+                "https://prometheus-community.github.io/helm-charts\n"
+                "  helm install prometheus prometheus-community/kube-prometheus-stack \\\n"
+                "    --namespace monitoring --create-namespace\n"
+                f"{common_tail}"
+            )
+
+        if context.is_openshift:
+            return (
+                "On OpenShift, ensure user workload monitoring is enabled:\n"
+                "  oc apply -f - <<EOF\n"
+                "  apiVersion: v1\n"
+                "  kind: ConfigMap\n"
+                "  metadata:\n"
+                "    name: cluster-monitoring-config\n"
+                "    namespace: openshift-monitoring\n"
+                "  data:\n"
+                "    config.yaml: 'enableUserWorkload: true'\n"
+                "  EOF\n"
+                f"{common_tail}"
+            )
+
+        # Generic Kubernetes
+        return (
+            "Install the Prometheus Operator (or its CRDs) on the cluster.\n"
+            "For example, using the kube-prometheus-stack Helm chart:\n"
+            "  helm repo add prometheus-community "
+            "https://prometheus-community.github.io/helm-charts\n"
+            "  helm install prometheus prometheus-community/kube-prometheus-stack \\\n"
+            "    --namespace monitoring --create-namespace\n"
+            f"{common_tail}"
         )
 
     def _apply_namespace_yaml(

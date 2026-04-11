@@ -114,7 +114,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             cli_namespace=getattr(args, "namespace", None),
             cli_model=getattr(args, "models", None),
             cli_methods=getattr(args, "methods", None),
-            cli_monitoring=getattr(args, "monitoring", False),
+            cli_monitoring=getattr(args, "monitoring", None),
         ).eval()
 
         try:
@@ -953,7 +953,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         cli_namespace=getattr(args, "namespace", None),
         cli_model=getattr(args, "models", None),
         cli_methods=getattr(args, "methods", None),
-        cli_monitoring=getattr(args, "monitoring", False),
+        cli_monitoring=getattr(args, "monitoring", None),
         setup_overrides=setup_overrides,
     ).eval()
 
