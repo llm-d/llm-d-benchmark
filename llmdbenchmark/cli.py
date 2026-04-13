@@ -1213,6 +1213,8 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_TELEMETRY_ENABLED": ("telemetry_enabled", "--telemetry-enabled"),
         "LLMDBENCH_TELEMETRY_PROVIDER": ("telemetry_provider", "--telemetry-provider"),
         "LLMDBENCH_TELEMETRY_ENDPOINT": ("telemetry_endpoint", "--telemetry-endpoint"),
+        "LLMDBENCH_TELEMETRY_AUTH_PROVIDER": ("telemetry_auth_provider", "--telemetry-auth-provider"),
+        "LLMDBENCH_TELEMETRY_TOKEN": ("telemetry_token", "--telemetry-token"),
         "LLMDBENCH_DRY_RUN": ("dry_run", "--dry-run"),
         "LLMDBENCH_VERBOSE": ("verbose", "--verbose"),
         "LLMDBENCH_NON_ADMIN": ("non_admin", "--non-admin"),
@@ -1436,6 +1438,18 @@ def cli() -> None:
     )
 
     parser.add_argument(
+        "--telemetry-auth-provider",
+        default=env("LLMDBENCH_TELEMETRY_AUTH_PROVIDER"),
+        help="Telemetry authentication provider (e.g., google).",
+    )
+
+    parser.add_argument(
+        "--telemetry-token",
+        default=env("LLMDBENCH_TELEMETRY_TOKEN"),
+        help="Manual OIDC token or API key for telemetry auth.",
+    )
+
+    parser.add_argument(
         "--version",
         "--ver",
         action="version",
@@ -1557,7 +1571,8 @@ def cli() -> None:
     config.telemetry_enabled = args.telemetry_enabled
     config.telemetry_provider = args.telemetry_provider
     config.telemetry_endpoint = args.telemetry_endpoint
-    config.telemetry_api_key = env("LLMDBENCH_TELEMETRY_API_KEY")
+    config.telemetry_auth_provider = args.telemetry_auth_provider
+    config.telemetry_token = args.telemetry_token
 
     if config.telemetry_enabled:
         init_telemetry(logger=logger)

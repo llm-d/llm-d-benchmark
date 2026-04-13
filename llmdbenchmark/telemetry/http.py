@@ -10,9 +10,9 @@ from llmdbenchmark.logging.logger import get_logger
 class HttpTelemetryProvider(TelemetryProvider):
     """HTTP POST implementation of TelemetryProvider with a background queue worker."""
 
-    def __init__(self, endpoint: str, api_key: str, logger=None):
+    def __init__(self, endpoint: str, logger=None, bearer_token=lambda: None):
         self.endpoint = endpoint
-        self.api_key = api_key
+        self.bearer_token = bearer_token
         self.logger = logger or get_logger(
             config.log_dir, verbose=config.verbose, log_name=__name__
         )
@@ -46,8 +46,9 @@ class HttpTelemetryProvider(TelemetryProvider):
         headers = {
             "Content-Type": "application/json",
         }
-        if self.api_key:
-            headers["X-API-Key"] = self.api_key
+
+        if token := self.bearer_token():
+            headers["Authorization"] = token
 
         try:
             # We use a timeout to avoid blocking forever if the endpoint is hung
@@ -55,7 +56,7 @@ class HttpTelemetryProvider(TelemetryProvider):
                 self.endpoint,
                 json=data,
                 headers=headers,
-                timeout=5.0
+                timeout=30.0
             )
             if response.status_code != 200 and response.status_code != 201:
                 self.logger.log_error(

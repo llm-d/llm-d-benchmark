@@ -21,7 +21,8 @@ class WorkspaceConfig:
     telemetry_enabled: bool = False
     telemetry_provider: str = "http"
     telemetry_endpoint: Optional[str] = None
-    telemetry_api_key: Optional[str] = None
+    telemetry_auth_provider: Optional[str] = None
+    telemetry_token: Optional[str] = None
 
 
 # Configured in cli.py via setup_workspace()
