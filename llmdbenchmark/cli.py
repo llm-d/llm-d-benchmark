@@ -756,6 +756,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         run_config_file=run_config_file,
         generate_config_only=getattr(args, "generate_config", False),
         dataset_url=getattr(args, "dataset", None),
+        harness_data_access_timeout=int(getattr(args, "data_access_timeout", 120) or 120),
     )
 
     executor = StepExecutor(
@@ -1237,6 +1238,7 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_WVA": ("wva", "--wva"),
         "LLMDBENCH_SERVICE_ACCOUNT": ("serviceaccount", "--serviceaccount"),
         "LLMDBENCH_HARNESS_ENVVARS_TO_YAML": ("envvarspod", "--envvarspod"),
+        "LLMDBENCH_DATA_ACCESS_TIMEOUT": ("data_access_timeout", "--data-access-timeout"),
     }
 
     active = {k: v for k, v in os.environ.items() if k in _ENV_TO_CLI}

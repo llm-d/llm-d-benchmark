@@ -103,6 +103,12 @@ def add_subcommands(parser: argparse._SubParsersAction):
         help="Seconds to wait for harness completion (0 = do not wait).",
     )
     exp_parser.add_argument(
+        "--data-access-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_DATA_ACCESS_TIMEOUT"),
+        help="Seconds to wait for the harness data-access pod to become Ready.",
+    )
+    exp_parser.add_argument(
         "-x",
         "--dataset",
         default=env("LLMDBENCH_DATASET"),

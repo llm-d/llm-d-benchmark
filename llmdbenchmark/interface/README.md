@@ -118,6 +118,7 @@ Executes benchmark experiments against deployed infrastructure.
 | `-U` / `--endpoint-url` | `LLMDBENCH_ENDPOINT_URL` | Explicit endpoint URL (run-only mode) |
 | `-c` / `--config` | -- | Run config YAML file (run-only mode) |
 | `--generate-config` | -- | Generate run config and exit |
+| `--data-access-timeout` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready. |
 
 ### teardown (`teardown.py`)
 
@@ -156,3 +157,4 @@ Orchestrates a full DoE experiment with automatic standup/run/teardown per setup
 | `-d` / `--debug` | -- | Debug mode (sleep infinity) |
 | `--stop-on-error` | -- | Abort experiment on first failure |
 | `--skip-teardown` | -- | Leave stacks running after each treatment |
+| `--data-access-timeout` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready. |

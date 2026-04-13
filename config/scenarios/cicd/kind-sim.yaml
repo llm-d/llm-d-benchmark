@@ -43,7 +43,7 @@ scenario:
     # No GPU accelerators
     accelerator:
       count: 0
-      memory: 24  # To pass capacity planner sanity checking
+      memory: 24 # To pass capacity planner sanity checking
 
     # Minimal gateway resources for Kind
     gateway:
