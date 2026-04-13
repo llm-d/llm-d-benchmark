@@ -41,7 +41,7 @@ scenario:
       blockSize: 128
       gpuMemoryUtilization: 0.95
       cacheBase: /model-cache
-    
+
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
     # The following sections configure the llm-d modelservice Helm chart
@@ -55,7 +55,7 @@ scenario:
     # -------------------------------------------------------------------------
     routing:
       connector: nixlv2
-    
+
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
     # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left uncommented for auto-detect)
@@ -71,7 +71,7 @@ scenario:
     #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
     #     # gpu.nvidia.com/model: H200                        # Kubernetes
     #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
-    
+
     # =========================================================================
     # DEPLOYMENT METHOD -- Choose standalone or modelservice
     # =========================================================================
@@ -129,7 +129,7 @@ scenario:
                   weight: 2
                 - pluginRef: queue-scorer
                   weight: 1
-    
+
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
@@ -146,7 +146,7 @@ scenario:
         # storageClassName: standard-rwx
         # storageClassName: shared-vast
         # storageClassName: ocs-storagecluster-cephfs
-    
+
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
     # The following sections configure prefill and decode pods.
@@ -339,13 +339,13 @@ scenario:
     #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS
     # To enable multi-nic, add annotations.prefill.pod / annotations.decode.pod below.
     # -------------------------------------------------------------------------
-    # annotations:
-    #   prefill:
-    #     pod:
-    #       k8s.v1.cni.cncf.io/networks: multi-nic-compute
-    #   decode:
-    #     pod:
-    #       k8s.v1.cni.cncf.io/networks: multi-nic-compute
+    #annotations:
+    #  prefill:
+    #    pod:
+    #      k8s.v1.cni.cncf.io/networks: multi-nic-compute
+    #  decode:
+    #    pod:
+    #      k8s.v1.cni.cncf.io/networks: multi-nic-compute
 
     # -------------------------------------------------------------------------
     # vLLM Common Configuration
@@ -372,11 +372,11 @@ scenario:
         enabled: true
         connector: NixlConnector
         role: kv_both
-      
+
       # KV Events not enabled in this scenario (used in precise-prefix-cache-aware)
       kvEvents:
         enabled: false
-      
+
       flags:
         enforceEager: false  # Not in original bash script
         disableLogRequests: true     # modelservice only -- upstream vllm-openai (v0.9+) dropped --no-enable-log-requests
@@ -384,7 +384,7 @@ scenario:
         enablePrefixCaching: true   # PR 868: P/D enables prefix caching
         allowLongMaxModelLen: "1"
         serverDevMode: "1"
-      
+
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_*_EXTRA_VOLUMES
       volumes:
         - name: shared-config
@@ -403,7 +403,7 @@ scenario:
           mountPath: /shared-config
         - name: dshm
           mountPath: /dev/shm
-    
+
     # -------------------------------------------------------------------------
     # Timeout Configuration
     # Corresponds to: LLMDBENCH_CONTROL_WAIT_TIMEOUT=900000
@@ -412,7 +412,7 @@ scenario:
     timeouts:
       controlWait: 900000
       harnessWait: 900000
-    
+
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration
     # =========================================================================
