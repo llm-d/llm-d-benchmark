@@ -86,3 +86,9 @@ def add_subcommands(parser: argparse._SubParsersAction):
         default=False,
         help="Skip automatic smoketest after standup completes.",
     )
+    standup_parser.add_argument(
+        "--standalone-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for the vLLM pods to deploy in standalone mode.",
+    )

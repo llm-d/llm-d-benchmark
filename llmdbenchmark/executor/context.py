@@ -91,6 +91,9 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     analyze_locally: bool = False
     harness_data_access_timeout: int = 120
 
+    # Standup pod deployment timeouts
+    standalone_deploy_timeout: int = 900
+
     # Run-only mode (existing-stack)
     endpoint_url: str | None = None
     run_config_file: str | None = None

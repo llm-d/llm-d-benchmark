@@ -77,6 +77,7 @@ Provisions model infrastructure from a specification. Implicitly generates a pla
 | `--parallel` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
 | `-k` / `--kubeconfig` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--skip-smoketest` | -- | Skip automatic post-standup smoketests |
+| `--standalone-deploy-timeout` | `LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT` | Seconds to wait for the vLLM pods to deploy during standup in standalone mode. |
 
 ### smoketest (`smoketest.py`)
 
