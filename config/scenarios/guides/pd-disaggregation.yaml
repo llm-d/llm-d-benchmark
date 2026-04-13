@@ -347,6 +347,24 @@ scenario:
       # -----------------------------------------------------------------------
       additionalVolumes: []
 
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Multi-NIC Pod Annotations (uncomment to enable)
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS
+    #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS
+    # To enable multi-nic, add annotations.prefill.pod / annotations.decode.pod below.
+    # -------------------------------------------------------------------------
+    #annotations:
+    #  prefill:
+    #    pod:
+    #      k8s.v1.cni.cncf.io/networks: multi-nic-compute
+    #  decode:
+    #    pod:
+    #      k8s.v1.cni.cncf.io/networks: multi-nic-compute
+
     # -------------------------------------------------------------------------
     # vLLM Common Configuration
     # Shared settings for both decode and prefill pods.
