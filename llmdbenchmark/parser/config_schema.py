@@ -227,6 +227,7 @@ class DeploymentBaseConfig(BaseModel):
     vllmVariants: list[dict[str, Any]] = Field(default_factory=list)
 
     annotations: dict[str, str] | None = None
+    tolerations: list[dict[str, Any]] | None = None
 
     hostIPC: bool | None = None
     hostPID: bool | None = None
