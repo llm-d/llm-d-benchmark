@@ -575,18 +575,6 @@ Results are saved in the native format of each harness, as well as a universal B
 
 The analysis pipeline generates per-request distribution plots, cross-treatment comparison tables and charts, and Prometheus metric visualizations. Analysis runs both inside the harness container (automatically) and locally via `--analyze`. For interactive exploration, a Jupyter notebook is also available at [`docs/analysis/README.md`](docs/analysis/README.md).
 
-### Telemetry
-
-The tool includes a non-blocking, asynchronous telemetry system to push benchmark results and metadata to a central receiver.
-
-- **Asynchronous**: Telemetry data is queued and pushed in a background thread, ensuring that benchmark execution is not blocked by network latency.
-- **Authentication**: Supports OIDC token authentication (e.g., for Google Cloud Run) by setting `LLMDBENCH_TELEMETRY_TOKEN` or using the Google auth provider.
-- **Configuration**:
-  - `LLMDBENCH_TELEMETRY_ENABLED=1`: Enable telemetry.
-  - `LLMDBENCH_TELEMETRY_ENDPOINT=https://...`: The HTTP endpoint to receive telemetry.
-  - `LLMDBENCH_TELEMETRY_TOKEN=...`: Provide a raw OIDC token directly.
-  - `LLMDBENCH_TELEMETRY_AUTH_PROVIDER=google`: Automatically fetch OIDC tokens using Google default credentials.
-
 ## Dependencies
 
 - [llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra.git)
