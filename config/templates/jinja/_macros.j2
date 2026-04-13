@@ -129,7 +129,9 @@
 {% set proxy_disabled = (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) -%}
 {% set use_inference_port = proxy_disabled or mode == 'prefill' -%}
 {% set port_var = '$VLLM_INFERENCE_PORT' if use_inference_port else '$VLLM_METRICS_PORT' -%}
-{{ preprocess_script }}; vllm serve {{ model.cacheBase }}/{{ model.path }} \
+{% set use_hf_id = (modelservice is defined and modelservice.uriProtocol is defined and modelservice.uriProtocol == 'hf') -%}
+{% set model_ref = model.huggingfaceId | default(model.name) if use_hf_id else model.cacheBase ~ '/' ~ model.path -%}
+{{ preprocess_script }}; vllm serve {{ model_ref }} \
   --host {{ vllmCommon.host }} \
   --served-model-name {{ model.name }} \
   --port {{ port_var }} \
