@@ -69,7 +69,6 @@ scenario:
       sidecar:
         enabled: true
       flags:
-        kv-cache-usage-percentage-metric: "vllm:kv_cache_usage_perc"
         v: 4  # log verbosity
       pluginsCustomConfig:
         precise-prefix-cache-config.yaml: |
@@ -116,7 +115,7 @@ scenario:
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG
       inferencePoolProviderConfig:
         destinationRule:
-          host: qwen-qwen3-32b-gaie-epp
+          # host is auto-resolved from model_id_label (e.g. {model_id_label}-gaie-epp)
           trafficPolicy:
             connectionPool:
               http:
