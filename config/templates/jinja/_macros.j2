@@ -15,7 +15,7 @@
 {% set port = vllmCommon.kvEvents.port -%}
 {% set publisher = vllmCommon.kvEvents.publisher -%}
 {% set topic_prefix = vllmCommon.kvEvents.topicPrefix -%}
-{"enable_kv_cache_events":true,"publisher":"{{ publisher }}","endpoint":"tcp://{{ service_name }}.{{ ns }}.svc.cluster.local:{{ port }}","topic":"{{ topic_prefix }}@${POD_IP}@{{ model.name }}"}
+{"enable_kv_cache_events":true,"publisher":"{{ publisher }}","endpoint":"tcp://{{ service_name }}.{{ ns }}.svc.cluster.local:{{ port }}","topic":"{{ topic_prefix }}@$(POD_IP):$(VLLM_INFERENCE_PORT)@{{ model.name }}"}
 {%- endmacro %}
 
 {# Macro to build vLLM serve command with templated arguments #}

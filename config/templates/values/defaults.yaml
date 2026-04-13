@@ -621,7 +621,7 @@ vllmCommon:
   # KV Events Configuration (for precise prefix cache aware routing)
   # When enabled, adds --kv-events-config to vllm serve command
   # Generates endpoint: tcp://<serviceName>.<namespace>.svc.cluster.local:<port>
-  # Generates topic: <topicPrefix>@${POD_IP}@<model.name>
+  # Generates topic: <topicPrefix>@$(POD_IP):$(VLLM_INFERENCE_PORT)@<model.name>
   kvEvents:
     enabled: false  # Set to true in scenario to enable
     publisher: zmq

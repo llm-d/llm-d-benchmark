@@ -505,6 +505,31 @@ class RenderPlans:
 
         return values
 
+    def _resolve_inference_pool_host(self, values: dict) -> dict:
+        """Auto-populate destinationRule.host from model_id_label when not set.
+
+        The Kubernetes service name for the GAIE EPP is always
+        ``{model_id_label}-gaie-epp``.  If a scenario's
+        ``inferenceExtension.inferencePoolProviderConfig.destinationRule``
+        exists but has no ``host``, fill it in automatically so that
+        scenario authors don't need to compute the hashed label by hand.
+        """
+        dest_rule = (
+            values
+            .get("inferenceExtension", {})
+            .get("inferencePoolProviderConfig", {})
+            .get("destinationRule")
+        )
+        if dest_rule is not None and not dest_rule.get("host"):
+            model_id_label = values.get("model_id_label", "")
+            if model_id_label:
+                dest_rule["host"] = f"{model_id_label}-gaie-epp"
+                self.logger.log_info(
+                    f"Auto-resolved destinationRule.host to "
+                    f"'{dest_rule['host']}'"
+                )
+        return values
+
     # Matches ${dotted.path} but NOT ${SHELL_VAR} (no dots).
     _CONFIG_VAR_RE = re.compile(r"\$\{([\w]+(?:\.[\w]+)+)\}")
 
@@ -750,6 +775,7 @@ class RenderPlans:
         merged_values = self._resolve_monitoring(merged_values)
         merged_values = self._resolve_hf_token(merged_values)
         merged_values = self._resolve_model_id_label(merged_values)
+        merged_values = self._resolve_inference_pool_host(merged_values)
         merged_values = self._substitute_config_variables(merged_values)
 
         from llmdbenchmark.parser.config_schema import validate_config
