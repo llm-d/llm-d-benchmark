@@ -251,7 +251,8 @@ scenario:
         # storageClassName: shared-vast       # Kubernetes
         # storageClassName: ocs-storagecluster-cephfs  # OpenShift
         size: 2Gi
-        accessMode: ReadWriteOnce
+        accessMode:
+          - ReadWriteOnce
       uriProtocol: hf
 
     # -------------------------------------------------------------------------

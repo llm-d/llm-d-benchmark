@@ -32,14 +32,14 @@ scenario:
       # Corresponds to: LLMDBENCH_VLLM_COMMON_BLOCK_SIZE
       blockSize: 64
       gpuMemoryUtilization: 0.95
-    
+
     # -------------------------------------------------------------------------
     # Routing Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true
     # -------------------------------------------------------------------------
     # Note: inferenceModel is enabled via the modelservice chart when this
     # scenario is deployed. The routing is handled through the gaie values.
-    
+
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
     # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left uncommented for auto-detect)
@@ -55,13 +55,10 @@ scenario:
     #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
     #     # gpu.nvidia.com/model: H200                        # Kubernetes
     #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
-    
+
     # =========================================================================
     # DEPLOYMENT METHOD -- Choose standalone or modelservice
     # =========================================================================
-    gateway:
-      className: agentgateway
-
     modelservice:
       enabled: true
 
@@ -80,7 +77,7 @@ scenario:
     # -------------------------------------------------------------------------
     inferenceExtension:
       pluginsConfigFile: "default-plugins.yaml"
-      
+
     # -------------------------------------------------------------------------
     # Prefill Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
@@ -88,7 +85,7 @@ scenario:
     prefill:
       enabled: false
       replicas: 0
-    
+
     # -------------------------------------------------------------------------
     # Decode Configuration
     # -------------------------------------------------------------------------
@@ -111,7 +108,7 @@ scenario:
         data: 1
         dataLocal: 1
         workers: 1
-      
+
       # Resource configuration
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=16
       #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=64Gi
@@ -122,7 +119,7 @@ scenario:
         requests:
           memory: 64Gi
           cpu: "16"
-      
+
       # No customCommand -- the vLLM serve command is auto-generated
       # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
       # -----------------------------------------------------------------------
@@ -153,7 +150,7 @@ scenario:
           runAsGroup: 0
           runAsUser: 0
         imagePullPolicy: Always
-      
+
       # -----------------------------------------------------------------------
       # Additional Volume Mounts
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
@@ -165,7 +162,7 @@ scenario:
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
       # -----------------------------------------------------------------------
       additionalVolumes: []
-    
+
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
@@ -192,7 +189,7 @@ scenario:
         enabled: true
         connector: NixlConnector
         role: kv_both
-      
+
       # These flags control the auto-generated vllm serve command.
       # Flags not listed here inherit from defaults.yaml.
       # To use a fully custom command instead, set decode.vllm.customCommand.
@@ -202,7 +199,7 @@ scenario:
         disableUvicornAccessLog: true  # --disable-uvicorn-access-log
         allowLongMaxModelLen: "1"
         serverDevMode: "1"
-      
+
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
       volumes:
         - name: shared-config
@@ -229,7 +226,7 @@ scenario:
     storage:
       modelPvc:
         size: 1Ti
-    
+
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration
     # =========================================================================
