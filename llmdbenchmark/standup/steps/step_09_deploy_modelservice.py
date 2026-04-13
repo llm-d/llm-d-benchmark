@@ -220,7 +220,7 @@ class DeployModelserviceStep(Step):
 
         gateway_class = self._require_config(plan_config, "gateway", "className")
 
-        if gateway_class == "kgateway":
+        if gateway_class in ("kgateway", "agentgateway"):
             service_name = f"infra-{release}-inference-gateway"
         else:
             service_name = f"{model_id_label}-gaie-epp"

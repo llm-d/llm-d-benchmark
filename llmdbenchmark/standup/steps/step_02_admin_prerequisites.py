@@ -8,6 +8,11 @@ from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
 
+# Name of the custom OpenShift SCC for the agentgateway data-plane proxy.
+# The SCC definition lives in config/templates/jinja/05a_agentgateway_scc.yaml.j2
+# and is rendered at plan time.
+_AGENTGATEWAY_SCC_NAME = "llmdbench-agentgateway"
+
 GATEWAY_API_CRDS = [
     "backendtlspolicies.gateway.networking.k8s.io",
     "gatewayclasses.gateway.networking.k8s.io",
@@ -408,10 +413,10 @@ class AdminPrerequisitesStep(Step):
 
         Grants ``anyuid`` and ``privileged`` SCCs to the vLLM workload
         service account.  When the gateway provider is **agentgateway**,
-        also grants ``anyuid`` to the gateway proxy service account
-        (``infra-{release}-inference-gateway``) because the agentgateway
-        controller creates pods with ``runAsUser: 10101`` which falls
-        outside the namespace UID range assigned by OpenShift.
+        creates a minimal custom SCC (``llmdbench-agentgateway``) that
+        permits only UID 10101 and the ``NET_BIND_SERVICE`` capability,
+        then binds it to the gateway proxy service account
+        (``infra-{release}-inference-gateway``).
         """
         if context.is_openshift:
             namespace = plan_config.get("namespace", {}).get("name", "")
@@ -429,26 +434,67 @@ class AdminPrerequisitesStep(Step):
                         namespace,
                     )
 
-                # agentgateway proxy pods run as UID 10101 -- grant anyuid
-                # to the gateway service account so OpenShift allows it.
+                # agentgateway proxy pods run as UID 10101 and add the
+                # NET_BIND_SERVICE capability.  Instead of granting the
+                # overly broad "privileged" SCC, we create a minimal
+                # custom SCC that only permits what the proxy needs and
+                # bind it to the gateway service account.
                 gateway_class = plan_config.get("gateway", {}).get("className", "")
                 if gateway_class == "agentgateway":
-                    release = plan_config.get("release", "llmdbench")
-                    gw_sa = f"infra-{release}-inference-gateway"
-                    cmd.logger.log_info(
-                        f"    Granting anyuid SCC to gateway SA '{gw_sa}' "
-                        f"in namespace '{namespace}'"
-                    )
-                    cmd.kube(
-                        "adm",
-                        "policy",
-                        "add-scc-to-user",
-                        "anyuid",
-                        "-z",
-                        gw_sa,
-                        "-n",
-                        namespace,
-                    )
+                    self._ensure_agentgateway_scc(cmd, context, namespace, plan_config)
+
+    def _ensure_agentgateway_scc(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        plan_config: dict,
+    ):
+        """Apply the custom agentgateway SCC and bind it to the gateway SA.
+
+        The SCC definition is rendered from
+        ``config/templates/jinja/05a_agentgateway_scc.yaml.j2`` at plan
+        time.  This method applies it (cluster-scoped, idempotent) and
+        grants it to the gateway service account in the target namespace.
+        """
+        release = plan_config.get("release", "llmdbench")
+        gw_sa = f"infra-{release}-inference-gateway"
+
+        # Apply the rendered SCC template.
+        scc_yaml = self._find_rendered_yaml(context, "05a_agentgateway_scc")
+        if not scc_yaml or not self._has_yaml_content(scc_yaml):
+            cmd.logger.log_info(
+                "    No agentgateway SCC template rendered -- skipping"
+            )
+            return
+
+        result = cmd.kube("apply", "-f", str(scc_yaml))
+        if not result.success:
+            cmd.logger.log_warning(
+                f"    Failed to apply SCC '{_AGENTGATEWAY_SCC_NAME}': "
+                f"{result.stderr}"
+            )
+            return
+
+        cmd.logger.log_info(
+            f"    ✅ SCC '{_AGENTGATEWAY_SCC_NAME}' applied"
+        )
+
+        # Bind the SCC to the gateway service account.
+        cmd.logger.log_info(
+            f"    Granting '{_AGENTGATEWAY_SCC_NAME}' SCC to gateway SA "
+            f"'{gw_sa}' in namespace '{namespace}'"
+        )
+        cmd.kube(
+            "adm",
+            "policy",
+            "add-scc-to-user",
+            _AGENTGATEWAY_SCC_NAME,
+            "-z",
+            gw_sa,
+            "-n",
+            namespace,
+        )
 
     def _install_agentgateway(
         self,
