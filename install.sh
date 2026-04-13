@@ -27,7 +27,7 @@ set -euo pipefail
 REPO_URL="https://github.com/llm-d/llm-d-benchmark.git"
 REPO_DIR="llm-d-benchmark"
 DEFAULT_BRANCH="main"
-
+export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 # ---------------------------------------------------------------------------
 # Bootstrap: if run via curl (no repo present), clone first
 #   curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
@@ -185,7 +185,8 @@ fi
 # ---------------------------------------------------------------------------
 # Python / pip detection — auto-creates a .venv if none is active
 # ---------------------------------------------------------------------------
-VENV_DIR="${SCRIPT_DIR}/.venv"
+LLMDBENCH_VENV_DIR=${LLMDBENCH_VENV_DIR:-"${SCRIPT_DIR}/.venv"}
+LLMDBENCH_SYSTEM_PYTHON=${LLMDBENCH_SYSTEM_PYTHON:-python3}
 CREATED_VENV=false
 
 _detected_venv="${VIRTUAL_ENV:-${CONDA_PREFIX:-}}"
@@ -200,27 +201,28 @@ if [[ -n "$_detected_venv" && -d "$_detected_venv" ]]; then
     fi
     echo "Virtual environment detected: ${_detected_venv}"
 elif [[ "$allow_system_python" == "true" ]]; then
-    PYTHON_CMD="python3"
-    PIP_CMD="python3 -m pip"
+    PYTHON_CMD=$LLMDBENCH_SYSTEM_PYTHON
+    PIP_CMD="$PYTHON_CMD -m pip"
     echo "Using system python3 (forced with -y flag)"
 else
     # No venv active — reuse existing .venv or create a new one
-    if [[ -d "$VENV_DIR" ]]; then
+    if [[ -d "$LLMDBENCH_VENV_DIR" ]]; then
         if grep -q "venv created." "$dependencies_checked_file" 2>/dev/null; then
             true  # cached — skip the log line
         else
-            echo "Using existing virtual environment: ${VENV_DIR}"
+            echo "Using existing virtual environment: ${LLMDBENCH_VENV_DIR}"
             echo "venv created." >> "$dependencies_checked_file"
         fi
     else
-        echo "No virtual environment detected — creating ${VENV_DIR} ..."
-        python3 -m venv "$VENV_DIR"
+        PYTHON_CMD=$LLMDBENCH_SYSTEM_PYTHON
+        echo "No virtual environment detected — creating ${LLMDBENCH_VENV_DIR} with $PYTHON_CMD..."
+        $PYTHON_CMD -m venv "$LLMDBENCH_VENV_DIR"
         CREATED_VENV=true
-        echo "Virtual environment created: ${VENV_DIR}"
+        echo "Virtual environment created: ${LLMDBENCH_VENV_DIR}"
         echo "venv created." >> "$dependencies_checked_file"
     fi
     # shellcheck disable=SC1091
-    source "${VENV_DIR}/bin/activate"
+    source "${LLMDBENCH_VENV_DIR}/bin/activate"
     if command -v python &>/dev/null; then
         PYTHON_CMD="python"
         PIP_CMD="python -m pip"
@@ -527,7 +529,7 @@ echo "=== Done ==="
 echo ""
 echo "Reminder: Please activate the virtual environment in your shell:"
 echo ""
-echo "  source ${VENV_DIR}/bin/activate"
+echo "  source ${LLMDBENCH_VENV_DIR}/bin/activate"
 echo ""
 echo "To deactivate the virtual environment in your shell:"
 echo ""
