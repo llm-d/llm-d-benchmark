@@ -52,9 +52,11 @@ gateway:
     type: {{ gateway.service.type | default('ClusterIP') }}
 
 {% elif gw_class == 'agentgateway' %}
-{# ── agentgateway: base config (step_07 patches for OpenShift) ── #}
+{# ── agentgateway: no ConfigMap-based gatewayParameters (uses AgentgatewayParameters CRD) ── #}
 gateway:
   gatewayClassName: agentgateway
+  gatewayParameters:
+    enabled: false
   service:
     type: {{ gateway.service.type | default('NodePort') }}
 

@@ -300,7 +300,7 @@ class AdminPrerequisitesStep(Step):
                     "(*.agentgateway.dev CRDs found)"
                 )
                 return
-            self._install_agentgateway(cmd, plan_config, errors)
+            self._install_agentgateway(cmd, context, errors)
 
         elif gateway_class == "istio":
             if not _any_crds_missing(ISTIO_CRDS, existing_crds):
@@ -404,7 +404,15 @@ class AdminPrerequisitesStep(Step):
     def _apply_openshift_sccs(
         self, cmd: CommandExecutor, context: ExecutionContext, plan_config: dict
     ):
-        """Apply OpenShift SCC assignments if on OpenShift."""
+        """Apply OpenShift SCC assignments if on OpenShift.
+
+        Grants ``anyuid`` and ``privileged`` SCCs to the vLLM workload
+        service account.  When the gateway provider is **agentgateway**,
+        also grants ``anyuid`` to the gateway proxy service account
+        (``infra-{release}-inference-gateway``) because the agentgateway
+        controller creates pods with ``runAsUser: 10101`` which falls
+        outside the namespace UID range assigned by OpenShift.
+        """
         if context.is_openshift:
             namespace = plan_config.get("namespace", {}).get("name", "")
             if namespace:
@@ -417,6 +425,27 @@ class AdminPrerequisitesStep(Step):
                         scc,
                         "-z",
                         service_account,
+                        "-n",
+                        namespace,
+                    )
+
+                # agentgateway proxy pods run as UID 10101 -- grant anyuid
+                # to the gateway service account so OpenShift allows it.
+                gateway_class = plan_config.get("gateway", {}).get("className", "")
+                if gateway_class == "agentgateway":
+                    release = plan_config.get("release", "llmdbench")
+                    gw_sa = f"infra-{release}-inference-gateway"
+                    cmd.logger.log_info(
+                        f"    Granting anyuid SCC to gateway SA '{gw_sa}' "
+                        f"in namespace '{namespace}'"
+                    )
+                    cmd.kube(
+                        "adm",
+                        "policy",
+                        "add-scc-to-user",
+                        "anyuid",
+                        "-z",
+                        gw_sa,
                         "-n",
                         namespace,
                     )
