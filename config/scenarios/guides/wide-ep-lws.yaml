@@ -127,7 +127,7 @@ scenario:
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG
       inferencePoolProviderConfig:
         destinationRule:
-          host: qwen-qwen3-30b-a3b-gaie-epp
+          # host is auto-resolved from model_id_label (e.g. {model_id_label}-gaie-epp)
           trafficPolicy:
             connectionPool:
               http:
