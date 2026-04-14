@@ -493,7 +493,7 @@ echo ""
 echo "  Dependencies:"
 for pkg in PyYAML Jinja2 requests kubernetes pykube-ng kubernetes-asyncio \
            GitPython huggingface_hub transformers packaging \
-           pydantic scipy pandas numpy matplotlib; do
+           pydantic scipy pandas numpy; do
     ver=$(${PIP_CMD} show "$pkg" 2>/dev/null | awk '/^Version:/{print $2}')
     if [[ -n "$ver" ]]; then
         printf "    %-22s %s\n" "$pkg" "$ver"
