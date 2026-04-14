@@ -664,18 +664,29 @@ class BaseSmoketest:
         )
         expected_replicas = role_config.get("replicas")
         if expected_replicas is not None:
+            expected_replicas = int(expected_replicas)
+            # When multinode (LWS) is enabled, each replica spawns
+            # ``workers`` pods (1 leader + N-1 workers).
+            multinode_enabled = _nested_get(config, "multinode", "enabled")
+            if multinode_enabled:
+                workers = int(
+                    role_config.get("parallelism", {}).get("workers", 1)
+                )
+                expected_pods = expected_replicas * workers
+            else:
+                expected_pods = expected_replicas
             pod_details = ", ".join(
                 f"{p.get('metadata', {}).get('name', '?')}@{p.get('spec', {}).get('nodeName', '?')}"
                 for p in pods
             ) or "none"
             report.add(CheckResult(
                 f"{prefix}_replicas",
-                len(pods) == int(expected_replicas),
-                expected=str(expected_replicas),
+                len(pods) == expected_pods,
+                expected=str(expected_pods),
                 actual=str(len(pods)),
                 message=(
                     f"{role} pods in ns/{namespace}: "
-                    f"{len(pods)} (expected {expected_replicas}) [{pod_details}]"
+                    f"{len(pods)} (expected {expected_pods}) [{pod_details}]"
                 ),
             ))
 
