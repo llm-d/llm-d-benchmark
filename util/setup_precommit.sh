@@ -10,8 +10,8 @@
 # Why delegate to install.sh?
 #   - It installs the system tools (helm, helmfile, kubectl, skopeo,
 #     crane, helm-diff, ...) that the render-validation hooks need.
-#   - It creates + reuses .venv/ and installs llmdbenchmark + config_explorer
-#     editably, and it caches its work in ~/.llmdbench_dependencies_checked
+#   - It creates + reuses .venv/ and installs llmdbenchmark + planner,
+#     and it caches its work in ~/.llmdbench_dependencies_checked
 #     so repeat runs skip already-verified dependencies.
 #   - It is the same bootstrap CI runs, minus the -y flag. CI passes -y
 #     to force system Python (the GitHub runner is already isolated), but
@@ -36,7 +36,7 @@ pushd "$REPO_ROOT" > /dev/null
 
 # ---------------------------------------------------------------------
 # 1. Delegate to install.sh -- creates .venv, installs llmdbenchmark,
-#    config_explorer, all system tools, and verifies imports. Matches CI
+#    planner, all system tools, and verifies imports. Matches CI
 #    exactly and uses its own ~/.llmdbench_dependencies_checked cache to
 #    skip already-verified dependencies on repeat invocations.
 # ---------------------------------------------------------------------

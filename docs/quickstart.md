@@ -113,7 +113,7 @@ That's all the cluster prep you need. The `cicd/kind-sim` scenario uses `affinit
 
 ## 3. Install llmdbenchmark
 
-Clone the repository and run the installer. It creates `.venv/`, installs the `llmdbenchmark` and `config_explorer` Python packages, and provisions every system tool the framework calls out to.
+Clone the repository and run the installer. It creates `.venv/`, installs the `llmdbenchmark` and `planner` (from [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner)) Python packages, and provisions every system tool the framework calls out to.
 
 ```bash
 git clone https://github.com/llm-d/llm-d-benchmark.git

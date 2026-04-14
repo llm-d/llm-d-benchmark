@@ -88,8 +88,8 @@ jobs:
           ./setup/install_deps.sh -y
         shell: bash
 
-      - name: Install config explorer dependencies
-        run: pip install ./config_explorer
+      - name: Install planner dependencies
+        run: pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@f51812bebca30e0291ec541bd2ef2acf0572e8a4"
         shell: bash
 
       - name: Install kubectl-view-allocations

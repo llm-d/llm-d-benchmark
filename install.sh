@@ -13,7 +13,7 @@
 #      To clone a specific branch:
 #      LLMDBENCH_BRANCH=my-branch curl -sSL ... | bash
 #
-# Installs the llmdbenchmark CLI, config_explorer, and validates
+# Installs the llmdbenchmark CLI, planner, and validates
 # that required system tools are available.
 #
 # Usage:
@@ -101,7 +101,7 @@ DESCRIPTION
     2. Checks for required system tools  (curl, git, kubectl, helm)
     3. Checks for optional system tools   (oc)
     4. Installs llmdbenchmark             (editable: pip install -e .)
-    5. Installs config_explorer           (editable: pip install -e config_explorer/)
+    5. Installs planner (llm-d-planner)  (pip install git+https://github.com/llm-d-incubation/llm-d-planner.git@<commit>)
     6. Verifies that all Python packages are importable
 
     If no virtual environment is active, the script will automatically
@@ -470,23 +470,18 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Install config_explorer (editable)
+# 2. Install planner (from llm-d-planner)
 # ---------------------------------------------------------------------------
-config_explorer_dir="${SCRIPT_DIR}/config_explorer"
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@f51812bebca30e0291ec541bd2ef2acf0572e8a4"
 
-if [[ ! -d "$config_explorer_dir" ]]; then
-    echo "ERROR: config_explorer directory not found at ${config_explorer_dir}"
-    exit 1
-fi
-
-if grep -q "config_explorer is already installed." "$dependencies_checked_file" 2>/dev/null; then
-    print_pkg config_explorer ""
+if grep -q "planner is already installed." "$dependencies_checked_file" 2>/dev/null; then
+    print_pkg planner ""
 else
-    if ${PIP_CMD} install -e "${config_explorer_dir}" --quiet 2>/dev/null; then
-        print_pkg config_explorer "(installed)"
-        echo "config_explorer is already installed." >> "$dependencies_checked_file"
+    if ${PIP_CMD} install "${PLANNER_GIT}" --quiet 2>/dev/null; then
+        print_pkg planner "(installed)"
+        echo "planner is already installed." >> "$dependencies_checked_file"
     else
-        echo "ERROR: Failed to install config_explorer!"
+        echo "ERROR: Failed to install planner (llm-d-planner)!"
         exit 1
     fi
 fi
@@ -514,12 +509,12 @@ if ! ${PYTHON_CMD} -c "import llmdbenchmark" 2>/dev/null; then
     echo "WARNING: llmdbenchmark installed but not importable"
     import_ok=false
 fi
-if ! ${PYTHON_CMD} -c "import config_explorer" 2>/dev/null; then
-    echo "WARNING: config_explorer installed but not importable"
+if ! ${PYTHON_CMD} -c "import planner" 2>/dev/null; then
+    echo "WARNING: planner installed but not importable"
     import_ok=false
 fi
-if ! ${PYTHON_CMD} -c "from config_explorer.capacity_planner import model_memory_req" 2>/dev/null; then
-    echo "WARNING: config_explorer.capacity_planner not importable"
+if ! ${PYTHON_CMD} -c "from planner.capacity_planner import model_memory_req" 2>/dev/null; then
+    echo "WARNING: planner.capacity_planner not importable"
     import_ok=false
 fi
 if [[ "$import_ok" == "true" ]]; then

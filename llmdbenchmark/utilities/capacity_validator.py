@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TYPE_CHECKING
 
-from config_explorer.capacity_planner import (
+from planner.capacity_planner import (
     KVCacheDetail,
     allocatable_kv_cache_memory,
     available_gpu_memory,

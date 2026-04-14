@@ -206,7 +206,7 @@ The install script:
 2. Validates Python 3.11+ and pip
 3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile, kustomize, jq, yq, skopeo, crane)
 4. Installs the `helm-diff` plugin (required by helmfile)
-5. Installs `llmdbenchmark` and `config_explorer` in editable mode
+5. Installs `llmdbenchmark` and `planner` (from [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner))
 6. Verifies all Python packages are importable
 
 ### Manual Install w/o Install Script
@@ -216,7 +216,7 @@ git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-pip install -e config_explorer/
+pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@f51812bebca30e0291ec541bd2ef2acf0572e8a4"
 ```
 
 ### Verify Installation
@@ -562,10 +562,6 @@ Benchmark load specifications including LLM use case, traffic pattern, input/out
 ### [Experiments](docs/doe.md)
 
 Design of Experiments (DOE) files describing parameter sweeps across standup and run configurations. The `experiment` command automates the full setup x run treatment matrix -- standing up a different infrastructure configuration for each setup treatment, running all workload variations, tearing down, and producing a summary. See [llmdbenchmark/experiment/README.md](llmdbenchmark/experiment/README.md) for the full experiment lifecycle documentation.
-
-### [Configuration Explorer](config_explorer/README.md)
-
-The configuration explorer is a library that helps find the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements. A "Capacity Planner" is provided as an initial component to help determine if a vLLM configuration is feasible for deployment.
 
 ### [Benchmark Report](llmdbenchmark/analysis/benchmark_report/README.md)
 
