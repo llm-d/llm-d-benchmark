@@ -92,10 +92,11 @@ class DeployGaieStep(Step):
             else:
                 gw_label = "app.kubernetes.io/name=llm-d-infra"
 
+            timeout = context.gateway_deploy_timeout
             gateway_wait = cmd.wait_for_pods(
                 label=gw_label,
                 namespace=namespace,
-                timeout=120,
+                timeout=timeout,
                 poll_interval=10,
                 description="gateway infra",
             )

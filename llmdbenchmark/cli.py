@@ -417,6 +417,7 @@ def _do_standup(args, logger, render_plan_errors):
         model_name=plan_info.get("model_name"),
         logger=logger,
         standalone_deploy_timeout=int(getattr(args, "standalone_deploy_timeout", 900) or 900),
+        gateway_deploy_timeout=int(getattr(args, "gateway_deploy_timeout", 120) or 120),
     )
 
     _check_model_access(context, all_stacks_info, logger)
@@ -1241,6 +1242,7 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_HARNESS_ENVVARS_TO_YAML": ("envvarspod", "--envvarspod"),
         "LLMDBENCH_DATA_ACCESS_TIMEOUT": ("data_access_timeout", "--data-access-timeout"),
         "LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT": ("standalone_deploy_timeout", "--standalone-deploy-timeout"),
+        "LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT": ("gateway_deploy_timeout", "--gateway-deploy-timeout"),
     }
 
     active = {k: v for k, v in os.environ.items() if k in _ENV_TO_CLI}

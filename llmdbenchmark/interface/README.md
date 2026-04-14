@@ -78,6 +78,7 @@ Provisions model infrastructure from a specification. Implicitly generates a pla
 | `-k` / `--kubeconfig` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--skip-smoketest` | -- | Skip automatic post-standup smoketests |
 | `--standalone-deploy-timeout` | `LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT` | Seconds to wait for the vLLM pods to deploy during standup in standalone mode. |
+| `--gateway-deploy-timeout` | `LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT` | Seconds to wait for gateway infrastructure pods to deploy during standup with modelservice. |
 
 ### smoketest (`smoketest.py`)
 

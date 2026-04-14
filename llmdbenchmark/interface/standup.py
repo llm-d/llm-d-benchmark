@@ -90,5 +90,11 @@ def add_subcommands(parser: argparse._SubParsersAction):
         "--standalone-deploy-timeout",
         type=int,
         default=env_int("LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT"),
-        help="Seconds to wait for the vLLM pods to deploy in standalone mode.",
+        help="Seconds to wait for the vLLM pods to deploy during standup in standalone mode.",
+    )
+    standup_parser.add_argument(
+        "--gateway-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for gateway infrastructure pods to deploy during standup with modelservice.",
     )
