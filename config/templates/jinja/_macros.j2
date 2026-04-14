@@ -182,12 +182,6 @@
   valueFrom:
     fieldRef:
       fieldPath: metadata.namespace
-- name: DP_SIZE
-  value: "{{ config.parallelism.data | default('1') }}"
-- name: TP_SIZE
-  value: "{{ config.parallelism.tensor | default('1') }}"
-- name: DP_SIZE_LOCAL
-  value: "{{ config.parallelism.dataLocal | default('1') }}"
 {% if config.podLabels is defined and config.podLabels -%}
 - name: LLMDBENCH_POD_LABELS
   value: "{{ config.podLabels }}"

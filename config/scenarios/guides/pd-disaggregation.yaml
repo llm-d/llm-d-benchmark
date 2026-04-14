@@ -49,6 +49,12 @@ scenario:
     # =========================================================================
 
     # -------------------------------------------------------------------------
+    # Multinode Configuration (LeaderWorkerSet)
+    # -------------------------------------------------------------------------
+    multinode:
+      enabled: true
+
+    # -------------------------------------------------------------------------
     # Routing Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true
     # Corresponds to: LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR=nixlv2 (default)
@@ -175,7 +181,7 @@ scenario:
         tensor: 2
         data: 1
         dataLocal: 1
-        workers: 2
+        workers: 1
 
       # Resource configuration
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR (=32)
@@ -263,7 +269,7 @@ scenario:
         tensor: 2
         data: 1
         dataLocal: 1
-        workers: 2
+        workers: 1
 
       # Resource configuration
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR (=32)
