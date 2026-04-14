@@ -298,8 +298,6 @@ scenario:
 
       # -----------------------------------------------------------------------
       # ROCE/GDR Configuration (uncomment to enable)
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR
       # To enable roce/gdr for decode pods, add networkResource and networkNr below.
       # -----------------------------------------------------------------------
       #networkResource: "rdma/roce_gdr"

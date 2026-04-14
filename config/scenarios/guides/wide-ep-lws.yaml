@@ -205,9 +205,6 @@ scenario:
       #networkResource: "rdma/roce_gdr"
       #networkNr: 1
 
-      # Mount model volume override
-      mountModelVolume: false
-
       # Startup probe overrides
       probes:
         startup:
@@ -338,9 +335,6 @@ scenario:
       # -----------------------------------------------------------------------
       #networkResource: "rdma/roce_gdr"
       #networkNr: 1
-
-      # Mount model volume override
-      mountModelVolume: false
 
       # Startup probe overrides
       probes:
