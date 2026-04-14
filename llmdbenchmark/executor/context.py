@@ -94,6 +94,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     # Standup pod deployment timeouts
     standalone_deploy_timeout: int = 900
     gateway_deploy_timeout: int = 120
+    modelservice_deploy_timeout: int = 1500
 
     # Run-only mode (existing-stack)
     endpoint_url: str | None = None

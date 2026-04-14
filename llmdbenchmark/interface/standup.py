@@ -98,3 +98,9 @@ def add_subcommands(parser: argparse._SubParsersAction):
         default=env_int("LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT"),
         help="Seconds to wait for gateway infrastructure pods to deploy during standup with modelservice.",
     )
+    standup_parser.add_argument(
+        "--modelservice-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for decode, prefill and inference pool pods to deploy during standup with modelservice.",
+    )
