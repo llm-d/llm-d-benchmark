@@ -51,8 +51,8 @@ scenario:
     # -------------------------------------------------------------------------
     # Multinode Configuration (LeaderWorkerSet)
     # -------------------------------------------------------------------------
-    multinode:
-      enabled: true
+    #multinode:
+    #  enabled: true
 
     # -------------------------------------------------------------------------
     # Routing Configuration
@@ -158,6 +158,22 @@ scenario:
     # The following sections configure prefill and decode pods.
     # =========================================================================
 
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Multi-NIC Pod Annotations (uncomment to enable)
+    # To enable multi-nic, add annotations.prefill.pod / annotations.decode.pod below.
+    # -------------------------------------------------------------------------
+    #annotations:
+    #  prefill:
+    #    pod:
+    #      k8s.v1.cni.cncf.io/networks: multi-nic-inference
+    #  decode:
+    #    pod:
+    #      k8s.v1.cni.cncf.io/networks: multi-nic-inference
+
     # -------------------------------------------------------------------------
     # Prefill Configuration
     # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_*
@@ -196,12 +212,10 @@ scenario:
 
       # -----------------------------------------------------------------------
       # ROCE/GDR Configuration (uncomment to enable)
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE
-      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR
       # To enable roce/gdr for prefill pods, add networkResource and networkNr below.
       # -----------------------------------------------------------------------
-      # networkResource: "rdma/roce_gdr"
-      # networkNr: 1
+      #networkResource: "rdma/roce_gdr"
+      #networkNr: 1
 
       # Custom vLLM command -- replaces the auto-generated command.
       # Both decode.vllm.customCommand and prefill.vllm.customCommand are supported.
@@ -288,8 +302,8 @@ scenario:
       #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR
       # To enable roce/gdr for decode pods, add networkResource and networkNr below.
       # -----------------------------------------------------------------------
-      # networkResource: "rdma/roce_gdr"
-      # networkNr: 1
+      #networkResource: "rdma/roce_gdr"
+      #networkNr: 1
 
       # Custom vLLM command -- replaces the auto-generated command.
       # Both decode.vllm.customCommand and prefill.vllm.customCommand are supported.
@@ -325,33 +339,13 @@ scenario:
 
       # -----------------------------------------------------------------------
       # Additional Volume Mounts
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
       # -----------------------------------------------------------------------
       additionalVolumeMounts: []
 
       # -----------------------------------------------------------------------
       # Additional Volumes
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
       # -----------------------------------------------------------------------
       additionalVolumes: []
-
-    # =========================================================================
-    # COMMON -- Applies to all deployment methods (continued)
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Multi-NIC Pod Annotations (uncomment to enable)
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_PODANNOTATIONS
-    #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS
-    # To enable multi-nic, add annotations.prefill.pod / annotations.decode.pod below.
-    # -------------------------------------------------------------------------
-    #annotations:
-    #  prefill:
-    #    pod:
-    #      k8s.v1.cni.cncf.io/networks: multi-nic-compute
-    #  decode:
-    #    pod:
-    #      k8s.v1.cni.cncf.io/networks: multi-nic-compute
 
     # -------------------------------------------------------------------------
     # vLLM Common Configuration

@@ -131,6 +131,10 @@
   value: "{{ vllmCommon.containerHome }}"
 - name: HF_HOME
   value: "{{ vllmCommon.hfHome }}"
+- name: MODEL_NAME
+  value: "{{ model.name }}"
+- name: MODEL_PATH
+  value: "{{ model.path }}"
 - name: VLLM_CACHE_ROOT
   value: "{{ config.vllm.cacheRoot | default(vllmCommon.containerHome ~ '/vllm') }}"
 - name: VLLM_WORKER_MULTIPROC_METHOD

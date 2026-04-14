@@ -38,6 +38,22 @@ scenario:
     # deployment including decode pods, prefill pods, routing, and GAIE.
     # =========================================================================
 
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Multi-NIC Pod Annotations (uncomment to enable)
+    # To enable multi-nic, add annotations.prefill.pod / annotations.decode.pod below.
+    # -------------------------------------------------------------------------
+    #annotations:
+    #  prefill:
+    #    pod:
+    #      k8s.v1.cni.cncf.io/networks: multi-nic-inference
+    #  decode:
+    #    pod:
+    #      k8s.v1.cni.cncf.io/networks: multi-nic-inference
+
     # -------------------------------------------------------------------------
     # Multinode Configuration (LeaderWorkerSet)
     # -------------------------------------------------------------------------
@@ -182,10 +198,12 @@ scenario:
           memory: 512Gi
           cpu: "32"
 
-      # Accelerator configuration
-      acceleratorType:
-        labelKey: nvidia.com/gpu.product
-        labelValue: NVIDIA-H100-80GB-HBM3
+      # -----------------------------------------------------------------------
+      # ROCE/GDR Configuration (uncomment to enable)
+      # To enable roce/gdr for prefill pods, add networkResource and networkNr below.
+      # -----------------------------------------------------------------------
+      #networkResource: "rdma/roce_gdr"
+      #networkNr: 1
 
       # Mount model volume override
       mountModelVolume: false
@@ -206,10 +224,6 @@ scenario:
           periodSeconds: 5
           path: /v1/models
 
-      # Pod annotations
-      annotations:
-        k8s.v1.cni.cncf.io/networks: multi-nic-inference
-
       vllm:
         imagePullPolicy: Always
         # Custom vLLM command -- replaces the auto-generated command.
@@ -218,8 +232,8 @@ scenario:
         # Only --kv-transfer-config and --kv-events-config from vllmCommon
         # are appended if enabled.
         customCommand: |
-          exec vllm serve /model-cache/${model.path} \
-            --served-model-name ${model.name} \
+          exec vllm serve /model-cache/$MODEL_PATH \
+            --served-model-name $MODEL_NAME \
             --port $VLLM_INFERENCE_PORT \
             --trust-remote-code \
             --disable-uvicorn-access-log \
@@ -275,9 +289,10 @@ scenario:
         securityContext:
           capabilities:
             add:
-              - IPC_LOCK
-              - SYS_RAWIO
-              - NET_ADMIN
+              - "IPC_LOCK"
+              - "SYS_RAWIO"
+              - "NET_ADMIN"
+              - "NET_RAW"
           runAsGroup: 0
           runAsUser: 0
         imagePullPolicy: Always
@@ -317,10 +332,12 @@ scenario:
           memory: 512Gi
           cpu: "32"
 
-      # Accelerator configuration
-      acceleratorType:
-        labelKey: nvidia.com/gpu.product
-        labelValue: NVIDIA-H100-80GB-HBM3
+      # -----------------------------------------------------------------------
+      # ROCE/GDR Configuration (uncomment to enable)
+      # To enable roce/gdr for prefill pods, add networkResource and networkNr below.
+      # -----------------------------------------------------------------------
+      #networkResource: "rdma/roce_gdr"
+      #networkNr: 1
 
       # Mount model volume override
       mountModelVolume: false
@@ -341,10 +358,6 @@ scenario:
           periodSeconds: 5
           path: /v1/models
 
-      # Pod annotations
-      annotations:
-        k8s.v1.cni.cncf.io/networks: multi-nic-inference
-
       vllm:
         imagePullPolicy: Always
         # Custom vLLM command -- replaces the auto-generated command.
@@ -353,8 +366,8 @@ scenario:
         # Only --kv-transfer-config and --kv-events-config from vllmCommon
         # are appended if enabled.
         customCommand: |
-          exec vllm serve /model-cache/${model.path} \
-            --served-model-name ${model.name} \
+          exec vllm serve /model-cache/$MODEL_PATH \
+            --served-model-name $MODEL_NAME \
             --port $VLLM_METRICS_PORT \
             --trust-remote-code \
             --disable-uvicorn-access-log \
@@ -412,9 +425,10 @@ scenario:
         securityContext:
           capabilities:
             add:
-              - IPC_LOCK
-              - SYS_RAWIO
-              - NET_ADMIN
+              - "IPC_LOCK"
+              - "SYS_RAWIO"
+              - "NET_ADMIN"
+              - "NET_RAW"
           runAsGroup: 0
           runAsUser: 0
         imagePullPolicy: Always
@@ -432,6 +446,18 @@ scenario:
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Multi-NIC Pod Annotations (uncomment to enable)
+    # To enable multi-nic, add annotations.prefill.pod / annotations.decode.pod below.
+    # -------------------------------------------------------------------------
+    annotations:
+      prefill:
+        pod:
+          k8s.v1.cni.cncf.io/networks: multi-nic-inference
+      decode:
+        pod:
+          k8s.v1.cni.cncf.io/networks: multi-nic-inference
 
     # -------------------------------------------------------------------------
     # vLLM Common Configuration

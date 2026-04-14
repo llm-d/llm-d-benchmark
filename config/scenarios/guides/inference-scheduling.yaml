@@ -26,16 +26,13 @@ scenario:
       shortName: qwen-qwen3-32b
       path: models/Qwen/Qwen3-32B
       huggingfaceId: Qwen/Qwen3-32B
-      size: 1Ti  # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN
+      size: 1Ti
       maxModelLen: 16000
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_BLOCK_SIZE
       blockSize: 64
       gpuMemoryUtilization: 0.95
 
     # -------------------------------------------------------------------------
     # Routing Configuration
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true
     # -------------------------------------------------------------------------
     # Note: inferenceModel is enabled via the modelservice chart when this
     # scenario is deployed. The routing is handled through the gaie values.
@@ -73,14 +70,12 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE
     # -------------------------------------------------------------------------
     inferenceExtension:
       pluginsConfigFile: "default-plugins.yaml"
 
     # -------------------------------------------------------------------------
     # Prefill Configuration
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
     # -------------------------------------------------------------------------
     prefill:
       enabled: false
@@ -221,7 +216,6 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Storage Configuration
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
     # -------------------------------------------------------------------------
     storage:
       modelPvc:
@@ -233,8 +227,6 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Workload/Harness Configuration
-    # Corresponds to: LLMDBENCH_HARNESS_NAME=inference-perf
-    #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=shared_prefix_synthetic.yaml
     # -------------------------------------------------------------------------
     workDir: "~/data/inference-scheduling"
 
