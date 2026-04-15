@@ -31,8 +31,6 @@ scenario:
       maxModelLen: 1024
       size: 2Gi
 
-    gateway:
-      className: agentgateway
 
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
