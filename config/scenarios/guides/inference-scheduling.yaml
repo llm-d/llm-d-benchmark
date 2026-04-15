@@ -19,7 +19,6 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Model Configuration
-    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST
     # -------------------------------------------------------------------------
     model:
       name: Qwen/Qwen3-32B
@@ -39,7 +38,6 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left uncommented for auto-detect)
     # By default, affinity is disabled and pods schedule on any available node.
     # Options:
     #   1. Leave commented out -- no node selection constraint
@@ -85,7 +83,6 @@ scenario:
     # Decode Configuration
     # -------------------------------------------------------------------------
     decode:
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
       replicas: 2
 
       initContainers:
@@ -97,7 +94,6 @@ scenario:
             - name: shared-config
               mountPath: /shared-config
 
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=1
       parallelism:
         tensor: 1
         data: 1
@@ -105,8 +101,6 @@ scenario:
         workers: 1
 
       # Resource configuration
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=16
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=64Gi
       resources:
         limits:
           memory: 64Gi
@@ -119,7 +113,6 @@ scenario:
       # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
       # -----------------------------------------------------------------------
       # Extra Environment Variables
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
       # No custom env vars for this scenario -- uses default ENVVARS_TO_YAML
       # mechanism. Auto-populated vars (UCX_TLS, VLLM_NIXL_*, etc.) are set
       # by the preprocess script at pod runtime.
@@ -128,7 +121,6 @@ scenario:
 
       # -----------------------------------------------------------------------
       # Extra Container Configuration
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG
       # -----------------------------------------------------------------------
       extraContainerConfig:
         ports:
@@ -148,13 +140,11 @@ scenario:
 
       # -----------------------------------------------------------------------
       # Additional Volume Mounts
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
       # -----------------------------------------------------------------------
       additionalVolumeMounts: []
 
       # -----------------------------------------------------------------------
       # Additional Volumes
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
       # -----------------------------------------------------------------------
       additionalVolumes: []
 
@@ -195,7 +185,8 @@ scenario:
         allowLongMaxModelLen: "1"
         serverDevMode: "1"
 
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
+      #priorityClassName: nightly-gpu-critical
+
       volumes:
         - name: shared-config
           type: emptyDir
@@ -204,10 +195,8 @@ scenario:
           type: emptyDir
           emptyDir:
             medium: Memory
-            # Corresponds to: LLMDBENCH_VLLM_COMMON_SHM_MEM (using default 16Gi)
             sizeLimit: 16Gi
 
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
       volumeMounts:
         - name: dshm
           mountPath: /dev/shm

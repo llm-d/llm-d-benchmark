@@ -354,14 +354,14 @@ spec:
             cpu: "{{ standalone.resources.limits.cpu }}"
 {% set standalone_accel_resource = (standalone.accelerator.resource if standalone.accelerator is defined and standalone.accelerator.resource is defined else accelerator.resource) %}
 {# Use standalone.accelerator.count if set, then top-level accelerator.count,
-   then fall back to parallelism.tensor. CPU scenarios set accelerator.count: 0
-   to suppress GPU requests even when TP > 0. #}
+   then fall back to tensor × dataLocal (each DP-local rank needs its own GPU).
+   CPU scenarios set accelerator.count: 0 to suppress GPU requests even when TP > 0. #}
 {% if standalone.accelerator is defined and standalone.accelerator.count is defined -%}
 {% set standalone_accel_count = standalone.accelerator.count | int -%}
 {% elif accelerator is defined and accelerator.count is defined -%}
 {% set standalone_accel_count = accelerator.count | int -%}
 {% else -%}
-{% set standalone_accel_count = standalone.parallelism.tensor | int -%}
+{% set standalone_accel_count = (standalone.parallelism.tensor | int) * (standalone.parallelism.dataLocal | int) -%}
 {% endif -%}
 {% if standalone_accel_count > 0 %}
             {{ standalone_accel_resource }}: "{{ standalone_accel_count }}"

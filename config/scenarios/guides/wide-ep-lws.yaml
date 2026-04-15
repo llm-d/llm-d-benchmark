@@ -33,26 +33,8 @@ scenario:
       cacheBase: /model-cache
 
     # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true
-    # The following sections configure the llm-d modelservice Helm chart
-    # deployment including decode pods, prefill pods, routing, and GAIE.
-    # =========================================================================
-
-    # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Multi-NIC Pod Annotations (uncomment to enable)
-    # To enable multi-nic, add annotations.prefill.pod / annotations.decode.pod below.
-    # -------------------------------------------------------------------------
-    #annotations:
-    #  prefill:
-    #    pod:
-    #      k8s.v1.cni.cncf.io/networks: multi-nic-inference
-    #  decode:
-    #    pod:
-    #      k8s.v1.cni.cncf.io/networks: multi-nic-inference
 
     # -------------------------------------------------------------------------
     # Multinode Configuration (LeaderWorkerSet)
@@ -164,7 +146,9 @@ scenario:
         # storageClassName: ocs-storagecluster-cephfs
 
     # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
     # =========================================================================
 
     # -------------------------------------------------------------------------
@@ -202,8 +186,8 @@ scenario:
       # ROCE/GDR Configuration (uncomment to enable)
       # To enable roce/gdr for prefill pods, add networkResource and networkNr below.
       # -----------------------------------------------------------------------
-      #networkResource: "rdma/roce_gdr"
-      #networkNr: 1
+      networkResource: "rdma/roce_gdr"
+      networkNr: 1
 
       # Startup probe overrides
       probes:
@@ -248,7 +232,9 @@ scenario:
             --dbo-prefill-token-threshold 32 \
             --enable-eplb \
             --eplb-config '{"window_size":"1000","step_interval":"3000","num_redundant_experts":"32","log_balancedness":"False"}' \
-            --gpu-memory-utilization 0.75
+            --gpu-memory-utilization 0.75 \
+            --compilation_config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
+            --all2all-backend deepep_low_latency
 
       # -----------------------------------------------------------------------
       # Extra Environment Variables
@@ -262,8 +248,6 @@ scenario:
           value: "1"
         - name: VLLM_USE_DEEP_GEMM
           value: "1"
-        - name: VLLM_ALL2ALL_BACKEND
-          value: "deepep_high_throughput"
         - name: NVIDIA_GDRCOPY
           value: "enabled"
         - name: NCCL_EXCLUDE_IB_HCA
@@ -303,6 +287,7 @@ scenario:
     # Decode Configuration
     # -------------------------------------------------------------------------
     decode:
+      enabled: true
       replicas: 1
 
       initContainers:
@@ -333,8 +318,8 @@ scenario:
       # ROCE/GDR Configuration (uncomment to enable)
       # To enable roce/gdr for prefill pods, add networkResource and networkNr below.
       # -----------------------------------------------------------------------
-      #networkResource: "rdma/roce_gdr"
-      #networkNr: 1
+      networkResource: "rdma/roce_gdr"
+      networkNr: 1
 
       # Startup probe overrides
       probes:
@@ -379,9 +364,9 @@ scenario:
             --dbo-decode-token-threshold 32 \
             --enable-eplb \
             --eplb-config '{"window_size":"1000","step_interval":"3000","num_redundant_experts":"32","log_balancedness":"False"}' \
+            --all2all-backend deepep_low_latency \
             --compilation_config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
             --kv-cache-memory-bytes=${KV_CACHE_MEMORY_BYTES-}
-
       # -----------------------------------------------------------------------
       # Extra Environment Variables
       # Same as prefill (both use LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML)
@@ -395,8 +380,6 @@ scenario:
           value: "1"
         - name: VLLM_USE_DEEP_GEMM
           value: "1"
-        - name: VLLM_ALL2ALL_BACKEND
-          value: "deepep_high_throughput"
         - name: NVIDIA_GDRCOPY
           value: "enabled"
         - name: NCCL_EXCLUDE_IB_HCA
@@ -473,8 +456,6 @@ scenario:
     vllmCommon:
       host: "0.0.0.0"
       preprocessScript: "source /shared-config/llmdbench_env.sh"
-      networkResource: "auto"
-      networkNr: "1"
       ephemeralStorage: 1Ti
       # KV Transfer Configuration
       # Note: kv-transfer-config is in customCommand for this scenario due to extra options
@@ -491,6 +472,8 @@ scenario:
         disableUvicornAccessLog: true
         allowLongMaxModelLen: "1"
         serverDevMode: "1"
+
+#      priorityClassName: nightly-gpu-critical
 
       volumes:
         - name: shared-config

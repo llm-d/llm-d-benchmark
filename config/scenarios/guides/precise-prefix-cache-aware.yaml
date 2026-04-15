@@ -18,18 +18,14 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Model Configuration
-    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
     # -------------------------------------------------------------------------
     model:
       name: Qwen/Qwen3-32B
       shortName: qwen-qwen3-32b
       path: models/Qwen/Qwen3-32B
       huggingfaceId: Qwen/Qwen3-32B
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
       size: 1Ti
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=16000
       maxModelLen: 16000
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=64
       blockSize: 64
       gpuMemoryUtilization: 0.95
 
@@ -50,7 +46,6 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Routing Configuration
-    # Corresponds to: LLMDBENCH_LLMD_ROUTINGSIDECAR_ENABLED=false
     # -------------------------------------------------------------------------
     routing:
       proxy:
@@ -58,14 +53,9 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="precise-prefix-cache-config.yaml"
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_CUSTOM_PLUGINS
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_SIDECAR_ENABLED=true
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_FLAGS
     # -------------------------------------------------------------------------
     inferenceExtension:
       pluginsConfigFile: "precise-prefix-cache-config.yaml"
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_SIDECAR_ENABLED=true
       sidecar:
         enabled: true
       flags:
@@ -111,7 +101,6 @@ scenario:
                   weight: 2.0
                 - pluginRef: max-score-picker
       # InferencePool Provider Configuration
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_POOL_PROVIDER_CONFIG
       inferencePoolProviderConfig:
         destinationRule:
           # host is auto-resolved from model_id_label (e.g. {model_id_label}-gaie-epp)
@@ -129,7 +118,6 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left uncommented for auto-detect)
     # By default, affinity is disabled and pods schedule on any available node.
     # Options:
     #   1. Leave commented out -- no node selection constraint
@@ -145,7 +133,6 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Prefill Configuration
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
     # -------------------------------------------------------------------------
     prefill:
       enabled: false
@@ -155,7 +142,6 @@ scenario:
     # Decode Configuration
     # -------------------------------------------------------------------------
     decode:
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
       replicas: 2
 
       initContainers:
@@ -167,7 +153,6 @@ scenario:
             - name: shared-config
               mountPath: /shared-config
 
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=2
       parallelism:
         tensor: 2
         data: 1
@@ -175,8 +160,6 @@ scenario:
         workers: 1
 
       # Resource configuration
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR (env.sh default=4)
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=$LLMDBENCH_VLLM_COMMON_CPU_MEM (=64Gi)
       resources:
         limits:
           memory: 64Gi
@@ -251,8 +234,6 @@ scenario:
 
       # -----------------------------------------------------------------------
       # ROCE/GDR Configuration (uncomment to enable)
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR
       # -----------------------------------------------------------------------
       # To enable roce/gdr, add to resources:
       # resources:
@@ -302,6 +283,8 @@ scenario:
         disableUvicornAccessLog: false
         allowLongMaxModelLen: "1"
         serverDevMode: "1"
+
+      #priorityClassName: nightly-gpu-critical
 
       # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
       volumes:

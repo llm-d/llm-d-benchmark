@@ -2,7 +2,7 @@
 
 {# ============================================================================
    ms-values.yaml.j2
-   
+
    Comprehensive modelservice values template matching the official helm chart.
    See: https://github.com/llm-d/llm-d-modelservice
    ============================================================================ #}
@@ -249,7 +249,9 @@ decode:
   priorityClassName: {{ decode_priority }}
 {% endif %}
 
-{% set decode_accel_count = (decode.accelerator.count | default(decode.parallelism.tensor | int) | int) if decode.accelerator is defined else (decode.parallelism.tensor | int) %}
+{# GPU count = accelerator.count if explicit, else tensor × dataLocal (each DP-local rank needs its own GPU) #}
+{% set decode_default_gpus = (decode.parallelism.tensor | int) * (decode.parallelism.dataLocal | int) %}
+{% set decode_accel_count = (decode.accelerator.count | default(decode_default_gpus) | int) if decode.accelerator is defined else decode_default_gpus %}
 {% if decode_accel_count > 0 %}
 {% set d_accel_type = decode.acceleratorType if decode.acceleratorType is defined else (standalone.acceleratorType if standalone.acceleratorType is defined else {}) %}
 {% if d_accel_type and d_accel_type.labelKey is defined %}
@@ -438,7 +440,6 @@ decode:
         memory: {{ decode.resources.limits.memory }}
         cpu: "{{ decode.resources.limits.cpu }}"
 {% set decode_accel_resource = (decode.accelerator.resource if decode.accelerator is defined and decode.accelerator.resource is defined else accelerator.resource) %}
-{% set decode_accel_count = (decode.accelerator.count | default(decode.parallelism.tensor | int) | int) if decode.accelerator is defined else (decode.parallelism.tensor | int) %}
 {% if decode.resources.limits is defined and decode.resources.limits[decode_accel_resource] is defined %}
         {{ decode_accel_resource }}: "{{ decode.resources.limits[decode_accel_resource] }}"
 {% elif decode_accel_count > 0 and accelerator.type != 'cpu' %}
@@ -666,12 +667,14 @@ prefill:
   schedulerName: {{ prefill.schedulerName }}
 {% endif %}
 
-{% set prefill_priority = (prefill.priorityClassName if prefill.priorityClassName is defined and prefill.priorityClassName else '') | default(vllmCommon.priorityClassName | default('')) %}
+{% set prefill_priority = prefill.priorityClassName | default(vllmCommon.priorityClassName | default('')) %}
 {% if prefill_priority and prefill_priority != 'none' %}
   priorityClassName: {{ prefill_priority }}
 {% endif %}
 
-{% set prefill_accel_count = (prefill.accelerator.count | default(prefill.parallelism.tensor | int) | int) if prefill.accelerator is defined else (prefill.parallelism.tensor | int) %}
+{# GPU count = accelerator.count if explicit, else tensor × dataLocal (each DP-local rank needs its own GPU) #}
+{% set prefill_default_gpus = (prefill.parallelism.tensor | int) * (prefill.parallelism.dataLocal | int) %}
+{% set prefill_accel_count = (prefill.accelerator.count | default(prefill_default_gpus) | int) if prefill.accelerator is defined else prefill_default_gpus %}
 {% if prefill_accel_count > 0 %}
 {% set p_accel_type = prefill.acceleratorType if prefill.acceleratorType is defined else (standalone.acceleratorType if standalone.acceleratorType is defined else {}) %}
 {% if p_accel_type and p_accel_type.labelKey is defined %}
@@ -853,7 +856,6 @@ prefill:
         memory: {{ prefill.resources.limits.memory }}
         cpu: "{{ prefill.resources.limits.cpu }}"
 {% set prefill_accel_resource = (prefill.accelerator.resource if prefill.accelerator is defined and prefill.accelerator.resource is defined else accelerator.resource) %}
-{% set prefill_accel_count = (prefill.accelerator.count | default(prefill.parallelism.tensor | int) | int) if prefill.accelerator is defined else (prefill.parallelism.tensor | int) %}
 {% if prefill.resources.limits is defined and prefill.resources.limits[prefill_accel_resource] is defined %}
         {{ prefill_accel_resource }}: "{{ prefill.resources.limits[prefill_accel_resource] }}"
 {% elif prefill_accel_count > 0 and accelerator.type != 'cpu' %}
