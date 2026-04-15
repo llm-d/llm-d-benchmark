@@ -484,7 +484,6 @@ gateway:
   name: infra-llmdbench-inference-gateway
   namespace: auto  # Synced with namespace.name; resolved at plan time
   className: istio
-  provider: istio
   providerNamespace: istio-system
   # Gateway version is derived from chartVersions.istiod at plan time
   logLevel: error

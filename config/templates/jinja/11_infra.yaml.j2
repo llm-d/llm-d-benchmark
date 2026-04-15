@@ -1,5 +1,5 @@
 {% if standalone.enabled is defined and not standalone.enabled %}
-{% set gw_class = gateway.className | default('istio') %}
+{% set gw_class = gateway.className %}
 {% if gw_class == 'gke' %}
 {# ── GKE: managed gateway with destinationRule ── #}
 gateway:

@@ -12,7 +12,7 @@
   The agentgateway release layout mirrors the canonical upstream helmfile:
     https://raw.githubusercontent.com/llm-d-incubation/llm-d-infra/refs/heads/main/quickstart/gateway-control-plane-providers/agentgateway.helmfile.yaml
 #}
-{% set gw_class = gateway.className | default('istio') %}
+{% set gw_class = gateway.className %}
 {% set gw_ns = gateway.providerNamespace | default('istio-system') %}
 {% if standalone.enabled is defined and not standalone.enabled and gw_class == 'istio' %}
 repositories:
