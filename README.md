@@ -63,6 +63,24 @@ The install script auto-detects if the repo is present -- if not, it clones it f
 > [!TIP]
 > The last line of output from `llmdbenchmark standup` shows the workspace path where all rendered configs, manifests, and results are stored.
 
+### Pick your path: with or without Accelerators
+
+Two supported entry points depending on what you have access to:
+
+**🖥️ No Accelerators  / No Cluster Access — Utilize a Kind Quickstart**
+
+Run the full `standup → smoketest → run → teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine. No accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind-sim` scenario that CI runs on every PR, so if it works locally it works in CI.
+
+- **Requirements:** Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.11+
+- **Continue with Quick Start Guide:** [Quickstart on Kind](docs/quickstart.md)
+
+**🚀 Access to Compute cluster with Accelerators — full pipeline**
+
+Deploy against a Kubernetes cluster with Accelerators (OpenShift, GKE, EKS, CKS, etc.). Use one of the built-in specs or a well-lit path guide tuned for your hardware.
+
+- **Requirements:** cluster admin to install infra  (or utilize an namespace admin with infra pre-installed), kubeconfig, compute nodes
+- **Continue below** with [Choose a specification](#choose-a-specification) and [Deploy and benchmark](#deploy-and-benchmark-full-pipeline)
+
 ### Choose a specification
 
 Every command takes a `--spec` that selects the configuration for your cluster and GPU type. Specs are Jinja2 templates under `config/specification/`:
@@ -71,6 +89,7 @@ Every command takes a `--spec` that selects the configuration for your cluster a
 --spec gpu                              # NVIDIA GPU setup (config/specification/examples/gpu.yaml.j2)
 --spec inference-scheduling             # inference scheduling guide
 --spec pd-disaggregation               # prefill-decode disaggregation guide
+...
 --spec /full/path/to/my-spec.yaml.j2    # custom spec
 ```
 
@@ -117,31 +136,7 @@ This uses the same harness, profile rendering, and result collection pipeline --
 > [!TIP]
 > `run` can also be used in debug mode (`-d` / `--debug`) which starts the harness pod with `sleep infinity` so you can exec into it and run commands interactively. See [this example](docs/tutorials/run/run_interactively_example.md).
 
-### Run a parameter sweep
-
-Experiment files in `workload/experiments/` define structured parameter sweeps. Each file lists treatments (combinations of factor levels) that the benchmark iterates over:
-
-```bash
-# Sweep workload parameters against an existing stack
-llmdbenchmark --spec inference-scheduling run \
-  --experiments workload/experiments/inference-scheduling.yaml
-
-# Full DoE: auto standup/run/teardown per infrastructure configuration
-llmdbenchmark --spec tiered-prefix-cache experiment \
-  --experiments workload/experiments/tiered-prefix-cache.yaml
-```
-
-The `run --experiments` form varies workload parameters (prompt length, concurrency) against a single endpoint.
-
-The `experiment` command goes even further by providing an interface to variy infrastructure parameters (replica counts, cache sizes, routing plugins) and stands up a fresh stack for each configuration. This is for advanced performance benchmarking that expands beyond simple configurations - **everything** becomes tunable from infrastructure to inference time.
-
 See [workload/README.md](workload/README.md) for the full experiment file format and all pre-built experiments, as well as advanced functionality.
-
-## Get started without accelerators
-
-No GPU? No problem. The **[Quickstart](docs/quickstart.md)** walks you through the full `standup → smoketest → run → teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine — no accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind-sim` scenario that CI runs on every PR, so if it works locally it works in CI.
-
-All you need is Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.11+.
 
 ## Next Steps
 
