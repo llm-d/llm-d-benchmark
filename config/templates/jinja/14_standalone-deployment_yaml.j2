@@ -361,7 +361,7 @@ spec:
 {% elif accelerator is defined and accelerator.count is defined -%}
 {% set standalone_accel_count = accelerator.count | int -%}
 {% else -%}
-{% set standalone_accel_count = (standalone.parallelism.tensor | int) * (standalone.parallelism.dataLocal | int) -%}
+{% set standalone_accel_count = (standalone.parallelism.tensor | int) * (standalone.parallelism.dataLocal | default(1) | int) -%}
 {% endif -%}
 {% if standalone_accel_count > 0 %}
             {{ standalone_accel_resource }}: "{{ standalone_accel_count }}"
