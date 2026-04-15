@@ -48,6 +48,6 @@ scenario:
 
     images:
       benchmark:
-        repository: quay.io/manoelmrqs/llm-d-benchmark
-        tag: 0.0.2
+        repository: ghcr.io/llm-d/llm-d-benchmark
+        tag: nightly
 
