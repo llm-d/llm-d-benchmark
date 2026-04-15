@@ -13,7 +13,7 @@
     https://raw.githubusercontent.com/llm-d-incubation/llm-d-infra/refs/heads/main/quickstart/gateway-control-plane-providers/agentgateway.helmfile.yaml
 #}
 {% set gw_class = gateway.className %}
-{% set gw_ns = gateway.providerNamespace | default('istio-system') %}
+{% set gw_ns = gateway.providerNamespace %}
 {% if standalone.enabled is defined and not standalone.enabled and gw_class == 'istio' %}
 repositories:
   - name: istio
