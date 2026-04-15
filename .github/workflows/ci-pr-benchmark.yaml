@@ -138,16 +138,21 @@ jobs:
           echo "=== Events ==="
           kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true
 
-  # -- Modelservice deployment (own Kind cluster) --
+  # -- Modelservice deployment matrix (istio + agentgateway) --
   benchmark-modelservice:
-    name: Benchmark - Modelservice (Kind)
+    name: Benchmark - Modelservice / ${{ matrix.gateway }} (Kind)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: unit-tests
 
+    strategy:
+      fail-fast: false
+      matrix:
+        gateway: [istio, agentgateway]
+
     env:
-      NS: llmdbenchcicd-ms-${{ github.event.number }}
-      LLMDBENCH_WORKSPACE: /tmp/cicd-ms-${{ github.event.number }}
+      NS: llmdbenchcicd-ms-${{ matrix.gateway }}-${{ github.event.number }}
+      LLMDBENCH_WORKSPACE: /tmp/cicd-ms-${{ matrix.gateway }}-${{ github.event.number }}
 
     steps:
       - name: Checkout Code
@@ -174,6 +179,15 @@ jobs:
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
+
+      - name: Patch kind-sim scenario with gateway class
+        run: |
+          # The scenario hardcodes className: agentgateway; swap to the matrix
+          # value so both gateway providers are exercised.
+          sed -i 's|className: agentgateway|className: ${{ matrix.gateway }}|' \
+            config/scenarios/cicd/kind-sim.yaml
+          echo "--- scenario gateway section ---"
+          grep -A 8 '^    gateway:' config/scenarios/cicd/kind-sim.yaml || true
 
       - name: Standup (modelservice)
         run: |

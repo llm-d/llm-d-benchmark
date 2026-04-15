@@ -45,7 +45,7 @@ scenario:
       count: 0
       memory: 24 # To pass capacity planner sanity checking
 
-    # Minimal gateway resources for Kind -- use agentgateway (lightweight, no istio overhead)
+    # Minimal gateway resources for Kind -- leave here to update for CICD
     gateway:
       className: agentgateway
       resources:
