@@ -1016,7 +1016,7 @@ class BaseSmoketest:
     ) -> str | None:
         protocol = "https" if str(port) == "443" else "http"
         url = f"{protocol}://{host}:{port}/health"
-        curl_image = "curlimages/curl"
+        curl_image = "quay.io/curl/curl"
         override_args = _build_overrides(plan_config)
 
         context.logger.log_info(
@@ -1338,7 +1338,7 @@ class BaseSmoketest:
         timeout_seconds: int = 120,
     ) -> tuple[str, str | None]:
         override_args = _build_overrides(plan_config)
-        curl_image = "curlimages/curl"
+        curl_image = "quay.io/curl/curl"
         pod_name = f"inference-test-{_rand_suffix()}"
         payload_json = json.dumps(payload)
         payload_b64 = base64.b64encode(payload_json.encode()).decode()
