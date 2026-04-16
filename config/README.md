@@ -419,7 +419,7 @@ All Helm chart and component versions are centralized in the `chartVersions` sec
 | `chartVersions.inferencePool` | `v1.4.0` | Inference pool chart version |
 | `chartVersions.gaie` | `v1.4.0` | GAIE chart version |
 | `chartVersions.wva` | `auto` | Workload Variant Autoscaler chart (auto-resolved) |
-| `chartVersions.kgateway` | `v2.2.1` | kgateway chart version |
+| `chartVersions.kgateway` | `v2.2.3` | kgateway chart version |
 | `chartVersions.lws` | `0.8.0` | LeaderWorkerSet chart version |
 
 Versions set to `auto` are resolved at plan time by `VersionResolver` using `helm search repo` or OCI registry queries (skopeo/crane). Fixed versions are used as-is.
