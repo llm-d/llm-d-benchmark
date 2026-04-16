@@ -1,3 +1,64 @@
+{# ======================================================================== #}
+{# Macro to render a single init container for modelservice pods.          #}
+{# Supports the full Kubernetes init container spec including the sidecar  #}
+{# pattern (restartPolicy: Always) used by uds-tokenizer and similar.     #}
+{# Fields not explicitly listed are passed through via toyaml.             #}
+{# mode: 'decode' or 'prefill' -- controls env var injection default.     #}
+{# ======================================================================== #}
+{% macro render_init_container(ic, mode='decode') -%}
+- name: {{ ic.name }}
+  image: {{ ic.image }}
+{% if ic.imagePullPolicy is defined %}
+  imagePullPolicy: {{ ic.imagePullPolicy }}
+{% endif %}
+{% if ic.restartPolicy is defined %}
+  restartPolicy: {{ ic.restartPolicy }}
+{% endif %}
+{% if ic.command is defined %}
+  command:
+{{ ic.command | toyaml | indent(2, true) }}
+{% endif %}
+{% if ic.args is defined %}
+  args:
+{{ ic.args | toyaml | indent(2, true) }}
+{% endif %}
+{% if ic.env is defined and ic.env %}
+  env:
+{{ ic.env | toyaml | indent(2, true) }}
+{% else %}
+  env:
+{{ build_ms_env_vars(mode) | indent(2, true) }}
+{% endif %}
+{% if ic.ports is defined and ic.ports %}
+  ports:
+{{ ic.ports | toyaml | indent(2, true) }}
+{% endif %}
+{% if ic.resources is defined %}
+  resources:
+{{ ic.resources | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.startupProbe is defined %}
+  startupProbe:
+{{ ic.startupProbe | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.livenessProbe is defined %}
+  livenessProbe:
+{{ ic.livenessProbe | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.readinessProbe is defined %}
+  readinessProbe:
+{{ ic.readinessProbe | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.volumeMounts is defined %}
+  volumeMounts:
+{{ ic.volumeMounts | toyaml | indent(2, true) }}
+{% endif %}
+{% if ic.securityContext is defined %}
+  securityContext:
+{{ ic.securityContext | toyaml | indent(4, true) }}
+{% endif %}
+{%- endmacro %}
+
 {# Macro to build kv-transfer-config JSON #}
 {% macro build_kv_transfer_config() -%}
 {% if vllmCommon.kvTransfer.extraConfig is defined and vllmCommon.kvTransfer.extraConfig -%}
@@ -15,7 +76,7 @@
 {% set port = vllmCommon.kvEvents.port -%}
 {% set publisher = vllmCommon.kvEvents.publisher -%}
 {% set topic_prefix = vllmCommon.kvEvents.topicPrefix -%}
-{"enable_kv_cache_events":true,"publisher":"{{ publisher }}","endpoint":"tcp://{{ service_name }}.{{ ns }}.svc.cluster.local:{{ port }}","topic":"{{ topic_prefix }}@$(POD_IP):$(VLLM_INFERENCE_PORT)@{{ model.name }}"}
+{"enable_kv_cache_events":true,"publisher":"{{ publisher }}","endpoint":"tcp://{{ service_name }}.{{ ns }}.svc.cluster.local:{{ port }}","topic":"{{ topic_prefix }}@${POD_IP}@{{ model.name }}"}
 {%- endmacro %}
 
 {# Macro to build vLLM serve command with templated arguments #}
@@ -131,10 +192,6 @@
   value: "{{ vllmCommon.containerHome }}"
 - name: HF_HOME
   value: "{{ vllmCommon.hfHome }}"
-- name: MODEL_NAME
-  value: "{{ model.name }}"
-- name: MODEL_PATH
-  value: "{{ model.path }}"
 - name: VLLM_CACHE_ROOT
   value: "{{ config.vllm.cacheRoot | default(vllmCommon.containerHome ~ '/vllm') }}"
 - name: VLLM_WORKER_MULTIPROC_METHOD
@@ -186,6 +243,12 @@
   valueFrom:
     fieldRef:
       fieldPath: metadata.namespace
+- name: DP_SIZE
+  value: "{{ config.parallelism.data | default('1') }}"
+- name: TP_SIZE
+  value: "{{ config.parallelism.tensor | default('1') }}"
+- name: DP_SIZE_LOCAL
+  value: "{{ config.parallelism.dataLocal | default('1') }}"
 {% if config.podLabels is defined and config.podLabels -%}
 - name: LLMDBENCH_POD_LABELS
   value: "{{ config.podLabels }}"
