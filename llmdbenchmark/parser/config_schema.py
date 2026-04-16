@@ -82,6 +82,10 @@ class ProbeConfig(BaseModel):
     model_config = STRICT_CONFIG
 
     path: str | None = None
+    # Optional explicit port (defaults to the role's effective vLLM port at
+    # render time). Set per-probe in the scenario when the probe needs to
+    # hit a non-default port (e.g. uds-tokenizer health on 8082).
+    port: int | str | None = None
     failureThreshold: int = Field(ge=1)
     initialDelaySeconds: int | None = Field(default=None, ge=0)
     periodSeconds: int = Field(ge=1)
