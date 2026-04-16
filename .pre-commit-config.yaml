@@ -115,28 +115,28 @@ repos:
           )$
 
   # ----------------------------------------------------------------
-  # Code format and linting. Format first using autopep8 to bring up
-  # to PEP8 standards. Then lint with pylint to ensure that code
-  # does not contain bugs or logical errors.
+  # Code formating and linting using Ruff. Run ruff-check first to
+  # ensure proper code linting and then ruff-format to format your
+  # code.
   #
-  # Optional steps, can be ran using:
-  # pre-commit run autopep8 --hook-stage manual --all-files
-  # and
-  # pre-commit run pylint --hook-stage manual --all-files
+  # These steps are optional and can be ran using:
+  # pre-commit run ruff-check --hook-stage manual
+  #
+  # pre-commit run ruff-format --hook-stage manual
+  #
+  # * Add the --all-files arg to lint/format all files
   # ----------------------------------------------------------------
-  - repo: https://github.com/hhatto/autopep8
-    rev: v2.3.2
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.11
     hooks:
-      - id: autopep8
-        name: Format code with autopep8
+      # Run the linter
+      - id: ruff-check
+        args: [--fix]
+        name: Lint code check
         stages: [manual]
 
-  - repo: local
-    hooks:
-      - id: pylint
-        name: pylint
-        entry: pylint
-        language: system
-        types: [python]
+      # Run the formatter
+      - id: ruff-format
+        args: [] # Add the --diff arg if you only want to see what changes would be made
+        name: Format code
         stages: [manual]
-        args: ["--errors-only", "--fail-under=8.0"]
