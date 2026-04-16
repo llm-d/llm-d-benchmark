@@ -370,37 +370,9 @@ decode:
 {% if not ic_image or ic_image.endswith(':auto') %}
 {% set _ = ic.update({'image': images.benchmark.repository ~ ':' ~ images.benchmark.tag}) %}
 {% endif %}
-{# Render init containers manually so we can inject shared env vars via macro #}
 {% endfor %}
 {% for ic in decode.initContainers %}
-  - name: {{ ic.name }}
-    image: {{ ic.image }}
-{% if ic.imagePullPolicy is defined %}
-    imagePullPolicy: {{ ic.imagePullPolicy }}
-{% endif %}
-{% if ic.command is defined %}
-    command:
-{{ ic.command | toyaml | indent(4, true) }}
-{% endif %}
-{% if ic.args is defined %}
-    args:
-{{ ic.args | toyaml | indent(4, true) }}
-{% endif %}
-{% if ic.env is defined and ic.env %}
-    env:
-{{ ic.env | toyaml | indent(4, true) }}
-{% else %}
-    env:
-{{ build_ms_env_vars('decode') | indent(4, true) }}
-{% endif %}
-{% if ic.volumeMounts is defined %}
-    volumeMounts:
-{{ ic.volumeMounts | toyaml | indent(4, true) }}
-{% endif %}
-{% if ic.securityContext is defined %}
-    securityContext:
-{{ ic.securityContext | toyaml | indent(6) }}
-{% endif %}
+{{ render_init_container(ic, 'decode') | indent(4, true) }}
 {% endfor %}
 {% endif %}
 
@@ -424,7 +396,7 @@ decode:
 {{ build_ms_env_vars('decode') | indent(6, true) }}
 {% if decode.ports is defined and decode.ports %}
     ports:
-{{ decode.ports | toyaml | indent(6) }}
+{{ decode.ports | toyaml | indent(6, true) }}
 {% elif decode.extraContainerConfig is defined and decode.extraContainerConfig.ports is defined %}
     ports:
 {% for port in decode.extraContainerConfig.ports %}
@@ -481,22 +453,34 @@ decode:
       startupProbe:
         httpGet:
           path: {{ decode.probes.startup.path }}
-          port: {{ decode_effective_port }}
+          port: {{ decode.probes.startup.port | default(decode_effective_port) }}
         failureThreshold: {{ decode.probes.startup.failureThreshold }}
         initialDelaySeconds: {{ decode.probes.startup.initialDelaySeconds }}
         periodSeconds: {{ decode.probes.startup.periodSeconds }}
         timeoutSeconds: {{ decode.probes.startup.timeoutSeconds }}
       livenessProbe:
+{% if decode.probes.liveness.path is defined and decode.probes.liveness.path %}
+        httpGet:
+          path: {{ decode.probes.liveness.path }}
+          port: {{ decode.probes.liveness.port | default(decode_effective_port) }}
+{% else %}
         tcpSocket:
-          port: {{ decode_effective_port }}
+          port: {{ decode.probes.liveness.port | default(decode_effective_port) }}
+{% endif %}
         failureThreshold: {{ decode.probes.liveness.failureThreshold }}
         periodSeconds: {{ decode.probes.liveness.periodSeconds }}
+{% if decode.probes.liveness.timeoutSeconds is defined %}
+        timeoutSeconds: {{ decode.probes.liveness.timeoutSeconds }}
+{% endif %}
       readinessProbe:
         httpGet:
           path: {{ decode.probes.readiness.path }}
-          port: {{ decode_effective_port }}
+          port: {{ decode.probes.readiness.port | default(decode_effective_port) }}
         failureThreshold: {{ decode.probes.readiness.failureThreshold }}
         periodSeconds: {{ decode.probes.readiness.periodSeconds }}
+{% if decode.probes.readiness.timeoutSeconds is defined %}
+        timeoutSeconds: {{ decode.probes.readiness.timeoutSeconds }}
+{% endif %}
 {% if decode.extraContainerConfig is defined and decode.extraContainerConfig %}
 {% set extra_config_without_ports = {} %}
 {% for k, v in decode.extraContainerConfig.items() if k != 'ports' %}
@@ -781,7 +765,7 @@ prefill:
   subGroupExclusiveTopology: {{ prefill.subGroupExclusiveTopology | lower }}
 {% endif %}
 
-{# Prefill init containers -- rendered manually with shared env var macro #}
+{# Prefill init containers -- rendered via shared macro #}
 {% if prefill.initContainers is defined and prefill.initContainers %}
   initContainers:
 {% for ic in prefill.initContainers %}
@@ -789,34 +773,9 @@ prefill:
 {% if not ic_image or ic_image.endswith(':auto') %}
 {% set _ = ic.update({'image': images.benchmark.repository ~ ':' ~ images.benchmark.tag}) %}
 {% endif %}
-  - name: {{ ic.name }}
-    image: {{ ic.image }}
-{% if ic.imagePullPolicy is defined %}
-    imagePullPolicy: {{ ic.imagePullPolicy }}
-{% endif %}
-{% if ic.command is defined %}
-    command:
-{{ ic.command | toyaml | indent(4, true) }}
-{% endif %}
-{% if ic.args is defined %}
-    args:
-{{ ic.args | toyaml | indent(4, true) }}
-{% endif %}
-{% if ic.env is defined and ic.env %}
-    env:
-{{ ic.env | toyaml | indent(4, true) }}
-{% else %}
-    env:
-{{ build_ms_env_vars('prefill') | indent(4, true) }}
-{% endif %}
-{% if ic.volumeMounts is defined %}
-    volumeMounts:
-{{ ic.volumeMounts | toyaml | indent(4, true) }}
-{% endif %}
-{% if ic.securityContext is defined %}
-    securityContext:
-{{ ic.securityContext | toyaml | indent(6) }}
-{% endif %}
+{% endfor %}
+{% for ic in prefill.initContainers %}
+{{ render_init_container(ic, 'prefill') | indent(4, true) }}
 {% endfor %}
 {% endif %}
 
@@ -840,7 +799,7 @@ prefill:
 {{ build_ms_env_vars('prefill') | indent(6, true) }}
 {% if prefill.ports is defined and prefill.ports %}
     ports:
-{{ prefill.ports | toyaml | indent(6) }}
+{{ prefill.ports | toyaml | indent(6, true) }}
 {% elif prefill.extraContainerConfig is defined and prefill.extraContainerConfig.ports is defined %}
     ports:
 {% for port in prefill.extraContainerConfig.ports %}
@@ -897,22 +856,34 @@ prefill:
       startupProbe:
         httpGet:
           path: {{ prefill.probes.startup.path }}
-          port: {{ prefill_effective_port }}
+          port: {{ prefill.probes.startup.port | default(prefill_effective_port) }}
         failureThreshold: {{ prefill.probes.startup.failureThreshold }}
         initialDelaySeconds: {{ prefill.probes.startup.initialDelaySeconds }}
         periodSeconds: {{ prefill.probes.startup.periodSeconds }}
         timeoutSeconds: {{ prefill.probes.startup.timeoutSeconds }}
       livenessProbe:
+{% if prefill.probes.liveness.path is defined and prefill.probes.liveness.path %}
+        httpGet:
+          path: {{ prefill.probes.liveness.path }}
+          port: {{ prefill.probes.liveness.port | default(prefill_effective_port) }}
+{% else %}
         tcpSocket:
-          port: {{ prefill_effective_port }}
+          port: {{ prefill.probes.liveness.port | default(prefill_effective_port) }}
+{% endif %}
         failureThreshold: {{ prefill.probes.liveness.failureThreshold }}
         periodSeconds: {{ prefill.probes.liveness.periodSeconds }}
+{% if prefill.probes.liveness.timeoutSeconds is defined %}
+        timeoutSeconds: {{ prefill.probes.liveness.timeoutSeconds }}
+{% endif %}
       readinessProbe:
         httpGet:
           path: {{ prefill.probes.readiness.path }}
-          port: {{ prefill_effective_port }}
+          port: {{ prefill.probes.readiness.port | default(prefill_effective_port) }}
         failureThreshold: {{ prefill.probes.readiness.failureThreshold }}
         periodSeconds: {{ prefill.probes.readiness.periodSeconds }}
+{% if prefill.probes.readiness.timeoutSeconds is defined %}
+        timeoutSeconds: {{ prefill.probes.readiness.timeoutSeconds }}
+{% endif %}
 {% if prefill.extraContainerConfig is defined and prefill.extraContainerConfig %}
 {% set extra_config_without_ports = {} %}
 {% for k, v in prefill.extraContainerConfig.items() if k != 'ports' %}

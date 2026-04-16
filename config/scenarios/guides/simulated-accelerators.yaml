@@ -2,7 +2,14 @@
 # Based on https://github.com/llm-d/llm-d/blob/dev/guides/simulated-accelerators/README.md
 #
 # Uses llm-d-inference-sim image to simulate inference without real GPUs.
-# Deploys facebook/opt-125m with 0 GPU accelerators on CPU-only nodes.
+# Deploys a "random" model with 0 GPU accelerators on CPU-only nodes.
+#
+# Key changes from upstream guide:
+#   - Uses hf://random as model URI (modelservice chart handles this)
+#   - Decode: 3 replicas with uds-tokenizer init container
+#   - Prefill: 1 replica with uds-tokenizer init container
+#   - Routing proxy enabled with nixlv2 connector
+#   - Pod monitoring enabled for both decode and prefill
 
 scenario:
   - name: simulated-accelerators
@@ -11,123 +18,322 @@ scenario:
     # COMMON -- Applies to all deployment methods
     # =========================================================================
 
-    # Model configuration
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # Uses "random" as a lightweight simulated model
+    # -------------------------------------------------------------------------
     model:
-      name: facebook/opt-125m
-      shortName: facebook-opt-125m
-      path: models/facebook/opt-125m
-      huggingfaceId: facebook/opt-125m
+      name: random
+      shortName: random
+      path: models/random
+      huggingfaceId: random
       gpuMemoryUtilization: 0
+      size: 5Mi
 
-    # =========================================================================
-    # STANDALONE -- Only applies when standalone.enabled: true
-    # =========================================================================
+    # -------------------------------------------------------------------------
+    # Model Artifacts
+    # The upstream guide uses hf://random with custom labels
+    # -------------------------------------------------------------------------
+    modelArtifacts:
+      extraLabels:
+        llm-d.ai/guide: "simulated-accelerators"
+        llm-d.ai/accelerator-variant: "cpu"
 
-    # Standalone deployment with simulated accelerators
-    # Disabled by default -- use modelservice. Enable with --methods standalone
-    standalone:
-      enabled: false
-      replicas: 1
+    storage:
+      modelPvc:
+        size: 5Mi
 
-      image:
-        repository: ghcr.io/llm-d/llm-d-inference-sim
-        tag: latest
-        pullPolicy: Always
-
-      # No GPU resources needed
-      resources:
-        limits:
-          memory: 4Gi
-          cpu: "4"
-        requests:
-          memory: 4Gi
-          cpu: "4"
-
-      # No GPU parallelism
-      parallelism:
-        tensor: 0
-
-      # CPU-only affinity
-      nodeSelector: {}
-
-      vllm:
-        port: 8000
-        # Custom command -- sim image uses /app/llm-d-inference-sim, not vllm serve.
-        # Note: model name is hardcoded here. Update if model.name changes.
-        customCommand: "/app/llm-d-inference-sim --model /model-cache/${model.path} --port $VLLM_INFERENCE_PORT --served-model-name ${model.name}"
-
-    # =========================================================================
-    # COMMON -- Applies to all deployment methods (continued)
-    # =========================================================================
-
+    # -------------------------------------------------------------------------
     # Affinity / Node Selection
-    # By default, affinity is disabled and pods schedule on any available node.
-    # Options:
-    #   1. Leave commented out -- no node selection constraint
-    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
-    #   3. Set explicit labels -- pods only schedule on matching nodes
-    # This scenario overrides affinity for CPU-only nodes (no GPU required).
+    # CPU-only nodes (no GPU required)
+    # -------------------------------------------------------------------------
     affinity:
       enabled: true
       nodeSelector:
         kubernetes.io/os: linux
 
+    # -------------------------------------------------------------------------
+    # Accelerator Configuration -- no GPUs
+    # -------------------------------------------------------------------------
+    accelerator:
+      count: 0
+
+    # =========================================================================
+    # DEPLOYMENT METHOD
+    # =========================================================================
+    gateway:
+      className: agentgateway
+
+    # Use hf:// URI protocol so the modelservice chart handles model loading
+    # directly (no PVC download job needed)
+    modelservice:
+      enabled: true
+      uriProtocol: hf
+
+    standalone:
+      enabled: false
+
+    # =========================================================================
+    # MULTINODE -- disabled
+    # =========================================================================
+    multinode:
+      enabled: false
+
+    # =========================================================================
+    # ROUTING / PROXY CONFIGURATION
+    # Routing proxy enabled with nixlv2 connector (matches upstream guide)
+    # =========================================================================
+    routing:
+      servicePort: 8000
+      connector: nixlv2
+      secure: false
+      proxy:
+        enabled: true
+        image: ghcr.io/llm-d/llm-d-routing-sidecar:v0.7.1
+        connector: nixlv2
+        secure: false
+
+    # =========================================================================
+    # MODELSERVICE CONFIGURATION
+    # =========================================================================
+
     # Override images for simulation
     images:
       vllm:
         repository: ghcr.io/llm-d/llm-d-inference-sim
-        tag: latest
-        pullPolicy: Always
+        tag: v0.8.2
+        pullPolicy: IfNotPresent
+      routingSidecar:
+        repository: ghcr.io/llm-d/llm-d-routing-sidecar
+        tag: v0.7.1
 
-    # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true
-    # The following sections configure the llm-d modelservice Helm chart
-    # deployment including decode pods, prefill pods, routing, and GAIE.
-    # =========================================================================
-
-    modelservice:
-      enabled: true
-
-    # Decode/prefill use image's default entrypoint (inference-sim)
-    # No customCommand -- the vLLM serve command is auto-generated
-    # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
+    # -------------------------------------------------------------------------
+    # Decode Configuration -- 3 replicas with uds-tokenizer
+    # -------------------------------------------------------------------------
     decode:
       enabled: true
-      replicas: 1
+      replicas: 3
+
+      # Monitoring
+      monitoring:
+        podmonitor:
+          enabled: true
+          portName: "vllm"
+          path: "/metrics"
+          interval: "30s"
+
+      initContainers:
+        - name: uds-tokenizer
+          image: ghcr.io/llm-d/llm-d-uds-tokenizer:v0.7.1
+          imagePullPolicy: IfNotPresent
+          restartPolicy: Always
+          env:
+            - name: LOG_LEVEL
+              value: "DEBUG"
+            - name: PROBE_PORT
+              value: "8082"
+          ports:
+            - name: health
+              containerPort: 8082
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8082
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: uds-socket
+              mountPath: /tmp/tokenizer
+
       parallelism:
         tensor: 0
         data: 1
         dataLocal: 1
         workers: 1
+
       vllm:
         modelCommand: imageDefault
+        port: 8200
 
+      # Decode container ports (vllm port)
+      ports:
+        - containerPort: 8200
+          name: vllm
+          protocol: TCP
+
+      # Extra container config for probes and volume mounts
+      extraContainerConfig:
+        imagePullPolicy: IfNotPresent
+
+      # Additional volume mounts for decode container
+      additionalVolumeMounts:
+        - name: metrics-volume
+          mountPath: /.config
+        - name: uds-socket
+          mountPath: /tmp/tokenizer
+
+      # Additional volumes for decode pods
+      additionalVolumes:
+        - name: metrics-volume
+          emptyDir: {}
+        - name: uds-socket
+          emptyDir: {}
+
+      # Custom probes matching upstream guide
+      probes:
+        startup:
+          path: /v1/models
+          port: 8200
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 60
+        liveness:
+          path: /health
+          port: 8200
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readiness:
+          path: /v1/models
+          port: 8200
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+
+    # -------------------------------------------------------------------------
+    # Prefill Configuration -- 1 replica with uds-tokenizer
+    # -------------------------------------------------------------------------
     prefill:
-      enabled: false
-      replicas: 0
+      enabled: true
+      replicas: 1
+
+      # Monitoring
+      monitoring:
+        podmonitor:
+          enabled: true
+          portName: "vllm"
+          path: "/metrics"
+          interval: "30s"
+
+      initContainers:
+        - name: uds-tokenizer
+          image: ghcr.io/llm-d/llm-d-uds-tokenizer:v0.7.1
+          imagePullPolicy: IfNotPresent
+          restartPolicy: Always
+          env:
+            - name: LOG_LEVEL
+              value: "DEBUG"
+            - name: PROBE_PORT
+              value: "8082"
+          ports:
+            - name: health
+              containerPort: 8082
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8082
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: uds-socket
+              mountPath: /tmp/tokenizer
+
       parallelism:
         tensor: 0
         data: 1
         dataLocal: 1
         workers: 1
+
       vllm:
         modelCommand: imageDefault
+        port: 8000
 
-    # Sim scenarios do not use the routing proxy sidecar
-    routing:
-      proxy:
-        enabled: false
+      # Prefill container ports
+      ports:
+        - containerPort: 8000
+          name: vllm
+          protocol: TCP
+
+      # Extra container config for probes and volume mounts
+      extraContainerConfig:
+        imagePullPolicy: IfNotPresent
+
+      # Additional volume mounts for prefill container
+      additionalVolumeMounts:
+        - name: metrics-volume
+          mountPath: /.config
+        - name: uds-socket
+          mountPath: /tmp/tokenizer
+
+      # Additional volumes for prefill pods
+      additionalVolumes:
+        - name: metrics-volume
+          emptyDir: {}
+        - name: uds-socket
+          emptyDir: {}
+
+      # Custom probes matching upstream guide
+      probes:
+        startup:
+          path: /v1/models
+          port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 60
+        liveness:
+          path: /health
+          port: 8000
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readiness:
+          path: /v1/models
+          port: 8000
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # vLLM Common Configuration
+    # -------------------------------------------------------------------------
+    vllmCommon:
+      shmMemory: 500Mi
+
+      volumes:
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 500Mi
+
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
 
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration
     # =========================================================================
 
-    # Harness configuration for simulated workloads
-    # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR=~/data/simulated-accelerators
     workDir: "~/data/simulated-accelerators"
 
-    # Corresponds to: LLMDBENCH_HARNESS_NAME=vllm-benchmark
-    #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=random_concurrent.yaml
     harness:
       name: vllm-benchmark
       experimentProfile: random_concurrent.yaml
