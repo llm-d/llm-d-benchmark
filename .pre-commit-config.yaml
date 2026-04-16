@@ -113,3 +113,30 @@ repos:
             # showing how to construct a BenchmarkReport.
             llmdbenchmark/analysis/benchmark_report/README\.md
           )$
+
+  # ----------------------------------------------------------------
+  # Code format and linting. Format first using autopep8 to bring up
+  # to PEP8 standards. Then lint with pylint to ensure that code
+  # does not contain bugs or logical errors.
+  #
+  # Optional steps, can be ran using:
+  # pre-commit run autopep8 --hook-stage manual --all-files
+  # and
+  # pre-commit run pylint --hook-stage manual --all-files
+  # ----------------------------------------------------------------
+  - repo: https://github.com/hhatto/autopep8
+    rev: v2.3.2
+    hooks:
+      - id: autopep8
+        name: Format code with autopep8
+        stages: [manual]
+
+  - repo: local
+    hooks:
+      - id: pylint
+        name: pylint
+        entry: pylint
+        language: system
+        types: [python]
+        stages: [manual]
+        args: ["--errors-only", "--fail-under=8.0"]
