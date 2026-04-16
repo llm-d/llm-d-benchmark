@@ -484,7 +484,7 @@ def test_model_serving(
             )
 
     override_args = _build_overrides(plan_config, service_account=service_account)
-    curl_image = "curlimages/curl"
+    curl_image = "quay.io/curl/curl"
     last_error: str | None = None
 
     for attempt in range(1, max_retries + 1):

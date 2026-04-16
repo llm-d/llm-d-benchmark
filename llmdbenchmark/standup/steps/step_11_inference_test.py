@@ -416,7 +416,7 @@ class InferenceTestStep(Step):
         avoid shell quoting issues when passing through kubectl to sh -c.
         """
         override_args = _build_overrides(plan_config)
-        curl_image = "curlimages/curl"
+        curl_image = "quay.io/curl/curl"
         pod_name = f"inference-test-{_rand_suffix()}"
         payload_json = json.dumps(payload)
         payload_b64 = base64.b64encode(payload_json.encode()).decode()

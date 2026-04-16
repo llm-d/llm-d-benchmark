@@ -265,7 +265,7 @@ class SmoketestStep(Step):
         """
         protocol = "https" if str(port) == "443" else "http"
         url = f"{protocol}://{host}:{port}/health"
-        curl_image = "curlimages/curl"
+        curl_image = "quay.io/curl/curl"
         override_args = _build_overrides(plan_config)
 
         context.logger.log_info(
