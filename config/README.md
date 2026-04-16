@@ -22,6 +22,7 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
 - [Affinity Configuration](#affinity-configuration)
 - [Scenario Organization](#scenario-organization)
 - [vLLM Command Generation](#vllm-command-generation)
+- [Context-Length-Aware Routing](#context-length-aware-routing)
 - [Init Containers](#init-containers)
 - [Harness Entrypoint Configuration](#harness-entrypoint-configuration)
 - [Flow Control Configuration](#flow-control-configuration)
@@ -773,6 +774,167 @@ When `decode.vllm.customCommand` or `prefill.vllm.customCommand` is set, the aut
 ### Preprocess script
 
 The preprocess script runs before the vLLM command (separated by `;` or `&&`). Priority: `decode.vllm.customPreprocessCommand` > `vllmCommon.preprocessScript` > default (`/bin/true`).
+
+---
+
+## Context-Length-Aware Routing
+
+This section explains how to configure per-pod context-length-aware routing. This feature allows different decode (or prefill) pods to handle different context length ranges, enabling the [llm-d inference scheduler](https://github.com/llm-d/llm-d-inference-scheduler) to route requests to the most appropriate pod based on token count.
+
+### How It Works
+
+The setup has three layers:
+
+1. **Scenario YAML** -- you define `contextLengthRanges` and optionally `vllmVariants` per role (decode/prefill)
+2. **Template rendering** -- the benchmark tool converts these lists into environment variables injected into pods:
+   - `LLMDBENCH_POD_LABELS` for pod self-labeling (format: `label_eq_value,label_eq_value`)
+   - `,,`-delimited `VLLM_*` env vars for per-pod vllm parameter overrides
+3. **Pod startup** -- the preprocess script (`set_llmdbench_environment.py`) runs inside each pod, extracts the pod's index from its hostname (via LeaderWorkerSet), selects the correct variant values, re-exports the env vars, and self-labels the pod using pykube
+
+The inference scheduler's `context-length-aware` plugin then reads the `llm-d.ai/context-length-range` label from each pod and routes requests accordingly.
+
+### Prerequisites
+
+- **Multinode (LeaderWorkerSet) must be enabled.** The per-pod index is derived from sequential pod names assigned by LWS (e.g., `decode-0`, `decode-1`). Without LWS, pods get random Deployment hash suffixes and the index cannot be determined.
+- **Kubeconfig secret must be mounted.** Pods need K8s API access to self-label. This is handled by mounting the `llmdbench-context` secret (created automatically by step 04).
+- **Preprocess script must be configured.** The `vllmCommon.preprocessScript` must run `set_llmdbench_environment.py` and source the generated env file.
+
+### Scenario Configuration
+
+Add the following to your scenario YAML under the `decode` (or `prefill`) section:
+
+```yaml
+scenario:
+  - name: "my-context-aware-deployment"
+
+    # Enable multinode -- REQUIRED for per-pod variants
+    multinode:
+      enabled: true
+
+    modelservice:
+      enabled: true
+
+    decode:
+      replicas: 2
+
+      # Per-pod context-length-range labels.
+      # List length must match replicas.
+      # Each pod gets the label at its index (pod-0 gets first, pod-1 gets second).
+      contextLengthRanges:
+        - "0-8000"
+        - "8000-32768"
+
+      # Per-pod vllm parameter overrides (optional).
+      # Supported keys: maxModelLen, maxNumSeq, maxNumBatchedTokens
+      # List length must match replicas.
+      vllmVariants:
+        - maxModelLen: 8000
+          maxNumSeq: 64
+        - maxModelLen: 32768
+          maxNumSeq: 16
+
+      parallelism:
+        tensor: 4
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+    # Configure the inference extension with context-length-aware plugin
+    inferenceExtension:
+      pluginsConfigFile: "context-length-aware-config.yaml"
+      sidecar:
+        enabled: true
+      pluginsCustomConfig:
+        context-length-aware-config.yaml: |
+          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+            - type: tokenizer
+              parameters:
+                modelName: "${model.name}"
+                udsTokenizerConfig:
+                  socketFile: /tmp/tokenizer/tokenizer-uds.socket
+            - type: context-length-aware
+              parameters:
+                label: llm-d.ai/context-length-range
+                enableFiltering: true
+          schedulingProfiles:
+            - name: default
+              plugins:
+                - pluginRef: tokenizer
+                - pluginRef: context-length-aware
+
+    # Preprocess script and kubeconfig secret volume are required
+    vllmCommon:
+      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && source $HOME/llmdbench_env.sh"
+      volumes:
+        - name: k8s-llmdbench-context
+          type: secret
+          secret:
+            secretName: llmdbench-context
+      volumeMounts:
+        - name: k8s-llmdbench-context
+          mountPath: /etc/kubeconfig
+          readOnly: true
+```
+
+### What Gets Generated
+
+Given the configuration above, the rendered pod template will contain:
+
+```yaml
+env:
+  - name: VLLM_MAX_MODEL_LEN
+    value: "8000,,32768"
+  - name: VLLM_MAX_NUM_SEQ
+    value: "64,,16"
+  - name: LLMDBENCH_POD_LABELS
+    value: "llm-d.ai/context-length-range_eq_0-8000,llm-d.ai/context-length-range_eq_8000-32768"
+```
+
+At pod startup, the preprocess script:
+- **Pod decode-0**: sets `VLLM_MAX_MODEL_LEN=8000`, `VLLM_MAX_NUM_SEQ=64`, labels itself with `llm-d.ai/context-length-range=0-8000`
+- **Pod decode-1**: sets `VLLM_MAX_MODEL_LEN=32768`, `VLLM_MAX_NUM_SEQ=16`, labels itself with `llm-d.ai/context-length-range=8000-32768`
+
+### Standalone Deployments
+
+Context-length-aware routing is **not applicable** to standalone deployments. Standalone mode has no inference extension (EPP) or routing layer, so there is nothing to route requests based on context length. The `contextLengthRanges`, `vllmVariants`, and `inferenceExtension` fields only apply to the modelservice deployment path.
+
+### Verifying the Setup
+
+After standup, verify the labels are applied:
+
+```bash
+kubectl get pods -l llm-d.ai/role=decode -n <namespace> --show-labels
+```
+
+You should see each pod with a distinct `llm-d.ai/context-length-range` label.
+
+Check the EPP logs for context-length-aware plugin activation:
+
+```bash
+kubectl logs <epp-pod> -c epp -n <namespace> | grep -i "context-length"
+```
+
+### Preprocess Script
+
+The preprocess script (`set_llmdbench_environment.py`) is required when using `contextLengthRanges` or `vllmVariants`. It runs inside each pod at startup and performs two tasks:
+
+1. **Splits `,,`-delimited env vars** -- when `vllmVariants` is configured, env vars like `VLLM_MAX_MODEL_LEN="8000,,32768"` are split by the pod's LWS index, so each pod gets its own value.
+2. **Self-labels pods** -- applies the `llm-d.ai/context-length-range` label to each pod via the K8s API, so the inference scheduler can route requests based on context length.
+
+The script requires:
+- `vllmCommon.preprocessScript` set to run the script and source the env file
+- The `preprocesses` ConfigMap volume mounted at `/setup/preprocess`
+- The `llmdbench-context` secret volume mounted at `/etc/kubeconfig` (for K8s API access)
+
+See the commented-out sections in the example scenarios for the exact configuration.
+
+### Reference
+
+- [llm-d inference scheduler architecture: context-length-aware](https://github.com/llm-d/llm-d-inference-scheduler/blob/main/docs/architecture.md#contextlengthaware)
+- [GPU example scenario](scenarios/examples/gpu.yaml) -- contains commented-out `contextLengthRanges`, `vllmVariants`, and `inferenceExtension` configuration
+- [Spyre example scenario](scenarios/examples/spyre.yaml) -- contains commented-out `contextLengthRanges`, `vllmVariants`, and `inferenceExtension` configuration with Spyre-specific volumes
 
 ---
 
