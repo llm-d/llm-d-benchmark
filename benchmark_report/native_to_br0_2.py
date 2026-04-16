@@ -30,6 +30,48 @@ from .schema_v0_2 import BenchmarkReportV02, Component, Distribution, LoadSource
 from .schema_v0_2_components import HostType
 
 
+def _load_run_metadata() -> dict:
+    """Load run metadata from the YAML file written by the harness script.
+
+    The harness script writes run_metadata.yaml to the results directory
+    because environment variables exported in the harness subshell are lost
+    when the subshell exits. This function reads that file as a fallback
+    when os.environ doesn't have the harness timing/version data.
+
+    Returns:
+        dict: metadata keys (harness_start, harness_stop, harness_delta,
+              harness_args, harness_version, etc.) or empty dict if not found.
+    """
+    results_dir = os.environ.get("LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR", "")
+    if not results_dir:
+        return {}
+    metadata_file = os.path.join(results_dir, "run_metadata.yaml")
+    try:
+        with open(metadata_file, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except (FileNotFoundError, yaml.YAMLError):
+        return {}
+
+
+def _get_harness_meta(key: str, env_name: str, default: str = "") -> str:
+    """Get a harness metadata value from env var first, then run_metadata.yaml.
+
+    Args:
+        key: key name in run_metadata.yaml (e.g., 'harness_start')
+        env_name: environment variable name (e.g., 'LLMDBENCH_HARNESS_START')
+        default: fallback value if neither source has it
+
+    Returns:
+        str: the resolved value
+    """
+    val = os.environ.get(env_name, "")
+    if val:
+        return val
+    if not hasattr(_get_harness_meta, "_cache"):
+        _get_harness_meta._cache = _load_run_metadata()
+    return str(_get_harness_meta._cache.get(key, default))
+
+
 def config_hash(config: dict) -> str:
     """Compute a deterministic hash for a configuration dictionary.
 
@@ -105,20 +147,23 @@ def get_configmap(
     Returns:
         dict: ConfigMap contents as a dict, or empty dict if retrieval fails.
     """
-    if not context_dict:
-        sys.stderr.write("Empty context dictionary provided\n")
-        return {}
-
     try:
         from kubernetes import client, config as k8s_config
 
-        # Write context to a temporary file
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            yaml.dump(context_dict, f)
-            kubeconfig_path = f.name
+        # Try in-cluster config first
+        try:
+            k8s_config.load_incluster_config()
+        except k8s_config.ConfigException:
+            if not context_dict:
+                sys.stderr.write("Empty context dictionary provided and not in-cluster\n")
+                return {}
+            # Write context to a temporary file
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+                yaml.dump(context_dict, f)
+                kubeconfig_path = f.name
 
-        # Load the Kubernetes config from the temporary file
-        k8s_config.load_kube_config(config_file=kubeconfig_path)
+            # Load the Kubernetes config from the temporary file
+            k8s_config.load_kube_config(config_file=kubeconfig_path)
 
         # Create API client
         v1 = client.CoreV1Api()
@@ -185,6 +230,9 @@ def _populate_run(ev_dict: dict) -> dict:
     except FileNotFoundError:
         namespace = ev_dict.get("vllm_common_namespace", "")
 
+    description_text = os.environ.get("LLMDBENCH_DESCRIPTION_TEXT")
+    description_keywords = os.environ.get("LLMDBENCH_DESCRIPTION_KEYWORDS")
+
     br_dict = {
         "run": {
             "eid": eid,
@@ -192,10 +240,16 @@ def _populate_run(ev_dict: dict) -> dict:
             "pid": pid,
             "user": "namespace=" + namespace,
             "time": {
-                "start": os.environ.get("LLMDBENCH_HARNESS_START"),
-                "end": os.environ.get("LLMDBENCH_HARNESS_STOP"),
-                "duration": os.environ.get("LLMDBENCH_HARNESS_DELTA"),
+                "start": _get_harness_meta("harness_start", "LLMDBENCH_HARNESS_START"),
+                "end": _get_harness_meta("harness_stop", "LLMDBENCH_HARNESS_STOP"),
+                "duration": _get_harness_meta("harness_delta", "LLMDBENCH_HARNESS_DELTA"),
             },
+            "description": description_text if description_text else None,
+            "keywords": (
+                [k.strip() for k in description_keywords.split(",") if k.strip()]
+                if description_keywords
+                else None
+            ),
         },
     }
     return br_dict
@@ -207,8 +261,8 @@ def _populate_load() -> dict:
     Returns:
         dict: dict with scenario.load part of of BenchmarkReport.
     """
-    # Get arguments to harness command
-    args_str = os.environ.get("LLMDBENCH_HARNESS_ARGS", "")
+    # Get arguments to harness command (env var first, then run_metadata.yaml)
+    args_str = _get_harness_meta("harness_args", "LLMDBENCH_HARNESS_ARGS")
     kv_pairs = [kv.strip() for kv in args_str.split("--") if kv.strip()]
     args = {}
     for kv in kv_pairs:
@@ -241,7 +295,7 @@ def _populate_load() -> dict:
         "scenario": {
             "load": {
                 "standardized": {
-                    "tool_version": os.environ.get("LLMDBENCH_HARNESS_VERSION", ""),
+                    "tool_version": _get_harness_meta("harness_version", "LLMDBENCH_HARNESS_VERSION"),
                     "parallelism": os.environ.get(
                         "LLMDBENCH_HARNESS_LOAD_PARALLELISM", 1
                     ),
@@ -614,6 +668,18 @@ def _populate_benchmark_report_from_envars() -> dict:
         except Exception as e:
             sys.stderr.write(f"Failed to retrieve {ev_file}: {e}\n")
             ev_dict = {}
+
+    # In run-only mode (--endpoint-url without standup), the ConfigMap and
+    # ev.yaml won't exist. Fall back to run_metadata.yaml for basic stack info.
+    if not ev_dict:
+        run_meta = _load_run_metadata()
+        if run_meta:
+            ev_dict = {
+                "deploy_current_model": run_meta.get("model", ""),
+                "vllm_common_namespace": run_meta.get("namespace", ""),
+                "harness_stack_endpoint_url": run_meta.get("endpoint_url", ""),
+                "harness_name": run_meta.get("harness_name", ""),
+            }
 
     # Fill in more run details
     update_dict(br_dict, _populate_run(ev_dict))

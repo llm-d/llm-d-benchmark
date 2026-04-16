@@ -53,6 +53,7 @@ class DeployModelserviceStep(Step):
         release = self._require_config(plan_config, "release")
         model_id_label = plan_config.get("model_id_label", "")
         inference_port = self._require_config(plan_config, "vllmCommon", "inferencePort")
+        timeout = context.modelservice_deploy_timeout # Generic timeout for all pods in step 9
 
         if not context.dry_run:
             pc_error = self._check_priority_class(cmd, plan_config, context)
@@ -124,7 +125,7 @@ class DeployModelserviceStep(Step):
             decode_wait = cmd.wait_for_pods(
                 label="llm-d.ai/role=decode",
                 namespace=namespace,
-                timeout=1500,
+                timeout=timeout,
                 poll_interval=10,
                 description="decode pods",
             )
@@ -171,7 +172,7 @@ class DeployModelserviceStep(Step):
                 prefill_wait = cmd.wait_for_pods(
                     label="llm-d.ai/role=prefill",
                     namespace=namespace,
-                    timeout=1500,
+                    timeout=timeout,
                     poll_interval=10,
                     description="prefill pods",
                 )
@@ -181,7 +182,7 @@ class DeployModelserviceStep(Step):
             pool_wait = cmd.wait_for_pods(
                 label=f"inferencepool={model_id_label}-gaie-epp",
                 namespace=namespace,
-                timeout=1500,
+                timeout=timeout,
                 poll_interval=10,
                 description="inference pool",
             )
@@ -219,7 +220,7 @@ class DeployModelserviceStep(Step):
 
         gateway_class = self._require_config(plan_config, "gateway", "className")
 
-        if gateway_class == "kgateway":
+        if gateway_class in ("kgateway", "agentgateway"):
             service_name = f"infra-{release}-inference-gateway"
         else:
             service_name = f"{model_id_label}-gaie-epp"
@@ -244,7 +245,7 @@ class DeployModelserviceStep(Step):
         if context.is_openshift and gateway_class != "data-science-gateway-class":
             route_name = f"{release}-inference-gateway-route"
 
-            if gateway_class == "kgateway":
+            if gateway_class == "agentgateway":
                 route_service = f"infra-{release}-inference-gateway"
             else:  # istio
                 route_service = f"infra-{release}-inference-gateway-istio"
@@ -829,5 +830,5 @@ class DeployModelserviceStep(Step):
                     f"📋 Deployment metadata to configmap/{cm_name} in ns/{harness_ns}"
                 )
                 context.logger.log_info(
-                    f"   oc get configmap {cm_name} -n {harness_ns} -o yaml"
+                    f"   {cmd._kube_bin} get configmap {cm_name} -n {harness_ns} -o yaml"
                 )

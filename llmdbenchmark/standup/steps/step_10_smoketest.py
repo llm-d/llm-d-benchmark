@@ -1,10 +1,7 @@
 """Step 10 -- Smoketest deployment health and model serving."""
 
-import json
 import time
 from pathlib import Path
-
-import yaml
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
@@ -12,6 +9,8 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.utilities.endpoint import (
     _rand_suffix,
     _build_overrides,
+    _ephemeral_label_args,
+    cleanup_ephemeral_pods,
     find_standalone_endpoint,
     find_gateway_endpoint,
     test_model_serving,
@@ -54,16 +53,18 @@ class SmoketestStep(Step):
         inference_port = self._require_config(plan_config, "vllmCommon", "inferencePort")
         release = self._require_config(plan_config, "release")
 
+        if "fma" in context.deployed_methods:
+            return self._check_deployment_fma(context, plan_config, stack_name)
+
         gateway_port = "80"
         service_ip = None
-        service_name = None
 
         if is_standalone:
-            service_ip, service_name, gateway_port = find_standalone_endpoint(
+            service_ip, _, gateway_port = find_standalone_endpoint(
                 cmd, namespace, inference_port
             )
         else:
-            service_ip, service_name, gateway_port = find_gateway_endpoint(
+            service_ip, _, gateway_port = find_gateway_endpoint(
                 cmd, namespace, release
             )
 
@@ -222,6 +223,10 @@ class SmoketestStep(Step):
                 else:
                     errors.extend(route_errors)
 
+        # Clean up any ephemeral curl pods left behind by smoketest checks
+        if not context.dry_run:
+            cleanup_ephemeral_pods(cmd, namespace, context.logger)
+
         if errors:
             for err in errors:
                 context.logger.log_error(f"Smoketest: {err}")
@@ -242,7 +247,7 @@ class SmoketestStep(Step):
             stack_name=stack_name,
         )
 
-    def _check_health(
+    def _check_health(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         self,
         cmd: CommandExecutor,
         context: ExecutionContext,
@@ -289,6 +294,7 @@ class SmoketestStep(Step):
                     "--restart=Never", "--namespace", namespace,
                     f"--image={curl_image}",
                 ]
+                + _ephemeral_label_args()
                 + override_args
                 + ["--command", "--", "sh", "-c", curl_cmd]
             )
@@ -313,7 +319,7 @@ class SmoketestStep(Step):
             )
             time.sleep(poll_interval)
 
-    def _wait_for_model_ready(
+    def _wait_for_model_ready( # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         cmd: CommandExecutor,
         context: ExecutionContext,
@@ -420,3 +426,46 @@ class SmoketestStep(Step):
             _context.logger.log_warning(
                 f"Unable to fetch OpenShift route '{route_name}'"
             )
+
+    def _check_deployment_fma(self,
+                              context: ExecutionContext,
+                              plan_config: dict,
+                              stack_name: str) -> StepResult:
+        """
+        Checking if current FMA deployment was successful
+        """
+
+        errors = []
+        cmd = context.require_cmd()
+        namespace = context.require_namespace()
+        model_label = plan_config.get("model_id_label", "")
+        for resource, name in [("InferenceServerConfig",  f"fma-{model_label}"),
+                         ("LauncherrConfig",  f"fma-{model_label}"),
+                         ("LauncherPopulationPolicy",  f"fma-{model_label}"),
+                         ("ReplicaSet",  f"fma-requester-{model_label}")
+                         ]:
+            result = cmd.kube("get", resource ,"-n", namespace, name, check=False)
+            if not result.success:
+                errors.append(f"Failed to query {resource} {name}: {result.stderr}")
+            elif result.stdout.strip().split() == "":
+                errors.append(f"{resource} {name} not found.")
+
+        if errors:
+            for err in errors:
+                context.logger.log_error(f"Smoketest: {err}")
+            return StepResult(
+                step_number=self.number,
+                step_name=self.name,
+                success=False,
+                message="Smoketest failed",
+                errors=errors,
+                stack_name=stack_name,
+            )
+
+        return StepResult(
+            step_number=self.number,
+            step_name=self.name,
+            success=True,
+            message=f"All smoketests passed for {stack_name}",
+            stack_name=stack_name,
+        )

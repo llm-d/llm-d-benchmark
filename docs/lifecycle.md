@@ -15,7 +15,7 @@ cluster:
 > You can simply use your current context. **After running kubectl/oc login**, the tool will use your current context automatically, with no need to configure cluster URL or token.
 
 > [!IMPORTANT]
-> No matter which method used, the HuggingFace token (`LLMDBENCH_HF_TOKEN` environment variable or `huggingface.token` in YAML) is always required for model downloading.
+> For **gated models** (e.g. Llama), a HuggingFace token is required (`LLMDBENCH_HF_TOKEN` environment variable or `huggingface.token` in YAML). For **public models** (e.g. `facebook/opt-125m`), the token is optional -- when no token is found, the tool automatically sets `huggingface.enabled: false` and skips secret creation and authentication steps.
 
 A complete list of available options (and their default values) can be found by running
  `llmdbenchmark standup --help`

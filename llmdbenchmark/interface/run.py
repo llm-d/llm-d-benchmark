@@ -99,6 +99,12 @@ def add_subcommands(parser: argparse._SubParsersAction):
         default=env("LLMDBENCH_DATASET"),
         help="URL for dataset to be replayed by the harness.",
     )
+    run_parser.add_argument(
+        "--data-access-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_DATA_ACCESS_TIMEOUT"),
+        help="Seconds to wait for the harness data-access pod to become Ready.",
+    )
 
     # Monitoring
     run_parser.add_argument(

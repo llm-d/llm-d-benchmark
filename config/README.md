@@ -248,7 +248,7 @@ The base configuration file containing every configurable parameter with sensibl
 | `release` | Helm release name prefix |
 | `gateway` | Gateway class and provider configuration |
 | `serviceAccount` | Service account name and configuration |
-| `huggingface` | HuggingFace token secret name and key |
+| `huggingface` | HuggingFace token, secret name, and enabled flag |
 | `storage` | PVC sizes, storage class, download settings |
 | `decode` | Decode pod configuration (replicas, resources, vLLM settings) |
 | `prefill` | Prefill pod configuration (disabled by default) |
@@ -266,6 +266,207 @@ The base configuration file containing every configurable parameter with sensibl
 
 **YAML anchors:** The file uses anchors (`&name`) and aliases (`*name`) to ensure consistency. For example, `&vllm_service_port` is defined once as `8000` and referenced by `decode.vllm.servicePort`, `prefill.vllm.servicePort`, and `vllmCommon.inferencePort`.
 
+## HuggingFace Configuration
+
+The `huggingface` section controls authentication for downloading models from HuggingFace Hub.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `huggingface.enabled` | `bool` | `true` | Enable HuggingFace authentication. Auto-set to `false` at render time when no token is found |
+| `huggingface.token` | `str` | `""` | HuggingFace API token (typically set via `HF_TOKEN` or `LLMDBENCH_HF_TOKEN` env var) |
+| `huggingface.secretName` | `str` | `hf-token` | Name of the Kubernetes secret storing the token |
+| `huggingface.secretKey` | `str` | `HF_TOKEN` | Key within the secret |
+
+When `huggingface.enabled` is `false`, the following are skipped:
+- HuggingFace token secret creation in the model namespace
+- `hf auth login` in the download job
+- `secretKeyRef` mounts for `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` on vLLM and harness pods
+- `authSecretName` on the ModelService CR
+
+This allows public models (e.g. `facebook/opt-125m`) to be deployed without a token. Gated models (e.g. `meta-llama/Llama-3.1-8B`) require a valid token and will fail at the model access check if one is not provided.
+
+The `enabled` flag is auto-computed during plan rendering by `_resolve_hf_token()` in `render_plans.py`. It checks `HF_TOKEN`, `LLMDBENCH_HF_TOKEN`, and the scenario YAML in that order.
+
+## Config Variable Substitution
+
+Scenario files support `${dotted.path}` references that are resolved at render time against the merged config. This avoids hard-coding values like model names in multiple places.
+
+### Syntax
+
+Use `${section.key}` to reference any scalar value in the config. The path must contain at least one dot — this distinguishes config variables from shell variables, which are left untouched.
+
+| Pattern | Resolved? | Why |
+|---|---|---|
+| `${model.name}` | Yes | Dotted path → config lookup |
+| `${model.path}` | Yes | Dotted path → config lookup |
+
+### Available variables
+
+Any scalar value in the merged config (defaults + scenario) can be referenced. Common examples:
+
+| Variable | Resolves to | Example value |
+|---|---|---|
+| `${model.name}` | `model.name` | `facebook/opt-125m` |
+| `${model.path}` | `model.path` | `models/facebook/opt-125m` |
+| `${model.huggingfaceId}` | `model.huggingfaceId` | `facebook/opt-125m` |
+| `${model.maxModelLen}` | `model.maxModelLen` | `32768` |
+| `${namespace.name}` | `namespace.name` | `my-namespace` |
+
+### Where to use
+
+Config variables work in any string field in the scenario YAML, including fields that are normally passed through as raw text:
+
+- `customCommand` — vLLM serve commands for decode/prefill/standalone
+- `extraEnvVars` — environment variable values
+- `pluginsCustomConfig` — inline EPP plugin configuration
+
+### Example
+
+```yaml
+scenario:
+  - name: my-scenario
+    model:
+      name: meta-llama/Llama-3.1-8B
+      path: models/meta-llama/Llama-3.1-8B
+
+    decode:
+      vllm:
+        customCommand: |
+          vllm serve /model-cache/${model.path} \
+            --served-model-name ${model.name} \
+            --port $VLLM_METRICS_PORT
+      extraEnvVars:
+        - name: SERVED_MODEL_NAME
+          value: "${model.name}"
+
+    inferenceExtension:
+      pluginsCustomConfig:
+        my-config.yaml: |
+          plugins:
+            - type: tokenizer
+              parameters:
+                modelName: "${model.name}"
+```
+
+Shell variables like `$VLLM_METRICS_PORT` are preserved for runtime resolution. Config variables like `${model.name}` are substituted at render time.
+
+### Behavior
+
+- Substitution runs after all resolvers (model, namespace, version, etc.) so all values are available.
+- If a reference cannot be resolved, it is left as-is and a warning is logged.
+- Non-string values (integers, booleans) are converted to strings when embedded.
+- The original config dict is not mutated — a deep copy is used.
+
+## Model Artifact Protocol (`modelservice.uriProtocol`)
+
+Controls how the modelservice Helm chart locates and loads model weights. Set via `modelservice.uriProtocol` in your scenario or defaults.
+
+| Protocol | `modelArtifacts.uri` Generated | PVC Created | Download Job | Model Loading |
+|----------|-------------------------------|-------------|--------------|---------------|
+| `pvc` (default) | `pvc://<modelPvc.name>/<model.path>` | Yes | Yes (pre-download to PVC) | Served from PVC mount |
+| `hf` | `hf://<model.huggingfaceId>` | No | No | Downloaded at runtime by modelservice |
+
+### How it works
+
+**`pvc://` protocol (default):**
+
+1. Step 04 creates a PersistentVolumeClaim (`storage.modelPvc`)
+2. Step 04 launches a download Job (`04_download_job.yaml.j2`) that runs `hf download` to fetch the model from HuggingFace Hub into the PVC
+3. Step 04 waits for the download to complete
+4. Template 13 generates `modelArtifacts.uri: pvc://<pvc-name>/<model-path>`
+5. The modelservice Helm chart mounts the PVC and serves from it
+
+This is the recommended protocol for production — models are pre-cached and startup is fast.
+
+**`hf://` protocol:**
+
+1. Step 04 skips PVC creation and download job entirely
+2. Template 13 generates `modelArtifacts.uri: hf://<model.huggingfaceId>`
+3. The modelservice Helm chart downloads the model at pod startup time from HuggingFace Hub
+4. For gated models, `huggingface.secretName` is passed as `authSecretName` so the chart can authenticate
+
+This is useful for CI/CD (no PVC needed), quick testing, or when storage provisioning is unavailable.
+
+### Scenario example
+
+```yaml
+scenario:
+  - name: "my-hf-deploy"
+    model:
+      name: facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
+    modelservice:
+      enabled: true
+      uriProtocol: hf     # No PVC, no download job — fetch at runtime
+```
+
+### Code path
+
+1. `llmdbenchmark/standup/steps/step_04_model_namespace.py` — `_requires_pvc_download()` returns `False` when `uriProtocol != "pvc"`
+2. `config/templates/jinja/13_ms-values.yaml.j2` — conditionally generates `hf://` or `pvc://` URI
+3. `config/templates/jinja/04_download_job.yaml.j2` — only rendered/applied when protocol is `pvc`
+
+## Chart Versions
+
+All Helm chart and component versions are centralized in the `chartVersions` section of `defaults.yaml`. This is the single place to bump versions when upgrading components.
+
+| Field | Default | Description |
+|---|---|---|
+| `chartVersions.istioBase` | `1.29.1` | Istio base chart version |
+| `chartVersions.istiod` | `1.29.1` | Istiod chart version (also used as gateway version) |
+| `chartVersions.llmDInfra` | `auto` | llm-d-infra Helm chart (auto-resolved via helm) |
+| `chartVersions.llmDModelservice` | `auto` | llm-d-modelservice Helm chart (auto-resolved via helm) |
+| `chartVersions.inferencePool` | `v1.3.0` | Inference pool chart version |
+| `chartVersions.gaie` | `v1.3.1` | GAIE chart version |
+| `chartVersions.wva` | `auto` | Workload Variant Autoscaler chart (auto-resolved) |
+| `chartVersions.kgateway` | `v2.2.1` | kgateway chart version |
+| `chartVersions.lws` | `0.8.0` | LeaderWorkerSet chart version |
+
+Versions set to `auto` are resolved at plan time by `VersionResolver` using `helm search repo` or OCI registry queries (skopeo/crane). Fixed versions are used as-is.
+
+### Overriding versions in a scenario
+
+Add a `chartVersions` section to your scenario YAML. Only include the versions you want to change — the rest inherit from defaults:
+
+```yaml
+scenario:
+  - name: "my-upgrade-test"
+    chartVersions:
+      llmDModelservice: "0.5.0"    # pin to specific version
+      kgateway: "v2.3.0"           # upgrade kgateway
+```
+
+### Pinning all versions for reproducibility
+
+To ensure a benchmark run is fully reproducible, pin every `auto` version to a specific value. Run `plan` first to see what `auto` resolves to, then copy those values into your scenario:
+
+```yaml
+scenario:
+  - name: "reproducible-bench"
+    chartVersions:
+      llmDInfra: "v1.4.0"          # was auto
+      llmDModelservice: "v0.4.9"   # was auto
+      wva: "0.5.1"                 # was auto
+```
+
+### Upgrading Istio
+
+Istio uses two charts (`istio-base` and `istiod`) that must be the same version. Override both:
+
+```yaml
+chartVersions:
+  istioBase: "1.30.0"
+  istiod: "1.30.0"
+```
+
+### How `auto` resolution works
+
+1. For charts with a `helmRepositories` entry: queries the repo via `helm search repo` or OCI registry
+2. Falls back to `skopeo list-tags` or `crane ls` for OCI registries
+3. Selects the latest semver-compatible tag
+4. Resolved versions are logged during `plan`: `📦 Resolved chart llmDInfra to v1.4.0 (via repo URL)`
+
+> **Note:** `auto` versions may change between runs as upstream charts release new versions. Pin versions in your scenario for consistent results across runs.
 ## KV Transfer Configuration
 
 The `vllmCommon.kvTransfer` section controls the `--kv-transfer-config` argument passed to the `vllm serve` command. This is how vLLM knows which KV cache transfer connector to use and how to configure it.
@@ -771,6 +972,7 @@ Configured under the top-level `monitoring` section in `defaults.yaml`:
 | `monitoring.podmonitor.enabled` | `true` | Create PodMonitor resources for Prometheus scraping |
 | `monitoring.metricsPath` | `/metrics` | Prometheus scrape path |
 | `monitoring.scrapeInterval` | `"30s"` | Prometheus scrape interval |
+| `monitoring.installPrometheusCrds` | `false` | Install Prometheus CRDs (PodMonitor, ServiceMonitor) during standup. Required for clusters without Prometheus Operator (e.g. Kind). |
 
 When `monitoring.enabled` is `true` and running on OpenShift, the `03_cluster-monitoring-config.yaml.j2` template renders a ConfigMap to enable user workload monitoring.
 
@@ -1036,6 +1238,51 @@ oc get configmap llm-d-benchmark-standup-parameters -n <namespace> -o yaml
 
 ---
 
+## Pod Scheduling
+
+### Priority Class
+
+Set `priorityClassName` to control pod scheduling priority. This maps to the Kubernetes `priorityClassName` field on the pod spec.
+
+**Set for all pods (recommended):**
+
+```yaml
+vllmCommon:
+  priorityClassName: "high-priority"
+```
+
+This applies to decode, prefill, and standalone pods. Matches the bash `LLMDBENCH_VLLM_COMMON_PRIORITY_CLASS_NAME`.
+
+**Override per role:**
+
+```yaml
+decode:
+  priorityClassName: "high-priority"
+prefill:
+  priorityClassName: "low-priority"
+```
+
+Per-role values override `vllmCommon.priorityClassName`.
+
+**Disable (default):**
+
+Leave empty or set to `"none"`. No `priorityClassName` is rendered and pods use the cluster default priority.
+
+> [!NOTE]
+> The PriorityClass must already exist on the cluster. Create it with `kubectl apply` before standup. Example: `kubectl create priorityclass high-priority --value=1000 --global-default=false`
+
+### Scheduler Name
+
+Override the pod scheduler (e.g., for Spyre which requires `spyre-scheduler`):
+
+```yaml
+schedulerName: spyre-scheduler
+```
+
+This sets `schedulerName` on all modelservice pods. If not set, Kubernetes uses the default scheduler.
+
+---
+
 ## Scenarios
 
 Scenario files provide deployment-specific overrides that are merged on top of `defaults.yaml`. They configure things like model name, GPU count, namespace, image tags, and deployment topology.
@@ -1061,8 +1308,7 @@ Minimal starting points for common hardware:
 |----------|-------------|
 | `cpu.yaml` | CPU-only deployment (no GPU, uses vllm-cpu-release image) |
 | `gpu.yaml` | Standard NVIDIA GPU deployment |
-| `sim.yaml` | Simulated inference (llm-d-inference-sim, no GPU required) |
-| `sim-small.yaml` | Minimal simulated deployment (small PVC, low resources) |
+| `sim.yaml` | Simulated inference (llm-d-inference-sim, no GPU required; minimal PVC and resources) |
 | `spyre.yaml` | IBM Spyre accelerator |
 
 ### `scenarios/cicd/`
@@ -1071,7 +1317,7 @@ Used by automated CI/CD pipelines:
 
 | Scenario | Description |
 |----------|-------------|
-| `kind-sim.yaml` | Kind cluster with simulated accelerators |
+| `kind-sim.yaml` | Kind cluster with `llm-d-inference-sim` (no GPU, CPU-only, public model). Exercises the full modelservice and standalone paths in CI. |
 | `gke-h100.yaml` | Google Kubernetes Engine with H100 |
 | `cks.yaml` | Cloud Kubernetes Service with H200 |
 | `ocp.yaml` | OpenShift Container Platform with Istio |

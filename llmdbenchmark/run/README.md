@@ -124,6 +124,7 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> -z
 | `--analyze` | | Run local analysis on collected results |
 | `-s STEPS` | | Step filter (e.g., `0,1,6` or `2-8`) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` | Kubeconfig path |
+| `--data-access-timeout N` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready (default: 120). |
 
 ## Step Details
 

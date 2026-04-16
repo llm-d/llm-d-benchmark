@@ -11,6 +11,7 @@ from llmdbenchmark.smoketests.report import CheckResult, SmoketestReport
 from llmdbenchmark.utilities.endpoint import (
     _rand_suffix,
     _build_overrides,
+    _ephemeral_label_args,
     find_standalone_endpoint,
     find_gateway_endpoint,
     test_model_serving,
@@ -50,6 +51,7 @@ class BaseSmoketest:
         Returns (service_ip, gateway_port, is_standalone).
         """
         is_standalone = "standalone" in context.deployed_methods
+        is_fma = "fma" in context.deployed_methods
         namespace = context.require_namespace()
 
         inference_port = _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
@@ -59,6 +61,8 @@ class BaseSmoketest:
             service_ip, _, gateway_port = find_standalone_endpoint(
                 cmd, namespace, inference_port
             )
+        elif is_fma:
+            return None, "0", False
         else:
             service_ip, _, gateway_port = find_gateway_endpoint(
                 cmd, namespace, release
@@ -86,6 +90,10 @@ class BaseSmoketest:
         model_name = _nested_get(plan_config, "model", "name") or ""
         model_id_label = plan_config.get("model_id_label", "") or _nested_get(plan_config, "model", "shortName") or ""
         standalone_role = _nested_get(plan_config, "standalone", "role") or "standalone"
+
+        # skip base healh checks for FMA
+        if "fma" in context.deployed_methods:
+            return report
 
         service_ip, gateway_port, is_standalone = self.discover_endpoint(
             cmd, context, plan_config,
@@ -294,6 +302,10 @@ class BaseSmoketest:
         plan_config = _load_config(stack_path)
 
         model_name = _nested_get(plan_config, "model", "name") or ""
+
+        # skip base inference test for FMA
+        if "fma" in context.deployed_methods:
+            return report
 
         service_ip, gateway_port, _is_standalone = self.discover_endpoint(
             cmd, context, plan_config,
@@ -652,18 +664,29 @@ class BaseSmoketest:
         )
         expected_replicas = role_config.get("replicas")
         if expected_replicas is not None:
+            expected_replicas = int(expected_replicas)
+            # When multinode (LWS) is enabled, each replica spawns
+            # ``workers`` pods (1 leader + N-1 workers).
+            multinode_enabled = _nested_get(config, "multinode", "enabled")
+            if multinode_enabled:
+                workers = int(
+                    role_config.get("parallelism", {}).get("workers", 1)
+                )
+                expected_pods = expected_replicas * workers
+            else:
+                expected_pods = expected_replicas
             pod_details = ", ".join(
                 f"{p.get('metadata', {}).get('name', '?')}@{p.get('spec', {}).get('nodeName', '?')}"
                 for p in pods
             ) or "none"
             report.add(CheckResult(
                 f"{prefix}_replicas",
-                len(pods) == int(expected_replicas),
-                expected=str(expected_replicas),
+                len(pods) == expected_pods,
+                expected=str(expected_pods),
                 actual=str(len(pods)),
                 message=(
                     f"{role} pods in ns/{namespace}: "
-                    f"{len(pods)} (expected {expected_replicas}) [{pod_details}]"
+                    f"{len(pods)} (expected {expected_pods}) [{pod_details}]"
                 ),
             ))
 
@@ -1022,6 +1045,7 @@ class BaseSmoketest:
                     "--restart=Never", "--namespace", namespace,
                     f"--image={curl_image}",
                 ]
+                + _ephemeral_label_args()
                 + override_args
                 + ["--command", "--", "sh", "-c", curl_cmd]
             )
@@ -1333,6 +1357,7 @@ class BaseSmoketest:
                 "--restart=Never", "--namespace", namespace,
                 f"--image={curl_image}",
             ]
+            + _ephemeral_label_args()
             + override_args
             + ["--command", "--", "sh", "-c", curl_cmd]
         )

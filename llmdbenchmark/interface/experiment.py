@@ -37,7 +37,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
         "-t",
         "--methods",
         default=env("LLMDBENCH_METHODS"),
-        help="Deploy method (standalone, modelservice).",
+        help="Deploy method (standalone, modelservice, fma).",
     )
     exp_parser.add_argument(
         "-m",
@@ -101,6 +101,12 @@ def add_subcommands(parser: argparse._SubParsersAction):
         type=int,
         default=env_int("LLMDBENCH_WAIT_TIMEOUT"),
         help="Seconds to wait for harness completion (0 = do not wait).",
+    )
+    exp_parser.add_argument(
+        "--data-access-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_DATA_ACCESS_TIMEOUT"),
+        help="Seconds to wait for the harness data-access pod to become Ready.",
     )
     exp_parser.add_argument(
         "-x",

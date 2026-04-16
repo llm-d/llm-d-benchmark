@@ -30,7 +30,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
     smoketest_parser.add_argument(
         "-t", "--methods",
         default=env("LLMDBENCH_METHODS"),
-        help="Deployment methods (standalone, modelservice).",
+        help="Deployment methods (standalone, modelservice, fma).",
     )
     smoketest_parser.add_argument(
         "--parallel",

@@ -16,7 +16,7 @@ inferenceExtension:
       port: {{ inferenceExtension.zmqPort }}
       targetPort: {{ inferenceExtension.zmqPort }}
       protocol: TCP
-{% if huggingface is defined and huggingface.secretName is defined and huggingface.secretName %}
+{% if huggingface.enabled %}
   env:
     - name: HF_TOKEN
       valueFrom:
@@ -110,13 +110,15 @@ inferencePool:
       llm-d.ai/model: {{ model_id_label }}
 {% if inferenceExtension.inferencePoolProviderConfig is defined and inferenceExtension.inferencePoolProviderConfig %}
   provider:
-    {{ gateway.className | default('istio') }}:
+    {{ gateway.className }}:
 {{ inferenceExtension.inferencePoolProviderConfig | toyaml | indent(6, false) }}
 {% endif %}
 
-{% set gw_provider = gateway.provider | default(gateway.className | default('istio')) %}
-{% if gw_provider in ['gke', 'istio'] %}
+{# Only istio and gke need a provider hint for the inference-pool chart.
+   agentgateway, kgateway, and data-science-gateway-class don't require one. #}
+{% set gw_class = gateway.className %}
+{% if gw_class in ['gke', 'istio'] %}
 provider:
-  name: {{ gw_provider }}
+  name: {{ gw_class }}
 {% endif %}
 {% endif %}

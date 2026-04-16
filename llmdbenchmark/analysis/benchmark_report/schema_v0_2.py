@@ -661,6 +661,8 @@ class ResourceMetrics(BaseModel):
     """Number of requests waiting in queue."""
     swapped_requests: Statistics | None = None
     """Number of swapped out requests."""
+    preemptions: Statistics | None = None
+    """Number of request preemptions due to memory pressure."""
 
     @model_validator(mode="after")
     def check_units(self):
@@ -727,6 +729,11 @@ class ResourceMetrics(BaseModel):
         if self.swapped_requests and self.swapped_requests.units not in UNITS_QUANTITY:
             raise ValueError(
                 f'Invalid units "{self.swapped_requests.units}", must be one of:'
+                f" {' '.join(UNITS_QUANTITY)}"
+            )
+        if self.preemptions and self.preemptions.units not in UNITS_QUANTITY:
+            raise ValueError(
+                f'Invalid units "{self.preemptions.units}", must be one of:'
                 f" {' '.join(UNITS_QUANTITY)}"
             )
         return self
@@ -921,6 +928,10 @@ class Run(BaseModel):
     """Time details of experiment."""
     user: str | None = None
     """Username that executed experiment."""
+    description: str | None = None
+    """User-provided description of the experiment."""
+    keywords: list[str] | None = None
+    """User-provided keywords/tags for the experiment."""
 
 
 class Scenario(BaseModel):

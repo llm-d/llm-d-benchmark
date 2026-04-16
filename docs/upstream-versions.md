@@ -42,19 +42,21 @@
 | **inferencemax (bench_serving)** | `ee867231de0b268e2810a6e31751b23cf5903fc5` | commit SHA | `build/Dockerfile` (`INFERENCEMAX_COMMIT`) | [kimbochen/bench_serving](https://github.com/kimbochen/bench_serving) |
 | **Python base image** | `3.12.9-slim-bookworm` | image tag | `build/Dockerfile` (`FROM`) | [python (Docker Hub)](https://hub.docker.com/_/python) |
 
-## Python Dependencies (config_explorer)
+## Python Dependencies (planner / llm-d-planner)
+
+Installed via: `pip install git+https://github.com/llm-d-incubation/llm-d-planner.git@f51812bebca30e0291ec541bd2ef2acf0572e8a4`
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |-----------|-------------|----------|---------------|---------------|
-| **huggingface_hub** | `>=0.34.4` | minimum version | `config_explorer/pyproject.toml` | [huggingface/huggingface_hub](https://github.com/huggingface/huggingface_hub) |
-| **transformers** | `>=4.55.4` | minimum version | `config_explorer/pyproject.toml` | [huggingface/transformers](https://github.com/huggingface/transformers) |
-| **pydantic** | `>=2.11.7` | minimum version | `config_explorer/pyproject.toml` | [pydantic/pydantic](https://github.com/pydantic/pydantic) |
-| **pandas** | `>=2.3.1` | minimum version | `config_explorer/pyproject.toml` | [pandas-dev/pandas](https://github.com/pandas-dev/pandas) |
-| **numpy** | `>=2.3.2` | minimum version | `config_explorer/pyproject.toml` | [numpy/numpy](https://github.com/numpy/numpy) |
-| **scipy** | `>=1.16.1` | minimum version | `config_explorer/pyproject.toml` | [scipy/scipy](https://github.com/scipy/scipy) |
-| **matplotlib** | `>=3.10.5` | minimum version | `config_explorer/pyproject.toml` | [matplotlib/matplotlib](https://github.com/matplotlib/matplotlib) |
-| **PyYAML** | `>=6.0.2` | minimum version | `config_explorer/pyproject.toml` | [yaml/pyyaml](https://github.com/yaml/pyyaml) |
-| **llm-optimizer** | `main` | git branch | `config_explorer/pyproject.toml` | [bentoml/llm-optimizer](https://github.com/bentoml/llm-optimizer) |
+| **huggingface_hub** | `>=0.34.4` | minimum version | `llm-d-planner/pyproject.toml` | [huggingface/huggingface_hub](https://github.com/huggingface/huggingface_hub) |
+| **transformers** | `>=4.55.4` | minimum version | `llm-d-planner/pyproject.toml` | [huggingface/transformers](https://github.com/huggingface/transformers) |
+| **pydantic** | `==2.12.5` | exact version | `llm-d-planner/pyproject.toml` | [pydantic/pydantic](https://github.com/pydantic/pydantic) |
+| **pandas** | `==3.0.2` | exact version | `llm-d-planner/pyproject.toml` | [pandas-dev/pandas](https://github.com/pandas-dev/pandas) |
+| **fastapi** | `>=0.115.3` | minimum version | `llm-d-planner/pyproject.toml` | [fastapi/fastapi](https://github.com/fastapi/fastapi) |
+| **uvicorn** | `==0.44.0` | exact version | `llm-d-planner/pyproject.toml` | [encode/uvicorn](https://github.com/encode/uvicorn) |
+| **ollama** | `==0.6.1` | exact version | `llm-d-planner/pyproject.toml` | [ollama/ollama-python](https://github.com/ollama/ollama-python) |
+| **psycopg2-binary** | `==2.9.11` | exact version | `llm-d-planner/pyproject.toml` | [psycopg/psycopg2](https://github.com/psycopg/psycopg2) |
+| **llm-optimizer** | git main | git ref | `llm-d-planner/pyproject.toml` | [bentoml/llm-optimizer](https://github.com/bentoml/llm-optimizer) |
 
 ## Python Dependencies (analysis)
 

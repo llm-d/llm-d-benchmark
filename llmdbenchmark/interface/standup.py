@@ -21,12 +21,14 @@ def add_subcommands(parser: argparse._SubParsersAction):
         help="Step list (comma-separated values or ranges, e.g. 0,1,5 or 1-7).",
     )
     standup_parser.add_argument(
-        "-c", "--scenario",
+        "-c",
+        "--scenario",
         default=env("LLMDBENCH_SCENARIO"),
         help="Scenario file to source environment variables from.",
     )
     standup_parser.add_argument(
-        "-m", "--models",
+        "-m",
+        "--models",
         default=env("LLMDBENCH_MODELS"),
         help="List of models to be stood up.",
     )
@@ -37,27 +39,32 @@ def add_subcommands(parser: argparse._SubParsersAction):
         help="Namespaces to use (deploy_namespace, benchmark_namespace).",
     )
     standup_parser.add_argument(
-        "-t", "--methods",
+        "-t",
+        "--methods",
         default=env("LLMDBENCH_METHODS"),
-        help="Standup methods (standalone, modelservice).",
+        help="Standup methods (standalone, modelservice, fma).",
     )
     standup_parser.add_argument(
-        "-a", "--affinity",
+        "-a",
+        "--affinity",
         default=env("LLMDBENCH_AFFINITY"),
         help="Kubernetes node affinity configuration.",
     )
     standup_parser.add_argument(
-        "-b", "--annotations",
+        "-b",
+        "--annotations",
         default=env("LLMDBENCH_ANNOTATIONS"),
         help="Kubernetes pod annotations.",
     )
     standup_parser.add_argument(
-        "-r", "--release",
+        "-r",
+        "--release",
         default=env("LLMDBENCH_RELEASE"),
         help="Modelservice Helm chart release name.",
     )
     standup_parser.add_argument(
-        "-u", "--wva",
+        "-u",
+        "--wva",
         default=env("LLMDBENCH_WVA"),
         help="Enable Workload Variant Autoscaler.",
     )
@@ -85,4 +92,22 @@ def add_subcommands(parser: argparse._SubParsersAction):
         action="store_true",
         default=False,
         help="Skip automatic smoketest after standup completes.",
+    )
+    standup_parser.add_argument(
+        "--standalone-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for the vLLM pods to deploy during standup in standalone mode.",
+    )
+    standup_parser.add_argument(
+        "--gateway-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for gateway infrastructure pods to deploy during standup with modelservice.",
+    )
+    standup_parser.add_argument(
+        "--modelservice-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for decode, prefill and inference pool pods to deploy during standup with modelservice.",
     )

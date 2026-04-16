@@ -24,6 +24,7 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.utilities.endpoint import (
     _rand_suffix,
     _build_overrides,
+    _ephemeral_label_args,
     find_standalone_endpoint,
     find_gateway_endpoint,
 )
@@ -66,6 +67,9 @@ class InferenceTestStep(Step):
             phase=Phase.STANDUP,
             per_stack=True,
         )
+
+    def should_skip(self, context: ExecutionContext) -> bool:
+        return "fma" in context.deployed_methods
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
@@ -433,6 +437,7 @@ class InferenceTestStep(Step):
                 "--restart=Never", "--namespace", namespace,
                 f"--image={curl_image}",
             ]
+            + _ephemeral_label_args()
             + override_args
             + ["--command", "--", "sh", "-c", curl_cmd]
         )

@@ -17,6 +17,10 @@ def _rand_suffix(length: int = 8) -> str:
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
 
+EPHEMERAL_POD_LABEL = "llm-d-benchmark/ephemeral=true"
+"""Label applied to all ephemeral curl/smoketest pods for cleanup."""
+
+
 def _build_overrides(plan_config: dict | None, service_account: str | None = None) -> list[str]:
     """Build --overrides args for ephemeral curl pods (imagePullSecrets, serviceAccount)."""
     overrides: dict = {}
@@ -26,7 +30,7 @@ def _build_overrides(plan_config: dict | None, service_account: str | None = Non
             overrides.setdefault("spec", {})["imagePullSecrets"] = [
                 {"name": pull_secret}
             ]
-            
+
     sa_name = service_account or (plan_config.get("serviceAccount", {}).get("name") if plan_config else None)
     if sa_name:
         overrides.setdefault("spec", {})["serviceAccountName"] = sa_name
@@ -34,6 +38,34 @@ def _build_overrides(plan_config: dict | None, service_account: str | None = Non
     if overrides:
         return ["--overrides", f"'{json.dumps(overrides)}'"]
     return []
+
+
+def _ephemeral_label_args() -> list[str]:
+    """Return kubectl args to label ephemeral pods for cleanup."""
+    return [f"--labels={EPHEMERAL_POD_LABEL}"]
+
+
+def cleanup_ephemeral_pods(
+    cmd: CommandExecutor, namespace: str, logger=None,
+) -> None:
+    """Delete all completed ephemeral pods created by smoketest/endpoint checks.
+
+    Targets pods with the ``llm-d-benchmark/ephemeral=true`` label that are
+    in Succeeded or Failed phase.
+    """
+    for phase in ("Succeeded", "Failed"):
+        result = cmd.kube(
+            "delete", "pods",
+            f"-l", EPHEMERAL_POD_LABEL,
+            f"--field-selector=status.phase={phase}",
+            "--namespace", namespace,
+            check=False,
+        )
+        if result.success and result.stdout.strip() and "No resources" not in result.stdout:
+            if logger:
+                logger.log_info(
+                    f"Cleaned up ephemeral pods ({phase}) in ns/{namespace}"
+                )
 
 
 def find_standalone_endpoint(
@@ -64,6 +96,31 @@ def find_standalone_endpoint(
         svc_port = parts[2] if len(parts) > 2 else "80"
         return ip, name, svc_port
     return None, None, "80"
+
+def find_fma_endpoint(cmd: CommandExecutor, namespace: str) -> str | None:
+    """Find FMA replicaset name.
+
+    Queries for replicaset labelled ``stood-up-from=llm-d-benchmark``.
+
+    Returns:
+        name -- None if not found.
+    """
+
+    result = cmd.kube(
+        "get",
+        "replicaset",
+        "-l",
+        "stood-up-from=llm-d-benchmark",
+        "--namespace",
+        namespace,
+        "-o",
+        "jsonpath={.items[*].metadata.name}",
+        check=False,
+    )
+    if result.success and result.stdout.strip():
+        return f"{result.stdout.strip()}.{namespace}.cluster.local"
+
+    return None
 
 
 def find_gateway_endpoint(
@@ -394,6 +451,38 @@ def test_model_serving(
     """
     protocol = "https" if str(port) == "443" else "http"
     url = f"{protocol}://{host}:{port}/v1/models"
+    
+    # Auto-ensure service account and RBAC
+    sa_name = service_account or (plan_config.get("serviceAccount", {}).get("name") if plan_config else "default")
+    if sa_name:
+        if sa_name != "default":
+            sa_check = cmd.kube("get", "sa", sa_name, "--namespace", namespace, check=False)
+            if not sa_check.success or "not found" in (sa_check.stderr + sa_check.stdout).lower():
+                cmd.logger.log_info(f"ServiceAccount '{sa_name}' not found, auto-creating it...")
+                cmd.kube("create", "sa", sa_name, "--namespace", namespace, check=False)
+        
+        # Always ensure the required RBAC role exists
+        role_name = f"{sa_name}-role"
+        role_check = cmd.kube("get", "role", role_name, "--namespace", namespace, check=False)
+        if not role_check.success or "not found" in (role_check.stderr + role_check.stdout).lower():
+            cmd.logger.log_info(f"RBAC Role '{role_name}' missing for ServiceAccount '{sa_name}', auto-creating it...")
+            cmd.kube(
+                "create", "role", role_name,
+                "--verb=get,list", "--resource=configmaps,pods,pods/log",
+                "--namespace", namespace,
+                check=False
+            )
+            
+            # Always ensure RoleBinding
+            binding_name = f"{sa_name}-binding"
+            cmd.kube(
+                "create", "rolebinding", binding_name,
+                f"--role={role_name}",
+                f"--serviceaccount={namespace}:{sa_name}",
+                "--namespace", namespace,
+                check=False
+            )
+
     override_args = _build_overrides(plan_config, service_account=service_account)
     curl_image = "curlimages/curl"
     last_error: str | None = None
@@ -418,6 +507,7 @@ def test_model_serving(
                 namespace,
                 f"--image={curl_image}",
             ]
+            + _ephemeral_label_args()
             + override_args
             + [
                 "--command",

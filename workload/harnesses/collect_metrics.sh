@@ -152,7 +152,7 @@ collect_metrics_snapshot() {
     local pids=""
     echo "$pod_info" | while read -r pod_name pod_ip; do
         [[ -z "$pod_ip" || -z "$pod_name" ]] && continue
-        local pod_metrics_file="$METRICS_DIR/raw/${pod_name}_${timestamp}_metrics.txt"
+        local pod_metrics_file="$METRICS_DIR/raw/${pod_name}_${timestamp}_metrics.log"
 
         collect_prometheus_metrics_from_pod "$pod_name" "$pod_ip" "$iso_timestamp" "$pod_metrics_file" &
         pids="$pids $!"

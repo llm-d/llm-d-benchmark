@@ -20,7 +20,8 @@ class UninstallHelmStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        return "modelservice" not in context.deployed_methods
+        return ("modelservice" not in context.deployed_methods and
+                "fma" not in context.deployed_methods)
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
@@ -33,10 +34,13 @@ class UninstallHelmStep(Step):
 
         model_labels = self._collect_model_labels(context)
 
+        is_fma_enabled = "fma" in context.deployed_methods
+
         for ns in namespaces:
             self._uninstall_releases(cmd, context, ns, release, model_labels, errors)
-            self._delete_openshift_routes(cmd, context, ns, release)
-            self._delete_download_job(cmd, context, ns)
+            if not is_fma_enabled:
+                self._delete_openshift_routes(cmd, context, ns, release)
+                self._delete_download_job(cmd, context, ns)
 
         if errors:
             return StepResult(

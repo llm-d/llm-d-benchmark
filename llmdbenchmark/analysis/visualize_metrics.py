@@ -89,7 +89,7 @@ def collect_time_series_data(metrics_dir: str) -> dict[str, dict[str, list[tuple
     raw_dir = os.path.join(metrics_dir, 'raw')
     pod_data: dict[str, dict[str, list[tuple[datetime, float]]]] = {}
 
-    for file_path in glob.glob(os.path.join(raw_dir, '*.txt')):
+    for file_path in glob.glob(os.path.join(raw_dir, '*.log')):
         _, pod_name, metrics = parse_prometheus_metrics_with_timestamp(
             file_path)
 
@@ -155,54 +155,6 @@ def plot_metric_time_series(
     print(f"Saved plot: {output_path}")
 
 
-def plot_metric_boxplot(
-    pod_data: dict[str, dict[str, list[tuple[datetime, float]]]],
-    metric_name: str,
-    output_path: str,
-    title: str | None = None,
-    ylabel: str | None = None
-):
-    """Create a box plot showing the distribution of a metric across all pods.
-
-    Args:
-        pod_data: Time series data for all pods
-        metric_name: Name of metric to plot
-        output_path: Path to save the plot
-        title: Plot title (optional)
-        ylabel: Y-axis label (optional)
-    """
-    if not MATPLOTLIB_AVAILABLE:
-        print(f"Skipping box plot for {metric_name}: matplotlib not available")
-        return
-
-    data = []
-    labels = []
-    for pod_name, metrics in pod_data.items():
-        if metric_name in metrics:
-            values = [v for _, v in metrics[metric_name]]
-            if values:
-                data.append(values)
-                labels.append(pod_name)
-
-    if not data:
-        return
-
-    fig, ax = plt.subplots(figsize=(max(8, 3 * len(data)), 6))
-    ax.boxplot(data, labels=labels, patch_artist=True,
-               medianprops=dict(color='red', linewidth=2))
-    ax.set_xlabel('Pod')
-    ax.set_ylabel(ylabel or metric_name)
-    ax.set_title(title or f'{metric_name} Distribution')
-    ax.grid(True, alpha=0.3, axis='y')
-    plt.xticks(rotation=45, ha='right')
-
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
-    plt.close()
-
-    print(f"Saved plot: {output_path}")
-
-
 def generate_all_visualizations(metrics_dir: str, output_dir: str | None = None):
     """Generate visualizations for all collected metrics.
 
@@ -240,9 +192,46 @@ def generate_all_visualizations(metrics_dir: str, output_dir: str | None = None)
         'DCGM_FI_DEV_POWER_USAGE': ('GPU Power Usage', 'Power (W)'),
         'vllm:num_requests_running': ('Running Requests', 'Count'),
         'vllm:num_requests_waiting': ('Waiting Requests', 'Count'),
+        'vllm:prefix_cache_hits_total': ('Prefix Cache Hits', 'Tokens'),
+        'vllm:prefix_cache_queries_total': ('Prefix Cache Queries', 'Tokens'),
+        'vllm:external_prefix_cache_hits_total': ('External Prefix Cache Hits (Cross-Instance)', 'Tokens'),
+        'vllm:external_prefix_cache_queries_total': ('External Prefix Cache Queries (Cross-Instance)', 'Tokens'),
+        'vllm:nixl_xfer_time_seconds_sum': ('NIXL KV Transfer Time', 'Time (s)'),
+        'vllm:nixl_xfer_time_seconds_count': ('NIXL KV Transfer Count', 'Count'),
+        'vllm:nixl_bytes_transferred_sum': ('NIXL Bytes Transferred', 'Bytes'),
+        'vllm:nixl_bytes_transferred_count': ('NIXL Transfers Count', 'Count'),
+        'vllm:num_preemptions_total': ('Request Preemptions', 'Count'),
     }
 
-    # Generate line plots (time series) and box plots (distributions)
+    # Define computed ratio metrics: (numerator, denominator, title, ylabel, output_name)
+    ratio_metrics = [
+        ('vllm:prefix_cache_hits_total', 'vllm:prefix_cache_queries_total',
+         'Prefix Cache Hit Rate', 'Hit Rate (%)', 'vllm_prefix_cache_hit_rate'),
+        ('vllm:external_prefix_cache_hits_total', 'vllm:external_prefix_cache_queries_total',
+         'External Prefix Cache Hit Rate (Cross-Instance)', 'Hit Rate (%)', 'vllm_external_prefix_cache_hit_rate'),
+    ]
+
+    for numerator, denominator, title, ylabel, output_name in ratio_metrics:
+        ratio_data = {}
+        for pod_name, metrics in pod_data.items():
+            if numerator in metrics and denominator in metrics:
+                hits_by_ts = {ts: val for ts, val in metrics[numerator]}
+                queries_by_ts = {ts: val for ts, val in metrics[denominator]}
+                common_ts = sorted(set(hits_by_ts) & set(queries_by_ts))
+                ratio_points = []
+                for ts in common_ts:
+                    q = queries_by_ts[ts]
+                    rate = (hits_by_ts[ts] / q * 100) if q > 0 else 0.0
+                    ratio_points.append((ts, rate))
+                if ratio_points:
+                    ratio_data[pod_name] = {output_name: ratio_points}
+        if ratio_data:
+            plot_metric_time_series(
+                ratio_data, output_name,
+                os.path.join(output_dir, f'{output_name}.png'),
+                title, ylabel)
+
+    # Generate line plots (time series)
     for metric_name, (title, ylabel) in metrics_to_plot.items():
         has_metric = any(
             metric_name in metrics for metrics in pod_data.values())
@@ -253,10 +242,6 @@ def generate_all_visualizations(metrics_dir: str, output_dir: str | None = None)
                 pod_data, metric_name,
                 os.path.join(output_dir, f'{safe_name}.png'),
                 title, ylabel)
-            plot_metric_boxplot(
-                pod_data, metric_name,
-                os.path.join(output_dir, f'{safe_name}_boxplot.png'),
-                f'{title} Distribution', ylabel)
 
     print(f"\nAll visualizations saved to: {output_dir}")
 

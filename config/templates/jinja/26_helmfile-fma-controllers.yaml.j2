@@ -1,0 +1,32 @@
+{#
+  FMA Controllers helmfile — only rendered for fma deployments
+#}
+{% if fma is defined and fma.enabled | default(false) %}
+releases:
+  - name: {{ model_id_label }}-fma-dp
+    chart: {{ fma.chart.url }}
+    version: {{ fma.chart.version }}
+    namespace: {{ namespace.name }}
+    installed: true
+    values:
+      - global:
+          imageRegistry: "{{ fma.image.repository }}"
+          imageTag: "{{ fma.image.tag }}"
+          nodeViewClusterRole: "fma-node-viewer"
+          local: false
+        dualPodsController:
+          enabled: true
+          sleeperLimit: {{ fma.dualPod.sleeperLimit }}
+          debugAcceleratorMemory: {{ fma.dualPod.debugAcceleratorMemory | lower }}
+        launcherPopulator:
+          enabled: true
+          pullPolicy: "IfNotPresent"
+          replicaCount: 1
+          resources:
+            limits:
+              cpu: "{{ fma.launcherPopulatorConfigurator.limitsCPU }}"
+              memory: "{{ fma.launcherPopulatorConfigurator.limitsMemory }}"
+            requests:
+              cpu: "{{ fma.launcherPopulatorConfigurator.requestsCPU }}"
+              memory: "{{ fma.launcherPopulatorConfigurator.requestsMemory }}"
+{% endif %}

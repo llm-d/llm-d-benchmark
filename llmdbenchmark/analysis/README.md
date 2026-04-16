@@ -9,7 +9,7 @@ The entry point is `run_analysis()` in `__init__.py`, which performs these stage
 1. **Benchmark report conversion** -- Convert harness-native JSON results into standardized YAML reports (v0.1 and v0.2) using the bundled `benchmark_report` library. Falls back to the `benchmark-report` CLI if the Python API is unavailable.
 2. **Summary extraction** -- Extract the tail of `stdout.log` from a harness-specific marker into `analysis/summary.txt`. Markers are defined per harness (e.g. `"Setup complete, starting benchmarks"` for guidellm, `"Result =="` for vllm-benchmark).
 3. **Harness-specific post-processing** -- For `inference-perf`, runs `inference-perf --analyze` if available on `$PATH`. For `nop`, delegates to the `nop-analyze_results.py` script.
-4. **Metric visualization** -- Generate time-series PNG plots from collected Prometheus metrics in `metrics/raw/*.txt` (requires `matplotlib`). Output to `analysis/graphs/`.
+4. **Metric visualization** -- Generate time-series PNG plots from collected Prometheus metrics in `metrics/raw/*.log` (requires `matplotlib`). Output to `analysis/graphs/`.
 5. **Per-request distribution plots** -- Generate histograms, CDFs, and scatter plots from `per_request_lifecycle_metrics.json`. Output to `analysis/distributions/`.
 
 ### `run_analysis(harness_name, results_dir, context=None) -> str | None`
@@ -67,7 +67,7 @@ Generates time-series PNG plots from Prometheus metrics collected during benchma
 
 ### `generate_all_visualizations(metrics_dir, output_dir, context=None) -> int`
 
-Reads `metrics/raw/*.txt` files containing Prometheus metrics with timestamps and pod names. Produces PNG plots in the output directory.
+Reads `metrics/raw/*.log` files containing Prometheus metrics with timestamps and pod names. Produces PNG plots in the output directory.
 
 Parses metric files with `# Timestamp:` and `# Pod:` comment headers, then standard Prometheus text format lines. Collects time-series data across multiple scrape files.
 

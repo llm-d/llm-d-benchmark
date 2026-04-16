@@ -41,7 +41,11 @@ class HarnessNamespaceStep(Step):
         context.harness_namespace = harness_ns
 
         self._create_harness_namespace(cmd, context, harness_ns, errors)
-        self._create_hf_token_secret(cmd, context, plan_config, harness_ns, errors)
+        hf_enabled = plan_config.get("huggingface", {}).get("enabled", True) if plan_config else True
+        if hf_enabled:
+            self._create_hf_token_secret(cmd, context, plan_config, harness_ns, errors)
+        else:
+            context.logger.log_info("HF token not configured -- skipping secret creation")
 
         pvc_yaml = self._find_rendered_yaml(context, "01_pvc_workload-pvc")
         if pvc_yaml:
@@ -86,10 +90,11 @@ class HarnessNamespaceStep(Step):
             configmap_namespaces.append(model_ns)
         self._create_preprocesses_configmap(cmd, context, configmap_namespaces, errors)
 
+        timeout = context.harness_data_access_timeout
         wait_result = cmd.wait_for_pods(
             label="role=llm-d-benchmark-data-access",
             namespace=harness_ns,
-            timeout=120,
+            timeout=timeout,
             poll_interval=5,
             description="harness data-access pod",
         )

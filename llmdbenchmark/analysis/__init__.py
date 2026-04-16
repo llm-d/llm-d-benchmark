@@ -337,7 +337,7 @@ def _run_metric_visualizations(
 ) -> None:
     """Generate PNG plots for collected Prometheus metrics.
 
-    Reads ``metrics/raw/*.txt`` files and writes PNG graphs to
+    Reads ``metrics/raw/*.log`` files and writes PNG graphs to
     ``analysis/graphs/``.  Requires ``matplotlib`` (optional dependency).
     """
     try:
