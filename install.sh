@@ -523,6 +523,81 @@ if [[ "$import_ok" == "true" ]]; then
     echo "All imports verified."
 fi
 
+# ===================================================================
+# Pre-commit hook setup -- only when git is available AND we're inside
+# a working tree AND the repo ships a .pre-commit-config.yaml. This is
+# best-effort: a failure here logs a warning but does NOT abort the
+# install. Hooks are wired for both pre-commit and pre-push stages so
+# the same checks gate both local commits and pushes.
+# ===================================================================
+echo ""
+echo "=== Pre-commit hooks ==="
+
+precommit_skip_reason=""
+if ! command -v git &>/dev/null; then
+    precommit_skip_reason="git not found"
+elif ! git -C "${SCRIPT_DIR}" rev-parse --git-dir &>/dev/null; then
+    precommit_skip_reason="${SCRIPT_DIR} is not a git working tree"
+elif [[ ! -f "${SCRIPT_DIR}/.pre-commit-config.yaml" ]]; then
+    precommit_skip_reason=".pre-commit-config.yaml not found"
+fi
+
+# NOTE: install.sh wipes "$dependencies_checked_file" at the start of
+# every run unless the user passes the `noreset` argument. So the cache
+# check below only avoids work when a previous invocation used `noreset`.
+# Without `noreset`, this section runs every time -- but `pip install`
+# and `pre-commit install` are both idempotent, so re-running is safe
+# (just adds a few seconds).
+precommit_cache_hit=false
+if [[ -z "$precommit_skip_reason" ]] && \
+   [[ -f "$dependencies_checked_file" ]] && \
+   grep -Fq "pre-commit hooks installed." "$dependencies_checked_file"; then
+    precommit_cache_hit=true
+fi
+
+if [[ -n "$precommit_skip_reason" ]]; then
+    echo "  skipped: ${precommit_skip_reason}"
+elif [[ "$precommit_cache_hit" == "true" ]]; then
+    print_pkg pre-commit ""
+    echo "  hooks already registered (cache hit)"
+else
+    # Install pre-commit framework + dev extras into the same venv.
+    # If a .pre-commit_requirements.txt exists, prefer it (matches CI);
+    # otherwise install just the framework.
+    if [[ -f "${SCRIPT_DIR}/.pre-commit_requirements.txt" ]]; then
+        precommit_install_target="-r ${SCRIPT_DIR}/.pre-commit_requirements.txt"
+    else
+        precommit_install_target="pre-commit"
+    fi
+
+    if ${PIP_CMD} install --quiet ${precommit_install_target} 2>/dev/null; then
+        print_pkg pre-commit "(installed)"
+    else
+        echo "  WARNING: failed to install pre-commit framework -- skipping hook registration"
+        precommit_skip_reason="pip install failed"
+    fi
+
+    if [[ -z "$precommit_skip_reason" ]]; then
+        # Register hooks for both stages. Use the venv's pre-commit
+        # binary explicitly so we don't accidentally pick up a
+        # system-wide install with a different version.
+        precommit_bin="${LLMDBENCH_VENV_DIR}/bin/pre-commit"
+        if [[ ! -x "$precommit_bin" ]]; then
+            precommit_bin="$(command -v pre-commit 2>/dev/null || true)"
+        fi
+        if [[ -x "$precommit_bin" ]]; then
+            (cd "${SCRIPT_DIR}" && \
+                "$precommit_bin" install --hook-type pre-commit >/dev/null 2>&1 && \
+                "$precommit_bin" install --hook-type pre-push >/dev/null 2>&1) && {
+                echo "  registered: pre-commit + pre-push (run 'pre-commit run --all-files' to exercise)"
+                echo "pre-commit hooks installed." >> "$dependencies_checked_file"
+            } || echo "  WARNING: pre-commit binary found but 'install' failed -- hooks NOT registered"
+        else
+            echo "  WARNING: pre-commit binary not found after install -- hooks NOT registered"
+        fi
+    fi
+fi
+
 echo ""
 echo "=== Done ==="
 

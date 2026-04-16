@@ -76,6 +76,27 @@ repos:
         require_serial: true
         stages: [pre-commit, pre-push]
 
+      # ----------------------------------------------------------------
+      # Software Bill of Materials -- regenerates SBOM.md from
+      # install.sh, pyproject.toml, and config/templates/values/
+      # defaults.yaml. Resolves `auto` Helm/image versions against the
+      # live registry via the existing VersionResolver.
+      #
+      # Triggers only when one of those source-of-truth files changes
+      # (matches the precommit_render_changed.py performance pattern).
+      # When SBOM.md would change, the hook writes the new version and
+      # exits non-zero with a message asking the user to `git add` and
+      # re-commit -- same convention as `prettier --write` / `black`.
+      # ----------------------------------------------------------------
+      - id: generate-sbom
+        name: Generate SBOM (Software Bill of Materials)
+        entry: .venv/bin/python util/generate_sbom.py --check
+        language: system
+        pass_filenames: false
+        require_serial: true
+        files: ^(install\.sh|pyproject\.toml|config/templates/values/defaults\.yaml|util/generate_sbom\.py)$
+        stages: [pre-commit, pre-push]
+
   - repo: https://github.com/ibm/detect-secrets
     # If you desire to use a specific version of detect-secrets, you can replace `master` with other git revisions such as branch, tag or commit sha.
     # You are encouraged to use static refs such as tags, instead of branch name
