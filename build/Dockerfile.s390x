@@ -72,11 +72,6 @@ RUN ARCH=$(uname -m) && \
     chmod +x ./kubectl && \
     mv ./kubectl /usr/local/bin/kubectl
 
-# -----------------------------
-# Install torch for s390x
-# -----------------------------
-RUN python -m pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cpu
-
 # ============================================
 # BUILD APACHE ARROW (for pyarrow)
 # ============================================
@@ -120,9 +115,211 @@ RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
     python -m pip install .
 
-# --------------------
-# Build vllm ( TO do )
-# --------------------
+# -----------------------------------------------------------------------------
+# s390x | numa-build: build numactl from source 
+# -----------------------------------------------------------------------------
+
+ARG NUMACTL_VERSION=2.0.16
+WORKDIR /tmp
+RUN curl -LO https://github.com/numactl/numactl/archive/refs/tags/v${NUMACTL_VERSION}.tar.gz && \
+    tar -xvzf v${NUMACTL_VERSION}.tar.gz && \
+    cd numactl-${NUMACTL_VERSION} && \
+    ./autogen.sh && \
+    ./configure && \
+    make
+
+ENV C_INCLUDE_PATH="/usr/local/include"
+
+# -----------------------------------------------------------------------------
+# s390x | numba-builder: build LLVM 15 → llvmlite → numba wheels
+# -----------------------------------------------------------------------------
+
+ARG NUMBA_VERSION=0.61.2
+ARG LLVMLITE_VERSION=v0.44.0
+ARG LLVM_VERSION=llvmorg-15.0.7
+WORKDIR /tmp
+
+RUN microdnf install -y ninja-build gcc gcc-c++ && \
+    git clone --recursive https://github.com/llvm/llvm-project.git \
+        -b ${LLVM_VERSION} && \
+    git clone --recursive https://github.com/numba/llvmlite.git \
+        -b ${LLVMLITE_VERSION} && \
+    git clone --recursive https://github.com/numba/numba.git \
+        -b ${NUMBA_VERSION} && \
+    # ---- Build LLVM ----
+    cd llvm-project && mkdir build && cd build && \
+    python -m pip install 'cmake<4' 'setuptools<70' numpy && \
+    export PREFIX=/usr/local && \
+    cmake -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_LIBRARY_PATH="${PREFIX}" \
+          -DLLVM_ENABLE_PROJECTS="lld;libunwind;compiler-rt" \
+          -DLLVM_ENABLE_LIBEDIT=OFF \
+          -DLLVM_ENABLE_LIBXML2=OFF \
+          -DLLVM_ENABLE_RTTI=ON \
+          -DLLVM_ENABLE_TERMINFO=OFF \
+          -DLLVM_INCLUDE_BENCHMARKS=OFF \
+          -DLLVM_INCLUDE_DOCS=OFF \
+          -DLLVM_INCLUDE_EXAMPLES=OFF \
+          -DLLVM_INCLUDE_GO_TESTS=OFF \
+          -DLLVM_INCLUDE_TESTS=OFF \
+          -DLLVM_INCLUDE_UTILS=ON \
+          -DLLVM_INSTALL_UTILS=ON \
+          -DLLVM_UTILS_INSTALL_DIR=libexec/llvm \
+          -DLLVM_BUILD_LLVM_DYLIB=OFF \
+          -DLLVM_LINK_LLVM_DYLIB=OFF \
+          -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=WebAssembly \
+          -DLLVM_ENABLE_FFI=ON \
+          -DLLVM_ENABLE_Z3_SOLVER=OFF \
+          -DLLVM_OPTIMIZED_TABLEGEN=ON \
+          -DCMAKE_POLICY_DEFAULT_CMP0111=NEW \
+          -DCOMPILER_RT_BUILD_BUILTINS=ON \
+          -DCOMPILER_RT_BUILTINS_HIDE_SYMBOLS=OFF \
+          -DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
+          -DCOMPILER_RT_BUILD_CRT=OFF \
+          -DCOMPILER_RT_BUILD_MEMPROF=OFF \
+          -DCOMPILER_RT_BUILD_PROFILE=OFF \
+          -DCOMPILER_RT_BUILD_SANITIZERS=OFF \
+          -DCOMPILER_RT_BUILD_XRAY=OFF \
+          -DCOMPILER_RT_BUILD_GWP_ASAN=OFF \
+          -DCOMPILER_RT_BUILD_ORC=OFF \
+          -DCOMPILER_RT_INCLUDE_TESTS=OFF \
+          -GNinja ../llvm && \
+    ninja install && \
+    # ---- Build llvmlite ----
+    cd ../../llvmlite && python setup.py bdist_wheel && \
+    # ---- Build numba (patch dispatcher for Python 3.12) ----
+    cd ../numba && \
+    if ! grep -q '#include "dynamic_annotations.h"' numba/_dispatcher.cpp; then \
+        sed -i '/#include "internal\/pycore_atomic.h"/i\#include "dynamic_annotations.h"' \
+            numba/_dispatcher.cpp; \
+    fi && \
+    python setup.py bdist_wheel
+
+# -----------------------------------------------------------------------------
+# s390x | opencv-builder: build opencv-python-headless wheel from source.
+# -----------------------------------------------------------------------------
+
+WORKDIR /tmp
+ARG OPENCV_VERSION=90
+ARG ENABLE_HEADLESS=1
+ENV ENABLE_HEADLESS=${ENABLE_HEADLESS}
+
+RUN python -m pip install numpy setuptools wheel scikit_build build && \
+    git clone --recursive https://github.com/opencv/opencv-python.git \
+        -b ${OPENCV_VERSION} && \
+    cd opencv-python && \
+    python -m build --wheel --outdir /tmp/opencv-python/dist
+
+
+# -----------------------------------------------------------------------------
+# s390x | torch-vision: build torchvision wheel against CPU torch
+# -----------------------------------------------------------------------------
+
+ARG TORCH_VERSION=2.10.0
+ARG TORCH_VISION_VERSION=v0.25.0
+WORKDIR /tmp
+
+RUN git clone https://github.com/pytorch/vision.git && \
+    cd vision && \
+    git checkout ${TORCH_VISION_VERSION} && \
+    python -m pip install torch==${TORCH_VERSION} \
+        --index-url https://download.pytorch.org/whl/cpu && \
+    python setup.py bdist_wheel && \
+    python -c "import torch; print('TORCH VERSION:', torch.__version__)"
+
+# -----------------------------------------------------------------------------
+# s390x | hf-xet-builder: build hf-xet wheel (Rust + maturin)
+# -----------------------------------------------------------------------------
+
+WORKDIR /tmp
+ENV CARGO_HOME=/root/.cargo
+ENV RUSTUP_HOME=/root/.rustup
+ENV PATH="$CARGO_HOME/bin:$RUSTUP_HOME/bin:$PATH"
+
+RUN git clone https://github.com/huggingface/xet-core.git && \
+    cd xet-core/hf_xet/ && \
+    python -m  pip install maturin patchelf && \
+    python -m maturin build --release --out dist && \
+    mkdir -p /tmp/hf-xet/dist && \
+    cp dist/*.whl /tmp/hf-xet/dist/
+
+# -----------------------------------------------------------------------------
+# s390x | outlines-core-builder: build outlines-core wheel (Rust + maturin)
+# -----------------------------------------------------------------------------
+
+WORKDIR /tmp
+ENV CARGO_HOME=/root/.cargo
+ENV RUSTUP_HOME=/root/.rustup
+ENV PATH="$CARGO_HOME/bin:$RUSTUP_HOME/bin:$PATH"
+
+ARG VLLM_VERSION=v0.18.0
+ARG OUTLINES_CORE_VERSION
+
+    # Clone vllm just to read requirements/common.txt for the version pin
+RUN git clone --depth=1 --branch releases/${VLLM_VERSION} \
+        https://github.com/vllm-project/vllm.git /tmp/vllm-src && \
+    OUTLINES_CORE_VERSION=${OUTLINES_CORE_VERSION:-$(grep -E '^outlines.core\s*==\s*[0-9.]+' \
+        /tmp/vllm-src/requirements/common.txt | grep -Eo '[0-9.]+')} && \
+    if [ -z "${OUTLINES_CORE_VERSION}" ]; then \
+        echo "ERROR: Could not determine outlines_core version from vllm requirements" >&2; \
+        exit 1; \
+    fi && \
+    git clone https://github.com/dottxt-ai/outlines-core.git && \
+    cd outlines-core && \
+    git checkout tags/${OUTLINES_CORE_VERSION} && \
+    sed -i "s/version = \"0.0.0\"/version = \"${OUTLINES_CORE_VERSION}\"/" Cargo.toml && \
+    python -m  pip install maturin && \
+    python -m maturin build --release --out dist
+
+# -----------------------------------------------------------------------------
+# s390x | vllm-cpu: assemble all wheels and build + install vLLM CPU wheel
+# -----------------------------------------------------------------------------
+
+ARG PYTHON_VERSION=3.12
+ARG VLLM_VERSION
+ARG NUMACTL_VERSION
+ARG PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cpu"
+
+ENV CARGO_HOME=/root/.cargo
+ENV RUSTUP_HOME=/root/.rustup
+ENV GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
+ENV PCP_DIR=/opt/rh/gcc-toolset-14/root
+ENV PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
+
+ENV PATH="$CARGO_HOME/bin:$RUSTUP_HOME/bin:$PATH"
+
+RUN git clone --depth=1 --branch releases/${VLLM_VERSION} \
+        https://github.com/vllm-project/vllm.git /workspace/vllm
+
+WORKDIR /workspace/vllm
+
+# Install numactl headers/libs
+RUN --mount=type=bind,from=s390x-numa-build,src=/tmp/numactl-${NUMACTL_VERSION},target=/numactl \
+    make -C /numactl install
+
+# Install all source-built dependency wheels + vLLM requirements.
+RUN VISION_WHL=$(ls /tmp/vision-wheels/*.whl) && \
+    HF_XET_WHL=$(ls /tmp/hf-xet-wheels/*.whl) && \
+    LLVM_WHL=$(ls /tmp/llvmlite-wheels/*.whl) && \
+    NUMBA_WHL=$(ls /tmp/numba-wheels/*.whl) && \
+    OPENCV_WHL=$(ls /tmp/opencv-wheels/*.whl) && \
+    OUTLINES_WHL=$(ls /tmp/outlines-core-wheels/*.whl) && \
+    python -m  pip install -v \
+        "$VISION_WHL" \
+        "$HF_XET_WHL" \
+        "$LLVM_WHL" \
+        "$NUMBA_WHL" \
+        "$OPENCV_WHL" \
+        "$OUTLINES_WHL" \
+        --index-strategy unsafe-best-match \
+        -r requirements/cpu-build.txt \
+        -r requirements/cpu.txt
+
+# Build vLLM CPU wheel and install it
+RUN VLLM_TARGET_DEVICE=cpu VLLM_CPU_MOE_PREPACK=0 \
+        python setup.py bdist_wheel && \
+    python -m pip install "$(echo dist/*.whl)[tensorizer]"
 
 # ----------------
 # GuideLLM also requires torch, installed above
