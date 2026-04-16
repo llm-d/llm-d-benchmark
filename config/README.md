@@ -416,8 +416,8 @@ All Helm chart and component versions are centralized in the `chartVersions` sec
 | `chartVersions.istiod` | `1.29.1` | Istiod chart version (also used as gateway version) |
 | `chartVersions.llmDInfra` | `auto` | llm-d-infra Helm chart (auto-resolved via helm) |
 | `chartVersions.llmDModelservice` | `auto` | llm-d-modelservice Helm chart (auto-resolved via helm) |
-| `chartVersions.inferencePool` | `v1.3.0` | Inference pool chart version |
-| `chartVersions.gaie` | `v1.3.1` | GAIE chart version |
+| `chartVersions.inferencePool` | `v1.4.0` | Inference pool chart version |
+| `chartVersions.gaie` | `v1.4.0` | GAIE chart version |
 | `chartVersions.wva` | `auto` | Workload Variant Autoscaler chart (auto-resolved) |
 | `chartVersions.kgateway` | `v2.2.1` | kgateway chart version |
 | `chartVersions.lws` | `0.8.0` | LeaderWorkerSet chart version |
