@@ -155,18 +155,33 @@
   value: "{{ config.vllm.port | default(vllmCommon.vllmPort) }}"
 - name: VLLM_BLOCK_SIZE
   value: "{{ model.blockSize | default(vllmCommon.blockSize | default('16')) }}"
+{% if config.vllmVariants is defined and config.vllmVariants | length > 0 -%}
+- name: VLLM_MAX_MODEL_LEN
+  value: "{{ config.vllmVariants | map(attribute='maxModelLen') | join(',,') }}"
+{% else -%}
 - name: VLLM_MAX_MODEL_LEN
   value: "{{ model.maxModelLen | default(vllmCommon.maxModelLen | default('4096')) }}"
+{% endif -%}
 - name: VLLM_LOAD_FORMAT
   value: "{{ vllmCommon.loadFormat | default('auto') }}"
 - name: VLLM_ACCELERATOR_MEM_UTIL
   value: "{{ model.gpuMemoryUtilization | default(vllmCommon.gpuMemoryUtilization | default('0.95')) }}"
+{% if config.vllmVariants is defined and config.vllmVariants | length > 0 and config.vllmVariants[0].maxNumSeq is defined -%}
+- name: VLLM_MAX_NUM_SEQ
+  value: "{{ config.vllmVariants | map(attribute='maxNumSeq') | join(',,') }}"
+{% else -%}
 - name: VLLM_MAX_NUM_SEQ
   value: "{{ model.maxNumSeq | default(vllmCommon.maxNumSeq | default('256')) }}"
+{% endif -%}
 - name: VLLM_TENSOR_PARALLELISM
   value: "{{ config.parallelism.tensor | default('1') }}"
+{% if config.vllmVariants is defined and config.vllmVariants | length > 0 and config.vllmVariants[0].maxNumBatchedTokens is defined -%}
+- name: VLLM_MAX_NUM_BATCHED_TOKENS
+  value: "{{ config.vllmVariants | map(attribute='maxNumBatchedTokens') | join(',,') }}"
+{% else -%}
 - name: VLLM_MAX_NUM_BATCHED_TOKENS
   value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
+{% endif -%}
 - name: VLLM_NIXL_SIDE_CHANNEL_HOST
   valueFrom:
     fieldRef:
@@ -186,9 +201,21 @@
   valueFrom:
     fieldRef:
       fieldPath: metadata.namespace
+{% set has_kubeconfig_env = config.extraEnvVars is defined and config.extraEnvVars and config.extraEnvVars | selectattr('name', 'equalto', 'KUBECONFIG') | list | length > 0 -%}
 {% if config.podLabels is defined and config.podLabels -%}
 - name: LLMDBENCH_POD_LABELS
   value: "{{ config.podLabels }}"
+{% if not has_kubeconfig_env -%}
+- name: KUBECONFIG
+  value: "/etc/kubeconfig/{{ control.contextSecretName | default('llmdbench-context') }}"
+{% endif -%}
+{% elif config.contextLengthRanges is defined and config.contextLengthRanges | length > 0 -%}
+- name: LLMDBENCH_POD_LABELS
+  value: "{% for r in config.contextLengthRanges %}{% if not loop.first %},{% endif %}llm-d.ai/context-length-range_eq_{{ r }}{% endfor %}"
+{% if not has_kubeconfig_env -%}
+- name: KUBECONFIG
+  value: "/etc/kubeconfig/{{ control.contextSecretName | default('llmdbench-context') }}"
+{% endif -%}
 {% endif -%}
 {% if config.extraEnvVars is defined and config.extraEnvVars %}
 {% for env in config.extraEnvVars %}

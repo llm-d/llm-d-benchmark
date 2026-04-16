@@ -58,8 +58,15 @@ inferenceExtension:
     image: "{{ images.udsTokenizer.repository }}:{{ images.udsTokenizer.tag }}"
     imagePullPolicy: {{ inferenceExtension.sidecar.imagePullPolicy | default('IfNotPresent') }}
     name: {{ inferenceExtension.sidecar.name | default('tokenizer-uds') }}
-{% if inferenceExtension.sidecar.env is defined and inferenceExtension.sidecar.env %}
     env:
+{% if huggingface.enabled %}
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: {{ huggingface.secretName }}
+            key: {{ huggingface.tokenKey }}
+{% endif %}
+{% if inferenceExtension.sidecar.env is defined and inferenceExtension.sidecar.env %}
 {% for env_var in inferenceExtension.sidecar.env %}
       - name: {{ env_var.name }}
         value: "{{ env_var.value }}"

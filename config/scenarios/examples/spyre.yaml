@@ -159,6 +159,12 @@ scenario:
     modelservice:
       enabled: true
 
+    # Enable multinode (LeaderWorkerSet) for sequential pod naming.
+    # Required when using contextLengthRanges or vllmVariants.
+    # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
+    # multinode:
+    #   enabled: true
+
     # =========================================================================
     # STANDALONE -- Only applies when standalone.enabled: true
     # =========================================================================
@@ -262,6 +268,25 @@ scenario:
     decode:
       replicas: 2
 
+      # Context-length-aware routing: per-pod labels (one per replica).
+      # Requires multinode enabled (for LWS sequential pod naming) and
+      # kubeconfig secret mounted (see vllmCommon.volumes below).
+      # Also requires the preprocess script (vllmCommon.preprocessScript) for
+      # pod self-labeling and ,,-delimited env var splitting.
+      # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
+      # contextLengthRanges:
+      #   - "0-8000"
+      #   - "8000-32768"
+
+      # Per-pod vllm parameter overrides (one per replica).
+      # Values are converted to ,,-delimited env vars; the preprocess script
+      # selects the right value based on pod index from LWS.
+      # vllmVariants:
+      #   - maxModelLen: 8000
+      #     maxNumSeq: 32
+      #   - maxModelLen: 32768
+      #     maxNumSeq: 32
+
       parallelism:
         tensor: 4
         data: 1
@@ -330,6 +355,38 @@ scenario:
           value: "1"
         - name: VLLM_DT_CHUNK_LEN
           value: "1024"
+
+    # =========================================================================
+    # INFERENCE EXTENSION (EPP) -- Context-length-aware routing with UDS tokenizer
+    # Uncomment this section along with multinode, contextLengthRanges, and
+    # vllmVariants above to enable context-length-aware routing.
+    # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
+    # =========================================================================
+    # inferenceExtension:
+    #   pluginsConfigFile: "context-length-aware-config.yaml"
+    #   flags:
+    #     v: "2"  # use v: "4" for debugging, v: "1" or "2" for benchmarking
+    #   sidecar:
+    #     enabled: true
+    #   pluginsCustomConfig:
+    #     context-length-aware-config.yaml: |
+    #       apiVersion: inference.networking.x-k8s.io/v1alpha1
+    #       kind: EndpointPickerConfig
+    #       plugins:
+    #         - type: tokenizer
+    #           parameters:
+    #             modelName: "${model.name}"
+    #             udsTokenizerConfig:
+    #               socketFile: /tmp/tokenizer/tokenizer-uds.socket
+    #         - type: context-length-aware
+    #           parameters:
+    #             label: llm-d.ai/context-length-range
+    #             enableFiltering: true
+    #       schedulingProfiles:
+    #         - name: default
+    #           plugins:
+    #             - pluginRef: tokenizer
+    #             - pluginRef: context-length-aware
 
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration

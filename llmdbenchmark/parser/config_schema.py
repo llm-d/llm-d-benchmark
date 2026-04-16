@@ -216,6 +216,9 @@ class DeploymentBaseConfig(BaseModel):
     initContainers: list[Any]
     monitoring: DeploymentMonitoringConfig
 
+    contextLengthRanges: list[str] = Field(default_factory=list)
+    vllmVariants: list[dict[str, Any]] = Field(default_factory=list)
+
     annotations: dict[str, str] | None = None
 
     hostIPC: bool | None = None
