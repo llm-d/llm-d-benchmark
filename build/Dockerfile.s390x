@@ -126,7 +126,9 @@ RUN curl -LO https://github.com/numactl/numactl/archive/refs/tags/v${NUMACTL_VER
     cd numactl-${NUMACTL_VERSION} && \
     ./autogen.sh && \
     ./configure && \
-    make
+    make && \
+    make install && \
+    ldconfig
 
 ENV C_INCLUDE_PATH="/usr/local/include"
 
@@ -294,9 +296,17 @@ RUN git clone --depth=1 --branch releases/${VLLM_VERSION} \
 
 WORKDIR /workspace/vllm
 
-# Install numactl headers/libs
-RUN --mount=type=bind,from=s390x-numa-build,src=/tmp/numactl-${NUMACTL_VERSION},target=/numactl \
-    make -C /numactl install
+RUN python -m pip install --upgrade pip setuptools wheel
+RUN mkdir -p /tmp/vision-wheels /tmp/hf-xet-wheels /tmp/llvmlite-wheels \
+             /tmp/numba-wheels /tmp/opencv-wheels /tmp/outlines-core-wheels && \
+    cp /tmp/vision/dist/*.whl          /tmp/vision-wheels/      && \
+    cp /tmp/hf-xet/dist/*.whl          /tmp/hf-xet-wheels/      && \
+    cp /tmp/llvmlite/build/dist/*.whl  /tmp/llvmlite-wheels/    || \
+    cp /tmp/llvmlite/dist/*.whl        /tmp/llvmlite-wheels/    && \
+    cp /tmp/numba/dist/*.whl           /tmp/numba-wheels/       && \
+    cp /tmp/opencv-python/dist/*.whl   /tmp/opencv-wheels/      && \
+    cp /tmp/outlines-core/dist/*.whl   /tmp/outlines-core-wheels/
+
 
 # Install all source-built dependency wheels + vLLM requirements.
 RUN VISION_WHL=$(ls /tmp/vision-wheels/*.whl) && \
@@ -312,7 +322,6 @@ RUN VISION_WHL=$(ls /tmp/vision-wheels/*.whl) && \
         "$NUMBA_WHL" \
         "$OPENCV_WHL" \
         "$OUTLINES_WHL" \
-        --index-strategy unsafe-best-match \
         -r requirements/cpu-build.txt \
         -r requirements/cpu.txt
 
