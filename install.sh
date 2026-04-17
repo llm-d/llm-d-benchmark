@@ -527,8 +527,8 @@ fi
 # Pre-commit hook setup -- only when git is available AND we're inside
 # a working tree AND the repo ships a .pre-commit-config.yaml. This is
 # best-effort: a failure here logs a warning but does NOT abort the
-# install. Hooks are wired for both pre-commit and pre-push stages so
-# the same checks gate both local commits and pushes.
+# install. Hooks are wired for the pre-commit stage only -- CI is the
+# gate before push, no need to duplicate the local hooks at push time.
 # ===================================================================
 echo ""
 echo "=== Pre-commit hooks ==="
@@ -587,9 +587,8 @@ else
         fi
         if [[ -x "$precommit_bin" ]]; then
             (cd "${SCRIPT_DIR}" && \
-                "$precommit_bin" install --hook-type pre-commit >/dev/null 2>&1 && \
-                "$precommit_bin" install --hook-type pre-push >/dev/null 2>&1) && {
-                echo "  registered: pre-commit + pre-push (run 'pre-commit run --all-files' to exercise)"
+                "$precommit_bin" install --hook-type pre-commit >/dev/null 2>&1) && {
+                echo "  registered: pre-commit (run 'pre-commit run --all-files' to exercise)"
                 echo "pre-commit hooks installed." >> "$dependencies_checked_file"
             } || echo "  WARNING: pre-commit binary found but 'install' failed -- hooks NOT registered"
         else
