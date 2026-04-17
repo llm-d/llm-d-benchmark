@@ -17,7 +17,9 @@
 # that required system tools are available.
 #
 # Usage:
-#   ./install.sh                   # interactive -- prompts if no venv
+#   ./install.sh                   # interactive -- prompts for uv choice
+#   ./install.sh --uv              # use uv for venv creation (no prompt)
+#   ./install.sh --no-uv           # use python3 -m venv (no prompt)
 #   ./install.sh -y                # non-interactive -- allows system python
 #   ./install.sh noreset           # skip cache reset (re-use previous checks)
 #   source install.sh              # also works when sourced
@@ -105,11 +107,14 @@ DESCRIPTION
     6. Verifies that all Python packages are importable
 
     If no virtual environment is active, the script will automatically
-    create one at .venv/ and activate it for the install. If the system
-    Python is missing or older than 3.11, the script uses uv
-    (https://docs.astral.sh/uv/) to download the correct Python version
-    and create the virtual environment — similar to how conda manages
-    Python versions. uv is installed automatically if needed.
+    create one at .venv/ and activate it for the install. You will be
+    prompted whether to use uv (https://docs.astral.sh/uv/) or the
+    standard python3 -m venv. uv can automatically download the correct
+    Python version if your system Python is missing or older than 3.11.
+    Use --uv or --no-uv to skip the prompt.
+
+    When run non-interactively (e.g. curl pipe), the script auto-selects:
+    uv if system Python is missing or < 3.11, otherwise python3 -m venv.
 
     After the script finishes, run "source .venv/bin/activate" in your shell.
 
@@ -117,6 +122,9 @@ DESCRIPTION
 
 OPTIONS
     -h, --help      Show this help message and exit.
+    --uv            Use uv to create the virtual environment (skips prompt).
+    --no-uv         Use python3 -m venv instead of uv (skips prompt).
+                    Requires Python 3.11+ to be available on the system.
     -y              Non-interactive mode — use system Python directly
                     instead of creating a virtual environment.
     noreset         Reuse the dependency cache (~/.llmdbench_dependencies_checked)
@@ -147,11 +155,14 @@ fi
 # ---------------------------------------------------------------------------
 allow_system_python=false
 reset_cache=true
+use_uv=auto
 
 for arg in "$@"; do
     case $arg in
         -h|--help)    show_help; exit 0 ;;
         -y)           allow_system_python=true ;;
+        --uv)         use_uv=true ;;
+        --no-uv)      use_uv=false ;;
         noreset)      reset_cache=false ;;
     esac
 done
@@ -263,19 +274,49 @@ else
     else
         echo "No virtual environment detected — creating ${LLMDBENCH_VENV_DIR} ..."
 
-        # Determine whether system python3 is good enough
-        if _python_meets_min python3; then
-            python3 -m venv "$LLMDBENCH_VENV_DIR"
-        else
-            # System Python is missing or too old — use uv to get the right version
-            if command -v python3 &>/dev/null; then
-                local_ver=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null || echo "unknown")
-                echo "  System python3 is ${local_ver} (need ${MIN_PYTHON}+) — using uv to obtain the right version."
+        # Resolve use_uv if still "auto"
+        if [[ "$use_uv" == "auto" ]]; then
+            if [[ -t 0 ]]; then
+                # Interactive terminal — ask the user
+                echo ""
+                echo "  uv can create the virtual environment and automatically download"
+                echo "  the correct Python version if your system Python is missing or too old."
+                echo ""
+                read -r -p "  Use uv to manage the virtual environment? [y/N]: " _uv_answer
+                case "${_uv_answer}" in
+                    [yY]|[yY][eE][sS]) use_uv=true ;;
+                    *)                  use_uv=false ;;
+                esac
             else
-                echo "  python3 not found — using uv to obtain Python ${MIN_PYTHON}."
+                # Non-interactive (curl pipe) — use uv only if system python is inadequate
+                if _python_meets_min python3; then
+                    use_uv=false
+                else
+                    use_uv=true
+                fi
+            fi
+        fi
+
+        if [[ "$use_uv" == "true" ]]; then
+            if command -v python3 &>/dev/null && ! _python_meets_min python3; then
+                local_ver=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null || echo "unknown")
+                echo "  System python3 is ${local_ver} (need ${MIN_PYTHON}+) — uv will obtain the right version."
+            elif ! command -v python3 &>/dev/null; then
+                echo "  python3 not found — uv will obtain Python ${MIN_PYTHON}."
             fi
             _ensure_uv
             uv venv --seed --python "${MIN_PYTHON}" "$LLMDBENCH_VENV_DIR"
+        elif _python_meets_min python3; then
+            python3 -m venv "$LLMDBENCH_VENV_DIR"
+        else
+            if command -v python3 &>/dev/null; then
+                local_ver=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null || echo "unknown")
+                echo "ERROR: Python ${MIN_PYTHON}+ is required but system python3 is ${local_ver}."
+            else
+                echo "ERROR: Python ${MIN_PYTHON}+ is required but python3 was not found."
+            fi
+            echo "       Re-run with --uv to let uv download the correct Python version."
+            exit 1
         fi
 
         CREATED_VENV=true
