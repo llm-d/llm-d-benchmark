@@ -574,6 +574,9 @@ inferenceExtension:
         name: tokenizers
       - mountPath: /tmp/tokenizer
         name: tokenizer-uds
+  # Resources are intentionally NOT set here.
+  # CI runners override this in their scenario YAML -- see
+  # config/scenarios/cicd/kind-sim.yaml for an example.
   # Extra volumes and volume mounts for the EPP pod (e.g., tokenizer sidecar shared volumes)
   volumes: []
   volumeMounts: []

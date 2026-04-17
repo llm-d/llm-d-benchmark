@@ -86,6 +86,10 @@ releases:
           seccompProfile:
             type: "RuntimeDefault"
           runAsNonRoot: true
+{% if gateway.resources is defined and gateway.resources %}
+        resources:
+{{ gateway.resources | toyaml | indent(10, true) }}
+{% endif %}
     labels:
       type: gateway-provider
       kind: gateway-control-plane
