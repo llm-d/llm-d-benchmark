@@ -45,16 +45,30 @@ scenario:
       count: 0
       memory: 24 # To pass capacity planner sanity checking
 
-    # Minimal gateway resources for Kind -- leave here to update for CICD
+    # Minimal gateway resources for Kind -- agentgateway is a lightweight
+    # Envoy-based proxy; on a single-node Kind cluster we keep this lean
+    # so EPP, model-server pods, and the gateway can all schedule together.
     gateway:
       className: agentgateway
       resources:
         limits:
-          cpu: "2"
-          memory: 2Gi
+          cpu: "1"
+          memory: 1Gi
         requests:
-          cpu: "500m"
-          memory: 512Mi
+          cpu: "250m"
+          memory: 256Mi
+
+    # Minimal EPP resources for Kind. The GAIE chart's upstream defaults
+    # (4 CPU / 8 GiB request, 16 GiB limit) won't fit on a Kind node;
+    # the EPP is a stateless gRPC scorer so this is plenty for CI.
+    inferenceExtension:
+      resources:
+        requests:
+          cpu: "100m"
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
 
     # Install Prometheus CRDs on Kind (no Prometheus Operator by default)
     monitoring:

@@ -25,6 +25,10 @@ inferenceExtension:
           key: {{ huggingface.tokenKey }}
 {% endif %}
   pluginsConfigFile: "{{ inferenceExtension.pluginsConfigFile }}"
+{% if inferenceExtension.resources is defined and inferenceExtension.resources %}
+  resources:
+{{ inferenceExtension.resources | toyaml | indent(4, true) }}
+{% endif %}
 {% if inferenceExtension.pluginsCustomConfig is defined and inferenceExtension.pluginsCustomConfig %}
   pluginsCustomConfig:
 {% for filename, content in inferenceExtension.pluginsCustomConfig.items() %}

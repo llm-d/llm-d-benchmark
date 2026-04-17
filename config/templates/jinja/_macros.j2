@@ -1,10 +1,10 @@
 {# ======================================================================== #}
-{# Macro to render a single init container for modelservice pods.          #}
-{# Supports the full Kubernetes init container spec including the sidecar  #}
-{# pattern (restartPolicy: Always) used by uds-tokenizer and similar.     #}
-{# Fields not explicitly listed are passed through via toyaml.             #}
-{# mode: 'decode' or 'prefill' -- controls env var injection default.     #}
-{# ======================================================================== #}
+{# Macro to render a single init container for modelservice pods.           #}
+{# Supports the full Kubernetes init container spec including the sidecar   #}
+{# pattern (restartPolicy: Always) used by uds-tokenizer and similar.       #}
+{# Fields not explicitly listed are passed through via toyaml.              #}
+{# mode: 'decode' or 'prefill' -- controls env var injection default.       #}
+{# ========================================================================#}
 {% macro render_init_container(ic, mode='decode') -%}
 - name: {{ ic.name }}
   image: {{ ic.image }}

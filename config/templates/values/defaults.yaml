@@ -95,7 +95,10 @@ _anchors:
   pull_if_not_present: &pull_if_not_present IfNotPresent
 
   # Chart versions
-  istio_version: &istio_version 1.29.1
+  istio_version: &istio_version 1.29.2
+  agentgateway_version: &agentgateway_version v1.0.1
+  lws_version: &lws_version 0.8.0
+  gaie_version: &gaie_version v1.4.0
 
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
@@ -416,11 +419,10 @@ chartVersions:
   istiod: *istio_version
   llmDInfra: auto
   llmDModelservice: auto
-  inferencePool: v1.3.0
-  gaie: v1.3.1
   wva: auto
-  agentgateway: v1.0.1
-  lws: "0.8.0"
+  inferencePool: *gaie_version
+  agentgateway: *agentgateway_version
+  lws: *lws_version
 
 # ============================================================================
 # SERVICE ACCOUNT CONFIGURATION
@@ -572,6 +574,9 @@ inferenceExtension:
         name: tokenizers
       - mountPath: /tmp/tokenizer
         name: tokenizer-uds
+  # Resources are intentionally NOT set here.
+  # CI runners override this in their scenario YAML -- see
+  # config/scenarios/cicd/kind-sim.yaml for an example.
   # Extra volumes and volume mounts for the EPP pod (e.g., tokenizer sidecar shared volumes)
   volumes: []
   volumeMounts: []
@@ -1336,7 +1341,7 @@ lws:
 # ============================================================================
 gatewayApiCrd:
   revision: v1.5.1
-  inferenceExtensionRevision: v1.4.0
+  inferenceExtensionRevision: *gaie_version
   # Install URLs for the CRD bundles. ``{revision}`` is substituted with
   # ``revision`` / ``inferenceExtensionRevision`` above at standup time.
   # Kept here so the URL has a single source of truth (read by
