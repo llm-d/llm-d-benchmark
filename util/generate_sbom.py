@@ -63,58 +63,65 @@ if str(_REPO_ROOT) not in sys.path:
 #
 # Keep this dict alphabetised within sections so diffs stay clean.
 
-UPSTREAM_REPOS: dict[str, str] = {
-    # ---- System tools (install.sh) ----
-    "crane": "[google/go-containerregistry](https://github.com/google/go-containerregistry)",
-    "curl": "[curl/curl](https://github.com/curl/curl)",
-    "git": "[git/git](https://github.com/git/git)",
-    "helm": "[helm/helm](https://github.com/helm/helm)",
-    "helm-diff": "[databus23/helm-diff](https://github.com/databus23/helm-diff)",
-    "helmfile": "[helmfile/helmfile](https://github.com/helmfile/helmfile)",
-    "jq": "[jqlang/jq](https://github.com/jqlang/jq)",
-    "kubectl": "[kubernetes/kubernetes](https://github.com/kubernetes/kubernetes)",
-    "kustomize": "[kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize)",
-    "llm-d-planner (git)": "[llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner)",
-    "oc": "[openshift/oc](https://github.com/openshift/oc)",
-    "skopeo": "[containers/skopeo](https://github.com/containers/skopeo)",
-    "yq": "[mikefarah/yq](https://github.com/mikefarah/yq)",
-
-    # ---- Helm charts (defaults.yaml chartVersions) ----
-    "agentgateway": "[agentgateway/agentgateway](https://github.com/agentgateway/agentgateway)",
-    "gaie": "[kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension)",
-    "inferencePool": "[kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension)",
-    "istioBase": "[istio/istio](https://github.com/istio/istio)",
-    "istiod": "[istio/istio](https://github.com/istio/istio)",
-    "llmDInfra": "[llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra)",
-    "llmDModelservice": "[llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice)",
-    "lws": "[kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws)",
-    "wva": "[llm-d/workload-variant-autoscaler](https://github.com/llm-d/workload-variant-autoscaler)",
-
-    # ---- Container images (defaults.yaml images) ----
-    "benchmark": "[llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark)",
-    "inferenceScheduler": "[llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler)",
-    "python": "[Docker Hub: python](https://hub.docker.com/_/python)",
-    "routingSidecar": "[llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar)",
-    "udsTokenizer": "[llm-d/llm-d-uds-tokenizer](https://github.com/llm-d/llm-d-uds-tokenizer)",
-    "vllm": "[llm-d/llm-d-cuda](https://github.com/llm-d/llm-d-cuda)",
-    "vllmOpenai": "[vllm-project/vllm](https://github.com/vllm-project/vllm)",
+# Source-of-truth for *system tools* upstream repos. These tools are
+# referenced in install.sh (not in defaults.yaml), so they need a static
+# mapping here. Helm charts and container images get their source repo
+# from `defaults.yaml`'s ``sourceRepo`` keys -- see ``format_source_repo``.
+SYSTEM_TOOL_REPOS: dict[str, str] = {
+    "crane": "https://github.com/google/go-containerregistry",
+    "curl": "https://github.com/curl/curl",
+    "git": "https://github.com/git/git",
+    "helm": "https://github.com/helm/helm",
+    "helm-diff": "https://github.com/databus23/helm-diff",
+    "helmfile": "https://github.com/helmfile/helmfile",
+    "jq": "https://github.com/jqlang/jq",
+    "kubectl": "https://github.com/kubernetes/kubernetes",
+    "kustomize": "https://github.com/kubernetes-sigs/kustomize",
+    "llm-d-planner (git)": "https://github.com/llm-d-incubation/llm-d-planner",
+    "oc": "https://github.com/openshift/oc",
+    "skopeo": "https://github.com/containers/skopeo",
+    "yq": "https://github.com/mikefarah/yq",
 }
 
 
-def upstream_for(name: str, *, pypi: bool = False) -> str:
-    """Resolve the markdown upstream link for *name*.
+def format_source_repo(url: str | None, *, source_path: str | None = None) -> str:
+    """Format a source-repo URL as ``[org/repo (subpath)](url)`` markdown.
 
-    When *pypi* is true and *name* isn't in the static map, generate a
-    PyPI link. Otherwise return ``"(unknown)"`` so reviewers can spot
-    holes in the mapping.
+    The link text is derived from the URL (last two path segments for github
+    URLs, ``Docker Hub: <name>`` for hub.docker.com). When *source_path* is
+    given, it's appended in parentheses so reviewers can see exactly where in
+    the repo the artifact lives. Returns ``"(unknown)"`` when *url* is empty.
     """
-    if name in UPSTREAM_REPOS:
-        return UPSTREAM_REPOS[name]
-    if pypi:
-        # PyPI normalises names (lowercase, dots/underscores -> dashes).
-        slug = re.sub(r"[._]+", "-", name).lower()
-        return f"[{name} (PyPI)](https://pypi.org/project/{slug}/)"
-    return "(unknown)"
+    if not url:
+        return "(unknown)"
+    label = _label_from_url(url)
+    if source_path:
+        label = f"{label} ({source_path})"
+    return f"[{label}]({url})"
+
+
+def _label_from_url(url: str) -> str:
+    """Build a short link-text label from a repo URL."""
+    if "hub.docker.com" in url:
+        # https://hub.docker.com/_/python -> "Docker Hub: python"
+        name = url.rstrip("/").rsplit("/", 1)[-1]
+        return f"Docker Hub: {name}"
+    # GitHub-style: take the last two path segments (org/repo)
+    parts = re.sub(r"^https?://[^/]+/", "", url.rstrip("/")).split("/")
+    if len(parts) >= 2:
+        return f"{parts[0]}/{parts[1]}"
+    return url
+
+
+def upstream_for_system_tool(name: str) -> str:
+    """Markdown link for a system tool listed in ``SYSTEM_TOOL_REPOS``."""
+    return format_source_repo(SYSTEM_TOOL_REPOS.get(name))
+
+
+def upstream_for_python_pkg(name: str) -> str:
+    """PyPI fallback for declared Python packages."""
+    slug = re.sub(r"[._]+", "-", name).lower()
+    return f"[{name} (PyPI)](https://pypi.org/project/{slug}/)"
 
 
 # --------------------------------------------------------------------------- #
@@ -239,7 +246,7 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
                 pin=version,
                 pin_type="version",
                 location=f"`{rel}` line {line_num} (`{fn_name}`)",
-                upstream=upstream_for(tool),
+                upstream=upstream_for_system_tool(tool),
             ))
         else:
             # Tool is required but its version is whatever the host provides.
@@ -248,7 +255,7 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
                 pin="system-provided",
                 pin_type="system-provided",
                 location=f"`{rel}`: `command -v` check (no pin)",
-                upstream=upstream_for(tool),
+                upstream=upstream_for_system_tool(tool),
             ))
 
     # helm-diff plugin is unconditionally installed.
@@ -261,7 +268,7 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
             if helm_diff_line is not None
             else f"`{rel}`: `helm plugin install`"
         ),
-        upstream=upstream_for("helm-diff"),
+        upstream=upstream_for_system_tool("helm-diff"),
     ))
 
     # Planner git pin (record under system tools because it's pinned in install.sh).
@@ -276,7 +283,7 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
                 if planner_line is not None
                 else f"`{rel}` (`PLANNER_GIT`)"
             ),
-            upstream=upstream_for("llm-d-planner (git)"),
+            upstream=upstream_for_system_tool("llm-d-planner (git)"),
         ))
 
     return sorted(out, key=lambda t: t.name.lower())
@@ -342,7 +349,7 @@ def parse_pyproject_dependencies(
             pin=spec or "(unpinned)",
             pin_type="constraint" if spec else "(unpinned)",
             location=loc,
-            upstream=upstream_for(name, pypi=True),
+            upstream=upstream_for_python_pkg(name),
         ))
     return sorted(entries, key=lambda e: e.name.lower()), line_map
 
@@ -409,7 +416,7 @@ def collect_pip_freeze(
             pin=pin,
             pin_type=pin_type,
             location=loc,
-            upstream=upstream_for(name, pypi=True),
+            upstream=upstream_for_python_pkg(name),
         ))
     return sorted(entries, key=lambda e: e.name.lower())
 
@@ -503,8 +510,10 @@ def collect_helm_charts(
             if line_num is not None
             else f"`{rel}` (`chartVersions.{chart_key}`)"
         )
-        # Append repo URL hint to upstream when present.
-        upstream = upstream_for(chart_key)
+        # Read the source repo straight from defaults.yaml's
+        # helmRepositories.<key>.sourceRepo (single source of truth).
+        # Append the actual chart pull URL so reviewers can trace both.
+        upstream = format_source_repo(repo_info.get("sourceRepo"))
         if repo_url and upstream != "(unknown)":
             upstream = f"{upstream} (`{repo_url}`)"
 
@@ -563,7 +572,13 @@ def collect_container_images(
             if line_num is not None
             else f"`{rel}` (`images.{image_key}`)"
         )
-        upstream = upstream_for(image_key)
+        # Read the source repo straight from defaults.yaml (single source of
+        # truth). The optional `sourcePath` says where in the repo the image
+        # is built from (e.g. a subdir or specific Dockerfile).
+        upstream = format_source_repo(
+            image_config.get("sourceRepo"),
+            source_path=image_config.get("sourcePath"),
+        )
         if repo and upstream != "(unknown)":
             upstream = f"{upstream} (`{repo}`)"
 

@@ -63,15 +63,25 @@ images:
   benchmark:
     repository: ghcr.io/llm-d/llm-d-benchmark
     tag: auto
+    sourceRepo: https://github.com/llm-d/llm-d-benchmark
   python:
     repository: python
     tag: "3.10"
+    sourceRepo: https://hub.docker.com/_/python
+  unknownImage:
+    repository: ghcr.io/somewhere/unknown
+    tag: v1
+    # intentionally no sourceRepo -- exercises the fallback
 
 helmRepositories:
   istio:
     url: https://istio-release.storage.googleapis.com/charts
+    sourceRepo: https://github.com/istio/istio
   llmDInfra:
     url: https://llm-d-incubation.github.io/llm-d-infra/
+    sourceRepo: https://github.com/llm-d-incubation/llm-d-infra
+  inferencePool:
+    sourceRepo: https://github.com/kubernetes-sigs/gateway-api-inference-extension
 
 chartVersions:
   istioBase: 1.29.1
@@ -462,7 +472,76 @@ def test_check_mode_ignores_volatile_lines(sbom_module, tmp_path: Path) -> None:
     assert rc2 == 0
 
 
-def test_upstream_for_unknown_falls_back(sbom_module) -> None:
-    assert sbom_module.upstream_for("definitely-not-mapped") == "(unknown)"
-    pypi = sbom_module.upstream_for("Some_Pkg.Name", pypi=True)
-    assert "pypi.org/project/some-pkg-name" in pypi.lower()
+def test_format_source_repo_github_label(sbom_module) -> None:
+    out = sbom_module.format_source_repo("https://github.com/llm-d/llm-d-kv-cache")
+    assert out == "[llm-d/llm-d-kv-cache](https://github.com/llm-d/llm-d-kv-cache)"
+
+
+def test_format_source_repo_with_path(sbom_module) -> None:
+    out = sbom_module.format_source_repo(
+        "https://github.com/llm-d/llm-d-kv-cache",
+        source_path="services/uds_tokenizer",
+    )
+    assert "[llm-d/llm-d-kv-cache (services/uds_tokenizer)]" in out
+
+
+def test_format_source_repo_docker_hub(sbom_module) -> None:
+    out = sbom_module.format_source_repo("https://hub.docker.com/_/python")
+    assert "Docker Hub: python" in out
+
+
+def test_format_source_repo_empty_returns_unknown(sbom_module) -> None:
+    assert sbom_module.format_source_repo(None) == "(unknown)"
+    assert sbom_module.format_source_repo("") == "(unknown)"
+
+
+def test_upstream_for_system_tool(sbom_module) -> None:
+    out = sbom_module.upstream_for_system_tool("yq")
+    assert "github.com/mikefarah/yq" in out
+    # Unknown tool returns "(unknown)"
+    assert sbom_module.upstream_for_system_tool("nonsense") == "(unknown)"
+
+
+def test_upstream_for_python_pkg_uses_pypi(sbom_module) -> None:
+    out = sbom_module.upstream_for_python_pkg("Some_Pkg.Name")
+    assert "pypi.org/project/some-pkg-name" in out.lower()
+
+
+def test_helm_charts_unknown_source_repo_marks_unknown(
+    sbom_module, defaults_yaml: Path,
+) -> None:
+    # inferencePool in the fixture has sourceRepo set; remove it on the fly to
+    # exercise the unknown path.
+    text = defaults_yaml.read_text(encoding="utf-8")
+    text = text.replace(
+        "  inferencePool:\n    sourceRepo: https://github.com/kubernetes-sigs/gateway-api-inference-extension\n",
+        "",
+    )
+    defaults_yaml.write_text(text, encoding="utf-8")
+    charts = sbom_module.collect_helm_charts(defaults_yaml, resolve=False)
+    by_name = {c.name: c for c in charts}
+    assert by_name["inferencePool"].upstream == "(unknown)"
+
+
+def test_container_images_reads_source_path(
+    sbom_module, defaults_yaml: Path,
+) -> None:
+    """The optional sourcePath should appear in the rendered upstream link."""
+    text = defaults_yaml.read_text(encoding="utf-8")
+    text = text.replace(
+        "    sourceRepo: https://github.com/llm-d/llm-d-benchmark",
+        "    sourceRepo: https://github.com/llm-d/llm-d-benchmark\n    sourcePath: src",
+    )
+    defaults_yaml.write_text(text, encoding="utf-8")
+    images = sbom_module.collect_container_images(defaults_yaml, resolve=False)
+    by_name = {i.name: i for i in images}
+    assert "(src)" in by_name["benchmark"].upstream
+
+
+def test_container_images_unknown_source_repo_marks_unknown(
+    sbom_module, defaults_yaml: Path,
+) -> None:
+    images = sbom_module.collect_container_images(defaults_yaml, resolve=False)
+    by_name = {i.name: i for i in images}
+    # `unknownImage` in the fixture has no sourceRepo
+    assert by_name["unknownImage"].upstream == "(unknown)"
