@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-04-17 18:30:54` (UTC)
-- Generated against git ref: `33fe84418af93891003a2115d7bde54220fc1eb5`
+- Generated at: `2026-04-17 18:40:36` (UTC)
+- Generated against git ref: `be16070e0e4eadc4352fabc9a2a5b0da643975f6`
 
 ## System Tool Dependencies
 
@@ -41,7 +41,7 @@ OCI registry at generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **agentgateway** | `1.0.1` | tag | `config/templates/values/defaults.yaml` line 424 (`chartVersions.agentgateway`) | [agentgateway/agentgateway](https://github.com/agentgateway/agentgateway) (`oci://cr.agentgateway.dev/charts/`) |
+| **agentgateway** | `v1.0.1` | tag | `config/templates/values/defaults.yaml` line 424 (`chartVersions.agentgateway`) | [agentgateway/agentgateway](https://github.com/agentgateway/agentgateway) (`oci://cr.agentgateway.dev/charts/`) |
 | **inferencePool** | `v1.4.0` | tag | `config/templates/values/defaults.yaml` line 423 (`chartVersions.inferencePool`) | [kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) |
 | **istioBase** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 418 (`chartVersions.istioBase`) | (unknown) |
 | **istiod** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 419 (`chartVersions.istiod`) | (unknown) |
