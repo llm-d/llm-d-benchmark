@@ -8,6 +8,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Optional, Any
@@ -435,7 +436,8 @@ class RenderPlans:
     def _resolve_deploy_method(self, values: dict) -> dict:
         """Override deploy method based on CLI ``--methods`` flag.
 
-        Accepts ``--methods standalone`` or ``--methods modelservice``.
+        Accepts ``--methods standalone`` or ``--methods modelservice``
+        or ``--methods fma``.
         Only one method may be active at a time.
 
         Without ``--methods``, the scenario YAML value is used as-is.
@@ -452,18 +454,38 @@ class RenderPlans:
                 "choose one. Using modelservice."
             )
             methods = ["modelservice"]
+        if "standalone" in methods and "fma" in methods:
+            self.logger.log_warning(
+                "Cannot enable both standalone and fma -- "
+                "choose one. Using standalone."
+            )
+            methods = ["standalone"]
+        if "modelservice" in methods and "fma" in methods:
+            self.logger.log_warning(
+                "Cannot enable both modelservice and fma -- "
+                "choose one. Using modelservice."
+            )
+            methods = ["modelservice"]
 
         standalone_config = result.setdefault("standalone", {})
         modelservice_config = result.setdefault("modelservice", {})
+        fma_config = result.setdefault("fma", {})
 
         if "standalone" in methods:
             standalone_config["enabled"] = True
             modelservice_config["enabled"] = False
+            fma_config["enabled"] = False
             self.logger.log_info("Deploy method from CLI: standalone")
         elif "modelservice" in methods:
             standalone_config["enabled"] = False
             modelservice_config["enabled"] = True
+            fma_config["enabled"] = False
             self.logger.log_info("Deploy method from CLI: modelservice")
+        elif "fma" in methods:
+            standalone_config["enabled"] = False
+            modelservice_config["enabled"] = False
+            fma_config["enabled"] = True
+            self.logger.log_info("Deploy method from CLI: fma")
 
         return result
 
@@ -514,6 +536,89 @@ class RenderPlans:
             values["model_id_label"] = model.get("shortName", "")
 
         return values
+
+    def _resolve_inference_pool_host(self, values: dict) -> dict:
+        """Auto-populate destinationRule.host from model_id_label when not set.
+
+        The Kubernetes service name for the GAIE EPP is always
+        ``{model_id_label}-gaie-epp``.  If a scenario's
+        ``inferenceExtension.inferencePoolProviderConfig.destinationRule``
+        exists but has no ``host``, fill it in automatically so that
+        scenario authors don't need to compute the hashed label by hand.
+        """
+        dest_rule = (
+            values
+            .get("inferenceExtension", {})
+            .get("inferencePoolProviderConfig", {})
+            .get("destinationRule")
+        )
+        if dest_rule is not None and not dest_rule.get("host"):
+            model_id_label = values.get("model_id_label", "")
+            if model_id_label:
+                dest_rule["host"] = f"{model_id_label}-gaie-epp"
+                self.logger.log_info(
+                    f"Auto-resolved destinationRule.host to "
+                    f"'{dest_rule['host']}'"
+                )
+        return values
+
+    # Matches ${dotted.path} but NOT ${SHELL_VAR} (no dots).
+    _CONFIG_VAR_RE = re.compile(r"\$\{([\w]+(?:\.[\w]+)+)\}")
+
+    def _substitute_config_variables(self, values: dict) -> dict:
+        """Replace ``${dotted.path}`` references in string values with resolved config values.
+
+        Walks the config dict recursively. For every string value, substitutes
+        ``${model.name}``-style references with the corresponding value from
+        the config. Shell variables like ``$VLLM_PORT`` or ``${SINGLE_WORD}``
+        are left untouched because the regex requires at least one dot.
+        """
+        result = deepcopy(values)
+        self._substitute_recursive(result, result)
+        return result
+
+    def _substitute_recursive(self, node: Any, root: dict) -> None:
+        """Recursively substitute config variable references in place."""
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if isinstance(value, str):
+                    node[key] = self._substitute_string(value, root)
+                elif isinstance(value, (dict, list)):
+                    self._substitute_recursive(value, root)
+        elif isinstance(node, list):
+            for i, item in enumerate(node):
+                if isinstance(item, str):
+                    node[i] = self._substitute_string(item, root)
+                elif isinstance(item, (dict, list)):
+                    self._substitute_recursive(item, root)
+
+    def _substitute_string(self, text: str, root: dict) -> str:
+        """Replace all ``${dotted.path}`` patterns in a single string."""
+        def _replace(match: re.Match) -> str:
+            path = match.group(1)
+            value = self._resolve_dotted_path(path, root)
+            if value is None:
+                self.logger.log_warning(
+                    f"⚠️  Config variable '${{{path}}}' could not be resolved, "
+                    "leaving as-is"
+                )
+                return match.group(0)
+            return str(value)
+
+        return self._CONFIG_VAR_RE.sub(_replace, text)
+
+    @staticmethod
+    def _resolve_dotted_path(path: str, root: dict) -> Optional[str]:
+        """Resolve a dotted path like ``model.name`` against the config dict."""
+        current = root
+        for part in path.split("."):
+            if isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                return None
+        if isinstance(current, (dict, list)):
+            return None
+        return current
 
     _HF_TOKEN_SENTINELS = {"REPLACE_TOKEN", "REPLACE_TOKEN_B64", ""}
 
@@ -702,6 +807,8 @@ class RenderPlans:
         merged_values = self._resolve_monitoring(merged_values)
         merged_values = self._resolve_hf_token(merged_values)
         merged_values = self._resolve_model_id_label(merged_values)
+        merged_values = self._resolve_inference_pool_host(merged_values)
+        merged_values = self._substitute_config_variables(merged_values)
 
         from llmdbenchmark.parser.config_schema import validate_config
 

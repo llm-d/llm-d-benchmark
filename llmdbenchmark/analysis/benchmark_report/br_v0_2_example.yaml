@@ -15,6 +15,11 @@ run: # These are details on the benchmark run that produced these results
     end: 2025-11-05T18:17:03Z
     duration: PT49.97206788184121S
   user: namasluk
+  description: "Baseline latency test for Qwen3-0.6B on inference-scheduling stack"
+  keywords:
+    - baseline
+    - latency
+    - qwen3
 
 # System inputs, combination of component configurations and workload
 scenario:

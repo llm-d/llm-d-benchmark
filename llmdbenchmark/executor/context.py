@@ -90,6 +90,12 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     harness_service_account: str | None = None
     harness_envvars_to_pod: str | None = None
     analyze_locally: bool = False
+    harness_data_access_timeout: int = 120
+
+    # Standup pod deployment timeouts
+    standalone_deploy_timeout: int = 900
+    gateway_deploy_timeout: int = 120
+    modelservice_deploy_timeout: int = 1500
 
     # Run-only mode (existing-stack)
     endpoint_url: str | None = None

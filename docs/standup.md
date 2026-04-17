@@ -90,6 +90,47 @@ The scenario parameters can be roughly categorized in four groups:
 | LLMDBENCH_VLLM_STANDALONE_ARGS                          |                                            |                                                |
 | LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE             |                                            |                                                |
 
+- Gateway provider
+
+| Variable                                     | Meaning                                                                | Note                                                                                                     |
+| -------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME | Gateway implementation used for the inference gateway                 | Default=`istio`. Set to `agentgateway` to use the agentgateway data plane instead of Istio               |
+
+### Switching from Istio to agentgateway
+
+By default, `llm-d-benchmark` deploys [Istio](https://istio.io/) as the gateway provider for the `modelservice` deployment method.  To use [agentgateway](https://agentgateway.dev/) instead, add a `gateway` block to your scenario YAML:
+
+```yaml
+scenario:
+  - name: "my-stack"
+    gateway:
+      className: agentgateway       # default is "istio"
+
+    modelservice:
+      enabled: true
+    # ... rest of scenario config
+```
+
+That single change is all that's needed.  The benchmark tool handles everything else automatically:
+
+1. **Installs agentgateway** -- the controller and CRDs are installed via helmfile during step 02 (admin prerequisites), the same way Istio is installed
+2. **Configures the Gateway resource** -- the llm-d-infra Helm chart creates a `Gateway` with `gatewayClassName: agentgateway`
+3. **OpenShift SCC** -- on OpenShift clusters, a minimal custom SCC (`llmdbench-agentgateway`) is automatically created and granted to the gateway service account, allowing the proxy to run as UID 10101 with `NET_BIND_SERVICE`
+
+#### Differences from Istio
+
+| Aspect                    | Istio                                                  | agentgateway                                                          |
+|---------------------------|--------------------------------------------------------|-----------------------------------------------------------------------|
+| Gateway pod creation      | Created by the llm-d-infra Helm chart directly         | Created dynamically by the agentgateway controller                    |
+| `gatewayParameters`       | Uses `ConfigMap`-based `parametersRef`                 | Not used -- agentgateway manages its own `AgentgatewayParameters` CRD |
+| OpenShift compatibility   | Built-in via `floatingUserId` (uses namespace UID range) | Requires custom SCC (auto-created by the tool)                      |
+| Service name              | `infra-{release}-inference-gateway-istio`              | `infra-{release}-inference-gateway`                                   |
+
+#### Example scenarios using agentgateway
+
+- [`config/scenarios/examples/cpu.yaml`](../config/scenarios/examples/cpu.yaml) -- CPU-only deployment
+- [`config/scenarios/guides/inference-scheduling.yaml`](../config/scenarios/guides/inference-scheduling.yaml) -- inference scheduling guide
+
 - "llm-d"-specific VLLM paramaters
 
 | Variable                                          | Meaning                                         | Note                                            |

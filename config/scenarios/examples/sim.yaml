@@ -1,100 +1,143 @@
 # Sim Example Scenario for LLM-D Deployment
-# Based on scenarios/examples/sim.sh
+# Migrated from bash environment variables to YAML format
 #
-# Simulated inference deployment using llm-d-inference-sim.
-# No GPUs required. Uses minimal CPU/memory resources.
-# Supports both standalone and modelservice deployment methods.
+# A scenario to capture running inference-sim on a resource limited
+# Kind/OpenShift cluster without requiring GPUs.
+#
+# IMPORTANT NOTE:
+# All parameters not defined here will use the default values from defaults.yaml.
 
 scenario:
-  - name: "sim-example"
+  # ============================================================================
+  # Sim - Resource-limited simulated inference (no GPUs)
+  # ============================================================================
+  - name: "sim"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
     # =========================================================================
 
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
+    # -------------------------------------------------------------------------
     model:
       name: facebook/opt-125m
       shortName: facebook-opt-125m
       path: models/facebook/opt-125m
       huggingfaceId: facebook/opt-125m
       gpuMemoryUtilization: 0
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=1024
+      maxModelLen: 1024
+      size: 2Gi
+
 
     # -------------------------------------------------------------------------
-    # PVC Configuration
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS (left for auto-detect)
-    # -------------------------------------------------------------------------
-    # Uncomment to override storage class:
-    # storage:
-    #   workloadPvc:
-    #     storageClassName: standard-rwx       # GKE
-    #   modelPvc:
-    #     storageClassName: standard-rwx       # GKE
-    #     # storageClassName: shared-vast       # Kubernetes
-    #     # storageClassName: ocs-storagecluster-cephfs  # OpenShift
-    #     size: 1Ti
-
     # Affinity / Node Selection
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY=kubernetes.io/os:linux
     # By default, affinity is disabled and pods schedule on any available node.
     # Options:
     #   1. Leave commented out -- no node selection constraint
     #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
     #   3. Set explicit labels -- pods only schedule on matching nodes
     # This scenario targets CPU-only nodes (no GPU required).
+    # -------------------------------------------------------------------------
     affinity:
       enabled: true
       nodeSelector:
         kubernetes.io/os: linux
 
+    # -------------------------------------------------------------------------
+    # Accelerator Configuration -- no GPUs
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_NR=0
+    # -------------------------------------------------------------------------
     accelerator:
       count: 0
+      # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY=24
+      # To pass capacity planner sanity checking
+      memory: 24
 
+    # -------------------------------------------------------------------------
+    # Override images for modelservice (inference-sim image)
+    # Corresponds to: LLMDBENCH_LLMD_IMAGE_NAME=llm-d-inference-sim
+    #                 LLMDBENCH_LLMD_IMAGE_TAG=latest
+    # -------------------------------------------------------------------------
     images:
       vllm:
         repository: ghcr.io/llm-d/llm-d-inference-sim
-        tag: v0.7.1
+        tag: latest
 
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
     modelservice:
       enabled: true
 
     # =========================================================================
     # STANDALONE -- Only applies when standalone.enabled: true
     # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Standalone Deployment Configuration
+    # Corresponds to: LLMDBENCH_VLLM_STANDALONE_*
+    # -------------------------------------------------------------------------
     standalone:
       enabled: false
       replicas: 1
 
       resources:
         limits:
-          memory: 4Gi
-          cpu: "2"
+          memory: 100Mi
+          cpu: "0"
         requests:
-          memory: 4Gi
-          cpu: "2"
+          memory: 100Mi
+          cpu: "0"
 
       parallelism:
         tensor: 1
         data: 1
+        dataLocal: 1
+        workers: 1
 
       accelerator:
         count: 0
 
+      # No GPU on simulation scenarios -- override the nvidia default from
+      # defaults.yaml so the standalone template's nodeAffinity block targets
+      # an OS label that actually exists on cluster nodes instead of
+      # nvidia.com/gpu.product.
+      acceleratorType:
+        labelKey: kubernetes.io/os
+        labelValue: linux
+
       image:
         repository: ghcr.io/llm-d/llm-d-inference-sim
         tag: latest
+        pullPolicy: IfNotPresent
 
       vllm:
-        customCommand: |
-          /app/llm-d-inference-sim \
-            --model facebook/opt-125m \
-            --served-model-name facebook/opt-125m \
-            --port $VLLM_INFERENCE_PORT \
-            --block-size $VLLM_BLOCK_SIZE \
-            --max-model-len $VLLM_MAX_MODEL_LEN
+        customCommand: "/app/llm-d-inference-sim --model /model-cache/${model.path} --port 8000 --served-model-name ${model.name}"
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Routing / GAIE Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_MONITORING_PROMETHEUS_ENABLED=false
+    # -------------------------------------------------------------------------
+    inferenceExtension:
+      monitoring:
+        prometheus:
+          enabled: false
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
 
+    # -------------------------------------------------------------------------
     # vLLM Common Configuration
     # Shared settings for both decode and prefill pods.
     # When no customCommand is set on decode/prefill, the vLLM serve command
@@ -110,20 +153,147 @@ scenario:
     # command entirely. Only --kv-transfer-config and --kv-events-config are
     # still appended from vllmCommon if enabled. All other vllmCommon.flags
     # are ignored -- the custom command must include its own flags.
+    # -------------------------------------------------------------------------
     vllmCommon:
-      shmMemory: 2Gi
+      shmMemory: 500Mi
+
+      volumes:
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 500Mi
+
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
 
     # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true
-    # The following sections configure the llm-d modelservice Helm chart
-    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
     # =========================================================================
 
-    inferenceExtension:
-      monitoring:
-        prometheus:
-          enabled: false
+    # -------------------------------------------------------------------------
+    # Prefill Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_*
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: true
+      replicas: 1
 
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 100Mi
+          cpu: "0"
+        requests:
+          memory: 100Mi
+          cpu: "0"
+
+      accelerator:
+        count: 0
+
+      vllm:
+        modelCommand: imageDefault
+        additionalFlags: []
+
+    # -------------------------------------------------------------------------
+    # Decode Configuration
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
+    # No customCommand -- the vLLM serve command is auto-generated
+    # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
+    # -------------------------------------------------------------------------
+    decode:
+      replicas: 1
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 100Mi
+          cpu: "0"
+        requests:
+          memory: 100Mi
+          cpu: "0"
+
+      accelerator:
+        count: 0
+
+      vllm:
+        modelCommand: imageDefault
+        additionalFlags: []
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Storage Configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=2Gi
+    #                 LLMDBENCH_VLLM_COMMON_PVC_ACCESS_MODE=ReadWriteOnce
+    # -------------------------------------------------------------------------
+    storage:
+      # Uncomment to override storage class:
+      # workloadPvc:
+      #   storageClassName: standard-rwx       # GKE
+      modelPvc:
+        # storageClassName: standard-rwx       # GKE
+        # storageClassName: shared-vast       # Kubernetes
+        # storageClassName: ocs-storagecluster-cephfs  # OpenShift
+        size: 2Gi
+        accessMode:
+          - ReadWriteOnce
+      uriProtocol: hf
+
+    # -------------------------------------------------------------------------
+    # Timeout Configuration
+    # Corresponds to: LLMDBENCH_CONTROL_WAIT_TIMEOUT=300
+    # -------------------------------------------------------------------------
+    timeouts:
+      controlWait: 300
+
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Harness Configuration
+    # Corresponds to: LLMDBENCH_HARNESS_PVC_SIZE=3Gi
+    #                 LLMDBENCH_HARNESS_CPU_NR=1
+    #                 LLMDBENCH_HARNESS_CPU_MEM=2Gi
+    # -------------------------------------------------------------------------
+    harness:
+      name: inference-perf
+      experimentProfile: sanity_random.yaml
+      pvcSize: 3Gi
+      resources:
+        cpu: "1"
+        memory: 2Gi
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Routing Configuration
+    # Sim scenarios do not use the routing proxy sidecar
+    # -------------------------------------------------------------------------
+    routing:
+      proxy:
+        enabled: false
+
+    # -------------------------------------------------------------------------
+    # Infrastructure / Gateway Configuration
+    # Corresponds to: LLMDBENCH_VLLM_INFRA_GATEWAY_*
+    # -------------------------------------------------------------------------
     infrastructure:
       gateway:
         resources:
@@ -134,46 +304,8 @@ scenario:
             cpu: "2"
             memory: 2Gi
 
-      podMonitor:
-        enabled: false
-
-    prefill:
-      enabled: false
-      replicas: 0
-
-    # No customCommand -- the vLLM serve command is auto-generated
-    # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
-    decode:
-      replicas: 2
-
-      parallelism:
-        tensor: 1
-        data: 1
-
-      accelerator:
-        count: 0
-
-      resources:
-        limits:
-          memory: 4Gi
-          cpu: "2"
-        requests:
-          memory: 4Gi
-          cpu: "2"
-
-      vllm:
-        modelCommand: imageDefault
-        additionalFlags: []
-
-    # =========================================================================
-    # WORKLOAD / HARNESS -- Benchmark execution configuration
-    # =========================================================================
-
-    harness:
-      name: inference-perf
-      experimentProfile: sanity_random.yaml
-      resources:
-        cpu: "2"
-        memory: 8Gi
-
+    # -------------------------------------------------------------------------
+    # Workload Configuration
+    # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR
+    # -------------------------------------------------------------------------
     workDir: "~/data/sim"

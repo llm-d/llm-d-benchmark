@@ -151,10 +151,15 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
 def _render_helm_manifests(plan_dir: Path, logger) -> None:
     """Pre-render modelservice Helm chart manifests into each stack's plan directory.
 
-    For each rendered stack, runs ``helmfile template`` against the
-    modelservice release to produce the full K8s manifests the chart
-    would create.  Output is saved as ``helm-modelservice.yaml`` in
-    the stack directory alongside the Jinja2-rendered templates.
+    For each rendered stack that deploys via ``modelservice``, runs
+    ``helmfile template`` against the modelservice release to produce
+    the full K8s manifests the chart would create.  Output is saved as
+    ``helm-modelservice.yaml`` in the stack directory alongside the
+    Jinja2-rendered templates.
+
+    Stacks that deploy via ``standalone`` are skipped entirely — they
+    do not use the modelservice Helm chart, so pre-rendering it would
+    produce an empty helmfile and fail with "no top-level config keys".
 
     This runs during the plan phase so that:
     - Users can inspect exactly what Helm will apply
@@ -174,6 +179,37 @@ def _render_helm_manifests(plan_dir: Path, logger) -> None:
         if not helmfile_src.exists() or not ms_values.exists():
             continue
 
+        # Read config once per stack — we need it both to decide
+        # whether modelservice rendering applies and to extract the
+        # model_id_label used by the helmfile selector.
+        config_file = stack_dir / "config.yaml"
+        cfg: dict = {}
+        if config_file.exists():
+            with open(config_file, encoding="utf-8") as f:
+                cfg = _yaml.safe_load(f) or {}
+
+        # Skip standalone-only stacks: the modelservice Helm chart is
+        # not used, and running `helmfile template` against a helmfile
+        # with no matching release yields an empty document that
+        # subsequently fails to parse.
+        modelservice_enabled = bool(
+            (cfg.get("modelservice") or {}).get("enabled", False)
+        )
+        if not modelservice_enabled:
+            logger.log_debug(
+                f"Skipping Helm pre-render for {stack_dir.name}: "
+                f"modelservice.enabled is false (standalone-only stack)"
+            )
+            continue
+
+        model_id = cfg.get("model_id_label", "")
+        if not model_id:
+            logger.log_debug(
+                f"Skipping Helm pre-render for {stack_dir.name}: "
+                f"model_id_label not found in config.yaml"
+            )
+            continue
+
         # Output directory for pre-rendered Helm manifests
         helm_dir = stack_dir / "helm"
         helm_dir.mkdir(parents=True, exist_ok=True)
@@ -185,24 +221,7 @@ def _render_helm_manifests(plan_dir: Path, logger) -> None:
 
         # Only the modelservice values file is needed — the selector
         # targets only the -ms release so infra/gaie values are not read.
-        if ms_values.exists():
-            shutil.copy2(ms_values, helm_dir / "ms-values.yaml")
-
-        # Read config to get the model_id_label for the selector.
-        # Without it we can't target only the modelservice release.
-        config_file = stack_dir / "config.yaml"
-        model_id = ""
-        if config_file.exists():
-            with open(config_file, encoding="utf-8") as f:
-                cfg = _yaml.safe_load(f) or {}
-            model_id = cfg.get("model_id_label", "")
-
-        if not model_id:
-            logger.log_debug(
-                f"Skipping Helm pre-render for {stack_dir.name}: "
-                f"model_id_label not found in config.yaml"
-            )
-            continue
+        shutil.copy2(ms_values, helm_dir / "ms-values.yaml")
 
         # Use CommandExecutor for consistent logging and error handling
         cmd = CommandExecutor(
@@ -254,6 +273,9 @@ def _load_stack_info_from_config(config_file, stack_name=""):
                 "release": plan_config.get("release"),
                 "standalone_enabled": (
                     plan_config.get("standalone", {}).get("enabled", False)
+                ),
+                "fma_enabled": (
+                    plan_config.get("fma", {}).get("enabled", False)
                 ),
                 "modelservice_enabled": (
                     plan_config.get("modelservice", {}).get("enabled", False)
@@ -332,6 +354,7 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
         return [m.strip() for m in methods_str.split(",")]
 
     standalone = plan_info.get("standalone_enabled", False)
+    fma = plan_info.get("fma_enabled", False)
     modelservice = plan_info.get("modelservice_enabled", False)
 
     if phase == "run":
@@ -339,6 +362,8 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
         methods = []
         if standalone:
             methods.append("standalone")
+        if fma:
+            methods.append("fma")
         if modelservice:
             methods.append("modelservice")
         if methods:
@@ -351,6 +376,9 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
         if standalone:
             logger.log_info("Auto-detected deploy method from plan: standalone")
             return ["standalone"]
+        if fma:
+            logger.log_info("Auto-detected deploy method from plan: fma")
+            return ["fma"]
         if modelservice:
             logger.log_info("Auto-detected deploy method from plan: modelservice")
             return ["modelservice"]
@@ -397,6 +425,9 @@ def _do_standup(args, logger, render_plan_errors):
         harness_namespace=harness_ns,
         model_name=plan_info.get("model_name"),
         logger=logger,
+        standalone_deploy_timeout=int(getattr(args, "standalone_deploy_timeout", 900) or 900),
+        gateway_deploy_timeout=int(getattr(args, "gateway_deploy_timeout", 120) or 120),
+        modelservice_deploy_timeout=int(getattr(args, "modelservice_deploy_timeout", 1500) or 1500),
     )
 
     _check_model_access(context, all_stacks_info, logger)
@@ -737,6 +768,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         run_config_file=run_config_file,
         generate_config_only=getattr(args, "generate_config", False),
         dataset_url=getattr(args, "dataset", None),
+        harness_data_access_timeout=int(getattr(args, "data_access_timeout", 120) or 120),
     )
 
     executor = StepExecutor(
@@ -1218,6 +1250,10 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_WVA": ("wva", "--wva"),
         "LLMDBENCH_SERVICE_ACCOUNT": ("serviceaccount", "--serviceaccount"),
         "LLMDBENCH_HARNESS_ENVVARS_TO_YAML": ("envvarspod", "--envvarspod"),
+        "LLMDBENCH_DATA_ACCESS_TIMEOUT": ("data_access_timeout", "--data-access-timeout"),
+        "LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT": ("standalone_deploy_timeout", "--standalone-deploy-timeout"),
+        "LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT": ("gateway_deploy_timeout", "--gateway-deploy-timeout"),
+        "LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT": ("modelservice_deploy_timeout", "--modelservice-deploy-timeout"),
     }
 
     active = {k: v for k, v in os.environ.items() if k in _ENV_TO_CLI}

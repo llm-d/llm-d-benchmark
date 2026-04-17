@@ -63,6 +63,24 @@ The install script auto-detects if the repo is present -- if not, it clones it f
 > [!TIP]
 > The last line of output from `llmdbenchmark standup` shows the workspace path where all rendered configs, manifests, and results are stored.
 
+### Pick your path: with or without Accelerators
+
+Two supported entry points depending on what you have access to:
+
+**🖥️ No Accelerators  / No Cluster Access — Utilize a Kind Quickstart**
+
+Run the full `standup → smoketest → run → teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine. No accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind-sim` scenario that CI runs on every PR, so if it works locally it works in CI.
+
+- **Requirements:** Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.11+
+- **Continue with Quick Start Guide:** [Quickstart on Kind](docs/quickstart.md)
+
+**🚀 Access to Compute cluster with Accelerators — full pipeline**
+
+Deploy against a Kubernetes cluster with Accelerators (OpenShift, GKE, EKS, CKS, etc.). Use one of the built-in specs or a well-lit path guide tuned for your hardware.
+
+- **Requirements:** cluster admin to install infra  (or utilize an namespace admin with infra pre-installed), kubeconfig, compute nodes
+- **Continue below** with [Choose a specification](#choose-a-specification) and [Deploy and benchmark](#deploy-and-benchmark-full-pipeline)
+
 ### Choose a specification
 
 Every command takes a `--spec` that selects the configuration for your cluster and GPU type. Specs are Jinja2 templates under `config/specification/`:
@@ -71,6 +89,7 @@ Every command takes a `--spec` that selects the configuration for your cluster a
 --spec gpu                              # NVIDIA GPU setup (config/specification/examples/gpu.yaml.j2)
 --spec inference-scheduling             # inference scheduling guide
 --spec pd-disaggregation               # prefill-decode disaggregation guide
+...
 --spec /full/path/to/my-spec.yaml.j2    # custom spec
 ```
 
@@ -116,24 +135,6 @@ This uses the same harness, profile rendering, and result collection pipeline --
 
 > [!TIP]
 > `run` can also be used in debug mode (`-d` / `--debug`) which starts the harness pod with `sleep infinity` so you can exec into it and run commands interactively. See [this example](docs/tutorials/run/run_interactively_example.md).
-
-### Run a parameter sweep
-
-Experiment files in `workload/experiments/` define structured parameter sweeps. Each file lists treatments (combinations of factor levels) that the benchmark iterates over:
-
-```bash
-# Sweep workload parameters against an existing stack
-llmdbenchmark --spec inference-scheduling run \
-  --experiments workload/experiments/inference-scheduling.yaml
-
-# Full DoE: auto standup/run/teardown per infrastructure configuration
-llmdbenchmark --spec tiered-prefix-cache experiment \
-  --experiments workload/experiments/tiered-prefix-cache.yaml
-```
-
-The `run --experiments` form varies workload parameters (prompt length, concurrency) against a single endpoint.
-
-The `experiment` command goes even further by providing an interface to variy infrastructure parameters (replica counts, cache sizes, routing plugins) and stands up a fresh stack for each configuration. This is for advanced performance benchmarking that expands beyond simple configurations - **everything** becomes tunable from infrastructure to inference time.
 
 See [workload/README.md](workload/README.md) for the full experiment file format and all pre-built experiments, as well as advanced functionality.
 
@@ -200,7 +201,7 @@ The install script:
 2. Validates Python 3.11+ and pip
 3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile, kustomize, jq, yq, skopeo, crane)
 4. Installs the `helm-diff` plugin (required by helmfile)
-5. Installs `llmdbenchmark` and `config_explorer` in editable mode
+5. Installs `llmdbenchmark` and `planner` (from [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner))
 6. Verifies all Python packages are importable
 
 ### Manual Install w/o Install Script
@@ -210,7 +211,7 @@ git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-pip install -e config_explorer/
+pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@f51812bebca30e0291ec541bd2ef2acf0572e8a4"
 ```
 
 ### Verify Installation
@@ -335,7 +336,7 @@ llmdbenchmark --spec gpu smoketest -p my-namespace -s 2   # config validation on
 |------|---------|-------------|
 | `-s STEPS` | | Step filter (e.g., `0,1,2` or `0-2`) |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
-| `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (standalone, modelservice) |
+| `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (standalone, modelservice, fma) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
 
@@ -556,10 +557,6 @@ Benchmark load specifications including LLM use case, traffic pattern, input/out
 ### [Experiments](docs/doe.md)
 
 Design of Experiments (DOE) files describing parameter sweeps across standup and run configurations. The `experiment` command automates the full setup x run treatment matrix -- standing up a different infrastructure configuration for each setup treatment, running all workload variations, tearing down, and producing a summary. See [llmdbenchmark/experiment/README.md](llmdbenchmark/experiment/README.md) for the full experiment lifecycle documentation.
-
-### [Configuration Explorer](config_explorer/README.md)
-
-The configuration explorer is a library that helps find the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements. A "Capacity Planner" is provided as an initial component to help determine if a vLLM configuration is feasible for deployment.
 
 ### [Benchmark Report](llmdbenchmark/analysis/benchmark_report/README.md)
 

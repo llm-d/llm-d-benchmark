@@ -75,7 +75,7 @@ mkdir -p "$LOG_DIR"
 STABLE_BOTH=(
   examples/cpu
   examples/gpu
-  examples/sim-small
+  examples/sim
   guides/simulated-accelerators
 )
 

@@ -207,6 +207,10 @@ spec:
     ${is_dataset_url}  value: "${harness_dataset_url}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
       value: "${endpoint_stack_name}"
+    - name: LLMDBENCH_DESCRIPTION_TEXT
+      value: "${_description_text}"
+    - name: LLMDBENCH_DESCRIPTION_KEYWORDS
+      value: "${_description_keywords}"
     volumeMounts:
     - name: results
       mountPath: ${RESULTS_DIR_PREFIX}
@@ -312,7 +316,11 @@ if ! [[ -f $_config_file  ]]; then
   announce "❌ ERROR: could not find config file \"$_config_file\""
   exit 1
 fi
-eval $( yq -o shell '. | del(.workload)| del (.env)' "$_config_file")
+eval $( yq -o shell '. | del(.workload)| del (.env) | del(.description)' "$_config_file")
+
+# Extract optional description metadata
+_description_text=$(yq '.description.text // ""' "$_config_file")
+_description_keywords=$(yq '.description.keywords // [] | join(",")' "$_config_file")
 
 # Resolve workload hooks (CLI flags override config file values)
 # ========================================================
@@ -548,6 +556,16 @@ RUN_WORKLOAD
     )
     : | ${_timeout} $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "$run_workload"
     res=$?
+
+    # Save description metadata to results directory
+    if [[ -n "$_description_text" || -n "$_description_keywords" ]]; then
+      _results_dir=$(results_dir_name "$endpoint_stack_name" "$harness_name" "$_run_experiment_id")
+      $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "cat > ${_results_dir}/description.yaml <<'DESCEOF'
+description:
+  text: \"${_description_text}\"
+  keywords: [${_description_keywords}]
+DESCEOF"
+    fi
 
     # Run post-workload hook
     if [[ -n "${_post_workload}" ]]; then

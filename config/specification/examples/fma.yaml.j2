@@ -1,6 +1,6 @@
-# Sim Small Example Specification
-# Deploys inference-sim on resource-limited Kind/OpenShift clusters without GPUs.
-# See scenarios/examples/sim-small.yaml for details.
+# FMA Example Specification
+# Deploys a model on Fast Mode Activation.
+# See scenarios/examples/fma.yaml for details.
 
 # [REQUIRED]
 {% set base_dir = base_dir | default('../') -%}
@@ -16,4 +16,4 @@ template_dir:
 
 # [OPTIONAL]
 scenario_file:
-  path: {{ base_dir }}/config/scenarios/examples/sim-small.yaml
+  path: {{ base_dir }}/config/scenarios/examples/fma.yaml

@@ -89,13 +89,20 @@ class DeployGaieStep(Step):
             gateway_class = self._require_config(plan_config, "gateway", "className")
             if gateway_class == "data-science-gateway-class":
                 gw_label = "gateway.istio.io/managed=istio.io-gateway-controller"
+            elif gateway_class == "agentgateway":
+                # agentgateway controller creates pods with the gateway name
+                # as the app.kubernetes.io/name label, not "llm-d-infra".
+                gw_label = (
+                    f"app.kubernetes.io/name=infra-{release}-inference-gateway"
+                )
             else:
                 gw_label = "app.kubernetes.io/name=llm-d-infra"
 
+            timeout = context.gateway_deploy_timeout
             gateway_wait = cmd.wait_for_pods(
                 label=gw_label,
                 namespace=namespace,
-                timeout=120,
+                timeout=timeout,
                 poll_interval=10,
                 description="gateway infra",
             )

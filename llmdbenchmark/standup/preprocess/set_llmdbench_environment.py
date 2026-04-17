@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import subprocess
+import sys
 import ipaddress
 import os
 import json
@@ -484,8 +485,8 @@ for key in dict(os.environ).keys():
     if "VLLM_" in key:
         value = os.environ.get(key)
         if value.count(',,') :
-            if pod_index :
-                if len(value.split(',,')) >= pod_index :
+            if pod_index is not None :
+                if len(value.split(',,')) > pod_index :
                     newvalue = value.split(',,')[pod_index]
                 else :
                     newvalue = value.split(',,')[0]
@@ -494,41 +495,92 @@ for key in dict(os.environ).keys():
             print(f"INFO: Variable \"{key}\" with value \"{value}\" will be re-exported with \"{newvalue}\" ({pod_index})")
             env_file_contents.append(f"export {key}={newvalue}")
 
-if pod_labels.count(',') and kubeconfig_path :
+if pod_labels.count('_eq_') and kubeconfig_path :
     try:
-        import pykube
-        from pykube.exceptions import PyKubeError, ObjectDoesNotExist
-    except ModuleNotFoundError as e:
-        print("DEBUG: Attempting to install pykube")
-        try :
-            result = subprocess.run(['pip', 'install', 'pykube'], capture_output=True, text=True, check=True)
-            import pykube
-            from pykube.exceptions import PyKubeError, ObjectDoesNotExist
-        except subprocess.CalledProcessError as e:
-            print(f"ERROR: Unable to install pykube: {e}")
-            sys.exit(1)
-
-    try:
-        #config = pykube.KubeConfig.from_service_account()
-        config = pykube.KubeConfig.from_file(kubeconfig_path)
-        api = pykube.HTTPClient(config)
-
-        pod = pykube.Pod.objects(api).filter(namespace=pod_namespace).get(name=pod_name)
-        if "labels" not in pod.obj["metadata"]:
-            pod.obj["metadata"]["labels"] = {}
-
-        if len(pod_labels.split(',')) >= pod_index :
-            pod_label = pod_labels.split(',')[pod_index]
+        labels_list = pod_labels.split(',')
+        if pod_index is not None and len(labels_list) > pod_index :
+            pod_label = labels_list[pod_index]
         else :
-            pod_label = pod_labels.split(',')[0]
+            pod_label = labels_list[0]
         pod_label_name, pod_label_value = pod_label.split("_eq_")
-        pod.obj["metadata"]["labels"][pod_label_name] = pod_label_value
-        pod.update()
-        print(f"INFO: Added label \"{pod_label_name}={pod_label_value}\" to this pod")
 
-    except ObjectDoesNotExist:
-        print(f"ERROR: Pod {pod_name} not found in namespace {pod_namespace}")
-        sys.exit(1)
+        # Try kubectl first (available in some images)
+        kubectl_bin = shutil.which("kubectl")
+        if kubectl_bin:
+            result = subprocess.run(
+                [kubectl_bin, "--kubeconfig", kubeconfig_path,
+                 "label", "pod", pod_name,
+                 "--namespace", pod_namespace,
+                 f"{pod_label_name}={pod_label_value}", "--overwrite"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                print(f"INFO: Added label \"{pod_label_name}={pod_label_value}\" to this pod (via kubectl)")
+            else:
+                raise RuntimeError(f"kubectl label failed: {result.stderr}")
+        else:
+            # Fall back to K8s API via urllib (stdlib, no pip needed)
+            import urllib.request
+            import ssl
+            import yaml
+
+            with open(kubeconfig_path, 'r') as f:
+                kubeconfig = yaml.safe_load(f)
+
+            # Extract server and credentials from kubeconfig
+            cluster = kubeconfig['clusters'][0]['cluster']
+            user = kubeconfig['users'][0]['user']
+            server = cluster['server'].rstrip('/')
+
+            ssl_ctx = ssl.create_default_context()
+            if 'certificate-authority-data' in cluster:
+                import base64, tempfile
+                ca_data = base64.b64decode(cluster['certificate-authority-data'])
+                ca_file = tempfile.NamedTemporaryFile(delete=False, suffix='.crt')
+                ca_file.write(ca_data)
+                ca_file.close()
+                ssl_ctx.load_verify_locations(ca_file.name)
+            elif 'certificate-authority' in cluster:
+                ssl_ctx.load_verify_locations(cluster['certificate-authority'])
+            else:
+                ssl_ctx.check_hostname = False
+                ssl_ctx.verify_mode = ssl.CERT_NONE
+
+            if 'client-certificate-data' in user and 'client-key-data' in user:
+                import base64, tempfile
+                cert_data = base64.b64decode(user['client-certificate-data'])
+                key_data = base64.b64decode(user['client-key-data'])
+                cert_file = tempfile.NamedTemporaryFile(delete=False, suffix='.crt')
+                cert_file.write(cert_data)
+                cert_file.close()
+                key_file = tempfile.NamedTemporaryFile(delete=False, suffix='.key')
+                key_file.write(key_data)
+                key_file.close()
+                ssl_ctx.load_cert_chain(cert_file.name, key_file.name)
+
+            headers = {"Content-Type": "application/merge-patch+json"}
+            if 'token' in user:
+                headers["Authorization"] = f"Bearer {user['token']}"
+
+            patch_url = f"{server}/api/v1/namespaces/{pod_namespace}/pods/{pod_name}"
+            patch_body = json.dumps({
+                "metadata": {
+                    "labels": {
+                        pod_label_name: pod_label_value
+                    }
+                }
+            }).encode('utf-8')
+
+            req = urllib.request.Request(patch_url, data=patch_body, headers=headers, method='PATCH')
+            resp = urllib.request.urlopen(req, context=ssl_ctx)
+            if resp.status == 200:
+                print(f"INFO: Added label \"{pod_label_name}={pod_label_value}\" to this pod (via K8s API)")
+            else:
+                raise RuntimeError(f"K8s API returned status {resp.status}")
+
+    except Exception as e:
+        print(f"WARNING: Pod self-labeling failed (non-fatal): {e}")
+        print("WARNING: Context-length-aware routing will not work without pod labels.")
 
 
 env_file_contents.append("echo \"Defined NCCL environment variables\"")

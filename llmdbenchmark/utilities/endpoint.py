@@ -97,6 +97,31 @@ def find_standalone_endpoint(
         return ip, name, svc_port
     return None, None, "80"
 
+def find_fma_endpoint(cmd: CommandExecutor, namespace: str) -> str | None:
+    """Find FMA replicaset name.
+
+    Queries for replicaset labelled ``stood-up-from=llm-d-benchmark``.
+
+    Returns:
+        name -- None if not found.
+    """
+
+    result = cmd.kube(
+        "get",
+        "replicaset",
+        "-l",
+        "stood-up-from=llm-d-benchmark",
+        "--namespace",
+        namespace,
+        "-o",
+        "jsonpath={.items[*].metadata.name}",
+        check=False,
+    )
+    if result.success and result.stdout.strip():
+        return f"{result.stdout.strip()}.{namespace}.cluster.local"
+
+    return None
+
 
 def find_gateway_endpoint(
     cmd: CommandExecutor, namespace: str, release: str
@@ -459,7 +484,7 @@ def test_model_serving(
             )
 
     override_args = _build_overrides(plan_config, service_account=service_account)
-    curl_image = "curlimages/curl"
+    curl_image = "quay.io/curl/curl"
     last_error: str | None = None
 
     for attempt in range(1, max_retries + 1):

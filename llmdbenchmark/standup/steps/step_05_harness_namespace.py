@@ -90,10 +90,11 @@ class HarnessNamespaceStep(Step):
             configmap_namespaces.append(model_ns)
         self._create_preprocesses_configmap(cmd, context, configmap_namespaces, errors)
 
+        timeout = context.harness_data_access_timeout
         wait_result = cmd.wait_for_pods(
             label="role=llm-d-benchmark-data-access",
             namespace=harness_ns,
-            timeout=120,
+            timeout=timeout,
             poll_interval=5,
             description="harness data-access pod",
         )

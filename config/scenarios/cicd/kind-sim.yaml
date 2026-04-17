@@ -43,10 +43,11 @@ scenario:
     # No GPU accelerators
     accelerator:
       count: 0
-      memory: 24  # To pass capacity planner sanity checking
+      memory: 24 # To pass capacity planner sanity checking
 
-    # Minimal gateway resources for Kind
+    # Minimal gateway resources for Kind -- leave here to update for CICD
     gateway:
+      className: agentgateway
       resources:
         limits:
           cpu: "2"
@@ -111,7 +112,7 @@ scenario:
           cpu: "0"
 
       vllm:
-        customCommand: "/app/llm-d-inference-sim --model /model-cache/models/facebook/opt-125m --port 8000 --served-model-name facebook/opt-125m"
+        customCommand: "/app/llm-d-inference-sim --model /model-cache/${model.path} --port 8000 --served-model-name ${model.name}"
 
     # Decode configuration -- use image's default entrypoint (inference-sim)
     decode:

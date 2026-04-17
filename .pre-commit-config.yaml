@@ -1,12 +1,102 @@
 repos:
   - repo: local
     hooks:
-      - id: basic_unit_test
-        name: Basic Unit Test
-        entry: bash -c './setup/standup.sh -c kind_sim_fb -n'
-        require_serial: true
-        pass_filenames: false
+      # ----------------------------------------------------------------
+      # Fast syntax sanity check -- only runs when llmdbenchmark/**.py
+      # changes. Catches import errors and syntax regressions before
+      # anything heavier runs.
+      # ----------------------------------------------------------------
+      - id: py-compile
+        name: Byte-compile llmdbenchmark
+        entry: .venv/bin/python -m compileall -q llmdbenchmark
         language: system
+        pass_filenames: false
+        files: ^llmdbenchmark/.*\.py$
+        stages: [pre-commit, pre-push]
+
+      # ----------------------------------------------------------------
+      # Unit tests -- mirrors the `unit-tests` job in
+      # .github/workflows/ci-pr-benchmark.yaml.
+      # ----------------------------------------------------------------
+      - id: pytest
+        name: Unit tests (pytest tests/ -x -q)
+        entry: .venv/bin/python -m pytest tests/ -x -q
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+      # ----------------------------------------------------------------
+      # Render-validation smart check -- detects which scenarios the
+      # commit actually touched (via util/precommit_render_changed.py)
+      # and renders only those. Scope:
+      #
+      #   - config/specification/<path>.yaml.j2   -> render <path>
+      #   - config/scenarios/<path>.yaml          -> render <path>
+      #   - shared render path (templates, parser, plan, executor,
+      #     utilities, standup, run, teardown, smoketests, cli.py,
+      #     config.py) -> render the cicd/kind-sim canary
+      #   - nothing resolved (docs-only commit, test-only commit, ...)
+      #     -> render the cicd/kind-sim canary as a baseline sanity
+      #     check, so every commit proves the render path is healthy
+      #
+      # The script prints each spec it is about to render along with
+      # the reason it was picked, so it is always obvious what the
+      # hook is doing. The same hook runs on pre-push -- we rely on
+      # CI's full per-spec render job as the safety net instead of
+      # duplicating it locally, since the smart hook already covers
+      # everything the current change could have broken.
+      #
+      # Important knobs:
+      #
+      #   pass_filenames: false
+      #     We do NOT want pre-commit to hand us the file list. With
+      #     pass_filenames: true, pre-commit batches large file lists
+      #     across multiple subprocess invocations (to stay under the
+      #     OS argv limit) and runs those batches in parallel, which
+      #     both duplicates work and scrambles the tty output. With
+      #     pass_filenames: false, pre-commit invokes us exactly once
+      #     with zero file arguments and the script asks git directly
+      #     for the real staged-file list via
+      #     ``git diff --cached --name-only --diff-filter=ACMR``. This
+      #     also means ``pre-commit run --all-files`` correctly renders
+      #     only what's staged (instead of every scenario in the repo)
+      #     -- the "--all-files" intent is meaningless for a
+      #     change-detecting hook.
+      #
+      #   require_serial: true
+      #     Defensive. With pass_filenames: false there's only one
+      #     invocation anyway, but this makes it explicit that the
+      #     hook must never be run in parallel with copies of itself.
+      # ----------------------------------------------------------------
+      - id: render-validation-changed
+        name: Render changed scenarios (dry-run)
+        entry: .venv/bin/python util/precommit_render_changed.py
+        language: system
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-commit, pre-push]
+
+      # ----------------------------------------------------------------
+      # Software Bill of Materials -- regenerates SBOM.md from
+      # install.sh, pyproject.toml, and config/templates/values/
+      # defaults.yaml. Resolves `auto` Helm/image versions against the
+      # live registry via the existing VersionResolver.
+      #
+      # Triggers only when one of those source-of-truth files changes
+      # (matches the precommit_render_changed.py performance pattern).
+      # When SBOM.md would change, the hook writes the new version and
+      # exits non-zero with a message asking the user to `git add` and
+      # re-commit -- same convention as `prettier --write` / `black`.
+      # ----------------------------------------------------------------
+      - id: generate-sbom
+        name: Generate SBOM (Software Bill of Materials)
+        entry: .venv/bin/python util/generate_sbom.py --check
+        language: system
+        pass_filenames: false
+        require_serial: true
+        files: ^(install\.sh|pyproject\.toml|config/templates/values/defaults\.yaml|util/generate_sbom\.py)$
+        stages: [pre-commit, pre-push]
+
   - repo: https://github.com/ibm/detect-secrets
     # If you desire to use a specific version of detect-secrets, you can replace `master` with other git revisions such as branch, tag or commit sha.
     # You are encouraged to use static refs such as tags, instead of branch name
@@ -21,3 +111,26 @@ repos:
         # when "--baseline" with "--use-all-plugins", pre-commit scan with all available plugins
         # add "--fail-on-unaudited" to fail pre-commit for unaudited potential secrets
         args: [--baseline, .secrets.baseline, --use-all-plugins]
+        # Files the scanner skips entirely. Each entry is a file
+        # whose hits are known false positives and whose content
+        # changes too often for a baseline audit to be stable.
+        # Scope is narrow on purpose — one entry per file — so a
+        # new file added alongside these still gets scanned.
+        exclude: |
+          (?x)^(
+            # Docs notebook: cell outputs contain base64-encoded
+            # matplotlib PNG figures. Can't use inline pragmas (JSON,
+            # no comments) and clearing outputs isn't an option
+            # because the rendered figures are the point.
+            docs/analysis/analysis\.ipynb
+            |
+            # BenchmarkReport v0.2 example: the single hit is a
+            # synthetic storage path with a unix timestamp and run
+            # identifier. Illustrative reference, not a credential.
+            llmdbenchmark/analysis/benchmark_report/br_v0_2_example\.yaml
+            |
+            # BenchmarkReport README: three hits are 32-hex
+            # example uid / cfg_id values in a Python code block
+            # showing how to construct a BenchmarkReport.
+            llmdbenchmark/analysis/benchmark_report/README\.md
+          )$

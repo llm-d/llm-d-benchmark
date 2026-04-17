@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TYPE_CHECKING
 
-from config_explorer.capacity_planner import (
+from planner.capacity_planner import (
     KVCacheDetail,
     allocatable_kv_cache_memory,
     available_gpu_memory,
@@ -357,14 +357,18 @@ def _extract_params(
     dp = int(parallelism.get("data", 1))
     pp = 1  # Pipeline parallelism not yet exposed per-method
 
+    accel_section = plan_config.get("accelerator", {})
+    method_accel_count = method_config.get("accelerator", {}).get("count")
+    global_accel_count = accel_section.get("count")
+
     accelerator_nr = int(
         method_config.get(
             "acceleratorNr",
-            parallelism.get("workers", tp * pp * dp),
+            method_accel_count
+            or global_accel_count
+            or tp * pp * dp,
         )
     )
-
-    accel_section = plan_config.get("accelerator", {})
     accel_type = method_config.get("acceleratorType", {}).get(
         "labelValue", ""
     ) or accel_section.get("type", "")

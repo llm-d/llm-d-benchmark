@@ -20,7 +20,6 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Model Configuration
-    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
     # Alternative models (commented out in original):
     #   - Qwen/Qwen3-0.6B
     #   - facebook/opt-125m
@@ -33,15 +32,12 @@ scenario:
       shortName: qwen-qwen3-32b
       path: models/Qwen/Qwen3-32B
       huggingfaceId: Qwen/Qwen3-32B
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
       size: 1Ti
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_MAX_MODEL_LEN=32000
       maxModelLen: 32000
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_BLOCK_SIZE=128
       blockSize: 128
       gpuMemoryUtilization: 0.95
       cacheBase: /model-cache
-    
+
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
     # The following sections configure the llm-d modelservice Helm chart
@@ -49,16 +45,19 @@ scenario:
     # =========================================================================
 
     # -------------------------------------------------------------------------
+    # Multinode Configuration (LeaderWorkerSet)
+    # -------------------------------------------------------------------------
+    #multinode:
+    #  enabled: true
+
+    # -------------------------------------------------------------------------
     # Routing Configuration
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true
-    # Corresponds to: LLMDBENCH_LLMD_ROUTINGSIDECAR_CONNECTOR=nixlv2 (default)
     # -------------------------------------------------------------------------
     routing:
       connector: nixlv2
-    
+
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left uncommented for auto-detect)
     # By default, affinity is disabled and pods schedule on any available node.
     # Options:
     #   1. Leave commented out -- no node selection constraint
@@ -71,7 +70,7 @@ scenario:
     #     nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3      # OpenShift
     #     # gpu.nvidia.com/model: H200                        # Kubernetes
     #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
-    
+
     # =========================================================================
     # DEPLOYMENT METHOD -- Choose standalone or modelservice
     # =========================================================================
@@ -83,7 +82,6 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE="pd-config.yaml"
     # Reference: https://github.com/llm-d/llm-d/blob/main/guides/pd-disaggregation/gaie-pd/values.yaml
     # -------------------------------------------------------------------------
     inferenceExtension:
@@ -129,15 +127,13 @@ scenario:
                   weight: 2
                 - pluginRef: queue-scorer
                   weight: 1
-    
+
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
 
     # -------------------------------------------------------------------------
     # Storage Configuration
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_MODEL_CACHE_SIZE=1Ti
-    #                 LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS (auto-detect if not set)
     # -------------------------------------------------------------------------
     storage:
       modelPvc:
@@ -146,19 +142,33 @@ scenario:
         # storageClassName: standard-rwx
         # storageClassName: shared-vast
         # storageClassName: ocs-storagecluster-cephfs
-    
+
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
     # The following sections configure prefill and decode pods.
     # =========================================================================
 
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods (continued)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Multi-NIC Pod Annotations (uncomment to enable)
+    # To enable multi-nic, add annotations.prefill.pod / annotations.decode.pod below.
+    # -------------------------------------------------------------------------
+    #annotations:
+    #  prefill:
+    #    pod:
+    #      k8s.v1.cni.cncf.io/networks: multi-nic-inference
+    #  decode:
+    #    pod:
+    #      k8s.v1.cni.cncf.io/networks: multi-nic-inference
+
     # -------------------------------------------------------------------------
     # Prefill Configuration
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_*
     # -------------------------------------------------------------------------
     prefill:
       enabled: true
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=1
       replicas: 1
 
       initContainers:
@@ -170,16 +180,13 @@ scenario:
             - name: shared-config
               mountPath: /shared-config
 
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_TENSOR_PARALLELISM=$LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM (=2)
       parallelism:
         tensor: 2
         data: 1
         dataLocal: 1
-        workers: 2
+        workers: 1
 
       # Resource configuration
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR (=32)
-      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_CPU_MEM=$LLMDBENCH_VLLM_COMMON_CPU_MEM (=128Gi)
       resources:
         limits:
           memory: 128Gi
@@ -190,12 +197,10 @@ scenario:
 
       # -----------------------------------------------------------------------
       # ROCE/GDR Configuration (uncomment to enable)
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_RESOURCE
-      #                 LLMDBENCH_VLLM_MODELSERVICE_PREFILL_NETWORK_NR
       # To enable roce/gdr for prefill pods, add networkResource and networkNr below.
       # -----------------------------------------------------------------------
-      # networkResource: "rdma/roce_gdr"
-      # networkNr: 1
+      #networkResource: "rdma/roce_gdr"
+      #networkNr: 1
 
       # Custom vLLM command -- replaces the auto-generated command.
       # Both decode.vllm.customCommand and prefill.vllm.customCommand are supported.
@@ -205,7 +210,6 @@ scenario:
 
       # -----------------------------------------------------------------------
       # Extra Environment Variables
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
       # -----------------------------------------------------------------------
       extraEnvVars:
         - name: NCCL_EXCLUDE_IB_HCA
@@ -215,7 +219,6 @@ scenario:
 
       # -----------------------------------------------------------------------
       # Extra Container Configuration
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG
       # -----------------------------------------------------------------------
       extraContainerConfig:
         securityContext:
@@ -231,22 +234,18 @@ scenario:
 
       # -----------------------------------------------------------------------
       # Additional Volume Mounts
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUME_MOUNTS
       # -----------------------------------------------------------------------
       additionalVolumeMounts: []
 
       # -----------------------------------------------------------------------
       # Additional Volumes
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_EXTRA_VOLUMES
       # -----------------------------------------------------------------------
       additionalVolumes: []
 
     # -------------------------------------------------------------------------
     # Decode Configuration
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
     # -------------------------------------------------------------------------
     decode:
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS=2
       replicas: 2
 
       initContainers:
@@ -258,16 +257,13 @@ scenario:
             - name: shared-config
               mountPath: /shared-config
 
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_TENSOR_PARALLELISM=$LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM (=2)
       parallelism:
         tensor: 2
         data: 1
         dataLocal: 1
-        workers: 2
+        workers: 1
 
       # Resource configuration
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_NR=$LLMDBENCH_VLLM_COMMON_CPU_NR (=32)
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_CPU_MEM=$LLMDBENCH_VLLM_COMMON_CPU_MEM (=128Gi)
       resources:
         limits:
           memory: 128Gi
@@ -278,12 +274,10 @@ scenario:
 
       # -----------------------------------------------------------------------
       # ROCE/GDR Configuration (uncomment to enable)
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_RESOURCE
-      #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_NETWORK_NR
       # To enable roce/gdr for decode pods, add networkResource and networkNr below.
       # -----------------------------------------------------------------------
-      # networkResource: "rdma/roce_gdr"
-      # networkNr: 1
+      #networkResource: "rdma/roce_gdr"
+      #networkNr: 1
 
       # Custom vLLM command -- replaces the auto-generated command.
       # Both decode.vllm.customCommand and prefill.vllm.customCommand are supported.
@@ -293,7 +287,6 @@ scenario:
 
       # -----------------------------------------------------------------------
       # Extra Environment Variables
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_ENVVARS_TO_YAML
       # -----------------------------------------------------------------------
       extraEnvVars:
         - name: NCCL_EXCLUDE_IB_HCA
@@ -303,7 +296,6 @@ scenario:
 
       # -----------------------------------------------------------------------
       # Extra Container Configuration
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG
       # -----------------------------------------------------------------------
       extraContainerConfig:
         securityContext:
@@ -319,13 +311,11 @@ scenario:
 
       # -----------------------------------------------------------------------
       # Additional Volume Mounts
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
       # -----------------------------------------------------------------------
       additionalVolumeMounts: []
 
       # -----------------------------------------------------------------------
       # Additional Volumes
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
       # -----------------------------------------------------------------------
       additionalVolumes: []
 
@@ -339,13 +329,13 @@ scenario:
     #                 LLMDBENCH_VLLM_MODELSERVICE_DECODE_PODANNOTATIONS
     # To enable multi-nic, add annotations.prefill.pod / annotations.decode.pod below.
     # -------------------------------------------------------------------------
-    # annotations:
-    #   prefill:
-    #     pod:
-    #       k8s.v1.cni.cncf.io/networks: multi-nic-compute
-    #   decode:
-    #     pod:
-    #       k8s.v1.cni.cncf.io/networks: multi-nic-compute
+    #annotations:
+    #  prefill:
+    #    pod:
+    #      k8s.v1.cni.cncf.io/networks: multi-nic-compute
+    #  decode:
+    #    pod:
+    #      k8s.v1.cni.cncf.io/networks: multi-nic-compute
 
     # -------------------------------------------------------------------------
     # vLLM Common Configuration
@@ -367,16 +357,15 @@ scenario:
     vllmCommon:
       host: "0.0.0.0"
       # KV Transfer Configuration
-      # Corresponds to: --kv-transfer-config in LLMDBENCH_VLLM_MODELSERVICE_*_EXTRA_ARGS
       kvTransfer:
         enabled: true
         connector: NixlConnector
         role: kv_both
-      
+
       # KV Events not enabled in this scenario (used in precise-prefix-cache-aware)
       kvEvents:
         enabled: false
-      
+
       flags:
         enforceEager: false  # Not in original bash script
         disableLogRequests: true     # modelservice only -- upstream vllm-openai (v0.9+) dropped --no-enable-log-requests
@@ -384,8 +373,9 @@ scenario:
         enablePrefixCaching: true   # PR 868: P/D enables prefix caching
         allowLongMaxModelLen: "1"
         serverDevMode: "1"
-      
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_*_EXTRA_VOLUMES
+
+      #priorityClassName: nightly-gpu-critical
+
       volumes:
         - name: shared-config
           type: emptyDir
@@ -394,34 +384,27 @@ scenario:
           type: emptyDir
           emptyDir:
             medium: Memory
-            # Corresponds to: LLMDBENCH_VLLM_COMMON_SHM_MEM (using default 16Gi)
             sizeLimit: 16Gi
 
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_*_EXTRA_VOLUME_MOUNTS
       volumeMounts:
         - name: shared-config
           mountPath: /shared-config
         - name: dshm
           mountPath: /dev/shm
-    
+
     # -------------------------------------------------------------------------
     # Timeout Configuration
-    # Corresponds to: LLMDBENCH_CONTROL_WAIT_TIMEOUT=900000
-    #                 LLMDBENCH_HARNESS_WAIT_TIMEOUT=900000
     # -------------------------------------------------------------------------
     timeouts:
       controlWait: 900000
       harnessWait: 900000
-    
+
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration
     # =========================================================================
 
     # -------------------------------------------------------------------------
     # Workload/Harness Configuration
-    # Corresponds to: LLMDBENCH_HARNESS_NAME=vllm-benchmark
-    #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=random_concurrent.yaml
-    #                 LLMDBENCH_CONTROL_WORK_DIR=~/data/pd-disaggregation
     # -------------------------------------------------------------------------
     workDir: "~/data/pd-disaggregation"
 

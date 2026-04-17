@@ -82,6 +82,10 @@ class ProbeConfig(BaseModel):
     model_config = STRICT_CONFIG
 
     path: str | None = None
+    # Optional explicit port (defaults to the role's effective vLLM port at
+    # render time). Set per-probe in the scenario when the probe needs to
+    # hit a non-default port (e.g. uds-tokenizer health on 8082).
+    port: int | str | None = None
     failureThreshold: int = Field(ge=1)
     initialDelaySeconds: int | None = Field(default=None, ge=0)
     periodSeconds: int = Field(ge=1)
@@ -214,7 +218,13 @@ class DeploymentBaseConfig(BaseModel):
     extraContainerConfig: dict[str, Any]
     extraPodConfig: dict[str, Any]
     initContainers: list[Any]
+    # Container-level ports (e.g. [{containerPort: 8200, name: vllm}]) when
+    # the scenario needs to expose a port the chart wouldn't add by default.
+    ports: list[dict[str, Any]] | None = None
     monitoring: DeploymentMonitoringConfig
+
+    contextLengthRanges: list[str] = Field(default_factory=list)
+    vllmVariants: list[dict[str, Any]] = Field(default_factory=list)
 
     annotations: dict[str, str] | None = None
 

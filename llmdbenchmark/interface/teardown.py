@@ -29,7 +29,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
     teardown_parser.add_argument(
         "-t", "--methods",
         default=env("LLMDBENCH_METHODS"),
-        help="Deployment methods to tear down (standalone, modelservice).",
+        help="Deployment methods to tear down (standalone, modelservice, fma).",
     )
     teardown_parser.add_argument(
         "-r", "--release",
