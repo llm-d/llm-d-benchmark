@@ -97,7 +97,9 @@ for dep in deps_present.keys() :
     try :
         result = subprocess.run(['which', dep], capture_output=True, text=True, check=True)
         deps_present[dep] = True
-        shutil.copy2(result.stdout.split('\n')[0], f"{options.envdir}/{result.stdout.split('\n')[0].split('/')[-1]}")
+        executable_found_path=result.stdout.split('\n')[0]
+        executable_found_name=executable_found_path.split('/')[-1]
+        shutil.copy2(executable_actual_path, f"{options.envdir}/{executable_actual_name}")
     except subprocess.CalledProcessError as e:
         if os.access(executables_path, os.W_OK):
             print(f"WARNING: Dependency \"{dep}\" not available on the image: {e.cmd} returned {e.returncode}. Trying to obtain externally...")
@@ -109,7 +111,9 @@ for dep in deps_present.keys() :
     try :
         result = subprocess.run(['which', dep], capture_output=True, text=True, check=True)
         deps_present[dep] = True
-        shutil.copy2(result.stdout.split('\n')[0], f"{options.envdir}/{result.stdout.split('\n')[0].split('/')[-1]}")
+        executable_found_path=result.stdout.split('\n')[0]
+        executable_found_name=executable_found_path.split('/')[-1]
+        shutil.copy2(executable_actual_path, f"{options.envdir}/{executable_actual_name}")
     except subprocess.CalledProcessError as e:
         print(f"WARNING: Dependency \"{dep}\" neither available on the image nor on the config map: {e.cmd} returned {e.returncode}.")
 

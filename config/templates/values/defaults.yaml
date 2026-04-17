@@ -95,7 +95,7 @@ _anchors:
   pull_if_not_present: &pull_if_not_present IfNotPresent
 
   # Chart versions
-  istio_version: &istio_version 1.29.1
+  istio_version: &istio_version 1.29.2
 
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
@@ -416,8 +416,8 @@ chartVersions:
   istiod: *istio_version
   llmDInfra: auto
   llmDModelservice: auto
-  inferencePool: v1.3.0
-  gaie: v1.3.1
+  inferencePool: v1.4.0
+  gaie: v1.4.0
   wva: auto
   agentgateway: v1.0.1
   lws: "0.8.0"

@@ -109,7 +109,7 @@ repos:
       # ----------------------------------------------------------------
       - id: generate-sbom
         name: Generate SBOM (Software Bill of Materials)
-        entry: .venv/bin/python util/generate_sbom.py --check
+        entry: python util/generate_sbom.py --check
         language: system
         pass_filenames: false
         require_serial: true
