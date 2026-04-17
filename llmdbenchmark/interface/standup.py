@@ -69,11 +69,10 @@ def add_subcommands(parser: argparse._SubParsersAction):
         help="Enable Workload Variant Autoscaler.",
     )
     standup_parser.add_argument(
-        "-f",
         "--monitoring",
-        action="store_true",
-        default=False,
-        help="Enable PodMonitor for Prometheus and vLLM /metrics scraping.",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable PodMonitor for Prometheus and vLLM /metrics scraping (default: enabled via defaults.yaml).",
     )
     standup_parser.add_argument(
         "--parallel",

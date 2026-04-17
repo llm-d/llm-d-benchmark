@@ -204,14 +204,26 @@ class DeployModelserviceStep(Step):
             if not podmonitor_yaml:
                 podmonitor_yaml = self._find_yaml(stack_path, "18_podmonitor")
             if podmonitor_yaml and self._has_yaml_content(podmonitor_yaml):
-                result = cmd.kube("apply", "-f", str(podmonitor_yaml))
-                if not result.success:
-                    context.logger.log_warning(
-                        f"PodMonitor apply failed (non-fatal): {result.stderr}"
-                    )
+                # Check if PodMonitor CRD exists before attempting to apply
+                crd_check = cmd.kube(
+                    "get", "crd", "podmonitors.monitoring.coreos.com",
+                    check=False,
+                )
+                if crd_check.success:
+                    result = cmd.kube("apply", "-f", str(podmonitor_yaml))
+                    if not result.success:
+                        context.logger.log_warning(
+                            f"PodMonitor apply failed (non-fatal): {result.stderr}"
+                        )
+                    else:
+                        context.logger.log_info(
+                            "PodMonitor created for Prometheus scraping"
+                        )
                 else:
-                    context.logger.log_info(
-                        "PodMonitor created for Prometheus scraping"
+                    context.logger.log_warning(
+                        "PodMonitor CRD (monitoring.coreos.com/v1) not found on cluster -- "
+                        "skipping PodMonitor creation. Install Prometheus Operator CRDs "
+                        "or pass '--no-monitoring' to disable monitoring."
                     )
             else:
                 context.logger.log_info(

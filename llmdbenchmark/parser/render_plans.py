@@ -46,7 +46,7 @@ class RenderPlans:
         cli_namespace: str | None = None,
         cli_model: str | None = None,
         cli_methods: str | None = None,
-        cli_monitoring: bool = False,
+        cli_monitoring: bool | None = None,
         setup_overrides: dict | None = None,
     ):
         self.template_dir = Path(template_dir)
@@ -401,25 +401,39 @@ class RenderPlans:
                 )
 
     def _resolve_monitoring(self, values: dict) -> dict:
-        """Enable PodMonitor and metrics scraping when ``--monitoring`` is set.
+        """Override PodMonitor creation based on ``--monitoring`` / ``--no-monitoring``.
 
-        Matches the bash ``-f/--monitoring`` flag which sets:
-        - ``LLMDBENCH_VLLM_MONITORING_PODMONITOR_ENABLED=true``
-        - ``LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED=true``
+        Controls whether PodMonitor resources are created at standup so
+        Prometheus can scrape vLLM pods.  This is a zero-cost operation
+        (just a CRD declaration).
+
+        Harness-level metrics scraping (``metricsScrapeEnabled``) is a
+        separate concern that adds HTTP overhead during benchmarks and
+        is left to the scenario/defaults configuration.
+
+        - ``--monitoring``    → force-enable PodMonitor (overrides scenario)
+        - ``--no-monitoring`` → force-disable PodMonitor (overrides scenario)
+        - neither             → use scenario/defaults values
         """
-        if not self.cli_monitoring:
+        if self.cli_monitoring is None:
             return values
 
         result = deepcopy(values)
-
         monitoring_config = result.setdefault("monitoring", {})
         podmonitor_config = monitoring_config.setdefault("podmonitor", {})
-        podmonitor_config["enabled"] = True
-        monitoring_config["metricsScrapeEnabled"] = True
 
-        self.logger.log_info(
-            "Monitoring enabled from CLI: PodMonitor + metrics scraping"
-        )
+        if self.cli_monitoring:
+            podmonitor_config["enabled"] = True
+            self.logger.log_info(
+                "Monitoring enabled from CLI: PodMonitor for Prometheus scraping"
+            )
+        else:
+            podmonitor_config["enabled"] = False
+            self.logger.log_info(
+                "Monitoring disabled from CLI (--no-monitoring): "
+                "PodMonitor will not be created"
+            )
+
         return result
 
     def _resolve_deploy_method(self, values: dict) -> dict:

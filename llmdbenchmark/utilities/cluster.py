@@ -338,7 +338,7 @@ def _kube_api_connect(context: ExecutionContext) -> None:
 
 
 def _detect_local_platform(cmd: CommandExecutor, context: ExecutionContext) -> None:
-    """Detect Kind or Minikube by inspecting kube-system pods."""
+    """Detect Kind, Minikube, or GKE by inspecting cluster resources."""
     if context.is_openshift:
         return
 
@@ -356,6 +356,17 @@ def _detect_local_platform(cmd: CommandExecutor, context: ExecutionContext) -> N
         context.is_kind = True
     elif "etcd-minikube" in pod_names or "minikube" in pod_names:
         context.is_minikube = True
+    else:
+        # Detect GKE by checking for GKE-specific node labels
+        node_result = cmd.kube(
+            "get",
+            "nodes",
+            "-o",
+            "jsonpath={.items[0].metadata.labels}",
+            check=False,
+        )
+        if node_result.success and "cloud.google.com/gke-" in node_result.stdout:
+            context.is_gke = True
 
 
 def _store_kubeconfig(cmd: CommandExecutor, context: ExecutionContext) -> None:
