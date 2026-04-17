@@ -418,7 +418,6 @@ All Helm chart and component versions are centralized in the `chartVersions` sec
 | `chartVersions.llmDInfra` | `auto` | llm-d-infra Helm chart (auto-resolved via helm) |
 | `chartVersions.llmDModelservice` | `auto` | llm-d-modelservice Helm chart (auto-resolved via helm) |
 | `chartVersions.inferencePool` | `v1.3.0` | Inference pool chart version |
-| `chartVersions.gaie` | `v1.3.1` | GAIE chart version |
 | `chartVersions.wva` | `auto` | Workload Variant Autoscaler chart (auto-resolved) |
 | `chartVersions.kgateway` | `v2.2.3` | kgateway chart version |
 | `chartVersions.lws` | `0.8.0` | LeaderWorkerSet chart version |

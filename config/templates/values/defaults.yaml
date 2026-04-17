@@ -98,6 +98,7 @@ _anchors:
   istio_version: &istio_version 1.29.2
   agentgateway_version: &agentgateway_version 1.0.1
   lws_version: &lws_version 0.8.0
+  gaie_version: &gaie_version v1.4.0
 
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
@@ -419,6 +420,7 @@ chartVersions:
   llmDInfra: auto
   llmDModelservice: auto
   wva: auto
+  inferencePool: *gaie_version
   agentgateway: *agentgateway_version
   lws: *lws_version
 
@@ -1336,7 +1338,7 @@ lws:
 # ============================================================================
 gatewayApiCrd:
   revision: v1.5.1
-  inferenceExtensionRevision: v1.4.0
+  inferenceExtensionRevision: *gaie_version
   # Install URLs for the CRD bundles. ``{revision}`` is substituted with
   # ``revision`` / ``inferenceExtensionRevision`` above at standup time.
   # Kept here so the URL has a single source of truth (read by
