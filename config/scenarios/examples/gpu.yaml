@@ -12,7 +12,6 @@
 #
 # The model parameter and affinity are left commented -- uncomment the model and
 # GPU affinity appropriate for your cluster.
-
 scenario:
   # ============================================================================
   # GPU Example - Standard GPU deployment
@@ -38,12 +37,13 @@ scenario:
     # -------------------------------------------------------------------------
     # Uncomment to override storage class:
     # storage:
+    #   workloadPvc:
+    #     storageClassName: standard-rwx       # GKE
     #   modelPvc:
     #     storageClassName: standard-rwx       # GKE
     #     # storageClassName: shared-vast       # Kubernetes
     #     # storageClassName: ocs-storagecluster-cephfs  # OpenShift
     #     size: 1Ti
-
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
     # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (left for auto-detect)
@@ -81,6 +81,11 @@ scenario:
       # Corresponds to: LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM (default 1)
       # tensorParallelism: 2
 
+      # Preprocess script -- required for context-length-aware routing.
+      # Splits ,,-delimited env vars by pod index and self-labels pods via K8s API.
+      # Uncomment when enabling contextLengthRanges or vllmVariants below.
+      # preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && source $HOME/llmdbench_env.sh"
+
       # These flags control the auto-generated vllm serve command.
       # Flags not listed here inherit from defaults.yaml (e.g. allowLongMaxModelLen, serverDevMode).
       # To use a fully custom command instead, set decode.vllm.customCommand.
@@ -90,11 +95,37 @@ scenario:
         disableUvicornAccessLog: true  # --disable-uvicorn-access-log
         noPrefixCaching: true        # --no-enable-prefix-caching
 
+      # Volumes required for preprocess script and kubeconfig (pod self-labeling).
+      # Uncomment when enabling context-length-aware routing.
+      # volumes:
+      #   - name: preprocesses
+      #     type: configMap
+      #     configMap:
+      #       name: llm-d-benchmark-preprocesses
+      #       defaultMode: 493  # 0755
+      #   - name: k8s-llmdbench-context
+      #     type: secret
+      #     secret:
+      #       secretName: llmdbench-context
+      #
+      # volumeMounts:
+      #   - name: preprocesses
+      #     mountPath: /setup/preprocess
+      #   - name: k8s-llmdbench-context
+      #     mountPath: /etc/kubeconfig
+      #     readOnly: true
+
     # =========================================================================
     # DEPLOYMENT METHOD -- Choose standalone or modelservice
     # =========================================================================
     modelservice:
       enabled: true
+
+    # Enable multinode (LeaderWorkerSet) for sequential pod naming.
+    # Required when using contextLengthRanges or vllmVariants.
+    # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
+    # multinode:
+    #   enabled: true
 
     # =========================================================================
     # STANDALONE -- Only applies when standalone.enabled: true
@@ -137,6 +168,58 @@ scenario:
     # -------------------------------------------------------------------------
     decode:
       # replicas: 1  # default
+
+      # Context-length-aware routing: per-pod labels (one per replica).
+      # Requires multinode enabled (for LWS sequential pod naming) and
+      # kubeconfig secret mounted (see vllmCommon.volumes above).
+      # Also requires the preprocess script (vllmCommon.preprocessScript) for
+      # pod self-labeling and ,,-delimited env var splitting.
+      # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
+      # contextLengthRanges:
+      #   - "0-8000"
+      #   - "8000-32768"
+
+      # Per-pod vllm parameter overrides (one per replica).
+      # Values are converted to ,,-delimited env vars; the preprocess script
+      # selects the right value based on pod index from LWS.
+      # vllmVariants:
+      #   - maxModelLen: 8000
+      #     maxNumSeq: 64
+      #   - maxModelLen: 32768
+      #     maxNumSeq: 16
+
+    # =========================================================================
+    # INFERENCE EXTENSION (EPP) -- Context-length-aware routing with UDS tokenizer
+    # Uncomment this section along with multinode, contextLengthRanges,
+    # preprocessScript, volumes/volumeMounts, and optionally vllmVariants
+    # above to enable context-length-aware routing.
+    # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
+    # =========================================================================
+    # inferenceExtension:
+    #   pluginsConfigFile: "context-length-aware-config.yaml"
+    #   flags:
+    #     v: "2"  # use v: "4" for debugging, v: "1" or "2" for benchmarking
+    #   sidecar:
+    #     enabled: true
+    #   pluginsCustomConfig:
+    #     context-length-aware-config.yaml: |
+    #       apiVersion: inference.networking.x-k8s.io/v1alpha1
+    #       kind: EndpointPickerConfig
+    #       plugins:
+    #         - type: tokenizer
+    #           parameters:
+    #             modelName: "${model.name}"
+    #             udsTokenizerConfig:
+    #               socketFile: /tmp/tokenizer/tokenizer-uds.socket
+    #         - type: context-length-aware
+    #           parameters:
+    #             label: llm-d.ai/context-length-range
+    #             enableFiltering: true
+    #       schedulingProfiles:
+    #         - name: default
+    #           plugins:
+    #             - pluginRef: tokenizer
+    #             - pluginRef: context-length-aware
 
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration

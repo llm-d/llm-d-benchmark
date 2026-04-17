@@ -1,0 +1,78 @@
+# Standalone with FMA Launcher example Scenario for LLM-D Deployment
+#
+# This scenario deploys Standalone mode with FMA Launcher
+#
+# IMPORTANT NOTE:
+# All parameters not defined here will use the default values from defaults.yaml.
+# Many commonly defined values were left blank (default) so that this scenario
+# is applicable to as many environments as possible.
+#
+# The model parameter is left commented -- uncomment the model you want to deploy.
+# Uncommenting a model here will override the default model from defaults.yaml.
+
+scenario:
+  - name: "launcher-example"
+    model:
+      name: meta-llama/Llama-3.1-8B-Instruct
+      shortName: llama-3.1-8b
+      path: models/meta-llama/Llama-3.1-8B-Instruct
+      huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
+
+    vllmCommon:
+      flags:
+        enforceEager: false
+      volumes:
+        - name: preprocesses
+          type: configMap
+          configMap:
+            name: llm-d-benchmark-preprocesses
+            defaultMode: 320
+      volumeMounts:
+        - name: preprocesses
+          mountPath: /setup/preprocess
+
+    modelservice:
+      enabled: false
+    fma:
+      enabled: false
+
+    standalone:
+      enabled: true
+      image:
+        repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
+        tag: v0.5.1-alpha.6
+      vllm:
+        customPreprocessCommand: "source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
+        loggingLevel: DEBUG
+        additionalFlags:
+          - "--enable-sleep-mode"
+      launcher:
+        enabled: true
+        image:
+          repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
+          tag: v0.5.1-alpha.6
+        customPreprocessCommand: "source /setup/preprocess/standalone-preprocess.sh ; /setup/preprocess/standalone-preprocess.py"
+
+    workDir: "~/data/launcher"
+
+    harness:
+      name: nop
+      profile: nop.yaml
+      executable: llm-d-benchmark.py
+      experimentProfile: nop.yaml
+      condaEnvName: nop-env
+      waitTimeout: 3600
+      loadParallelism: 1
+      podLabel: llmdbench-harness-fma
+      debug: false
+      resources:
+        cpu: 16
+        memory: 32Gi
+      output: local
+      inferencePerf:
+        rayonNumThreads: 4
+
+    images:
+      benchmark:
+        repository: ghcr.io/llm-d/llm-d-benchmark
+        tag: nightly

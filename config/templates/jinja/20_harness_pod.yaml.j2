@@ -53,6 +53,7 @@ spec:
       value: "{{ experiment_id }}"
     - name: RAYON_NUM_THREADS
       value: "{{ harness.inferencePerf.rayonNumThreads }}"
+{% if huggingface.enabled %}
     - name: HF_TOKEN_SECRET
       value: "{{ huggingface.secretName }}"
     - name: HUGGING_FACE_HUB_TOKEN
@@ -60,6 +61,7 @@ spec:
         secretKeyRef:
           name: {{ huggingface.secretName }}
           key: {{ huggingface.tokenKey }}
+{% endif %}
     - name: POD_NAME
       valueFrom:
         fieldRef:
@@ -87,6 +89,26 @@ spec:
       value: "{{ decode.vllm.port }}"
     - name: LLMDBENCH_VLLM_MONITORING_METRICS_PATH
       value: "{{ monitoring.metricsPath }}"
+{% endif %}
+    - name: LLMDBENCH_STANDALONE_ENABLED
+      value: "{{ standalone.enabled | lower }}"
+    - name: LLMDBENCH_STANDALONE_LAUNCHER_ENABLED
+      value: "{{ standalone.launcher.enabled | lower }}"
+    - name: LLMDBENCH_FMA_ENABLED
+      value: "{{ fma.enabled | lower }}"
+    - name: LLMDBENCH_VLLM_COMMON_VLLM_LOAD_FORMAT
+      value: "{{ standalone.vllm.loadFormat }}"
+{% if standalone.enabled and standalone.launcher.enabled %}
+    - name: LLMDBENCH_VLLM_STANDALONE_LAUNCHER_PORT
+      value: "{{ standalone.launcher.port }}"
+    - name: LLMDBENCH_VLLM_STANDALONE_LAUNCHER_VLLM_PORT
+      value: "{{ standalone.launcher.vllmPort }}"
+{% endif %}
+{% if fma.enabled %}
+    - name: LLMDBENCH_FMA_LAUNCHER_CONFIG_PORT
+      value: "{{ fma.launcherConfigurator.port }}"
+    - name: LLMDBENCH_FMA_ITERATIONS
+      value: "{{ fma.iterations }}"
 {% endif %}
 {% if harness.extraEnvVars is defined and harness.extraEnvVars %}
 {% for env_entry in harness.extraEnvVars %}

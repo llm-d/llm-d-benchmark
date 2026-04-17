@@ -12,12 +12,11 @@
 #
 # The model parameter is left commented -- uncomment the model you want to deploy.
 # Uncommenting a model here will override the default model from defaults.yaml.
-
 scenario:
   # ============================================================================
   # CPU Example - CPU-only deployment with no GPU accelerators
   # ============================================================================
-  - name: "cpu-example-ms"
+  - name: "cpu-example"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
@@ -39,9 +38,21 @@ scenario:
       path: models/facebook/opt-125m
       huggingfaceId: facebook/opt-125m
       gpuMemoryUtilization: 0
-      maxModelLen: 8192
-      maxNumSeq: 32
+      maxModelLen: 1024
 
+    # -------------------------------------------------------------------------
+    # PVC Configuration
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS (left for auto-detect)
+    # -------------------------------------------------------------------------
+    # Uncomment to override storage class:
+    # storage:
+    #   workloadPvc:
+    #     storageClassName: standard-rwx       # GKE
+    #   modelPvc:
+    #     storageClassName: standard-rwx       # GKE
+    #     # storageClassName: shared-vast       # Kubernetes
+    #     # storageClassName: ocs-storagecluster-cephfs  # OpenShift
+    #     size: 1Ti
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
     # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY=kubernetes.io/os:linux
@@ -82,7 +93,7 @@ scenario:
     # are ignored -- the custom command must include its own flags.
     # -------------------------------------------------------------------------
     vllmCommon:
-      shmMemory: 64Gi
+      shmMemory: 16Gi
 
       preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && . $HOME/llmdbench_env.sh"
 
@@ -92,7 +103,7 @@ scenario:
           type: emptyDir
           emptyDir:
             medium: Memory
-            sizeLimit: 64Gi
+            sizeLimit: 16Gi
         - name: preprocesses
           type: configMap
           configMap:
@@ -139,22 +150,29 @@ scenario:
       enabled: false
       replicas: 1
 
+      acceleratorType:
+        labelKey: kubernetes.io/os
+        labelValue: linux
+
       image:
         repository: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo
         tag: v0.12.0
         pullPolicy: IfNotPresent
 
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM=2
-      parallelism:
-        tensor: 2
+      accelerator:
+        count: 0
+
+      acceleratorType:
+        labelKey: kubernetes.io/os
+        labelValue: linux
 
       resources:
         limits:
-          memory: 256Gi
-          cpu: "64"
+          memory: 8Gi
+          cpu: "2"
         requests:
-          memory: 256Gi
-          cpu: "64"
+          memory: 8Gi
+          cpu: "2"
 
 
     # =========================================================================
@@ -203,11 +221,15 @@ scenario:
 
       resources:
         limits:
-          memory: 256Gi
-          cpu: "64"
+          memory: 8Gi
+          cpu: "2"
         requests:
-          memory: 256Gi
-          cpu: "64"
+          memory: 8Gi
+          cpu: "2"
+
+      acceleratorType:
+        labelKey: kubernetes.io/os
+        labelValue: linux
 
       accelerator:
         count: 0

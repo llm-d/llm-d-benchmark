@@ -24,6 +24,7 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.utilities.endpoint import (
     _rand_suffix,
     _build_overrides,
+    _ephemeral_label_args,
     find_standalone_endpoint,
     find_gateway_endpoint,
 )
@@ -66,6 +67,9 @@ class InferenceTestStep(Step):
             phase=Phase.STANDUP,
             per_stack=True,
         )
+
+    def should_skip(self, context: ExecutionContext) -> bool:
+        return "fma" in context.deployed_methods
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
@@ -412,7 +416,7 @@ class InferenceTestStep(Step):
         avoid shell quoting issues when passing through kubectl to sh -c.
         """
         override_args = _build_overrides(plan_config)
-        curl_image = "curlimages/curl"
+        curl_image = "quay.io/curl/curl"
         pod_name = f"inference-test-{_rand_suffix()}"
         payload_json = json.dumps(payload)
         payload_b64 = base64.b64encode(payload_json.encode()).decode()
@@ -433,6 +437,7 @@ class InferenceTestStep(Step):
                 "--restart=Never", "--namespace", namespace,
                 f"--image={curl_image}",
             ]
+            + _ephemeral_label_args()
             + override_args
             + ["--command", "--", "sh", "-c", curl_cmd]
         )

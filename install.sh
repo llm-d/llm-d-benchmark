@@ -13,7 +13,7 @@
 #      To clone a specific branch:
 #      LLMDBENCH_BRANCH=my-branch curl -sSL ... | bash
 #
-# Installs the llmdbenchmark CLI, config_explorer, and validates
+# Installs the llmdbenchmark CLI, planner, and validates
 # that required system tools are available.
 #
 # Usage:
@@ -27,7 +27,7 @@ set -euo pipefail
 REPO_URL="https://github.com/llm-d/llm-d-benchmark.git"
 REPO_DIR="llm-d-benchmark"
 DEFAULT_BRANCH="main"
-
+export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 # ---------------------------------------------------------------------------
 # Bootstrap: if run via curl (no repo present), clone first
 #   curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
@@ -99,9 +99,9 @@ DESCRIPTION
 
     1. Validates Python 3.11+ and pip
     2. Checks for required system tools  (curl, git, kubectl, helm)
-    3. Checks for optional system tools   (oc, helmfile, kustomize, jq, yq, skopeo)
+    3. Checks for optional system tools   (oc)
     4. Installs llmdbenchmark             (editable: pip install -e .)
-    5. Installs config_explorer           (editable: pip install -e config_explorer/)
+    5. Installs planner (llm-d-planner)  (pip install git+https://github.com/llm-d-incubation/llm-d-planner.git@<commit>)
     6. Verifies that all Python packages are importable
 
     If no virtual environment is active, the script will automatically
@@ -194,7 +194,8 @@ fi
 # a virtual environment with the correct Python version (similar to conda).
 # uv is installed automatically if not already present.
 # ---------------------------------------------------------------------------
-VENV_DIR="${SCRIPT_DIR}/.venv"
+LLMDBENCH_VENV_DIR=${LLMDBENCH_VENV_DIR:-"${SCRIPT_DIR}/.venv"}
+LLMDBENCH_SYSTEM_PYTHON=${LLMDBENCH_SYSTEM_PYTHON:-python3}
 CREATED_VENV=false
 MIN_PYTHON="3.11"
 
@@ -247,24 +248,24 @@ if [[ -n "$_detected_venv" && -d "$_detected_venv" ]]; then
     _set_python_cmds
     echo "Virtual environment detected: ${_detected_venv}"
 elif [[ "$allow_system_python" == "true" ]]; then
-    PYTHON_CMD="python3"
-    PIP_CMD="python3 -m pip"
+    PYTHON_CMD=$LLMDBENCH_SYSTEM_PYTHON
+    PIP_CMD="$PYTHON_CMD -m pip"
     echo "Using system python3 (forced with -y flag)"
 else
     # No venv active — reuse existing .venv or create a new one
-    if [[ -d "$VENV_DIR" ]]; then
+    if [[ -d "$LLMDBENCH_VENV_DIR" ]]; then
         if grep -q "venv created." "$dependencies_checked_file" 2>/dev/null; then
             true  # cached — skip the log line
         else
-            echo "Using existing virtual environment: ${VENV_DIR}"
+            echo "Using existing virtual environment: ${LLMDBENCH_VENV_DIR}"
             echo "venv created." >> "$dependencies_checked_file"
         fi
     else
-        echo "No virtual environment detected — creating ${VENV_DIR} ..."
+        echo "No virtual environment detected — creating ${LLMDBENCH_VENV_DIR} ..."
 
         # Determine whether system python3 is good enough
         if _python_meets_min python3; then
-            python3 -m venv "$VENV_DIR"
+            python3 -m venv "$LLMDBENCH_VENV_DIR"
         else
             # System Python is missing or too old — use uv to get the right version
             if command -v python3 &>/dev/null; then
@@ -274,15 +275,15 @@ else
                 echo "  python3 not found — using uv to obtain Python ${MIN_PYTHON}."
             fi
             _ensure_uv
-            uv venv --seed --python "${MIN_PYTHON}" "$VENV_DIR"
+            uv venv --seed --python "${MIN_PYTHON}" "$LLMDBENCH_VENV_DIR"
         fi
 
         CREATED_VENV=true
-        echo "Virtual environment created: ${VENV_DIR}"
+        echo "Virtual environment created: ${LLMDBENCH_VENV_DIR}"
         echo "venv created." >> "$dependencies_checked_file"
     fi
     # shellcheck disable=SC1091
-    source "${VENV_DIR}/bin/activate"
+    source "${LLMDBENCH_VENV_DIR}/bin/activate"
     _set_python_cmds
 fi
 
@@ -331,10 +332,24 @@ echo ""
 echo "=== System tools ==="
 
 # Tools required for cluster operations
-tools="curl git kubectl helm"
+tools="curl git helm helmfile skopeo kustomize jq yq crane"
 
-# Optional tools — checked but not fatal if missing
-optional_tools="oc helmfile kustomize jq yq skopeo"
+# One of kubectl or oc is required
+kube_tool=""
+if command -v kubectl &>/dev/null; then
+    kube_tool="kubectl"
+elif command -v oc &>/dev/null; then
+    kube_tool="oc"
+fi
+if [ -z "$kube_tool" ]; then
+    echo "  kubectl/oc -- NOT FOUND, attempting kubectl install..."
+    tools="$tools kubectl"
+else
+    printf "  %-14s %-20s %s\n" "$kube_tool" "$($kube_tool version --client --short 2>/dev/null || $kube_tool version --client 2>/dev/null | head -1)" ""
+fi
+
+# Optional tools -- checked but not fatal if missing
+optional_tools="oc"
 
 # ---------------------------------------------------------------------------
 # Version helper — returns version string for a given tool
@@ -354,6 +369,7 @@ tool_version() {
         jq)         jq --version 2>&1 ;;
         yq)         yq --version 2>&1 | awk '{print $NF}' ;;
         skopeo)     skopeo --version 2>&1 | awk '{print $NF}' ;;
+        crane)      crane version 2>&1 | tr -d '\n' ;;
         *)          echo "(unknown)" ;;
     esac
 }
@@ -362,7 +378,7 @@ tool_version() {
 # Per-tool Linux install helpers
 # ---------------------------------------------------------------------------
 install_yq_linux() {
-    local version=v4.45.4
+    local version=v4.52.5
     local binary=yq_linux_amd64
     curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}"
     chmod +x "/tmp/${binary}"
@@ -378,10 +394,8 @@ install_helmfile_linux() {
 }
 
 install_helm_linux() {
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    if ! helm plugin list | grep -q "^diff"; then
-        helm plugin install https://github.com/databus23/helm-diff
-    fi
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash || { echo "ERROR: Failed to install Helm"; exit 1; }
+    helm version --short || { echo "ERROR: Helm installation verification failed"; exit 1; }
 }
 
 install_oc_linux() {
@@ -399,6 +413,19 @@ install_oc_linux() {
 install_kustomize_linux() {
     curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
     sudo mv kustomize /usr/local/bin/
+}
+
+install_crane_linux() {
+    local version=v0.20.3
+    local arch
+    arch=$(uname -m)
+    local go_arch="x86_64"
+    [[ "$arch" == "aarch64" ]] && go_arch="arm64"
+    local pkg="go-containerregistry_Linux_${go_arch}"
+    curl -sL "https://github.com/google/go-containerregistry/releases/download/${version}/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz"
+    tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane
+    sudo cp -f /tmp/crane /usr/local/bin/crane
+    sudo chmod +x /usr/local/bin/crane
 }
 
 install_oc_mac() { brew install openshift-cli; }
@@ -430,6 +457,27 @@ for tool in $tools; do
         fi
     fi
 done
+
+# ---------------------------------------------------------------------------
+# Ensure helm-diff plugin is installed (required by helmfile apply).
+# Runs regardless of whether helm was just installed or already existed.
+# ---------------------------------------------------------------------------
+helm_diff_url="https://github.com/databus23/helm-diff"
+
+if command -v helm &>/dev/null; then
+    if ! helm plugin list 2>/dev/null | grep -q "^diff"; then
+        echo "  helm-diff    -- NOT FOUND, installing..."
+        if ! helm plugin install ${helm_diff_url}; then
+            echo "First attempt failed, retrying without signature verification..."
+            if ! helm plugin install ${helm_diff_url} --verify=false; then
+                echo "ERROR: Failed to install helm-diff plugin"; exit 1
+            fi
+        fi
+        printf "  %-14s %-20s %s\n" "helm-diff" "$(helm plugin list | grep '^diff' | awk '{print $2}')" "(newly installed)"
+    else
+        printf "  %-14s %-20s %s\n" "helm-diff" "$(helm plugin list | grep '^diff' | awk '{print $2}')" ""
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # Check optional tools (warn but don't fail)
@@ -479,23 +527,18 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Install config_explorer (editable)
+# 2. Install planner (from llm-d-planner)
 # ---------------------------------------------------------------------------
-config_explorer_dir="${SCRIPT_DIR}/config_explorer"
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@f51812bebca30e0291ec541bd2ef2acf0572e8a4"
 
-if [[ ! -d "$config_explorer_dir" ]]; then
-    echo "ERROR: config_explorer directory not found at ${config_explorer_dir}"
-    exit 1
-fi
-
-if grep -q "config_explorer is already installed." "$dependencies_checked_file" 2>/dev/null; then
-    print_pkg config_explorer ""
+if grep -q "planner is already installed." "$dependencies_checked_file" 2>/dev/null; then
+    print_pkg planner ""
 else
-    if ${PIP_CMD} install -e "${config_explorer_dir}" --quiet 2>/dev/null; then
-        print_pkg config_explorer "(installed)"
-        echo "config_explorer is already installed." >> "$dependencies_checked_file"
+    if ${PIP_CMD} install "${PLANNER_GIT}" --quiet 2>/dev/null; then
+        print_pkg planner "(installed)"
+        echo "planner is already installed." >> "$dependencies_checked_file"
     else
-        echo "ERROR: Failed to install config_explorer!"
+        echo "ERROR: Failed to install planner (llm-d-planner)!"
         exit 1
     fi
 fi
@@ -507,7 +550,7 @@ echo ""
 echo "  Dependencies:"
 for pkg in PyYAML Jinja2 requests kubernetes pykube-ng kubernetes-asyncio \
            GitPython huggingface_hub transformers packaging \
-           pydantic scipy pandas numpy matplotlib; do
+           pydantic scipy pandas numpy; do
     ver=$(${PIP_CMD} show "$pkg" 2>/dev/null | awk '/^Version:/{print $2}')
     if [[ -n "$ver" ]]; then
         printf "    %-22s %s\n" "$pkg" "$ver"
@@ -523,16 +566,91 @@ if ! ${PYTHON_CMD} -c "import llmdbenchmark" 2>/dev/null; then
     echo "WARNING: llmdbenchmark installed but not importable"
     import_ok=false
 fi
-if ! ${PYTHON_CMD} -c "import config_explorer" 2>/dev/null; then
-    echo "WARNING: config_explorer installed but not importable"
+if ! ${PYTHON_CMD} -c "import planner" 2>/dev/null; then
+    echo "WARNING: planner installed but not importable"
     import_ok=false
 fi
-if ! ${PYTHON_CMD} -c "from config_explorer.capacity_planner import model_memory_req" 2>/dev/null; then
-    echo "WARNING: config_explorer.capacity_planner not importable"
+if ! ${PYTHON_CMD} -c "from planner.capacity_planner import model_memory_req" 2>/dev/null; then
+    echo "WARNING: planner.capacity_planner not importable"
     import_ok=false
 fi
 if [[ "$import_ok" == "true" ]]; then
     echo "All imports verified."
+fi
+
+# ===================================================================
+# Pre-commit hook setup -- only when git is available AND we're inside
+# a working tree AND the repo ships a .pre-commit-config.yaml. This is
+# best-effort: a failure here logs a warning but does NOT abort the
+# install. Hooks are wired for both pre-commit and pre-push stages so
+# the same checks gate both local commits and pushes.
+# ===================================================================
+echo ""
+echo "=== Pre-commit hooks ==="
+
+precommit_skip_reason=""
+if ! command -v git &>/dev/null; then
+    precommit_skip_reason="git not found"
+elif ! git -C "${SCRIPT_DIR}" rev-parse --git-dir &>/dev/null; then
+    precommit_skip_reason="${SCRIPT_DIR} is not a git working tree"
+elif [[ ! -f "${SCRIPT_DIR}/.pre-commit-config.yaml" ]]; then
+    precommit_skip_reason=".pre-commit-config.yaml not found"
+fi
+
+# NOTE: install.sh wipes "$dependencies_checked_file" at the start of
+# every run unless the user passes the `noreset` argument. So the cache
+# check below only avoids work when a previous invocation used `noreset`.
+# Without `noreset`, this section runs every time -- but `pip install`
+# and `pre-commit install` are both idempotent, so re-running is safe
+# (just adds a few seconds).
+precommit_cache_hit=false
+if [[ -z "$precommit_skip_reason" ]] && \
+   [[ -f "$dependencies_checked_file" ]] && \
+   grep -Fq "pre-commit hooks installed." "$dependencies_checked_file"; then
+    precommit_cache_hit=true
+fi
+
+if [[ -n "$precommit_skip_reason" ]]; then
+    echo "  skipped: ${precommit_skip_reason}"
+elif [[ "$precommit_cache_hit" == "true" ]]; then
+    print_pkg pre-commit ""
+    echo "  hooks already registered (cache hit)"
+else
+    # Install pre-commit framework + dev extras into the same venv.
+    # If a .pre-commit_requirements.txt exists, prefer it (matches CI);
+    # otherwise install just the framework.
+    if [[ -f "${SCRIPT_DIR}/.pre-commit_requirements.txt" ]]; then
+        precommit_install_target="-r ${SCRIPT_DIR}/.pre-commit_requirements.txt"
+    else
+        precommit_install_target="pre-commit"
+    fi
+
+    if ${PIP_CMD} install --quiet ${precommit_install_target} 2>/dev/null; then
+        print_pkg pre-commit "(installed)"
+    else
+        echo "  WARNING: failed to install pre-commit framework -- skipping hook registration"
+        precommit_skip_reason="pip install failed"
+    fi
+
+    if [[ -z "$precommit_skip_reason" ]]; then
+        # Register hooks for both stages. Use the venv's pre-commit
+        # binary explicitly so we don't accidentally pick up a
+        # system-wide install with a different version.
+        precommit_bin="${LLMDBENCH_VENV_DIR}/bin/pre-commit"
+        if [[ ! -x "$precommit_bin" ]]; then
+            precommit_bin="$(command -v pre-commit 2>/dev/null || true)"
+        fi
+        if [[ -x "$precommit_bin" ]]; then
+            (cd "${SCRIPT_DIR}" && \
+                "$precommit_bin" install --hook-type pre-commit >/dev/null 2>&1 && \
+                "$precommit_bin" install --hook-type pre-push >/dev/null 2>&1) && {
+                echo "  registered: pre-commit + pre-push (run 'pre-commit run --all-files' to exercise)"
+                echo "pre-commit hooks installed." >> "$dependencies_checked_file"
+            } || echo "  WARNING: pre-commit binary found but 'install' failed -- hooks NOT registered"
+        else
+            echo "  WARNING: pre-commit binary not found after install -- hooks NOT registered"
+        fi
+    fi
 fi
 
 echo ""
@@ -541,7 +659,7 @@ echo "=== Done ==="
 echo ""
 echo "Reminder: Please activate the virtual environment in your shell:"
 echo ""
-echo "  source ${VENV_DIR}/bin/activate"
+echo "  source ${LLMDBENCH_VENV_DIR}/bin/activate"
 echo ""
 echo "To deactivate the virtual environment in your shell:"
 echo ""

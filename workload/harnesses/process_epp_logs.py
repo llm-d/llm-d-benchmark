@@ -60,16 +60,6 @@ class RequestTrace:
 
 
 @dataclass
-class EndpointSnapshot:
-    timestamp: datetime
-    pod_name: str
-    address: str
-    running_requests: int
-    waiting_queue_size: int
-    kv_cache_usage_percent: float
-
-
-@dataclass
 class ScoringSnapshot:
     timestamp: datetime
     request_id: str
@@ -220,44 +210,6 @@ def correlate_requests(entries: List[EppLogEntry]) -> Dict[str, RequestTrace]:
     return traces
 
 
-def extract_endpoint_timeseries(entries: List[EppLogEntry]) -> Dict[str, List[EndpointSnapshot]]:
-    """Extract endpoint state snapshots from filter/scorer log messages."""
-    timeseries: Dict[str, List[EndpointSnapshot]] = defaultdict(list)
-
-    for entry in entries:
-        if entry.msg not in ('Before running filter plugins', 'Completed running filter plugin successfully',
-                             'Before running scorer plugins', 'Candidate pods for picking'):
-            continue
-        ts = entry.timestamp
-        if not ts:
-            continue
-
-        endpoints = entry.raw.get('endpoints', [])
-        # "Candidate pods for picking" uses "endpoints-weighted-score"
-        if not endpoints:
-            for scored in entry.raw.get('endpoints-weighted-score', []):
-                ep = scored.get('Endpoint')
-                if ep:
-                    endpoints.append(ep)
-
-        for ep in endpoints:
-            addr = ep.get('Address', '')
-            port = ep.get('Port', '')
-            full_addr = f"{addr}:{port}" if port else addr
-            pod = ep.get('PodName', '')
-
-            timeseries[full_addr].append(EndpointSnapshot(
-                timestamp=ts,
-                pod_name=pod,
-                address=full_addr,
-                running_requests=ep.get('RunningRequestsSize', 0),
-                waiting_queue_size=ep.get('WaitingQueueSize', 0),
-                kv_cache_usage_percent=ep.get('KVCacheUsagePercent', 0.0),
-            ))
-
-    return dict(timeseries)
-
-
 def extract_scoring_data(entries: List[EppLogEntry]) -> Dict[str, List[ScoringSnapshot]]:
     """Extract per-endpoint scoring data from Candidate pods and Calculated score messages."""
     scoring: Dict[str, List[ScoringSnapshot]] = defaultdict(list)
@@ -355,7 +307,6 @@ def aggregate_and_output(entries: List[EppLogEntry], output_dir: str, log_path: 
 
     sat_config = extract_saturation_config(entries)
     traces = correlate_requests(entries)
-    endpoint_ts = extract_endpoint_timeseries(entries)
     scoring_data = extract_scoring_data(entries)
     errors = count_errors(entries)
 
@@ -392,29 +343,10 @@ def aggregate_and_output(entries: List[EppLogEntry], output_dir: str, log_path: 
                     scorer_latencies[plugin].append(dt)
 
     # --- Request distribution ---
-    request_dist: Dict[str, Dict[str, Any]] = defaultdict(lambda: {'count': 0, 'pod_name': ''})
+    request_dist: Dict[str, Dict[str, Any]] = defaultdict(lambda: {'count': 0})
     for trace in traces.values():
         if trace.picked_endpoint:
             request_dist[trace.picked_endpoint]['count'] += 1
-
-    # Resolve pod names from endpoint timeseries
-    addr_to_pod: Dict[str, str] = {}
-    for addr, snapshots in endpoint_ts.items():
-        if snapshots:
-            addr_to_pod[addr] = snapshots[0].pod_name
-    for addr, info in request_dist.items():
-        info['pod_name'] = addr_to_pod.get(addr, '')
-
-    # --- Endpoint metrics ---
-    endpoint_metrics: Dict[str, Dict[str, Any]] = {}
-    for addr, snapshots in endpoint_ts.items():
-        pod = addr_to_pod.get(addr, '')
-        endpoint_metrics[addr] = {
-            'pod_name': pod,
-            'waiting_queue_size': compute_stats([s.waiting_queue_size for s in snapshots], 'count'),
-            'running_requests_size': compute_stats([s.running_requests for s in snapshots], 'count'),
-            'kv_cache_usage_percent': compute_stats([s.kv_cache_usage_percent for s in snapshots], 'percent'),
-        }
 
     # --- Endpoint scores ---
     endpoint_scores: Dict[str, Dict[str, Any]] = {}
@@ -437,23 +369,12 @@ def aggregate_and_output(entries: List[EppLogEntry], output_dir: str, log_path: 
             'scorer': {p: compute_stats(v, 'seconds') for p, v in scorer_latencies.items()},
         },
         'request_distribution': dict(request_dist),
-        'endpoint_metrics': endpoint_metrics,
         'endpoint_scores': endpoint_scores,
         'error_counts': errors,
     }
 
     # --- Build timeseries ---
-    ts_data: Dict[str, Any] = {'endpoint_timeseries': {}, 'scoring_timeseries': {}, 'dispatch_latency_timeseries': {}}
-
-    for addr, snapshots in endpoint_ts.items():
-        pod = addr_to_pod.get(addr, '')
-        ts_data['endpoint_timeseries'][addr] = {
-            'pod_name': pod,
-            'timestamps': [s.timestamp.isoformat() for s in snapshots],
-            'waiting_queue_size': [s.waiting_queue_size for s in snapshots],
-            'running_requests_size': [s.running_requests for s in snapshots],
-            'kv_cache_usage_percent': [s.kv_cache_usage_percent for s in snapshots],
-        }
+    ts_data: Dict[str, Any] = {'scoring_timeseries': {}, 'dispatch_latency_timeseries': {}}
 
     for addr, snapshots in scoring_data.items():
         ts_data['scoring_timeseries'][addr] = {
@@ -515,9 +436,6 @@ def generate_visualizations(output_dir: str) -> None:
     os.makedirs(graphs_dir, exist_ok=True)
 
     _plot_dispatch_latency(ts_data, summary, graphs_dir)
-    _plot_endpoint_timeseries(ts_data, graphs_dir, 'waiting_queue_size', 'Waiting Queue Size', 'Queue Size')
-    _plot_endpoint_timeseries(ts_data, graphs_dir, 'running_requests_size', 'Running Requests', 'Running Requests')
-    _plot_endpoint_timeseries(ts_data, graphs_dir, 'kv_cache_usage_percent', 'KV Cache Usage (%)', 'KV Cache %')
     _plot_endpoint_scores(ts_data, graphs_dir)
     _plot_request_distribution(summary, graphs_dir)
 
@@ -562,41 +480,6 @@ def _plot_dispatch_latency(ts_data: dict, summary: dict, graphs_dir: str) -> Non
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(os.path.join(graphs_dir, 'epp_dispatch_latency.png'), dpi=150)
-    plt.close(fig)
-
-
-def _plot_endpoint_timeseries(ts_data: dict, graphs_dir: str,
-                               metric_key: str, title: str, ylabel: str) -> None:
-    """Line plot of a per-endpoint metric over time."""
-    ep_ts = ts_data.get('endpoint_timeseries', {})
-    if not ep_ts:
-        return
-
-    fig, ax = plt.subplots(figsize=(12, 5))
-    for addr, data in ep_ts.items():
-        timestamps = _parse_iso_timestamps(data.get('timestamps', []))
-        values = data.get(metric_key, [])
-        if not timestamps or not values:
-            continue
-        label = data.get('pod_name', addr) or addr
-        ax.plot(timestamps, values, marker='.', markersize=3, linewidth=1, label=label, alpha=0.8)
-
-    ax.set_xlabel('Time')
-    ax.set_ylabel(ylabel)
-    ax.set_title(f'EPP {title} per Endpoint')
-    ax.legend(fontsize='small')
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-    fig.autofmt_xdate()
-    fig.tight_layout()
-    filename = f"epp_{metric_key.replace('_size', '').replace('_percent', '')}.png"
-    # Use standardized filenames
-    name_map = {
-        'waiting_queue_size': 'epp_queue_size.png',
-        'running_requests_size': 'epp_running_requests.png',
-        'kv_cache_usage_percent': 'epp_kv_cache_usage.png',
-    }
-    filename = name_map.get(metric_key, filename)
-    fig.savefig(os.path.join(graphs_dir, filename), dpi=150)
     plt.close(fig)
 
 

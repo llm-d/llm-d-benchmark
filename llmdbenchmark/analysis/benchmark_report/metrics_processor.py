@@ -6,23 +6,85 @@ import json
 import os
 from typing import Any
 
-from .base import Units
-from .schema_v0_2 import (
-    Statistics,
-    ResourceMetrics,
-    ComponentObservability,
-)
+
+# ---------------------------------------------------------------------------
+# Metrics that have corresponding graphs in metrics/graphs/
+# Maps prometheus metric name -> (report key, units string, graph filename)
+# ---------------------------------------------------------------------------
+GRAPHED_METRICS: dict[str, tuple[str, str, str]] = {
+    # Cache
+    'vllm:kv_cache_usage_perc': (
+        'vllm_kv_cache_usage_perc', 'percent',
+        'vllm_kv_cache_usage_perc.png'),
+    # Queue / scheduling
+    'vllm:num_requests_running': (
+        'vllm_num_requests_running', 'count',
+        'vllm_num_requests_running.png'),
+    'vllm:num_requests_waiting': (
+        'vllm_num_requests_waiting', 'count',
+        'vllm_num_requests_waiting.png'),
+    'vllm:num_preemptions_total': (
+        'vllm_num_preemptions_total', 'count',
+        'vllm_num_preemptions_total.png'),
+    # Prefix cache counters
+    'vllm:prefix_cache_hits_total': (
+        'vllm_prefix_cache_hits_total', 'tokens',
+        'vllm_prefix_cache_hits_total.png'),
+    'vllm:prefix_cache_queries_total': (
+        'vllm_prefix_cache_queries_total', 'tokens',
+        'vllm_prefix_cache_queries_total.png'),
+    'vllm:external_prefix_cache_hits_total': (
+        'vllm_external_prefix_cache_hits_total', 'tokens',
+        'vllm_external_prefix_cache_hits_total.png'),
+    'vllm:external_prefix_cache_queries_total': (
+        'vllm_external_prefix_cache_queries_total', 'tokens',
+        'vllm_external_prefix_cache_queries_total.png'),
+    # Computed ratio metrics (produced by process_metrics.py)
+    'vllm:prefix_cache_hit_rate': (
+        'vllm_prefix_cache_hit_rate', 'percent',
+        'vllm_prefix_cache_hit_rate.png'),
+    'vllm:external_prefix_cache_hit_rate': (
+        'vllm_external_prefix_cache_hit_rate', 'percent',
+        'vllm_external_prefix_cache_hit_rate.png'),
+    # NIXL KV transfer
+    'vllm:nixl_xfer_time_seconds_sum': (
+        'vllm_nixl_xfer_time_seconds_sum', 'seconds',
+        'vllm_nixl_xfer_time_seconds_sum.png'),
+    'vllm:nixl_xfer_time_seconds_count': (
+        'vllm_nixl_xfer_time_seconds_count', 'count',
+        'vllm_nixl_xfer_time_seconds_count.png'),
+    'vllm:nixl_bytes_transferred_sum': (
+        'vllm_nixl_bytes_transferred_sum', 'bytes',
+        'vllm_nixl_bytes_transferred_sum.png'),
+    'vllm:nixl_bytes_transferred_count': (
+        'vllm_nixl_bytes_transferred_count', 'count',
+        'vllm_nixl_bytes_transferred_count.png'),
+}
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _detect_role(pod_name: str) -> str:
+    """Detect component role from pod name."""
+    lower = pod_name.lower()
+    if 'prefill' in lower:
+        return 'prefill'
+    if 'decode' in lower:
+        return 'decode'
+    return 'replica'
+
+
+def _component_id(role: str) -> str:
+    """Return a component_id string from role."""
+    if role in ('prefill', 'decode'):
+        return f'{role}-engine'
+    return 'inference-engine'
 
 
 def load_metrics_summary(metrics_dir: str) -> dict[str, Any]:
-    """Load the processed metrics summary JSON file.
-
-    Args:
-        metrics_dir: Directory containing metrics
-
-    Returns:
-        Dictionary with metrics summary
-    """
+    """Load the processed metrics summary JSON file."""
     summary_file = os.path.join(
         metrics_dir, 'processed', 'metrics_summary.json')
 
@@ -33,137 +95,176 @@ def load_metrics_summary(metrics_dir: str) -> dict[str, Any]:
         return json.load(f)
 
 
-def create_component_observability(
-    component_label: str,
-    pod_name: str,
-    metrics_summary: dict[str, Any],
-    metrics_dir: str
-) -> ComponentObservability:
-    """Create ComponentObservability from metrics summary.
+def load_epp_metrics_summary(metrics_dir: str) -> dict[str, Any]:
+    """Load the EPP metrics summary JSON file."""
+    summary_file = os.path.join(metrics_dir, 'epp_metrics_summary.json')
 
-    Args:
-        component_label: Label of the component
-        pod_name: Name of the pod/replica
-        metrics_summary: Metrics summary for the pod
-        metrics_dir: Directory containing metrics files
+    if not os.path.exists(summary_file):
+        return {}
 
-    Returns:
-        ComponentObservability object
-    """
-    aggregate = ResourceMetrics()
+    with open(summary_file, 'r') as f:
+        return json.load(f)
 
-    # Map metric names to ResourceMetrics fields
-    metric_mapping = {
-        # Cache metrics
-        'vllm:kv_cache_usage_perc': ('kv_cache_usage', Units.PERCENT),
-        'kv_cache_usage_percent': ('kv_cache_usage', Units.PERCENT),
-        'cache_hit_rate_percent': ('cache_hit_rate', Units.PERCENT),
-        'vllm:gpu_cache_usage_perc': ('gpu_cache_usage', Units.PERCENT),
-        'vllm:cpu_cache_usage_perc': ('cpu_cache_usage', Units.PERCENT),
-        # Memory metrics
-        'vllm:gpu_memory_usage_bytes': ('gpu_memory_usage', Units.GIB),
-        'DCGM_FI_DEV_FB_USED': ('gpu_memory_usage', Units.GIB),
-        'gpu_memory_used_gb': ('gpu_memory_usage', Units.GIB),
-        'vllm:cpu_memory_usage_bytes': ('cpu_memory_usage', Units.GIB),
-        'container_memory_usage_bytes': ('cpu_memory_usage', Units.GIB),
-        'cpu_memory_used_gb': ('cpu_memory_usage', Units.GIB),
-        # Compute metrics
-        'DCGM_FI_DEV_GPU_UTIL': ('gpu_utilization', Units.PERCENT),
-        'gpu_utilization_percent': ('gpu_utilization', Units.PERCENT),
-        'container_cpu_usage_seconds_total': ('cpu_utilization', Units.PERCENT),
-        # Performance metrics
-        'DCGM_FI_DEV_POWER_USAGE': ('power_consumption', Units.WATTS),
-        # Queue metrics
-        'vllm:num_requests_running': ('running_requests', Units.COUNT),
-        'running_requests': ('running_requests', Units.COUNT),
-        'vllm:num_requests_waiting': ('waiting_requests', Units.COUNT),
-        'waiting_requests': ('waiting_requests', Units.COUNT),
-        'vllm:num_requests_swapped': ('swapped_requests', Units.COUNT),
-        'swapped_requests': ('swapped_requests', Units.COUNT),
+
+def load_replica_status(metrics_dir: str) -> dict[str, Any]:
+    """Load the replica status JSON file."""
+    status_file = os.path.join(
+        metrics_dir, 'processed', 'replica_status.json')
+
+    if not os.path.exists(status_file):
+        return {}
+
+    with open(status_file, 'r') as f:
+        return json.load(f)
+
+
+def load_pod_startup_times(metrics_dir: str) -> dict[str, Any]:
+    """Load the pod startup times JSON file."""
+    status_file = os.path.join(
+        metrics_dir, 'processed', 'pod_startup_times.json')
+
+    if not os.path.exists(status_file):
+        return {}
+
+    with open(status_file, 'r') as f:
+        return json.load(f)
+
+
+def _make_stats_dict(metric_data: dict[str, Any], units: str,
+                     graph_path: str | None = None) -> dict[str, Any]:
+    """Build a statistics dict from a metric_data entry (from metrics_summary)."""
+    stats: dict[str, Any] = {
+        'mean': metric_data.get('mean', 0.0),
+        'p50': metric_data.get('p50', 0.0),
+        'p99': metric_data.get('p99', 0.0),
+        'stddev': metric_data.get('stddev', 0.0),
+        'units': units,
     }
-
-    for metric_name, metric_data in metrics_summary.items():
-        if metric_name in metric_mapping:
-            field_name, units = metric_mapping[metric_name]
-
-            # Get values from metric_data
-            mean_value = metric_data.get('mean', 0.0)
-            stddev_value = metric_data.get('stddev', 0.0)
-            min_value = metric_data.get('min', 0.0)
-            max_value = metric_data.get('max', 0.0)
-            p25_value = metric_data.get('p25')
-            p50_value = metric_data.get('p50')
-            p75_value = metric_data.get('p75')
-            p90_value = metric_data.get('p90')
-            p95_value = metric_data.get('p95')
-            p99_value = metric_data.get('p99')
-
-            # Scaling factor for unit conversion (applied uniformly to all stat values)
-            scale = 1.0
-            if 'bytes' in metric_name.lower() and units == Units.GIB:
-                scale = 1.0 / (1024 ** 3)
-            elif metric_name.endswith('_gb') and units == Units.GIB:
-                # GB to GiB
-                scale = (1000 ** 3) / (1024 ** 3)
-
-            def _scale(v):
-                return v * scale if v is not None else None
-
-            stats = Statistics(
-                units=units,
-                mean=mean_value * scale,
-                stddev=stddev_value * scale,
-                min=_scale(min_value),
-                p25=_scale(p25_value),
-                p50=_scale(p50_value),
-                p75=_scale(p75_value),
-                p90=_scale(p90_value),
-                p95=_scale(p95_value),
-                p99=_scale(p99_value),
-                max=_scale(max_value),
-            )
-
-            setattr(aggregate, field_name, stats)
-
-    return ComponentObservability(
-        component_label=component_label,
-        replica_id=pod_name,
-        aggregate=aggregate,
-        raw_data_path=f"{metrics_dir}/raw/{pod_name}_*.txt",
-    )
+    if graph_path:
+        stats['graphs'] = graph_path
+    return stats
 
 
-def process_metrics_for_benchmark_report(
-    metrics_dir: str,
-    component_label: str = "vllm-service"
-) -> list[ComponentObservability]:
-    """Process collected metrics and create ComponentObservability objects.
+# ---------------------------------------------------------------------------
+# Build per-metric observability entries
+# ---------------------------------------------------------------------------
 
-    Args:
-        metrics_dir: Directory containing collected metrics
-        component_label: Label for the component
+def _build_per_metric_entries(
+    metrics_summary: dict[str, Any],
+    graphs_dir: str,
+) -> dict[str, Any]:
+    """Build per-metric observability entries with per-component statistics.
 
-    Returns:
-        List of ComponentObservability objects
+    Returns a dict keyed by report metric name (e.g. 'vllm_prefix_cache_hit_rate')
+    with 'components' lists underneath.
     """
-    metrics_summary = load_metrics_summary(metrics_dir)
+    entries: dict[str, dict] = {}
 
-    if not metrics_summary:
-        return []
+    for pod_name, pod_data in metrics_summary.items():
+        if pod_name.startswith('_'):
+            continue
+        metrics = pod_data.get('metrics', {})
+        role = _detect_role(pod_name)
+        comp_id = _component_id(role)
 
-    observability_list = []
+        for prom_name, (report_key, units, graph_file) in GRAPHED_METRICS.items():
+            if prom_name not in metrics:
+                continue
 
-    for pod_name, pod_metrics in metrics_summary.items():
-        comp_obs = create_component_observability(
-            component_label=component_label,
-            pod_name=pod_name,
-            metrics_summary=pod_metrics,
-            metrics_dir=metrics_dir
-        )
-        observability_list.append(comp_obs)
+            metric_data = metrics[prom_name]
+            graph_path = f'metrics/graphs/{graph_file}'
 
-    return observability_list
+            component_entry = {
+                'component_id': comp_id,
+                'pod': pod_name,
+                'role': role,
+                'statistics': _make_stats_dict(
+                    metric_data, units, graph_path),
+            }
 
+            if report_key not in entries:
+                entries[report_key] = {'components': []}
+            entries[report_key]['components'].append(component_entry)
+
+    return entries
+
+
+def _build_epp_entries(
+    epp_summary: dict[str, Any],
+) -> dict[str, Any]:
+    """Build EPP metric entries for observability section."""
+    entries: dict[str, Any] = {}
+
+    # Dispatch latency
+    if 'dispatch_latency' in epp_summary:
+        dl = epp_summary['dispatch_latency']
+        entries['epp_dispatch_latency'] = {
+            'statistics': {
+                'mean': dl.get('mean', 0.0),
+                'p50': dl.get('p50', 0.0),
+                'p99': dl.get('p99', 0.0),
+                'stddev': dl.get('stddev', 0.0),
+                'units': dl.get('unit', 'seconds'),
+                'graphs': 'metrics/graphs/epp_dispatch_latency.png',
+            }
+        }
+
+    # Endpoint scores
+    if 'endpoint_scores' in epp_summary:
+        components = []
+        for endpoint_id, score_data in epp_summary['endpoint_scores'].items():
+            components.append({
+                'component_id': endpoint_id,
+                'statistics': {
+                    'mean': score_data.get('mean', 0.0),
+                    'p50': score_data.get('p50', 0.0),
+                    'p99': score_data.get('p99', 0.0),
+                    'stddev': score_data.get('stddev', 0.0),
+                    'units': score_data.get('unit', 'score'),
+                    'graphs': 'metrics/graphs/epp_endpoint_scores.png',
+                }
+            })
+        if components:
+            entries['epp_endpoint_scores'] = {'components': components}
+
+    # Request distribution
+    if 'request_distribution' in epp_summary:
+        components = []
+        for endpoint_id, dist_data in epp_summary[
+                'request_distribution'].items():
+            components.append({
+                'component_id': endpoint_id,
+                'statistics': {
+                    'count': dist_data.get('count', 0),
+                    'units': 'count',
+                    'graphs': 'metrics/graphs/epp_request_distribution.png',
+                }
+            })
+        if components:
+            entries['epp_request_distribution'] = {'components': components}
+
+    # Plugin latencies
+    if 'plugin_latencies' in epp_summary:
+        for plugin_type, plugins in epp_summary['plugin_latencies'].items():
+            for plugin_name, latency_data in plugins.items():
+                key = f'epp_plugin_{plugin_type}_{plugin_name}'.replace(
+                    '/', '_').replace('-', '_')
+                entries[key] = {
+                    'statistics': {
+                        'mean': latency_data.get('mean', 0.0),
+                        'p50': latency_data.get('p50', 0.0),
+                        'p99': latency_data.get('p99', 0.0),
+                        'stddev': latency_data.get('stddev', 0.0),
+                        'units': latency_data.get('unit', 'seconds'),
+                    }
+                }
+
+    return entries
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def add_metrics_to_benchmark_report(
     br_dict: dict[str, Any],
@@ -172,31 +273,41 @@ def add_metrics_to_benchmark_report(
 ) -> dict[str, Any]:
     """Add metrics to an existing benchmark report dictionary.
 
-    Args:
-        br_dict: Benchmark report as dictionary
-        metrics_dir: Directory containing collected metrics
-        component_label: Label for the component
-
-    Returns:
-        Updated benchmark report dictionary
+    Populates per-metric entries (e.g. results.observability.vllm_kv_cache_usage_perc)
+    with per-component statistics, role, graph paths, and EPP metrics.
     """
-    # Ensure results.observability exists
     if 'results' not in br_dict:
         br_dict['results'] = {}
 
     if 'observability' not in br_dict['results']:
         br_dict['results']['observability'] = {}
 
-    # Process metrics and add to observability
-    component_obs_list = process_metrics_for_benchmark_report(
-        metrics_dir, component_label)
+    obs = br_dict['results']['observability']
 
-    if component_obs_list:
-        br_dict['results']['observability']['components'] = [
-            comp.model_dump(mode='json', exclude_none=True, by_alias=True)
-            for comp in component_obs_list
-        ]
+    # Remove legacy components/aggregate structure if present
+    obs.pop('components', None)
+
+    # Per-metric entries from vLLM metrics
+    metrics_summary = load_metrics_summary(metrics_dir)
+    if metrics_summary:
+        graphs_dir = os.path.join(metrics_dir, 'graphs')
+        per_metric = _build_per_metric_entries(metrics_summary, graphs_dir)
+        obs.update(per_metric)
+
+    # EPP metrics
+    epp_summary = load_epp_metrics_summary(metrics_dir)
+    if epp_summary:
+        epp_entries = _build_epp_entries(epp_summary)
+        obs.update(epp_entries)
+
+    # Replica status (desired vs ready vs available per controller/model)
+    replica_status = load_replica_status(metrics_dir)
+    if replica_status and replica_status.get('controllers'):
+        obs['replica_status'] = replica_status
+
+    # Pod startup times (creation to Ready, per node per replica)
+    startup_times = load_pod_startup_times(metrics_dir)
+    if startup_times and startup_times.get('pods'):
+        obs['pod_startup_times'] = startup_times
 
     return br_dict
-
-# Made with Bob

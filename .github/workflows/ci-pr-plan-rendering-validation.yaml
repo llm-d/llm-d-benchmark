@@ -1,0 +1,63 @@
+name: CI - PR Plan Rendering Validation
+
+on:
+  pull_request:
+
+jobs:
+  render-templates:
+    name: Render All Templates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      LLMDBENCH_WORKSPACE: /tmp/render-check
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install llmdbenchmark
+        run: |
+          ./install.sh -y 2>&1
+
+      - name: Render all specification templates
+        run: |
+          FAILED=0
+          PASSED=0
+          SPECS=$(find config/specification -name "*.yaml.j2" | sort)
+
+          for spec_path in $SPECS; do
+            # Strip config/specification/ prefix and .yaml.j2 suffix
+            spec_name="${spec_path#config/specification/}"
+            spec_name="${spec_name%.yaml.j2}"
+
+            echo ""
+            echo "=========================================="
+            echo "Rendering: $spec_name"
+            echo "=========================================="
+
+            if llmdbenchmark --spec "$spec_name" --dry-run plan -p render-check 2>&1; then
+              echo "  ✅ $spec_name"
+              PASSED=$((PASSED + 1))
+            else
+              echo "  ❌ $spec_name"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          echo ""
+          echo "=========================================="
+          echo "RESULTS: $PASSED passed, $FAILED failed ($(echo "$SPECS" | wc -l) total)"
+          echo "=========================================="
+
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::error::$FAILED specification(s) failed to render"
+            exit 1
+          fi

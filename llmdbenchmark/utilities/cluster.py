@@ -23,6 +23,14 @@ try:
 except ImportError:
     _KUBE_AVAILABLE = False
 
+try:
+    import urllib3
+    from urllib3.exceptions import InsecureRequestWarning
+
+    _URLLIB3_AVAILABLE = True
+except ImportError:
+    _URLLIB3_AVAILABLE = False
+
 
 def resolve_cluster(context: ExecutionContext) -> None:
     """Connect to the cluster, detect platform, store kubeconfig, and resolve metadata.
@@ -37,6 +45,30 @@ def resolve_cluster(context: ExecutionContext) -> None:
     _store_kubeconfig(cmd, context)
     cmd = context.rebuild_cmd()
     _resolve_cluster_metadata(cmd, context)
+
+
+def _silence_insecure_tls_warnings_if_disabled() -> None:
+    """Suppress urllib3 InsecureRequestWarning when the active Kubernetes
+    configuration has TLS verification disabled.
+
+    Users who set ``insecure-skip-tls-verify: true`` in their kubeconfig
+    (or who connect via ``cluster_url`` + ``token`` below) have explicitly
+    opted into insecure TLS, so emitting one warning per API call is pure
+    noise. We only silence the warning when ``verify_ssl`` is actually
+    ``False`` so normal (verified) connections still surface any real
+    insecure-request warnings from other code paths (e.g. HuggingFace
+    access checks).
+    """
+    if not _URLLIB3_AVAILABLE:
+        return
+
+    try:
+        active = client.Configuration.get_default_copy()
+    except Exception:  # pylint: disable=broad-except
+        return
+
+    if getattr(active, "verify_ssl", True) is False:
+        urllib3.disable_warnings(InsecureRequestWarning)
 
 
 def kube_connect(
@@ -56,6 +88,7 @@ def kube_connect(
         k8s_config.load_kube_config(
             config_file=kubeconfig, context=kube_context,
         )
+        _silence_insecure_tls_warnings_if_disabled()
         return client.ApiClient()
 
     if cluster_url and token:
@@ -63,29 +96,37 @@ def kube_connect(
         configuration.host = cluster_url
         configuration.api_key = {"authorization": f"Bearer {token}"}
         configuration.verify_ssl = False
+        _silence_insecure_tls_warnings_if_disabled()
         return client.ApiClient(configuration)
 
     try:
         k8s_config.load_kube_config(context=kube_context)
+        _silence_insecure_tls_warnings_if_disabled()
         return client.ApiClient()
     except k8s_config.ConfigException:
         k8s_config.load_incluster_config()
+        _silence_insecure_tls_warnings_if_disabled()
         return client.ApiClient()
 
 
 def is_openshift(api_client: client.ApiClient) -> bool:
-    """Return True if the cluster has OpenShift API groups."""
+    """Return True if the cluster is an OpenShift cluster.
+
+    Queries the ``clusterversions`` resource under ``config.openshift.io``,
+    which only exists on actual OpenShift clusters.
+    """
     if not _KUBE_AVAILABLE:
         return False
     try:
-        api = client.ApisApi(api_client)
-        groups = api.get_api_versions()
-        for group in groups.groups:
-            if group.name and "openshift" in group.name.lower():
-                return True
+        custom_api = client.CustomObjectsApi(api_client)
+        custom_api.list_cluster_custom_object(
+            group="config.openshift.io",
+            version="v1",
+            plural="clusterversions",
+        )
+        return True
     except ApiException:
-        pass
-    return False
+        return False
 
 
 def get_service_endpoint(
@@ -284,10 +325,16 @@ def _kube_api_connect(context: ExecutionContext) -> None:
             "and that the cluster is running."
         ) from exc
 
-    context.is_openshift = any(
-        g.name and "openshift" in g.name.lower()
-        for g in (groups.groups or [])
-    )
+    try:
+        custom_api = client.CustomObjectsApi(api_client)
+        custom_api.list_cluster_custom_object(
+            group="config.openshift.io",
+            version="v1",
+            plural="clusterversions",
+        )
+        context.is_openshift = True
+    except Exception:  # pylint: disable=broad-exception-caught
+        context.is_openshift = False
 
 
 def _detect_local_platform(cmd: CommandExecutor, context: ExecutionContext) -> None:

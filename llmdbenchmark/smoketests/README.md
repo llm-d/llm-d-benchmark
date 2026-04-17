@@ -31,7 +31,7 @@ Smoketests also run automatically at the end of `llmdbenchmark standup`. Use `--
 | 01 | `inference_test` | Sends a sample `/v1/completions` request (falls back to `/v1/chat/completions`), logs generated text and a copy-pasteable curl command for demo purposes | All scenarios |
 | 02 | `validate_config` | Compares the live pod spec against the rendered `config.yaml` to catch mismatches in resources, parallelism, env vars, probes, volumes, security context, and vLLM flags | Scenarios with a dedicated validator |
 
-Scenarios without a dedicated validator (cicd paths, sim-small, etc.) run steps 00 and 01 only. Step 02 logs a skip message and passes.
+Scenarios without a dedicated validator (cicd paths, sim, etc.) run steps 00 and 01 only. Step 02 logs a skip message and passes.
 
 ## Step 00: Health check
 

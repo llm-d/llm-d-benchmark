@@ -27,7 +27,7 @@ updates:
 
   # Python dependencies
   - package-ecosystem: "pip"
-    directory: "/config_explorer"
+    directory: "/"
     schedule:
       interval: "weekly"
     labels:

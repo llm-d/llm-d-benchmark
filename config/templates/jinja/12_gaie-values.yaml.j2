@@ -16,7 +16,7 @@ inferenceExtension:
       port: {{ inferenceExtension.zmqPort }}
       targetPort: {{ inferenceExtension.zmqPort }}
       protocol: TCP
-{% if huggingface is defined and huggingface.secretName is defined and huggingface.secretName %}
+{% if huggingface.enabled %}
   env:
     - name: HF_TOKEN
       valueFrom:
@@ -34,7 +34,7 @@ inferenceExtension:
 {% endif %}
   monitoring:
     secret:
-      name: {{ inferenceExtension.monitoring.secretName | default('kv-events-gateway-sa-metrics-reader-secret') }}
+      name: {{ inferenceExtension.monitoring.secretName | default('inference-gateway-sa-metrics-reader-secret') }}
     interval: "{{ inferenceExtension.monitoring.interval | default('10s') }}"
     prometheus:
       enabled: {{ inferenceExtension.monitoring.prometheus.enabled | default(true) | lower }}
@@ -58,8 +58,15 @@ inferenceExtension:
     image: "{{ images.udsTokenizer.repository }}:{{ images.udsTokenizer.tag }}"
     imagePullPolicy: {{ inferenceExtension.sidecar.imagePullPolicy | default('IfNotPresent') }}
     name: {{ inferenceExtension.sidecar.name | default('tokenizer-uds') }}
-{% if inferenceExtension.sidecar.env is defined and inferenceExtension.sidecar.env %}
     env:
+{% if huggingface.enabled %}
+      - name: HF_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: {{ huggingface.secretName }}
+            key: {{ huggingface.tokenKey }}
+{% endif %}
+{% if inferenceExtension.sidecar.env is defined and inferenceExtension.sidecar.env %}
 {% for env_var in inferenceExtension.sidecar.env %}
       - name: {{ env_var.name }}
         value: "{{ env_var.value }}"
@@ -110,13 +117,15 @@ inferencePool:
       llm-d.ai/model: {{ model_id_label }}
 {% if inferenceExtension.inferencePoolProviderConfig is defined and inferenceExtension.inferencePoolProviderConfig %}
   provider:
-    {{ gateway.className | default('istio') }}:
+    {{ gateway.className }}:
 {{ inferenceExtension.inferencePoolProviderConfig | toyaml | indent(6, false) }}
 {% endif %}
 
-{% set gw_provider = gateway.provider | default(gateway.className | default('istio')) %}
-{% if gw_provider in ['gke', 'istio'] %}
+{# Only istio and gke need a provider hint for the inference-pool chart.
+   agentgateway, kgateway, and data-science-gateway-class don't require one. #}
+{% set gw_class = gateway.className %}
+{% if gw_class in ['gke', 'istio'] %}
 provider:
-  name: {{ gw_provider }}
+  name: {{ gw_class }}
 {% endif %}
 {% endif %}

@@ -1,3 +1,64 @@
+{# ======================================================================== #}
+{# Macro to render a single init container for modelservice pods.          #}
+{# Supports the full Kubernetes init container spec including the sidecar  #}
+{# pattern (restartPolicy: Always) used by uds-tokenizer and similar.     #}
+{# Fields not explicitly listed are passed through via toyaml.             #}
+{# mode: 'decode' or 'prefill' -- controls env var injection default.     #}
+{# ======================================================================== #}
+{% macro render_init_container(ic, mode='decode') -%}
+- name: {{ ic.name }}
+  image: {{ ic.image }}
+{% if ic.imagePullPolicy is defined %}
+  imagePullPolicy: {{ ic.imagePullPolicy }}
+{% endif %}
+{% if ic.restartPolicy is defined %}
+  restartPolicy: {{ ic.restartPolicy }}
+{% endif %}
+{% if ic.command is defined %}
+  command:
+{{ ic.command | toyaml | indent(2, true) }}
+{% endif %}
+{% if ic.args is defined %}
+  args:
+{{ ic.args | toyaml | indent(2, true) }}
+{% endif %}
+{% if ic.env is defined and ic.env %}
+  env:
+{{ ic.env | toyaml | indent(2, true) }}
+{% else %}
+  env:
+{{ build_ms_env_vars(mode) | indent(2, true) }}
+{% endif %}
+{% if ic.ports is defined and ic.ports %}
+  ports:
+{{ ic.ports | toyaml | indent(2, true) }}
+{% endif %}
+{% if ic.resources is defined %}
+  resources:
+{{ ic.resources | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.startupProbe is defined %}
+  startupProbe:
+{{ ic.startupProbe | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.livenessProbe is defined %}
+  livenessProbe:
+{{ ic.livenessProbe | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.readinessProbe is defined %}
+  readinessProbe:
+{{ ic.readinessProbe | toyaml | indent(4, true) }}
+{% endif %}
+{% if ic.volumeMounts is defined %}
+  volumeMounts:
+{{ ic.volumeMounts | toyaml | indent(2, true) }}
+{% endif %}
+{% if ic.securityContext is defined %}
+  securityContext:
+{{ ic.securityContext | toyaml | indent(4, true) }}
+{% endif %}
+{%- endmacro %}
+
 {# Macro to build kv-transfer-config JSON #}
 {% macro build_kv_transfer_config() -%}
 {% if vllmCommon.kvTransfer.extraConfig is defined and vllmCommon.kvTransfer.extraConfig -%}
@@ -15,7 +76,7 @@
 {% set port = vllmCommon.kvEvents.port -%}
 {% set publisher = vllmCommon.kvEvents.publisher -%}
 {% set topic_prefix = vllmCommon.kvEvents.topicPrefix -%}
-{"enable_kv_cache_events":true,"publisher":"{{ publisher }}","endpoint":"tcp://{{ service_name }}.{{ ns }}.svc.cluster.local:{{ port }}","topic":"{{ topic_prefix }}@${POD_IP}@{{ model.name }}"}
+{"enable_kv_cache_events":true,"publisher":"{{ publisher }}","endpoint":"tcp://{{ service_name }}.{{ ns }}.svc.cluster.local:{{ port }}","topic":"{{ topic_prefix }}@$(POD_IP):$(VLLM_INFERENCE_PORT)@{{ model.name }}"}
 {%- endmacro %}
 
 {# Macro to build vLLM serve command with templated arguments #}
@@ -59,8 +120,14 @@
    When proxy is enabled, vLLM binds to vllm.port (8200) and the proxy
    handles the servicePort (8000) to vllmPort (8200) forwarding.
    The port env var is set accordingly: VLLM_INFERENCE_PORT (8000) when no proxy,
-   VLLM_METRICS_PORT (8200) when proxy is enabled. #}
-{% set use_inference_port = (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) -%}
+   VLLM_METRICS_PORT (8200) when proxy is enabled.
+   IMPORTANT: Prefill pods NEVER have the routing proxy (the Helm chart only
+   injects it on decode pods), so prefill must always use VLLM_INFERENCE_PORT
+   (8000) regardless of the proxy setting. Without this, the routing sidecar
+   on decode pods cannot reach the prefill pod (connection refused on 8000
+   while vLLM listens on 8200). #}
+{% set proxy_disabled = (routing is defined and routing.proxy is defined and routing.proxy.enabled is defined and not routing.proxy.enabled) -%}
+{% set use_inference_port = proxy_disabled or mode == 'prefill' -%}
 {% set port_var = '$VLLM_INFERENCE_PORT' if use_inference_port else '$VLLM_METRICS_PORT' -%}
 {{ preprocess_script }}; vllm serve {{ model.cacheBase }}/{{ model.path }} \
   --host {{ vllmCommon.host }} \
@@ -125,6 +192,10 @@
   value: "{{ vllmCommon.containerHome }}"
 - name: HF_HOME
   value: "{{ vllmCommon.hfHome }}"
+- name: MODEL_NAME
+  value: "{{ model.name }}"
+- name: MODEL_PATH
+  value: "{{ model.path }}"
 - name: VLLM_CACHE_ROOT
   value: "{{ config.vllm.cacheRoot | default(vllmCommon.containerHome ~ '/vllm') }}"
 - name: VLLM_WORKER_MULTIPROC_METHOD
@@ -145,18 +216,33 @@
   value: "{{ config.vllm.port | default(vllmCommon.vllmPort) }}"
 - name: VLLM_BLOCK_SIZE
   value: "{{ model.blockSize | default(vllmCommon.blockSize | default('16')) }}"
+{% if config.vllmVariants is defined and config.vllmVariants | length > 0 -%}
+- name: VLLM_MAX_MODEL_LEN
+  value: "{{ config.vllmVariants | map(attribute='maxModelLen') | join(',,') }}"
+{% else -%}
 - name: VLLM_MAX_MODEL_LEN
   value: "{{ model.maxModelLen | default(vllmCommon.maxModelLen | default('4096')) }}"
+{% endif -%}
 - name: VLLM_LOAD_FORMAT
   value: "{{ vllmCommon.loadFormat | default('auto') }}"
 - name: VLLM_ACCELERATOR_MEM_UTIL
   value: "{{ model.gpuMemoryUtilization | default(vllmCommon.gpuMemoryUtilization | default('0.95')) }}"
+{% if config.vllmVariants is defined and config.vllmVariants | length > 0 and config.vllmVariants[0].maxNumSeq is defined -%}
+- name: VLLM_MAX_NUM_SEQ
+  value: "{{ config.vllmVariants | map(attribute='maxNumSeq') | join(',,') }}"
+{% else -%}
 - name: VLLM_MAX_NUM_SEQ
   value: "{{ model.maxNumSeq | default(vllmCommon.maxNumSeq | default('256')) }}"
+{% endif -%}
 - name: VLLM_TENSOR_PARALLELISM
   value: "{{ config.parallelism.tensor | default('1') }}"
+{% if config.vllmVariants is defined and config.vllmVariants | length > 0 and config.vllmVariants[0].maxNumBatchedTokens is defined -%}
+- name: VLLM_MAX_NUM_BATCHED_TOKENS
+  value: "{{ config.vllmVariants | map(attribute='maxNumBatchedTokens') | join(',,') }}"
+{% else -%}
 - name: VLLM_MAX_NUM_BATCHED_TOKENS
   value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
+{% endif -%}
 - name: VLLM_NIXL_SIDE_CHANNEL_HOST
   valueFrom:
     fieldRef:
@@ -176,15 +262,21 @@
   valueFrom:
     fieldRef:
       fieldPath: metadata.namespace
-- name: DP_SIZE
-  value: "{{ config.parallelism.data | default('1') }}"
-- name: TP_SIZE
-  value: "{{ config.parallelism.tensor | default('1') }}"
-- name: DP_SIZE_LOCAL
-  value: "{{ config.parallelism.dataLocal | default('1') }}"
+{% set has_kubeconfig_env = config.extraEnvVars is defined and config.extraEnvVars and config.extraEnvVars | selectattr('name', 'equalto', 'KUBECONFIG') | list | length > 0 -%}
 {% if config.podLabels is defined and config.podLabels -%}
 - name: LLMDBENCH_POD_LABELS
   value: "{{ config.podLabels }}"
+{% if not has_kubeconfig_env -%}
+- name: KUBECONFIG
+  value: "/etc/kubeconfig/{{ control.contextSecretName | default('llmdbench-context') }}"
+{% endif -%}
+{% elif config.contextLengthRanges is defined and config.contextLengthRanges | length > 0 -%}
+- name: LLMDBENCH_POD_LABELS
+  value: "{% for r in config.contextLengthRanges %}{% if not loop.first %},{% endif %}llm-d.ai/context-length-range_eq_{{ r }}{% endfor %}"
+{% if not has_kubeconfig_env -%}
+- name: KUBECONFIG
+  value: "/etc/kubeconfig/{{ control.contextSecretName | default('llmdbench-context') }}"
+{% endif -%}
 {% endif -%}
 {% if config.extraEnvVars is defined and config.extraEnvVars %}
 {% for env in config.extraEnvVars %}

@@ -242,7 +242,7 @@ spec:
 {% else %}
           value: ""
 {% endif %}
-{% if huggingface is defined and huggingface.secretName is defined and huggingface.secretName %}
+{% if huggingface.enabled and huggingface.secretName is defined and huggingface.secretName %}
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
@@ -434,6 +434,9 @@ spec:
         - "-c"
         args:
         - |
+{% if standalone.launcher.customPreprocessCommand is defined and standalone.launcher.customPreprocessCommand is not none %}
+{{ standalone.launcher.customPreprocessCommand | indent(10, first=True) }}
+{% endif %}
 {% if standalone.launcher.args is defined and standalone.launcher.args is not none %}
 {{ standalone.launcher.args | indent(10, first=True) }}
 {% else %}
@@ -455,7 +458,7 @@ spec:
 {% else %}
           value: ""
 {% endif %}
-{% if huggingface is defined and huggingface.secretName is defined and huggingface.secretName %}
+{% if huggingface.enabled and huggingface.secretName is defined and huggingface.secretName %}
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:

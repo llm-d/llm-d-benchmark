@@ -13,10 +13,11 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 | 03 | `WorkloadMonitoringStep` | global | Validate cluster resources and configure workload monitoring (PodMonitors) |
 | 04 | `ModelNamespaceStep` | global | Prepare the model namespace (PVC, secrets, model download job) |
 | 05 | `HarnessNamespaceStep` | global | Prepare the harness namespace (PVC, data access pod, secrets) |
+| 06 | `FMADeployStep` | global | Deploy FMA controllers |
 | 06 | `StandaloneDeployStep` | global | Deploy vLLM as standalone Kubernetes Deployments and Services |
-| 07 | `DeploySetupStep` | global | Set up Helm repos and deploy gateway infrastructure for modelservice mode |
-| 08 | `DeployGaieStep` | global | Deploy GAIE (Gateway API Inference Extension) |
-| 09 | `DeployModelserviceStep` | global | Deploy the model via the llm-d modelservice Helm chart |
+| 08 | `DeploySetupStep` | global | Set up Helm repos and deploy gateway infrastructure for modelservice mode |
+| 09 | `DeployGaieStep` | global | Deploy GAIE (Gateway API Inference Extension) |
+| 10 | `DeployModelserviceStep` | global | Deploy the model via the llm-d modelservice Helm chart |
 
 Note: Step 01 is intentionally absent (reserved). Steps 10 and 11 (smoketest and inference test) were moved to the `llmdbenchmark.smoketests` module and now run as a separate phase after standup.
 
@@ -24,8 +25,9 @@ Note: Step 01 is intentionally absent (reserved). Steps 10 and 11 (smoketest and
 
 Steps 06-09 handle two mutually exclusive deployment methods:
 
+- **FMA** (step 06) -- Deploys Fast Model Actuation controllers. For more information on FMA: https://github.com/llm-d-incubation/llm-d-fast-model-actuation
 - **Standalone** (step 06) -- Deploys vLLM directly as Kubernetes Deployments and Services. OpenShift routes use the naming pattern `sa-{model_id_label}-route` to stay within the 63-character DNS label limit. Step 06 is skipped when modelservice is the active method.
-- **Modelservice** (steps 07-09) -- Deploys via the llm-d modelservice Helm chart with gateway infrastructure and GAIE. Steps 07-09 are skipped when standalone is the active method.
+- **Modelservice** (steps 08-10) -- Deploys via the llm-d modelservice Helm chart with gateway infrastructure and GAIE. Steps 07-09 are skipped when standalone is the active method.
 
 The `should_skip()` method on each step checks `context.deployed_methods` to determine which path to take.
 
@@ -79,6 +81,7 @@ standup/
     ├── step_03_workload_monitoring.py
     ├── step_04_model_namespace.py
     ├── step_05_harness_namespace.py
+    ├── step_06_fma_deploy.py
     ├── step_06_standalone_deploy.py
     ├── step_07_deploy_setup.py
     ├── step_08_deploy_gaie.py

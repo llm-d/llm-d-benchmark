@@ -92,8 +92,8 @@ jobs:
           ./setup/install_deps.sh -y
         shell: bash
 
-      - name: Install config explorer dependencies
-        run: pip install ./config_explorer
+      - name: Install planner dependencies
+        run: pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@f51812bebca30e0291ec541bd2ef2acf0572e8a4"
         shell: bash
 
       - name: Install kubectl-view-allocations
@@ -225,7 +225,7 @@ jobs:
 
       - name: Archive benchmark results as GitHub artifact
         if: success() || failure()
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ env.OUTPUT_DIR }}
           path: ${{ env.INPUT_DIR }}

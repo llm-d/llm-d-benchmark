@@ -43,7 +43,15 @@ class WorkloadMonitoringStep(Step):
                 "skipping resource validation and capacity planning"
             )
         else:
-            self._validate_accelerator(cmd, context, errors)
+            self._warn_not_ready_nodes(cmd, context)
+            if plan_config and not self._any_method_uses_accelerator(plan_config):
+                context.logger.log_info(
+                    "Skipping accelerator validator: no method requests "
+                    "accelerators (accelerator.count=0 across methods) and "
+                    "default 'nvidia.com/gpu' is inherited from defaults.yaml"
+                )
+            else:
+                self._validate_accelerator(cmd, context, errors)
             self._validate_network(cmd, context, plan_config, errors)
             self._validate_node_selectors(cmd, context, plan_config, errors)
             self._capacity_planner_sanity_check(cmd, context, plan_config, errors)
@@ -73,6 +81,58 @@ class WorkloadMonitoringStep(Step):
     def _is_modelservice(context: ExecutionContext) -> bool:
         """Check if the deployment includes modelservice."""
         return "modelservice" in getattr(context, "deployed_methods", [])
+
+    @staticmethod
+    def _any_method_uses_accelerator(plan_config: dict) -> bool:
+        """Return True if any deployment method requests accelerators (count > 0)."""
+        for method in ("standalone", "decode", "prefill"):
+            method_config = plan_config.get(method, {}) or {}
+            count = method_config.get("accelerator", {}).get("count", 0)
+            try:
+                if int(count) > 0:
+                    return True
+            except (ValueError, TypeError):
+                continue
+        return False
+
+    @staticmethod
+    def _is_node_ready(node: dict) -> bool:
+        """Return True if the node has a Ready condition with status True."""
+        for cond in node.get("status", {}).get("conditions", []):
+            if cond.get("type") == "Ready":
+                return cond.get("status") == "True"
+        return False
+
+    def _warn_not_ready_nodes(
+        self, cmd: CommandExecutor, context: ExecutionContext
+    ) -> None:
+        """Log a warning for any cluster nodes that are not in Ready state."""
+        if context.dry_run:
+            return
+
+        result = cmd.kube("get", "nodes", "-o", "json")
+        if not result.success or not result.stdout.strip():
+            return
+
+        try:
+            data = json.loads(result.stdout)
+        except (json.JSONDecodeError, ValueError):
+            return
+
+        not_ready: list[str] = []
+        for node in data.get("items", []):
+            if self._is_node_ready(node):
+                continue
+            name = node.get("metadata", {}).get("name")
+            if name:
+                not_ready.append(name)
+
+        if not_ready:
+            context.logger.log_warning(
+                f"NotReady node(s) detected and excluded from validation: "
+                f"{', '.join(not_ready)}. "
+                "Pods will not be scheduled on these nodes."
+            )
 
     def _load_resource_config(
         self, context: ExecutionContext, plan_config: dict
@@ -125,6 +185,8 @@ class WorkloadMonitoringStep(Step):
         total = 0
         node_count = 0
         for node in data.get("items", []):
+            if not WorkloadMonitoringStep._is_node_ready(node):
+                continue
             capacity = node.get("status", {}).get("capacity", {})
             val = capacity.get(resource_key)
             if val is not None:
@@ -221,10 +283,43 @@ class WorkloadMonitoringStep(Step):
             if not method_config:
                 continue
 
+            # Skip methods the scenario has explicitly disabled. Previously
+            # we walked every method and relied on ``accelerator.count == 0``
+            # as a de facto skip signal, which produced noisy "Skipping
+            # standalone.acceleratorType validation" logs on modelservice-
+            # only scenarios like ``inference-scheduling``.
+            if method_config.get("enabled") is False:
+                context.logger.log_debug(
+                    f"Skipping {method} node-selector validation: "
+                    f"{method}.enabled is false"
+                )
+                continue
+
             ns = method_config.get("nodeSelector")
             if isinstance(ns, dict):
                 for key, value in ns.items():
                     selectors.append((f"{method}.nodeSelector", key, str(value)))
+
+            # Resolve the effective accelerator count the same way the
+            # Jinja render pipeline does (see 13_ms-values.yaml.j2:252):
+            #   1. explicit ``<method>.accelerator.count`` wins,
+            #   2. otherwise fall back to ``<method>.parallelism.tensor``
+            #      (the canonical vLLM pattern: tensor-parallel degree
+            #      equals the per-pod GPU count).
+            # Only scenarios that *explicitly* set count to 0 (e.g. the
+            # CPU example) are treated as CPU-only and have their GPU
+            # label validation skipped.
+            method_accel_count, accel_count_source = self._effective_accelerator_count(
+                method_config
+            )
+
+            if method_accel_count == 0:
+                context.logger.log_info(
+                    f"Skipping {method}.acceleratorType validation: "
+                    f"effective accelerator count is 0 "
+                    f"(source: {accel_count_source})"
+                )
+                continue
 
             accel_type = method_config.get("acceleratorType", {})
             label_key = accel_type.get("labelKey", "")
@@ -255,6 +350,40 @@ class WorkloadMonitoringStep(Step):
                     "Pods using this selector will be stuck in Pending."
                 )
 
+    @staticmethod
+    def _effective_accelerator_count(method_config: dict) -> tuple[int, str]:
+        """Resolve the per-pod accelerator count for a method.
+
+        Mirrors the fallback chain in ``config/templates/jinja/13_ms-values.yaml.j2``
+        line 252:
+
+            decode.accelerator.count   (explicit)
+              ↓ (if unset)
+            decode.parallelism.tensor  (canonical vLLM pattern)
+
+        Returns a ``(count, source)`` tuple where ``source`` describes
+        which field was consulted, for informative logging. Any parsing
+        failure returns ``(0, "parse-error")`` so the caller treats the
+        method as CPU-only and skips GPU-label validation — the safe
+        choice when the config is unintelligible.
+        """
+        accel = method_config.get("accelerator")
+        if isinstance(accel, dict) and "count" in accel:
+            try:
+                return int(accel["count"]), "accelerator.count (explicit)"
+            except (ValueError, TypeError):
+                return 0, "parse-error"
+
+        parallelism = method_config.get("parallelism")
+        if isinstance(parallelism, dict) and "tensor" in parallelism:
+            try:
+                return int(parallelism["tensor"]), "parallelism.tensor (fallback)"
+            except (ValueError, TypeError):
+                return 0, "parse-error"
+
+        # Neither field present at all — assume no accelerators.
+        return 0, "unset"
+
     def _get_all_node_labels(
         self, cmd: CommandExecutor, context: ExecutionContext
     ) -> list[dict[str, str]] | None:
@@ -277,6 +406,7 @@ class WorkloadMonitoringStep(Step):
             return [
                 node.get("metadata", {}).get("labels", {})
                 for node in data.get("items", [])
+                if self._is_node_ready(node)
             ]
         except (json.JSONDecodeError, ValueError):
             return None

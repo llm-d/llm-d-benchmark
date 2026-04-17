@@ -124,6 +124,7 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> -z
 | `--analyze` | | Run local analysis on collected results |
 | `-s STEPS` | | Step filter (e.g., `0,1,6` or `2-8`) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` | Kubeconfig path |
+| `--data-access-timeout N` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready (default: 120). |
 
 ## Step Details
 
@@ -133,18 +134,19 @@ Steps are registered in `steps/__init__.py` via `get_run_steps()`:
 |------|------|-------------|
 | 00 | `RunPreflightStep` | Validate cluster connectivity, harness namespace, output destination |
 | 01 | `RunCleanupPreviousStep` | Delete leftover harness pods/configmaps from previous runs |
-| 02 | `DetectEndpointStep` | Auto-detect model-serving endpoint (standalone service, gateway, or `-U` override) |
-| 03 | `VerifyModelStep` | Verify model is served at endpoint via `/v1/models` |
-| 04 | `RenderProfilesStep` | Render workload profile templates with runtime values; handle experiment treatments |
-| 05 | `CreateProfileConfigmapStep` | Create ConfigMaps for workload profiles and harness scripts |
-| 06 | `DeployHarnessStep` | Deploy harness pod(s), wait for completion, collect results, capture logs |
-| 07 | `WaitCompletionStep` | Wait for harness pods (used when step 06 does not inline waiting) |
-| 08 | `CollectResultsStep` | Collect results from PVC to local workspace |
-| 11 | `AnalyzeResultsStep` | Run local analysis on results (before upload so artifacts are included) |
-| 09 | `UploadResultsStep` | Upload results to cloud storage (GCS/S3) |
-| 10 | `RunCleanupPostStep` | Delete harness pods and ConfigMaps |
+| 02 | `HarnessNamespaceStep` | Prepare harness namespace (PVC, data access pod) |
+| 03 | `DetectEndpointStep` | Auto-detect model-serving endpoint (standalone service, gateway, or `-U` override) |
+| 04 | `VerifyModelStep` | Verify model is served at endpoint via `/v1/models` |
+| 05 | `RenderProfilesStep` | Render workload profile templates with runtime values; handle experiment treatments |
+| 06 | `CreateProfileConfigmapStep` | Create ConfigMaps for workload profiles and harness scripts |
+| 07 | `DeployHarnessStep` | Deploy harness pod(s), wait for completion, collect results, capture logs |
+| 08 | `WaitCompletionStep` | Wait for harness pods (used when step 07 does not inline waiting) |
+| 09 | `CollectResultsStep` | Collect results from PVC to local workspace |
+| 12 | `AnalyzeResultsStep` | Run local analysis on results (before upload so artifacts are included) |
+| 10 | `UploadResultsStep` | Upload results to cloud storage (GCS/S3) |
+| 11 | `RunCleanupPostStep` | Delete harness pods and ConfigMaps |
 
-Note: Step 11 (analyze) runs before step 09 (upload) so analysis artifacts are included in the upload.
+Note: Step 12 (analyze) runs before step 10 (upload) so analysis artifacts are included in the upload.
 
 ## Common Patterns
 
