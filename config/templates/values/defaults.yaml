@@ -312,60 +312,101 @@ huggingface:
 # ============================================================================
 # IMAGE CONFIGURATION
 # ============================================================================
+#
+# Each entry has:
+#   repository:  registry path used at pod-spec render time (consumed by templates)
+#   tag:         image tag, "auto" resolves to the latest at plan time
+#   pullPolicy:  Kubernetes imagePullPolicy
+#   sourceRepo:  upstream source code repository URL (NOT consumed by templates --
+#                read by util/generate_sbom.py to build the SBOM. The registry path
+#                often differs from the source repo URL, so we record both.)
+#   sourcePath:  optional path within sourceRepo (e.g. a Dockerfile or subdir)
+#
 images:
   benchmark:
     repository: ghcr.io/llm-d/llm-d-benchmark
     tag: auto
     pullPolicy: *pull_always
+    sourceRepo: https://github.com/llm-d/llm-d-benchmark
 
   vllm:
     repository: ghcr.io/llm-d/llm-d-cuda
     tag: auto
     pullPolicy: *pull_if_not_present
+    sourceRepo: https://github.com/llm-d/llm-d
+    sourcePath: docker/Dockerfile.cuda
 
   vllmOpenai:
     repository: docker.io/vllm/vllm-openai
     tag: auto
     pullPolicy: *pull_always
+    sourceRepo: https://github.com/vllm-project/vllm
 
   inferenceScheduler:
     repository: ghcr.io/llm-d/llm-d-inference-scheduler
     tag: auto
     pullPolicy: *pull_always
+    sourceRepo: https://github.com/llm-d/llm-d-inference-scheduler
 
   routingSidecar:
     repository: ghcr.io/llm-d/llm-d-routing-sidecar
     tag: auto
     pullPolicy: *pull_if_not_present
+    sourceRepo: https://github.com/llm-d/llm-d-routing-sidecar
 
   udsTokenizer:
     repository: ghcr.io/llm-d/llm-d-uds-tokenizer
     tag: auto
     pullPolicy: *pull_if_not_present
+    sourceRepo: https://github.com/llm-d/llm-d-kv-cache
+    sourcePath: services/uds_tokenizer
 
   python:
     repository: python
     tag: "3.10"
+    sourceRepo: https://hub.docker.com/_/python
 
 # ============================================================================
 # HELM REPOSITORY CONFIGURATION
 # ============================================================================
+#
+# Each entry has:
+#   url:         chart repository URL used by `helm`/`helmfile` (consumed by templates)
+#   name:        optional chart name override when it differs from the key
+#   sourceRepo:  upstream source code URL (read by util/generate_sbom.py for SBOM,
+#                NOT consumed by templates)
+#
 helmRepositories:
   istio:
     url: https://istio-release.storage.googleapis.com/charts
+    sourceRepo: https://github.com/istio/istio
   llmDModelservice:
     url: https://llm-d-incubation.github.io/llm-d-modelservice/
+    sourceRepo: https://github.com/llm-d-incubation/llm-d-modelservice
   llmDInfra:
     url: https://llm-d-incubation.github.io/llm-d-infra/
+    sourceRepo: https://github.com/llm-d-incubation/llm-d-infra
   wva:
     name: workload-variant-autoscaler
     url: oci://ghcr.io/llm-d/workload-variant-autoscaler
+    sourceRepo: https://github.com/llm-d/llm-d-workload-variant-autoscaler
   prometheusAdapter:
     name: prometheus-adapter
     url: https://prometheus-community.github.io/helm-charts
+    sourceRepo: https://github.com/prometheus-community/helm-charts
   agentgateway:
     name: agentgateway
     url: oci://cr.agentgateway.dev/charts/
+    sourceRepo: https://github.com/agentgateway/agentgateway
+  # The next three entries hold metadata only -- the charts are pulled from
+  # OCI registries directly in the helmfile templates (no `url` needed for
+  # `helm repo add`). They live here so the SBOM can find the source repo.
+  inferencePool:
+    sourceRepo: https://github.com/kubernetes-sigs/gateway-api-inference-extension
+  gaie:
+    sourceRepo: https://github.com/kubernetes-sigs/gateway-api-inference-extension
+  lws:
+    sourceRepo: https://github.com/kubernetes-sigs/lws
 
 # ============================================================================
 # CHART VERSIONS
@@ -1296,6 +1337,12 @@ lws:
 gatewayApiCrd:
   revision: v1.5.1
   inferenceExtensionRevision: v1.4.0
+  # Install URLs for the CRD bundles. ``{revision}`` is substituted with
+  # ``revision`` / ``inferenceExtensionRevision`` above at standup time.
+  # Kept here so the URL has a single source of truth (read by
+  # llmdbenchmark/standup/steps/step_02_admin_prerequisites.py).
+  crdUrlTemplate: "github.com/kubernetes-sigs/gateway-api/config/crd?ref={revision}"
+  inferenceExtensionUrlTemplate: "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/{revision}/manifests.yaml"
 
 # ============================================================================
 # HARNESS CONFIGURATION

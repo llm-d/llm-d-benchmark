@@ -574,6 +574,7 @@ class DeployModelserviceStep(Step):
             self._install_prometheus_adapters(
                 cmd,
                 context,
+                plan_config=plan_config,
                 stack_path=stack_path,
                 monitoring_ns=monitoring_ns,
                 prom_ca_cert=prom_ca_cert,
@@ -589,6 +590,7 @@ class DeployModelserviceStep(Step):
         self,
         cmd: CommandExecutor,
         context: ExecutionContext,
+        plan_config: dict,
         stack_path: Path,
         monitoring_ns: str,
         prom_ca_cert: str,
@@ -629,13 +631,19 @@ class DeployModelserviceStep(Step):
                 f"prometheus-ca ConfigMap creation failed: {result.stderr}"
             )
 
-        cmd.helm(
-            "repo",
-            "add",
-            "prometheus-community",
-            "https://prometheus-community.github.io/helm-charts",
-            check=False,
+        # Read the prometheus-adapter helm repo from defaults.yaml so the
+        # URL has a single source of truth (helmRepositories.prometheusAdapter).
+        # Fail loudly if the entry is missing -- we'd rather surface the
+        # config gap than silently install from a stale hardcoded URL.
+        repo_url = self._require_config(
+            plan_config, "helmRepositories", "prometheusAdapter", "url",
         )
+        chart_name = self._require_config(
+            plan_config, "helmRepositories", "prometheusAdapter", "name",
+        )
+        repo_alias = "prometheus-community"
+
+        cmd.helm("repo", "add", repo_alias, repo_url, check=False)
         cmd.helm("repo", "update", check=False)
 
         adapter_values = self._find_yaml(stack_path, "21_prometheus-adapter-values")
@@ -644,7 +652,7 @@ class DeployModelserviceStep(Step):
                 "upgrade",
                 "--install",
                 "prometheus-adapter",
-                "prometheus-community/prometheus-adapter",
+                f"{repo_alias}/{chart_name}",
                 "--namespace",
                 monitoring_ns,
                 "-f",

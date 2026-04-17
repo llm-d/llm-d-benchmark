@@ -218,6 +218,9 @@ class DeploymentBaseConfig(BaseModel):
     extraContainerConfig: dict[str, Any]
     extraPodConfig: dict[str, Any]
     initContainers: list[Any]
+    # Container-level ports (e.g. [{containerPort: 8200, name: vllm}]) when
+    # the scenario needs to expose a port the chart wouldn't add by default.
+    ports: list[dict[str, Any]] | None = None
     monitoring: DeploymentMonitoringConfig
 
     contextLengthRanges: list[str] = Field(default_factory=list)

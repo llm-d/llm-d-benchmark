@@ -235,10 +235,13 @@ class AdminPrerequisitesStep(Step):
         cmd.logger.log_info(
             f"📦 Installing Gateway API CRDs (revision {gw_revision})..."
         )
-        crd_url = (
-            f"github.com/kubernetes-sigs/gateway-api/"
-            f"config/crd?ref={gw_revision}"
+        # URL template lives in defaults.yaml so it has a single source of
+        # truth (gatewayApiCrd.crdUrlTemplate). Fail loudly if missing -- we
+        # don't want a stale hardcoded URL silently substituting in.
+        crd_url_template = self._require_config(
+            plan_config, "gatewayApiCrd", "crdUrlTemplate",
         )
+        crd_url = crd_url_template.format(revision=gw_revision)
         result = cmd.kube("apply", "--server-side", "-k", crd_url)
         if not result.success:
             errors.append(f"Failed to install Gateway API CRDs: {result.stderr}")
@@ -275,11 +278,13 @@ class AdminPrerequisitesStep(Step):
             f"📦 Installing inference extension CRDs "
             f"(revision {inf_ext_revision})..."
         )
-        ext_url = (
-            f"https://github.com/kubernetes-sigs/"
-            f"gateway-api-inference-extension/"
-            f"releases/download/{inf_ext_revision}/manifests.yaml"
+        # URL template lives in defaults.yaml so it has a single source of
+        # truth (gatewayApiCrd.inferenceExtensionUrlTemplate). Fail loudly if
+        # missing -- silent fallback would hide config drift.
+        ext_url_template = self._require_config(
+            plan_config, "gatewayApiCrd", "inferenceExtensionUrlTemplate",
         )
+        ext_url = ext_url_template.format(revision=inf_ext_revision)
         result = cmd.kube("apply", "-f", ext_url)
         if not result.success:
             errors.append(

@@ -8,11 +8,11 @@ repos:
       # ----------------------------------------------------------------
       - id: py-compile
         name: Byte-compile llmdbenchmark
-        entry: .venv/bin/python -m compileall -q llmdbenchmark
+        entry: python -m compileall -q llmdbenchmark
         language: system
         pass_filenames: false
         files: ^llmdbenchmark/.*\.py$
-        stages: [pre-commit, pre-push]
+        stages: [pre-commit]
 
       # ----------------------------------------------------------------
       # Unit tests -- mirrors the `unit-tests` job in
@@ -20,10 +20,10 @@ repos:
       # ----------------------------------------------------------------
       - id: pytest
         name: Unit tests (pytest tests/ -x -q)
-        entry: .venv/bin/python -m pytest tests/ -x -q
+        entry: python -m pytest tests/ -x -q
         language: system
         pass_filenames: false
-        stages: [pre-commit, pre-push]
+        stages: [pre-commit]
 
       # ----------------------------------------------------------------
       # Render-validation smart check -- detects which scenarios the
@@ -41,10 +41,8 @@ repos:
       #
       # The script prints each spec it is about to render along with
       # the reason it was picked, so it is always obvious what the
-      # hook is doing. The same hook runs on pre-push -- we rely on
-      # CI's full per-spec render job as the safety net instead of
-      # duplicating it locally, since the smart hook already covers
-      # everything the current change could have broken.
+      # hook is doing. We rely on CI's full per-spec render job as the
+      # final safety net.
       #
       # Important knobs:
       #
@@ -70,10 +68,52 @@ repos:
       # ----------------------------------------------------------------
       - id: render-validation-changed
         name: Render changed scenarios (dry-run)
-        entry: .venv/bin/python util/precommit_render_changed.py
+        entry: python util/precommit_render_changed.py
         language: system
         pass_filenames: false
         require_serial: true
+        stages: [pre-commit]
+
+      # ----------------------------------------------------------------
+      # Software Bill of Materials -- regenerates SBOM.md from
+      # install.sh, pyproject.toml, and config/templates/values/
+      # defaults.yaml. Resolves `auto` Helm/image versions against the
+      # live registry via the existing VersionResolver.
+      #
+      # Triggers only when one of those source-of-truth files changes
+      # (matches the precommit_render_changed.py performance pattern).
+      # When SBOM.md would change, the hook writes the new version and
+      # exits non-zero with a message asking the user to `git add` and
+      # re-commit -- same convention as `prettier --write` / `black`.
+      # ----------------------------------------------------------------
+      - id: generate-sbom
+        name: Generate SBOM (Software Bill of Materials)
+        entry: python util/generate_sbom.py --check
+        language: system
+        pass_filenames: false
+        require_serial: true
+        files: ^(install\.sh|pyproject\.toml|config/templates/values/defaults\.yaml|util/generate_sbom\.py)$
+        stages: [pre-commit]
+
+      # ----------------------------------------------------------------
+      # Software Bill of Materials -- regenerates SBOM.md from
+      # install.sh, pyproject.toml, and config/templates/values/
+      # defaults.yaml. Resolves `auto` Helm/image versions against the
+      # live registry via the existing VersionResolver.
+      #
+      # Triggers only when one of those source-of-truth files changes
+      # (matches the precommit_render_changed.py performance pattern).
+      # When SBOM.md would change, the hook writes the new version and
+      # exits non-zero with a message asking the user to `git add` and
+      # re-commit -- same convention as `prettier --write` / `black`.
+      # ----------------------------------------------------------------
+      - id: generate-sbom
+        name: Generate SBOM (Software Bill of Materials)
+        entry: .venv/bin/python util/generate_sbom.py --check
+        language: system
+        pass_filenames: false
+        require_serial: true
+        files: ^(install\.sh|pyproject\.toml|config/templates/values/defaults\.yaml|util/generate_sbom\.py)$
         stages: [pre-commit, pre-push]
 
   - repo: https://github.com/ibm/detect-secrets
