@@ -275,6 +275,27 @@ RUN git clone --depth=1 --branch releases/${VLLM_VERSION} \
     python -m maturin build --release --out dist
 
 # -----------------------------------------------------------------------------
+# s390x | sentencepiece: build from source (no s390x wheel on PyPI)
+# -----------------------------------------------------------------------------
+RUN microdnf install -y pkg-config && microdnf clean all
+WORKDIR /tmp
+RUN git clone https://github.com/google/sentencepiece.git && \
+    cd sentencepiece && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DSPM_ENABLE_SHARED=OFF \
+        -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig && \
+    cd /tmp/sentencepiece/python && \
+    sed -i 's/^license = "Apache-2.0"/license = {text = "Apache-2.0"}/' pyproject.toml && \
+    sed -i '/^license-files/d' pyproject.toml && \
+    python -m pip install . --no-build-isolation && \
+    python -m pip wheel . --no-build-isolation --wheel-dir /tmp/sentencepiece-wheels/
+
+# -----------------------------------------------------------------------------
 # s390x | vllm-cpu: assemble all wheels and build + install vLLM CPU wheel
 # -----------------------------------------------------------------------------
 
@@ -296,20 +317,24 @@ RUN git clone --depth=1 --branch releases/${VLLM_VERSION} \
 
 WORKDIR /workspace/vllm
 
-RUN python -m pip install --upgrade pip setuptools wheel
+# Consolidate all built wheels — each cp is independent so none gets skipped
 RUN mkdir -p /tmp/vision-wheels /tmp/hf-xet-wheels /tmp/llvmlite-wheels \
-             /tmp/numba-wheels /tmp/opencv-wheels /tmp/outlines-core-wheels && \
-    cp /tmp/vision/dist/*.whl          /tmp/vision-wheels/      && \
-    cp /tmp/hf-xet/dist/*.whl          /tmp/hf-xet-wheels/      && \
-    cp /tmp/llvmlite/build/dist/*.whl  /tmp/llvmlite-wheels/    || \
-    cp /tmp/llvmlite/dist/*.whl        /tmp/llvmlite-wheels/    && \
-    cp /tmp/numba/dist/*.whl           /tmp/numba-wheels/       && \
-    cp /tmp/opencv-python/dist/*.whl   /tmp/opencv-wheels/      && \
-    cp /tmp/outlines-core/dist/*.whl   /tmp/outlines-core-wheels/
+             /tmp/numba-wheels /tmp/opencv-wheels /tmp/outlines-core-wheels
 
+RUN cp /tmp/vision/dist/*.whl          /tmp/vision-wheels/
+RUN cp /tmp/hf-xet/dist/*.whl          /tmp/hf-xet-wheels/
+RUN cp /tmp/llvmlite/build/dist/*.whl  /tmp/llvmlite-wheels/ 2>/dev/null || \
+    cp /tmp/llvmlite/dist/*.whl        /tmp/llvmlite-wheels/
+RUN cp /tmp/numba/dist/*.whl           /tmp/numba-wheels/
+RUN cp /tmp/opencv-python/dist/*.whl   /tmp/opencv-wheels/
+RUN cp /tmp/outlines-core/dist/*.whl   /tmp/outlines-core-wheels/
+
+# Verify everything is in place before the long pip install
+RUN echo "=== Wheel inventory ===" && find /tmp -name "*.whl" | sort
 
 # Install all source-built dependency wheels + vLLM requirements.
-RUN VISION_WHL=$(ls /tmp/vision-wheels/*.whl) && \
+RUN SPIECE_WHL=$(ls /tmp/sentencepiece-wheels/*.whl) && \
+    VISION_WHL=$(ls /tmp/vision-wheels/*.whl) && \
     HF_XET_WHL=$(ls /tmp/hf-xet-wheels/*.whl) && \
     LLVM_WHL=$(ls /tmp/llvmlite-wheels/*.whl) && \
     NUMBA_WHL=$(ls /tmp/numba-wheels/*.whl) && \
@@ -322,6 +347,7 @@ RUN VISION_WHL=$(ls /tmp/vision-wheels/*.whl) && \
         "$NUMBA_WHL" \
         "$OPENCV_WHL" \
         "$OUTLINES_WHL" \
+        "$SPIECE_WHL" \ 
         -r requirements/cpu-build.txt \
         -r requirements/cpu.txt
 
@@ -360,12 +386,12 @@ RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /w
 RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
 
 ADD workload/harnesses/ /usr/local/bin/
-COPY analysis/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
-COPY analysis/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
-COPY analysis/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
-COPY analysis/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
-COPY analysis/inferencemax-analyze_results.sh /usr/local/bin/inferencemax-analyze_results.sh
-COPY analysis/visualize_metrics.py /usr/local/bin/visualize_metrics.py
+COPY analysis/scripts/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
+COPY analysis/scripts/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
+COPY analysis/scripts/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
+COPY analysis/scripts/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
+COPY analysis/scripts/inferencemax-analyze_results.sh /usr/local/bin/inferencemax-analyze_results.sh
+COPY analysis/scripts/visualize_metrics.py /usr/local/bin/visualize_metrics.py
 COPY benchmark_report/ /opt/benchmark_report/
 RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
 
