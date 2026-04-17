@@ -401,14 +401,18 @@ class RenderPlans:
                 )
 
     def _resolve_monitoring(self, values: dict) -> dict:
-        """Override monitoring based on ``--monitoring`` / ``--no-monitoring``.
+        """Override PodMonitor creation based on ``--monitoring`` / ``--no-monitoring``.
 
-        Monitoring is enabled by default via defaults.yaml.  When neither flag
-        is passed (``cli_monitoring is None``), the scenario/defaults values
-        are used as-is.
+        Controls whether PodMonitor resources are created at standup so
+        Prometheus can scrape vLLM pods.  This is a zero-cost operation
+        (just a CRD declaration).
 
-        - ``--monitoring``    → force enable (overrides scenario)
-        - ``--no-monitoring`` → force disable (overrides scenario)
+        Harness-level metrics scraping (``metricsScrapeEnabled``) is a
+        separate concern that adds HTTP overhead during benchmarks and
+        is left to the scenario/defaults configuration.
+
+        - ``--monitoring``    → force-enable PodMonitor (overrides scenario)
+        - ``--no-monitoring`` → force-disable PodMonitor (overrides scenario)
         - neither             → use scenario/defaults values
         """
         if self.cli_monitoring is None:
@@ -420,15 +424,14 @@ class RenderPlans:
 
         if self.cli_monitoring:
             podmonitor_config["enabled"] = True
-            monitoring_config["metricsScrapeEnabled"] = True
             self.logger.log_info(
-                "Monitoring enabled from CLI: PodMonitor + metrics scraping"
+                "Monitoring enabled from CLI: PodMonitor for Prometheus scraping"
             )
         else:
             podmonitor_config["enabled"] = False
-            monitoring_config["metricsScrapeEnabled"] = False
             self.logger.log_info(
-                "Monitoring disabled from CLI (--no-monitoring)"
+                "Monitoring disabled from CLI (--no-monitoring): "
+                "PodMonitor will not be created"
             )
 
         return result

@@ -486,7 +486,8 @@ class AdminPrerequisitesStep(Step):
                 "    name: cluster-monitoring-config\n"
                 "    namespace: openshift-monitoring\n"
                 "  data:\n"
-                "    config.yaml: 'enableUserWorkload: true'\n"
+                "    config.yaml: |\n"
+                "      enableUserWorkload: true\n"
                 "  EOF\n"
                 f"{common_tail}"
             )
