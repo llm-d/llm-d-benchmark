@@ -62,6 +62,9 @@ inferenceExtension:
     image: "{{ images.udsTokenizer.repository }}:{{ images.udsTokenizer.tag }}"
     imagePullPolicy: {{ inferenceExtension.sidecar.imagePullPolicy | default('IfNotPresent') }}
     name: {{ inferenceExtension.sidecar.name | default('tokenizer-uds') }}
+    configMap:
+      name: {{ model_id_label }}-gaie-sidecar-config
+      data: {}
     env:
 {% if huggingface.enabled %}
       - name: HF_TOKEN
