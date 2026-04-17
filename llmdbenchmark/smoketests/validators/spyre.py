@@ -93,14 +93,15 @@ class SpyreValidator(BaseSmoketest):
         env_vars = self._get_container_env(serving_pod, container=container_name)
         pod_name = serving_pod.get("metadata", {}).get("name", "unknown")
 
-        # Determine expected FLEX_DEVICE from scenario config (extraEnvVars)
+        # Determine expected FLEX_DEVICE from the active deployment's extraEnvVars.
+        # Check decode first (modelservice mode), then standalone.
         expected_flex_device = "VF"
-        for section in ("decode", "standalone"):
-            env_list = _nested_get(config, section, "extraEnvVars") or []
-            for ev in env_list:
-                if isinstance(ev, dict) and ev.get("name") == "FLEX_DEVICE":
-                    expected_flex_device = ev.get("value", "VF")
-                    break
+        active_section = "decode" if decode_pods else "standalone"
+        env_list = _nested_get(config, active_section, "extraEnvVars") or []
+        for ev in env_list:
+            if isinstance(ev, dict) and ev.get("name") == "FLEX_DEVICE":
+                expected_flex_device = ev.get("value", "VF")
+                break
 
         spyre_env_checks = [
             ("FLEX_COMPUTE", "SENTIENT"),
