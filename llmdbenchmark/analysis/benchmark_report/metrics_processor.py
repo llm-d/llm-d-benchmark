@@ -106,6 +106,30 @@ def load_epp_metrics_summary(metrics_dir: str) -> dict[str, Any]:
         return json.load(f)
 
 
+def load_replica_status(metrics_dir: str) -> dict[str, Any]:
+    """Load the replica status JSON file."""
+    status_file = os.path.join(
+        metrics_dir, 'processed', 'replica_status.json')
+
+    if not os.path.exists(status_file):
+        return {}
+
+    with open(status_file, 'r') as f:
+        return json.load(f)
+
+
+def load_pod_startup_times(metrics_dir: str) -> dict[str, Any]:
+    """Load the pod startup times JSON file."""
+    status_file = os.path.join(
+        metrics_dir, 'processed', 'pod_startup_times.json')
+
+    if not os.path.exists(status_file):
+        return {}
+
+    with open(status_file, 'r') as f:
+        return json.load(f)
+
+
 def _make_stats_dict(metric_data: dict[str, Any], units: str,
                      graph_path: str | None = None) -> dict[str, Any]:
     """Build a statistics dict from a metric_data entry (from metrics_summary)."""
@@ -275,5 +299,15 @@ def add_metrics_to_benchmark_report(
     if epp_summary:
         epp_entries = _build_epp_entries(epp_summary)
         obs.update(epp_entries)
+
+    # Replica status (desired vs ready vs available per controller/model)
+    replica_status = load_replica_status(metrics_dir)
+    if replica_status and replica_status.get('controllers'):
+        obs['replica_status'] = replica_status
+
+    # Pod startup times (creation to Ready, per node per replica)
+    startup_times = load_pod_startup_times(metrics_dir)
+    if startup_times and startup_times.get('pods'):
+        obs['pod_startup_times'] = startup_times
 
     return br_dict

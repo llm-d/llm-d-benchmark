@@ -66,6 +66,152 @@ get_pod_info() {
     echo "$pod_info"
 }
 
+# Function to collect replica status (desired vs ready vs available) for all
+# vLLM-related Deployments and StatefulSets in the namespace.
+# Queries all controllers, then filters by pod-template label
+# llm-d.ai/inferenceServing=true so both modelservice and standalone are captured.
+# Writes a one-time snapshot to $METRICS_DIR/processed/replica_status.json.
+collect_replica_status() {
+    local namespace="${LLMDBENCH_VLLM_COMMON_NAMESPACE:-default}"
+    local kubectl_cmd="${KUBECTL_CMD:-kubectl}"
+    local output_file="$METRICS_DIR/processed/replica_status.json"
+    local debug_log="$METRICS_DIR/raw/collection_debug.log"
+
+    mkdir -p "$METRICS_DIR/processed" "$METRICS_DIR/raw"
+
+    local all_json
+    all_json=$($kubectl_cmd --namespace "$namespace" get deployments,statefulsets -o json 2>>"$debug_log") || all_json='{"items":[]}'
+
+    echo "$all_json" | _RS_NAMESPACE="$namespace" _RS_OUTPUT="$output_file" python3 -c '
+import json, sys, os
+from datetime import datetime, timezone
+
+namespace = os.environ["_RS_NAMESPACE"]
+output_file = os.environ["_RS_OUTPUT"]
+
+data = json.load(sys.stdin)
+result = {
+    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "namespace": namespace,
+    "controllers": [],
+}
+
+for item in data.get("items", []):
+    kind = item.get("kind", "Deployment")
+    metadata = item.get("metadata", {})
+    spec = item.get("spec", {})
+    status = item.get("status", {})
+
+    tmpl_labels = (
+        spec.get("template", {}).get("metadata", {}).get("labels", {})
+    )
+    if tmpl_labels.get("llm-d.ai/inferenceServing") != "true":
+        continue
+
+    result["controllers"].append({
+        "name": metadata.get("name", ""),
+        "kind": kind,
+        "model": tmpl_labels.get("llm-d.ai/model", tmpl_labels.get("app", "")),
+        "role": tmpl_labels.get("llm-d.ai/role", "unknown"),
+        "desired_replicas": spec.get("replicas", 0),
+        "ready_replicas": status.get("readyReplicas", 0),
+        "available_replicas": status.get("availableReplicas", 0),
+        "updated_replicas": status.get("updatedReplicas", 0),
+    })
+
+with open(output_file, "w") as f:
+    json.dump(result, f, indent=2)
+
+print("Replica status: %d controller(s) written to %s" % (len(result["controllers"]), output_file))
+' 2>>"$debug_log"
+    if [[ $? -ne 0 ]]; then
+        echo "Warning: Failed to collect replica status (see $debug_log)" >&2
+    fi
+}
+
+# Function to collect pod startup times (creation to Ready) for all vLLM pods.
+# Uses the same label-based discovery as get_pod_info(), then extracts
+# creationTimestamp, conditions[Ready].lastTransitionTime, and spec.nodeName.
+# Writes a one-time snapshot to $METRICS_DIR/processed/pod_startup_times.json.
+collect_pod_startup_times() {
+    local namespace="${LLMDBENCH_VLLM_COMMON_NAMESPACE:-default}"
+    local kubectl_cmd="${KUBECTL_CMD:-kubectl}"
+    local output_file="$METRICS_DIR/processed/pod_startup_times.json"
+    local debug_log="$METRICS_DIR/raw/collection_debug.log"
+
+    mkdir -p "$METRICS_DIR/processed" "$METRICS_DIR/raw"
+
+    # Try modelservice labels first, fall back to standalone
+    local pods_json
+    pods_json=$($kubectl_cmd --namespace "$namespace" get pods \
+        -l llm-d.ai/inferenceServing=true \
+        --field-selector=status.phase=Running \
+        -o json 2>>"$debug_log") || pods_json='{"items":[]}'
+
+    local count
+    count=$(echo "$pods_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('items',[])))" 2>>"$debug_log" || echo 0)
+    if [[ "$count" == "0" ]]; then
+        pods_json=$($kubectl_cmd --namespace "$namespace" get pods \
+            -l stood-up-via=standalone \
+            --field-selector=status.phase=Running \
+            -o json 2>>"$debug_log") || pods_json='{"items":[]}'
+    fi
+
+    echo "$pods_json" | _ST_OUTPUT="$output_file" python3 -c '
+import json, sys, os
+from datetime import datetime, timezone
+
+output_file = os.environ["_ST_OUTPUT"]
+
+data = json.load(sys.stdin)
+result = {
+    "collected_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "pods": [],
+}
+
+for item in data.get("items", []):
+    metadata = item.get("metadata", {})
+    spec = item.get("spec", {})
+    status = item.get("status", {})
+    labels = metadata.get("labels", {})
+
+    creation_ts = metadata.get("creationTimestamp", "")
+    ready_ts = ""
+    for cond in status.get("conditions", []):
+        if cond.get("type") == "Ready" and cond.get("status") == "True":
+            ready_ts = cond.get("lastTransitionTime", "")
+            break
+
+    startup_seconds = None
+    if creation_ts and ready_ts:
+        try:
+            fmt = "%Y-%m-%dT%H:%M:%SZ"
+            created = datetime.strptime(creation_ts, fmt)
+            ready = datetime.strptime(ready_ts, fmt)
+            startup_seconds = round((ready - created).total_seconds(), 1)
+        except (ValueError, TypeError):
+            pass
+
+    result["pods"].append({
+        "name": metadata.get("name", ""),
+        "node": spec.get("nodeName", ""),
+        "model": labels.get("llm-d.ai/model", labels.get("app", "")),
+        "role": labels.get("llm-d.ai/role", "unknown"),
+        "creation_timestamp": creation_ts,
+        "ready_timestamp": ready_ts,
+        "startup_seconds": startup_seconds,
+    })
+
+with open(output_file, "w") as f:
+    json.dump(result, f, indent=2)
+
+print("Pod startup times: %d pod(s) written to %s" % (len(result["pods"]), output_file))
+' 2>>"$debug_log"
+    if [[ $? -ne 0 ]]; then
+        echo "Warning: Failed to collect pod startup times (see $debug_log)" >&2
+    fi
+}
+
 # Function to collect Prometheus metrics from a single pod via its IP.
 # Curls the pod IP directly from the benchmark pod instead of using kubectl exec,
 # so we don't compete for CPU inside the loaded vLLM container.
@@ -168,6 +314,10 @@ start_continuous_collection() {
 
     init_metrics_dir
 
+    # Collect one-time infrastructure snapshots
+    collect_replica_status
+    collect_pod_startup_times
+
     echo "Starting continuous metrics collection (interval: ${COLLECTION_INTERVAL}s)"
     echo $$ > "$METRICS_DIR/collector.pid"
 
@@ -229,6 +379,8 @@ case "${1:-}" in
         ;;
     snapshot)
         init_metrics_dir
+        collect_replica_status
+        collect_pod_startup_times
         collect_metrics_snapshot
         ;;
     process)
