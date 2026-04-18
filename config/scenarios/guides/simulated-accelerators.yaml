@@ -89,7 +89,7 @@ scenario:
       secure: false
       proxy:
         enabled: true
-        image: ghcr.io/llm-d/llm-d-routing-sidecar:v0.7.1
+        image: ghcr.io/llm-d/llm-d-routing-sidecar:v0.3.0
         connector: nixlv2
         secure: false
 
@@ -105,7 +105,7 @@ scenario:
         pullPolicy: IfNotPresent
       routingSidecar:
         repository: ghcr.io/llm-d/llm-d-routing-sidecar
-        tag: v0.7.1
+        tag: v0.3.0
 
     # -------------------------------------------------------------------------
     # Decode Configuration -- 3 replicas with uds-tokenizer
