@@ -41,7 +41,7 @@ OCI registry at generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **agentgateway** | `v1.0.1` | tag | `config/templates/values/defaults.yaml` line 424 (`chartVersions.agentgateway`) | [agentgateway/agentgateway](https://github.com/agentgateway/agentgateway) (`oci://cr.agentgateway.dev/charts/`) |
+| **agentgateway** | `v1.1.0` | tag | `config/templates/values/defaults.yaml` line 424 (`chartVersions.agentgateway`) | [agentgateway/agentgateway](https://github.com/agentgateway/agentgateway) (`oci://cr.agentgateway.dev/charts/`) |
 | **inferencePool** | `v1.4.0` | tag | `config/templates/values/defaults.yaml` line 423 (`chartVersions.inferencePool`) | [kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) |
 | **istioBase** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 418 (`chartVersions.istioBase`) | (unknown) |
 | **istiod** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 419 (`chartVersions.istiod`) | (unknown) |
