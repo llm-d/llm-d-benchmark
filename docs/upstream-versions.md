@@ -65,7 +65,7 @@ generation (and plan) time.
 | **routingSidecar** | `v0.7.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 354 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
 | **udsTokenizer** | `v0.7.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 360 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |
 | **vllm** | `v0.6.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 335 (`images.vllm`) | [llm-d/llm-d (docker/Dockerfile.cuda)](https://github.com/llm-d/llm-d) (`ghcr.io/llm-d/llm-d-cuda`) |
-| **vllmOpenai** | `v0.9.2` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 342 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **vllmOpenai** | `v0.19.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 342 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 
 
 ## Python Package Dependencies (declared)
