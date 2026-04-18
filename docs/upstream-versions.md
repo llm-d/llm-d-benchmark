@@ -25,7 +25,7 @@ whatever the host's package manager provides.
 | **helm** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [helm/helm](https://github.com/helm/helm) |
 | **helm-diff** | `latest` | plugin (latest) | `install.sh` line 410 (`helm_diff_url`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
 | **helmfile** | `1.1.3` | version | `install.sh` line 334 (`install_helmfile_linux`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
-| **jq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [jqlang/jq](https://github.com/jqlang/jq) |
+| **jq** | `1.8.1` | version | `install.sh` (`install_jq_linux`) | [jqlang/jq](https://github.com/jqlang/jq) |
 | **kubectl** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [kubernetes/kubernetes](https://github.com/kubernetes/kubernetes) |
 | **kustomize** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
 | **llm-d-planner (git)** | `f51812bebca30e0291ec541bd2ef2acf0572e8a4` | commit SHA | `install.sh` line 477 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |

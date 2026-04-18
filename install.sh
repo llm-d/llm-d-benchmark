@@ -322,6 +322,22 @@ tool_version() {
 # ---------------------------------------------------------------------------
 # Per-tool Linux install helpers
 # ---------------------------------------------------------------------------
+install_jq_linux() {
+    local version=1.8.1
+    local arch
+    arch=$(uname -m)
+    local jq_arch
+    case "$arch" in
+        x86_64)  jq_arch="amd64" ;;
+        aarch64) jq_arch="arm64" ;;
+        *) echo "ERROR: Unsupported architecture: ${arch}"; exit 1 ;;
+    esac
+    local binary="jq-linux-${jq_arch}"
+    curl -sL "https://github.com/jqlang/jq/releases/download/jq-${version}/${binary}" -o "/tmp/jq"
+    chmod +x "/tmp/jq"
+    sudo cp -f "/tmp/jq" /usr/local/bin/jq
+}
+
 install_yq_linux() {
     local version=v4.52.5
     local binary=yq_linux_amd64
