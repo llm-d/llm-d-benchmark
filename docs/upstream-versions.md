@@ -28,7 +28,7 @@ whatever the host's package manager provides.
 | **jq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [jqlang/jq](https://github.com/jqlang/jq) |
 | **kubectl** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [kubernetes/kubernetes](https://github.com/kubernetes/kubernetes) |
 | **kustomize** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
-| **llm-d-planner (git)** | `f51812bebca30e0291ec541bd2ef2acf0572e8a4` | commit SHA | `install.sh` line 477 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
+| **llm-d-planner (git)** | `cc63e0bb6bb932e22ca72a7c74392350ade0adee` | commit SHA | `install.sh` line 477 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
 | **skopeo** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [containers/skopeo](https://github.com/containers/skopeo) |
 | **yq** | `v4.52.5` | version | `install.sh` line 326 (`install_yq_linux`) | [mikefarah/yq](https://github.com/mikefarah/yq) |
 
