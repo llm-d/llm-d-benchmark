@@ -322,6 +322,30 @@ tool_version() {
 # ---------------------------------------------------------------------------
 # Per-tool Linux install helpers
 # ---------------------------------------------------------------------------
+install_curl_linux() {
+    local version=8.19.0
+    local arch
+    arch=$(uname -m)
+    local curl_arch
+    case "$arch" in
+        x86_64)  curl_arch="x86_64" ;;
+        aarch64) curl_arch="aarch64" ;;
+        *) echo "ERROR: Unsupported architecture: ${arch}"; exit 1 ;;
+    esac
+    local url="https://github.com/stunnel/static-curl/releases/download/${version}/curl-linux-${curl_arch}-glibc"
+    local dest="/tmp/curl-static"
+    if command -v curl &>/dev/null; then
+        curl -sL "${url}" -o "${dest}"
+    elif command -v wget &>/dev/null; then
+        wget -qO "${dest}" "${url}"
+    else
+        echo "ERROR: Neither curl nor wget is available to bootstrap curl installation"; exit 1
+    fi
+    chmod +x "${dest}"
+    sudo cp -f "${dest}" /usr/local/bin/curl
+    rm -f "${dest}"
+}
+
 install_yq_linux() {
     local version=v4.52.5
     local binary=yq_linux_amd64
