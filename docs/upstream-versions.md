@@ -19,7 +19,7 @@ whatever the host's package manager provides.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **crane** | `v0.20.3` | version | `install.sh` line 364 (`install_crane_linux`) | [google/go-containerregistry](https://github.com/google/go-containerregistry) |
+| **crane** | `v0.21.5` | version | `install.sh` line 364 (`install_crane_linux`) | [google/go-containerregistry](https://github.com/google/go-containerregistry) |
 | **curl** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [curl/curl](https://github.com/curl/curl) |
 | **git** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [git/git](https://github.com/git/git) |
 | **helm** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [helm/helm](https://github.com/helm/helm) |

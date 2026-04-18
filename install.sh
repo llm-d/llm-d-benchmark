@@ -361,7 +361,7 @@ install_kustomize_linux() {
 }
 
 install_crane_linux() {
-    local version=v0.20.3
+    local version=v0.21.5
     local arch
     arch=$(uname -m)
     local go_arch="x86_64"
