@@ -356,8 +356,16 @@ install_oc_linux() {
 }
 
 install_kustomize_linux() {
-    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-    sudo mv kustomize /usr/local/bin/
+    local version=5.8.1
+    local arch
+    arch=$(uname -m)
+    local go_arch="amd64"
+    [[ "$arch" == "aarch64" ]] && go_arch="arm64"
+    local pkg="kustomize_v${version}_linux_${go_arch}"
+    curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v${version}/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz"
+    tar xzf "/tmp/${pkg}.tar.gz" -C /tmp kustomize
+    sudo cp -f /tmp/kustomize /usr/local/bin/kustomize
+    sudo chmod +x /usr/local/bin/kustomize
 }
 
 install_crane_linux() {
