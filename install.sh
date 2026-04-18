@@ -355,6 +355,17 @@ install_oc_linux() {
     sudo chmod +x /usr/local/bin/oc
 }
 
+install_kubectl_linux() {
+    local version=v1.35.4
+    local arch
+    arch=$(uname -m)
+    local go_arch="amd64"
+    [[ "$arch" == "aarch64" ]] && go_arch="arm64"
+    curl -sLO "https://dl.k8s.io/release/${version}/bin/linux/${go_arch}/kubectl"
+    chmod +x kubectl
+    sudo mv kubectl /usr/local/bin/kubectl
+}
+
 install_kustomize_linux() {
     curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
     sudo mv kustomize /usr/local/bin/
