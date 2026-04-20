@@ -1,0 +1,65 @@
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: analyze-treatment
+spec:
+  description: |
+    Produce '--set/--set-string path=value' flags for factorType and
+    apply values into a JSON/YAML file. Works with flat or nested treatment.
+  image: alpine:3.20
+  params:
+    - name: factorType
+      type: string
+    - name: factorMapping
+      type: string
+      description: JSON mapping
+    - name: treatment
+      type: string
+      description: JSON values (flat or nested by key)
+  results:
+    - name: treatmentAnalysis
+      description: Space-separated '--set/--set-string path=value' tokens
+  env:
+    - name: SELECTOR
+      value: $(params.factorType)
+    - name: MAP_JSON
+      value: $(params.factorMapping)
+    - name: VAL_JSON
+      value: $(params.treatment)
+  script: |
+    #!/bin/sh
+    set -eu
+    apk add --no-cache jq yq >/dev/null
+
+    # Build updates + flags (uses $val for type checks — fixed version)
+    jq -r -n \
+      --arg root "$SELECTOR" \
+      --argjson map "$MAP_JSON" \
+      --argjson vals "$VAL_JSON" '
+        ($map[$root] // {}) as $m
+        | if ($m | type) != "object" then
+            error("Key not found in mapping: " + $root)
+          else
+            (if ($vals[$root] | type) == "object" then $vals[$root] else $vals end) as $v
+            | {
+                updates: [
+                  $m | to_entries[]
+                  | select($v[.key] != null)
+                  | { name: .key, path: (.value | split(".")), value: $v[.key] }
+                ],
+                setArgs: (
+                  [ $m | to_entries[]
+                    | select($v[.key] != null)
+                    | ( $v[.key] ) as $val
+                    | if ( ($val | type) == "string" ) then
+                        "--set-string \(.value)=\($val)"
+                      else
+                        "--set \(.value)=\( if ( ($val|type)=="object" or ($val|type)=="array") then ($val|tojson) else ($val|tostring) end )"
+                      end
+                  ] | join(" ")
+                )
+              }
+        end
+      ' > /tmp/out.json
+
+    printf "%s" "$(cat /tmp/out.json)" > "$(step.results.treatmentAnalysis.path)"
