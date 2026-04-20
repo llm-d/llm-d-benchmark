@@ -32,6 +32,8 @@ However, the scripts can be executed by **namespace-level admin** users, as long
 
 ### Install
 
+The install script supports both [uv](https://docs.astral.sh/uv/) and the standard `python3 -m venv` for virtual environment creation. When run interactively, it will prompt you to choose; in non-interactive mode (e.g. curl pipe), it auto-selects uv if your system Python is missing or older than 3.11. You can also pass `--uv` or `--no-uv` to skip the prompt.
+
 **Quick install (one-liner):**
 
 ```bash
@@ -46,7 +48,7 @@ llmdbenchmark --version
 ```bash
 git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
-./install.sh
+./install.sh              # or: --uv / --no-uv
 source .venv/bin/activate
 llmdbenchmark --version
 ```
@@ -191,13 +193,13 @@ Or manually:
 ```bash
 git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
-./install.sh
+./install.sh              # or: --uv / --no-uv
 source .venv/bin/activate
 ```
 
 The install script:
 
-1. Creates a Python virtual environment at `.venv/`
+1. Creates a Python virtual environment at `.venv/` (via [uv](https://docs.astral.sh/uv/) or `python3 -m venv` — see [Install](#install))
 2. Validates Python 3.11+ and pip
 3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile, kustomize, jq, yq, skopeo, crane)
 4. Installs the `helm-diff` plugin (required by helmfile)
