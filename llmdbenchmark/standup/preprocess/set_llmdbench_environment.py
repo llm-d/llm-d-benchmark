@@ -99,7 +99,7 @@ for dep in deps_present.keys() :
         deps_present[dep] = True
         executable_found_path=result.stdout.split('\n')[0]
         executable_found_name=executable_found_path.split('/')[-1]
-        shutil.copy2(executable_actual_path, f"{options.envdir}/{executable_actual_name}")
+        shutil.copy2(executable_found_path, f"{options.envdir}/{executable_found_name}")
     except subprocess.CalledProcessError as e:
         if os.access(executables_path, os.W_OK):
             print(f"WARNING: Dependency \"{dep}\" not available on the image: {e.cmd} returned {e.returncode}. Trying to obtain externally...")
@@ -113,7 +113,7 @@ for dep in deps_present.keys() :
         deps_present[dep] = True
         executable_found_path=result.stdout.split('\n')[0]
         executable_found_name=executable_found_path.split('/')[-1]
-        shutil.copy2(executable_actual_path, f"{options.envdir}/{executable_actual_name}")
+        shutil.copy2(executable_found_path, f"{options.envdir}/{executable_found_name}")
     except subprocess.CalledProcessError as e:
         print(f"WARNING: Dependency \"{dep}\" neither available on the image nor on the config map: {e.cmd} returned {e.returncode}.")
 

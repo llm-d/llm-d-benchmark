@@ -280,6 +280,7 @@ def _load_stack_info_from_config(config_file, stack_name=""):
                 "modelservice_enabled": (
                     plan_config.get("modelservice", {}).get("enabled", False)
                 ),
+                "harness": plan_config.get("harness", {}),
             }
     except (OSError, _yaml.YAMLError):
         pass
@@ -758,7 +759,12 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         profile_overrides=getattr(args, "overrides", None),
         harness_output=getattr(args, "output", "local") or "local",
         harness_parallelism=int(getattr(args, "parallelism", 1) or 1),
-        harness_wait_timeout=int(getattr(args, "wait_timeout", 3600) or 3600),
+        harness_wait_timeout=int(
+            getattr(args, "wait_timeout", None)
+            if getattr(args, "wait_timeout", None) is not None
+            else (plan_info.get("harness", {}) or {}).get("waitTimeout")
+            or 3600
+        ),
         harness_debug=getattr(args, "debug", False),
         harness_skip_run=getattr(args, "skip", False),
         harness_service_account=getattr(args, "serviceaccount", None),
