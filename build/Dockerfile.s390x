@@ -1,0 +1,407 @@
+ARG BASE_UBI_IMAGE_TAG=9.6
+FROM registry.access.redhat.com/ubi9/ubi-minimal:${BASE_UBI_IMAGE_TAG} AS base
+
+USER root
+WORKDIR /workspace
+
+# -----------------------------
+# Install additional tools
+# -----------------------------
+RUN microdnf install -y \
+    git jq rsync wget tar \
+    gcc gcc-c++ gcc-gfortran make cmake \
+    openssl-devel libffi-devel  zlib-devel libsndfile\
+    freetype-devel bzip2-devel xz-devel lz4-devel snappy-devel \
+    boost-devel  libjpeg-turbo-devel libtiff-devel libpng-devel libwebp-devel \
+    libxml2-devel libxslt-devel  libwebp-devel\
+    openblas openblas-devel autoconf automake libtool \
+    numpy perl-core dnf-plugins-core libxml2 libxml2-devel libxslt libxslt-devel \
+    ca-certificates iproute infiniband-diags \
+    && microdnf clean all
+
+# -----------------------------
+# Python 3.12
+# -----------------------------
+RUN microdnf install -y \
+    python3.12 \
+    python3.12-pip \
+    python3.12-devel \
+    && microdnf clean all
+
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
+    ln -sf /usr/bin/pip3.12 /usr/bin/pip
+
+# -----------------------------
+# Python build tools
+# -----------------------------
+RUN python -m pip install --upgrade pip setuptools wheel cython
+
+# -----------------------------
+# Install Rust (needed for cryptography & tiktoken)
+# -----------------------------
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y && \
+    /root/.cargo/bin/rustup default stable
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# -----------------------------
+# Install yq (manual for s390x)
+# -----------------------------
+RUN ARCH=$(uname -m) && \
+    wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${ARCH} \
+    -O /usr/local/bin/yq && \
+    chmod +x /usr/local/bin/yq
+
+# -----------------------------
+# Install OpenShift CLI 
+# -----------------------------
+RUN ARCH=$(uname -m) && \
+    curl -LO https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest-4.20/openshift-client-linux-${ARCH}-rhel9.tar.gz && \
+    tar -xzf openshift-client-linux-${ARCH}-rhel9.tar.gz -C /usr/local/bin oc && \
+    chmod +x /usr/local/bin/oc && \
+    rm -f openshift-client-linux-${ARCH}-rhel9.tar.gz
+
+# -----------------------------
+# Install kubectl
+# -----------------------------
+# Download, verify, and install kubectl
+ARG KUBE_VERSION="v1.20.0"
+RUN ARCH=$(uname -m) && \
+    curl -LO https://dl.k8s.io/${KUBE_VERSION}/bin/linux/${ARCH}/kubectl && \
+    chmod +x ./kubectl && \
+    mv ./kubectl /usr/local/bin/kubectl
+
+# ============================================
+# BUILD APACHE ARROW (for pyarrow)
+# ============================================
+WORKDIR /tmp
+
+ENV ARROW_HOME=/usr/local
+ENV CMAKE_PREFIX_PATH=/usr/local
+ENV LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH}
+
+RUN git clone https://github.com/apache/arrow.git && \
+    cd arrow/cpp && \
+    mkdir release && cd release && \
+    cmake -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=/usr/local \
+          -DARROW_PYTHON=ON \
+          -DARROW_PARQUET=ON \
+          -DARROW_DATASET=ON \
+          -DARROW_WITH_SNAPPY=ON \
+          -DARROW_WITH_ZSTD=ON \
+          -DARROW_WITH_LZ4=ON \
+          -DARROW_DEPENDENCY_SOURCE=BUNDLED \
+          .. && \
+    make -j$(nproc) && \
+    make install
+
+# -----------------------------
+# Build pyarrow
+# -----------------------------
+RUN cd /tmp/arrow/python && \
+    python -m pip install -r requirements-build.txt && \
+    python -m pip install .
+
+# -----------------------------
+# Install inference-perf (FULL deps now possible)
+# -----------------------------
+ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
+ARG INFERENCE_PERF_BRANCH=main
+ARG INFERENCE_PERF_COMMIT=v0.4.0
+RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
+RUN cd inference-perf; \
+    git checkout ${INFERENCE_PERF_COMMIT}; \
+    python -m pip install .
+
+# -----------------------------------------------------------------------------
+# s390x | numa-build: build numactl from source 
+# -----------------------------------------------------------------------------
+
+ARG NUMACTL_VERSION=2.0.16
+WORKDIR /tmp
+RUN curl -LO https://github.com/numactl/numactl/archive/refs/tags/v${NUMACTL_VERSION}.tar.gz && \
+    tar -xvzf v${NUMACTL_VERSION}.tar.gz && \
+    cd numactl-${NUMACTL_VERSION} && \
+    ./autogen.sh && \
+    ./configure && \
+    make && \
+    make install && \
+    ldconfig
+
+ENV C_INCLUDE_PATH="/usr/local/include"
+
+# -----------------------------------------------------------------------------
+# s390x | numba-builder: build LLVM 15 → llvmlite → numba wheels
+# -----------------------------------------------------------------------------
+
+ARG NUMBA_VERSION=0.61.2
+ARG LLVMLITE_VERSION=v0.44.0
+ARG LLVM_VERSION=llvmorg-15.0.7
+WORKDIR /tmp
+
+RUN microdnf install -y ninja-build gcc gcc-c++ && \
+    git clone --recursive https://github.com/llvm/llvm-project.git \
+        -b ${LLVM_VERSION} && \
+    git clone --recursive https://github.com/numba/llvmlite.git \
+        -b ${LLVMLITE_VERSION} && \
+    git clone --recursive https://github.com/numba/numba.git \
+        -b ${NUMBA_VERSION} && \
+    # ---- Build LLVM ----
+    cd llvm-project && mkdir build && cd build && \
+    python -m pip install 'cmake<4' 'setuptools<70' numpy && \
+    export PREFIX=/usr/local && \
+    cmake -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_LIBRARY_PATH="${PREFIX}" \
+          -DLLVM_ENABLE_PROJECTS="lld;libunwind;compiler-rt" \
+          -DLLVM_ENABLE_LIBEDIT=OFF \
+          -DLLVM_ENABLE_LIBXML2=OFF \
+          -DLLVM_ENABLE_RTTI=ON \
+          -DLLVM_ENABLE_TERMINFO=OFF \
+          -DLLVM_INCLUDE_BENCHMARKS=OFF \
+          -DLLVM_INCLUDE_DOCS=OFF \
+          -DLLVM_INCLUDE_EXAMPLES=OFF \
+          -DLLVM_INCLUDE_GO_TESTS=OFF \
+          -DLLVM_INCLUDE_TESTS=OFF \
+          -DLLVM_INCLUDE_UTILS=ON \
+          -DLLVM_INSTALL_UTILS=ON \
+          -DLLVM_UTILS_INSTALL_DIR=libexec/llvm \
+          -DLLVM_BUILD_LLVM_DYLIB=OFF \
+          -DLLVM_LINK_LLVM_DYLIB=OFF \
+          -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=WebAssembly \
+          -DLLVM_ENABLE_FFI=ON \
+          -DLLVM_ENABLE_Z3_SOLVER=OFF \
+          -DLLVM_OPTIMIZED_TABLEGEN=ON \
+          -DCMAKE_POLICY_DEFAULT_CMP0111=NEW \
+          -DCOMPILER_RT_BUILD_BUILTINS=ON \
+          -DCOMPILER_RT_BUILTINS_HIDE_SYMBOLS=OFF \
+          -DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
+          -DCOMPILER_RT_BUILD_CRT=OFF \
+          -DCOMPILER_RT_BUILD_MEMPROF=OFF \
+          -DCOMPILER_RT_BUILD_PROFILE=OFF \
+          -DCOMPILER_RT_BUILD_SANITIZERS=OFF \
+          -DCOMPILER_RT_BUILD_XRAY=OFF \
+          -DCOMPILER_RT_BUILD_GWP_ASAN=OFF \
+          -DCOMPILER_RT_BUILD_ORC=OFF \
+          -DCOMPILER_RT_INCLUDE_TESTS=OFF \
+          -GNinja ../llvm && \
+    ninja install && \
+    # ---- Build llvmlite ----
+    cd ../../llvmlite && python setup.py bdist_wheel && \
+    # ---- Build numba (patch dispatcher for Python 3.12) ----
+    cd ../numba && \
+    if ! grep -q '#include "dynamic_annotations.h"' numba/_dispatcher.cpp; then \
+        sed -i '/#include "internal\/pycore_atomic.h"/i\#include "dynamic_annotations.h"' \
+            numba/_dispatcher.cpp; \
+    fi && \
+    python setup.py bdist_wheel
+
+# -----------------------------------------------------------------------------
+# s390x | opencv-builder: build opencv-python-headless wheel from source.
+# -----------------------------------------------------------------------------
+
+WORKDIR /tmp
+ARG OPENCV_VERSION=90
+ARG ENABLE_HEADLESS=1
+ENV ENABLE_HEADLESS=${ENABLE_HEADLESS}
+
+RUN python -m pip install numpy setuptools wheel scikit_build build && \
+    git clone --recursive https://github.com/opencv/opencv-python.git \
+        -b ${OPENCV_VERSION} && \
+    cd opencv-python && \
+    python -m build --wheel --outdir /tmp/opencv-python/dist
+
+
+# -----------------------------------------------------------------------------
+# s390x | torch-vision: build torchvision wheel against CPU torch
+# -----------------------------------------------------------------------------
+
+ARG TORCH_VERSION=2.10.0
+ARG TORCH_VISION_VERSION=v0.25.0
+WORKDIR /tmp
+
+RUN git clone https://github.com/pytorch/vision.git && \
+    cd vision && \
+    git checkout ${TORCH_VISION_VERSION} && \
+    python -m pip install torch==${TORCH_VERSION} \
+        --index-url https://download.pytorch.org/whl/cpu && \
+    python setup.py bdist_wheel && \
+    python -c "import torch; print('TORCH VERSION:', torch.__version__)"
+
+# -----------------------------------------------------------------------------
+# s390x | hf-xet-builder: build hf-xet wheel (Rust + maturin)
+# -----------------------------------------------------------------------------
+
+WORKDIR /tmp
+ENV CARGO_HOME=/root/.cargo
+ENV RUSTUP_HOME=/root/.rustup
+ENV PATH="$CARGO_HOME/bin:$RUSTUP_HOME/bin:$PATH"
+
+RUN git clone https://github.com/huggingface/xet-core.git && \
+    cd xet-core/hf_xet/ && \
+    python -m  pip install maturin patchelf && \
+    python -m maturin build --release --out dist && \
+    mkdir -p /tmp/hf-xet/dist && \
+    cp dist/*.whl /tmp/hf-xet/dist/
+
+# -----------------------------------------------------------------------------
+# s390x | outlines-core-builder: build outlines-core wheel (Rust + maturin)
+# -----------------------------------------------------------------------------
+
+WORKDIR /tmp
+ENV CARGO_HOME=/root/.cargo
+ENV RUSTUP_HOME=/root/.rustup
+ENV PATH="$CARGO_HOME/bin:$RUSTUP_HOME/bin:$PATH"
+
+ARG VLLM_VERSION=v0.18.0
+ARG OUTLINES_CORE_VERSION
+
+    # Clone vllm just to read requirements/common.txt for the version pin
+RUN git clone --depth=1 --branch releases/${VLLM_VERSION} \
+        https://github.com/vllm-project/vllm.git /tmp/vllm-src && \
+    OUTLINES_CORE_VERSION=${OUTLINES_CORE_VERSION:-$(grep -E '^outlines.core\s*==\s*[0-9.]+' \
+        /tmp/vllm-src/requirements/common.txt | grep -Eo '[0-9.]+')} && \
+    if [ -z "${OUTLINES_CORE_VERSION}" ]; then \
+        echo "ERROR: Could not determine outlines_core version from vllm requirements" >&2; \
+        exit 1; \
+    fi && \
+    git clone https://github.com/dottxt-ai/outlines-core.git && \
+    cd outlines-core && \
+    git checkout tags/${OUTLINES_CORE_VERSION} && \
+    sed -i "s/version = \"0.0.0\"/version = \"${OUTLINES_CORE_VERSION}\"/" Cargo.toml && \
+    python -m  pip install maturin && \
+    python -m maturin build --release --out dist
+
+# -----------------------------------------------------------------------------
+# s390x | sentencepiece: build from source (no s390x wheel on PyPI)
+# -----------------------------------------------------------------------------
+RUN microdnf install -y pkg-config && microdnf clean all
+WORKDIR /tmp
+RUN git clone https://github.com/google/sentencepiece.git && \
+    cd sentencepiece && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DSPM_ENABLE_SHARED=OFF \
+        -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig && \
+    cd /tmp/sentencepiece/python && \
+    sed -i 's/^license = "Apache-2.0"/license = {text = "Apache-2.0"}/' pyproject.toml && \
+    sed -i '/^license-files/d' pyproject.toml && \
+    python -m pip install . --no-build-isolation && \
+    python -m pip wheel . --no-build-isolation --wheel-dir /tmp/sentencepiece-wheels/
+
+# -----------------------------------------------------------------------------
+# s390x | vllm-cpu: assemble all wheels and build + install vLLM CPU wheel
+# -----------------------------------------------------------------------------
+
+ARG PYTHON_VERSION=3.12
+ARG VLLM_VERSION
+ARG NUMACTL_VERSION
+ARG PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cpu"
+
+ENV CARGO_HOME=/root/.cargo
+ENV RUSTUP_HOME=/root/.rustup
+ENV GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
+ENV PCP_DIR=/opt/rh/gcc-toolset-14/root
+ENV PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
+
+ENV PATH="$CARGO_HOME/bin:$RUSTUP_HOME/bin:$PATH"
+
+RUN git clone --depth=1 --branch releases/${VLLM_VERSION} \
+        https://github.com/vllm-project/vllm.git /workspace/vllm
+
+WORKDIR /workspace/vllm
+
+# Consolidate all built wheels — each cp is independent so none gets skipped
+RUN mkdir -p /tmp/vision-wheels /tmp/hf-xet-wheels /tmp/llvmlite-wheels \
+             /tmp/numba-wheels /tmp/opencv-wheels /tmp/outlines-core-wheels
+
+RUN cp /tmp/vision/dist/*.whl          /tmp/vision-wheels/
+RUN cp /tmp/hf-xet/dist/*.whl          /tmp/hf-xet-wheels/
+RUN cp /tmp/llvmlite/build/dist/*.whl  /tmp/llvmlite-wheels/ 2>/dev/null || \
+    cp /tmp/llvmlite/dist/*.whl        /tmp/llvmlite-wheels/
+RUN cp /tmp/numba/dist/*.whl           /tmp/numba-wheels/
+RUN cp /tmp/opencv-python/dist/*.whl   /tmp/opencv-wheels/
+RUN cp /tmp/outlines-core/dist/*.whl   /tmp/outlines-core-wheels/
+
+# Verify everything is in place before the long pip install
+RUN echo "=== Wheel inventory ===" && find /tmp -name "*.whl" | sort
+
+# Install all source-built dependency wheels + vLLM requirements.
+RUN SPIECE_WHL=$(ls /tmp/sentencepiece-wheels/*.whl) && \
+    VISION_WHL=$(ls /tmp/vision-wheels/*.whl) && \
+    HF_XET_WHL=$(ls /tmp/hf-xet-wheels/*.whl) && \
+    LLVM_WHL=$(ls /tmp/llvmlite-wheels/*.whl) && \
+    NUMBA_WHL=$(ls /tmp/numba-wheels/*.whl) && \
+    OPENCV_WHL=$(ls /tmp/opencv-wheels/*.whl) && \
+    OUTLINES_WHL=$(ls /tmp/outlines-core-wheels/*.whl) && \
+    python -m  pip install -v \
+        "$VISION_WHL" \
+        "$HF_XET_WHL" \
+        "$LLVM_WHL" \
+        "$NUMBA_WHL" \
+        "$OPENCV_WHL" \
+        "$OUTLINES_WHL" \
+        "$SPIECE_WHL" \ 
+        -r requirements/cpu-build.txt \
+        -r requirements/cpu.txt
+
+# Build vLLM CPU wheel and install it
+RUN VLLM_TARGET_DEVICE=cpu VLLM_CPU_MOE_PREPACK=0 \
+        python setup.py bdist_wheel && \
+    python -m pip install "$(echo dist/*.whl)[tensorizer]"
+
+# ----------------
+# GuideLLM also requires torch, installed above
+# ----------------
+# GuideLLM also requires torch, installed above
+ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
+ARG GUIDELLM_BRANCH=v0.5.3
+ARG GUIDELLM_COMMIT=v0.5.3
+RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
+RUN cd guidellm; \
+    git checkout ${GUIDELLM_COMMIT}; \
+    python -m pip install .[recommended]
+
+# -------------
+# Harness Setup
+# ---------------
+ARG INFERENCEMAX_REPO=https://github.com/kimbochen/bench_serving.git
+ARG INFERENCEMAX_BRANCH=main
+ARG INFERENCEMAX_COMMIT=ee867231de0b268e2810a6e31751b23cf5903fc5
+RUN git clone --branch ${INFERENCEMAX_BRANCH} ${INFERENCEMAX_REPO}
+RUN cd bench_serving; \
+    git checkout ${INFERENCEMAX_COMMIT}
+
+RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /workspace/repos.txt; \
+    echo "vllm-benchmark: ${VLLM_BENCHMARK_REPO} ${VLLM_BENCHMARK_COMMIT}" >> /workspace/repos.txt; \
+    echo "guidellm: ${GUIDELLM_REPO} ${GUIDELLM_COMMIT}" >> /workspace/repos.txt; \
+    echo "inferencemax: ${INFERENCEMAX_REPO} ${INFERENCEMAX_COMMIT}" >> /workspace/repos.txt;
+
+RUN ln -s /usr/bin/sleep /usr/local/bin/sleep
+
+ADD workload/harnesses/ /usr/local/bin/
+COPY llmdbenchmark/analysis/scripts/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
+COPY llmdbenchmark/analysis/scripts/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
+COPY llmdbenchmark/analysis/scripts/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
+COPY llmdbenchmark/analysis/scripts/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
+COPY llmdbenchmark/analysis/scripts/inferencemax-analyze_results.sh /usr/local/bin/inferencemax-analyze_results.sh
+COPY llmdbenchmark/analysis/visualize_metrics.py /usr/local/bin/visualize_metrics.py
+COPY llmdbenchmark/analysis/benchmark_report/ /opt/benchmark_report/
+RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
+
+# Install requirements for analysis scripts
+COPY build/requirements-analysis.txt .
+RUN pip install --no-cache-dir -r requirements-analysis.txt
+RUN pip install -e /opt
+ADD llmdbenchmark/standup/preprocess/ /tmp/preprocess/
+RUN chmod +x /tmp/preprocess/* ; cp -f  /tmp/preprocess/* /usr/local/bin/
+
+COPY build/llm-d-benchmark.sh /usr/local/bin/llm-d-benchmark.sh
+
+ENTRYPOINT ["llm-d-benchmark.sh"]
