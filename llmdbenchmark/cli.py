@@ -280,6 +280,7 @@ def _load_stack_info_from_config(config_file, stack_name=""):
                 "modelservice_enabled": (
                     plan_config.get("modelservice", {}).get("enabled", False)
                 ),
+                "harness": plan_config.get("harness", {}),
             }
     except (OSError, _yaml.YAMLError):
         pass
