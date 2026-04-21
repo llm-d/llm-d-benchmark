@@ -12,7 +12,7 @@ Before diving into use cases, here are a few concepts to understand:
 *   **Store Root**: A repository folder initialized with a `.result_store/` directory. It tracks your configuration and staged runs.
 *   **Workspace**: A local directory containing benchmark results, plans, and reports.
 *   **Staging Area**: A holding area where you verify your results before sharing them with others.
-*   **Strict Taxonomy**: Results are stored remotely in a predictable structure (`scenario/model/hardware/timestamp`), ensuring fast searching and consistent analysis.
+*   **Strict Taxonomy**: Results are stored remotely in a predictable structure (`scenario/model/hardware/run-uid`), ensuring fast searching and consistent analysis.
 
 ---
 

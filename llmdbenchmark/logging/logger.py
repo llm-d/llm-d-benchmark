@@ -25,9 +25,10 @@ class EmojiFormatter(logging.Formatter):
         logging.DEBUG: "🔍",
     }
 
-    def __init__(self, include_exc_info=True):
+    def __init__(self, include_exc_info=True, ignore_plain=False):
         super().__init__()
         self.include_exc_info = include_exc_info
+        self.ignore_plain = ignore_plain
 
     def formatTime(self, record, datefmt=None):
         ct = self.converter(record.created)
@@ -37,11 +38,14 @@ class EmojiFormatter(logging.Formatter):
         )
 
     def format(self, record):
+        msg = record.getMessage()
+        if not self.ignore_plain and getattr(record, "plain", False):
+            return msg
+
         emoji = getattr(record, "emoji", None)
         if emoji is None:
             emoji = self.EMOJI_MAP.get(record.levelno, "")
         level = f"{record.levelname:<7}"
-        msg = record.getMessage()
 
         prefix = f"{emoji} " if emoji else ""
         formatted = f"{self.formatTime(record)} - {level} - {prefix}{msg}"
@@ -89,7 +93,7 @@ class LLMDBenchmarkLogger:
         log_path = log_dir / f"{log_name_with_uuid}-stdout.log"
         error_path = log_dir / f"{log_name_with_uuid}-stderr.log"
 
-        file_formatter = EmojiFormatter(include_exc_info=True)
+        file_formatter = EmojiFormatter(include_exc_info=True, ignore_plain=True)
 
         try:
             fh = FileHandler(log_path, mode="a", encoding="utf-8")
@@ -161,6 +165,10 @@ class LLMDBenchmarkLogger:
     def log_info(self, msg, emoji=None):
         """Log an info-level message with an optional emoji override."""
         self.logger.info(self._apply_indent(msg), extra={"emoji": emoji} if emoji else {})
+
+    def log_plain(self, msg, emoji=None):
+        """Log a plain message to console (no metadata) but full message to file."""
+        self.logger.info(self._apply_indent(msg), extra={"plain": True, "emoji": emoji})
 
     def log_warning(self, msg, emoji=None):
         """Log a warning-level message with an optional emoji override."""

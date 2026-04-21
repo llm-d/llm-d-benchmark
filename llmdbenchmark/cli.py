@@ -27,6 +27,7 @@ from llmdbenchmark.utilities.os.filesystem import (
     resolve_specification_file,
 )
 from llmdbenchmark.interface.commands import Command
+from llmdbenchmark.result_store.store import StoreManager
 from llmdbenchmark.interface import plan, standup, teardown, run
 from llmdbenchmark.interface import smoketest as smoketest_interface
 from llmdbenchmark.interface import experiment as experiment_interface
@@ -1358,11 +1359,42 @@ def cli() -> None:
         "--verbose", "-v", action="store_true", help="Enable debug logging to console."
     )
 
+    parser.add_argument(
+        "--specification_file",
+        "--spec",
+        default=env("LLMDBENCH_SPEC"),
+        help="Specification file for the experiment.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        "-n",
+        action="store_true",
+        help="Log all commands without executing against compute cluster.",
+    )
+    parser.add_argument(
+        "--workspace",
+        "--ws",
+        default=env("LLMDBENCH_WORKSPACE"),
+        help="Supply a workspace directory for placing generated items and logs.",
+    )
+    parser.add_argument(
+        "--base-dir",
+        "--bd",
+        default=env("LLMDBENCH_BASE_DIR", "."),
+        help="Base directory containing templates and scenarios.",
+    )
+    parser.add_argument(
+        "--non-admin",
+        "-i",
+        action="store_true",
+        help="Run as non-cluster-level admin user.",
+    )
+
     benchmark_parser = argparse.ArgumentParser(add_help=False)
     benchmark_parser.add_argument(
         "--workspace",
         "--ws",
-        default=env("LLMDBENCH_WORKSPACE"),
+        default=argparse.SUPPRESS,
         help="Supply a workspace directory for placing "
         "generated items and logs, otherwise the default action is to create a "
         "temporary directory on your system.",
@@ -1370,7 +1402,7 @@ def cli() -> None:
     benchmark_parser.add_argument(
         "--base-dir",
         "--bd",
-        default=env("LLMDBENCH_BASE_DIR", "."),
+        default=argparse.SUPPRESS,
         help="Base directory containing templates and scenarios. "
         'The default base directory is the cwd "." - we highly suggest enforcing a '
         'base_dir explicitly. For example: "BASE_DIR/templates", "BASE_DIR/scenarios".',
@@ -1378,8 +1410,7 @@ def cli() -> None:
     benchmark_parser.add_argument(
         "--specification_file",
         "--spec",
-        default=env("LLMDBENCH_SPEC"),
-        required=not env("LLMDBENCH_SPEC"),
+        default=argparse.SUPPRESS,
         help="Specification file for the experiment. Accepts a bare name (e.g. 'gpu'), "
         "a category/name (e.g. 'guides/inference-scheduling'), or a full path. "
         "Bare names are searched in config/specification/**/<name>.yaml.j2.",
@@ -1388,12 +1419,14 @@ def cli() -> None:
         "--non-admin",
         "-i",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Run as non-cluster-level admin user.",
     )
     benchmark_parser.add_argument(
         "--dry-run",
         "-n",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Log all commands without executing against compute cluster, while still "
         "generating YAML and Helm documents.",
     )
@@ -1430,6 +1463,10 @@ def cli() -> None:
         args.skip = env_bool("LLMDBENCH_SKIP")
     if hasattr(args, "debug") and not args.debug:
         args.debug = env_bool("LLMDBENCH_DEBUG")
+
+    # Validate --spec for commands that require it
+    if args.command != Command.RESULTS.value and not args.specification_file:
+        parser.error("the following arguments are required: --specification_file/--spec")
 
     # Results command is handled separately
     if args.command == Command.RESULTS.value:
@@ -1468,7 +1505,6 @@ def cli() -> None:
         overall_workspace = Path(args.workspace)
     else:
         try:
-            from llmdbenchmark.result_store.store import StoreManager
             # Anchor the search for .result_store to the user's current directory, purely like Git.
             # We explicitly decouple this from args.base_dir which is used for template resolution.
             store_root = StoreManager.find_store_root(".", silent=True)
