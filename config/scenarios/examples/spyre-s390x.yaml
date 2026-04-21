@@ -1,0 +1,427 @@
+# IBM Spyre Accelerator Example Scenario for LLM-D Deployment
+# Migrated from bash environment variables to YAML format
+# Based on scenarios/examples/spyre.sh
+#
+# This scenario deploys a model on IBM Spyre accelerator hardware.
+# Uses the AIU vLLM image with Spyre-specific configuration including
+# precompiled model PVC, custom environment variables, and Spyre scheduler.
+#
+# IMPORTANT NOTE:
+# All parameters not defined here will use the default values from defaults.yaml.
+
+scenario:
+  # ============================================================================
+  # Spyre Example - IBM Spyre accelerator deployment
+  # ============================================================================
+  - name: "spyre-example"
+
+    # =========================================================================
+    # COMMON -- Applies to all deployment methods
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST
+    # -------------------------------------------------------------------------
+    model:
+      name: ibm-ai-platform/micro-g3.3-8b-instruct-1b
+      shortName: micro-g3-3-8b-instruct-1b
+      path: models/ibm-ai-platform/micro-g3.3-8b-instruct-1b
+      huggingfaceId: ibm-ai-platform/micro-g3.3-8b-instruct-1b
+      maxModelLen: 32768
+      maxNumSeq: 32
+      maxNumBatchedTokens: 1024
+
+    # -------------------------------------------------------------------------
+    # Affinity / Node Selection
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY="ibm.com/spyre.product:IBM_Spyre"
+    # By default, affinity is disabled and pods schedule on any available node.
+    # Options:
+    #   1. Leave commented out -- no node selection constraint
+    #   2. Set nodeSelector to "auto" -- auto-detects GPU labels from the cluster
+    #   3. Set explicit labels -- pods only schedule on matching nodes
+    # This scenario targets IBM Spyre accelerator nodes.
+    # -------------------------------------------------------------------------
+    affinity:
+      enabled: true
+      nodeSelector:
+        ibm.com/spyre.product: IBM_Spyre
+
+    # -------------------------------------------------------------------------
+    # Accelerator Configuration -- IBM Spyre VF
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_RESOURCE=ibm.com/spyre_vf
+    # -------------------------------------------------------------------------
+    accelerator:
+      # Custom accelerator type for IBM Spyre.
+      # Setting type to 'spyre' tells the helm chart to use ibm.com/spyre_vf
+      # instead of the default nvidia.com/gpu. The template auto-generates
+      # the chart's accelerator.resources map from type + resource.
+      type: spyre
+      resource: ibm.com/spyre_vf
+      # count must match parallelism.tensor -- each TP worker needs its own Spyre device
+      count: 4
+
+    # -------------------------------------------------------------------------
+    # Modelservice image override -- Spyre-specific vLLM image
+    # Corresponds to: LLMDBENCH_LLMD_IMAGE_*
+    # To also override the benchmark/harness image, add:
+    #   benchmark:
+    #     repository: quay.io/my-org/my-benchmark-image
+    #     tag: "my-tag"
+    # -------------------------------------------------------------------------
+    images:
+      benchmark:
+        repository: quay.io/morana/llm-d-benchmark
+        tag: 0.0.1
+        pullPolicy: *pull_always
+      vllm:
+        repository: registry.redhat.io/rhaii-early-access/vllm-spyre-rhel9
+        tag: 3.4.0-ea.2
+
+      inferenceScheduler:
+        repository: quay.io/morana/llmd/llm-d-inference-scheduler
+        tag: test
+        pullPolicy: *pull_always
+
+      routingSidecar:
+        repository: quay.io/morana/llmd/llm-d-routing-sidecar
+        tag: test
+        pullPolicy: *pull_if_not_present
+
+      udsTokenizer:
+        repository: quay.io/satyam16/llm-d-uds-tokenizer
+        tag: downstream-Apr-20
+        pullPolicy: *pull_if_not_present
+
+    # -------------------------------------------------------------------------
+    # Extra PVC for precompiled Spyre models
+    # Corresponds to: LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME=spyre-precompiled-model
+    # -------------------------------------------------------------------------
+    storage:
+      # Uncomment to override storage class:
+      # workloadPvc:
+      #   storageClassName: standard-rwx       # GKE
+      # modelPvc:
+      #   storageClassName: standard-rwx       # GKE
+      #   # storageClassName: shared-vast       # Kubernetes
+      #   # storageClassName: ocs-storagecluster-cephfs  # OpenShift
+      #   size: 1Ti
+      extraPvc:
+        name: spyre-precompiled-model
+
+    # -------------------------------------------------------------------------
+    # vLLM Common Configuration
+    # Shared settings for both decode and prefill pods.
+    # When no customCommand is set on decode/prefill, the vLLM serve command
+    # is auto-generated from these fields:
+    #   - model.maxModelLen, model.blockSize maps to --max-model-len, --block-size
+    #   - model.gpuMemoryUtilization maps to --gpu-memory-utilization
+    #   - decode/prefill.parallelism.tensor maps to --tensor-parallel-size
+    #   - vllmCommon.flags.* maps to --enforce-eager, --no-enable-log-requests, etc.
+    #   - vllmCommon.kvTransfer.* maps to --kv-transfer-config (if enabled)
+    #   - vllmCommon.kvEvents.* maps to --kv-events-config (if enabled)
+    #   - decode/prefill.vllm.additionalFlags maps to appended as extra CLI args
+    # When decode.vllm.customCommand or prefill.vllm.customCommand IS set, it replaces the auto-generated
+    # command entirely. Only --kv-transfer-config and --kv-events-config are
+    # still appended from vllmCommon if enabled. All other vllmCommon.flags
+    # are ignored -- the custom command must include its own flags.
+    # -------------------------------------------------------------------------
+    # Spyre cluster requires spyre-scheduler via admission webhook
+    # Corresponds to: schedulerName in the Helm chart values
+    schedulerName: spyre-scheduler
+
+    vllmCommon:
+      shmMemory: 64Gi
+
+      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && source $HOME/llmdbench_env.sh"
+
+      flags:
+        enablePrefixCaching: true
+        enableAutoToolChoice: true
+        toolCallParser: granite
+
+      # Spyre-specific volumes
+      volumes:
+        - name: spyre-precompiled-model
+          type: persistentVolumeClaim
+          persistentVolumeClaim:
+            claimName: spyre-precompiled-model
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Gi
+        - name: preprocesses
+          type: configMap
+          configMap:
+            name: llm-d-benchmark-preprocesses
+            defaultMode: 493  # 0755
+        - name: k8s-llmdbench-context
+          type: secret
+          secret:
+            secretName: llmdbench-context
+
+      volumeMounts:
+        - name: spyre-precompiled-model
+          mountPath: /mnt/spyre-precompiled-model
+        - name: dshm
+          mountPath: /dev/shm
+        - name: preprocesses
+          mountPath: /setup/preprocess
+        - name: k8s-llmdbench-context
+          mountPath: /etc/kubeconfig
+          readOnly: true
+
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    # Enable multinode (LeaderWorkerSet) for sequential pod naming.
+    # Required when using contextLengthRanges or vllmVariants.
+    # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
+    # multinode:
+    #   enabled: true
+
+    # =========================================================================
+    # STANDALONE -- Only applies when standalone.enabled: true
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Standalone Deployment Configuration
+    # Corresponds to: LLMDBENCH_VLLM_STANDALONE_*
+    # -------------------------------------------------------------------------
+    standalone:
+      enabled: false
+      replicas: 1
+
+      image:
+        repository: registry.redhat.io/rhaii-early-access/vllm-spyre-rhel9
+        tag: 3.4.0-ea.2
+        pullPolicy: IfNotPresent
+
+      acceleratorType:
+        labelKey: ibm.com/spyre.product
+        labelValue: IBM_Spyre
+
+      resources:
+        limits:
+          memory: 200Gi
+          cpu: "20"
+        requests:
+          memory: 200Gi
+          cpu: "20"
+
+      vllm:
+        customCommand: |
+          /home/senuser/container-scripts/simple_vllm_serve.sh ${model.name} \
+          --port $VLLM_INFERENCE_PORT \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
+          --enable-auto-tool-choice \
+          --tool-call-parser granite \
+          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+          --enable-prefix-caching
+
+      # Spyre-specific environment variables
+      extraEnvVars:
+        - name: KUBECONFIG
+          value: "/etc/kubeconfig/llmdbench-context"
+        - name: PORT
+          value: "8000"
+        - name: SERVED_MODEL_NAME
+          value: "${model.name}"
+        - name: FLEX_COMPUTE
+          value: SENTIENT
+        - name: FLEX_DEVICE
+          value: VF
+        - name: VLLM_SPYRE_PERF_METRIC_LOGGING_ENABLED
+          value: "1"
+        - name: FLEX_HDMA_P2PSIZE
+          value: "268435456"
+        - name: FLEX_HDMA_COLLSIZE
+          value: "268435456"
+        - name: HF_HUB_DISABLE_XET
+          value: "1"
+        - name: TORCH_SENDNN_CACHE_ENABLE
+          value: "1"
+        - name: TORCH_SENDNN_CACHE_DIR
+          value: /mnt/spyre-precompiled-model
+        - name: VLLM_SPYRE_DYNAMO_BACKEND
+          value: sendnn
+        - name: VLLM_SPYRE_USE_CB
+          value: "1"
+        - name: VLLM_SPYRE_USE_CHUNKED_PREFILL
+          value: "1"
+        - name: VLLM_DT_CHUNK_LEN
+          value: "1024"
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Prefill Configuration -- disabled (0 prefill pods)
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
+    # -------------------------------------------------------------------------
+    prefill:
+      enabled: false
+      replicas: 0
+      accelerator:
+        resource: ibm.com/spyre_vf
+        count: 4
+      acceleratorType:
+        labelKey: ibm.com/spyre.product
+        labelValue: IBM_Spyre
+
+    # -------------------------------------------------------------------------
+    # Decode Configuration -- 2 decode pods on Spyre
+    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
+    # No customCommand -- the vLLM serve command is auto-generated
+    # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
+    # -------------------------------------------------------------------------
+    decode:
+      replicas: 2
+
+      # Context-length-aware routing: per-pod labels (one per replica).
+      # Requires multinode enabled (for LWS sequential pod naming) and
+      # kubeconfig secret mounted (see vllmCommon.volumes below).
+      # Also requires the preprocess script (vllmCommon.preprocessScript) for
+      # pod self-labeling and ,,-delimited env var splitting.
+      # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
+      # contextLengthRanges:
+      #   - "0-8000"
+      #   - "8000-32768"
+
+      # Per-pod vllm parameter overrides (one per replica).
+      # Values are converted to ,,-delimited env vars; the preprocess script
+      # selects the right value based on pod index from LWS.
+      # vllmVariants:
+      #   - maxModelLen: 8000
+      #     maxNumSeq: 32
+      #   - maxModelLen: 32768
+      #     maxNumSeq: 32
+
+      parallelism:
+        tensor: 4
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 200Gi
+          cpu: "20"
+        requests:
+          memory: 200Gi
+          cpu: "20"
+
+      accelerator:
+        resource: ibm.com/spyre_vf
+        count: 4
+
+      # Spyre uses affinity-based scheduling, not GPU label selection
+      acceleratorType:
+        labelKey: ibm.com/spyre.product
+        labelValue: IBM_Spyre
+
+      vllm:
+        customCommand: |
+          /home/senuser/container-scripts/simple_vllm_serve.sh /model-cache/${model.path} \
+          --served-model-name ${model.name} \
+          --port $VLLM_METRICS_PORT \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --enable-auto-tool-choice \
+          --tool-call-parser granite \
+          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+          --enable-prefix-caching
+
+      # Same Spyre-specific env vars as standalone
+      extraEnvVars:
+        - name: KUBECONFIG
+          value: "/etc/kubeconfig/llmdbench-context"
+        - name: PORT
+          value: "8000"
+        - name: SERVED_MODEL_NAME
+          value: "${model.name}"
+        - name: FLEX_COMPUTE
+          value: SENTIENT
+        - name: FLEX_DEVICE
+          value: VF
+        - name: VLLM_SPYRE_PERF_METRIC_LOGGING_ENABLED
+          value: "1"
+        - name: FLEX_HDMA_P2PSIZE
+          value: "268435456"
+        - name: FLEX_HDMA_COLLSIZE
+          value: "268435456"
+        - name: HF_HUB_DISABLE_XET
+          value: "1"
+        - name: TORCH_SENDNN_CACHE_ENABLE
+          value: "1"
+        - name: TORCH_SENDNN_CACHE_DIR
+          value: /mnt/spyre-precompiled-model
+        - name: VLLM_SPYRE_DYNAMO_BACKEND
+          value: sendnn
+        - name: VLLM_SPYRE_USE_CB
+          value: "1"
+        - name: VLLM_SPYRE_USE_CHUNKED_PREFILL
+          value: "1"
+        - name: VLLM_DT_CHUNK_LEN
+          value: "1024"
+
+    # =========================================================================
+    # INFERENCE EXTENSION (EPP) -- Context-length-aware routing with UDS tokenizer
+    # Uncomment this section along with multinode, contextLengthRanges, and
+    # vllmVariants above to enable context-length-aware routing.
+    # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
+    # =========================================================================
+    # inferenceExtension:
+    #   pluginsConfigFile: "context-length-aware-config.yaml"
+    #   flags:
+    #     v: "2"  # use v: "4" for debugging, v: "1" or "2" for benchmarking
+    #   sidecar:
+    #     enabled: true
+    #   pluginsCustomConfig:
+    #     context-length-aware-config.yaml: |
+    #       apiVersion: inference.networking.x-k8s.io/v1alpha1
+    #       kind: EndpointPickerConfig
+    #       plugins:
+    #         - type: tokenizer
+    #           parameters:
+    #             modelName: "${model.name}"
+    #             udsTokenizerConfig:
+    #               socketFile: /tmp/tokenizer/tokenizer-uds.socket
+    #         - type: context-length-aware
+    #           parameters:
+    #             label: llm-d.ai/context-length-range
+    #             enableFiltering: true
+    #       schedulingProfiles:
+    #         - name: default
+    #           plugins:
+    #             - pluginRef: tokenizer
+    #             - pluginRef: context-length-aware
+
+    # =========================================================================
+    # WORKLOAD / HARNESS -- Benchmark execution configuration
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Workload/Harness Configuration
+    # Corresponds to: LLMDBENCH_HARNESS_NAME=inference-perf
+    #                 LLMDBENCH_HARNESS_EXPERIMENT_PROFILE=sanity_random.yaml
+    #                 LLMDBENCH_HARNESS_WAIT_TIMEOUT=36000
+    # -------------------------------------------------------------------------
+    # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR=~/data/spyre
+    # Used as workspace when --workspace is not specified on the CLI.
+    workDir: "~/data/spyre"
+
+    harness:
+      name: inference-perf
+      experimentProfile: sanity_random.yaml
+      waitTimeout: 36000
