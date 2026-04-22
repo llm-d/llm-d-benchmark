@@ -31,7 +31,7 @@ cd llm-d-benchmark
 ./install.sh
 
 # Or one-shot via curl, optionally pinning a branch:
-#   LLMDBENCH_BRANCH=wva_refactor \
+#   LLMDBENCH_BRANCH=<BRANCH_HERE> \
 #     curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
 # (the curl form clones into ./llm-d-benchmark/ for you)
 
