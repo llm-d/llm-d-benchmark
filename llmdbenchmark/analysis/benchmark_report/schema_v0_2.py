@@ -833,6 +833,107 @@ class ComponentObservability(BaseModel):
 
 
 # ------------------------------------------------------------------------------
+# Pod startup times
+# ------------------------------------------------------------------------------
+
+
+class PodStartupInfo(BaseModel):
+    """Startup timing information for a single pod."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    name: str
+    """Pod name."""
+    model: str | None = None
+    """Model identifier."""
+    role: str | None = None
+    """Pod role (e.g., prefill, decode, aggregate)."""
+    node: str | None = None
+    """Node the pod was scheduled on."""
+    creation_timestamp: datetime.datetime | None = None
+    """Timestamp when the pod was created."""
+    ready_timestamp: datetime.datetime | None = None
+    """Timestamp when the pod became ready."""
+    startup_seconds: float | None = Field(None, ge=0)
+    """Time in seconds from creation to ready."""
+
+
+class PodStartupTimes(BaseModel):
+    """Pod startup times collected during or before the benchmark."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    collected_at: datetime.datetime | None = None
+    """Timestamp when startup times were collected."""
+    pods: list[PodStartupInfo] | None = None
+    """Per-pod startup information."""
+    aggregate: Statistics | None = None
+    """Aggregate statistics (mean, p50, p99, etc.) across all pod startup times."""
+    graph_path: str | None = None
+    """Path to pod startup times visualization."""
+
+
+# ------------------------------------------------------------------------------
+# Replica status
+# ------------------------------------------------------------------------------
+
+
+class ControllerReplicaStatus(BaseModel):
+    """Replica status for a single controller (Deployment or StatefulSet)."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    kind: str
+    """Controller kind (e.g., Deployment, StatefulSet)."""
+    name: str
+    """Controller name."""
+    model: str | None = None
+    """Model identifier."""
+    role: str | None = None
+    """Role (e.g., prefill, decode)."""
+    desired_replicas: int = Field(..., ge=0)
+    """Number of desired replicas."""
+    available_replicas: int = Field(..., ge=0)
+    """Number of available replicas."""
+    ready_replicas: int = Field(..., ge=0)
+    """Number of ready replicas."""
+    updated_replicas: int | None = Field(None, ge=0)
+    """Number of updated replicas."""
+
+
+class ReplicaStatusSnapshot(BaseModel):
+    """A single point-in-time replica status snapshot."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    timestamp: datetime.datetime | None = None
+    """Timestamp when this snapshot was taken."""
+    namespace: str | None = None
+    """Kubernetes namespace."""
+    controllers: list[ControllerReplicaStatus] | None = None
+    """Per-controller replica status at this point in time."""
+
+
+class ReplicaStatus(BaseModel):
+    """Replica status across controllers, with optional time series and aggregate."""
+
+    model_config = MODEL_CONFIG.copy()
+
+    namespace: str | None = None
+    """Kubernetes namespace."""
+    timestamp: datetime.datetime | None = None
+    """Timestamp of the latest snapshot."""
+    controllers: list[ControllerReplicaStatus] | None = None
+    """Per-controller replica status (latest snapshot)."""
+    time_series: list[ReplicaStatusSnapshot] | None = None
+    """Time series of replica status snapshots collected during the benchmark."""
+    aggregate_ready_replicas: Statistics | None = None
+    """Aggregate statistics (min, max, mean, etc.) of total ready replicas over time."""
+    graph_path: str | None = None
+    """Path to replica status visualization."""
+
+
+# ------------------------------------------------------------------------------
 # Root for observability
 # ------------------------------------------------------------------------------
 
@@ -841,12 +942,18 @@ class Observability(BaseModel):
     """Observability metrics."""
 
     model_config = MODEL_CONFIG.copy()
-    # TODO keep as permissive until schema defined
+    # Keep permissive — real reports include ad-hoc metric keys
+    # (e.g. vllm_kv_cache_usage_perc, epp_dispatch_latency) that are
+    # not yet formalized in the schema.
     model_config["extra"] = "allow"
     components: list[ComponentObservability] | None = None
     """Per-component observability metrics."""
     drop_rate: Statistics | None = None
     """Request drop rate."""
+    pod_startup_times: PodStartupTimes | None = None
+    """Pod startup times collected during or before the benchmark."""
+    replica_status: ReplicaStatus | None = None
+    """Replica status across controllers at a point in time."""
 
     @model_validator(mode="after")
     def check_units(self):
