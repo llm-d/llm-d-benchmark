@@ -6,3 +6,6 @@
 !llmdbenchmark/analysis/
 !llmdbenchmark/standup/preprocess/
 !build/
+
+# Exclude Python cache directories
+**/__pycache__/
