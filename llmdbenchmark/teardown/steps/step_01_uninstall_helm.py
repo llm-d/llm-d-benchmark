@@ -20,8 +20,30 @@ class UninstallHelmStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        return ("modelservice" not in context.deployed_methods and
-                "fma" not in context.deployed_methods)
+        # We still run for WVA-enabled stacks even when neither
+        # modelservice nor fma is in deployed_methods, so the VA+HPA
+        # resources get cleaned up.
+        if ("modelservice" in context.deployed_methods
+                or "fma" in context.deployed_methods):
+            return False
+        return not self._any_stack_has_wva(context)
+
+    @staticmethod
+    def _any_stack_has_wva(context: ExecutionContext) -> bool:
+        """Return True if any rendered stack has wva.enabled: true."""
+        import yaml as _yaml
+        for stack_path in context.rendered_stacks or []:
+            cfg_file = stack_path / "config.yaml"
+            if not cfg_file.exists():
+                continue
+            try:
+                with open(cfg_file, encoding="utf-8") as fh:
+                    cfg = _yaml.safe_load(fh) or {}
+            except (OSError, _yaml.YAMLError):
+                continue
+            if (cfg.get("wva", {}) or {}).get("enabled", False):
+                return True
+        return False
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
@@ -41,6 +63,11 @@ class UninstallHelmStep(Step):
             if not is_fma_enabled:
                 self._delete_openshift_routes(cmd, context, ns, release)
                 self._delete_download_job(cmd, context, ns)
+
+        # WVA teardown: always remove per-stack VA+HPA. Only uninstall the
+        # shared controller + prometheus-adapter when the user passed -d
+        # (context.deep_clean) -- other stacks may still be using them.
+        self._teardown_wva(cmd, context, errors)
 
         if errors:
             return StepResult(
@@ -131,6 +158,128 @@ class UninstallHelmStep(Step):
             if result.success:
                 context.logger.log_info(
                     f"  Deleted route/{route_name}", emoji="🗑️"
+                )
+
+    def _teardown_wva(
+        self, cmd: CommandExecutor, context: ExecutionContext, errors: list
+    ) -> None:
+        """Tear down WVA resources.
+
+        Always deletes the per-stack VariantAutoscaling + HPA so the model
+        no longer auto-scales after teardown. The (per-namespace) WVA
+        controller is preserved unless ``--deep`` (``deep_clean``) is set,
+        because other stacks in the same namespace may still depend on it.
+
+        prometheus-adapter and its supporting cluster-wide resources
+        (``allow-thanos-querier-api-access`` ClusterRole, ``prometheus-ca``
+        ConfigMap) are NEVER touched by teardown — not even with --deep.
+        They are shared cluster-wide infrastructure used by every WVA
+        tenant's HPA pipeline. Their lifecycle is managed once at the
+        cluster level (e.g. by a platform admin), and removing them on a
+        per-tenant teardown would silently break every other namespace's
+        autoscaling.
+
+        Skipped entirely on non-OpenShift platforms — standup gates the
+        WVA install on OpenShift (see step_03), so on other platforms
+        there's nothing for teardown to remove.
+        """
+        if not context.is_openshift:
+            context.logger.log_info(
+                f"WVA teardown skipped: platform is {context.platform_type}, "
+                "not OpenShift (matches standup behavior — WVA was never installed)."
+            )
+            return
+
+        import yaml as _yaml
+
+        wva_stacks: list[tuple[str, str]] = []  # (wva_namespace, model_id_label)
+        seen_ns: set[str] = set()
+
+        for stack_path in context.rendered_stacks or []:
+            cfg_file = stack_path / "config.yaml"
+            if not cfg_file.exists():
+                continue
+            try:
+                with open(cfg_file, encoding="utf-8") as fh:
+                    cfg = _yaml.safe_load(fh) or {}
+            except (OSError, _yaml.YAMLError):
+                continue
+            wva_cfg = cfg.get("wva", {}) or {}
+            if not wva_cfg.get("enabled", False):
+                continue
+            wva_ns = (
+                wva_cfg.get("namespace")
+                or cfg.get("namespace", {}).get("name", "")
+            )
+            model_id_label = cfg.get("model_id_label", "")
+            if wva_ns and model_id_label:
+                wva_stacks.append((wva_ns, model_id_label))
+                seen_ns.add(wva_ns)
+
+        if not wva_stacks:
+            return
+
+        # 1. Per-stack VariantAutoscaling + HPA: always delete.
+        for wva_ns, model_id_label in wva_stacks:
+            resource_name = f"{model_id_label}-decode"
+            for kind in ("hpa", "variantautoscaling.llmd.ai"):
+                context.logger.log_info(
+                    f"Deleting {kind}/{resource_name} from ns/{wva_ns}"
+                )
+                result = cmd.kube(
+                    "delete", kind, resource_name,
+                    "--namespace", wva_ns,
+                    "--ignore-not-found=true",
+                    check=False,
+                )
+                if result.success:
+                    context.logger.log_info(
+                        f"  Deleted {kind}/{resource_name}", emoji="🗑️"
+                    )
+
+        # 2. WVA controller(s): only on --deep. The controller is per-namespace
+        # (one per unique wva.namespace, all of which are target namespaces
+        # for this teardown), so removing it on --deep is in-scope.
+        #
+        # PRINCIPLE: --deep only removes resources that live in the target
+        # namespace(s). It MUST NOT touch cross-namespace or cluster-scoped
+        # resources -- doing so would silently break other tenants. That's
+        # why we explicitly do NOT remove on any teardown:
+        #   - prometheus-adapter (lives in openshift-user-workload-monitoring)
+        #   - prometheus-ca ConfigMap (lives in openshift-user-workload-monitoring)
+        #   - allow-thanos-querier-api-access ClusterRole (cluster-scoped)
+        # All three are shared infrastructure for every WVA tenant's HPA
+        # pipeline. Their lifecycle is managed once at the cluster level
+        # (e.g. by a platform admin). Our standup install is idempotent
+        # and skips when a cluster-wide install already exists, so leaving
+        # them in place across teardowns is always correct.
+        if not context.deep_clean:
+            context.logger.log_info(
+                "Preserving WVA controller (pass -d/--deep to uninstall). "
+                "prometheus-adapter and shared cluster-wide RBAC are always "
+                "preserved regardless of --deep -- other tenants depend on them."
+            )
+            return
+
+        context.logger.log_info(
+            "Deep clean: uninstalling WVA controller(s). "
+            "prometheus-adapter and shared cluster RBAC are kept intact."
+        )
+        for wva_ns in sorted(seen_ns):
+            context.logger.log_info(
+                f"Uninstalling helm release "
+                f"workload-variant-autoscaler from ns/{wva_ns}"
+            )
+            uninstall = cmd.helm(
+                "uninstall", "workload-variant-autoscaler",
+                "--namespace", wva_ns,
+                "--ignore-not-found",
+                check=False,
+            )
+            if not uninstall.success and "not found" not in (uninstall.stderr or "").lower():
+                errors.append(
+                    f"Failed to uninstall WVA controller in {wva_ns}: "
+                    f"{uninstall.stderr}"
                 )
 
     def _delete_download_job(

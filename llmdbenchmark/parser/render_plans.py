@@ -47,6 +47,7 @@ class RenderPlans:
         cli_model: str | None = None,
         cli_methods: str | None = None,
         cli_monitoring: bool = False,
+        cli_wva: bool = False,
         setup_overrides: dict | None = None,
     ):
         self.template_dir = Path(template_dir)
@@ -59,6 +60,7 @@ class RenderPlans:
         self.cli_model = cli_model
         self.cli_methods = cli_methods
         self.cli_monitoring = cli_monitoring
+        self.cli_wva = cli_wva
         self.setup_overrides = setup_overrides
 
         self.logger = logger or get_logger(
@@ -420,6 +422,18 @@ class RenderPlans:
         self.logger.log_info(
             "Monitoring enabled from CLI: PodMonitor + metrics scraping"
         )
+        return result
+
+    def _resolve_wva(self, values: dict) -> dict:
+        """Enable the Workload Variant Autoscaler when ``-u/--wva`` is set."""
+        if not self.cli_wva:
+            return values
+
+        result = deepcopy(values)
+        wva_config = result.setdefault("wva", {})
+        wva_config["enabled"] = True
+
+        self.logger.log_info("Workload Variant Autoscaler enabled from CLI")
         return result
 
     def _resolve_deploy_method(self, values: dict) -> dict:
@@ -794,6 +808,7 @@ class RenderPlans:
         self._warn_custom_command_conflicts(merged_values)
         merged_values = self._resolve_deploy_method(merged_values)
         merged_values = self._resolve_monitoring(merged_values)
+        merged_values = self._resolve_wva(merged_values)
         merged_values = self._resolve_hf_token(merged_values)
         merged_values = self._resolve_model_id_label(merged_values)
         merged_values = self._resolve_inference_pool_host(merged_values)

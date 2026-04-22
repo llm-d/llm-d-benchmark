@@ -1,55 +1,64 @@
 {# ============================================================================
    19_wva-values.yaml.j2
 
-   Helm values for the Workload Variant Autoscaler (WVA) chart.
-   Only rendered when wva.enabled is true.
+   Helm values for the Workload Variant Autoscaler (WVA) chart (v0.6.0).
 
-   Three values are runtime-computed and injected by step_09 at deploy time:
+   The controller is installed in namespaced mode (wva.namespaceScoped=true),
+   so the controller only watches the namespace it is deployed in.
+   VariantAutoscaling + HPA are rendered per-stack (see 27_wva-variantautoscaling
+   and 28_wva-hpa) and applied by step_09; the chart-embedded va/hpa/vllmService
+   resources are therefore disabled here.
+
+   One runtime-computed value is injected by step_02 at admin-install time:
      - wva.prometheus.caCert   (extracted from thanos-querier-tls secret)
-     - va.accelerator          (auto-detected from GPU affinity)
-     - vllmService.nodePort    (random available NodePort)
+
+   Only rendered when wva.enabled is true.
    ============================================================================ #}
 {% if wva is defined and wva.enabled | default(false) %}
-wva:
-  controllerInstance: {{ wva.namespace | default(namespace.name) }}
+controller:
   enabled: {{ wva.controller.enabled | default(true) | lower }}
+
+wva:
+  enabled: true
+  replicaCount: {{ wva.replicaCount | default(1) }}
   image:
     repository: {{ wva.image.repository }}
     tag: {{ wva.image.tag }}
+  imagePullPolicy: Always
+
+  namespaceScoped: {{ wva.namespaceScoped | default(true) | lower }}
+  controllerInstance: {{ wva.namespace | default(namespace.name, true) }}
+
   metrics:
     enabled: {{ wva.metrics.enabled | default(true) | lower }}
     port: {{ wva.metrics.port | default(8443) }}
     secure: {{ wva.metrics.secure | default(true) | lower }}
+
+  reconcileInterval: "60s"
+
   prometheus:
-    baseURL: "{{ wva.prometheus.baseUrl | default('https://thanos-querier.openshift-monitoring.svc.cluster.local') }}:{{ wva.prometheus.port | default(9091) }}"
-    caCert: ""
     monitoringNamespace: {{ openshiftMonitoring.userWorkloadMonitoringNamespace | default('openshift-user-workload-monitoring') }}
     serviceAccountName: prometheus-k8s
+    baseURL: "{{ wva.prometheus.baseUrl | default('https://thanos-querier.openshift-monitoring.svc.cluster.local') }}:{{ wva.prometheus.port | default(9091) }}"
     tls:
-      insecureSkipVerify: "true"
+      insecureSkipVerify: true
       caCertPath: /etc/ssl/certs/prometheus-ca.crt
-  reconcileInterval: "60s"
-  scaleToZero: "false"
+    caCert: ""
+
+  scaleToZero: false
 
 llmd:
   namespace: {{ namespace.name }}
   modelName: {{ model_id_label }}
   modelID: {{ model.name }}
 
+# VA/HPA/vllmService are rendered per-stack (27_wva-variantautoscaling,
+# 28_wva-hpa). Disable the chart-embedded versions so a single controller
+# can manage multiple models in the same namespace without collisions.
 va:
-  enabled: {{ wva.variantAutoscaling.enabled | default(true) | lower }}
-  accelerator: ""
-  sloTpot: {{ wva.variantAutoscaling.slo.tpot | default(10) }}
-  sloTtft: {{ wva.variantAutoscaling.slo.ttft | default(1000) }}
-
+  enabled: false
 hpa:
-  enabled: {{ wva.hpa.enabled | default(true) | lower }}
-  maxReplicas: {{ wva.hpa.maxReplicas | default(10) }}
-  targetAverageValue: {{ wva.hpa.targetAvgValue | default(1) }}
-
+  enabled: false
 vllmService:
-  enabled: {{ wva.vllmService.enabled | default(true) | lower }}
-  nodePort: 0
-  interval: {{ wva.vllmService.interval | default('15s') }}
-  scheme: {{ wva.vllmService.scheme | default('http') }}
+  enabled: false
 {% endif %}

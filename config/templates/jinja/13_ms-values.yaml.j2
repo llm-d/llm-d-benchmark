@@ -596,17 +596,17 @@ decode:
 {% if decode.monitoring.podmonitor.scrapeTimeout is defined %}
       scrapeTimeout: "{{ decode.monitoring.podmonitor.scrapeTimeout }}"
 {% endif %}
-{% if decode.monitoring.podmonitor.labels is defined %}
+{% if decode.monitoring.podmonitor.labels is defined and decode.monitoring.podmonitor.labels %}
       labels:
-{{ decode.monitoring.podmonitor.labels | toyaml | indent(8) }}
+{{ decode.monitoring.podmonitor.labels | toyaml(8) }}
 {% endif %}
-{% if decode.monitoring.podmonitor.annotations is defined %}
+{% if decode.monitoring.podmonitor.annotations is defined and decode.monitoring.podmonitor.annotations %}
       annotations:
-{{ decode.monitoring.podmonitor.annotations | toyaml | indent(8) }}
+{{ decode.monitoring.podmonitor.annotations | toyaml(8) }}
 {% endif %}
-{% if decode.monitoring.podmonitor.relabelings is defined %}
+{% if decode.monitoring.podmonitor.relabelings is defined and decode.monitoring.podmonitor.relabelings %}
       relabelings:
-{{ decode.monitoring.podmonitor.relabelings | toyaml | indent(8) }}
+{{ decode.monitoring.podmonitor.relabelings | toyaml(8) }}
 {% endif %}
 {% if decode.monitoring.podmonitor.metricRelabelings is defined %}
       metricRelabelings:

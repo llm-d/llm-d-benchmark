@@ -5,13 +5,17 @@
    This label is required so that user-workload-monitoring can discover
    and scrape WVA metrics in this namespace.
 
+   Namespaced-mode WVA uses `wva.namespace` (which defaults to the model
+   namespace). `kubectl apply` against this manifest is idempotent — if
+   the namespace already exists from step_05, the label is simply merged.
+
    Only rendered when wva.enabled is true.
    ============================================================================ #}
 {% if wva is defined and wva.enabled | default(false) %}
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: {{ wva.namespace | default(namespace.name) }}
+  name: {{ wva.namespace | default(namespace.name, true) }}
   labels:
     openshift.io/user-monitoring: "true"
 {% endif %}

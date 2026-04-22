@@ -419,7 +419,11 @@ chartVersions:
   istiod: *istio_version
   llmDInfra: auto
   llmDModelservice: auto
-  wva: auto
+  wva: 0.6.0
+  # Pinned to match the upstream WVA README's prometheus-adapter install.
+  # Newer adapter versions have broken external-metric compatibility with
+  # the chart's rule format.
+  prometheusAdapter: 5.2.0
   inferencePool: *gaie_version
   agentgateway: *agentgateway_version
   lws: *lws_version
@@ -1285,17 +1289,27 @@ extraObjects: []
 
 # ============================================================================
 # WVA (Workload Variant Autoscaler)
+#
+# Installed in *namespaced* mode: the controller watches only the namespace
+# it is deployed in. One controller per unique wva.namespace across rendered
+# stacks. VariantAutoscaling + HPA are rendered per-stack so a single
+# controller can manage multiple models in the same namespace.
 # ============================================================================
 wva:
   enabled: false
   wellLitPath: inference-scheduling
-  namespace: ""  # defaults to common namespace
+  # When blank, resolves to namespace.name at render time. Overridable via
+  # the third component of `--namespace deploy,harness,wva`.
+  namespace: ""
   image:
     repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
     tag: auto
   replicaCount: 1
+  # Chart-level top-level switch (v0.6.0): enables the controller Deployment.
   controller:
     enabled: true
+  # When true, the controller only watches the namespace it runs in.
+  namespaceScoped: true
   metrics:
     enabled: true
     port: 8443
@@ -1305,13 +1319,28 @@ wva:
     port: 9091
   variantAutoscaling:
     enabled: true
+    variantCost: "10.0"
     slo:
       tpot: 10
       ttft: 1000
   hpa:
     enabled: true
-    maxReplicas: 10
+    minReplicas: 1
+    maxReplicas: 16
     targetAvgValue: 1
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 120
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 15
+      scaleDown:
+        stabilizationWindowSeconds: 120
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 15
   vllmService:
     enabled: true
     nodePortMin: 30000

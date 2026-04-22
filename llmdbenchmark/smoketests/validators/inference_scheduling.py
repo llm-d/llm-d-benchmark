@@ -5,10 +5,16 @@ from pathlib import Path
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.smoketests.base import BaseSmoketest, _load_config, _nested_get
 from llmdbenchmark.smoketests.report import CheckResult, SmoketestReport
+from llmdbenchmark.smoketests.validators.wva import WvaSmoketestMixin
 
 
-class InferenceSchedulingValidator(BaseSmoketest):
-    """Validates inference scheduling scenario."""
+class InferenceSchedulingValidator(WvaSmoketestMixin, BaseSmoketest):
+    """Validates inference scheduling scenario.
+
+    Also runs WVA resource checks (controller, prometheus-adapter, VA, HPA)
+    when the rendered stack has ``wva.enabled: true``; the mixin is a no-op
+    for non-WVA stacks.
+    """
 
     def run_config_validation(
         self, context: ExecutionContext, stack_path: Path,
@@ -72,5 +78,8 @@ class InferenceSchedulingValidator(BaseSmoketest):
                     "dshm" in volumes,
                     message=f"Shared memory volume 'dshm' {'present' if 'dshm' in volumes else 'not found'}",
                 ))
+
+        # WVA checks are a no-op unless the stack has wva.enabled: true
+        self.run_wva_checks(context, stack_path, report)
 
         return report

@@ -12,6 +12,44 @@ from llmdbenchmark.exceptions.exceptions import ExecutionError
 from llmdbenchmark.utilities.kube_helpers import CRASH_STATES
 
 
+def _summarize_container_status(not_ready: list[dict]) -> str:
+    """Return the 'worst' container state among *not_ready*.
+
+    Priority: terminated with a CRASH_STATES reason > any terminated >
+    waiting with a CRASH_STATES reason > any waiting > "NotReady".
+
+    This is what surfaces to ``wait_for_pods``' crash detector, so
+    pushing crash reasons to the front means a CrashLoopBackOff on one
+    container of a multi-container pod aborts the wait immediately
+    instead of getting masked by a "Waiting" sibling.
+    """
+    if not not_ready:
+        return "NotReady"
+
+    def _state_reason(cs: dict, key: str) -> str:
+        return (cs.get("state", {}).get(key) or {}).get("reason", "") or ""
+
+    # Terminal crash states first.
+    for cs in not_ready:
+        reason = _state_reason(cs, "terminated")
+        if reason in CRASH_STATES:
+            return reason
+
+    # Waiting with a crash reason (e.g. CrashLoopBackOff, ImagePullBackOff).
+    for cs in not_ready:
+        reason = _state_reason(cs, "waiting")
+        if reason in CRASH_STATES:
+            return reason
+
+    # Non-terminal but informative.
+    for cs in not_ready:
+        reason = _state_reason(cs, "waiting") or _state_reason(cs, "terminated")
+        if reason:
+            return reason
+
+    return "NotReady"
+
+
 @dataclass
 class CommandResult:
     """Result of a shell command execution."""
@@ -562,18 +600,26 @@ class CommandExecutor:
                     "containerStatuses", []
                 )
                 if container_statuses:
-                    cs = container_statuses[0]
-                    if cs.get("ready"):
+                    # A pod is Ready only when ALL of its containers are
+                    # Ready. Previously we only looked at containerStatuses[0]
+                    # which, for multi-container pods (e.g. modelservice's
+                    # decode pod with its routing sidecar), could show
+                    # "Ready" while the actual serving container was in
+                    # CrashLoopBackOff — causing step_09's wait to return
+                    # success on a broken deployment.
+                    if all(cs.get("ready", False) for cs in container_statuses):
                         ready = True
                         status = "Ready"
-                    elif cs.get("state", {}).get("waiting"):
-                        status = cs["state"]["waiting"].get(
-                            "reason", "Waiting"
-                        )
-                    elif cs.get("state", {}).get("terminated"):
-                        status = cs["state"]["terminated"].get(
-                            "reason", "Terminated"
-                        )
+                    else:
+                        # Surface the worst-looking not-ready container so the
+                        # caller can match against CRASH_STATES. Prefer a
+                        # crashing/terminated container over a merely-waiting
+                        # one so terminal failures bubble up first.
+                        not_ready = [
+                            cs for cs in container_statuses
+                            if not cs.get("ready", False)
+                        ]
+                        status = _summarize_container_status(not_ready)
                 elif phase == "Pending":
                     conditions = item.get("status", {}).get("conditions", [])
                     for cond in conditions:

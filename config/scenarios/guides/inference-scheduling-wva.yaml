@@ -1,0 +1,359 @@
+# INFERENCE SCHEDULING + WVA WELL LIT PATH for LLM-D Deployment
+#
+# Same base configuration as `inference-scheduling.yaml` (Qwen3-32B, 2 decode
+# pods, modelservice deployment) but with the Workload Variant Autoscaler
+# (WVA) explicitly enabled. All HPA / VariantAutoscaling knobs are listed
+# below even when they match defaults.yaml, so users can see the full
+# surface area in one place and tweak it per-scenario.
+#
+# Based on:
+#   https://github.com/llm-d/llm-d/blob/main/guides/workload-autoscaling/README.wva.md
+#
+# Running:
+#
+#   llmdbenchmark --spec guides/inference-scheduling-wva standup -p <namespace>
+#
+# The `-u/--wva` CLI flag is NOT required with this scenario because
+# `wva.enabled: true` is already hard-coded below. Pass `-u` with the
+# plain `inference-scheduling` scenario if you want to toggle WVA on
+# without editing YAML.
+
+scenario:
+  # ============================================================================
+  # Inference Scheduling + WVA - Qwen3-32B with 2 decode pods, autoscaled
+  # ============================================================================
+  - name: "inference-scheduling-wva"
+
+    # =========================================================================
+    # MODEL CONFIGURATION
+    # =========================================================================
+    model:
+      name: Qwen/Qwen3-32B
+      shortName: qwen-qwen3-32b
+      path: models/Qwen/Qwen3-32B
+      huggingfaceId: Qwen/Qwen3-32B
+      size: 1Ti
+      maxModelLen: 16000
+      blockSize: 64
+      gpuMemoryUtilization: 0.95
+
+    # =========================================================================
+    # DEPLOYMENT METHOD
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    # =========================================================================
+    # WVA CONFIGURATION
+    #
+    # Edit any field below to change WVA behavior for this scenario.
+    # Remove a field to fall back to its default.
+    # =========================================================================
+    wva:
+      enabled: true                  # master switch — same effect as `-u/--wva` on CLI
+
+      # Upstream well-lit-path tag. Becomes the `llm-d.ai/guide` label on the
+      # VariantAutoscaling so dashboards/queries can group by guide.
+      wellLitPath: inference-scheduling
+
+      # Where to install the WVA controller.
+      # Empty = use the deploy namespace (the first slot of `-p`). Override by
+      # passing `-p deploy,harness,wva` to put the controller elsewhere.
+      # NOTE: With namespaceScoped=true (below), the controller ONLY watches
+      # this namespace. Putting it in a different ns from your decode
+      # Deployment means it won't see your VariantAutoscaling.
+      namespace: ""
+
+      # Controller container image.
+      # Pin `tag` to a release version for reproducibility, or set to "auto"
+      # to let the version-resolver pick latest at plan time.
+      # NOTE: image tags use a leading "v" (v0.6.0), distinct from the
+      # helm chart version pinned in chartVersions.wva (which is bare 0.6.0).
+      # Available version tags can be listed with:
+      #   curl -sL "https://ghcr.io/token?scope=repository:llm-d/llm-d-workload-variant-autoscaler:pull" \
+      #     | jq -r .token | xargs -I{} curl -sH "Authorization: Bearer {}" \
+      #       https://ghcr.io/v2/llm-d/llm-d-workload-variant-autoscaler/tags/list
+      image:
+        repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
+        tag: v0.6.0
+
+      replicaCount: 1                # WVA controller pod replicas (1 is the chart default)
+
+      # Disable to skip installing the controller but still render the VA
+      # + HPA (rare; useful when you reuse a cluster-wide controller
+      # installed elsewhere).
+      controller:
+        enabled: true
+
+      # Namespaced mode: controller only watches its own namespace. One WVA
+      # controller per unique wva.namespace across all rendered stacks.
+      # Set to false ONLY if you intend a single controller to manage
+      # multiple namespaces (cluster-scoped mode — discouraged on shared
+      # clusters because controllers from different tenants will race on
+      # the same VAs).
+      namespaceScoped: true
+
+      # Controller-side metrics endpoint (scraped by user-workload-monitoring).
+      # Don't change unless you have a port collision.
+      metrics:
+        enabled: true
+        port: 8443                   # /metrics port on the controller
+        secure: true                 # HTTPS + bearer-token auth
+
+      # Where the controller queries to read vLLM metrics for its scaling
+      # decisions. On OpenShift this is thanos-querier; on GKE point it at
+      # your kube-prometheus-stack Service URL.
+      prometheus:
+        baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
+        port: 9091
+
+      # -----------------------------------------------------------------------
+      # VariantAutoscaling — per-model scaling intent
+      #
+      # Should match the HPA min/max below; the VA caps what the controller
+      # is willing to compute, the HPA caps what actually gets applied.
+      # -----------------------------------------------------------------------
+      variantAutoscaling:
+        enabled: true                # required for the VA to render at all
+        minReplicas: 1               # controller floor — never compute below this
+        maxReplicas: 10              # controller ceiling — never compute above this
+        # Relative GPU cost weight used by WVA's saturation solver to decide
+        # WHICH model to scale when several share GPU capacity. Higher =
+        # more expensive to scale up. Common tiering: H100=10, A100=8,
+        # L40S=5, MI300X=10. Tweak per stack to express your business priority.
+        variantCost: "10.0"
+        # SLO targets the controller tries to keep the variant within when
+        # computing desiredReplicas. Lower numbers = more aggressive scale-up
+        # under load.
+        slo:
+          tpot: 10                   # Time-Per-Output-Token target (ms)
+          ttft: 1000                 # Time-To-First-Token target (ms)
+
+      # -----------------------------------------------------------------------
+      # HorizontalPodAutoscaler — what actually changes the replica count
+      #
+      # The HPA reads `wva_desired_replicas` (emitted by the WVA controller
+      # via prometheus-adapter) and scales the decode Deployment between
+      # min/max.
+      # -----------------------------------------------------------------------
+      hpa:
+        enabled: true                # set false to render the VA only, no HPA
+        minReplicas: 1               # never scale below this — must be >= 1
+                                     # (HPA refuses to manage targets at 0)
+                                     # Keep aligned with variantAutoscaling.minReplicas above.
+        maxReplicas: 10              # safety ceiling — scale-up cap regardless
+                                     # of what the controller computes
+                                     # Keep aligned with variantAutoscaling.maxReplicas above.
+        targetAvgValue: 1            # target value the HPA tries to reach for
+                                     # `wva_desired_replicas` per pod.
+                                     # 1 = "match controller's desiredReplicas
+                                     # exactly". Don't change unless you
+                                     # understand HPA averaging math.
+
+        # Scaling behavior — how aggressively the HPA reacts. See:
+        #   https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#configurable-scaling-behavior
+        behavior:
+          scaleUp:
+            # How long after a scale-up event before another one is allowed.
+            # Higher = smoother, less responsive. Lower = snappier but flappy.
+            stabilizationWindowSeconds: 120
+            policies:
+              - type: Percent        # alternative: "Pods" (absolute pod count)
+                value: 100           # 100% = double the current replica count per period
+                periodSeconds: 15    # how often this policy is evaluated
+          scaleDown:
+            # Larger window for scale-down avoids thrashing when load
+            # briefly dips. Bump to 300+ for batch workloads where transient
+            # idle is normal.
+            stabilizationWindowSeconds: 120
+            policies:
+              - type: Percent
+                value: 100           # = halve the replica count per period
+                periodSeconds: 15
+
+      # vLLM *emulator* service — chart-internal feature for testing WVA
+      # without real vLLM pods. We deploy real vLLM via the modelservice
+      # chart, so we always disable this. Leave as-is.
+      vllmService:
+        enabled: false
+
+    # =========================================================================
+    # WVA-RELATED CHART VERSIONS
+    #
+    # Pins for the helm charts that step_03 installs as part of the WVA
+    # pipeline. Bump these to track upstream releases; align with what the
+    # upstream WVA guide currently calls for so the rule format and chart
+    # values stay compatible.
+    #   https://github.com/llm-d/llm-d/blob/main/guides/workload-autoscaling/README.wva.md
+    # =========================================================================
+    chartVersions:
+      # WVA controller chart (oci://ghcr.io/llm-d/workload-variant-autoscaler)
+      wva: 0.6.0
+      # prometheus-adapter chart (prometheus-community/prometheus-adapter).
+      # Pinned because newer releases have broken external-metric
+      # compatibility with the rule format the WVA chart emits.
+      # The upstream WVA README also pins this version.
+      prometheusAdapter: 5.2.0
+
+    # =========================================================================
+    # ROUTING / GAIE CONFIGURATION
+    # =========================================================================
+    inferenceExtension:
+      pluginsConfigFile: "default-plugins.yaml"
+
+    # =========================================================================
+    # PREFILL / DECODE CONFIGURATION (same as inference-scheduling.yaml)
+    # =========================================================================
+    prefill:
+      enabled: false
+      replicas: 0
+
+    decode:
+      replicas: 2
+
+      initContainers:
+        - name: preprocess
+          image: ghcr.io/llm-d/llm-d-benchmark:auto
+          imagePullPolicy: Always
+          command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+          volumeMounts:
+            - name: shared-config
+              mountPath: /shared-config
+
+      parallelism:
+        tensor: 1
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 64Gi
+          cpu: "16"
+        requests:
+          memory: 64Gi
+          cpu: "16"
+
+      extraEnvVars: []
+
+      extraContainerConfig:
+        ports:
+          - containerPort: 5557  # NIXL side channel port
+            protocol: TCP
+          - containerPort: 8200  # Metrics port
+            name: metrics
+            protocol: TCP
+        securityContext:
+          capabilities:
+            add:
+              - "IPC_LOCK"
+              - "SYS_RAWIO"
+          runAsGroup: 0
+          runAsUser: 0
+        imagePullPolicy: Always
+
+      additionalVolumeMounts: []
+      additionalVolumes: []
+
+      # -----------------------------------------------------------------------
+      # Probes
+      #
+      # HTTP probes aligned with the upstream WVA well-lit-path guide
+      # (llm-d/guides/workload-autoscaling/ms-workload-autoscaling/values.yaml):
+      #   - startupProbe + readinessProbe use /v1/models — only returns 200
+      #     once vLLM has finished loading weights, so "Ready" truly means
+      #     "serving inference requests".
+      #   - livenessProbe uses /health — catches vLLM crash-loops (our
+      #     previous TCP-socket probe stayed green because the routing
+      #     sidecar stayed up while vLLM died).
+      #
+      # All probes target the routing sidecar port (8000 = servicePort),
+      # which proxies to vLLM on 8200. Probing 8000 exercises the full
+      # routing path end-to-end — the right signal for "benchmarking-ready".
+      # -----------------------------------------------------------------------
+      probes:
+        startup:
+          path: /v1/models
+          failureThreshold: 60
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 5
+        liveness:
+          path: /health
+          failureThreshold: 3
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readiness:
+          path: /v1/models
+          failureThreshold: 3
+          periodSeconds: 5
+          timeoutSeconds: 2
+
+      # -----------------------------------------------------------------------
+      # PodMonitor (Prometheus scraping)
+      #
+      # Required for WVA: the WVA controller consumes vLLM metrics via
+      # prometheus-adapter; no PodMonitor → no metrics → HPA never sees a
+      # value for wva_desired_replicas → autoscaling silently broken.
+      # The `release: llmd` label is what user-workload-monitoring keys
+      # on for discovery, matching the upstream WVA guide's example.
+      # -----------------------------------------------------------------------
+      monitoring:
+        podmonitor:
+          enabled: true
+          portName: metrics
+          path: /metrics
+          interval: 30s
+          labels:
+            release: llmd
+
+    # =========================================================================
+    # VLLM COMMON CONFIGURATION
+    # =========================================================================
+    vllmCommon:
+      kvTransfer:
+        enabled: true
+        connector: NixlConnector
+        role: kv_both
+
+      flags:
+        enforceEager: true
+        disableLogRequests: true
+        disableUvicornAccessLog: true
+        allowLongMaxModelLen: "1"
+        serverDevMode: "1"
+
+      volumes:
+        - name: shared-config
+          type: emptyDir
+          emptyDir: {}
+        - name: dshm
+          type: emptyDir
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+        - name: shared-config
+          mountPath: /shared-config
+
+    # =========================================================================
+    # STORAGE
+    # =========================================================================
+    storage:
+      modelPvc:
+        size: 1Ti
+
+    # =========================================================================
+    # WORKLOAD / HARNESS
+    # =========================================================================
+    workDir: "~/data/inference-scheduling-wva"
+
+    harness:
+      name: inference-perf
+      experimentProfile: shared_prefix_synthetic.yaml

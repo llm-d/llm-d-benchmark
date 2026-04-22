@@ -115,6 +115,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             cli_model=getattr(args, "models", None),
             cli_methods=getattr(args, "methods", None),
             cli_monitoring=getattr(args, "monitoring", False),
+            cli_wva=getattr(args, "wva", False),
         ).eval()
 
         try:
@@ -973,6 +974,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         cli_model=getattr(args, "models", None),
         cli_methods=getattr(args, "methods", None),
         cli_monitoring=getattr(args, "monitoring", False),
+        cli_wva=getattr(args, "wva", False),
         setup_overrides=setup_overrides,
     ).eval()
 
@@ -1474,6 +1476,8 @@ def cli() -> None:
         args.skip = env_bool("LLMDBENCH_SKIP")
     if hasattr(args, "debug") and not args.debug:
         args.debug = env_bool("LLMDBENCH_DEBUG")
+    if hasattr(args, "wva") and not args.wva:
+        args.wva = env_bool("LLMDBENCH_WVA")
 
     # Convert relative/~ paths to absolute
     args.base_dir = get_absolute_path(args.base_dir)

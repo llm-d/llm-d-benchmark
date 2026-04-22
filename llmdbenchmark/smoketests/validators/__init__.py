@@ -26,6 +26,7 @@ from llmdbenchmark.smoketests.validators.wide_ep_lws import (
 from llmdbenchmark.smoketests.validators.simulated_accelerators import (
     SimulatedAcceleratorsValidator,
 )
+from llmdbenchmark.smoketests.validators.wva import WvaValidator
 
 # Examples
 from llmdbenchmark.smoketests.validators.cpu import CpuValidator
@@ -38,9 +39,14 @@ VALIDATORS: dict[str, type] = {
     "pd-disaggregation": PdDisaggregationValidator,
     "precise-prefix-cache-aware": PrecisePrefixCacheAwareValidator,
     "inference-scheduling": InferenceSchedulingValidator,
+    # inference-scheduling-wva reuses the inference-scheduling validator;
+    # the WvaSmoketestMixin auto-activates its extra checks when the
+    # stack's config has wva.enabled: true.
+    "inference-scheduling-wva": InferenceSchedulingValidator,
     "tiered-prefix-cache": TieredPrefixCacheValidator,
     "wide-ep-lws": WideEpLwsValidator,
     "simulated-accelerators": SimulatedAcceleratorsValidator,
+    "wva": WvaValidator,
     # Examples
     "cpu-example-ms": CpuValidator,
     "gpu-example": GpuValidator,

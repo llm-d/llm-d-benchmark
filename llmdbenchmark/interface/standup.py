@@ -65,8 +65,9 @@ def add_subcommands(parser: argparse._SubParsersAction):
     standup_parser.add_argument(
         "-u",
         "--wva",
-        default=env("LLMDBENCH_WVA"),
-        help="Enable Workload Variant Autoscaler.",
+        action="store_true",
+        default=False,
+        help="Enable Workload Variant Autoscaler (WVA) for this standup.",
     )
     standup_parser.add_argument(
         "-f",

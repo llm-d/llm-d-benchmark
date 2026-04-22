@@ -1,0 +1,63 @@
+{# ============================================================================
+   27_wva-variantautoscaling.yaml.j2
+
+   Per-stack VariantAutoscaling resource. Targets the decode Deployment
+   created by the llm-d-modelservice chart (name = {model_id_label}-decode
+   per chart helper llm-d-modelservice.decodeName + fullnameOverride).
+
+   Labels follow the upstream well-lit-path example in
+   llm-d/guides/workload-autoscaling/inference-scheduling-autoscaling/va.yaml
+   with values parameterized so each stack emits its own VA regardless of
+   how many models share a namespace.
+
+   IMPORTANT: `wva.llmd.ai/controller-instance` label is required when the
+   chart is installed with a non-empty wva.controllerInstance. Per the
+   v0.6.0 controller's predicate (internal/controller/predicates.go):
+
+     - When CONTROLLER_INSTANCE env is set on the controller, it ONLY
+       reconciles VAs whose `wva.llmd.ai/controller-instance` label
+       matches that value. Without this label, the predicate returns
+       false and the controller silently skips the VA — it'll log
+       "No active VariantAutoscalings found" forever.
+
+   The value here MUST equal `wva.controllerInstance` from chart values
+   (which we set to wva.namespace | default(namespace.name)) and the
+   `controller_instance` label in the HPA selector — all three derive
+   from the same expression so they stay aligned.
+
+   The controller (installed once per namespace by step_02) watches this
+   namespace and reconciles every VariantAutoscaling resource in it
+   that bears the matching controller-instance label.
+
+   Only rendered when wva.enabled is true.
+   ============================================================================ #}
+{% if wva is defined and wva.enabled | default(false) %}
+{% set decode_cfg = decode if decode is defined else {} %}
+{% set accel_type = decode_cfg.acceleratorType | default({}) %}
+{% set accel_label = (accel_type.labelValues[0] if accel_type.labelValues is defined and accel_type.labelValues else accel_type.labelValue | default('')) %}
+{% set accel_name = 'H100' if 'H100' in accel_label
+                    else ('A100' if 'A100' in accel_label
+                    else ('L40S' if 'L40S' in accel_label
+                    else ('MI300X' if 'MI300X' in accel_label
+                    else ('G2' if 'G2' in accel_label
+                    else '')))) %}
+apiVersion: llmd.ai/v1alpha1
+kind: VariantAutoscaling
+metadata:
+  name: {{ model_id_label }}-decode
+  namespace: {{ wva.namespace | default(namespace.name, true) }}
+  labels:
+    inference.optimization/acceleratorName: "{{ accel_name }}"
+    llm-d.ai/model: "{{ model.shortName }}"
+    llm-d.ai/inference-serving: "true"
+    llm-d.ai/guide: "{{ wva.wellLitPath | default('inference-scheduling') }}"
+    wva.llmd.ai/controller-instance: "{{ wva.namespace | default(namespace.name, true) }}"
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: {{ model_id_label }}-decode
+  modelID: "{{ model.name }}"
+  variantCost: "{{ wva.variantAutoscaling.variantCost | default('10.0') }}"
+  minReplicas: {{ wva.variantAutoscaling.minReplicas | default(1) }}
+  maxReplicas: {{ wva.variantAutoscaling.maxReplicas | default(10) }}
+{% endif %}

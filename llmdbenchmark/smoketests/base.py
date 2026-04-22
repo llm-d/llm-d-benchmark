@@ -20,6 +20,16 @@ from llmdbenchmark.utilities.endpoint import (
 
 _RETRYABLE_INDICATORS = ("502", "503", "504", "ServiceUnavailable", "not ready")
 
+# Roles whose pod count is HPA-managed when WVA is enabled. The replica
+# count check relaxes from strict equality (== <role>.replicas) to
+# range-membership (within wva.hpa.[min,max]Replicas) for these roles only.
+#
+# Currently only `decode` because the per-stack HPA template
+# (28_wva-hpa.yaml.j2) only targets the decode Deployment. If the WVA
+# chart grows native prefill autoscaling and we render a second HPA,
+# add "prefill" here and the relaxation kicks in automatically.
+_WVA_HPA_MANAGED_ROLES: frozenset[str] = frozenset({"decode"})
+
 
 def _is_retryable(text: str) -> bool:
     return any(ind in text for ind in _RETRYABLE_INDICATORS) if text else False
@@ -679,16 +689,54 @@ class BaseSmoketest:
                 f"{p.get('metadata', {}).get('name', '?')}@{p.get('spec', {}).get('nodeName', '?')}"
                 for p in pods
             ) or "none"
-            report.add(CheckResult(
-                f"{prefix}_replicas",
-                len(pods) == expected_pods,
-                expected=str(expected_pods),
-                actual=str(len(pods)),
-                message=(
-                    f"{role} pods in ns/{namespace}: "
-                    f"{len(pods)} (expected {expected_pods}) [{pod_details}]"
-                ),
-            ))
+
+            # If WVA + HPA owns the replica count for this role, the
+            # actual pod count is HPA-driven and may legitimately differ
+            # from the scenario's static `<role>.replicas` (e.g. with
+            # `decode.replicas: 2` and `wva.hpa.minReplicas: 1`, an idle
+            # cluster ends up at 1 pod, which is correct, not a regression).
+            #
+            # In that case we relax the check to "actual count is within
+            # the HPA's [minReplicas, maxReplicas] window" and surface
+            # both the scenario value and the HPA bounds in the message
+            # so a reader can still tell what's happening.
+            #
+            # Multinode (LWS) deployments scale via LeaderWorkerSet, not
+            # HPA, so the relaxation must not apply to them — keep strict
+            # equality there.
+            hpa_managed = (
+                _nested_get(config, "wva", "enabled")
+                and _nested_get(config, "wva", "hpa", "enabled")
+                and role in _WVA_HPA_MANAGED_ROLES
+                and not multinode_enabled
+            )
+            if hpa_managed:
+                hpa_min = int(_nested_get(config, "wva", "hpa", "minReplicas") or 1)
+                hpa_max = int(_nested_get(config, "wva", "hpa", "maxReplicas") or expected_pods)
+                in_range = hpa_min <= len(pods) <= hpa_max
+                report.add(CheckResult(
+                    f"{prefix}_replicas",
+                    in_range,
+                    expected=f"{hpa_min}..{hpa_max} (HPA window)",
+                    actual=str(len(pods)),
+                    message=(
+                        f"{role} pods in ns/{namespace}: "
+                        f"{len(pods)} (HPA min={hpa_min} max={hpa_max}, "
+                        f"scenario.{role}.replicas={expected_pods}) "
+                        f"[{pod_details}]"
+                    ),
+                ))
+            else:
+                report.add(CheckResult(
+                    f"{prefix}_replicas",
+                    len(pods) == expected_pods,
+                    expected=str(expected_pods),
+                    actual=str(len(pods)),
+                    message=(
+                        f"{role} pods in ns/{namespace}: "
+                        f"{len(pods)} (expected {expected_pods}) [{pod_details}]"
+                    ),
+                ))
 
         if not pods:
             return pods
