@@ -38,24 +38,23 @@ cd llm-d-benchmark
 # 3. Activate the venv created by install.sh
 source .venv/bin/activate
 
-# 4. Confirm you're pointed at the right cluster + project
+# 4. Confirm you're pointed at the right cluster
 oc whoami
-oc project   # or: oc new-project <namespace>
 
 # 5. Standup the WVA-enabled scenario (substitute your namespace)
 llmdbenchmark --spec guides/inference-scheduling-wva standup -p <namespace>
 ```
 
 When standup completes, the smoketest will have already verified the full
-WVA pipeline (controller, prometheus-adapter, VA, HPA, end-to-end metric
+*Namespaced* WVA pipeline (controller, prometheus-adapter, VA, HPA, end-to-end metric
 flow). The HPA's `TARGETS` column should read a numeric value
-(e.g. `500m/1`) rather than `<unknown>`:
+(e.g. `q/1`) rather than `<unknown>`:
 
 ```bash
 oc get hpa -n <namespace>
 ```
 
-To redeploy after editing the scenario YAML, plain teardown then standup:
+To redeploy after editing the scenario YAML, please teardown then standup:
 
 ```bash
 llmdbenchmark --spec guides/inference-scheduling-wva teardown -p <namespace>
