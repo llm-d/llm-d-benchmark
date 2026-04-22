@@ -96,6 +96,8 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     gateway_deploy_timeout: int = 120
     modelservice_deploy_timeout: int = 1500
 
+    pvc_bind_timeout: int = 240
+
     # Run-only mode (existing-stack)
     endpoint_url: str | None = None
     run_config_file: str | None = None

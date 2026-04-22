@@ -430,6 +430,7 @@ def _do_standup(args, logger, render_plan_errors):
         standalone_deploy_timeout=int(getattr(args, "standalone_deploy_timeout", 900) or 900),
         gateway_deploy_timeout=int(getattr(args, "gateway_deploy_timeout", 120) or 120),
         modelservice_deploy_timeout=int(getattr(args, "modelservice_deploy_timeout", 1500) or 1500),
+        pvc_bind_timeout=int(getattr(args, "pvc_bind_timeout", 240) or 240),
     )
 
     _check_model_access(context, all_stacks_info, logger)
@@ -1262,6 +1263,7 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT": ("standalone_deploy_timeout", "--standalone-deploy-timeout"),
         "LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT": ("gateway_deploy_timeout", "--gateway-deploy-timeout"),
         "LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT": ("modelservice_deploy_timeout", "--modelservice-deploy-timeout"),
+        "LLMDBENCH_PVC_BIND_TIMEOUT": ("pvc_bind_timeout", "--pvc-bind-timeout"),
     }
 
     active = {k: v for k, v in os.environ.items() if k in _ENV_TO_CLI}

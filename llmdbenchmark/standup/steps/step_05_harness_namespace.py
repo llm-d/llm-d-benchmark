@@ -73,7 +73,7 @@ class HarnessNamespaceStep(Step):
                 bind_result = cmd.wait_for_pvc(
                     pvc_name=pvc_name,
                     namespace=harness_ns,
-                    timeout=context.harness_data_access_timeout,
+                    timeout=context.pvc_bind_timeout,
                     poll_interval=5,
                     description=f'workload PVC "{pvc_name}"',
                 )

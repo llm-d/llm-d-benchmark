@@ -147,7 +147,7 @@ class ModelNamespaceStep(Step):
         bind_result = cmd.wait_for_pvc(
             pvc_name=pvc_name,
             namespace=namespace,
-            timeout=120,
+            timeout=context.pvc_bind_timeout,
             poll_interval=5,
             description=f'model PVC "{pvc_name}"',
         )
@@ -203,7 +203,7 @@ class ModelNamespaceStep(Step):
         bind_result = cmd.wait_for_pvc(
             pvc_name=pvc_name,
             namespace=namespace,
-            timeout=120,
+            timeout=context.pvc_bind_timeout,
             poll_interval=5,
             description=f'extra PVC "{pvc_name}"',
         )
