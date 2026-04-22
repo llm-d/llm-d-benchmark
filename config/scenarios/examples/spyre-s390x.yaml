@@ -61,6 +61,17 @@ scenario:
       # count must match parallelism.tensor -- each TP worker needs its own Spyre device
       count: 4
 
+    gateway:
+      name: infra-llmdbench-inference-gateway #your gateway
+      namespace: auto      # resolves to your benchmark namespace
+      className: istio     # keep 'istio' so Gateway resource is valid
+      providerNamespace: istio-system  # where your existing Istio lives
+      skipInstall: true    # skip istio-base + istiod helm install
+
+    chartVersions:
+      istioBase: skip
+      istiod: skip
+
     # -------------------------------------------------------------------------
     # Modelservice image override -- Spyre-specific vLLM image
     # Corresponds to: LLMDBENCH_LLMD_IMAGE_*
@@ -73,7 +84,7 @@ scenario:
       benchmark:
         repository: quay.io/morana/llm-d-benchmark
         tag: 0.0.1
-        pullPolicy: *pull_always
+        pullPolicy: IfNotPresent
       vllm:
         repository: registry.redhat.io/rhaii-early-access/vllm-spyre-rhel9
         tag: 3.4.0-ea.2
@@ -81,17 +92,17 @@ scenario:
       inferenceScheduler:
         repository: quay.io/morana/llmd/llm-d-inference-scheduler
         tag: test
-        pullPolicy: *pull_always
+        pullPolicy: IfNotPresent
 
       routingSidecar:
         repository: quay.io/morana/llmd/llm-d-routing-sidecar
         tag: test
-        pullPolicy: *pull_if_not_present
+        pullPolicy: IfNotPresent
 
       udsTokenizer:
         repository: quay.io/satyam16/llm-d-uds-tokenizer
         tag: downstream-Apr-20
-        pullPolicy: *pull_if_not_present
+        pullPolicy: IfNotPresent
 
     # -------------------------------------------------------------------------
     # Extra PVC for precompiled Spyre models
@@ -131,14 +142,10 @@ scenario:
     schedulerName: spyre-scheduler
 
     vllmCommon:
-      shmMemory: 64Gi
-
       preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && source $HOME/llmdbench_env.sh"
 
       flags:
         enablePrefixCaching: true
-        enableAutoToolChoice: true
-        toolCallParser: granite
 
       # Spyre-specific volumes
       volumes:

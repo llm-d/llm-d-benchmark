@@ -14,7 +14,7 @@
 #}
 {% set gw_class = gateway.className %}
 {% set gw_ns = gateway.providerNamespace %}
-{% if standalone.enabled is defined and not standalone.enabled and gw_class == 'istio' %}
+{% if standalone.enabled is defined and not standalone.enabled and gw_class == 'istio' and not (gateway.skipInstall | default(false)) %}
 repositories:
   - name: istio
     url: {{ helmRepositories.istio.url }}
