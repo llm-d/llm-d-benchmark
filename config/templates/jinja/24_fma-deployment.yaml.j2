@@ -12,7 +12,7 @@ metadata:
   name: fma-{{ model_id_label }}
   labels:
     app: fma-{{ model_id_label }}
-{% if standalone.labels is defined %}
+{% if fma.labels is defined %}
 {% for key, value in fma.labels.items() %}
     {{ key }}: "{{ value }}"
 {% endfor %}
@@ -37,7 +37,7 @@ metadata:
   name: fma-{{ model_id_label }}
   labels:
     app: fma-{{ model_id_label }}
-{% if standalone.labels is defined %}
+{% if fma.labels is defined %}
 {% for key, value in fma.labels.items() %}
     {{ key }}: "{{ value }}"
 {% endfor %}
@@ -46,8 +46,23 @@ metadata:
 spec:
   maxSleepingInstances: 3
   podTemplate:
+    metadata:
+{% if fma.launcher.podTemplate.metadata.labels is defined %}
+      labels:
+{% for key, value in fma.launcher.podTemplate.metadata.labels.items() %}
+        {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if fma.launcher.podTemplate.metadata.annotations is defined %}
+      annotations:
+{% for key, value in fma.launcher.podTemplate.metadata.annotations.items() %}
+        {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
     spec:
-      runtimeClassName: nvidia-legacy
+{% if fma.launcher.runtimeClassName is defined and fma.launcher.runtimeClassName %}
+      runtimeClassName: {{ fma.launcher.runtimeClassName }}
+{% endif %}
       containers:
         - name: inference-server
           image: {{ fma.launcher.image.repository }}:{{ fma.launcher.image.tag }}
@@ -101,7 +116,7 @@ metadata:
   name: fma-{{ model_id_label }}
   labels:
     app: fma-{{ model_id_label }}
-{% if standalone.labels is defined %}
+{% if fma.labels is defined %}
 {% for key, value in fma.labels.items() %}
     {{ key }}: "{{ value }}"
 {% endfor %}
@@ -122,7 +137,7 @@ metadata:
   name: fma-requester-{{ model_id_label }}
   labels:
     app: fma-requester-{{ model_id_label }}
-{% if standalone.labels is defined %}
+{% if fma.labels is defined %}
 {% for key, value in fma.labels.items() %}
     {{ key }}: "{{ value }}"
 {% endfor %}
