@@ -637,3 +637,6 @@ See [tests/README.md](tests/README.md) for unit test details.
 ## License
 
 Licensed under Apache License 2.0. See [LICENSE](LICENSE) for details.
+
+
+<!-- Bounty fix for #993: WVA install setup for multiple models -->
