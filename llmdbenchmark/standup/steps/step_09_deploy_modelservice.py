@@ -271,6 +271,7 @@ class DeployModelserviceStep(Step):
         wva_config = plan_config.get("wva", {})
         if wva_config.get("enabled", False) and context.is_openshift:
             self._apply_wva_stack_resources(cmd, stack_path, errors)
+            self._log_wva_stack_state(cmd, context, plan_config)
 
         self._propagate_standup_parameters(cmd, context, plan_config)
 
@@ -473,6 +474,52 @@ class DeployModelserviceStep(Step):
             result = cmd.kube("apply", "-f", str(yaml_path))
             if not result.success:
                 errors.append(f"Failed to apply {stem}: {result.stderr}")
+
+    def _log_wva_stack_state(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        plan_config: dict,
+    ) -> None:
+        """Log the current state of this stack's VariantAutoscaling + HPA.
+
+        Lets the standup output show what got created (VA OPTIMIZED, HPA
+        TARGETS / REPLICAS, etc.) without the operator needing a follow-up
+        ``oc get``. Best-effort — failures here don't fail step_09.
+        """
+        wva_cfg = plan_config.get("wva", {}) or {}
+        wva_ns = (
+            wva_cfg.get("namespace")
+            or plan_config.get("namespace", {}).get("name", "")
+        )
+        model_id_label = plan_config.get("model_id_label", "")
+        if not (wva_ns and model_id_label):
+            return
+
+        resource_name = f"{model_id_label}-decode"
+
+        for kind, label in (
+            ("variantautoscaling.llmd.ai", "VariantAutoscaling"),
+            ("hpa", "HorizontalPodAutoscaler"),
+        ):
+            result = cmd.kube(
+                "get", kind, resource_name,
+                "--namespace", wva_ns,
+                check=False,
+            )
+            if result.success and result.stdout.strip():
+                context.logger.log_info(
+                    f"📋 {label} state in ns/{wva_ns}:"
+                )
+                # Indent each line so it visually groups with the
+                # header above it in the standup log.
+                for line in result.stdout.rstrip().splitlines():
+                    context.logger.log_info(f"    {line}")
+            else:
+                context.logger.log_warning(
+                    f"Could not query {label}/{resource_name} for state log: "
+                    f"{result.stderr.strip()[:200] or '(empty)'}"
+                )
 
     def _propagate_standup_parameters(
         self, cmd: CommandExecutor, context: ExecutionContext, plan_config: dict

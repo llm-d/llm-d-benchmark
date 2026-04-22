@@ -8,6 +8,7 @@ from pathlib import Path
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
+from llmdbenchmark.standup import wva as wva_mod
 from llmdbenchmark.utilities.capacity_validator import run_capacity_planner
 
 
@@ -502,8 +503,6 @@ class WorkloadMonitoringStep(Step):
         The chart itself brings its own RBAC (``templates/rbac/*``), CRD
         (``llmd.ai/variantautoscaling``), ServiceMonitor, and ConfigMaps.
         """
-        from llmdbenchmark.standup import wva as wva_mod
-
         pairs = wva_mod.stacks_enabling_wva(context.rendered_stacks or [])
         if not pairs:
             return

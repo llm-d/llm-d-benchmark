@@ -40,6 +40,14 @@ _WVA_CONTROLLER_POLL_SECS = 5
 _HPA_TARGETS_TIMEOUT_SECS = 180
 _HPA_TARGETS_POLL_SECS = 5
 
+# How long to wait for the HPA's current replica count to converge to its
+# minReplicas (the expected idle steady-state when no traffic is hitting
+# the deployment). Includes the scaleDown stabilization window
+# (typically 120s) plus the time for the actual scale-down to complete,
+# so allow at least 2x the stabilization window.
+_HPA_CONVERGED_TIMEOUT_SECS = 300
+_HPA_CONVERGED_POLL_SECS = 10
+
 
 class WvaSmoketestMixin:
     """Adds WVA-specific checks to any scenario validator.
@@ -80,6 +88,15 @@ class WvaSmoketestMixin:
           8. The HPA's TARGETS / currentMetrics field has resolved from
              <unknown> to a numeric value — proves the full pipeline
              (controller → Prometheus → adapter → HPA) is end-to-end live.
+          9. The HPA's REPLICAS column converges to its MINPODS (idle
+             steady-state). With no traffic hitting the deployment, the
+             controller computes desiredReplicas=minReplicas and the HPA
+             scales the Deployment down to match — confirms the HPA is
+             not just receiving the metric but actually acting on it.
+         10. End-state snapshot of the VA + HPA (always passes if the
+             resources can be queried) so the smoketest log captures
+             the final cluster state without needing a follow-up
+             ``oc describe`` call to debug.
         """
         config = _load_config(stack_path)
         if not (_nested_get(config, "wva", "enabled") or False):
@@ -151,6 +168,13 @@ class WvaSmoketestMixin:
             poll_interval=_HPA_TARGETS_POLL_SECS,
             logger=context.logger,
         )
+        self._wait_for_hpa_converged(
+            cmd, wva_ns, va_name, report,
+            timeout=_HPA_CONVERGED_TIMEOUT_SECS,
+            poll_interval=_HPA_CONVERGED_POLL_SECS,
+            logger=context.logger,
+        )
+        self._log_va_hpa_state(cmd, wva_ns, va_name, report)
 
     # --- individual checks ------------------------------------------------
 
@@ -587,6 +611,145 @@ class WvaSmoketestMixin:
                 )
 
             time.sleep(poll_interval)
+
+    @staticmethod
+    def _wait_for_hpa_converged(
+        cmd: CommandExecutor,
+        wva_ns: str,
+        hpa_name: str,
+        report: SmoketestReport,
+        timeout: int = _HPA_CONVERGED_TIMEOUT_SECS,
+        poll_interval: int = _HPA_CONVERGED_POLL_SECS,
+        logger=None,
+    ) -> None:
+        """Wait for the HPA's REPLICAS to converge to its MINPODS.
+
+        At smoketest time the deployment has no traffic, so the WVA
+        controller computes ``desiredReplicas == minReplicas`` and the
+        HPA scales the Deployment down to that floor. If this never
+        happens, either:
+          - the HPA is receiving the metric but failing to scale (RBAC
+            or scale-subresource issue), or
+          - the controller is computing ``desiredReplicas > minReplicas``
+            for a still-loading deployment, or
+          - we're inside a still-active scaleDown stabilization window
+            and timeout was set too tight.
+        """
+        start = time.time()
+        last_state = "(hpa not found)"
+
+        while True:
+            elapsed = time.time() - start
+
+            result = cmd.kube(
+                "get", "hpa", hpa_name,
+                "--namespace", wva_ns,
+                "-o", "json",
+                check=False,
+            )
+
+            if result.success:
+                try:
+                    hpa = json.loads(result.stdout) if result.stdout else {}
+                except (json.JSONDecodeError, ValueError):
+                    hpa = {}
+
+                spec_min = int(hpa.get("spec", {}).get("minReplicas", 1) or 1)
+                spec_max = int(hpa.get("spec", {}).get("maxReplicas", 0) or 0)
+                current = hpa.get("status", {}).get("currentReplicas")
+                desired = hpa.get("status", {}).get("desiredReplicas")
+
+                last_state = (
+                    f"current={current} desired={desired} "
+                    f"min={spec_min} max={spec_max}"
+                )
+
+                if (
+                    current is not None
+                    and int(current) == spec_min
+                    and (desired is None or int(desired) == spec_min)
+                ):
+                    report.add(CheckResult(
+                        "wva_hpa_converged",
+                        True,
+                        expected=f"REPLICAS={spec_min} (=MINPODS)",
+                        actual=f"REPLICAS={current}",
+                        message=(
+                            f"HPA/{hpa_name} converged on idle steady-state "
+                            f"({last_state}) after {int(elapsed)}s"
+                        ),
+                    ))
+                    return
+
+            if elapsed >= timeout:
+                report.add(CheckResult(
+                    "wva_hpa_converged",
+                    False,
+                    expected="REPLICAS == MINPODS",
+                    actual=last_state,
+                    message=(
+                        f"HPA/{hpa_name} did not converge to MINPODS within "
+                        f"{timeout}s. Last state: {last_state}. "
+                        "Likely causes: scaleDown stabilization window still "
+                        "active (bump _HPA_CONVERGED_TIMEOUT_SECS), HPA can't "
+                        "patch the Deployment scale subresource, or controller "
+                        "computed desiredReplicas > minReplicas."
+                    ),
+                ))
+                return
+
+            if logger is not None and int(elapsed) % 30 == 0 and int(elapsed) > 0:
+                logger.log_info(
+                    f"⏳ Waiting for HPA/{hpa_name} REPLICAS to converge "
+                    f"({int(elapsed)}/{timeout}s) -- {last_state}"
+                )
+
+            time.sleep(poll_interval)
+
+    @staticmethod
+    def _log_va_hpa_state(
+        cmd: CommandExecutor,
+        wva_ns: str,
+        resource_name: str,
+        report: SmoketestReport,
+    ) -> None:
+        """Capture the current `oc get` output of the VA + HPA into the
+        smoketest report so the log alone tells the operator what state
+        each resource ended up in (TARGETS, MIN, MAX, REPLICAS, etc.)
+        without requiring a follow-up ``oc describe``.
+
+        Always passes when both resources can be queried; failure to
+        query is informational, not blocking.
+        """
+        va_result = cmd.kube(
+            "get", "variantautoscaling.llmd.ai", resource_name,
+            "--namespace", wva_ns,
+            check=False,
+        )
+        hpa_result = cmd.kube(
+            "get", "hpa", resource_name,
+            "--namespace", wva_ns,
+            check=False,
+        )
+
+        va_text = va_result.stdout.strip() if va_result.success else (
+            f"(failed: {va_result.stderr.strip()[:200]})"
+        )
+        hpa_text = hpa_result.stdout.strip() if hpa_result.success else (
+            f"(failed: {hpa_result.stderr.strip()[:200]})"
+        )
+
+        report.add(CheckResult(
+            "wva_va_hpa_state",
+            va_result.success and hpa_result.success,
+            message=(
+                f"End-state of WVA resources in ns/{wva_ns}:\n"
+                f"  VariantAutoscaling:\n    "
+                + va_text.replace("\n", "\n    ")
+                + "\n  HorizontalPodAutoscaler:\n    "
+                + hpa_text.replace("\n", "\n    ")
+            ),
+        ))
 
 
 def _hpa_first_external_metric_value(hpa: dict):

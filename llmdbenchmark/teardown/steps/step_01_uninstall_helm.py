@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import yaml
+
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
@@ -31,15 +33,14 @@ class UninstallHelmStep(Step):
     @staticmethod
     def _any_stack_has_wva(context: ExecutionContext) -> bool:
         """Return True if any rendered stack has wva.enabled: true."""
-        import yaml as _yaml
         for stack_path in context.rendered_stacks or []:
             cfg_file = stack_path / "config.yaml"
             if not cfg_file.exists():
                 continue
             try:
                 with open(cfg_file, encoding="utf-8") as fh:
-                    cfg = _yaml.safe_load(fh) or {}
-            except (OSError, _yaml.YAMLError):
+                    cfg = yaml.safe_load(fh) or {}
+            except (OSError, yaml.YAMLError):
                 continue
             if (cfg.get("wva", {}) or {}).get("enabled", False):
                 return True
@@ -190,8 +191,6 @@ class UninstallHelmStep(Step):
             )
             return
 
-        import yaml as _yaml
-
         wva_stacks: list[tuple[str, str]] = []  # (wva_namespace, model_id_label)
         seen_ns: set[str] = set()
 
@@ -201,8 +200,8 @@ class UninstallHelmStep(Step):
                 continue
             try:
                 with open(cfg_file, encoding="utf-8") as fh:
-                    cfg = _yaml.safe_load(fh) or {}
-            except (OSError, _yaml.YAMLError):
+                    cfg = yaml.safe_load(fh) or {}
+            except (OSError, yaml.YAMLError):
                 continue
             wva_cfg = cfg.get("wva", {}) or {}
             if not wva_cfg.get("enabled", False):

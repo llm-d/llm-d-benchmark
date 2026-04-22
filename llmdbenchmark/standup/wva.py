@@ -16,6 +16,7 @@ dependency.
 from __future__ import annotations
 
 import base64
+import json
 import tempfile
 from pathlib import Path
 
@@ -169,6 +170,25 @@ def install_wva_for_namespace(  # pylint: disable=too-many-arguments,too-many-lo
     )
     if not result.success:
         errors.append(f"Failed to install WVA: {result.stderr}")
+        return
+
+    # Wait for the controller pod(s) to actually become Ready before
+    # returning, with live ⏳ progress output (same helper used by
+    # step_08 for gateway and step_09 for decode/prefill). Without this,
+    # step_03 returns success while the controller is still scheduling
+    # / pulling images, and downstream steps race against pod startup.
+    wait = cmd.wait_for_pods(
+        label="control-plane=controller-manager",
+        namespace=wva_namespace,
+        timeout=300,
+        poll_interval=5,
+        description=f"WVA controller in ns/{wva_namespace}",
+    )
+    if not wait.success:
+        errors.append(
+            f"WVA controller pods did not become Ready in ns/{wva_namespace}: "
+            f"{wait.stderr}"
+        )
 
 
 def install_prometheus_adapter(  # pylint: disable=too-many-arguments
@@ -309,6 +329,21 @@ def install_prometheus_adapter(  # pylint: disable=too-many-arguments
         )
         if not result.success:
             errors.append(f"Failed to install prometheus-adapter: {result.stderr}")
+        else:
+            # Live progress wait so we don't race step_03 ahead of the
+            # adapter actually serving the external-metrics API.
+            wait = cmd.wait_for_pods(
+                label="app.kubernetes.io/name=prometheus-adapter",
+                namespace=monitoring_ns,
+                timeout=300,
+                poll_interval=5,
+                description=f"prometheus-adapter in ns/{monitoring_ns}",
+            )
+            if not wait.success:
+                errors.append(
+                    f"prometheus-adapter pods did not become Ready in "
+                    f"ns/{monitoring_ns}: {wait.stderr}"
+                )
 
     rbac_yaml = _find_yaml(stack_path, "22_prometheus-rbac")
     if rbac_yaml and _has_yaml_content(rbac_yaml):
@@ -388,10 +423,9 @@ def _external_metric_available(cmd: CommandExecutor, metric_name: str) -> bool:
     if not result.success or not result.stdout.strip():
         return False
 
-    import json as _json
     try:
-        data = _json.loads(result.stdout)
-    except (ValueError, _json.JSONDecodeError):
+        data = json.loads(result.stdout)
+    except (ValueError, json.JSONDecodeError):
         return False
 
     for resource in data.get("resources", []) or []:
