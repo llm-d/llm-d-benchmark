@@ -138,6 +138,104 @@ jobs:
           echo "=== Events ==="
           kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true
 
+  # -- FMA deployment (own Kind cluster) --
+  benchmark-fma:
+    name: Benchmark - FMA (Kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: unit-tests
+
+    env:
+      NS: llmdbenchcicd-sa-${{ github.event.number }}
+      LLMDBENCH_WORKSPACE: /tmp/cicd-sa-${{ github.event.number }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          version: v0.31.0
+
+      - name: Label node for simulated accelerators
+        run: |
+          NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+          echo "Labeling node: $NODE"
+          kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
+
+      - name: Install llmdbenchmark
+        run: |
+          ./install.sh -y 2>&1
+
+      - name: Standup (fma)
+        run: |
+          llmdbenchmark --spec cicd/kind-sim standup -p "$NS" -t fma --skip-smoketest
+
+      - name: Debug standup (fma)
+        if: failure()
+        run: |
+          echo "=== All pods ==="
+          kubectl get pods -n "$NS" -o wide || true
+          echo ""
+          echo "=== Download pod logs (previous) ==="
+          for pod in $(kubectl get pods -n "$NS" -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=50 2>/dev/null || true
+            kubectl logs -n "$NS" "$pod" --previous --tail=50 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Disk usage on node ==="
+          kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: allocatable ephemeral={.status.allocatable.ephemeral-storage}, capacity={.status.capacity.ephemeral-storage}{"\n"}{end}' || true
+          echo ""
+          echo "=== Failed pod descriptions ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n "$NS" "$pod" 2>/dev/null | tail -20
+            echo "--- logs ---"
+            kubectl logs -n "$NS" "$pod" --tail=30 --all-containers 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -20 || true
+
+      - name: Smoketest (fma)
+        run: |
+          llmdbenchmark --spec cicd/kind-sim smoketest -p "$NS" -t fma || true
+
+      - name: Teardown (fma)
+        if: always()
+        run: |
+          llmdbenchmark --spec cicd/kind-sim teardown -p "$NS" -t fma || true
+
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          echo "=== Pod status ==="
+          kubectl get pods -n "$NS" -o wide || true
+          echo ""
+          echo "=== Pod descriptions (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n "$NS" "$pod" || true
+          done
+          echo ""
+          echo "=== Pod logs (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=200 --all-containers || true
+          done
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true
+
   # -- Modelservice deployment matrix (istio + agentgateway) --
   benchmark-modelservice:
     name: Benchmark - Modelservice / ${{ matrix.gateway }} (Kind)
