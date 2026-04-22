@@ -59,6 +59,19 @@ GRAPHED_METRICS: dict[str, tuple[str, str, str]] = {
     'vllm:nixl_bytes_transferred_count': (
         'vllm_nixl_bytes_transferred_count', 'count',
         'vllm_nixl_bytes_transferred_count.png'),
+    # EPP (inference scheduler) Prometheus metrics — pool-level gauges
+    'inference_pool_average_kv_cache_utilization': (
+        'epp_pool_avg_kv_cache_utilization', 'percent',
+        'epp_pool_avg_kv_cache_utilization.png'),
+    'inference_pool_average_queue_size': (
+        'epp_pool_avg_queue_size', 'count',
+        'epp_pool_avg_queue_size.png'),
+    'inference_pool_average_running_requests': (
+        'epp_pool_avg_running_requests', 'count',
+        'epp_pool_avg_running_requests.png'),
+    'inference_pool_ready_pods': (
+        'epp_pool_ready_pods', 'count',
+        'epp_pool_ready_pods.png'),
 }
 
 
@@ -107,15 +120,30 @@ def load_epp_metrics_summary(metrics_dir: str) -> dict[str, Any]:
 
 
 def load_replica_status(metrics_dir: str) -> dict[str, Any]:
-    """Load the replica status JSON file."""
+    """Load the replica status JSON file.
+
+    Merges the latest snapshot with time series data if available.
+    """
     status_file = os.path.join(
         metrics_dir, 'processed', 'replica_status.json')
+    ts_file = os.path.join(
+        metrics_dir, 'processed', 'replica_status_timeseries.json')
 
     if not os.path.exists(status_file):
         return {}
 
     with open(status_file, 'r') as f:
-        return json.load(f)
+        result = json.load(f)
+
+    # Merge time series if available
+    if os.path.exists(ts_file):
+        with open(ts_file, 'r') as f:
+            ts_data = json.load(f)
+        snapshots = ts_data.get('snapshots', [])
+        if snapshots:
+            result['time_series'] = snapshots
+
+    return result
 
 
 def load_pod_startup_times(metrics_dir: str) -> dict[str, Any]:
@@ -141,7 +169,7 @@ def _make_stats_dict(metric_data: dict[str, Any], units: str,
         'units': units,
     }
     if graph_path:
-        stats['graphs'] = graph_path
+        stats['graph_path'] = graph_path
     return stats
 
 
@@ -205,7 +233,7 @@ def _build_epp_entries(
                 'p99': dl.get('p99', 0.0),
                 'stddev': dl.get('stddev', 0.0),
                 'units': dl.get('unit', 'seconds'),
-                'graphs': 'metrics/graphs/epp_dispatch_latency.png',
+                'graph_path': 'metrics/graphs/epp_dispatch_latency.png',
             }
         }
 
@@ -221,7 +249,7 @@ def _build_epp_entries(
                     'p99': score_data.get('p99', 0.0),
                     'stddev': score_data.get('stddev', 0.0),
                     'units': score_data.get('unit', 'score'),
-                    'graphs': 'metrics/graphs/epp_endpoint_scores.png',
+                    'graph_path': 'metrics/graphs/epp_endpoint_scores.png',
                 }
             })
         if components:
@@ -237,7 +265,7 @@ def _build_epp_entries(
                 'statistics': {
                     'count': dist_data.get('count', 0),
                     'units': 'count',
-                    'graphs': 'metrics/graphs/epp_request_distribution.png',
+                    'graph_path': 'metrics/graphs/epp_request_distribution.png',
                 }
             })
         if components:
@@ -294,6 +322,19 @@ def add_metrics_to_benchmark_report(
         per_metric = _build_per_metric_entries(metrics_summary, graphs_dir)
         obs.update(per_metric)
 
+        # Cluster-wide aggregated metrics (from _aggregated key)
+        aggregated = metrics_summary.get('_aggregated', {}).get('metrics', {})
+        for prom_name, (report_key, units, _) in GRAPHED_METRICS.items():
+            if prom_name in aggregated:
+                agg_data = aggregated[prom_name]
+                if report_key in obs:
+                    obs[report_key]['aggregated'] = _make_stats_dict(
+                        agg_data, units)
+                else:
+                    obs[report_key] = {
+                        'aggregated': _make_stats_dict(agg_data, units)
+                    }
+
     # EPP metrics
     epp_summary = load_epp_metrics_summary(metrics_dir)
     if epp_summary:
@@ -303,11 +344,13 @@ def add_metrics_to_benchmark_report(
     # Replica status (desired vs ready vs available per controller/model)
     replica_status = load_replica_status(metrics_dir)
     if replica_status and replica_status.get('controllers'):
+        replica_status['graph_path'] = 'metrics/graphs/replica_status.png'
         obs['replica_status'] = replica_status
 
     # Pod startup times (creation to Ready, per node per replica)
     startup_times = load_pod_startup_times(metrics_dir)
     if startup_times and startup_times.get('pods'):
+        startup_times['graph_path'] = 'metrics/graphs/pod_startup_times.png'
         obs['pod_startup_times'] = startup_times
 
     return br_dict

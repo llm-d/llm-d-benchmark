@@ -16,6 +16,7 @@ METRICS_PORT="${LLMDBENCH_VLLM_COMMON_METRICS_PORT:-${LLMDBENCH_VLLM_COMMON_INFE
 INFERENCE_PORT="${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT:-8000}"
 METRICS_PATH="${LLMDBENCH_VLLM_MONITORING_METRICS_PATH:-/metrics}"
 METRICS_CURL_TIMEOUT="${METRICS_CURL_TIMEOUT:-30}"  # max-time for curl in seconds
+EPP_METRICS_PORT="${LLMDBENCH_EPP_METRICS_PORT:-9090}"  # EPP Prometheus metrics port
 
 # Function to initialize metrics directory
 init_metrics_dir() {
@@ -66,15 +67,49 @@ get_pod_info() {
     echo "$pod_info"
 }
 
+# Function to get EPP (inference scheduler) pod names and IPs.
+# Discovers pods via the inferencepool label used by llm-d.
+# Output: lines of "pod_name pod_ip" pairs.
+get_epp_pod_info() {
+    local namespace="$1"
+    local kubectl_cmd="${KUBECTL_CMD:-kubectl}"
+
+    # EPP pods are labeled with inferencepool=<name>
+    local pod_info
+    pod_info=$($kubectl_cmd --namespace "$namespace" get pods \
+        -l inferencepool \
+        --field-selector=status.phase=Running \
+        -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.podIP}{"\n"}{end}' 2>/dev/null || true)
+
+    # Fallback: match pods with "epp" in the name
+    if [[ -z "$pod_info" ]]; then
+        local pod_names
+        pod_names=$($kubectl_cmd get pods -n "$namespace" 2>/dev/null | grep -i "epp" | grep "Running" | awk '{print $1}')
+        if [[ -n "$pod_names" ]]; then
+            for pod in $pod_names; do
+                local ip
+                ip=$($kubectl_cmd get pod -n "$namespace" "$pod" -o jsonpath='{.status.podIP}' 2>/dev/null || true)
+                if [[ -n "$ip" ]]; then
+                    pod_info="${pod_info:+${pod_info}$'\n'}${pod} ${ip}"
+                fi
+            done
+        fi
+    fi
+
+    echo "$pod_info"
+}
+
 # Function to collect replica status (desired vs ready vs available) for all
 # vLLM-related Deployments and StatefulSets in the namespace.
 # Queries all controllers, then filters by pod-template label
 # llm-d.ai/inferenceServing=true so both modelservice and standalone are captured.
-# Writes a one-time snapshot to $METRICS_DIR/processed/replica_status.json.
+# Writes the latest snapshot to $METRICS_DIR/processed/replica_status.json
+# and appends to $METRICS_DIR/processed/replica_status_timeseries.json.
 collect_replica_status() {
     local namespace="${LLMDBENCH_VLLM_COMMON_NAMESPACE:-default}"
     local kubectl_cmd="${KUBECTL_CMD:-kubectl}"
     local output_file="$METRICS_DIR/processed/replica_status.json"
+    local timeseries_file="$METRICS_DIR/processed/replica_status_timeseries.json"
     local debug_log="$METRICS_DIR/raw/collection_debug.log"
 
     mkdir -p "$METRICS_DIR/processed" "$METRICS_DIR/raw"
@@ -82,15 +117,16 @@ collect_replica_status() {
     local all_json
     all_json=$($kubectl_cmd --namespace "$namespace" get deployments,statefulsets -o json 2>>"$debug_log") || all_json='{"items":[]}'
 
-    echo "$all_json" | _RS_NAMESPACE="$namespace" _RS_OUTPUT="$output_file" python3 -c '
+    echo "$all_json" | _RS_NAMESPACE="$namespace" _RS_OUTPUT="$output_file" _RS_TS_OUTPUT="$timeseries_file" python3 -c '
 import json, sys, os
 from datetime import datetime, timezone
 
 namespace = os.environ["_RS_NAMESPACE"]
 output_file = os.environ["_RS_OUTPUT"]
+ts_file = os.environ["_RS_TS_OUTPUT"]
 
 data = json.load(sys.stdin)
-result = {
+snapshot = {
     "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "namespace": namespace,
     "controllers": [],
@@ -108,7 +144,7 @@ for item in data.get("items", []):
     if tmpl_labels.get("llm-d.ai/inferenceServing") != "true":
         continue
 
-    result["controllers"].append({
+    snapshot["controllers"].append({
         "name": metadata.get("name", ""),
         "kind": kind,
         "model": tmpl_labels.get("llm-d.ai/model", tmpl_labels.get("app", "")),
@@ -119,10 +155,23 @@ for item in data.get("items", []):
         "updated_replicas": status.get("updatedReplicas", 0),
     })
 
+# Write latest snapshot (backward compatible)
 with open(output_file, "w") as f:
-    json.dump(result, f, indent=2)
+    json.dump(snapshot, f, indent=2)
 
-print("Replica status: %d controller(s) written to %s" % (len(result["controllers"]), output_file))
+# Append to time series
+ts_data = {"snapshots": []}
+if os.path.exists(ts_file):
+    try:
+        with open(ts_file) as f:
+            ts_data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        ts_data = {"snapshots": []}
+ts_data["snapshots"].append(snapshot)
+with open(ts_file, "w") as f:
+    json.dump(ts_data, f, indent=2)
+
+print("Replica status: %d controller(s), %d snapshots total" % (len(snapshot["controllers"]), len(ts_data["snapshots"])))
 ' 2>>"$debug_log"
     if [[ $? -ne 0 ]]; then
         echo "Warning: Failed to collect replica status (see $debug_log)" >&2
@@ -132,7 +181,9 @@ print("Replica status: %d controller(s) written to %s" % (len(result["controller
 # Function to collect pod startup times (creation to Ready) for all vLLM pods.
 # Uses the same label-based discovery as get_pod_info(), then extracts
 # creationTimestamp, conditions[Ready].lastTransitionTime, and spec.nodeName.
-# Writes a one-time snapshot to $METRICS_DIR/processed/pod_startup_times.json.
+# Called every collection interval to detect newly-scaled pods.
+# Incrementally appends new pods (not seen before) to
+# $METRICS_DIR/processed/pod_startup_times.json.
 collect_pod_startup_times() {
     local namespace="${LLMDBENCH_VLLM_COMMON_NAMESPACE:-default}"
     local kubectl_cmd="${KUBECTL_CMD:-kubectl}"
@@ -164,13 +215,25 @@ from datetime import datetime, timezone
 output_file = os.environ["_ST_OUTPUT"]
 
 data = json.load(sys.stdin)
-result = {
-    "collected_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "pods": [],
-}
+
+# Load existing data to detect only new pods
+existing = {"collected_at": "", "pods": []}
+if os.path.exists(output_file):
+    try:
+        with open(output_file) as f:
+            existing = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        pass
+
+seen_names = {p["name"] for p in existing.get("pods", [])}
+new_count = 0
 
 for item in data.get("items", []):
     metadata = item.get("metadata", {})
+    pod_name = metadata.get("name", "")
+    if pod_name in seen_names:
+        continue
+
     spec = item.get("spec", {})
     status = item.get("status", {})
     labels = metadata.get("labels", {})
@@ -192,8 +255,8 @@ for item in data.get("items", []):
         except (ValueError, TypeError):
             pass
 
-    result["pods"].append({
-        "name": metadata.get("name", ""),
+    existing["pods"].append({
+        "name": pod_name,
         "node": spec.get("nodeName", ""),
         "model": labels.get("llm-d.ai/model", labels.get("app", "")),
         "role": labels.get("llm-d.ai/role", "unknown"),
@@ -201,11 +264,15 @@ for item in data.get("items", []):
         "ready_timestamp": ready_ts,
         "startup_seconds": startup_seconds,
     })
+    new_count += 1
+
+existing["collected_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 with open(output_file, "w") as f:
-    json.dump(result, f, indent=2)
+    json.dump(existing, f, indent=2)
 
-print("Pod startup times: %d pod(s) written to %s" % (len(result["pods"]), output_file))
+if new_count > 0:
+    print("Pod startup times: %d new pod(s) detected (%d total)" % (new_count, len(existing["pods"])))
 ' 2>>"$debug_log"
     if [[ $? -ne 0 ]]; then
         echo "Warning: Failed to collect pod startup times (see $debug_log)" >&2
@@ -274,6 +341,48 @@ collect_prometheus_metrics_from_pod() {
     return 0
 }
 
+# Function to collect Prometheus metrics from an EPP pod.
+# EPP exposes metrics on a different port (default 9090) than vLLM.
+collect_prometheus_metrics_from_epp_pod() {
+    local pod_name="$1"
+    local pod_ip="$2"
+    local timestamp="$3"
+    local output_file="$4"
+    local debug_log="$METRICS_DIR/raw/collection_debug.log"
+    local tmp_file="${output_file}.tmp"
+
+    # Write header
+    {
+        echo "# Timestamp: $timestamp"
+        echo "# Pod: $pod_name"
+        echo "# PodIP: $pod_ip"
+        echo "# Source: epp_prometheus_metrics"
+        echo ""
+    } > "$output_file"
+
+    local url="http://${pod_ip}:${EPP_METRICS_PORT}/metrics"
+    local rc=0
+    curl -sS --connect-timeout 5 --max-time "$METRICS_CURL_TIMEOUT" \
+        "$url" > "$tmp_file" 2>>"$debug_log" || rc=$?
+
+    if [[ $rc -ne 0 ]]; then
+        echo "  [$(date -u +%H:%M:%S)] curl failed (rc=$rc) for EPP ${pod_name} ${url}" >> "$debug_log"
+    fi
+
+    if [[ -s "$tmp_file" ]]; then
+        cat "$tmp_file" >> "$output_file"
+    else
+        {
+            echo "# Warning: Failed to collect EPP Prometheus metrics from pod $pod_name ($pod_ip)"
+            echo "# Attempted: ${url}"
+        } >> "$output_file"
+    fi
+    echo "" >> "$output_file"
+
+    rm -f "$tmp_file"
+    return 0
+}
+
 # Function to collect metrics snapshot from all pods
 collect_metrics_snapshot() {
     local namespace="${LLMDBENCH_VLLM_COMMON_NAMESPACE:-default}"
@@ -283,26 +392,37 @@ collect_metrics_snapshot() {
     echo "Collecting metrics at $iso_timestamp"
     echo "Namespace: $namespace"
 
+    # Collect vLLM pod metrics
     local pod_info
     pod_info=$(get_pod_info "$namespace")
 
     if [[ -z "$pod_info" ]]; then
-        echo "Warning: No running pods found in namespace $namespace" >&2
-        return 1
+        echo "Warning: No running vLLM pods found in namespace $namespace" >&2
+    else
+        echo "Found vLLM pods:"
+        echo "$pod_info"
+
+        echo "$pod_info" | while read -r pod_name pod_ip; do
+            [[ -z "$pod_ip" || -z "$pod_name" ]] && continue
+            local pod_metrics_file="$METRICS_DIR/raw/${pod_name}_${timestamp}_metrics.log"
+            collect_prometheus_metrics_from_pod "$pod_name" "$pod_ip" "$iso_timestamp" "$pod_metrics_file" &
+        done
     fi
 
-    echo "Found pods:"
-    echo "$pod_info"
+    # Collect EPP pod metrics
+    local epp_info
+    epp_info=$(get_epp_pod_info "$namespace")
 
-    # Collect from each pod in parallel, curling pod IPs directly
-    local pids=""
-    echo "$pod_info" | while read -r pod_name pod_ip; do
-        [[ -z "$pod_ip" || -z "$pod_name" ]] && continue
-        local pod_metrics_file="$METRICS_DIR/raw/${pod_name}_${timestamp}_metrics.log"
+    if [[ -n "$epp_info" ]]; then
+        echo "Found EPP pods:"
+        echo "$epp_info"
 
-        collect_prometheus_metrics_from_pod "$pod_name" "$pod_ip" "$iso_timestamp" "$pod_metrics_file" &
-        pids="$pids $!"
-    done
+        echo "$epp_info" | while read -r pod_name pod_ip; do
+            [[ -z "$pod_ip" || -z "$pod_name" ]] && continue
+            local epp_metrics_file="$METRICS_DIR/raw/${pod_name}_${timestamp}_metrics.log"
+            collect_prometheus_metrics_from_epp_pod "$pod_name" "$pod_ip" "$iso_timestamp" "$epp_metrics_file" &
+        done
+    fi
 
     # Wait for all background collections to finish
     wait
@@ -314,10 +434,6 @@ start_continuous_collection() {
 
     init_metrics_dir
 
-    # Collect one-time infrastructure snapshots
-    collect_replica_status
-    collect_pod_startup_times
-
     echo "Starting continuous metrics collection (interval: ${COLLECTION_INTERVAL}s)"
     echo $$ > "$METRICS_DIR/collector.pid"
 
@@ -325,6 +441,11 @@ start_continuous_collection() {
     local iterations=0
 
     while true; do
+        # Collect infrastructure state every iteration to track autoscaling
+        collect_replica_status
+        collect_pod_startup_times
+
+        # Collect Prometheus metrics from all pods
         collect_metrics_snapshot
         iterations=$((iterations + 1))
 
@@ -379,9 +500,9 @@ case "${1:-}" in
         ;;
     snapshot)
         init_metrics_dir
+        collect_metrics_snapshot
         collect_replica_status
         collect_pod_startup_times
-        collect_metrics_snapshot
         ;;
     process)
         process_collected_metrics

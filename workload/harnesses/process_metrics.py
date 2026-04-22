@@ -191,6 +191,44 @@ def aggregate_metrics():
                     'unit': get_metric_unit(metric_name)
                 }
 
+    # Aggregate selected metrics across all pods
+    AGGREGATE_METRICS = {
+        'vllm:kv_cache_usage_perc', 'vllm:num_requests_running',
+        'vllm:num_requests_waiting', 'vllm:num_preemptions_total',
+        'vllm:prefix_cache_hit_rate', 'vllm:external_prefix_cache_hit_rate',
+        # EPP pool-level gauges (already aggregated by EPP across endpoints)
+        'inference_pool_average_kv_cache_utilization',
+        'inference_pool_average_queue_size',
+        'inference_pool_average_running_requests',
+        'inference_pool_ready_pods',
+    }
+    aggregated_values = defaultdict(list)
+    for pod_name, metrics in pod_metrics.items():
+        for metric_name, values in metrics.items():
+            if metric_name in AGGREGATE_METRICS and values:
+                aggregated_values[metric_name].extend(values)
+
+    if aggregated_values:
+        agg_metrics = {}
+        for metric_name, values in aggregated_values.items():
+            sorted_vals = sorted(values)
+            agg_metrics[metric_name] = {
+                'mean': statistics.mean(values),
+                'stddev': statistics.stdev(values) if len(values) > 1 else 0,
+                'min': min(values),
+                'p25': percentile(sorted_vals, 25),
+                'p50': percentile(sorted_vals, 50),
+                'p75': percentile(sorted_vals, 75),
+                'p90': percentile(sorted_vals, 90),
+                'p95': percentile(sorted_vals, 95),
+                'p99': percentile(sorted_vals, 99),
+                'max': max(values),
+                'count': len(values),
+                'unit': get_metric_unit(metric_name),
+            }
+        results['_aggregated'] = {'metrics': agg_metrics}
+        print(f"Aggregated {len(agg_metrics)} metrics across all pods")
+
     # Save aggregated results
     output_file = os.path.join(processed_dir, 'metrics_summary.json')
     with open(output_file, 'w') as f:
@@ -236,9 +274,117 @@ def get_metric_unit(metric_name):
         # Computed ratio metrics
         'vllm:prefix_cache_hit_rate': '%',
         'vllm:external_prefix_cache_hit_rate': '%',
+        # EPP (inference scheduler) Prometheus metrics
+        'inference_pool_average_kv_cache_utilization': '%',
+        'inference_pool_average_queue_size': 'count',
+        'inference_pool_average_running_requests': 'count',
+        'inference_pool_ready_pods': 'count',
+        'inference_extension_scheduler_e2e_duration_seconds_bucket': 'seconds',
+        'inference_extension_scheduler_e2e_duration_seconds_sum': 'seconds',
+        'inference_extension_scheduler_e2e_duration_seconds_count': 'count',
+        'inference_extension_plugin_duration_seconds_bucket': 'seconds',
+        'inference_extension_plugin_duration_seconds_sum': 'seconds',
+        'inference_extension_plugin_duration_seconds_count': 'count',
+        'inference_extension_request_duration_seconds_bucket': 'seconds',
+        'inference_extension_request_duration_seconds_sum': 'seconds',
+        'inference_extension_request_duration_seconds_count': 'count',
+        'inference_extension_request_ttft_duration_seconds_bucket': 'seconds',
+        'inference_extension_request_ttft_duration_seconds_sum': 'seconds',
+        'inference_extension_request_ttft_duration_seconds_count': 'count',
+        'inference_extension_input_tokens_bucket': 'tokens',
+        'inference_extension_output_tokens_bucket': 'tokens',
+        'inference_extension_normalized_time_per_output_token_bucket': 'seconds',
+        'inference_extension_prefix_indexer_hit_ratio_bucket': 'ratio',
+        'inference_extension_prefix_indexer_size': 'count',
+        'llm_d_inference_scheduler_pd_decision_total': 'count',
+        'llm_d_inference_scheduler_disagg_decision_total': 'count',
     }
     return units.get(metric_name, '')
 
 
+def aggregate_pod_startup_stats():
+    """Compute aggregate statistics for pod startup times."""
+    startup_file = os.path.join(processed_dir, 'pod_startup_times.json')
+    if not os.path.exists(startup_file):
+        return
+
+    with open(startup_file) as f:
+        data = json.load(f)
+
+    values = [
+        p['startup_seconds'] for p in data.get('pods', [])
+        if isinstance(p.get('startup_seconds'), (int, float))
+    ]
+    if not values:
+        return
+
+    sorted_vals = sorted(values)
+    data['aggregate'] = {
+        'units': 's',
+        'mean': statistics.mean(values),
+        'stddev': statistics.stdev(values) if len(values) > 1 else 0,
+        'min': min(values),
+        'p50': percentile(sorted_vals, 50),
+        'p90': percentile(sorted_vals, 90),
+        'p99': percentile(sorted_vals, 99),
+        'max': max(values),
+    }
+
+    with open(startup_file, 'w') as f:
+        json.dump(data, f, indent=2)
+
+    print(f"Pod startup stats: {len(values)} pods, "
+          f"mean={data['aggregate']['mean']:.1f}s")
+
+
+def aggregate_replica_stats():
+    """Compute aggregate statistics from replica status time series."""
+    ts_file = os.path.join(processed_dir, 'replica_status_timeseries.json')
+    status_file = os.path.join(processed_dir, 'replica_status.json')
+    if not os.path.exists(ts_file):
+        return
+
+    with open(ts_file) as f:
+        ts_data = json.load(f)
+
+    snapshots = ts_data.get('snapshots', [])
+    if not snapshots:
+        return
+
+    # Compute total ready replicas per snapshot
+    ready_counts = []
+    for snap in snapshots:
+        total_ready = sum(
+            c.get('ready_replicas', 0) for c in snap.get('controllers', [])
+        )
+        ready_counts.append(total_ready)
+
+    sorted_vals = sorted(ready_counts)
+    aggregate = {
+        'units': 'count',
+        'mean': statistics.mean(ready_counts),
+        'stddev': statistics.stdev(ready_counts) if len(ready_counts) > 1 else 0,
+        'min': min(ready_counts),
+        'p50': percentile(sorted_vals, 50),
+        'p90': percentile(sorted_vals, 90),
+        'p99': percentile(sorted_vals, 99),
+        'max': max(ready_counts),
+    }
+
+    # Write aggregate into the latest snapshot file for report integration
+    if os.path.exists(status_file):
+        with open(status_file) as f:
+            status_data = json.load(f)
+        status_data['aggregate_ready_replicas'] = aggregate
+        with open(status_file, 'w') as f:
+            json.dump(status_data, f, indent=2)
+
+    print(f"Replica stats: {len(snapshots)} snapshots, "
+          f"ready replicas min={aggregate['min']} max={aggregate['max']} "
+          f"mean={aggregate['mean']:.1f}")
+
+
 if __name__ == '__main__':
     aggregate_metrics()
+    aggregate_pod_startup_stats()
+    aggregate_replica_stats()
