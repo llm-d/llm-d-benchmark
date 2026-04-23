@@ -16,7 +16,6 @@ dependency.
 from __future__ import annotations
 
 import base64
-import json
 import tempfile
 from pathlib import Path
 
@@ -245,43 +244,25 @@ def install_prometheus_adapter(  # pylint: disable=too-many-arguments
     # helm release cluster-wide). If another tenant in the cluster already
     # installed it — common on shared OCP clusters — we can't
     # `helm upgrade --install` ours on top without stealing ownership of
-    # that ClusterRole.
+    # that ClusterRole, so we reuse the existing release.
     #
-    # In that case we can only reuse their install IF they configured it
-    # with the WVA rule (`wva_desired_replicas` external metric). If they
-    # didn't, the adapter is live but our HPA will still get no metric —
-    # we surface that with a loud error so it's obvious what to do (either
-    # have them re-install with the WVA values file, or uninstall theirs
-    # and let us install ours).
+    # We intentionally do NOT probe the external-metrics discovery API here
+    # to confirm the existing install serves `wva_desired_replicas`: the
+    # adapter only lists a metric in discovery once its `seriesQuery`
+    # returns at least one matching series from Prometheus, and at
+    # admin-install time no VariantAutoscaling exists yet, so no series is
+    # being produced. A discovery miss at this point is ambiguous (rule
+    # missing vs no VA yet) and previously misled users into "fixing" a
+    # non-existent rule problem. Rule correctness is verified later in
+    # the smoketest (post-VA-apply) where a discovery miss is unambiguous.
     existing_release, existing_ns = _find_existing_prometheus_adapter_release(cmd)
     if existing_release:
-        has_rule = _external_metric_available(cmd, "wva_desired_replicas")
-        if has_rule:
-            context.logger.log_info(
-                f"ℹ️  prometheus-adapter is already installed cluster-wide "
-                f"(release={existing_release!r}, namespace={existing_ns!r}) "
-                "and serves wva_desired_replicas via the external-metrics API. "
-                "Reusing it."
-            )
-        else:
-            errors.append(
-                f"prometheus-adapter is already installed by another tenant "
-                f"(release={existing_release!r}, namespace={existing_ns!r}) "
-                "but the external-metrics API does NOT expose "
-                "wva_desired_replicas. Their install is missing the WVA "
-                "rule set, so the HPA cannot receive metrics.\n"
-                "  Fix by one of:\n"
-                "    1) Have that tenant re-install prometheus-adapter with "
-                "the WVA values file "
-                "(https://raw.githubusercontent.com/llm-d/llm-d-workload-variant-autoscaler/"
-                f"v{plan_config.get('chartVersions', {}).get('wva', '0.6.0')}/"
-                "config/samples/prometheus-adapter-values-ocp.yaml), or\n"
-                "    2) `helm uninstall` their release (ClusterRole ownership "
-                "then clears) and re-run this standup so we install with the "
-                "correct rules, or\n"
-                "    3) Patch their adapter ConfigMap to add the "
-                "wva_desired_replicas rule."
-            )
+        context.logger.log_info(
+            f"ℹ️  prometheus-adapter is already installed cluster-wide "
+            f"(release={existing_release!r}, namespace={existing_ns!r}). "
+            "Reusing it — rule correctness will be validated by the "
+            "smoketest after the VariantAutoscaling is applied."
+        )
     else:
         repo_url = _require_config(
             plan_config, "helmRepositories", "prometheusAdapter", "url",
@@ -405,33 +386,6 @@ def unique_wva_namespaces(
 
 
 # --- internal helpers ------------------------------------------------------
-
-
-def _external_metric_available(cmd: CommandExecutor, metric_name: str) -> bool:
-    """Return True iff *metric_name* is served by the external-metrics API.
-
-    We hit the API discovery endpoint rather than inspecting the adapter's
-    ConfigMap because the ConfigMap name/namespace varies by installer;
-    the API itself is the authoritative cluster-wide answer.
-    """
-    result = cmd.kube(
-        "get",
-        "--raw",
-        "/apis/external.metrics.k8s.io/v1beta1",
-        check=False,
-    )
-    if not result.success or not result.stdout.strip():
-        return False
-
-    try:
-        data = json.loads(result.stdout)
-    except (ValueError, json.JSONDecodeError):
-        return False
-
-    for resource in data.get("resources", []) or []:
-        if resource.get("name") == metric_name:
-            return True
-    return False
 
 
 def _find_existing_prometheus_adapter_release(
