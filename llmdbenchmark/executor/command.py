@@ -506,13 +506,31 @@ class CommandExecutor:
         poll_interval: int = 10,
         description: str = "",
     ) -> CommandResult:
-        """Poll a PVC until it reaches Bound phase, showing live progress."""
+        """Poll a PVC until it reaches Bound phase, showing live progress.
+
+        Short-circuits to success when the resolved StorageClass uses
+        ``volumeBindingMode: WaitForFirstConsumer`` (e.g. Kind's local-path
+        provisioner). Such PVCs intentionally stay ``Pending`` until a
+        consumer pod is scheduled, so blocking on Bound here would deadlock
+        standup before the consumer pod ever gets a chance to apply. Real
+        provisioning failures still surface as a pod-readiness or
+        download-job timeout downstream.
+        """
         desc = description or f"pvc/{pvc_name}"
         kc_args = " ".join(self._kubeconfig_args())
         cmd_repr = f'{self._kube_bin} {kc_args} wait --for=jsonpath={{.status.phase}}=Bound pvc/{pvc_name} --namespace {namespace} --timeout={timeout}s'.replace("  ", " ")
 
         if self.dry_run:
             return self._handle_dry_run(cmd_repr, int(time.time() * 1e9))
+
+        binding_mode = self._resolve_pvc_binding_mode(pvc_name, namespace)
+        if binding_mode == "WaitForFirstConsumer":
+            self.logger.log_info(
+                f"⏭️  {desc}: StorageClass uses WaitForFirstConsumer "
+                "-- PVC will bind when its consumer pod schedules; "
+                "skipping bind wait."
+            )
+            return CommandResult(command=cmd_repr, exit_code=0)
 
         start = time.time()
         last_status_line = ""
@@ -568,6 +586,51 @@ class CommandExecutor:
             self._print_progress(status_line, last_status_line)
             last_status_line = status_line
             time.sleep(poll_interval)
+
+    def _resolve_pvc_binding_mode(
+        self, pvc_name: str, namespace: str
+    ) -> str | None:
+        """Return the volumeBindingMode of the StorageClass that backs *pvc_name*.
+
+        Reads the PVC's ``spec.storageClassName`` (i.e. exactly what the
+        scenario config rendered into the manifest) and queries that
+        class's ``.volumeBindingMode``. Returns ``None`` when the PVC has
+        no explicit storageClassName -- in that case the caller falls
+        through to a normal Bound wait, which will fail with a clear hint
+        telling the user to set storageClassName explicitly rather than
+        rely on cluster defaults.
+        """
+        sc_name = self._jsonpath(
+            ["get", "pvc", pvc_name, "--namespace", namespace],
+            "{.spec.storageClassName}",
+        )
+        if not sc_name:
+            return None
+
+        mode = self._jsonpath(
+            ["get", "storageclass", sc_name],
+            "{.volumeBindingMode}",
+        )
+        return mode or "Immediate"
+
+    def _jsonpath(self, kube_args: list[str], jsonpath: str) -> str:
+        """Run a kubectl/oc query and return the trimmed jsonpath output."""
+        parts = [self._kube_bin]
+        parts.extend(self._kubeconfig_args())
+        parts.extend(kube_args)
+        # Single-quote the jsonpath so shell=True doesn't eat the
+        # backslashes used to escape dots in annotation keys.
+        parts.extend(["-o", f"'jsonpath={jsonpath}'"])
+        try:
+            result = subprocess.run(
+                " ".join(parts), shell=True, capture_output=True,
+                text=True, check=False, executable="/bin/bash",
+            )
+            if result.returncode != 0:
+                return ""
+            return result.stdout.strip()
+        except OSError:
+            return ""
 
     def _get_pod_statuses(
         self, label: str, namespace: str

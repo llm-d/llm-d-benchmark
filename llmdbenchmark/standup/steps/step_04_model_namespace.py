@@ -129,14 +129,37 @@ class ModelNamespaceStep(Step):
         pvc_size = self._require_config(plan_config, "storage", "modelPvc", "size")
 
         namespace = context.require_namespace()
-        if not context.dry_run and self._check_existing_pvc(
-            cmd, context, pvc_name, pvc_size, namespace, errors
-        ):
-            return
+        already_exists = (
+            not context.dry_run and self._check_existing_pvc(
+                cmd, context, pvc_name, pvc_size, namespace, errors
+            )
+        )
+        if not already_exists:
+            result = cmd.kube("apply", "-f", str(pvc_yaml))
+            if not result.success and "AlreadyExists" not in result.stderr:
+                errors.append(f"Failed to create model PVC: {result.stderr}")
+                return
 
-        result = cmd.kube("apply", "-f", str(pvc_yaml))
-        if not result.success and "AlreadyExists" not in result.stderr:
-            errors.append(f"Failed to create model PVC: {result.stderr}")
+        # Verify the PVC binds. Without this, a PVC stuck Pending (e.g.
+        # cluster has no default StorageClass and the manifest was rendered
+        # with storage_class=auto, which omits storageClassName) only
+        # surfaces as a silent download-job timeout further downstream.
+        bind_result = cmd.wait_for_pvc(
+            pvc_name=pvc_name,
+            namespace=namespace,
+            timeout=context.pvc_bind_timeout,
+            poll_interval=5,
+            description=f'model PVC "{pvc_name}"',
+        )
+        if not bind_result.success:
+            errors.append(
+                f'Model PVC "{pvc_name}" did not bind: {bind_result.stderr}. '
+                "Common cause: cluster has no default StorageClass and "
+                'storage_class is "auto"/"default" (which omits storageClassName '
+                "so the cluster default is required). Run `kubectl get sc` to "
+                "verify, or set storage.modelPvc.storageClassName explicitly "
+                "in the scenario."
+            )
 
     def _create_extra_pvc(
         self, cmd: CommandExecutor, context: ExecutionContext, errors: list
@@ -162,14 +185,37 @@ class ModelNamespaceStep(Step):
             return
 
         namespace = context.require_namespace()
-        if not context.dry_run and self._check_existing_pvc(
-            cmd, context, pvc_name, pvc_size, namespace, errors
-        ):
-            return
+        already_exists = (
+            not context.dry_run and self._check_existing_pvc(
+                cmd, context, pvc_name, pvc_size, namespace, errors
+            )
+        )
+        if not already_exists:
+            result = cmd.kube("apply", "-f", str(extra_pvc_yaml))
+            if not result.success and "AlreadyExists" not in result.stderr:
+                errors.append(f"Failed to create extra PVC: {result.stderr}")
+                return
 
-        result = cmd.kube("apply", "-f", str(extra_pvc_yaml))
-        if not result.success and "AlreadyExists" not in result.stderr:
-            errors.append(f"Failed to create extra PVC: {result.stderr}")
+        # Verify the PVC binds. Without this, a PVC stuck Pending (e.g.
+        # cluster has no default StorageClass and the manifest was rendered
+        # with storage_class=auto, which omits storageClassName) only
+        # surfaces as a silent pod-readiness timeout further downstream.
+        bind_result = cmd.wait_for_pvc(
+            pvc_name=pvc_name,
+            namespace=namespace,
+            timeout=context.pvc_bind_timeout,
+            poll_interval=5,
+            description=f'extra PVC "{pvc_name}"',
+        )
+        if not bind_result.success:
+            errors.append(
+                f'Extra PVC "{pvc_name}" did not bind: {bind_result.stderr}. '
+                "Common cause: cluster has no default StorageClass and "
+                'storage_class is "auto"/"default" (which omits storageClassName '
+                "so the cluster default is required). Run `kubectl get sc` to "
+                "verify, or set storage.extraPvc.storageClassName explicitly "
+                "in the scenario."
+            )
 
     def _add_context_secret(
         self, cmd: CommandExecutor, context: ExecutionContext,
