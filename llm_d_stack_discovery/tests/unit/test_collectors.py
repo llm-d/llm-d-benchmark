@@ -7,7 +7,7 @@ from typing import Optional
 from unittest.mock import Mock
 
 import pykube
-from benchmark_report.schema_v0_2_components import HostType
+from llmdbenchmark.analysis.benchmark_report.schema_v0_2_components import HostType
 
 from llm_d_stack_discovery.discovery.collectors.base import BaseCollector
 from llm_d_stack_discovery.discovery.collectors.vllm import VLLMCollector
