@@ -60,13 +60,13 @@ generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **benchmark** | `v0.6.0rc4` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 329 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
-| **inferenceScheduler** | `v0.7.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 348 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
-| **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 367 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
-| **routingSidecar** | `v0.7.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 354 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
-| **udsTokenizer** | `v0.7.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 360 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |
-| **vllm** | `v0.6.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 335 (`images.vllm`) | [llm-d/llm-d (docker/Dockerfile.cuda)](https://github.com/llm-d/llm-d) (`ghcr.io/llm-d/llm-d-cuda`) |
-| **vllmOpenai** | `v0.9.2` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 342 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **benchmark** | `v0.6.0rc4` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 330 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
+| **inferenceScheduler** | `v0.7.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 349 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
+| **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 368 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
+| **routingSidecar** | `v0.7.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 355 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
+| **udsTokenizer** | `v0.7.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 361 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |
+| **vllm** | `v0.6.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 336 (`images.vllm`) | [llm-d/llm-d (docker/Dockerfile.cuda)](https://github.com/llm-d/llm-d) (`ghcr.io/llm-d/llm-d-cuda`) |
+| **vllmOpenai** | `v0.9.2` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 343 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 
 
 ## Python Package Dependencies (declared)

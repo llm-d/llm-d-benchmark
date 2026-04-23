@@ -295,6 +295,7 @@ storage:
     size: 10Gi
     accessModes:
       - ReadWriteMany
+    volumeMode: Filesystem
     storageClassName: *storage_class
 
 # ============================================================================

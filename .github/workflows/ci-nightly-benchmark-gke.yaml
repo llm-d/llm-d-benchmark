@@ -1,4 +1,4 @@
-name: CI - Nightly Run Benchmark on CKS
+name: CI - Nightly Run Benchmark on GKE
 
 on:
   workflow_dispatch:
@@ -38,17 +38,22 @@ jobs:
           platform: linux/amd64
 
   benchmark-standalone:
-    name: Benchmark - Standalone (CKS)
+    name: Benchmark - Standalone (GKE)
     runs-on: ubuntu-latest
     needs: build-image
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_CICD_NS: llmdbenchcicdns-cks
-      LLMDBENCH_CICD_R: llmdbenchcicdr-cks
-      LLMDBENCH_CICD_TARGET: cicd/cks
+      LLMDBENCH_CICD_NS: llmdbenchcicdns-gke
+      LLMDBENCH_CICD_R: llmdbenchcicdr-gke
+      LLMDBENCH_CICD_TARGET: cicd/gke
       LLMDBENCH_CICD_METHOD: standalone
-      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicds-cks
+      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicds-gke
+      GCP_PROJECT_ID: llm-d-scale
+      GKE_CLUSTER_NAME: llm-d-e2e-us-east5
+      GKE_CLUSTER_ZONE: us-east5
+      GATEWAY: gke-l7-regional-external-managed
+      GATEWAY_TYPE: gke
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
 
     steps:
@@ -62,12 +67,21 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up kubeconfig from secret
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          credentials_json: ${{ secrets.GKE_SA_KEY }}
+
+      - name: Set up gcloud CLI and kubectl
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          install_components: 'kubectl,gke-gcloud-auth-plugin'
+
+      - name: Get GKE credentials
         run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-        shell: bash
+          gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" --zone "${{ env.GKE_CLUSTER_ZONE }}"
 
       - name: Install llmdbenchmark
         run: |
@@ -173,17 +187,22 @@ jobs:
 #          retention-days: 14
 
   benchmark-modelservice:
-    name: Benchmark - ModelService (CKS)
+    name: Benchmark - ModelService (GKE)
     runs-on: ubuntu-latest
     needs: build-image
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_CICD_NS: llmdbenchcicdns-cks
-      LLMDBENCH_CICD_R: llmdbenchcicdr-cks
-      LLMDBENCH_CICD_TARGET: cicd/cks
+      LLMDBENCH_CICD_NS: llmdbenchcicdns-gke
+      LLMDBENCH_CICD_R: llmdbenchcicdr-gke
+      LLMDBENCH_CICD_TARGET: cicd/gke
       LLMDBENCH_CICD_METHOD: modelservice
-      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdm-cks
+      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdm-gke
+      GCP_PROJECT_ID: llm-d-scale
+      GKE_CLUSTER_NAME: llm-d-e2e-us-east5
+      GKE_CLUSTER_ZONE: us-east5
+      GATEWAY: gke-l7-regional-external-managed
+      GATEWAY_TYPE: gke
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
 
     steps:
@@ -197,12 +216,21 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up kubeconfig from secret
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          credentials_json: ${{ secrets.GKE_SA_KEY }}
+
+      - name: Set up gcloud CLI and kubectl
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          install_components: 'kubectl,gke-gcloud-auth-plugin'
+
+      - name: Get GKE credentials
         run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-        shell: bash
+          gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" --zone "${{ env.GKE_CLUSTER_ZONE }}"
 
       - name: Install llmdbenchmark
         run: |

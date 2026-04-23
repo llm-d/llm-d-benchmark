@@ -9,65 +9,51 @@ scenario:
   - name: "ocp-cicd"
 
     # Model
-    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="facebook/opt-125m"
     model:
       name: facebook/opt-125m
       shortName: facebook-opt-125m
       path: models/facebook/opt-125m
       huggingfaceId: facebook/opt-125m
 
-    # Namespace -- dedicated CI/CD namespace
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_NAMESPACE=llmdbenchcicd
-    namespace:
-      name: llmdbenchcicd
-
-    # Harness namespace -- same as deploy namespace for CI/CD
-    # Corresponds to: LLMDBENCH_HARNESS_NAMESPACE=llmdbenchcicd
-    harnessNamespace:
-      name: llmdbenchcicd
-
-    # Deployment method
-    modelservice:
+    affinity:
       enabled: true
-    standalone:
-      enabled: false
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-L40S
+#        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
 
-    # Helm release name
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_RELEASE=llmdbenchcicd
-    release: llmdbenchcicd
-
-    # GPU affinity -- auto-detected on OpenShift
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY (not set in original -- auto-detect)
-    # Uncomment to select specific GPU:
-    # affinity:
-    #   enabled: true
-    #   nodeSelector:
-    #     nvidia.com/gpu.product: NVIDIA-L40S
-
-    # Accelerator configuration
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_ACCELERATOR_MEMORY=48
-    accelerator:
-      memory: 48
-
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_REPLICAS=1
-    decode:
+    prefill:
+      enabled: true
       replicas: 1
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+        labelValue: NVIDIA-L40S
+#        labelValue: NVIDIA-H100-80GB-HBM3
 
-    # Gateway configuration -- Istio for OpenShift
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME=istio
-    gateway:
-      className: istio
+    decode:
+      enabled: true
+      replicas: 1
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+        labelValue: NVIDIA-L40S
+        #labelValue: NVIDIA-H100-80GB-HBM3
 
-    # Storage
-    # Corresponds to: LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=ocs-storagecluster-cephfs
+    standalone:
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+        labelValue: NVIDIA-L40S
+#        labelValue: NVIDIA-H100-80GB-HBM3
+
     storage:
       modelPvc:
         storageClassName: ocs-storagecluster-cephfs
+      workloadPvc:
+        storageClassName: ocs-storagecluster-cephfs
 
-    # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR=/tmp/cicd/
-    workDir: /tmp/cicd/
+    vllmCommon:
+      priorityClassName: nightly-gpu-critical
 
-    # Corresponds to: LLMDBENCH_HARNESS_NAME=vllm-benchmark
+    workDir: /tmp/llmdbenchcicd-ocp/
+
     harness:
       name: vllm-benchmark
       experimentProfile: sanity_random.yaml

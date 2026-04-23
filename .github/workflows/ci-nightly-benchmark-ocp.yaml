@@ -1,4 +1,4 @@
-name: CI - Nightly Run Benchmark on CKS
+name: CI - Nightly Run Benchmark on OCP
 
 on:
   workflow_dispatch:
@@ -38,17 +38,17 @@ jobs:
           platform: linux/amd64
 
   benchmark-standalone:
-    name: Benchmark - Standalone (CKS)
+    name: Benchmark - Standalone (OCP)
     runs-on: ubuntu-latest
     needs: build-image
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_CICD_NS: llmdbenchcicdns-cks
-      LLMDBENCH_CICD_R: llmdbenchcicdr-cks
-      LLMDBENCH_CICD_TARGET: cicd/cks
+      LLMDBENCH_CICD_NS: llmdbenchcicdns-ocp
+      LLMDBENCH_CICD_R: llmdbenchcicdr-ocp
+      LLMDBENCH_CICD_TARGET: cicd/ocp
       LLMDBENCH_CICD_METHOD: standalone
-      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicds-cks
+      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicds-ocp
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
 
     steps:
@@ -65,7 +65,7 @@ jobs:
       - name: Set up kubeconfig from secret
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
+          echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
         shell: bash
 
@@ -173,17 +173,17 @@ jobs:
 #          retention-days: 14
 
   benchmark-modelservice:
-    name: Benchmark - ModelService (CKS)
+    name: Benchmark - ModelService (OCP)
     runs-on: ubuntu-latest
     needs: build-image
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_CICD_NS: llmdbenchcicdns-cks
-      LLMDBENCH_CICD_R: llmdbenchcicdr-cks
-      LLMDBENCH_CICD_TARGET: cicd/cks
+      LLMDBENCH_CICD_NS: llmdbenchcicdns-ocp
+      LLMDBENCH_CICD_R: llmdbenchcicdr-ocp
+      LLMDBENCH_CICD_TARGET: cicd/ocp
       LLMDBENCH_CICD_METHOD: modelservice
-      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdm-cks
+      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdm-ocp
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
 
     steps:
@@ -200,7 +200,7 @@ jobs:
       - name: Set up kubeconfig from secret
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
+          echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
           chmod 600 ~/.kube/config
         shell: bash
 
