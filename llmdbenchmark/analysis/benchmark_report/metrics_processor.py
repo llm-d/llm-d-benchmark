@@ -74,6 +74,19 @@ GRAPHED_METRICS: dict[str, tuple[str, str, str]] = {
         'epp_pool_ready_pods.png'),
 }
 
+# EPP log-derived metrics: summary_key -> (report_key, default_units, graph_file, per_component)
+_EPP_METRICS: dict[str, tuple[str, str, str, bool]] = {
+    'dispatch_latency': (
+        'epp_dispatch_latency', 'seconds',
+        'epp_dispatch_latency.png', False),
+    'endpoint_scores': (
+        'epp_endpoint_scores', 'score',
+        'epp_endpoint_scores.png', True),
+    'request_distribution': (
+        'epp_request_distribution', 'count',
+        'epp_request_distribution.png', True),
+}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -96,71 +109,17 @@ def _component_id(role: str) -> str:
     return 'inference-engine'
 
 
-def load_metrics_summary(metrics_dir: str) -> dict[str, Any]:
-    """Load the processed metrics summary JSON file."""
-    summary_file = os.path.join(
-        metrics_dir, 'processed', 'metrics_summary.json')
-
-    if not os.path.exists(summary_file):
+def _load_json(filepath: str) -> dict[str, Any]:
+    """Load a JSON file, returning {} if it doesn't exist."""
+    if not os.path.exists(filepath):
         return {}
-
-    with open(summary_file, 'r') as f:
-        return json.load(f)
-
-
-def load_epp_metrics_summary(metrics_dir: str) -> dict[str, Any]:
-    """Load the EPP metrics summary JSON file."""
-    summary_file = os.path.join(metrics_dir, 'epp_metrics_summary.json')
-
-    if not os.path.exists(summary_file):
-        return {}
-
-    with open(summary_file, 'r') as f:
-        return json.load(f)
-
-
-def load_replica_status(metrics_dir: str) -> dict[str, Any]:
-    """Load the replica status JSON file.
-
-    Merges the latest snapshot with time series data if available.
-    """
-    status_file = os.path.join(
-        metrics_dir, 'processed', 'replica_status.json')
-    ts_file = os.path.join(
-        metrics_dir, 'processed', 'replica_status_timeseries.json')
-
-    if not os.path.exists(status_file):
-        return {}
-
-    with open(status_file, 'r') as f:
-        result = json.load(f)
-
-    # Merge time series if available
-    if os.path.exists(ts_file):
-        with open(ts_file, 'r') as f:
-            ts_data = json.load(f)
-        snapshots = ts_data.get('snapshots', [])
-        if snapshots:
-            result['time_series'] = snapshots
-
-    return result
-
-
-def load_pod_startup_times(metrics_dir: str) -> dict[str, Any]:
-    """Load the pod startup times JSON file."""
-    status_file = os.path.join(
-        metrics_dir, 'processed', 'pod_startup_times.json')
-
-    if not os.path.exists(status_file):
-        return {}
-
-    with open(status_file, 'r') as f:
+    with open(filepath, 'r') as f:
         return json.load(f)
 
 
 def _make_stats_dict(metric_data: dict[str, Any], units: str,
                      graph_path: str | None = None) -> dict[str, Any]:
-    """Build a statistics dict from a metric_data entry (from metrics_summary)."""
+    """Build a statistics dict from a metric_data entry."""
     stats: dict[str, Any] = {
         'mean': metric_data.get('mean', 0.0),
         'p50': metric_data.get('p50', 0.0),
@@ -173,13 +132,17 @@ def _make_stats_dict(metric_data: dict[str, Any], units: str,
     return stats
 
 
+def _graph_path(graph_file: str) -> str:
+    """Return the relative graph path for a graph filename."""
+    return f'metrics/graphs/{graph_file}'
+
+
 # ---------------------------------------------------------------------------
-# Build per-metric observability entries
+# Build observability entries
 # ---------------------------------------------------------------------------
 
 def _build_per_metric_entries(
     metrics_summary: dict[str, Any],
-    graphs_dir: str,
 ) -> dict[str, Any]:
     """Build per-metric observability entries with per-component statistics.
 
@@ -199,15 +162,12 @@ def _build_per_metric_entries(
             if prom_name not in metrics:
                 continue
 
-            metric_data = metrics[prom_name]
-            graph_path = f'metrics/graphs/{graph_file}'
-
             component_entry = {
                 'component_id': comp_id,
                 'pod': pod_name,
                 'role': role,
                 'statistics': _make_stats_dict(
-                    metric_data, units, graph_path),
+                    metrics[prom_name], units, _graph_path(graph_file)),
             }
 
             if report_key not in entries:
@@ -217,75 +177,59 @@ def _build_per_metric_entries(
     return entries
 
 
+def _build_aggregated_entries(
+    metrics_summary: dict[str, Any],
+    obs: dict[str, Any],
+) -> None:
+    """Add cluster-wide aggregated stats to existing observability entries."""
+    aggregated = metrics_summary.get('_aggregated', {}).get('metrics', {})
+    for prom_name, (report_key, units, _) in GRAPHED_METRICS.items():
+        if prom_name not in aggregated:
+            continue
+        entry = obs.setdefault(report_key, {})
+        entry['aggregated'] = _make_stats_dict(aggregated[prom_name], units)
+
+
 def _build_epp_entries(
     epp_summary: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build EPP metric entries for observability section."""
+    """Build EPP log-derived metric entries for observability section."""
     entries: dict[str, Any] = {}
 
-    # Dispatch latency
-    if 'dispatch_latency' in epp_summary:
-        dl = epp_summary['dispatch_latency']
-        entries['epp_dispatch_latency'] = {
-            'statistics': {
-                'mean': dl.get('mean', 0.0),
-                'p50': dl.get('p50', 0.0),
-                'p99': dl.get('p99', 0.0),
-                'stddev': dl.get('stddev', 0.0),
-                'units': dl.get('unit', 'seconds'),
-                'graph_path': 'metrics/graphs/epp_dispatch_latency.png',
+    for summary_key, (report_key, default_units, graph_file, per_component) in _EPP_METRICS.items():
+        data = epp_summary.get(summary_key)
+        if not data:
+            continue
+
+        gpath = _graph_path(graph_file)
+
+        if per_component and isinstance(data, dict):
+            components = [
+                {
+                    'component_id': comp_id,
+                    'statistics': _make_stats_dict(
+                        comp_data, comp_data.get('unit', default_units), gpath),
+                }
+                for comp_id, comp_data in data.items()
+                if isinstance(comp_data, dict)
+            ]
+            if components:
+                entries[report_key] = {'components': components}
+        elif isinstance(data, dict):
+            entries[report_key] = {
+                'statistics': _make_stats_dict(
+                    data, data.get('unit', default_units), gpath),
             }
-        }
 
-    # Endpoint scores
-    if 'endpoint_scores' in epp_summary:
-        components = []
-        for endpoint_id, score_data in epp_summary['endpoint_scores'].items():
-            components.append({
-                'component_id': endpoint_id,
-                'statistics': {
-                    'mean': score_data.get('mean', 0.0),
-                    'p50': score_data.get('p50', 0.0),
-                    'p99': score_data.get('p99', 0.0),
-                    'stddev': score_data.get('stddev', 0.0),
-                    'units': score_data.get('unit', 'score'),
-                    'graph_path': 'metrics/graphs/epp_endpoint_scores.png',
-                }
-            })
-        if components:
-            entries['epp_endpoint_scores'] = {'components': components}
-
-    # Request distribution
-    if 'request_distribution' in epp_summary:
-        components = []
-        for endpoint_id, dist_data in epp_summary[
-                'request_distribution'].items():
-            components.append({
-                'component_id': endpoint_id,
-                'statistics': {
-                    'count': dist_data.get('count', 0),
-                    'units': 'count',
-                    'graph_path': 'metrics/graphs/epp_request_distribution.png',
-                }
-            })
-        if components:
-            entries['epp_request_distribution'] = {'components': components}
-
-    # Plugin latencies
-    if 'plugin_latencies' in epp_summary:
-        for plugin_type, plugins in epp_summary['plugin_latencies'].items():
-            for plugin_name, latency_data in plugins.items():
-                key = f'epp_plugin_{plugin_type}_{plugin_name}'.replace(
-                    '/', '_').replace('-', '_')
-                entries[key] = {
-                    'statistics': {
-                        'mean': latency_data.get('mean', 0.0),
-                        'p50': latency_data.get('p50', 0.0),
-                        'p99': latency_data.get('p99', 0.0),
-                        'stddev': latency_data.get('stddev', 0.0),
-                        'units': latency_data.get('unit', 'seconds'),
-                    }
-                }
+    # Plugin latencies (dynamic keys)
+    for plugin_type, plugins in epp_summary.get('plugin_latencies', {}).items():
+        for plugin_name, latency_data in plugins.items():
+            key = f'epp_plugin_{plugin_type}_{plugin_name}'.replace(
+                '/', '_').replace('-', '_')
+            entries[key] = {
+                'statistics': _make_stats_dict(
+                    latency_data, latency_data.get('unit', 'seconds')),
+            }
 
     return entries
 
@@ -304,53 +248,42 @@ def add_metrics_to_benchmark_report(
     Populates per-metric entries (e.g. results.observability.vllm_kv_cache_usage_perc)
     with per-component statistics, role, graph paths, and EPP metrics.
     """
-    if 'results' not in br_dict:
-        br_dict['results'] = {}
-
-    if 'observability' not in br_dict['results']:
-        br_dict['results']['observability'] = {}
-
-    obs = br_dict['results']['observability']
+    obs = br_dict.setdefault('results', {}).setdefault('observability', {})
 
     # Remove legacy components/aggregate structure if present
     obs.pop('components', None)
 
-    # Per-metric entries from vLLM metrics
-    metrics_summary = load_metrics_summary(metrics_dir)
+    # Per-metric entries from vLLM and EPP Prometheus scrapes
+    metrics_summary = _load_json(
+        os.path.join(metrics_dir, 'processed', 'metrics_summary.json'))
     if metrics_summary:
-        graphs_dir = os.path.join(metrics_dir, 'graphs')
-        per_metric = _build_per_metric_entries(metrics_summary, graphs_dir)
-        obs.update(per_metric)
+        obs.update(_build_per_metric_entries(metrics_summary))
+        _build_aggregated_entries(metrics_summary, obs)
 
-        # Cluster-wide aggregated metrics (from _aggregated key)
-        aggregated = metrics_summary.get('_aggregated', {}).get('metrics', {})
-        for prom_name, (report_key, units, _) in GRAPHED_METRICS.items():
-            if prom_name in aggregated:
-                agg_data = aggregated[prom_name]
-                if report_key in obs:
-                    obs[report_key]['aggregated'] = _make_stats_dict(
-                        agg_data, units)
-                else:
-                    obs[report_key] = {
-                        'aggregated': _make_stats_dict(agg_data, units)
-                    }
-
-    # EPP metrics
-    epp_summary = load_epp_metrics_summary(metrics_dir)
+    # EPP log-derived metrics
+    epp_summary = _load_json(
+        os.path.join(metrics_dir, 'epp_metrics_summary.json'))
     if epp_summary:
-        epp_entries = _build_epp_entries(epp_summary)
-        obs.update(epp_entries)
+        obs.update(_build_epp_entries(epp_summary))
 
-    # Replica status (desired vs ready vs available per controller/model)
-    replica_status = load_replica_status(metrics_dir)
-    if replica_status and replica_status.get('controllers'):
-        replica_status['graph_path'] = 'metrics/graphs/replica_status.png'
+    # Replica status
+    replica_status = _load_json(
+        os.path.join(metrics_dir, 'processed', 'replica_status.json'))
+    if replica_status.get('controllers'):
+        # Merge time series if available
+        ts_data = _load_json(
+            os.path.join(metrics_dir, 'processed', 'replica_status_timeseries.json'))
+        snapshots = ts_data.get('snapshots', [])
+        if snapshots:
+            replica_status['time_series'] = snapshots
+        replica_status['graph_path'] = _graph_path('replica_status.png')
         obs['replica_status'] = replica_status
 
-    # Pod startup times (creation to Ready, per node per replica)
-    startup_times = load_pod_startup_times(metrics_dir)
-    if startup_times and startup_times.get('pods'):
-        startup_times['graph_path'] = 'metrics/graphs/pod_startup_times.png'
+    # Pod startup times
+    startup_times = _load_json(
+        os.path.join(metrics_dir, 'processed', 'pod_startup_times.json'))
+    if startup_times.get('pods'):
+        startup_times['graph_path'] = _graph_path('pod_startup_times.png')
         obs['pod_startup_times'] = startup_times
 
     return br_dict

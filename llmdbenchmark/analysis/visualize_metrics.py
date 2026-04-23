@@ -25,16 +25,61 @@ except ImportError:
     print("Warning: matplotlib not available. Install with: pip install matplotlib")
 
 
-def parse_prometheus_metrics_with_timestamp(file_path: str) -> tuple[str | None, str | None, dict[str, list[tuple[datetime, float]]]]:
+# Metrics that should include an aggregated mean line across pods
+AGGREGATE_METRICS = {
+    'vllm:kv_cache_usage_perc', 'vllm:num_requests_running',
+    'vllm:num_requests_waiting', 'vllm:num_preemptions_total',
+}
+
+# Metrics to visualize: prometheus_name -> (title, ylabel)
+METRICS_TO_PLOT = {
+    'vllm:kv_cache_usage_perc': ('KV Cache Usage', 'Usage (%)'),
+    'vllm:gpu_cache_usage_perc': ('GPU Cache Usage', 'Usage (%)'),
+    'vllm:cpu_cache_usage_perc': ('CPU Cache Usage', 'Usage (%)'),
+    'vllm:gpu_memory_usage_bytes': ('GPU Memory Usage', 'Memory (bytes)'),
+    'vllm:cpu_memory_usage_bytes': ('CPU Memory Usage', 'Memory (bytes)'),
+    'container_memory_usage_bytes': ('Container Memory Usage', 'Memory (bytes)'),
+    'DCGM_FI_DEV_GPU_UTIL': ('GPU Utilization', 'Utilization (%)'),
+    'DCGM_FI_DEV_POWER_USAGE': ('GPU Power Usage', 'Power (W)'),
+    'vllm:num_requests_running': ('Running Requests', 'Count'),
+    'vllm:num_requests_waiting': ('Waiting Requests', 'Count'),
+    'vllm:prefix_cache_hits_total': ('Prefix Cache Hits', 'Tokens'),
+    'vllm:prefix_cache_queries_total': ('Prefix Cache Queries', 'Tokens'),
+    'vllm:external_prefix_cache_hits_total': ('External Prefix Cache Hits (Cross-Instance)', 'Tokens'),
+    'vllm:external_prefix_cache_queries_total': ('External Prefix Cache Queries (Cross-Instance)', 'Tokens'),
+    'vllm:nixl_xfer_time_seconds_sum': ('NIXL KV Transfer Time', 'Time (s)'),
+    'vllm:nixl_xfer_time_seconds_count': ('NIXL KV Transfer Count', 'Count'),
+    'vllm:nixl_bytes_transferred_sum': ('NIXL Bytes Transferred', 'Bytes'),
+    'vllm:nixl_bytes_transferred_count': ('NIXL Transfers Count', 'Count'),
+    'vllm:num_preemptions_total': ('Request Preemptions', 'Count'),
+    # EPP (inference scheduler) pool-level metrics
+    'inference_pool_average_kv_cache_utilization': ('EPP Pool Avg KV Cache Utilization', 'Utilization (%)'),
+    'inference_pool_average_queue_size': ('EPP Pool Avg Queue Size', 'Count'),
+    'inference_pool_average_running_requests': ('EPP Pool Avg Running Requests', 'Count'),
+    'inference_pool_ready_pods': ('EPP Pool Ready Pods', 'Count'),
+}
+
+# Computed ratio metrics: (numerator, denominator, title, ylabel, output_name)
+RATIO_METRICS = [
+    ('vllm:prefix_cache_hits_total', 'vllm:prefix_cache_queries_total',
+     'Prefix Cache Hit Rate', 'Hit Rate (%)', 'vllm_prefix_cache_hit_rate'),
+    ('vllm:external_prefix_cache_hits_total', 'vllm:external_prefix_cache_queries_total',
+     'External Prefix Cache Hit Rate (Cross-Instance)', 'Hit Rate (%)', 'vllm_external_prefix_cache_hit_rate'),
+]
+
+
+# ---------------------------------------------------------------------------
+# Data collection
+# ---------------------------------------------------------------------------
+
+def parse_prometheus_metrics_with_timestamp(file_path):
     """Parse Prometheus metrics from a file with timestamps.
 
-    Args:
-        file_path: Path to metrics file
-
     Returns:
-        Tuple of (timestamp, pod_name, metrics_dict with timestamps)
+        Tuple of (timestamp_str, pod_name, metrics_dict)
+        where metrics_dict maps metric_name -> [(datetime, value), ...]
     """
-    metrics: dict[str, list[tuple[datetime, float]]] = {}
+    metrics = {}
     timestamp_str = None
     timestamp_dt = None
     pod_name = None
@@ -43,7 +88,6 @@ def parse_prometheus_metrics_with_timestamp(file_path: str) -> tuple[str | None,
         for line in f:
             line = line.strip()
 
-            # Extract timestamp
             if line.startswith('# Timestamp:'):
                 timestamp_str = line.split(':', 1)[1].strip()
                 try:
@@ -51,72 +95,77 @@ def parse_prometheus_metrics_with_timestamp(file_path: str) -> tuple[str | None,
                         timestamp_str.replace('Z', '+00:00'))
                 except ValueError:
                     pass
-
-            # Extract pod name
-            if line.startswith('# Pod:'):
+            elif line.startswith('# Pod:'):
                 pod_name = line.split(':', 1)[1].strip()
 
-            # Skip comments and empty lines
             if line.startswith('#') or not line:
                 continue
 
-            # Parse metric line
             match = re.match(
                 r'([a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^}]*\})?) ([\d.eE+-]+)', line)
             if match and timestamp_dt:
-                metric_name = match.group(1)
+                base_name = match.group(1).split('{')[0]
                 value = float(match.group(2))
-
-                # Extract base metric name (without labels)
-                base_name = metric_name.split('{')[0]
-
-                if base_name not in metrics:
-                    metrics[base_name] = []
-                metrics[base_name].append((timestamp_dt, value))
+                metrics.setdefault(base_name, []).append((timestamp_dt, value))
 
     return timestamp_str, pod_name, metrics
 
 
-def collect_time_series_data(metrics_dir: str) -> dict[str, dict[str, list[tuple[datetime, float]]]]:
+def collect_time_series_data(metrics_dir):
     """Collect time series data from all metric files.
 
-    Args:
-        metrics_dir: Directory containing metrics
-
     Returns:
-        Dictionary mapping pod names to their time series data
+        Dictionary mapping pod names to their time series data:
+        {pod_name: {metric_name: [(datetime, value), ...]}}
     """
     raw_dir = os.path.join(metrics_dir, 'raw')
-    pod_data: dict[str, dict[str, list[tuple[datetime, float]]]] = {}
+    pod_data = {}
 
     for file_path in glob.glob(os.path.join(raw_dir, '*.log')):
-        _, pod_name, metrics = parse_prometheus_metrics_with_timestamp(
-            file_path)
+        _, pod_name, metrics = parse_prometheus_metrics_with_timestamp(file_path)
 
         if pod_name:
-            if pod_name not in pod_data:
-                pod_data[pod_name] = {}
-
+            pod = pod_data.setdefault(pod_name, {})
             for metric_name, data_points in metrics.items():
-                if metric_name not in pod_data[pod_name]:
-                    pod_data[pod_name][metric_name] = []
-                pod_data[pod_name][metric_name].extend(data_points)
+                pod.setdefault(metric_name, []).extend(data_points)
 
-    # Sort time series data by timestamp
-    for pod_name in pod_data:
-        for metric_name in pod_data[pod_name]:
-            pod_data[pod_name][metric_name].sort(key=lambda x: x[0])
+    # Sort by timestamp
+    for pod in pod_data.values():
+        for metric_name in pod:
+            pod[metric_name].sort(key=lambda x: x[0])
 
     return pod_data
 
 
-def plot_metric_time_series(
-    pod_data: dict[str, dict[str, list[tuple[datetime, float]]]],
-    metric_name: str,
-    output_path: str,
-    title: str | None = None,
-    ylabel: str | None = None
-):
+# ---------------------------------------------------------------------------
+# Plot helpers
+# ---------------------------------------------------------------------------
+
+def _save_plot(fig, output_path):
+    """Format axes and save a plot to disk."""
+    for ax in fig.axes:
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150)
+    plt.close()
+    print(f"Saved plot: {output_path}")
+
+
+def _parse_ts(ts_str):
+    """Parse an ISO timestamp string to datetime, or None."""
+    try:
+        return datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+    except (ValueError, AttributeError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Plot functions
+# ---------------------------------------------------------------------------
+
+def plot_metric_time_series(pod_data, metric_name, output_path,
+                            title=None, ylabel=None, show_aggregate=False):
     """Plot time series for a specific metric across all pods.
 
     Args:
@@ -125,70 +174,26 @@ def plot_metric_time_series(
         output_path: Path to save the plot
         title: Plot title (optional)
         ylabel: Y-axis label (optional)
-    """
-    if not MATPLOTLIB_AVAILABLE:
-        print(f"Skipping plot for {metric_name}: matplotlib not available")
-        return
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-
-    for pod_name, metrics in pod_data.items():
-        if metric_name in metrics:
-            timestamps, values = zip(*metrics[metric_name])
-            ax.plot(timestamps, values, label=pod_name,
-                    marker='o', markersize=3)
-
-    ax.set_xlabel('Time')
-    ax.set_ylabel(ylabel or metric_name)
-    ax.set_title(title or f'{metric_name} Over Time')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
-    # Format x-axis
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-    plt.xticks(rotation=45)
-
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
-    plt.close()
-
-    print(f"Saved plot: {output_path}")
-
-
-def plot_metric_time_series_with_aggregate(
-    pod_data: dict[str, dict[str, list[tuple[datetime, float]]]],
-    metric_name: str,
-    output_path: str,
-    title: str | None = None,
-    ylabel: str | None = None
-):
-    """Plot time series for a metric with an aggregated mean line across pods.
-
-    Args:
-        pod_data: Time series data for all pods
-        metric_name: Name of metric to plot
-        output_path: Path to save the plot
-        title: Plot title (optional)
-        ylabel: Y-axis label (optional)
+        show_aggregate: If True, add a dashed mean line across all pods
     """
     if not MATPLOTLIB_AVAILABLE:
         return
 
     fig, ax = plt.subplots(figsize=(12, 6))
-
-    # Collect all values by timestamp for aggregation
-    ts_values: dict[datetime, list[float]] = {}
+    ts_values = {} if show_aggregate else None
 
     for pod_name, metrics in pod_data.items():
-        if metric_name in metrics:
-            timestamps, values = zip(*metrics[metric_name])
-            ax.plot(timestamps, values, label=pod_name,
-                    marker='o', markersize=3, alpha=0.5)
+        if metric_name not in metrics:
+            continue
+        timestamps, values = zip(*metrics[metric_name])
+        alpha = 0.5 if show_aggregate else 1.0
+        ax.plot(timestamps, values, label=pod_name,
+                marker='o', markersize=3, alpha=alpha)
+        if show_aggregate:
             for ts, val in metrics[metric_name]:
                 ts_values.setdefault(ts, []).append(val)
 
-    # Plot aggregated mean line
-    if ts_values:
+    if show_aggregate and ts_values:
         sorted_ts = sorted(ts_values.keys())
         agg_means = [sum(ts_values[ts]) / len(ts_values[ts]) for ts in sorted_ts]
         ax.plot(sorted_ts, agg_means, label='Aggregated (mean)',
@@ -200,28 +205,19 @@ def plot_metric_time_series_with_aggregate(
     ax.set_title(title or f'{metric_name} Over Time')
     ax.legend()
     ax.grid(True, alpha=0.3)
-
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
-    plt.close()
-
-    print(f"Saved plot: {output_path}")
+    _save_plot(fig, output_path)
 
 
-def plot_pod_startup_times(metrics_dir: str, output_path: str):
+def plot_pod_startup_times(metrics_dir, output_path):
     """Scatter plot of pod startup times.
 
     X-axis: ready_timestamp (when the pod became ready)
     Y-axis: startup_seconds (how long it took)
-    One dot per pod.
     """
     if not MATPLOTLIB_AVAILABLE:
         return
 
-    startup_file = os.path.join(
-        metrics_dir, 'processed', 'pod_startup_times.json')
+    startup_file = os.path.join(metrics_dir, 'processed', 'pod_startup_times.json')
     if not os.path.exists(startup_file):
         return
 
@@ -232,32 +228,22 @@ def plot_pod_startup_times(metrics_dir: str, output_path: str):
     if not pods:
         return
 
-    timestamps = []
-    startup_secs = []
-    labels = []
-
+    points = []
     for pod in pods:
-        ready_ts = pod.get('ready_timestamp', '')
+        ts = _parse_ts(pod.get('ready_timestamp', ''))
         secs = pod.get('startup_seconds')
-        if not ready_ts or secs is None:
-            continue
-        try:
-            ts = datetime.fromisoformat(ready_ts.replace('Z', '+00:00'))
-        except ValueError:
-            continue
-        timestamps.append(ts)
-        startup_secs.append(secs)
-        role = pod.get('role', '')
-        labels.append(f"{pod.get('name', '')}\n({role})")
+        if ts and secs is not None:
+            points.append((ts, secs))
 
-    if not timestamps:
+    if not points:
         return
 
-    fig, ax = plt.subplots(figsize=(12, 6))
-    scatter = ax.scatter(timestamps, startup_secs, s=80, c='steelblue',
-                         edgecolors='black', linewidths=0.5, zorder=5)
+    timestamps, startup_secs = zip(*points)
 
-    # Add aggregate line if stats available
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.scatter(timestamps, startup_secs, s=80, c='steelblue',
+               edgecolors='black', linewidths=0.5, zorder=5)
+
     agg = data.get('aggregate', {})
     if agg.get('mean'):
         ax.axhline(y=agg['mean'], color='orange', linestyle='--',
@@ -272,27 +258,15 @@ def plot_pod_startup_times(metrics_dir: str, output_path: str):
     ax.set_ylabel('Startup Time (seconds)')
     ax.set_title('Pod Startup Times')
     ax.grid(True, alpha=0.3)
-
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
-    plt.close()
-
-    print(f"Saved plot: {output_path}")
+    _save_plot(fig, output_path)
 
 
-def plot_replica_status(metrics_dir: str, output_path: str):
-    """Line plot of replica counts over time.
-
-    X-axis: timestamp
-    Y-axis: total ready replicas (one line per role).
-    """
+def plot_replica_status(metrics_dir, output_path):
+    """Line plot of replica counts over time, one line per role."""
     if not MATPLOTLIB_AVAILABLE:
         return
 
-    ts_file = os.path.join(
-        metrics_dir, 'processed', 'replica_status_timeseries.json')
+    ts_file = os.path.join(metrics_dir, 'processed', 'replica_status_timeseries.json')
     if not os.path.exists(ts_file):
         return
 
@@ -303,23 +277,16 @@ def plot_replica_status(metrics_dir: str, output_path: str):
     if len(snapshots) < 2:
         return
 
-    # Build per-role time series: {role: [(timestamp, ready_count)]}
-    role_series: dict[str, list[tuple[datetime, int]]] = {}
-
+    # Build per-role time series
+    role_series = {}
     for snap in snapshots:
-        ts_str = snap.get('timestamp', '')
-        try:
-            ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
-        except ValueError:
+        ts = _parse_ts(snap.get('timestamp', ''))
+        if not ts:
             continue
-
-        role_counts: dict[str, int] = {}
+        role_counts = {}
         for ctrl in snap.get('controllers', []):
             role = ctrl.get('role', 'unknown')
-            role_counts[role] = (
-                role_counts.get(role, 0) + ctrl.get('ready_replicas', 0)
-            )
-
+            role_counts[role] = role_counts.get(role, 0) + ctrl.get('ready_replicas', 0)
         for role, count in role_counts.items():
             role_series.setdefault(role, []).append((ts, count))
 
@@ -327,7 +294,6 @@ def plot_replica_status(metrics_dir: str, output_path: str):
         return
 
     fig, ax = plt.subplots(figsize=(12, 6))
-
     for role, points in sorted(role_series.items()):
         points.sort(key=lambda x: x[0])
         timestamps, counts = zip(*points)
@@ -339,34 +305,23 @@ def plot_replica_status(metrics_dir: str, output_path: str):
     ax.legend()
     ax.grid(True, alpha=0.3)
     ax.yaxis.get_major_locator().set_params(integer=True)
-
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150)
-    plt.close()
-
-    print(f"Saved plot: {output_path}")
+    _save_plot(fig, output_path)
 
 
-def generate_all_visualizations(metrics_dir: str, output_dir: str | None = None):
-    """Generate visualizations for all collected metrics.
+# ---------------------------------------------------------------------------
+# Main orchestration
+# ---------------------------------------------------------------------------
 
-    Args:
-        metrics_dir: Directory containing collected metrics
-        output_dir: Directory to save visualizations (default: metrics_dir/graphs)
-    """
+def generate_all_visualizations(metrics_dir, output_dir=None):
+    """Generate visualizations for all collected metrics."""
     if not MATPLOTLIB_AVAILABLE:
         print("Error: matplotlib is required for visualization")
-        print("Install with: pip install matplotlib")
         return
 
     if output_dir is None:
         output_dir = os.path.join(metrics_dir, 'graphs')
-
     os.makedirs(output_dir, exist_ok=True)
 
-    # Collect time series data
     print("Collecting time series data...")
     pod_data = collect_time_series_data(metrics_dir)
 
@@ -374,54 +329,19 @@ def generate_all_visualizations(metrics_dir: str, output_dir: str | None = None)
         print("No metrics data found")
         return
 
-    # Define metrics to visualize
-    metrics_to_plot = {
-        'vllm:kv_cache_usage_perc': ('KV Cache Usage', 'Usage (%)'),
-        'vllm:gpu_cache_usage_perc': ('GPU Cache Usage', 'Usage (%)'),
-        'vllm:cpu_cache_usage_perc': ('CPU Cache Usage', 'Usage (%)'),
-        'vllm:gpu_memory_usage_bytes': ('GPU Memory Usage', 'Memory (bytes)'),
-        'vllm:cpu_memory_usage_bytes': ('CPU Memory Usage', 'Memory (bytes)'),
-        'container_memory_usage_bytes': ('Container Memory Usage', 'Memory (bytes)'),
-        'DCGM_FI_DEV_GPU_UTIL': ('GPU Utilization', 'Utilization (%)'),
-        'DCGM_FI_DEV_POWER_USAGE': ('GPU Power Usage', 'Power (W)'),
-        'vllm:num_requests_running': ('Running Requests', 'Count'),
-        'vllm:num_requests_waiting': ('Waiting Requests', 'Count'),
-        'vllm:prefix_cache_hits_total': ('Prefix Cache Hits', 'Tokens'),
-        'vllm:prefix_cache_queries_total': ('Prefix Cache Queries', 'Tokens'),
-        'vllm:external_prefix_cache_hits_total': ('External Prefix Cache Hits (Cross-Instance)', 'Tokens'),
-        'vllm:external_prefix_cache_queries_total': ('External Prefix Cache Queries (Cross-Instance)', 'Tokens'),
-        'vllm:nixl_xfer_time_seconds_sum': ('NIXL KV Transfer Time', 'Time (s)'),
-        'vllm:nixl_xfer_time_seconds_count': ('NIXL KV Transfer Count', 'Count'),
-        'vllm:nixl_bytes_transferred_sum': ('NIXL Bytes Transferred', 'Bytes'),
-        'vllm:nixl_bytes_transferred_count': ('NIXL Transfers Count', 'Count'),
-        'vllm:num_preemptions_total': ('Request Preemptions', 'Count'),
-        # EPP (inference scheduler) pool-level metrics
-        'inference_pool_average_kv_cache_utilization': ('EPP Pool Avg KV Cache Utilization', 'Utilization (%)'),
-        'inference_pool_average_queue_size': ('EPP Pool Avg Queue Size', 'Count'),
-        'inference_pool_average_running_requests': ('EPP Pool Avg Running Requests', 'Count'),
-        'inference_pool_ready_pods': ('EPP Pool Ready Pods', 'Count'),
-    }
-
-    # Define computed ratio metrics: (numerator, denominator, title, ylabel, output_name)
-    ratio_metrics = [
-        ('vllm:prefix_cache_hits_total', 'vllm:prefix_cache_queries_total',
-         'Prefix Cache Hit Rate', 'Hit Rate (%)', 'vllm_prefix_cache_hit_rate'),
-        ('vllm:external_prefix_cache_hits_total', 'vllm:external_prefix_cache_queries_total',
-         'External Prefix Cache Hit Rate (Cross-Instance)', 'Hit Rate (%)', 'vllm_external_prefix_cache_hit_rate'),
-    ]
-
-    for numerator, denominator, title, ylabel, output_name in ratio_metrics:
+    # Ratio metrics (computed from pairs of counters)
+    for numerator, denominator, title, ylabel, output_name in RATIO_METRICS:
         ratio_data = {}
         for pod_name, metrics in pod_data.items():
             if numerator in metrics and denominator in metrics:
                 hits_by_ts = {ts: val for ts, val in metrics[numerator]}
                 queries_by_ts = {ts: val for ts, val in metrics[denominator]}
                 common_ts = sorted(set(hits_by_ts) & set(queries_by_ts))
-                ratio_points = []
-                for ts in common_ts:
-                    q = queries_by_ts[ts]
-                    rate = (hits_by_ts[ts] / q * 100) if q > 0 else 0.0
-                    ratio_points.append((ts, rate))
+                ratio_points = [
+                    (ts, (hits_by_ts[ts] / queries_by_ts[ts] * 100)
+                     if queries_by_ts[ts] > 0 else 0.0)
+                    for ts in common_ts
+                ]
                 if ratio_points:
                     ratio_data[pod_name] = {output_name: ratio_points}
         if ratio_data:
@@ -430,32 +350,20 @@ def generate_all_visualizations(metrics_dir: str, output_dir: str | None = None)
                 os.path.join(output_dir, f'{output_name}.png'),
                 title, ylabel)
 
-    # Metrics that should include an aggregated mean line across pods
-    aggregate_metrics = {
-        'vllm:kv_cache_usage_perc', 'vllm:num_requests_running',
-        'vllm:num_requests_waiting', 'vllm:num_preemptions_total',
-    }
-
-    # Generate line plots (time series)
-    for metric_name, (title, ylabel) in metrics_to_plot.items():
-        has_metric = any(
-            metric_name in metrics for metrics in pod_data.values())
-
+    # Standard time series plots
+    for metric_name, (title, ylabel) in METRICS_TO_PLOT.items():
+        has_metric = any(metric_name in m for m in pod_data.values())
         if has_metric:
             safe_name = metric_name.replace(':', '_')
-            out_path = os.path.join(output_dir, f'{safe_name}.png')
-            if metric_name in aggregate_metrics:
-                plot_metric_time_series_with_aggregate(
-                    pod_data, metric_name, out_path, title, ylabel)
-            else:
-                plot_metric_time_series(
-                    pod_data, metric_name, out_path, title, ylabel)
+            plot_metric_time_series(
+                pod_data, metric_name,
+                os.path.join(output_dir, f'{safe_name}.png'),
+                title, ylabel,
+                show_aggregate=(metric_name in AGGREGATE_METRICS))
 
-    # Pod startup times scatter plot
+    # Infrastructure plots
     plot_pod_startup_times(
         metrics_dir, os.path.join(output_dir, 'pod_startup_times.png'))
-
-    # Replica status line plot
     plot_replica_status(
         metrics_dir, os.path.join(output_dir, 'replica_status.png'))
 
@@ -489,5 +397,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# Made with Bob
