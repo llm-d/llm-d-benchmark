@@ -724,6 +724,8 @@ vllmCommon:
     disableUvicornAccessLog: true
     allowLongMaxModelLen: "1"
     serverDevMode: "1"
+    # chatTemplate: null
+    # chatTemplateContentFormat: null # Format for inline chat template: string, leave null for file
     # Additional vLLM flags (optional)
     # enableChunkedPrefill: false
     # maxNumBatchedTokens: null

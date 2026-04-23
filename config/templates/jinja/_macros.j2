@@ -157,6 +157,12 @@
 {%- if has_enable_prefix_caching %} \
   --enable-prefix-caching
 {%- endif %}
+{%- if vllmCommon.flags.chatTemplate is defined and vllmCommon.flags.chatTemplate %} \
+  --chat-template '{{ vllmCommon.flags.chatTemplate }}'
+{%- endif %}
+{%- if vllmCommon.flags.chatTemplateContentFormat is defined and vllmCommon.flags.chatTemplateContentFormat %} \
+  --chat-template-content-format {{ vllmCommon.flags.chatTemplateContentFormat }}
+{%- endif %}
 {%- if has_kv_transfer %} \
   --kv-transfer-config '{{ build_kv_transfer_config() }}'
 {%- endif %}
@@ -371,6 +377,12 @@
   --disable-uvicorn-access-log
 {%- endif %} \
   --model-loader-extra-config "$LLMDBENCH_VLLM_COMMON_MODEL_LOADER_EXTRA_CONFIG"
+{%- if vllmCommon.flags.chatTemplate is defined and vllmCommon.flags.chatTemplate %} \
+  --chat-template '{{ vllmCommon.flags.chatTemplate }}'
+{%- endif %}
+{%- if vllmCommon.flags.chatTemplateContentFormat is defined and vllmCommon.flags.chatTemplateContentFormat %} \
+  --chat-template-content-format {{ vllmCommon.flags.chatTemplateContentFormat }}
+{%- endif %}
 {%- if has_kv_transfer %} \
   --kv-transfer-config '{{ build_kv_transfer_config() }}'
 {%- endif %}
