@@ -423,7 +423,7 @@ chartVersions:
   # Pinned to match the upstream WVA README's prometheus-adapter install.
   # Newer adapter versions have broken external-metric compatibility with
   # the chart's rule format.
-  prometheusAdapter: 5.2.0
+  prometheusAdapter: 5.3.0
   inferencePool: *gaie_version
   agentgateway: *agentgateway_version
   lws: *lws_version
