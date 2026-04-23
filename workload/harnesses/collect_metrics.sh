@@ -168,7 +168,7 @@ for item in data.get("items", []):
 with open(output_file, "w") as f:
     json.dump(snapshot, f, indent=2)
 
-# Append to time series only if replica counts changed
+# Append to time series (every snapshot, so the graph always renders)
 ts_data = {"snapshots": []}
 if os.path.exists(ts_file):
     try:
@@ -177,17 +177,16 @@ if os.path.exists(ts_file):
     except (json.JSONDecodeError, OSError):
         ts_data = {"snapshots": []}
 
+ts_data["snapshots"].append(snapshot)
 changed = True
-if ts_data["snapshots"]:
-    prev = ts_data["snapshots"][-1]
+if len(ts_data["snapshots"]) >= 2:
+    prev = ts_data["snapshots"][-2]
     prev_counts = {c["name"]: c.get("ready_replicas", 0) for c in prev.get("controllers", [])}
     curr_counts = {c["name"]: c.get("ready_replicas", 0) for c in snapshot.get("controllers", [])}
     changed = prev_counts != curr_counts
 
-if changed:
-    ts_data["snapshots"].append(snapshot)
-    with open(ts_file, "w") as f:
-        json.dump(ts_data, f, indent=2)
+with open(ts_file, "w") as f:
+    json.dump(ts_data, f, indent=2)
 
 print("Replica status: %d controller(s), %d snapshots%s" % (
     len(snapshot["controllers"]), len(ts_data["snapshots"]),

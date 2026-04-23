@@ -270,12 +270,8 @@ def add_metrics_to_benchmark_report(
     replica_status = _load_json(
         os.path.join(metrics_dir, 'processed', 'replica_status.json'))
     if replica_status.get('controllers'):
-        # Merge time series if available
-        ts_data = _load_json(
-            os.path.join(metrics_dir, 'processed', 'replica_status_timeseries.json'))
-        snapshots = ts_data.get('snapshots', [])
-        if snapshots:
-            replica_status['time_series'] = snapshots
+        # Full time series stays in replica_status_timeseries.json;
+        # only include summary + graph_path in the report.
         replica_status['graph_path'] = _graph_path('replica_status.png')
         obs['replica_status'] = replica_status
 

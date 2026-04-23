@@ -312,11 +312,15 @@ def plot_replica_status(metrics_dir, output_path):
 # Main orchestration
 # ---------------------------------------------------------------------------
 
-def generate_all_visualizations(metrics_dir, output_dir=None):
-    """Generate visualizations for all collected metrics."""
+def generate_all_visualizations(metrics_dir, output_dir=None, context=None):
+    """Generate visualizations for all collected metrics.
+
+    Returns the number of plots generated (0 when matplotlib is missing or
+    no data is found).
+    """
     if not MATPLOTLIB_AVAILABLE:
         print("Error: matplotlib is required for visualization")
-        return
+        return 0
 
     if output_dir is None:
         output_dir = os.path.join(metrics_dir, 'graphs')
@@ -327,7 +331,9 @@ def generate_all_visualizations(metrics_dir, output_dir=None):
 
     if not pod_data:
         print("No metrics data found")
-        return
+        return 0
+
+    plot_count = 0
 
     # Ratio metrics (computed from pairs of counters)
     for numerator, denominator, title, ylabel, output_name in RATIO_METRICS:
@@ -349,6 +355,7 @@ def generate_all_visualizations(metrics_dir, output_dir=None):
                 ratio_data, output_name,
                 os.path.join(output_dir, f'{output_name}.png'),
                 title, ylabel)
+            plot_count += 1
 
     # Standard time series plots
     for metric_name, (title, ylabel) in METRICS_TO_PLOT.items():
@@ -360,14 +367,18 @@ def generate_all_visualizations(metrics_dir, output_dir=None):
                 os.path.join(output_dir, f'{safe_name}.png'),
                 title, ylabel,
                 show_aggregate=(metric_name in AGGREGATE_METRICS))
+            plot_count += 1
 
     # Infrastructure plots
     plot_pod_startup_times(
         metrics_dir, os.path.join(output_dir, 'pod_startup_times.png'))
+    plot_count += 1
     plot_replica_status(
         metrics_dir, os.path.join(output_dir, 'replica_status.png'))
+    plot_count += 1
 
     print(f"\nAll visualizations saved to: {output_dir}")
+    return plot_count
 
 
 def main():
