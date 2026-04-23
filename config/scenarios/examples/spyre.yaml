@@ -175,7 +175,11 @@ scenario:
     # -------------------------------------------------------------------------
     standalone:
       enabled: false
-      replicas: 1
+      replicas: 2
+      schedulerName: spyre-scheduler
+
+      parallelism:
+        tensor: 4
 
       image:
         repository: us.icr.io/wxpe-cicd-internal/amd64/aiu-vllm
