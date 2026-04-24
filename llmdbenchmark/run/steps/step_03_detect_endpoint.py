@@ -11,6 +11,7 @@ from llmdbenchmark.utilities.endpoint import (
     find_custom_endpoint,
     discover_hf_token_secret,
     extract_hf_token_from_secret,
+    compute_gateway_path_prefix,
 )
 
 
@@ -141,14 +142,25 @@ class DetectEndpointStep(Step):
                     stack_name=stack_name,
                 )
 
-        # Build full URL
+        # Build full URL. For shared-HTTPRoute multi-model scenarios,
+        # append the per-stack path prefix (e.g. /pool-a) so that every
+        # downstream `{endpoint_url}/v1/completions` becomes
+        # `{gateway}/pool-a/v1/completions` - the gateway rewrites
+        # /pool-a/* -> /* and the request reaches THIS stack's
+        # InferencePool. Returns "" (no-op) for every other scenario.
         protocol = "https" if gateway_port == "443" else "http"
         endpoint_url = f"{protocol}://{service_ip}:{gateway_port}"
+        path_prefix = compute_gateway_path_prefix(
+            plan_config, stack_name, is_standalone=is_standalone,
+        )
+        if path_prefix:
+            endpoint_url = f"{endpoint_url}{path_prefix}"
         context.deployed_endpoints[stack_name] = endpoint_url
 
         context.logger.log_info(
             f"Detected endpoint: {endpoint_url} "
-            f"(service={service_name}, stack_type={stack_type})"
+            f"(service={service_name}, stack_type={stack_type}"
+            f"{', path_prefix=' + path_prefix if path_prefix else ''})"
         )
 
         # --- HF token auto-discovery for custom deployments ---

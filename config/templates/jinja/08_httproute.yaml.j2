@@ -1,4 +1,71 @@
+{# HTTPRoute rendering - two modes:
+
+   1. per-stack  (default): emit one HTTPRoute per stack, one backendRef ->
+      this stack's {model_id_label}-gaie InferencePool. This is the single-
+      model behavior the repo has always had.
+
+   2. shared:     emit ONE HTTPRoute in stack index 1 only, with one
+      backendRef per sibling stack. Each sibling becomes its own rule with
+      its own PathPrefix -> InferencePool routing. Other stacks render empty.
+      Gives multi-model scenarios a single-gateway / many-pool frontend.
+
+   `httpRoute.mode: shared` is the opt-in; scenarios without the key keep
+   the per-stack behavior.
+
+   Knobs for shared mode (all optional, sensible defaults shown):
+     httpRoute.name         (default: "multi-model-route")
+     httpRoute.pathPrefix   (default: "/{stack.name}/v1")  - `{stack.name}`
+                             is substituted per sibling; if the prefix has
+                             no substitution token the stacks will collide
+     httpRoute.rewriteTo    (default: "/v1")
+
+   `siblingStacks` and `stackIndex` are injected by
+   llmdbenchmark.parser.render_plans._process_stack.
+#}
 {% if standalone.enabled is defined and not standalone.enabled %}
+{% set _mode = (httpRoute.mode if httpRoute is defined and httpRoute.mode is defined else 'per-stack') %}
+{% if _mode == 'shared' %}
+{% set _owner_index = sharedInfraStackIndex | default(1) | int %}
+{% set _modelservice_siblings = siblingStacks | selectattr('standalone', 'equalto', false) | list if siblingStacks else [] %}
+{% if stackIndex | default(1) | int == _owner_index and _modelservice_siblings | length > 0 %}
+{% set _name = (httpRoute.name if httpRoute is defined and httpRoute.name is defined else 'multi-model-route') %}
+{% set _prefix_tpl = (httpRoute.pathPrefix if httpRoute is defined and httpRoute.pathPrefix is defined else '/{stack.name}/v1') %}
+{% set _rewrite_to = (httpRoute.rewriteTo if httpRoute is defined and httpRoute.rewriteTo is defined else '/v1') %}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ _name }}
+  namespace: {{ gateway.namespace }}
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ gateway.name }}
+  rules:
+{% for sibling in _modelservice_siblings %}
+{% set _sibling_label = sibling.modelName | model_id_label(namespace.name) %}
+    - backendRefs:
+      - group: inference.networking.k8s.io
+        kind: InferencePool
+        name: {{ _sibling_label }}-gaie
+        port: {{ decode.vllm.servicePort }}
+        weight: 1
+      timeouts:
+        backendRequest: 0s
+        request: 300s
+      matches:
+        - path:
+            type: PathPrefix
+            value: {{ _prefix_tpl.replace('{stack.name}', sibling.name) }}
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: {{ _rewrite_to }}
+{% endfor %}
+{% endif %}
+{% elif httpRoute is not defined or httpRoute.enabled | default(true) %}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -39,4 +106,5 @@ spec:
       timeouts:
         backendRequest: 0s
         request: 0s
+{% endif %}
 {% endif %}

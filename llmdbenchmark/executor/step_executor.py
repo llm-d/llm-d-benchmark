@@ -161,6 +161,29 @@ class StepExecutor:
             )
             return
 
+        # CLI `--stack NAME[,NAME...]` restricts execution to a subset of
+        # rendered stacks. Unknown names (typos) fail loudly rather than
+        # silently running zero stacks. Lets operators run a single pool
+        # in a multi-model scenario without editing the scenario YAML.
+        stack_filter = self.context.stack_filter or []
+        if stack_filter:
+            all_names = {s.name for s in stacks}
+            unknown = [n for n in stack_filter if n not in all_names]
+            if unknown:
+                self.logger.log_error(
+                    f"--stack filter references unknown stack(s): "
+                    f"{', '.join(unknown)}. Known stacks: "
+                    f"{', '.join(sorted(all_names))}"
+                )
+                return
+            filtered = [s for s in stacks if s.name in stack_filter]
+            self.logger.line_break()
+            self.logger.log_info(
+                f"🎯 --stack filter active: running {len(filtered)}/{len(stacks)} "
+                f"stack(s): {', '.join(s.name for s in filtered)}"
+            )
+            stacks = filtered
+
         self.logger.line_break()
         self.logger.log_info(
             f"📋 Executing {len(per_stack_steps)} per-stack step(s) across "

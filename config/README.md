@@ -103,6 +103,55 @@ scenario:
 
 Only the keys you specify are overridden. Everything else comes from `defaults.yaml`.
 
+**Multi-stack scenarios - the `shared:` block.** The scenario file also
+accepts an optional top-level `shared:` key that's merged into every stack
+before the per-stack overrides. Use it to lift scenario-wide config out of
+duplicated per-stack blocks. Per-stack still wins, so any stack can override
+a shared value:
+
+```yaml
+shared:
+  modelservice: { enabled: true }
+  wva:
+    enabled: true
+    image: { tag: v0.6.0 }
+  httpRoute:
+    mode: shared
+    name: multi-model-route
+    pathPrefix: /{stack.name}
+    rewriteTo: /
+
+scenario:
+  - name: pool-a
+    model: { name: Qwen/Qwen3-0.6B, ... }
+    decode: { replicas: 1 }
+  - name: pool-b
+    model: { name: unsloth/Meta-Llama-3.1-8B, ... }
+    decode: { replicas: 1 }
+```
+
+Render-time conveniences that activate only when `len(scenario) >= 2`:
+
+- `downloadJob.name` and `inferenceExtension.monitoring.secretName` are
+  auto-suffixed with each stack's `model_id_label` so parallel download
+  Jobs and sibling gaie Helm releases don't collide. Explicit overrides
+  (in `defaults.yaml`, `shared:`, or per-stack) are preserved.
+- `storage.modelPvc.name` is **not** suffixed - every stack writes weights
+  to a distinct `model.path` subdirectory on one shared PVC. This matches
+  how NVMe / local-directory storage classes are typically deployed and
+  lets cached weights be reused across runs without per-model duplication.
+- When `httpRoute.mode: shared`, [08_httproute.yaml.j2](templates/jinja/08_httproute.yaml.j2)
+  renders a single HTTPRoute in the first stack with one backendRef per
+  sibling stack; other stacks render an empty file.
+- Step 04 iterates `context.rendered_stacks` so every stack with
+  `modelservice.uriProtocol: pvc` (or standalone) runs a download Job
+  against the shared PVC. Downloads run in parallel - total wall time
+  ~ slowest model, not sum.
+
+See [guides/multi-model-wva.yaml](scenarios/guides/multi-model-wva.yaml) for a
+complete example and the developer guide's [Multi-Stack Scenarios](../docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
+section for the merge semantics.
+
 **Example: GPU scenario with a custom vLLM image**
 
 The GPU example uses standalone deployment, so the container image is set under `standalone.image` (not `images.vllm`, which is the fallback for modelservice deployments). See [Container Images](#container-images) for the full image config reference.
@@ -294,12 +343,12 @@ Scenario files support `${dotted.path}` references that are resolved at render t
 
 ### Syntax
 
-Use `${section.key}` to reference any scalar value in the config. The path must contain at least one dot — this distinguishes config variables from shell variables, which are left untouched.
+Use `${section.key}` to reference any scalar value in the config. The path must contain at least one dot - this distinguishes config variables from shell variables, which are left untouched.
 
 | Pattern | Resolved? | Why |
 |---|---|---|
-| `${model.name}` | Yes | Dotted path → config lookup |
-| `${model.path}` | Yes | Dotted path → config lookup |
+| `${model.name}` | Yes | Dotted path -> config lookup |
+| `${model.path}` | Yes | Dotted path -> config lookup |
 
 ### Available variables
 
@@ -317,9 +366,9 @@ Any scalar value in the merged config (defaults + scenario) can be referenced. C
 
 Config variables work in any string field in the scenario YAML, including fields that are normally passed through as raw text:
 
-- `customCommand` — vLLM serve commands for decode/prefill/standalone
-- `extraEnvVars` — environment variable values
-- `pluginsCustomConfig` — inline EPP plugin configuration
+- `customCommand` - vLLM serve commands for decode/prefill/standalone
+- `extraEnvVars` - environment variable values
+- `pluginsCustomConfig` - inline EPP plugin configuration
 
 ### Example
 
@@ -356,7 +405,7 @@ Shell variables like `$VLLM_METRICS_PORT` are preserved for runtime resolution. 
 - Substitution runs after all resolvers (model, namespace, version, etc.) so all values are available.
 - If a reference cannot be resolved, it is left as-is and a warning is logged.
 - Non-string values (integers, booleans) are converted to strings when embedded.
-- The original config dict is not mutated — a deep copy is used.
+- The original config dict is not mutated - a deep copy is used.
 
 ## Model Artifact Protocol (`modelservice.uriProtocol`)
 
@@ -377,7 +426,7 @@ Controls how the modelservice Helm chart locates and loads model weights. Set vi
 4. Template 13 generates `modelArtifacts.uri: pvc://<pvc-name>/<model-path>`
 5. The modelservice Helm chart mounts the PVC and serves from it
 
-This is the recommended protocol for production — models are pre-cached and startup is fast.
+This is the recommended protocol for production - models are pre-cached and startup is fast.
 
 **`hf://` protocol:**
 
@@ -398,14 +447,14 @@ scenario:
       huggingfaceId: facebook/opt-125m
     modelservice:
       enabled: true
-      uriProtocol: hf     # No PVC, no download job — fetch at runtime
+      uriProtocol: hf     # No PVC, no download job - fetch at runtime
 ```
 
 ### Code path
 
-1. `llmdbenchmark/standup/steps/step_04_model_namespace.py` — `_requires_pvc_download()` returns `False` when `uriProtocol != "pvc"`
-2. `config/templates/jinja/13_ms-values.yaml.j2` — conditionally generates `hf://` or `pvc://` URI
-3. `config/templates/jinja/04_download_job.yaml.j2` — only rendered/applied when protocol is `pvc`
+1. `llmdbenchmark/standup/steps/step_04_model_namespace.py` - `_requires_pvc_download()` returns `False` when `uriProtocol != "pvc"`
+2. `config/templates/jinja/13_ms-values.yaml.j2` - conditionally generates `hf://` or `pvc://` URI
+3. `config/templates/jinja/04_download_job.yaml.j2` - only rendered/applied when protocol is `pvc`
 
 ## Chart Versions
 
@@ -426,7 +475,7 @@ Versions set to `auto` are resolved at plan time by `VersionResolver` using `hel
 
 ### Overriding versions in a scenario
 
-Add a `chartVersions` section to your scenario YAML. Only include the versions you want to change — the rest inherit from defaults:
+Add a `chartVersions` section to your scenario YAML. Only include the versions you want to change - the rest inherit from defaults:
 
 ```yaml
 scenario:

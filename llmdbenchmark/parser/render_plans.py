@@ -18,6 +18,7 @@ from jinja2 import Environment, TemplateSyntaxError, UndefinedError
 
 from llmdbenchmark.config import config
 from llmdbenchmark.logging.logger import get_logger
+from llmdbenchmark.parser.config_schema import validate_config
 from llmdbenchmark.parser.render_result import StackErrors, RenderResult
 
 
@@ -49,6 +50,7 @@ class RenderPlans:
         cli_monitoring: bool = False,
         cli_wva: bool = False,
         setup_overrides: dict | None = None,
+        cli_stack_filter: list[str] | None = None,
     ):
         self.template_dir = Path(template_dir)
         self.defaults_file = Path(defaults_file)
@@ -62,6 +64,16 @@ class RenderPlans:
         self.cli_monitoring = cli_monitoring
         self.cli_wva = cli_wva
         self.setup_overrides = setup_overrides
+        # When --stack selects exactly one stack, -m/--models scopes to
+        # that stack only (sibling stacks keep their scenario-defined
+        # models). When --stack isn't set or selects multiple stacks and
+        # the scenario is multi-stack, -m applies to every stack with a
+        # warning. See _resolve_model.
+        self.cli_stack_filter: list[str] = list(cli_stack_filter or [])
+        # Latched flag so the "-m applies to every stack" warning in
+        # _resolve_model fires once per RenderPlans instance, not N times
+        # in a multi-stack scenario.
+        self._cli_model_multi_stack_warned: bool = False
 
         self.logger = logger or get_logger(
             config.log_dir, verbose=config.verbose, log_name=__name__
@@ -340,7 +352,9 @@ class RenderPlans:
         hash8 = digest[:8]
         return f"{first8}-{hash8}-{last8}".lower()
 
-    def _resolve_model(self, values: dict) -> dict:
+    def _resolve_model(
+        self, values: dict, total_stacks: int = 1, stack_name: str = "",
+    ) -> dict:
         """Resolve model configuration from CLI ``--models`` override.
 
         When the user passes ``-m <model>`` on the command line the model
@@ -353,9 +367,43 @@ class RenderPlans:
 
         The ``shortName`` is derived from the model ID and the already-
         resolved namespace (``_resolve_namespace`` must run first).
+
+        Multi-stack scoping rules:
+
+        1. Single-stack scenario -> apply unconditionally (normal override).
+        2. Multi-stack + ``--stack NAME`` selecting exactly one stack ->
+           apply to that stack only; sibling stacks keep their
+           scenario-defined models.
+        3. Multi-stack with no filter (or filter selecting >1 stack) ->
+           apply to every stack and emit a warning, because the same
+           model across N stacks collapses the scenario into N copies.
+
+        Rule 2 is the common case operators want: "rerun pool-a against
+        a different model," without touching pool-b.
         """
         if not self.cli_model:
             return values
+
+        # Rule 2: filter narrows to exactly one stack - skip non-matching
+        # stacks entirely so their scenario-defined models survive.
+        filter_len = len(self.cli_stack_filter)
+        if total_stacks > 1 and filter_len == 1:
+            if stack_name != self.cli_stack_filter[0]:
+                return values
+            # Matching stack: apply silently (operator explicitly scoped).
+
+        # Rule 3: multi-stack with a broad (or missing) filter -> warn once.
+        elif total_stacks > 1 and not self._cli_model_multi_stack_warned:
+            self.logger.log_warning(
+                f"-m/--models={self.cli_model!r} is applied identically "
+                f"to all {total_stacks} stack(s). In a multi-model scenario "
+                "this replaces every stack's model with the same value, "
+                "which collapses the scenario into N copies of one model. "
+                "To scope -m to a single stack, combine with --stack <name>; "
+                "to benchmark a pre-existing pool, drop -m entirely and "
+                "let --stack <name> auto-resolve the endpoint."
+            )
+            self._cli_model_multi_stack_warned = True
 
         result = deepcopy(values)
         model_config = result.get("model", {})
@@ -371,8 +419,10 @@ class RenderPlans:
 
         result["model"] = model_config
 
+        suffix = f" [stack={stack_name}]" if stack_name else ""
         self.logger.log_info(
-            f"Model from CLI: {model_id} " f"(shortName={model_config['shortName']})"
+            f"Model from CLI: {model_id} "
+            f"(shortName={model_config['shortName']}){suffix}"
         )
 
         return result
@@ -540,6 +590,82 @@ class RenderPlans:
 
         return values
 
+    # Defaults whose "bare" form collides across multi-stack scenarios -
+    # rewrite to {default}-{model_id_label} so each stack gets a uniquely
+    # named resource. The rewrite only fires when the config is still at
+    # the shipped default, so an explicit override (in ``defaults.yaml``,
+    # the scenario's ``shared:`` block, or a per-stack block) is
+    # preserved as-is.
+    #
+    # Intentionally NOT included:
+    #   - storage.modelPvc.name - model weights share one PVC keyed by
+    #     the per-stack `model.path`, not by the PVC name. NVMe-backed
+    #     RWX PVCs in particular want one volume with per-model subdirs,
+    #     not N independent volumes. The download Job name still gets
+    #     per-stacked (below) so parallel downloads don't race.
+    _STACK_SCOPED_DEFAULTS: tuple[tuple[tuple[str, ...], str], ...] = (
+        # config path, default value that triggers the rewrite
+        (("downloadJob", "name"), "download-model"),
+        # EPP metrics-reader Secret - the gaie chart uses this to give its
+        # SA access to the user-workload-monitoring Prometheus. Two gaie
+        # Helm releases sharing this Secret name in one namespace fail
+        # with "owned by another helm release".
+        (("inferenceExtension", "monitoring", "secretName"),
+         "inference-gateway-sa-metrics-reader-secret"),
+    )
+
+    def _resolve_per_stack_identity(
+        self, values: dict, total_stacks: int = 1
+    ) -> dict:
+        """Auto-suffix stack-scoped resource names with ``model_id_label``.
+
+        Multi-stack scenarios need per-model PVCs, Download Jobs, and EPP
+        Secrets so releases / Jobs from different stacks don't collide or
+        race on the same Kubernetes resource. Rather than make scenario
+        authors remember to override every such name, we rewrite the
+        shipped defaults to ``{default}-{model_id_label}`` whenever the
+        config is still at the default.
+
+        Skipped for single-stack scenarios to keep their resource names
+        stable across releases - with only one stack, the collision this
+        resolver guards against can't happen.
+
+        See ``_STACK_SCOPED_DEFAULTS`` for the list of rewritten paths.
+        """
+        if total_stacks < 2:
+            return values
+
+        label = values.get("model_id_label") or ""
+        if not label:
+            return values
+
+        for path, default in self._STACK_SCOPED_DEFAULTS:
+            current = self._get_nested(values, path)
+            if current == default:
+                self._set_nested(values, path, f"{default}-{label}")
+
+        return values
+
+    @staticmethod
+    def _get_nested(root: dict, path: tuple[str, ...]) -> Any:
+        """Walk ``root`` along ``path``; return the leaf value or ``None``."""
+        cur: Any = root
+        for part in path:
+            if not isinstance(cur, dict) or part not in cur:
+                return None
+            cur = cur[part]
+        return cur
+
+    @staticmethod
+    def _set_nested(root: dict, path: tuple[str, ...], value: Any) -> None:
+        """Walk ``root`` along ``path``, creating dicts as needed, then set."""
+        cur = root
+        for part in path[:-1]:
+            if part not in cur or not isinstance(cur[part], dict):
+                cur[part] = {}
+            cur = cur[part]
+        cur[path[-1]] = value
+
     def _resolve_inference_pool_host(self, values: dict) -> dict:
         """Auto-populate destinationRule.host from model_id_label when not set.
 
@@ -683,7 +809,7 @@ class RenderPlans:
 
         self.logger.log_info(
             "HuggingFace token detected from environment "
-            f"(hf_{'*' * 4}…{env_token[-4:]})",
+            f"(hf_{'*' * 4}...{env_token[-4:]})",
             emoji="🔑",
         )
 
@@ -754,6 +880,89 @@ class RenderPlans:
                 errors.append(f"{yaml_file.name}: {str(e)[:100]}")
         return errors
 
+    def _build_sibling_stacks(
+        self, stacks: list[dict], shared: dict | None = None,
+    ) -> list[dict]:
+        """Build a minimal per-stack summary list the HTTPRoute template can
+        iterate over to emit one backendRef per sibling stack.
+
+        Each entry contains:
+          * ``name``        - the stack's ``name`` (for logs / diagnostics)
+          * ``modelName``   - the raw ``model.name`` (HuggingFace ID); the
+                              template runs this through the ``model_id_label``
+                              Jinja filter with the resolved namespace to
+                              produce the same hashed label the rest of the
+                              pipeline uses.
+          * ``standalone``  - True if this stack deploys via standalone mode
+                              (no InferencePool, no gateway routing).
+                              Templates iterating siblings for backendRefs
+                              must skip these.
+
+        We do NOT pre-hash here because the namespace isn't resolved yet at
+        this point (CLI overrides are applied during ``_process_stack``);
+        deferring to template time keeps the label computation in exactly
+        one place.
+        """
+        shared_standalone = (shared or {}).get("standalone", {}).get("enabled")
+        siblings: list[dict] = []
+        for stack in stacks:
+            if not isinstance(stack, dict):
+                continue
+            model_name = (stack.get("model") or {}).get("name", "")
+            # Stack-level standalone.enabled wins; otherwise shared-level;
+            # otherwise None (undetermined -> treat as non-standalone).
+            stack_standalone = (stack.get("standalone") or {}).get("enabled")
+            is_standalone = bool(
+                stack_standalone
+                if stack_standalone is not None
+                else shared_standalone
+            )
+            siblings.append({
+                "name": stack.get("name", ""),
+                "modelName": model_name,
+                "standalone": is_standalone,
+            })
+        return siblings
+
+    def _validate_shared_block(self, defaults: dict, shared: dict) -> None:
+        """Pre-validate defaults+shared against the config schema.
+
+        A typo at the root of `shared:` (e.g. ``modle:`` instead of
+        ``model:``) silently merges into every stack's root where
+        ``extra="allow"`` accepts it, so the typo propagates without a
+        visible error and the misspelled value never takes effect. By
+        running the same Pydantic validator over defaults+shared first
+        we surface the typo once, at its source.
+
+        Non-fatal: warnings only. Per-stack validation still runs later.
+        """
+        shared_view = self.deep_merge(defaults, shared)
+        warnings = validate_config(shared_view, self.logger)
+        if warnings:
+            self.logger.log_warning(
+                f"`shared:` block has {len(warnings)} potential issue(s) "
+                "- these will propagate to every stack. See above."
+            )
+
+    @staticmethod
+    def _resolve_shared_infra_stack_index(siblings: list[dict]) -> int:
+        """Return the 1-indexed position of the first modelservice stack.
+
+        This stack "owns" scenario-shared infra (`infra-llmdbench` release,
+        istio helmfile, shared HTTPRoute). Standalone stacks cannot own
+        shared modelservice infra - they don't install the Helm charts
+        those templates need. So a scenario with stack 1 standalone and
+        stack 2 modelservice correctly promotes stack 2 to owner.
+
+        If every stack is standalone (edge case), returns 1 - the
+        rendered templates are empty for standalone anyway, so the
+        choice is moot.
+        """
+        for i, sibling in enumerate(siblings, 1):
+            if not sibling.get("standalone"):
+                return i
+        return 1
+
     def _process_stack(
         self,
         stack: dict,
@@ -763,6 +972,9 @@ class RenderPlans:
         templates: list[dict],
         base_path: Path,
         result: RenderResult,
+        sibling_stacks: list[dict] | None = None,
+        shared: dict | None = None,
+        shared_infra_stack_index: int = 1,
     ) -> None:
         """Merge values, resolve overrides, render templates, and validate output for one stack."""
         if "name" not in stack:
@@ -780,7 +992,11 @@ class RenderPlans:
         result.stacks[stack_name] = stack_errors
 
         stack_config = {k: v for k, v in stack.items() if k != "name"}
-        merged_values = self.deep_merge(defaults, stack_config)
+        # Merge order: defaults -> shared (scenario-wide) -> stack -> CLI/setup
+        # overrides. Per-stack always wins so a stack can opt out of any
+        # shared value by setting it explicitly.
+        merged_values = self.deep_merge(defaults, shared or {})
+        merged_values = self.deep_merge(merged_values, stack_config)
 
         if self.setup_overrides:
             merged_values = self.deep_merge(merged_values, self.setup_overrides)
@@ -804,17 +1020,26 @@ class RenderPlans:
             )
 
         merged_values = self._resolve_namespace(merged_values)
-        merged_values = self._resolve_model(merged_values)
+        merged_values = self._resolve_model(
+            merged_values,
+            total_stacks=total_stacks,
+            stack_name=stack.get("name", ""),
+        )
         self._warn_custom_command_conflicts(merged_values)
         merged_values = self._resolve_deploy_method(merged_values)
         merged_values = self._resolve_monitoring(merged_values)
         merged_values = self._resolve_wva(merged_values)
         merged_values = self._resolve_hf_token(merged_values)
         merged_values = self._resolve_model_id_label(merged_values)
+        merged_values = self._resolve_per_stack_identity(
+            merged_values, total_stacks=total_stacks
+        )
         merged_values = self._resolve_inference_pool_host(merged_values)
         merged_values = self._substitute_config_variables(merged_values)
 
-        from llmdbenchmark.parser.config_schema import validate_config
+        merged_values["siblingStacks"] = sibling_stacks or []
+        merged_values["stackIndex"] = stack_index
+        merged_values["sharedInfraStackIndex"] = shared_infra_stack_index
 
         validation_warnings = validate_config(merged_values, self.logger)
         if validation_warnings:
@@ -913,7 +1138,50 @@ class RenderPlans:
             result.global_errors.append(msg)
             return result
 
+        # Validate --stack filter against known stack names BEFORE rendering
+        # anything, so typos fail with a clear error at the start of the
+        # pipeline rather than silently passing through render and dying
+        # when the executor iterates stacks. A stale defense-in-depth
+        # check still lives in step_executor, but this is the primary
+        # catch now - fails fast with a list of known names.
+        if self.cli_stack_filter:
+            known_stack_names = {
+                s.get("name") for s in stacks
+                if isinstance(s, dict) and s.get("name")
+            }
+            unknown = [n for n in self.cli_stack_filter if n not in known_stack_names]
+            if unknown:
+                msg = (
+                    f"--stack filter references unknown stack(s): "
+                    f"{', '.join(unknown)}. Known stacks in this scenario: "
+                    f"{', '.join(sorted(known_stack_names)) or '<none>'}."
+                )
+                self.logger.log_error(msg)
+                result.global_errors.append(msg)
+                return result
+
+        # Scenario-wide settings. Merged into every stack between `defaults`
+        # and the per-stack overrides - so per-stack always wins. See
+        # docs/developer-guide.md for the merge semantics.
+        shared = scenario.get("shared") or {}
+        if not isinstance(shared, dict):
+            msg = "'shared' must be a mapping when present"
+            self.logger.log_error(msg)
+            result.global_errors.append(msg)
+            return result
+
         self.logger.log_info(f"Processing scenario with {len(stacks)} stack(s)...")
+        if shared:
+            self.logger.log_info(
+                f"  (scenario-wide `shared` block merged into each stack: "
+                f"{len(shared)} top-level key(s))"
+            )
+            # Validate the shared block against the config schema BEFORE
+            # per-stack processing. Catches typos at their source rather
+            # than having the same "extra='forbid'" failure emitted once
+            # per stack during rendering. Warn-only: the per-stack render
+            # still runs and still validates, so we never block here.
+            self._validate_shared_block(defaults, shared)
         self.logger.line_break()
 
         try:
@@ -930,6 +1198,11 @@ class RenderPlans:
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        sibling_stacks = self._build_sibling_stacks(stacks, shared=shared)
+        shared_infra_stack_index = self._resolve_shared_infra_stack_index(
+            sibling_stacks
+        )
+
         for i, stack in enumerate(stacks, 1):
             self._process_stack(
                 stack=stack,
@@ -939,6 +1212,9 @@ class RenderPlans:
                 templates=templates,
                 base_path=self.output_dir,
                 result=result,
+                sibling_stacks=sibling_stacks,
+                shared=shared,
+                shared_infra_stack_index=shared_infra_stack_index,
             )
 
         self.logger.log_info(

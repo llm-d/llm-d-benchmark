@@ -9,11 +9,13 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.smoketests.report import CheckResult, SmoketestReport
 from llmdbenchmark.utilities.endpoint import (
-    _rand_suffix,
     _build_overrides,
     _ephemeral_label_args,
-    find_standalone_endpoint,
+    _normalize_url_prefix,
+    _rand_suffix,
+    compute_gateway_path_prefix,
     find_gateway_endpoint,
+    find_standalone_endpoint,
     test_model_serving,
 )
 
@@ -49,6 +51,42 @@ class BaseSmoketest:
     Provides health checks, inference testing, pod inspection, and a
     library of assertion helpers that per-scenario validators build on.
     """
+
+    @staticmethod
+    def _gateway_path_prefix_for_stack(
+        plan_config: dict,
+        is_standalone: bool,
+        stack_name: str = "",
+    ) -> str:
+        """Thin wrapper over ``utilities.endpoint.compute_gateway_path_prefix``.
+
+        Kept as a method so subclasses can still override if some future
+        validator needs scenario-specific routing logic.
+        """
+        return compute_gateway_path_prefix(
+            plan_config, stack_name, is_standalone=is_standalone,
+        )
+
+    @staticmethod
+    def _gateway_routes_health(plan_config: dict) -> bool:
+        """Return True when the gateway routes /health to upstream pods.
+
+        A shared HTTPRoute with ``rewriteTo: /`` routes everything, so
+        `/{stack-prefix}/health` reaches vLLM's /health at the root. But
+        ``rewriteTo: /v1`` (or any non-root path) narrows routing to the
+        /v1/* namespace - /health isn't under /v1, so the gateway would
+        have no rule matching it and a smoketest probe would 404.
+
+        The smoketest uses this to decide whether to skip the /health
+        probe gracefully in shared-HTTPRoute scenarios where the operator
+        deliberately chose narrower routing.
+        """
+        http_route = plan_config.get("httpRoute") or {}
+        if http_route.get("mode") != "shared":
+            return True  # not a shared route - direct /health works
+        rewrite_to = (http_route.get("rewriteTo") or "/").strip()
+        # "/" or "" means "rewrite to root" -> /health routes cleanly.
+        return rewrite_to in ("", "/")
 
     @staticmethod
     def discover_endpoint(
@@ -163,7 +201,7 @@ class BaseSmoketest:
                         ))
                     else:
                         context.logger.log_info(
-                            f"All {len(phases)} {pod_type} pod(s) running ✓"
+                            f"All {len(phases)} {pod_type} pod(s) running (ok)"
                         )
                         report.add(CheckResult(
                             f"{pod_type}_pods_running", True,
@@ -199,7 +237,7 @@ class BaseSmoketest:
                                 ))
                             else:
                                 context.logger.log_info(
-                                    f"All {pod_type} containers ready ✓"
+                                    f"All {pod_type} containers ready (ok)"
                                 )
                 else:
                     report.add(CheckResult(
@@ -214,30 +252,62 @@ class BaseSmoketest:
             ))
             return report
 
-        # 2. Health check (/health)
-        health_err = self._check_health(
-            cmd, context, namespace, service_ip, gateway_port, plan_config,
+        # When the scenario uses a shared HTTPRoute with path-based routing
+        # (e.g. /pool-a/v1 -> pool A, /pool-b/v1 -> pool B), prepend this
+        # stack's path prefix to the gateway URLs so requests actually hit
+        # the InferencePool for THIS stack. Returns "" for the usual case
+        # (single-model scenarios, standalone) - unchanged behavior.
+        url_path_prefix = self._gateway_path_prefix_for_stack(
+            plan_config, is_standalone, stack_name=stack_path.name,
         )
-        if health_err:
-            report.add(CheckResult("health_endpoint", False, message=health_err))
+
+        # 2. Health check (/health) - skip gracefully when a shared
+        # HTTPRoute deliberately narrows routing to /v1/* (i.e.
+        # rewriteTo != "/"). vLLM's /health endpoint lives at the root,
+        # so a request to {prefix}/health wouldn't match any route rule
+        # and would return 404 regardless of pod health.
+        if url_path_prefix and not self._gateway_routes_health(plan_config):
+            context.logger.log_info(
+                f"Skipping /health probe: gateway rewriteTo="
+                f"{(plan_config.get('httpRoute') or {}).get('rewriteTo', '/')!r} "
+                "deliberately narrows routing to /v1/* paths. /v1/models "
+                "probe + direct-pod-IP health check still run."
+            )
+            report.add(CheckResult(
+                "health_endpoint_skipped", True,
+                message=(
+                    "/health not routable via gateway (by design); "
+                    "relying on /v1/models + direct-pod-IP probe"
+                ),
+            ))
         else:
-            report.add(CheckResult("health_endpoint", True, message="/health responding"))
+            health_err = self._check_health(
+                cmd, context, namespace, service_ip, gateway_port, plan_config,
+                url_path_prefix=url_path_prefix,
+            )
+            if health_err:
+                report.add(CheckResult("health_endpoint", False, message=health_err))
+            else:
+                report.add(CheckResult("health_endpoint", True, message="/health responding"))
 
         # 3. Wait for model ready (/v1/models)
         if report.passed:
             self._wait_for_model_ready(
                 cmd, context, namespace, service_ip, gateway_port,
                 model_name, plan_config,
+                url_path_prefix=url_path_prefix,
             )
 
         # 4. Test service/gateway
         service_test_passed = False
         context.logger.log_info(
-            f'Testing service/gateway "{service_ip}" (port {gateway_port})...'
+            f'Testing service/gateway "{service_ip}" (port {gateway_port})'
+            f'{" [prefix=" + url_path_prefix + "]" if url_path_prefix else ""}...'
         )
         test_result = test_model_serving(
             cmd, namespace, service_ip, gateway_port,
             model_name, plan_config, max_retries=1,
+            url_path_prefix=url_path_prefix,
         )
         if test_result:
             report.add(CheckResult(
@@ -246,7 +316,7 @@ class BaseSmoketest:
         else:
             service_test_passed = True
             context.logger.log_info(
-                f"Service {service_ip}:{gateway_port} responding ✓"
+                f"Service {service_ip}:{gateway_port} responding (ok)"
             )
             report.add(CheckResult("service_endpoint", True, message="Service responding"))
 
@@ -288,7 +358,7 @@ class BaseSmoketest:
                             message=f"Curl to {pod_ip}:{inference_port} failed: {test_result}",
                         ))
                 else:
-                    context.logger.log_info(f"Pod {pod_ip} responding ✓")
+                    context.logger.log_info(f"Pod {pod_ip} responding (ok)")
 
         # 6. OpenShift route (only for modelservice -- standalone has no gateway route)
         if context.is_openshift and not is_standalone:
@@ -329,7 +399,16 @@ class BaseSmoketest:
             return report
 
         protocol = "https" if str(gateway_port) == "443" else "http"
-        base_url = f"{protocol}://{service_ip}:{gateway_port}"
+        # Shared-HTTPRoute scenarios route by path prefix (e.g. /pool-a/*
+        # -> this stack's InferencePool). Bake the prefix into base_url so
+        # every downstream {base_url}/v1/completions becomes
+        # {base_url}/pool-a/v1/completions - the gateway then rewrites
+        # /pool-a/* -> /* before the request reaches vLLM. Empty string for
+        # every other scenario, preserving existing behavior.
+        prefix = self._gateway_path_prefix_for_stack(
+            plan_config, _is_standalone, stack_name=stack_path.name,
+        )
+        base_url = f"{protocol}://{service_ip}:{gateway_port}{prefix}"
 
         context.logger.log_info(f"Running sample inference against {base_url}...")
 
@@ -702,7 +781,7 @@ class BaseSmoketest:
             # so a reader can still tell what's happening.
             #
             # Multinode (LWS) deployments scale via LeaderWorkerSet, not
-            # HPA, so the relaxation must not apply to them — keep strict
+            # HPA, so the relaxation must not apply to them - keep strict
             # equality there.
             hpa_managed = (
                 _nested_get(config, "wva", "enabled")
@@ -1061,9 +1140,11 @@ class BaseSmoketest:
         plan_config: dict | None = None,
         timeout: int = 120,
         poll_interval: int = 10,
+        url_path_prefix: str = "",
     ) -> str | None:
         protocol = "https" if str(port) == "443" else "http"
-        url = f"{protocol}://{host}:{port}/health"
+        prefix = _normalize_url_prefix(url_path_prefix)
+        url = f"{protocol}://{host}:{port}{prefix}/health"
         curl_image = "quay.io/curl/curl"
         override_args = _build_overrides(plan_config)
 
@@ -1107,7 +1188,7 @@ class BaseSmoketest:
 
             if status_code == "200":
                 context.logger.log_info(
-                    f"vLLM health check passed ✓ ({int(elapsed)}s elapsed)"
+                    f"vLLM health check passed (ok) ({int(elapsed)}s elapsed)"
                 )
                 return None
 
@@ -1129,6 +1210,7 @@ class BaseSmoketest:
         plan_config: dict | None = None,
         timeout: int = 300,
         poll_interval: int = 15,
+        url_path_prefix: str = "",
     ):
         context.logger.log_info(
             f"Waiting for model to be ready at {host}:{port} "
@@ -1150,6 +1232,7 @@ class BaseSmoketest:
             result = test_model_serving(
                 cmd, namespace, host, port, expected_model, plan_config,
                 max_retries=1,
+                url_path_prefix=url_path_prefix,
             )
 
             if cmd.dry_run:
@@ -1157,7 +1240,7 @@ class BaseSmoketest:
 
             if result is None:
                 context.logger.log_info(
-                    f"Model ready at {host}:{port} ✓ ({int(elapsed)}s elapsed)"
+                    f"Model ready at {host}:{port} (ok) ({int(elapsed)}s elapsed)"
                 )
                 return
 
@@ -1211,7 +1294,7 @@ class BaseSmoketest:
                         message=f"Route test failed: {test_result}",
                     ))
             else:
-                context.logger.log_info(f"Route {route_host} responding ✓")
+                context.logger.log_info(f"Route {route_host} responding (ok)")
                 report.add(CheckResult(
                     "openshift_route", True,
                     message="Route responding",

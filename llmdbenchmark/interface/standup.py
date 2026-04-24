@@ -83,6 +83,15 @@ def add_subcommands(parser: argparse._SubParsersAction):
         help="Max number of stacks to deploy in parallel (default: 4).",
     )
     standup_parser.add_argument(
+        "--stack",
+        default=env("LLMDBENCH_STACK"),
+        help=(
+            "Comma-separated list of stack names to restrict execution to. "
+            "Useful for re-deploying a single pool in a multi-stack scenario "
+            "without tearing down siblings."
+        ),
+    )
+    standup_parser.add_argument(
         "--kubeconfig",
         "-k",
         default=env("LLMDBENCH_KUBECONFIG") or env("KUBECONFIG"),

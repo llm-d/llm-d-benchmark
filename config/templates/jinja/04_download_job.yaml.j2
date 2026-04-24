@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: download-model
+  name: {{ downloadJob.name }}
   namespace: {{ namespace.name }}
 spec:
   backoffLimit: {{ downloadJob.backoffLimit }}

@@ -1,5 +1,7 @@
 """Step 09 -- Deploy the model via the llm-d modelservice Helm chart."""
 
+import hashlib
+import time
 from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
@@ -111,6 +113,15 @@ class DeployModelserviceStep(Step):
             result = cmd.kube("apply", "-f", str(httproute_yaml))
             if not result.success:
                 errors.append(f"Failed to apply HTTPRoute: {result.stderr}")
+            elif plan_config.get("httpRoute", {}).get("mode") == "shared":
+                # Shared-mode HTTPRoute references sibling InferencePools
+                # that may still be installing (other stacks' `-gaie`
+                # helm releases run in parallel with this one). Wait for
+                # each referenced pool to exist so the route doesn't
+                # linger in ResolvedRefs=False after step 09 returns.
+                self._wait_for_sibling_inference_pools(
+                    cmd, context, errors, plan_config, namespace,
+                )
 
         if not errors:
             decode_wait = cmd.wait_for_pods(
@@ -306,6 +317,92 @@ class DeployModelserviceStep(Step):
             stack_name=stack_name,
         )
 
+    def _wait_for_sibling_inference_pools(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        errors: list[str],
+        plan_config: dict,
+        namespace: str,
+    ) -> None:
+        """Wait for each sibling stack's InferencePool CR to exist.
+
+        Closes the race window between HTTPRoute apply and sibling gaie
+        helm releases finishing install - without this, the shared route
+        lingers in ResolvedRefs=False for the few seconds it takes other
+        stacks' step 09 to finish their modelservice Helm release.
+
+        Only runs on the shared-infra-owner stack (the one that rendered
+        a non-empty HTTPRoute). Standalone siblings have no InferencePool
+        and are skipped.
+        """
+        if context.dry_run:
+            return
+
+        siblings = plan_config.get("siblingStacks") or []
+        if not siblings:
+            return
+
+        # Template uses {model_id_label}-gaie for the InferencePool CR
+        # name. Compute each sibling's label the same way render_plans
+        # does (via its Jinja filter).
+        def _label_for(model_name: str) -> str:
+            if not model_name:
+                return ""
+            model_id = model_name.replace("/", "-").replace(".", "-")
+            hash_input = f"{namespace}/{model_id}" if namespace else model_id
+            digest = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()
+            return f"{model_id[:8]}-{digest[:8]}-{model_id[-8:]}".lower()
+
+        pool_names: list[str] = []
+        for sibling in siblings:
+            if not isinstance(sibling, dict) or sibling.get("standalone"):
+                continue
+            label = _label_for(sibling.get("modelName", ""))
+            if label:
+                pool_names.append(f"{label}-gaie")
+
+        if not pool_names:
+            return
+
+        context.logger.log_info(
+            f"    | Waiting for {len(pool_names)} sibling InferencePool(s) "
+            f"to exist so the shared HTTPRoute resolves cleanly..."
+        )
+
+        # Poll up to 2 minutes. Each gaie Helm release typically finishes
+        # within seconds of being applied; 2 minutes is generous.
+        deadline = time.time() + 120
+        missing = list(pool_names)
+        while missing and time.time() < deadline:
+            still_missing = []
+            for name in missing:
+                check = cmd.kube(
+                    "get", "inferencepool", name,
+                    "--namespace", namespace,
+                    "-o", "name",
+                    check=False,
+                )
+                if not check.success:
+                    still_missing.append(name)
+            missing = still_missing
+            if missing:
+                time.sleep(3)
+
+        if missing:
+            # Non-fatal: the route self-heals when pools eventually appear.
+            # Log a warning so operators know the window is wider than expected.
+            context.logger.log_warning(
+                f"    | Shared HTTPRoute applied but {len(missing)} "
+                f"InferencePool(s) still not found after 120s: "
+                f"{', '.join(missing)}. Route will self-heal when they appear."
+            )
+        else:
+            context.logger.log_info(
+                f"    | All {len(pool_names)} referenced InferencePool(s) "
+                f"present - shared HTTPRoute fully resolved"
+            )
+
     def _check_priority_class(
         self,
         cmd: CommandExecutor,
@@ -485,7 +582,7 @@ class DeployModelserviceStep(Step):
 
         Lets the standup output show what got created (VA OPTIMIZED, HPA
         TARGETS / REPLICAS, etc.) without the operator needing a follow-up
-        ``oc get``. Best-effort — failures here don't fail step_09.
+        ``oc get``. Best-effort - failures here don't fail step_09.
         """
         wva_cfg = plan_config.get("wva", {}) or {}
         wva_ns = (

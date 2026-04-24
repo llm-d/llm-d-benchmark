@@ -10,9 +10,9 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 |------|------|-------|-------------|
 | 00 | `EnsureInfraStep` | global | Validate system dependencies (kubectl, helm, etc.) and print cluster summary banner |
 | 02 | `AdminPrerequisitesStep` | global | Install cluster-level admin prerequisites (CRDs, gateways, LeaderWorkerSet, SCCs) |
-| 03 | `WorkloadMonitoringStep` | global | Validate cluster resources and configure workload monitoring (PodMonitors) |
-| 04 | `ModelNamespaceStep` | global | Prepare the model namespace (PVC, secrets, model download job) |
-| 05 | `HarnessNamespaceStep` | global | Prepare the harness namespace (PVC, data access pod, secrets) |
+| 03 | `WorkloadMonitoringStep` | global | Validate cluster resources and configure workload monitoring (PodMonitors). Installs WVA controller once per `wva.namespace` across all rendered stacks. |
+| 04 | `ModelNamespaceStep` | global | Prepare the model namespace. Creates one shared model PVC (idempotent across stacks) and one download Job per stack with `modelservice.uriProtocol: pvc` (or standalone). Jobs are launched in parallel (phase 1) and waited on in turn (phase 2), so total wall time ~ slowest model. Every stack's weights live in a distinct `model.path` subdirectory on the shared PVC. |
+| 05 | `HarnessNamespaceStep` | global | Prepare the harness namespace (scenario-wide workload PVC, data access pod, secrets) |
 | 06 | `FMADeployStep` | global | Deploy FMA controllers |
 | 06 | `StandaloneDeployStep` | global | Deploy vLLM as standalone Kubernetes Deployments and Services |
 | 08 | `DeploySetupStep` | global | Set up Helm repos and deploy gateway infrastructure for modelservice mode |
@@ -70,20 +70,20 @@ Contains scripts executed during standalone deployment setup:
 
 ```
 standup/
-├── __init__.py              -- Package marker
-├── preprocess/
-│   ├── set_llmdbench_environment.py
-│   └── standalone-preprocess.py
-└── steps/
-    ├── __init__.py           -- Step registry (get_standup_steps)
-    ├── step_00_ensure_infra.py
-    ├── step_02_admin_prerequisites.py
-    ├── step_03_workload_monitoring.py
-    ├── step_04_model_namespace.py
-    ├── step_05_harness_namespace.py
-    ├── step_06_fma_deploy.py
-    ├── step_06_standalone_deploy.py
-    ├── step_07_deploy_setup.py
-    ├── step_08_deploy_gaie.py
-    └── step_09_deploy_modelservice.py
++-- __init__.py              -- Package marker
++-- preprocess/
+|   +-- set_llmdbench_environment.py
+|   +-- standalone-preprocess.py
++-- steps/
+    +-- __init__.py           -- Step registry (get_standup_steps)
+    +-- step_00_ensure_infra.py
+    +-- step_02_admin_prerequisites.py
+    +-- step_03_workload_monitoring.py
+    +-- step_04_model_namespace.py
+    +-- step_05_harness_namespace.py
+    +-- step_06_fma_deploy.py
+    +-- step_06_standalone_deploy.py
+    +-- step_07_deploy_setup.py
+    +-- step_08_deploy_gaie.py
+    +-- step_09_deploy_modelservice.py
 ```
