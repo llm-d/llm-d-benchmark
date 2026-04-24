@@ -39,7 +39,7 @@ jobs:
 
   benchmark-standalone:
     name: Benchmark - Standalone (OCP)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, openshift, pok-prod]
     needs: build-image
     timeout-minutes: 240
 
@@ -61,13 +61,6 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
-      - name: Set up kubeconfig from secret
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-        shell: bash
 
       - name: Install llmdbenchmark
         run: |
@@ -174,7 +167,7 @@ jobs:
 
   benchmark-modelservice:
     name: Benchmark - ModelService (OCP)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, openshift, pok-prod]
     needs: build-image
     timeout-minutes: 240
 
@@ -196,13 +189,6 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
-      - name: Set up kubeconfig from secret
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-        shell: bash
 
       - name: Install llmdbenchmark
         run: |
