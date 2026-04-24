@@ -94,6 +94,14 @@ scenario:
           --disable-uvicorn-access-log \
           --no-enable-prefix-caching
 
+    fma:
+      enabled: false
+      iterations: 3
+      launcher:
+        customPreprocessCommands:
+          - export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+          - export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+
     vllmCommon:
       priorityClassName: nightly-gpu-critical
 
@@ -110,3 +118,9 @@ scenario:
     harness:
       name: inference-perf
       experimentProfile: sanity_random.yaml
+
+    images:
+      benchmark:
+        repository: ghcr.io/llm-d/llm-d-benchmark
+        tag: nightly
+

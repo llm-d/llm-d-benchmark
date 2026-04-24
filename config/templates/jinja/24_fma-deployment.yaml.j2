@@ -68,10 +68,19 @@ spec:
           image: {{ fma.launcher.image.repository }}:{{ fma.launcher.image.tag }}
           imagePullPolicy: {{ fma.launcher.image.pullPolicy }}
           command:
-            - /app/launcher.py
-            - --host=0.0.0.0
-            - --log-level=info
-            - --port={{ fma.launcherConfigurator.port }}
+            - /bin/bash
+            - "-c"
+          args:
+            - |
+{% if fma.launcher.customPreprocessCommands is defined %}
+{% for command in fma.launcher.customPreprocessCommands %}
+              {{ command }}
+{% endfor %}
+{% endif %}
+              exec python3 /app/launcher.py \
+              --host 0.0.0.0 \
+              --log-level info \
+              --port={{ fma.launcherConfigurator.port }}
           env:
           - name: HOME
             value: "{{ fma.modelMountPath }}"

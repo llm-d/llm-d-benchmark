@@ -646,25 +646,6 @@ routing:
     # zapTimeEncoding: epoch
 
 # ============================================================================
-# REQUESTER (FMA - Fast Model Actuation) - Optional
-# ============================================================================
-requester:
-  enable: false
-  # image: "ghcr.io/llm-d-incubation/llm-d-fast-model-actuation-requester:latest"
-  # adminPort: 8081
-  # port:
-  #   probes: 8080
-  #   spi: 8081
-  # readinessProbe:
-  #   initialDelaySeconds: 2
-  #   periodSeconds: 5
-  # resources:
-  #   limits:
-  #     gpus: 1
-  #     cpus: 1
-  #     memory: 250Mi
-
-# ============================================================================
 # VLLM COMMON CONFIGURATION
 # ============================================================================
 vllmCommon:
@@ -1256,6 +1237,7 @@ fma:
           stood-up-from: llm-d-benchmark
           stood-up-via: "fma"
         annotations: {}
+    customPreprocessCommands: []
 
   dualPod:
     sleeperLimit: 2

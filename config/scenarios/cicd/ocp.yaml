@@ -49,6 +49,10 @@ scenario:
 #      workloadPvc:
 #        storageClassName: ocs-storagecluster-cephfs
 
+    fma:
+      enabled: false
+      iterations: 3
+
     vllmCommon:
       priorityClassName: nightly-gpu-critical
 
@@ -57,3 +61,9 @@ scenario:
     harness:
       name: vllm-benchmark
       experimentProfile: sanity_random.yaml
+
+    images:
+      benchmark:
+        repository: ghcr.io/llm-d/llm-d-benchmark
+        tag: nightly
+
