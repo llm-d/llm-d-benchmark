@@ -17,6 +17,8 @@ INFERENCE_PORT="${LLMDBENCH_VLLM_COMMON_INFERENCE_PORT:-8000}"
 METRICS_PATH="${LLMDBENCH_VLLM_MONITORING_METRICS_PATH:-/metrics}"
 METRICS_CURL_TIMEOUT="${METRICS_CURL_TIMEOUT:-30}"  # max-time for curl in seconds
 EPP_METRICS_PORT="${LLMDBENCH_EPP_METRICS_PORT:-9090}"  # EPP Prometheus metrics port
+EPP_METRICS_SECRET="${LLMDBENCH_EPP_METRICS_SECRET:-inference-gateway-sa-metrics-reader-secret}"  # pragma: allowlist secret
+_EPP_AUTH_HEADER=""  # cached bearer token header for EPP scrapes
 
 # Function to initialize metrics directory
 init_metrics_dir() {
@@ -230,7 +232,7 @@ output_file = os.environ["_ST_OUTPUT"]
 
 data = json.load(sys.stdin)
 
-# Load existing data to detect only new pods
+# Load existing data
 existing = {"collected_at": "", "pods": []}
 if os.path.exists(output_file):
     try:
@@ -239,26 +241,19 @@ if os.path.exists(output_file):
     except (json.JSONDecodeError, OSError):
         pass
 
-seen_names = {p["name"] for p in existing.get("pods", [])}
+# Map pod name -> index for updating previously-seen pods
+seen_idx = {p["name"]: i for i, p in enumerate(existing.get("pods", []))}
 new_count = 0
+updated_count = 0
 
-for item in data.get("items", []):
-    metadata = item.get("metadata", {})
-    pod_name = metadata.get("name", "")
-    if pod_name in seen_names:
-        continue
-
-    spec = item.get("spec", {})
-    status = item.get("status", {})
-    labels = metadata.get("labels", {})
-
-    creation_ts = metadata.get("creationTimestamp", "")
+def _parse_ready(status):
+    """Return (ready_ts, startup_seconds) for a pod status dict."""
+    creation_ts = status.get("_creation_ts", "")
     ready_ts = ""
     for cond in status.get("conditions", []):
         if cond.get("type") == "Ready" and cond.get("status") == "True":
             ready_ts = cond.get("lastTransitionTime", "")
             break
-
     startup_seconds = None
     if creation_ts and ready_ts:
         try:
@@ -268,6 +263,28 @@ for item in data.get("items", []):
             startup_seconds = round((ready - created).total_seconds(), 1)
         except (ValueError, TypeError):
             pass
+    return ready_ts, startup_seconds
+
+for item in data.get("items", []):
+    metadata = item.get("metadata", {})
+    pod_name = metadata.get("name", "")
+    spec = item.get("spec", {})
+    status = item.get("status", {})
+    labels = metadata.get("labels", {})
+    creation_ts = metadata.get("creationTimestamp", "")
+
+    # Inject creation_ts so _parse_ready can compute startup_seconds
+    status["_creation_ts"] = creation_ts
+    ready_ts, startup_seconds = _parse_ready(status)
+
+    if pod_name in seen_idx:
+        # Update existing entry if it was missing ready_timestamp
+        idx = seen_idx[pod_name]
+        if not existing["pods"][idx].get("ready_timestamp") and ready_ts:
+            existing["pods"][idx]["ready_timestamp"] = ready_ts
+            existing["pods"][idx]["startup_seconds"] = startup_seconds
+            updated_count += 1
+        continue
 
     existing["pods"].append({
         "name": pod_name,
@@ -278,6 +295,7 @@ for item in data.get("items", []):
         "ready_timestamp": ready_ts,
         "startup_seconds": startup_seconds,
     })
+    seen_idx[pod_name] = len(existing["pods"]) - 1
     new_count += 1
 
 existing["collected_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -285,8 +303,13 @@ existing["collected_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%
 with open(output_file, "w") as f:
     json.dump(existing, f, indent=2)
 
+changes = []
 if new_count > 0:
-    print("Pod startup times: %d new pod(s) detected (%d total)" % (new_count, len(existing["pods"])))
+    changes.append("%d new" % new_count)
+if updated_count > 0:
+    changes.append("%d updated" % updated_count)
+if changes:
+    print("Pod startup times: %s (%d total)" % (", ".join(changes), len(existing["pods"])))
 ' 2>>"$debug_log"
     if [[ $? -ne 0 ]]; then
         echo "Warning: Failed to collect pod startup times (see $debug_log)" >&2
@@ -297,8 +320,28 @@ if new_count > 0:
 # Prometheus metrics scraping
 # ---------------------------------------------------------------------------
 
+# Retrieve bearer token for EPP metrics endpoint (cached after first call).
+# The upstream inferencepool chart requires auth by default; the token is
+# stored in a Kubernetes secret created alongside the EPP deployment.
+_get_epp_auth_header() {
+    if [[ -n "$_EPP_AUTH_HEADER" ]]; then
+        echo "$_EPP_AUTH_HEADER"
+        return
+    fi
+    local namespace="${LLMDBENCH_VLLM_COMMON_NAMESPACE:-default}"
+    local kubectl_cmd="${KUBECTL_CMD:-kubectl}"
+    local token
+    token=$($kubectl_cmd get secret "$EPP_METRICS_SECRET" \
+        --namespace "$namespace" \
+        -o jsonpath='{.data.token}' 2>/dev/null | base64 -d 2>/dev/null) || true
+    if [[ -n "$token" ]]; then
+        _EPP_AUTH_HEADER="Authorization: Bearer $token"
+    fi
+    echo "$_EPP_AUTH_HEADER"
+}
+
 # Scrape Prometheus /metrics from a single pod.
-# Usage: _scrape_pod <pod_name> <pod_ip> <timestamp> <output_file> <port> <source_tag> [<fallback_port>]
+# Usage: _scrape_pod <pod_name> <pod_ip> <timestamp> <output_file> <port> <source_tag> [<fallback_port>] [<auth_header>]
 _scrape_pod() {
     local pod_name="$1"
     local pod_ip="$2"
@@ -307,8 +350,15 @@ _scrape_pod() {
     local port="$5"
     local source_tag="$6"
     local fallback_port="${7:-}"
+    local auth_header="${8:-}"
     local debug_log="$METRICS_DIR/raw/collection_debug.log"
     local tmp_file="${output_file}.tmp"
+
+    # Build curl auth args
+    local -a curl_auth=()
+    if [[ -n "$auth_header" ]]; then
+        curl_auth=(-H "$auth_header")  # pragma: allowlist secret
+    fi
 
     # Write header
     {
@@ -323,10 +373,19 @@ _scrape_pod() {
     local url="http://${pod_ip}:${port}${METRICS_PATH}"
     local rc=0
     curl -sS --connect-timeout 5 --max-time "$METRICS_CURL_TIMEOUT" \
+        "${curl_auth[@]+"${curl_auth[@]}"}" \
         "$url" > "$tmp_file" 2>>"$debug_log" || rc=$?
 
     if [[ $rc -ne 0 ]]; then
         echo "  [$(date -u +%H:%M:%S)] curl failed (rc=$rc) for ${pod_name} ${url}" >> "$debug_log"
+    fi
+
+    # Check for auth failure (HTTP 401/403 body) and retry without auth
+    if [[ -s "$tmp_file" ]] && head -1 "$tmp_file" | grep -qiE '^(Unauthorized|Forbidden)$'; then
+        echo "  [$(date -u +%H:%M:%S)] Auth rejected for ${pod_name}, retrying without auth" >> "$debug_log"
+        rc=0
+        curl -sS --connect-timeout 5 --max-time "$METRICS_CURL_TIMEOUT" \
+            "$url" > "$tmp_file" 2>>"$debug_log" || rc=$?
     fi
 
     # Try fallback port if primary failed/empty
@@ -335,6 +394,7 @@ _scrape_pod() {
         echo "  [$(date -u +%H:%M:%S)] Retrying ${pod_name} on fallback port: ${url}" >> "$debug_log"
         rc=0
         curl -sS --connect-timeout 5 --max-time "$METRICS_CURL_TIMEOUT" \
+            "${curl_auth[@]+"${curl_auth[@]}"}" \
             "$url" > "$tmp_file" 2>>"$debug_log" || rc=$?
         if [[ $rc -ne 0 ]]; then
             echo "  [$(date -u +%H:%M:%S)] curl failed (rc=$rc) for ${pod_name} ${url}" >> "$debug_log"
@@ -388,11 +448,14 @@ collect_metrics_snapshot() {
         echo "Found EPP pods:"
         echo "$epp_info"
 
+        local epp_auth
+        epp_auth=$(_get_epp_auth_header)
+
         echo "$epp_info" | while read -r pod_name pod_ip; do
             [[ -z "$pod_ip" || -z "$pod_name" ]] && continue
             _scrape_pod "$pod_name" "$pod_ip" "$iso_timestamp" \
                 "$METRICS_DIR/raw/${pod_name}_${timestamp}_metrics.log" \
-                "$EPP_METRICS_PORT" "epp_prometheus_metrics" &
+                "$EPP_METRICS_PORT" "epp_prometheus_metrics" "" "$epp_auth" &
         done
     fi
 

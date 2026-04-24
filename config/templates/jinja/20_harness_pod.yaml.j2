@@ -89,6 +89,8 @@ spec:
       value: "{{ decode.vllm.port }}"
     - name: LLMDBENCH_VLLM_MONITORING_METRICS_PATH
       value: "{{ monitoring.metricsPath }}"
+    - name: LLMDBENCH_EPP_METRICS_SECRET
+      value: "{{ inferenceExtension.monitoring.secretName | default('inference-gateway-sa-metrics-reader-secret') }}"
 {% endif %}
     - name: LLMDBENCH_STANDALONE_ENABLED
       value: "{{ standalone.enabled | lower }}"
