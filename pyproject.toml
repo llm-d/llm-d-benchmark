@@ -1,6 +1,6 @@
 [project]
 name = "llmdbenchmark"
-version = "0.6.0rc5"
+version = "0.6.0rc6"
 description = "A library for configuration discovery and performance benchmarking for llm-d."
 requires-python = ">=3.11"
 dependencies = [

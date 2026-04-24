@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_CICD_NS: llmdbenchcicdns-ocp
+      LLMDBENCH_CICD_NS: llmdbenchcicdsns-ocp
       LLMDBENCH_CICD_R: llmdbenchcicdr-ocp
       LLMDBENCH_CICD_TARGET: cicd/ocp
       LLMDBENCH_CICD_METHOD: standalone
@@ -61,6 +61,13 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - name: Set up kubeconfig from secret
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+        shell: bash
 
       - name: Install llmdbenchmark
         run: |
@@ -144,8 +151,8 @@ jobs:
       - name: Install AWS CLI
         run: |
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install
+          unzip awscliv2.zip  >/dev/null 2>&1
+          sudo ./aws/install || sudo ./aws/install --update
           aws --version
 
 #      - name: Upload results to IBM COS
@@ -172,7 +179,7 @@ jobs:
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_CICD_NS: llmdbenchcicdns-ocp
+      LLMDBENCH_CICD_NS: llmdbenchcicdmns-ocp
       LLMDBENCH_CICD_R: llmdbenchcicdr-ocp
       LLMDBENCH_CICD_TARGET: cicd/ocp
       LLMDBENCH_CICD_METHOD: modelservice
@@ -189,6 +196,13 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - name: Set up kubeconfig from secret
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+        shell: bash
 
       - name: Install llmdbenchmark
         run: |
@@ -272,8 +286,8 @@ jobs:
       - name: Install AWS CLI
         run: |
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install
+          unzip awscliv2.zip >/dev/null 2>&1
+          sudo ./aws/install || sudo ./aws/install --update
           aws --version
 
 #      - name: Upload results to IBM COS
