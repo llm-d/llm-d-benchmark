@@ -120,12 +120,13 @@ one of them surfaces as `TARGETS: <unknown>` on the HPA — see the
 
 ---
 
-## 2. Two ways to enable WVA on a scenario
+## 2. Three ways to enable WVA on a scenario
 
 | Method | When to use |
 |---|---|
 | `-u / --wva` CLI flag on any existing scenario | Quick toggle without editing files; uses defaults from `config/templates/values/defaults.yaml` |
 | `--spec guides/inference-scheduling-wva` | Dedicated scenario where every WVA knob is spelled out inline so you can tweak them per-experiment |
+| `--spec guides/multi-model-wva` | Multi-model scenario: two or more pools under one gateway, each with its own VA + HPA, one shared WVA controller |
 
 ### 2a. Via the CLI flag
 
@@ -153,6 +154,64 @@ You'd choose this scenario when you want to:
 - Override the controller image tag, prometheus-adapter version, etc.
 - Author a DoE experiment that sweeps over `wva.hpa.maxReplicas` or
   `wva.variantAutoscaling.variantCost`
+
+### 2c. Via the `multi-model-wva` scenario (multiple pools, one WVA controller)
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva standup -p <namespace>
+```
+
+Deploys N models behind a single gateway, each with its own EPP +
+InferencePool + VariantAutoscaling + HPA. One WVA controller in the
+namespace watches every VA (deduplicated by `wva.namespace`), so the
+Prometheus/adapter/controller wiring is identical to the single-model
+case — only the number of autoscaling targets scales.
+
+The scenario uses the top-level `shared:` block to hold scenario-wide
+settings (controller image, chart versions, EPP plugin config, shared
+HTTPRoute); per-stack blocks hold only model-specific knobs (model name,
+decode resources, VA + HPA min/max). To add a third model, copy one of
+the stack entries and change `name` + `model`. See
+[`guides/multi-model-wva.yaml`](../config/scenarios/guides/multi-model-wva.yaml).
+
+Topology:
+
+```
+         Gateway (shared infra-llmdbench-inference-gateway)
+           │
+   ┌───────┴─────────── HTTPRoute multi-model-route ─────────────┐
+   │ /qwen3-06b/*                                 /llama-31-8b/* │
+   ▼                                                             ▼
+EPP+InferencePool (qwen3-06b)           EPP+InferencePool (llama-31-8b)
+   │                                                             │
+vLLM decode + VA + HPA                   vLLM decode + VA + HPA
+             ▲                               ▲
+             └─────── WVA controller (1) ────┘
+```
+
+What the scenario layout buys you:
+
+- **Shared control plane** — one `infra-llmdbench` gateway release, one
+  istio control plane, one WVA controller, one prometheus-adapter, one
+  shared model PVC (sized for the sum of all models; each stack's weights
+  live in its own `model.path` subdirectory). Rendered once in the
+  scenario's "shared-infra-owner" stack (first non-standalone stack) and
+  skipped on siblings to avoid parallel-helmfile races.
+- **Per-stack scaling intent** — each stack's VA caps what the controller
+  is willing to compute (`variantAutoscaling.{min,max}Replicas`,
+  `variantCost`) and each stack's HPA caps what actually gets applied to
+  the Deployment. They're independent per pool, so pool A scaling up to
+  its max doesn't push pool B past its own cap.
+- **One routing URL per pool** — the shared HTTPRoute uses
+  `httpRoute.pathPrefix: /{stack.name}` so every pool is reachable at
+  `http://<gateway>/{stack-name}/v1/...`. Gateway rewrites the prefix
+  away before the request reaches upstream vLLM, so pods continue to see
+  plain `/v1/*` paths.
+- **`flowControl` feature gate on every pool** — enabled in the
+  `shared.inferenceExtension.pluginsCustomConfig` block and inherited by
+  every stack. This is non-optional for WVA: the controller reads EPP
+  queue depth to compute scale signals, and flow-control is what
+  exposes queue depth in the metrics.
 
 ---
 
@@ -467,3 +526,182 @@ HPA, but it's still considered cluster-hygiene rude to run cluster-scoped.
 | Teardown logic | [`llmdbenchmark/teardown/steps/step_01_uninstall_helm.py`](../llmdbenchmark/teardown/steps/step_01_uninstall_helm.py) |
 | Smoketest WVA mixin | [`llmdbenchmark/smoketests/validators/wva.py`](../llmdbenchmark/smoketests/validators/wva.py) |
 | WVA-enabled scenario (the one to copy/edit for new experiments) | [`config/scenarios/guides/inference-scheduling-wva.yaml`](../config/scenarios/guides/inference-scheduling-wva.yaml) |
+| Multi-model WVA scenario (N pools, 1 gateway, 1 controller) | [`config/scenarios/guides/multi-model-wva.yaml`](../config/scenarios/guides/multi-model-wva.yaml) |
+
+---
+
+## 10. Multi-model operations cookbook
+
+Recipes for the day-to-day lifecycle + benchmarking against the
+`multi-model-wva` scenario. All commands assume you've installed
+`llmdbenchmark` and pointed `KUBECONFIG` at a cluster where you have
+(or will have) namespace admin in `<namespace>`. Stack names
+(`qwen3-06b`, `llama-31-8b`) mirror the shipped scenario; substitute
+your own if you've customized.
+
+### 10.1 First-time standup
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva standup -p <namespace>
+```
+
+Renders both stacks, installs shared infra (istio, Gateway,
+`infra-llmdbench`, WVA controller, prometheus-adapter, model PVC) once,
+then deploys each pool's `-ms` + `-gaie` + VA + HPA. Downloads run in
+parallel — wall time ≈ slowest model, not the sum. Standup
+auto-chains into the smoketest phase unless you pass
+`--skip-smoketest`.
+
+### 10.2 Discover what's deployed (`--list-endpoints`)
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva run -p <namespace> --list-endpoints
+```
+
+Prints a table of per-stack endpoint URLs + a copy-paste block of
+ready-to-run `llmdbenchmark run` invocations. Runs the full render
+pipeline (so the detected endpoints match exactly what standup would
+have produced) and exits before launching any harness pods.
+
+### 10.3 Benchmark a single pool
+
+**Preferred — let `--stack` auto-resolve the endpoint:**
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva run -p <namespace> \
+  --stack qwen3-06b \
+  -l inference-perf -w sanity_random.yaml -j 1
+```
+
+With `--stack qwen3-06b`, step 03 auto-detects the gateway endpoint,
+bakes in the `/qwen3-06b` path prefix, and the harness pod hits
+`http://<gateway>/qwen3-06b/v1/completions`. The gateway rewrites
+`/qwen3-06b/*` → `/*` so vLLM sees plain `/v1/completions`.
+
+**Alternative — pin `--endpoint-url` yourself** (useful for run-only
+mode without the scenario file locally):
+
+```bash
+llmdbenchmark run \
+  --endpoint-url http://<gateway>/qwen3-06b \
+  --model Qwen/Qwen3-0.6B \
+  --namespace <namespace> \
+  -l guidellm -w sanity_random.yaml -j 2
+```
+
+### 10.4 Two parallel guidellm jobs against one pool
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva run -p <namespace> \
+  --stack qwen3-06b \
+  -l guidellm -w sanity_random.yaml \
+  -j 2
+```
+
+`-j 2` launches two guidellm pods hitting the same endpoint
+simultaneously. Both run the same workload, but each writes to its own
+`{experiment_id}_1` / `{experiment_id}_2` results subdirectory on the
+workload PVC, so metrics don't collide. The harness `wait` step polls
+both pods; result collection pulls both directories back.
+
+### 10.5 Compare two pools side-by-side (two shells)
+
+```bash
+# Shell 1 — --workspace is a global option, placed before the subcommand
+llmdbenchmark --spec guides/multi-model-wva --workspace /tmp/run-qwen run -p <namespace> \
+  --stack qwen3-06b \
+  -l guidellm -w sanity_random.yaml -j 2
+
+# Shell 2 (in parallel)
+llmdbenchmark --spec guides/multi-model-wva --workspace /tmp/run-llama run -p <namespace> \
+  --stack llama-31-8b \
+  -l guidellm -w sanity_random.yaml -j 2
+```
+
+Distinct `--workspace` dirs keep the two invocations' render plans,
+logs, and collected results fully isolated. The WVA controller will
+see load on both pools' VAs simultaneously and scale them
+independently. `--workspace` (and `--spec`, `--base-dir`, `--dry-run`,
+`--verbose`, `--non-admin`) are **global options** — they must appear
+before the subcommand name (`run`, `standup`, etc.), not after.
+
+### 10.6 Rerun one pool against a different model
+
+`--stack NAME` scopes `-m/--models` to that one stack; siblings keep
+their scenario-defined models untouched:
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva run -p <namespace> \
+  --stack qwen3-06b \
+  --model meta-llama/Llama-3.2-3B \
+  -l inference-perf -w sanity_random.yaml
+```
+
+Without `--stack`, `-m` applies to every stack and emits a warning —
+it would collapse the multi-model scenario into N copies of one model,
+which is rarely desired.
+
+### 10.7 Re-deploy one pool after a scenario edit
+
+Edit the scenario YAML's stack for `llama-31-8b` (e.g. bump
+`decode.replicas`, swap the model, tweak `wva.hpa.maxReplicas`), then:
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva standup -p <namespace> \
+  --stack llama-31-8b
+```
+
+Global steps (admin prereqs, shared-infra helmfile, WVA controller,
+model PVC) still run (they're scenario-wide and idempotent). Per-stack
+steps only fire for `llama-31-8b` — qwen3-06b's running pods and VA
+are left completely alone.
+
+### 10.8 Tear down one pool, keep siblings running
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva teardown -p <namespace> \
+  --stack llama-31-8b
+```
+
+Uninstalls the `llama-31-8b-ms` and `llama-31-8b-gaie` Helm releases
+(plus their VA + HPA), leaves `qwen3-06b` and the shared
+`infra-llmdbench` + WVA controller + prometheus-adapter in place.
+Useful for cost management — shrink to one pool over a weekend
+without disturbing the other.
+
+### 10.9 Observe scaling events
+
+With both pools running, watch the VA + HPA state in real time:
+
+```bash
+# Per-pool VariantAutoscaling
+kubectl get variantautoscaling -n <namespace> -w
+
+# Per-pool HPA with current/target metric
+kubectl get hpa -n <namespace> -w
+
+# Controller logs (look for "Reconciling" per VA)
+kubectl logs -n <namespace> -l control-plane=controller-manager -f
+
+# Raw wva_desired_replicas metric for a pool
+kubectl exec -n <namespace> \
+  $(kubectl get pod -n <namespace> -l app.kubernetes.io/name=workload-variant-autoscaler -o name | head -1) \
+  -- curl -sk https://localhost:8443/metrics \
+  | grep wva_desired_replicas
+```
+
+Every query that takes a label selector can be filtered to one pool:
+`-l wva.llmd.ai/controller-instance=<namespace>,llm-d.ai/model=qwen-qwen3-0-6b`
+for VAs / HPAs; pods don't carry the routing-prefix label but do carry
+`llm-d.ai/model` keyed on each stack's `model.shortName`.
+
+### 10.10 Full teardown
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva teardown -p <namespace>
+```
+
+Removes every Helm release in both stacks plus shared infra and the
+WVA controller. Prometheus-adapter and istio control-plane persist by
+design (shared across tenants); add `--deep` to remove all cluster
+resources in the deploy + harness namespaces.

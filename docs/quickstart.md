@@ -340,7 +340,8 @@ The workspace directory printed at the top of every run contains all rendered te
 You just ran the same lifecycle CI exercises every PR. From here, natural next steps are:
 
 - **Try a real GPU scenario**: see [`config/specification/examples/gpu.yaml.j2`](../config/specification/examples/gpu.yaml.j2) and run it against a cluster that has GPU nodes.
-- **Explore the well-lit paths**: [`config/specification/guides/`](../config/specification/guides/) has scenarios for `inference-scheduling`, `pd-disaggregation`, `precise-prefix-cache-aware`, `tiered-prefix-cache`, and `wide-ep-lws` — each worth a read even if you don't run them.
+- **Explore the well-lit paths**: [`config/specification/guides/`](../config/specification/guides/) has scenarios for `inference-scheduling`, `inference-scheduling-wva`, `multi-model-wva`, `pd-disaggregation`, `precise-prefix-cache-aware`, `tiered-prefix-cache`, and `wide-ep-lws` — each worth a read even if you don't run them.
+- **Try multi-model with WVA**: [`multi-model-wva`](../config/scenarios/guides/multi-model-wva.yaml) deploys two models behind one gateway with a single shared HTTPRoute and a single WVA controller autoscaling each pool independently. Standup: `llmdbenchmark --spec guides/multi-model-wva standup -p <namespace>`.
 - **Write a custom scenario**: see the [Developer Guide, Section 7](developer-guide.md#7-how-to-add-a-new-scenario-well-lit-path) — "How to Add a New Scenario".
 - **Add a new benchmark step**: see the [Developer Guide, Section 2](developer-guide.md#2-how-to-add-a-new-step) — "How to Add a New Step".
 - **Set up pre-commit** so your first PR passes CI on the first try: see [Local Development Checks in CONTRIBUTING.md](../CONTRIBUTING.md#local-development-checks-pre-commit).

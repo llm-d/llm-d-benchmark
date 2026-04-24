@@ -86,19 +86,32 @@ class DeploySetupStep(Step):
             if context.non_admin:
                 self._patch_helmfile_for_non_admin(helmfile_work)
 
-            result = cmd.helmfile(
-                "--namespace",
-                namespace,
-                "--selector",
-                f"name=infra-{release}",
-                "apply",
-                "-f",
-                str(helmfile_work),
-                "--skip-diff-on-install",
-                "--skip-schema-validation",
-            )
-            if not result.success:
-                errors.append(f"Failed to apply infra helmfile: {result.stderr}")
+            # Multi-stack scenarios dedupe the `infra-{release}` helm
+            # release into one stack (see 10_helmfile-main.yaml.j2 —
+            # stacks 2..N omit it). Pre-check whether THIS stack's
+            # helmfile declares the release before invoking helmfile;
+            # otherwise the apply exits non-zero with "no releases found
+            # that matches specified selector" which is harmless but
+            # noisy in the standup log.
+            if self._helmfile_declares_release(helmfile_work, f"infra-{release}"):
+                result = cmd.helmfile(
+                    "--namespace",
+                    namespace,
+                    "--selector",
+                    f"name=infra-{release}",
+                    "apply",
+                    "-f",
+                    str(helmfile_work),
+                    "--skip-diff-on-install",
+                    "--skip-schema-validation",
+                )
+                if not result.success:
+                    errors.append(f"Failed to apply infra helmfile: {result.stderr}")
+            else:
+                context.logger.log_info(
+                    f"    │ infra-{release} not in this stack's helmfile "
+                    f"(shared infra is owned by another stack) — skipping"
+                )
 
         if errors:
             for err in errors:
@@ -122,6 +135,32 @@ class DeploySetupStep(Step):
             ),
             stack_name=stack_path.name,
         )
+
+    @staticmethod
+    def _helmfile_declares_release(helmfile_path: Path, release_name: str) -> bool:
+        """Return True if *helmfile_path* declares a release named *release_name*.
+
+        Used to skip a ``helmfile apply --selector`` invocation that would
+        otherwise "fail" noisily on stacks that intentionally dropped a
+        shared release (e.g. ``infra-llmdbench`` in multi-stack scenarios).
+
+        Parses the helmfile YAML and walks ``releases[*].name`` — a
+        substring check was too permissive: a label value, annotation,
+        or values-block key with the text ``name: X`` would falsely
+        match without actually declaring a release.
+        """
+        try:
+            content = helmfile_path.read_text(encoding="utf-8")
+            docs = list(yaml.safe_load_all(content))
+        except (OSError, yaml.YAMLError):
+            return False
+        for doc in docs:
+            if not isinstance(doc, dict):
+                continue
+            for release in doc.get("releases") or []:
+                if isinstance(release, dict) and release.get("name") == release_name:
+                    return True
+        return False
 
     def _prepare_helm_dir(
         self, context: ExecutionContext, stack_path: Path, errors: list

@@ -37,13 +37,17 @@ inferenceExtension:
 {% endfor %}
 {% endif %}
   monitoring:
-    secret:
-      name: {{ inferenceExtension.monitoring.secretName | default('inference-gateway-sa-metrics-reader-secret') }}
     interval: "{{ inferenceExtension.monitoring.interval | default('10s') }}"
     prometheus:
       enabled: {{ inferenceExtension.monitoring.prometheus.enabled | default(true) | lower }}
       auth:
         enabled: {{ inferenceExtension.monitoring.prometheus.auth.enabled | default(true) | lower }}
+        # Overridable Secret name for the Prometheus ServiceAccount token.
+        # The gaie (inferencepool) chart v1.4.0 uses this exact path; older
+        # templates wrote `monitoring.secret.name` which the chart silently
+        # ignored and fell back to its hardcoded default, causing
+        # cross-release Helm ownership conflicts in multi-stack scenarios.
+        secretName: {{ inferenceExtension.monitoring.secretName | default('inference-gateway-sa-metrics-reader-secret') }}
   flags:
 {% if inferenceExtension.flags is defined and inferenceExtension.flags %}
 {% for key, value in inferenceExtension.flags.items() %}

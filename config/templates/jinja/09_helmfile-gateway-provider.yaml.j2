@@ -12,6 +12,22 @@
   The agentgateway release layout mirrors the canonical upstream helmfile:
     https://raw.githubusercontent.com/llm-d-incubation/llm-d-infra/refs/heads/main/quickstart/gateway-control-plane-providers/agentgateway.helmfile.yaml
 #}
+{# Gateway provider (istio / agentgateway control plane) is cluster-scoped
+   and lives in a shared namespace (e.g. istio-system). In multi-stack
+   scenarios, running `helmfile apply` for the same release concurrently
+   from multiple stacks races on the upgrade — stack 2 hits
+   "release: already exists" while stack 1's upgrade is still in flight.
+   Render empty for stacks other than the scenario's shared-infra owner
+   so only one install runs per scenario. The per-stack apply step treats
+   an empty rendered file as a no-op via _has_yaml_content().
+
+   Ownership: `sharedInfraStackIndex` is the 1-indexed position of the
+   first non-standalone stack, computed in
+   `render_plans._resolve_shared_infra_stack_index`. This correctly
+   promotes ownership past any leading standalone stacks (which can't
+   install istio themselves). #}
+{% if stackIndex is defined and stackIndex | int != sharedInfraStackIndex | default(1) | int %}
+{% else %}
 {% set gw_class = gateway.className %}
 {% set gw_ns = gateway.providerNamespace %}
 {% if standalone.enabled is defined and not standalone.enabled and gw_class == 'istio' %}
@@ -93,4 +109,5 @@ releases:
     labels:
       type: gateway-provider
       kind: gateway-control-plane
+{% endif %}
 {% endif %}

@@ -10,6 +10,20 @@ repositories:
     url: {{ helmRepositories.llmDInfra.url }}
 
 releases:
+{# `infra-llmdbench` (llm-d-infra chart → Gateway resource + CRDs) is scenario-
+   shared. In multi-stack scenarios, two parallel `helmfile apply` runs from
+   different stacks would both try to upgrade the same release and race on
+   helm's concurrency guard. Render it only in the shared-infra-owner stack;
+   other stacks rely on the owner having installed it and drop the release
+   from their helmfile entirely (along with any `needs:` references to it).
+
+   Owner is computed by render_plans._resolve_shared_infra_stack_index
+   (1-indexed position of the first non-standalone stack) so scenarios
+   that mix standalone + modelservice still install shared infra via the
+   first modelservice stack, not a leading standalone one that can't. #}
+{% set _is_shared_infra_owner = (stackIndex is not defined or stackIndex | int == sharedInfraStackIndex | default(1) | int) %}
+{% set _is_first_stack = _is_shared_infra_owner %}
+{% if _is_first_stack %}
   - name: infra-llmdbench
     namespace: {{ gateway.namespace }}
     chart: llm-d-infra/llm-d-infra
@@ -20,6 +34,7 @@ releases:
       kind: inference-stack
     values:
       - infra.yaml
+{% endif %}
 
   - name: {{ model_id_label }}-ms
     namespace: {{ gateway.namespace }}
@@ -27,7 +42,9 @@ releases:
     version: {{ chartVersions.llmDModelservice }}
     installed: true
     needs:
+{% if _is_first_stack %}
       - {{ gateway.namespace }}/infra-llmdbench
+{% endif %}
       - {{ gateway.namespace }}/{{ model_id_label }}-gaie
     values:
       - ms-values.yaml
@@ -39,8 +56,10 @@ releases:
     chart: oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
     version: {{ chartVersions.inferencePool }}
     installed: true
+{% if _is_first_stack %}
     needs:
       - {{ gateway.namespace }}/infra-llmdbench
+{% endif %}
     values:
       - gaie-values.yaml
     labels:

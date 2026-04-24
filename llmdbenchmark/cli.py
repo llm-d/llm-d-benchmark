@@ -116,6 +116,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             cli_methods=getattr(args, "methods", None),
             cli_monitoring=getattr(args, "monitoring", False),
             cli_wva=getattr(args, "wva", False),
+            cli_stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
         ).eval()
 
         try:
@@ -431,6 +432,7 @@ def _do_standup(args, logger, render_plan_errors):
         gateway_deploy_timeout=int(getattr(args, "gateway_deploy_timeout", 120) or 120),
         modelservice_deploy_timeout=int(getattr(args, "modelservice_deploy_timeout", 1500) or 1500),
         pvc_bind_timeout=int(getattr(args, "pvc_bind_timeout", 240) or 240),
+        stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
     _check_model_access(context, all_stacks_info, logger)
@@ -508,13 +510,19 @@ def _do_smoketest(args, logger, render_plan_errors):
         harness_namespace=harness_ns,
         model_name=plan_info.get("model_name"),
         logger=logger,
+        stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
+    # Smoketest runs per-stack checks sequentially (max_parallel_stacks=1):
+    # parallel runs would interleave /health + /v1/models probe logs across
+    # stacks, hammer the shared gateway with concurrent curls, and make
+    # multi-stack failures harder to debug. Standup/run stay at the
+    # user-configured default via --parallel; smoketest overrides.
     executor = StepExecutor(
         steps=get_smoketest_steps(),
         context=context,
         logger=logger,
-        max_parallel_stacks=getattr(args, "parallel", 4),
+        max_parallel_stacks=1,
     )
 
     step_spec = getattr(args, "step", None)
@@ -594,13 +602,17 @@ def _print_standup_summary(context, result, logger):
     harness_ns = context.harness_namespace or ns
     username = context.username or "unknown"
     platform = context.platform_type
-    model = context.model_name or "unknown"
     methods = (
         ", ".join(context.deployed_methods) if context.deployed_methods else "default"
     )
     stacks = len(context.rendered_stacks)
     mode = "dry-run" if context.dry_run else "live"
     endpoints = context.deployed_endpoints or {}
+
+    # Aggregate per-stack models for the multi-stack case. context.model_name
+    # holds only a single value (first stack / CLI override) and would
+    # misrepresent the deployment otherwise. Honors --stack filter.
+    stack_models = _collect_stack_models(context)
 
     W = 62
     logger.log_info("═" * W)
@@ -609,7 +621,15 @@ def _print_standup_summary(context, result, logger):
     logger.log_info(f"  User:       {username}")
     logger.log_info(f"  Platform:   {platform}")
     logger.log_info(f"  Mode:       {mode}")
-    logger.log_info(f"  Model:      {model}")
+    if len(stack_models) > 1:
+        logger.log_info(f"  Models:     {len(stack_models)} (one per stack)")
+        for stack_name, model in stack_models:
+            logger.log_info(f"    - {stack_name.ljust(20)} {model}")
+    else:
+        single_model = (
+            stack_models[0][1] if stack_models else (context.model_name or "unknown")
+        )
+        logger.log_info(f"  Model:      {single_model}")
     logger.log_info(f"  Namespace:  {ns}")
     if harness_ns != ns:
         logger.log_info(f"  Harness NS: {harness_ns}")
@@ -678,6 +698,7 @@ def _do_teardown(args, logger, render_plan_errors):
         harness_namespace=harness_ns,
         model_name=plan_info.get("model_name"),
         logger=logger,
+        stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
     executor = StepExecutor(
@@ -777,7 +798,23 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         generate_config_only=getattr(args, "generate_config", False),
         dataset_url=getattr(args, "dataset", None),
         harness_data_access_timeout=int(getattr(args, "data_access_timeout", 120) or 120),
+        stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
+
+    # --list-endpoints: detect endpoints (step 03 only), print a copy-paste
+    # table with per-stack routing URLs, and exit without deploying any
+    # harness pods. Useful for discovering what's live in a multi-stack
+    # scenario before picking an endpoint for a targeted `run`.
+    if getattr(args, "list_endpoints", False):
+        executor = StepExecutor(
+            steps=get_run_steps(),
+            context=context,
+            logger=logger,
+            max_parallel_stacks=1,
+        )
+        result = executor.execute(step_spec="3")
+        _print_endpoints_table(context, logger, args)
+        return context, result
 
     executor = StepExecutor(
         steps=get_run_steps(),
@@ -795,6 +832,131 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
     return context, result
 
 
+def _collect_stack_models(context) -> list[tuple[str, str]]:
+    """Return ``[(stack_name, model_name), …]`` from rendered configs.
+
+    Honors the ``--stack`` filter so the benchmark summary reflects only
+    the stacks that actually ran. Returns an empty list when there are
+    no rendered stacks (run-only / endpoint-url mode), in which case the
+    summary falls back to ``context.model_name``.
+    """
+    import yaml as _yaml
+    rendered = getattr(context, "rendered_stacks", []) or []
+    if not rendered:
+        return []
+    stack_filter = getattr(context, "stack_filter", None) or []
+    rows: list[tuple[str, str]] = []
+    for stack_path in rendered:
+        stack_name = stack_path.name
+        if stack_filter and stack_name not in stack_filter:
+            continue
+        cfg_file = stack_path / "config.yaml"
+        model_name = "?"
+        if cfg_file.exists():
+            try:
+                with open(cfg_file, encoding="utf-8") as fh:
+                    cfg = _yaml.safe_load(fh) or {}
+                model_name = (cfg.get("model") or {}).get("name", "?") or "?"
+            except (OSError, _yaml.YAMLError):
+                pass
+        rows.append((stack_name, model_name))
+    return rows
+
+
+def _parse_stack_filter(raw: str | None) -> list[str] | None:
+    """Parse --stack / LLMDBENCH_STACK into a list of stack names, or None."""
+    if not raw:
+        return None
+    names = [n.strip() for n in str(raw).split(",") if n.strip()]
+    return names or None
+
+
+def _print_endpoints_table(context, logger, args) -> None:
+    """Print a table of per-stack endpoints + copy-paste `run` commands.
+
+    Called by --list-endpoints after step 03 has populated
+    context.deployed_endpoints. Output is human-readable AND machine-
+    friendly: the copy-paste block can be pasted as-is to benchmark a
+    specific pool.
+    """
+    from pathlib import Path as _P
+    import yaml as _yaml
+
+    endpoints = context.deployed_endpoints or {}
+    if not endpoints:
+        logger.log_warning(
+            "No endpoints detected. Have you run standup first? "
+            "(`llmdbenchmark standup -p <namespace>` on this spec)"
+        )
+        return
+
+    rows: list[tuple[str, str, str]] = []
+    for stack_path in context.rendered_stacks or []:
+        stack_name = stack_path.name
+        cfg_file = stack_path / "config.yaml"
+        model_name = "?"
+        if cfg_file.exists():
+            try:
+                with open(cfg_file, encoding="utf-8") as fh:
+                    cfg = _yaml.safe_load(fh) or {}
+                model_name = (cfg.get("model") or {}).get("name", "?") or "?"
+            except (OSError, _yaml.YAMLError):
+                pass
+        url = endpoints.get(stack_name, "<not detected>")
+        rows.append((stack_name, model_name, url))
+
+    # Pretty table
+    col_stack = max(len("STACK"), max(len(r[0]) for r in rows))
+    col_model = max(len("MODEL"), max(len(r[1]) for r in rows))
+    col_url = max(len("ENDPOINT URL"), max(len(r[2]) for r in rows))
+
+    logger.line_break()
+    logger.log_info("📋 Detected endpoints:")
+    logger.log_info(
+        f"  {'STACK'.ljust(col_stack)}  "
+        f"{'MODEL'.ljust(col_model)}  {'ENDPOINT URL'.ljust(col_url)}"
+    )
+    logger.log_info(
+        f"  {'-' * col_stack}  {'-' * col_model}  {'-' * col_url}"
+    )
+    for stack_name, model_name, url in rows:
+        logger.log_info(
+            f"  {stack_name.ljust(col_stack)}  "
+            f"{model_name.ljust(col_model)}  {url.ljust(col_url)}"
+        )
+    logger.line_break()
+
+    # Copy-paste block — one ready-to-run invocation per stack, with the
+    # flags the user most likely wants to customize (harness, workload,
+    # parallelism) left as placeholders.
+    spec_raw = getattr(args, "specification_file", None)
+    spec = str(spec_raw) if spec_raw else "<spec>"
+    if "/" in spec or spec.endswith(".yaml.j2"):
+        # Full path (e.g. /abs/path/config/specification/guides/multi-model-wva.yaml.j2)
+        # → trim to the friendly `category/name` form the CLI understands.
+        import os
+        parent = os.path.basename(os.path.dirname(spec)) if "/" in spec else ""
+        stem = os.path.basename(spec)
+        if stem.endswith(".yaml.j2"):
+            stem = stem[:-len(".yaml.j2")]
+        spec = f"{parent}/{stem}" if parent else stem
+    namespace = context.namespace or "<namespace>"
+    logger.log_info("💡 Copy-paste to benchmark one pool:")
+    logger.line_break()
+    # log_plain writes to every logger handler (terminal + attached log
+    # files) without the timestamp / level prefix, so the block both
+    # copy-pastes cleanly from the terminal AND lands verbatim in the
+    # log file for later auditing.
+    for stack_name, model_name, url in rows:
+        logger.log_plain(f"  # {stack_name} — {model_name}")
+        logger.log_plain(f"  llmdbenchmark --spec {spec} run \\")
+        logger.log_plain(f"    --namespace {namespace} \\")
+        logger.log_plain(f"    --endpoint-url {url} \\")
+        logger.log_plain(f"    --model {model_name} \\")
+        logger.log_plain("    -l <harness> -w <workload.yaml> -j <parallel-pods>")
+        logger.log_plain("")
+
+
 def _execute_run(args, logger, render_plan_errors):
     """Build execution context and run experiment steps."""
     try:
@@ -802,6 +964,12 @@ def _execute_run(args, logger, render_plan_errors):
     except PhaseError as e:
         logger.log_error(str(e))
         sys.exit(1)
+
+    # --list-endpoints short-circuits the run — no harness pods launched,
+    # no results collected, no ConfigMap stored. Skip the benchmark
+    # summary banner entirely; the endpoints table was the whole output.
+    if getattr(args, "list_endpoints", False):
+        return
 
     endpoint_url = getattr(args, "endpoint_url", None)
     run_config_file = getattr(args, "run_config", None)
@@ -814,10 +982,15 @@ def _execute_run(args, logger, render_plan_errors):
     # --- Summary banner ---
     results_dir = context.run_results_dir()
     namespace = context.harness_namespace or context.namespace or "unknown"
-    model_name = context.model_name or "unknown"
     workload = context.harness_profile or "unknown"
     experiment_ids = getattr(context, "experiment_ids", [])
     parallelism = context.harness_parallelism or 1
+
+    # Multi-stack scenarios benchmark more than one model simultaneously;
+    # context.model_name holds only a single value (from the first stack
+    # or a CLI override). Aggregate per-stack model names from the
+    # rendered configs so the banner reflects reality.
+    stack_models = _collect_stack_models(context)
 
     logger.line_break()
     logger.log_info("=" * 60)
@@ -825,7 +998,15 @@ def _execute_run(args, logger, render_plan_errors):
     logger.log_info("=" * 60)
     logger.log_info(f"  Harness:       {harness}")
     logger.log_info(f"  Workload:      {workload}")
-    logger.log_info(f"  Model:         {model_name}")
+    if len(stack_models) > 1:
+        logger.log_info(f"  Models:        {len(stack_models)} (one per stack)")
+        for stack_name, model in stack_models:
+            logger.log_info(f"    - {stack_name.ljust(20)} {model}")
+    else:
+        single_model = (
+            stack_models[0][1] if stack_models else (context.model_name or "unknown")
+        )
+        logger.log_info(f"  Model:         {single_model}")
     logger.log_info(f"  Namespace:     {namespace}")
     logger.log_info(f"  Mode:          {mode}")
     logger.log_info(f"  Parallelism:   {parallelism}")

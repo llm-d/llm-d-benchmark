@@ -1261,6 +1261,11 @@ fma:
 # DOWNLOAD JOB CONFIGURATION
 # ============================================================================
 downloadJob:
+  # Job name. Multi-stack scenarios auto-suffix this with the model ID
+  # label (render_plans._resolve_per_stack_identity) so each stack gets
+  # its own download-{model_id_label} Job and the waits don't cross-talk.
+  # Set explicitly here to opt out of the auto-suffix.
+  name: download-model
   backoffLimit: 3
   mountPath: /cache
 

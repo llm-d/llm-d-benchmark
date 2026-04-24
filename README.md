@@ -5,7 +5,6 @@ This repository provides an automated workflow for benchmarking LLM inference us
 > [!TIP]
 > We acknowledge many users are still utilizing our previous (now deprecated) library, and to make the transition easier, we still have that library available. It can be found in our [v0.5.2](https://github.com/llm-d/llm-d-benchmark/tree/v0.5.2) version tag.
 
-
 ### Main Goal
 
 Provide a single source of automation for repeatable and reproducible experiments and performance evaluation on `llm-d`:
@@ -26,7 +25,6 @@ For the client setup, the provided `install.sh` will install the necessary tools
 
 Deploying the llm-d stack requires **cluster-level admin** privileges, as you will be configuring cluster-level resources.
 However, the scripts can be executed by **namespace-level admin** users, as long as the [Kubernetes infrastructure components](https://github.com/llm-d-incubation/llm-d-infra) are configured and the **target namespace already exists**.
-
 
 ## Getting Started
 
@@ -90,6 +88,8 @@ Every command takes a `--spec` that selects the configuration for your cluster a
 ```bash
 --spec gpu                              # NVIDIA GPU setup (config/specification/examples/gpu.yaml.j2)
 --spec inference-scheduling             # inference scheduling guide
+--spec inference-scheduling-wva         # inference scheduling + WVA autoscaling
+--spec multi-model-wva                  # multi-model WVA: N pools, 1 gateway, 1 shared HTTPRoute
 --spec pd-disaggregation               # prefill-decode disaggregation guide
 ...
 --spec /full/path/to/my-spec.yaml.j2    # custom spec
@@ -120,6 +120,157 @@ llmdbenchmark --spec gpu teardown
 
 Each command renders Kubernetes manifests from your spec's templates and defaults, then applies them. The workspace directory captures rendered configs, manifests, and results for later inspection.
 
+### Deploy multiple models behind one gateway
+
+The `multi-model-wva` scenario deploys N models under a single gateway,
+each with its own EPP + InferencePool + VariantAutoscaling + HPA, sharing
+one WVA controller and one HTTPRoute with N backendRefs:
+
+```bash
+# Standup — renders two stacks (qwen3-06b, llama-31-8b), installs shared
+# infra once, deploys a per-model Helm release + VA + HPA for each.
+llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace
+
+# Smoketest — runs stack-by-stack (sequential), hitting each pool at its
+# routing prefix (/qwen3-06b/v1/models, /llama-31-8b/v1/models).
+llmdbenchmark --spec guides/multi-model-wva smoketest -p my-namespace
+
+# Run — iterates every stack, each harness pod targets its own pool's endpoint.
+llmdbenchmark --spec guides/multi-model-wva run -p my-namespace
+
+# See what's deployed: list detected endpoints + copy-paste run commands.
+llmdbenchmark --spec guides/multi-model-wva run -p my-namespace --list-endpoints
+
+# Benchmark just one pool (no --endpoint-url needed — auto-resolves):
+llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
+  --stack qwen3-06b \
+  -l inference-perf -w sanity_random.yaml
+
+# Teardown — removes both stacks and the shared infra.
+llmdbenchmark --spec guides/multi-model-wva teardown -p my-namespace
+```
+
+Stack names (`qwen3-06b`, `llama-31-8b`) double as path prefixes on the
+shared HTTPRoute (`/qwen3-06b/v1/...`, `/llama-31-8b/v1/...`). Pick short
+descriptive names in your own scenario — `--list-endpoints` prints the
+rendered URLs so you rarely have to type them manually.
+
+#### Discovering what's deployed (`--list-endpoints`)
+
+After standup, `--list-endpoints` detects each pool's routing URL, prints a
+copy-paste-ready table, and exits without launching any harness pods:
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva run -p my-namespace --list-endpoints
+```
+
+```
+📋 Detected endpoints:
+  STACK        MODEL                      ENDPOINT URL
+  -----------  -------------------------  ------------------------------
+  qwen3-06b    Qwen/Qwen3-0.6B            http://10.1.2.3:80/qwen3-06b
+  llama-31-8b  unsloth/Meta-Llama-3.1-8B  http://10.1.2.3:80/llama-31-8b
+
+💡 Copy-paste to benchmark one pool:
+
+  # qwen3-06b — Qwen/Qwen3-0.6B
+  llmdbenchmark --spec guides/multi-model-wva run \
+    --namespace my-namespace \
+    --endpoint-url http://10.1.2.3:80/qwen3-06b \
+    --model Qwen/Qwen3-0.6B \
+    -l <harness> -w <workload.yaml> -j <parallel-pods>
+  ...
+```
+
+#### Example Targeting a single pool (`--stack`)
+
+`--stack NAME` restricts any lifecycle command to one pool (or a
+comma-separated subset). Endpoint URL auto-resolves for the selected
+stack — no need to pass `--endpoint-url` manually:
+
+```bash
+# Benchmark qwen3-06b only with guidellm, two parallel harness pods
+llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
+  --stack qwen3-06b \
+  -l guidellm \
+  -w sanity_random.yaml \
+  -j 2
+```
+
+Breakdown of the Example:
+
+- `--stack qwen3-06b` filters per-stack steps to that pool. Endpoint
+  detection (step 03) runs only for that stack and auto-resolves to
+  `http://<gateway>:80/qwen3-06b` — including the routing prefix — so every
+  downstream step targets the qwen3-06b InferencePool.
+- `-l guidellm` selects the guidellm harness
+  ([workload/harnesses/guidellm-llm-d-benchmark.sh](workload/harnesses/guidellm-llm-d-benchmark.sh)).
+- `-j 2` launches two guidellm pods hitting the same endpoint. Both pods
+  run the same treatment (`-w`) but write to distinct result
+  subdirectories (`{experiment_id}_1`, `{experiment_id}_2`) on the
+  workload PVC.
+
+Want to compare pools side-by-side? Launch two invocations in parallel
+shells (different `--workspace` each):
+
+```bash
+# Terminal 1 — --workspace is a global option, placed before the subcommand
+llmdbenchmark --spec guides/multi-model-wva --workspace /tmp/run-qwen run -p my-namespace \
+  --stack qwen3-06b \
+  -l guidellm -w sanity_random.yaml -j 2 &
+
+# Terminal 2 (or same shell, backgrounded)
+llmdbenchmark --spec guides/multi-model-wva --workspace /tmp/run-llama run -p my-namespace \
+  --stack llama-31-8b \
+  -l guidellm -w sanity_random.yaml -j 2
+```
+
+`--stack` also works on `standup`, `smoketest`, and `teardown`. Same
+flag, same semantics — restrict execution to the named subset of stacks
+without editing the scenario YAML. Scenario-wide steps (namespace
+creation, admin prereqs, shared infra, WVA controller install) always
+run; only the per-stack steps (06+ for standup) are filtered.
+
+```bash
+# Standup only pool qwen3-06b from the multi-model scenario — shared
+# infra (istio, Gateway, WVA controller, model PVC) installs normally,
+# but only qwen3-06b's ms/gaie/VA/HPA resources get created.
+llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace \
+  --stack qwen3-06b
+
+# Standup two named pools out of a larger scenario:
+llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace \
+  --stack qwen3-06b,llama-31-8b
+
+# Tear down just one pool later, leaving the other running:
+llmdbenchmark --spec guides/multi-model-wva teardown -p my-namespace \
+  --stack qwen3-06b
+```
+
+Unknown stack names fail loudly with a list of valid ones.
+
+When `--stack NAME` selects exactly one stack, `-m/--models` scopes to
+that stack only — sibling stacks keep their scenario-defined models.
+Handy for "rerun pool A against a different model" without touching pool
+B:
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
+  --stack qwen3-06b \
+  --model meta-llama/Llama-3.2-3B \
+  -l inference-perf -w sanity_random.yaml
+```
+
+Without `--stack`, `-m` applies to every stack and emits a warning.
+
+Add a third model by copying a stack block in
+[`config/scenarios/guides/multi-model-wva.yaml`](config/scenarios/guides/multi-model-wva.yaml)
+and changing `name` + `model`. Scenario-wide config (gateway class, WVA
+controller image, shared HTTPRoute, EPP plugin config) lives in the
+top-level `shared:` block and is inherited by every stack. See
+[Workload Variant Autoscaler](docs/workload-variant-autoscaler.md#2c-via-the-multi-model-wva-scenario-multiple-pools-one-wva-controller)
+for the full architecture.
+
 ### Benchmark an existing endpoint (run-only mode)
 
 Already have a model-serving endpoint running? Skip deployment entirely:
@@ -145,6 +296,8 @@ See [workload/README.md](workload/README.md) for the full experiment file format
 | Topic | Where to look |
 |-------|---------------|
 | Configuration system, defaults, scenarios, overrides | [config/README.md](config/README.md) |
+| Multi-model scenarios and the `shared:` block | [config/README.md](config/README.md#method-1-scenario-file-recommended-for-deployment-specific-config), [developer-guide](docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block) |
+| Workload-variant-autoscaler, including multi-pool setup | [docs/workload-variant-autoscaler.md](docs/workload-variant-autoscaler.md) |
 | Workloads, harnesses, profiles, experiments | [workload/README.md](workload/README.md) |
 | Standup phase, deployment methods, step details | [llmdbenchmark/standup/README.md](llmdbenchmark/standup/README.md) |
 | Smoketests, per-scenario validation, adding validators | [llmdbenchmark/smoketests/README.md](llmdbenchmark/smoketests/README.md) |
@@ -258,6 +411,7 @@ llmdbenchmark --version
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
+| `--stack NAME[,NAME…]` | `LLMDBENCH_STACK` | Restrict per-stack execution to the named subset. Useful in multi-stack scenarios (e.g. `guides/multi-model-wva`) to re-deploy a single pool without touching siblings. Unknown names fail loudly. |
 | `-f` / `--monitoring` | `LLMDBENCH_MONITORING` | Enable PodMonitor creation and EPP verbosity during standup |
 | `--skip-smoketest` | | Skip automatic smoketest after standup completes |
 | `--affinity` | `LLMDBENCH_AFFINITY` | Node affinity / tolerations label |
@@ -274,6 +428,7 @@ llmdbenchmark --version
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name (default: `llmdbench`) |
 | `-d` / `--deep` | `LLMDBENCH_DEEP_CLEAN` | Deep clean: delete ALL resources in both namespaces |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Comma-separated namespaces (model,harness) |
+| `--stack NAME[,NAME…]` | `LLMDBENCH_STACK` | Restrict teardown to the named subset. Useful for removing one pool from a multi-stack scenario while leaving siblings in place. |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 
 ### Experiment Options
@@ -324,6 +479,8 @@ llmdbenchmark --version
 | `--analyze` | | Run local analysis on results after collection |
 | `-z` / `--skip` | `LLMDBENCH_SKIP` | Skip execution, only collect existing results |
 | `-d` / `--debug` | `LLMDBENCH_DEBUG` | Debug mode: start harness pods with sleep infinity |
+| `--stack NAME[,NAME…]` | `LLMDBENCH_STACK` | Restrict the benchmark to the named subset of stacks. Endpoint URL auto-resolves for the selected stack — no need for `--endpoint-url`. When `--stack` selects exactly one stack, `-m/--models` scopes to that stack only. |
+| `--list-endpoints` | | Detect per-stack endpoint URLs, print a copy-paste table of `llmdbenchmark run` invocations, and exit without launching any harness pods. Useful after `standup` to discover what's deployed. |
 
 ### Smoketest Options
 
@@ -340,7 +497,8 @@ llmdbenchmark --spec gpu smoketest -p my-namespace -s 2   # config validation on
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (standalone, modelservice, fma) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
-| `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
+| `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4). Smoketest pins this to 1 regardless — parallel probes across stacks are confusing. |
+| `--stack NAME[,NAME…]` | `LLMDBENCH_STACK` | Restrict smoketest to the named subset of stacks. |
 
 Smoketests also run automatically after `standup` unless `--skip-smoketest` is passed. See [llmdbenchmark/smoketests/README.md](llmdbenchmark/smoketests/README.md) for details on what each step validates.
 

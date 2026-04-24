@@ -10,9 +10,9 @@ Steps are registered in `steps/__init__.py` via `get_standup_steps()` and execut
 |------|------|-------|-------------|
 | 00 | `EnsureInfraStep` | global | Validate system dependencies (kubectl, helm, etc.) and print cluster summary banner |
 | 02 | `AdminPrerequisitesStep` | global | Install cluster-level admin prerequisites (CRDs, gateways, LeaderWorkerSet, SCCs) |
-| 03 | `WorkloadMonitoringStep` | global | Validate cluster resources and configure workload monitoring (PodMonitors) |
-| 04 | `ModelNamespaceStep` | global | Prepare the model namespace (PVC, secrets, model download job) |
-| 05 | `HarnessNamespaceStep` | global | Prepare the harness namespace (PVC, data access pod, secrets) |
+| 03 | `WorkloadMonitoringStep` | global | Validate cluster resources and configure workload monitoring (PodMonitors). Installs WVA controller once per `wva.namespace` across all rendered stacks. |
+| 04 | `ModelNamespaceStep` | global | Prepare the model namespace. Creates one shared model PVC (idempotent across stacks) and one download Job per stack with `modelservice.uriProtocol: pvc` (or standalone). Jobs are launched in parallel (phase 1) and waited on in turn (phase 2), so total wall time ≈ slowest model. Every stack's weights live in a distinct `model.path` subdirectory on the shared PVC. |
+| 05 | `HarnessNamespaceStep` | global | Prepare the harness namespace (scenario-wide workload PVC, data access pod, secrets) |
 | 06 | `FMADeployStep` | global | Deploy FMA controllers |
 | 06 | `StandaloneDeployStep` | global | Deploy vLLM as standalone Kubernetes Deployments and Services |
 | 08 | `DeploySetupStep` | global | Set up Helm repos and deploy gateway infrastructure for modelservice mode |

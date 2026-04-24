@@ -1,0 +1,386 @@
+# MULTI-MODEL + WVA WELL LIT PATH for LLM-D Deployment
+#
+# Deploys N models under a single gateway, each with its own EPP +
+# InferencePool + VariantAutoscaling + HPA, managed by one shared WVA
+# controller, reachable through ONE HTTPRoute with N backendRefs.
+#
+# Topology (with N=2):
+#                        ┌──── Gateway (infra-llmdbench, shared) ──────┐
+#                        │     HTTPRoute multi-model-route (shared)    │
+#                        │     ├── /qwen3-06b/v1   → InferencePool A   │
+#                        │     └── /llama-31-8b/v1 → InferencePool B   │
+#                        └─────────────────────────────────────────────┘
+#                              │                          │
+#                      ┌───────┴────────┐         ┌───────┴────────┐
+#                      │ EPP qwen3-06b  │         │ EPP llama-31-8b│
+#                      │ + InferencePool│         │ + InferencePool│
+#                      └───────┬────────┘         └───────┬────────┘
+#                              │                          │
+#                      ┌───────┴────────┐         ┌───────┴────────┐
+#                      │ vLLM decode    │         │ vLLM decode    │
+#                      │ + VA + HPA     │         │ + VA + HPA     │
+#                      └────────────────┘         └────────────────┘
+#                                     ▲                  ▲
+#                                     └──── WVA (1) ─────┘
+#                                           controller
+#
+# Architecture:
+#
+#   - `shared:` block holds scenario-wide config (WVA controller,
+#     gateway, shared HTTPRoute, EPP plugin config, flowControl feature
+#     gate). It is merged into every stack's values in
+#     render_plans._process_stack BEFORE the per-stack overrides —
+#     per-stack always wins.
+#
+#   - `scenario:` is a list of N stacks. Each gets its own
+#     `{model_id_label}-ms` and `{model_id_label}-gaie` Helm releases,
+#     its own VA + HPA, and its own auto-named download Job + PVC.
+#
+#   - One WVA controller per wva.namespace (deduplicated by
+#     install_wva_for_namespace). Leaving wva.namespace empty in the
+#     shared block sends it to the deploy namespace → one controller.
+#
+# Stack naming convention:
+#
+#   Stack `name` values double as path prefixes in the shared HTTPRoute
+#   (`/{stack.name}/v1/...`). Pick short descriptive names that identify
+#   the model family + size (e.g. `qwen3-06b`, `llama-31-8b`) rather than
+#   opaque labels (`pool-a`). Keep them lowercase and URL-safe; no hard
+#   k8s limit on the name itself, but conventionally ≤30 chars.
+#   `--list-endpoints` prints the rendered URLs so users rarely have to
+#   type these manually.
+#
+# Based on:
+#   https://github.com/llm-d/llm-d/blob/main/guides/workload-autoscaling/README.wva.md
+# and the WVA team's deploy/install-multi-model.sh orchestrator.
+#
+# Running:
+#
+#   llmdbenchmark --spec guides/multi-model-wva standup -p <namespace>
+#
+# To add a third model: copy one of the stack blocks, give it a unique
+# short descriptive `name` and a unique `model.*`. The parser auto-
+# derives unique `downloadJob.name` and
+# `inferenceExtension.monitoring.secretName` values from the model ID
+# label, so nothing else needs per-stack customization.
+
+# ============================================================================
+# SHARED - applied to every stack before per-stack overrides
+# ============================================================================
+shared:
+  # --------------------------------------------------------------------------
+  # DEPLOYMENT METHOD
+  # --------------------------------------------------------------------------
+  modelservice:
+    enabled: true
+  standalone:
+    enabled: false
+
+  # --------------------------------------------------------------------------
+  # WVA CONTROLLER - installed once per namespace. Per-stack scaling intent
+  # (variantAutoscaling, hpa) lives in each stack's `wva:` block below.
+  # --------------------------------------------------------------------------
+  wva:
+    enabled: true
+    # Tag VAs as part of the inference-scheduling guide so upstream
+    # dashboards group them together with single-model WVA scenarios —
+    # the underlying architecture (gateway + EPP + InferencePool + VA +
+    # HPA) is identical, only the number of pools differs.
+    wellLitPath: inference-scheduling
+    namespace: ""
+    image:
+      repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
+      tag: v0.6.0
+    replicaCount: 1
+    controller:
+      enabled: true
+    namespaceScoped: true
+    metrics:
+      enabled: true
+      port: 8443
+      secure: true
+    prometheus:
+      baseUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local
+      port: 9091
+    vllmService:
+      enabled: false
+
+  chartVersions:
+    wva: 0.6.0
+    prometheusAdapter: 5.2.0
+
+  # --------------------------------------------------------------------------
+  # HTTPROUTE - one shared route with N URLRewrite rules, one per stack.
+  # Emitted only in the first stack's render (stackIndex == 1). Other stacks
+  # render an empty 08_httproute.yaml (step_09 skips empty files).
+  #
+  # pathPrefix is the whole client-side path segment; the gateway rewrites
+  # it to rewriteTo before the upstream pod sees the request. We route on
+  # `/{stack.name}` (e.g. `/pool-a`) rather than `/{stack.name}/v1` so the
+  # smoketest can probe both `/{stack.name}/health` and
+  # `/{stack.name}/v1/models` — the vLLM `/health` endpoint lives at the
+  # root, not under `/v1`, and a narrower prefix like `/pool-a/v1` would
+  # not match it.
+  # --------------------------------------------------------------------------
+  httpRoute:
+    mode: shared
+    name: multi-model-route
+    pathPrefix: /{stack.name}
+    rewriteTo: /
+
+  # --------------------------------------------------------------------------
+  # EPP PLUGIN CONFIG - same scheduling profile for all pools. Enabling the
+  # flowControl feature gate is required for WVA autoscaling (EPP queue
+  # depth drives the scaling signal).
+  # --------------------------------------------------------------------------
+  inferenceExtension:
+    pluginsConfigFile: "wva-plugins.yaml"
+    pluginsCustomConfig:
+      wva-plugins.yaml: |
+        apiVersion: inference.networking.x-k8s.io/v1alpha1
+        kind: EndpointPickerConfig
+        featureGates:
+          - flowControl
+        plugins:
+          - type: queue-scorer
+          - type: kv-cache-utilization-scorer
+          - type: prefix-cache-scorer
+        schedulingProfiles:
+          - name: default
+            plugins:
+              - pluginRef: queue-scorer
+                weight: 2
+              - pluginRef: kv-cache-utilization-scorer
+                weight: 2
+              - pluginRef: prefix-cache-scorer
+                weight: 3
+
+  # --------------------------------------------------------------------------
+  # VLLM COMMON - same across pools. Individual flags can be overridden
+  # per-stack below if a specific model needs different tuning.
+  # --------------------------------------------------------------------------
+  vllmCommon:
+    kvTransfer:
+      enabled: true
+      connector: NixlConnector
+      role: kv_both
+    flags:
+      enforceEager: true
+      disableLogRequests: true
+      disableUvicornAccessLog: true
+      allowLongMaxModelLen: "1"
+      serverDevMode: "1"
+    volumes:
+      - name: shared-config
+        type: emptyDir
+        emptyDir: {}
+      - name: dshm
+        type: emptyDir
+        emptyDir:
+          medium: Memory
+          sizeLimit: 8Gi
+    volumeMounts:
+      - name: dshm
+        mountPath: /dev/shm
+      - name: shared-config
+        mountPath: /shared-config
+
+  # --------------------------------------------------------------------------
+  # PREFILL / DECODE defaults shared across pools. Decode resources are
+  # overridden per-stack for model-specific sizing.
+  # --------------------------------------------------------------------------
+  prefill:
+    enabled: false
+    replicas: 0
+
+  decode:
+    initContainers:
+      - name: preprocess
+        image: ghcr.io/llm-d/llm-d-benchmark:auto
+        imagePullPolicy: Always
+        command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
+        volumeMounts:
+          - name: shared-config
+            mountPath: /shared-config
+    parallelism:
+      tensor: 1
+      data: 1
+      dataLocal: 1
+      workers: 1
+    extraEnvVars: []
+    extraContainerConfig:
+      ports:
+        - containerPort: 5557
+          protocol: TCP
+        - containerPort: 8200
+          name: metrics
+          protocol: TCP
+      securityContext:
+        capabilities:
+          add:
+            - "IPC_LOCK"
+            - "SYS_RAWIO"
+        runAsGroup: 0
+        runAsUser: 0
+      imagePullPolicy: Always
+    additionalVolumeMounts: []
+    additionalVolumes: []
+    probes:
+      startup:
+        path: /v1/models
+        failureThreshold: 60
+        initialDelaySeconds: 15
+        periodSeconds: 30
+        timeoutSeconds: 5
+      liveness:
+        path: /health
+        failureThreshold: 3
+        periodSeconds: 10
+        timeoutSeconds: 5
+      readiness:
+        path: /v1/models
+        failureThreshold: 3
+        periodSeconds: 5
+        timeoutSeconds: 2
+    monitoring:
+      podmonitor:
+        enabled: true
+        portName: metrics
+        path: /metrics
+        interval: 30s
+        labels:
+          release: llmd
+
+  # --------------------------------------------------------------------------
+  # HARNESS + WORKDIR - harness is single-instance per scenario, so it
+  # lives in `shared` (the workload PVC it writes to is scenario-wide).
+  # --------------------------------------------------------------------------
+  workDir: "~/data/multi-model-wva"
+  harness:
+    name: inference-perf
+    experimentProfile: shared_prefix_synthetic.yaml
+
+  # --------------------------------------------------------------------------
+  # STORAGE - ONE shared model PVC for the whole scenario.
+  # Every stack's weights live in a distinct subdirectory
+  # (`{modelPvc.mountPath}/{model.path}`) on the same volume, which is the
+  # right shape for NVMe / local-directory-backed storage classes and for
+  # reusing cached weights across runs. Size it for the sum of all models
+  # this scenario will ever load.
+  # --------------------------------------------------------------------------
+  storage:
+    modelPvc:
+      size: 100Gi
+
+
+# ============================================================================
+# SCENARIO - per-model stacks
+# ============================================================================
+scenario:
+  # --------------------------------------------------------------------------
+  # QWEN3-06B - Qwen/Qwen3-0.6B
+  # --------------------------------------------------------------------------
+  - name: "qwen3-06b"
+
+    model:
+      name: Qwen/Qwen3-0.6B
+      shortName: qwen-qwen3-0-6b
+      path: models/Qwen/Qwen3-0.6B
+      huggingfaceId: Qwen/Qwen3-0.6B
+      size: 8Gi
+      maxModelLen: 8192
+      blockSize: 64
+      gpuMemoryUtilization: 0.85
+
+    wva:
+      variantAutoscaling:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 10
+        variantCost: "10.0"
+        slo:
+          tpot: 10
+          ttft: 1000
+      hpa:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 10
+        targetAvgValue: 1
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 120
+            policies:
+              - type: Percent
+                value: 100
+                periodSeconds: 15
+          scaleDown:
+            stabilizationWindowSeconds: 120
+            policies:
+              - type: Percent
+                value: 100
+                periodSeconds: 15
+
+    decode:
+      replicas: 1
+      resources:
+        limits:
+          memory: 24Gi
+          cpu: "8"
+        requests:
+          memory: 24Gi
+          cpu: "8"
+
+
+  # --------------------------------------------------------------------------
+  # LLAMA-31-8B - unsloth/Meta-Llama-3.1-8B
+  # --------------------------------------------------------------------------
+  - name: "llama-31-8b"
+
+    model:
+      name: unsloth/Meta-Llama-3.1-8B
+      shortName: unsloth-meta-llama-3-1-8b
+      path: models/unsloth/Meta-Llama-3.1-8B
+      huggingfaceId: unsloth/Meta-Llama-3.1-8B
+      size: 32Gi
+      maxModelLen: 8192
+      blockSize: 64
+      gpuMemoryUtilization: 0.85
+
+    wva:
+      variantAutoscaling:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 10
+        variantCost: "10.0"
+        slo:
+          tpot: 10
+          ttft: 1000
+      hpa:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 10
+        targetAvgValue: 1
+        behavior:
+          scaleUp:
+            stabilizationWindowSeconds: 120
+            policies:
+              - type: Percent
+                value: 100
+                periodSeconds: 15
+          scaleDown:
+            stabilizationWindowSeconds: 120
+            policies:
+              - type: Percent
+                value: 100
+                periodSeconds: 15
+
+    decode:
+      replicas: 1
+      resources:
+        limits:
+          memory: 48Gi
+          cpu: "16"
+        requests:
+          memory: 48Gi
+          cpu: "16"
+

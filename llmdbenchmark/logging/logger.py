@@ -178,6 +178,19 @@ class LLMDBenchmarkLogger:
             handler.stream.write("\n")
             handler.flush()
 
+    def log_plain(self, msg: str) -> None:
+        """Write *msg* verbatim to every handler — no timestamp or level prefix.
+
+        For human-facing payloads where the log formatting would be more
+        noise than signal: copy-paste blocks, banners, ASCII art. Still
+        routed through every logger handler, so the text lands in both
+        the terminal and any attached FileHandler(s) — unlike print(),
+        which only reaches stdout.
+        """
+        for handler in self.logger.handlers:
+            handler.stream.write(str(msg) + "\n")
+            handler.flush()
+
 
 def get_logger(
     log_dir: Union[str, Path],

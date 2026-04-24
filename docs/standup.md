@@ -12,6 +12,53 @@ b) "llm-d", which leverages a combination of [llm-d-infra](https://github.com/ll
 ## Scenarios
 All the information required for the standup of a stack is contained on a "scenario file". This information is encoded in the form of environment variables, with default values defined in `config/defaults.yaml` which can be then overriden inside a [scenario file](../config/scenarios) (YAML-based) or via [specification templates](../config/specification) (Jinja2 `.yaml.j2` files).
 
+### Multi-Stack Scenarios
+
+A scenario may define more than one stack in its `scenario:` list. Standup
+iterates every per-stack step across all stacks (in parallel, bounded by
+`--parallel`), so you can stand up N models behind one gateway in a single
+`llmdbenchmark standup` invocation. Scenario-wide config (gateway class,
+WVA controller, shared HTTPRoute, chart versions) lives in an optional
+top-level `shared:` block that's merged into every stack before per-stack
+overrides.
+
+Cluster-scoped infrastructure that would race with itself across N parallel
+standup executions is deduplicated at render time — only the first stack
+emits the istio control-plane helmfile and the `infra-llmdbench` Helm
+release; subsequent stacks render empty files for those templates. WVA
+controller installation is deduplicated at the step level (one per
+`wva.namespace`).
+
+Currently shipped multi-stack guide:
+
+- [`guides/multi-model-wva`](../config/scenarios/guides/multi-model-wva.yaml) —
+  two models (Qwen3-0.6B + Meta-Llama-3.1-8B), each with its own EPP +
+  InferencePool + VariantAutoscaling + HPA, one shared WVA controller,
+  one HTTPRoute with two backendRefs routing by path prefix
+  (`/qwen3-06b/*` → Qwen pool, `/llama-31-8b/*` → Llama pool).
+
+See [`config/README.md`](../config/README.md#method-1-scenario-file-recommended-for-deployment-specific-config)
+for the `shared:` merge semantics and the developer guide's
+[Multi-Stack Scenarios](developer-guide.md#multi-stack-scenarios-and-the-shared-block)
+section for the render-engine details.
+
+`--stack NAME[,NAME...]` (also `LLMDBENCH_STACK=NAME`) restricts standup to
+a subset of rendered stacks — handy for re-deploying a single pool after a
+scenario edit without tearing down siblings. Global steps (cluster admin
+prereqs, shared-infra helmfile, WVA controller install, scenario-wide
+PVCs) still run as usual; only per-stack steps (06+ for standup) are
+filtered. Unknown names fail loudly with a list of valid ones.
+
+```bash
+# One stack:
+llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace --stack qwen3-06b
+
+# Multiple named stacks (comma-separated):
+llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace --stack qwen3-06b,llama-31-8b
+```
+
+The same flag works on `smoketest`, `run`, and `teardown` with identical
+semantics, so you can scope every lifecycle phase to the same subset.
 
 ## Multiple steps
 The full standup of a stack is a multi-step process. The [lifecycle](lifecycle.md) document go into more details explaning the meaning of each different individual step.

@@ -1024,7 +1024,7 @@ prefill:
 {# -------------------------------------------------------------------------- #}
 {% if extraObjects is defined and extraObjects %}
 extraObjects:
-{{ extraObjects | toyaml | indent(2) }}
+{{ extraObjects | toyaml | indent(2, first=True) }}
 {% endif %}
 
 {% endif %}

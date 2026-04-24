@@ -103,6 +103,55 @@ scenario:
 
 Only the keys you specify are overridden. Everything else comes from `defaults.yaml`.
 
+**Multi-stack scenarios — the `shared:` block.** The scenario file also
+accepts an optional top-level `shared:` key that's merged into every stack
+before the per-stack overrides. Use it to lift scenario-wide config out of
+duplicated per-stack blocks. Per-stack still wins, so any stack can override
+a shared value:
+
+```yaml
+shared:
+  modelservice: { enabled: true }
+  wva:
+    enabled: true
+    image: { tag: v0.6.0 }
+  httpRoute:
+    mode: shared
+    name: multi-model-route
+    pathPrefix: /{stack.name}
+    rewriteTo: /
+
+scenario:
+  - name: pool-a
+    model: { name: Qwen/Qwen3-0.6B, ... }
+    decode: { replicas: 1 }
+  - name: pool-b
+    model: { name: unsloth/Meta-Llama-3.1-8B, ... }
+    decode: { replicas: 1 }
+```
+
+Render-time conveniences that activate only when `len(scenario) ≥ 2`:
+
+- `downloadJob.name` and `inferenceExtension.monitoring.secretName` are
+  auto-suffixed with each stack's `model_id_label` so parallel download
+  Jobs and sibling gaie Helm releases don't collide. Explicit overrides
+  (in `defaults.yaml`, `shared:`, or per-stack) are preserved.
+- `storage.modelPvc.name` is **not** suffixed — every stack writes weights
+  to a distinct `model.path` subdirectory on one shared PVC. This matches
+  how NVMe / local-directory storage classes are typically deployed and
+  lets cached weights be reused across runs without per-model duplication.
+- When `httpRoute.mode: shared`, [08_httproute.yaml.j2](templates/jinja/08_httproute.yaml.j2)
+  renders a single HTTPRoute in the first stack with one backendRef per
+  sibling stack; other stacks render an empty file.
+- Step 04 iterates `context.rendered_stacks` so every stack with
+  `modelservice.uriProtocol: pvc` (or standalone) runs a download Job
+  against the shared PVC. Downloads run in parallel — total wall time
+  ≈ slowest model, not sum.
+
+See [guides/multi-model-wva.yaml](scenarios/guides/multi-model-wva.yaml) for a
+complete example and the developer guide's [Multi-Stack Scenarios](../docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
+section for the merge semantics.
+
 **Example: GPU scenario with a custom vLLM image**
 
 The GPU example uses standalone deployment, so the container image is set under `standalone.image` (not `images.vllm`, which is the fallback for modelservice deployments). See [Container Images](#container-images) for the full image config reference.

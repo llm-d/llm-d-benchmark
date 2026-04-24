@@ -917,16 +917,137 @@ The deployment method must be exactly one of `standalone` or `modelservice`.
 Both `standalone.enabled` and `modelservice.enabled` must be explicitly set so
 that the rendered templates know which path to take.
 
+#### Multi-stack example
+
+When a scenario defines more than one stack (e.g. to run multiple models
+behind the same gateway), lift scenario-wide settings into the top-level
+`shared:` block and keep per-stack blocks to just the model-specific knobs.
+
+```yaml
+# config/scenarios/examples/my-two-model-scenario.yaml
+shared:
+  modelservice: { enabled: true }
+  standalone:   { enabled: false }
+  httpRoute:
+    mode: shared
+    name: multi-model-route
+    pathPrefix: /{stack.name}
+    rewriteTo: /
+  wva:
+    enabled: true
+    image: { tag: v0.6.0 }
+
+scenario:
+  - name: qwen3-06b
+    model: { name: Qwen/Qwen3-0.6B, ... }
+    decode: { replicas: 1 }
+    wva:
+      variantAutoscaling: { minReplicas: 1, maxReplicas: 4 }
+      hpa:                { minReplicas: 1, maxReplicas: 4 }
+  - name: llama-31-8b
+    model: { name: unsloth/Meta-Llama-3.1-8B, ... }
+    decode: { replicas: 1 }
+    wva:
+      variantAutoscaling: { minReplicas: 1, maxReplicas: 4 }
+      hpa:                { minReplicas: 1, maxReplicas: 4 }
+```
+
+See the next subsection for how `shared:` merges with per-stack and the
+render-time behavior (auto-named PVCs, shared HTTPRoute, stack-index guards).
+For a fully-annotated real scenario, see
+[`guides/multi-model-wva.yaml`](../config/scenarios/guides/multi-model-wva.yaml).
+
+### Multi-Stack Scenarios and the `shared:` Block
+
+The scenario file supports an optional top-level `shared:` block alongside the
+`scenario:` list. Values in `shared:` are merged into every stack *before* the
+per-stack overrides, letting you lift scenario-wide settings (gateway, WVA
+controller, shared HTTPRoute config, chart versions, plugin config) out of
+per-stack blocks. Per-stack always wins, so a stack can still opt out of any
+shared value by setting it explicitly.
+
+```yaml
+# config/scenarios/guides/multi-model-wva.yaml (abridged)
+shared:
+  modelservice: { enabled: true }
+  standalone:   { enabled: false }
+  wva:
+    enabled: true
+    image: { repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler, tag: v0.6.0 }
+  httpRoute:
+    mode: shared
+    name: multi-model-route
+    pathPrefix: /{stack.name}
+    rewriteTo: /
+  vllmCommon:
+    flags: { enforceEager: true }
+
+scenario:
+  - name: qwen3-06b
+    model: { name: Qwen/Qwen3-0.6B, ... }
+    decode: { replicas: 1, resources: { ... } }
+    wva:
+      variantAutoscaling: { minReplicas: 1, maxReplicas: 4 }
+      hpa:                { minReplicas: 1, maxReplicas: 4 }
+  - name: llama-31-8b
+    model: { name: unsloth/Meta-Llama-3.1-8B, ... }
+    # same shape
+```
+
+**Resource-name collision handling (multi-stack only).** When two or more stacks
+share a namespace, the render engine auto-suffixes a small set of shipped-default
+resource names with the stack's ``model_id_label`` so Helm releases and
+Kubernetes objects don't collide:
+
+| Default path | Rewritten to (N ≥ 2) |
+|---|---|
+| `downloadJob.name` (`download-model`) | `download-model-{model_id_label}` |
+| `inferenceExtension.monitoring.secretName` | `…-sa-metrics-reader-secret-{model_id_label}` |
+
+Explicit overrides (in `defaults.yaml`, `shared:`, or a stack) are preserved.
+Single-stack scenarios skip the rewrite entirely.
+
+**Model PVCs are shared, not per-stack.** `storage.modelPvc.name` deliberately
+is **not** in the auto-suffix list — every stack writes its weights to a
+distinct subdirectory on one shared PVC (keyed by `model.path`). That matches
+how NVMe-backed and local-directory storage classes are typically deployed
+(one volume with per-model subdirs, not N volumes), and avoids wasting
+pre-provisioned disk. Operators who genuinely need per-model volumes can
+override `storage.modelPvc.name` per-stack in the scenario.
+
+See [`_resolve_per_stack_identity`](../llmdbenchmark/parser/render_plans.py)
+for the implementation and `_STACK_SCOPED_DEFAULTS` for the full list.
+
+**Shared HTTPRoute template.** When `httpRoute.mode: shared`, only the first
+stack's render of [`08_httproute.yaml.j2`](../config/templates/jinja/08_httproute.yaml.j2)
+emits a non-empty file — a single HTTPRoute with one backendRef per sibling
+stack. Sibling stacks are exposed to templates via the injected
+`siblingStacks` list and `stackIndex` variable (see
+[`_build_sibling_stacks`](../llmdbenchmark/parser/render_plans.py)). The same
+`stackIndex > 1 → empty` gate dedupes cluster-shared infra templates —
+[`09_helmfile-gateway-provider.yaml.j2`](../config/templates/jinja/09_helmfile-gateway-provider.yaml.j2)
+(istio control plane) and the `infra-llmdbench` release in
+[`10_helmfile-main.yaml.j2`](../config/templates/jinja/10_helmfile-main.yaml.j2) —
+so N stacks don't race on the same Helm release during parallel per-stack step
+execution.
+
 ### How Templates Are Rendered
 
 1. `RenderSpecification` renders the `.yaml.j2` spec to resolve `base_dir`
    paths and writes the result as YAML.
 2. `RenderPlans` (in `llmdbenchmark/parser/render_plans.py`) loads the defaults
-   YAML and the scenario YAML, deep-merges them (scenario overrides defaults),
-   then renders each Jinja2 template in `config/templates/jinja/` with the
-   merged config values.
+   YAML and the scenario YAML. For each stack it applies a four-layer merge:
+
+   ```
+   defaults.yaml  →  scenario.shared  →  stack config  →  CLI / setup overrides
+   ```
+
+   Each later layer wins over earlier ones; dicts deep-merge, lists replace
+   wholesale. After merging, `RenderPlans` resolves model IDs, per-stack
+   identity names, and substitutes `${dotted.path}` references, then renders
+   each Jinja2 template in `config/templates/jinja/` with the final values.
 3. Output goes to one directory per stack under the plan directory (e.g.,
-   `plan/my-custom-deployment/`).
+   `plan/my-custom-deployment/`, or `plan/qwen3-06b/`, `plan/llama-31-8b/`, ...).
 
 ### Custom Jinja2 Templates
 
