@@ -23,7 +23,7 @@ top-level `shared:` block that's merged into every stack before per-stack
 overrides.
 
 Cluster-scoped infrastructure that would race with itself across N parallel
-standup executions is deduplicated at render time — only the first stack
+standup executions is deduplicated at render time - only the first stack
 emits the istio control-plane helmfile and the `infra-llmdbench` Helm
 release; subsequent stacks render empty files for those templates. WVA
 controller installation is deduplicated at the step level (one per
@@ -31,11 +31,11 @@ controller installation is deduplicated at the step level (one per
 
 Currently shipped multi-stack guide:
 
-- [`guides/multi-model-wva`](../config/scenarios/guides/multi-model-wva.yaml) —
+- [`guides/multi-model-wva`](../config/scenarios/guides/multi-model-wva.yaml) -
   two models (Qwen3-0.6B + Meta-Llama-3.1-8B), each with its own EPP +
   InferencePool + VariantAutoscaling + HPA, one shared WVA controller,
   one HTTPRoute with two backendRefs routing by path prefix
-  (`/qwen3-06b/*` → Qwen pool, `/llama-31-8b/*` → Llama pool).
+  (`/qwen3-06b/*` -> Qwen pool, `/llama-31-8b/*` -> Llama pool).
 
 See [`config/README.md`](../config/README.md#method-1-scenario-file-recommended-for-deployment-specific-config)
 for the `shared:` merge semantics and the developer guide's
@@ -43,7 +43,7 @@ for the `shared:` merge semantics and the developer guide's
 section for the render-engine details.
 
 `--stack NAME[,NAME...]` (also `LLMDBENCH_STACK=NAME`) restricts standup to
-a subset of rendered stacks — handy for re-deploying a single pool after a
+a subset of rendered stacks - handy for re-deploying a single pool after a
 scenario edit without tearing down siblings. Global steps (cluster admin
 prereqs, shared-infra helmfile, WVA controller install, scenario-wide
 PVCs) still run as usual; only per-stack steps (06+ for standup) are

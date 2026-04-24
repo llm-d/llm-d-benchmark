@@ -1,6 +1,7 @@
 """Step 04 -- Prepare the model namespace (PVC, secrets, download job)."""
 
 import json
+import re
 import tempfile
 from pathlib import Path
 
@@ -48,7 +49,7 @@ class ModelNamespaceStep(Step):
                 )
 
         # PVC and download are per-stack: only needed for "pvc" protocol or
-        # standalone mode — S3/OCI/hf protocols fetch at runtime and skip
+        # standalone mode - S3/OCI/hf protocols fetch at runtime and skip
         # PVC creation entirely, deferring to the modelservice chart (hf
         # downloads happen in the decode Pod's init container).
         # In multi-model scenarios different stacks can pick different
@@ -61,8 +62,8 @@ class ModelNamespaceStep(Step):
             if self._requires_pvc_download(stack_cfg):
                 pvc_stacks.append(stack_path)
 
-        # Context secret (kubeconfig for harness pods) is scenario-wide —
-        # one per namespace regardless of per-stack uriProtocol — so it
+        # Context secret (kubeconfig for harness pods) is scenario-wide -
+        # one per namespace regardless of per-stack uriProtocol - so it
         # still keys off the first stack's config.
         plan_config = self._load_plan_config(context)
 
@@ -81,11 +82,11 @@ class ModelNamespaceStep(Step):
 
         if pvc_stacks:
             # Two-phase parallel download (only for stacks that need it):
-            #   Phase 1 — apply every download Job back-to-back; they all
+            #   Phase 1 - apply every download Job back-to-back; they all
             #             start running concurrently in the cluster.
-            #   Phase 2 — wait on each in turn. Subsequent waits return
+            #   Phase 2 - wait on each in turn. Subsequent waits return
             #             nearly instantly once their Job is already done,
-            #             so total wall time ≈ max(individual), not sum.
+            #             so total wall time ~ max(individual), not sum.
             launched = []
             for stack_path in pvc_stacks:
                 applied = self._apply_download_job(
@@ -135,11 +136,10 @@ class ModelNamespaceStep(Step):
     def _parse_size_to_gib(raw: str | None) -> float:
         """Parse a k8s resource-size string to GiB as a float.
 
-        Returns 0.0 when input is empty or unparseable — caller treats
+        Returns 0.0 when input is empty or unparseable - caller treats
         that as "unknown, skip comparison", which is the right fallback
         for a warn-only pre-flight.
         """
-        import re
         if not raw:
             return 0.0
         s = str(raw).strip()
@@ -152,7 +152,7 @@ class ModelNamespaceStep(Step):
             # Binary (IEC) units
             "Ki": n / (1024 ** 2), "Mi": n / 1024,
             "Gi": n, "Ti": n * 1024, "Pi": n * 1024 ** 2, "Ei": n * 1024 ** 3,
-            # Decimal (SI) units — approximate to GiB
+            # Decimal (SI) units - approximate to GiB
             "K": n / (1024 ** 2), "M": n / 1024, "G": n,
             "T": n * 1024, "P": n * 1024 ** 2, "E": n * 1024 ** 3,
         }
@@ -165,7 +165,7 @@ class ModelNamespaceStep(Step):
 
         Sums ``model.size`` across every pvc-protocol stack and compares
         against ``storage.modelPvc.size``. If the sum exceeds 90% of
-        capacity, log a warning — the first download to run out of space
+        capacity, log a warning - the first download to run out of space
         would otherwise fail opaquely mid-standup. Warn-only: cluster
         storage classes with thin provisioning or aggressive compression
         may legitimately oversubscribe, so we don't block.
@@ -190,7 +190,7 @@ class ModelNamespaceStep(Step):
             total_gib += self._parse_size_to_gib(model_size)
 
         if total_gib == 0:
-            return  # all model.size unset/unparseable — skip quietly
+            return  # all model.size unset/unparseable - skip quietly
 
         if total_gib > capacity_gib * 0.9:
             breakdown = ", ".join(f"{n}={s}" for n, s in per_stack_sizes)
@@ -414,14 +414,14 @@ class ModelNamespaceStep(Step):
         Phase 1 of the two-phase parallel-download flow: every stack's
         Job is applied back-to-back in ``execute()`` so all N downloads
         run concurrently in the cluster. Phase 2 (``_wait_for_download_job``)
-        then waits on each in turn — since ``kubectl wait`` is a watch,
+        then waits on each in turn - since ``kubectl wait`` is a watch,
         not a poll, subsequent waits return nearly instantly once their
         Job has already completed. Total wall time is bounded by the
         slowest model, not the sum.
 
         Returns ``(job_name, download_yaml_path)`` for the waiter, or
         ``None`` if nothing was applied (missing rendered manifest, or
-        apply failed — the error is appended to ``errors`` in that case).
+        apply failed - the error is appended to ``errors`` in that case).
         """
         download_yaml = self._find_yaml(stack_path, "04_download_job")
         if not download_yaml:

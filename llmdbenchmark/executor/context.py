@@ -25,7 +25,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     rendered_stacks: list[Path] = field(default_factory=list)
     # Optional CLI filter: if set, per-stack steps only execute for stacks
     # whose name appears here. Useful in multi-stack scenarios to run
-    # (or re-run) just one pool — e.g. `--stack pool-a` when benchmarking
+    # (or re-run) just one pool - e.g. `--stack pool-a` when benchmarking
     # a single model in the multi-model-wva scenario. Global steps are
     # unaffected. Empty / None means "all stacks" (existing behavior).
     stack_filter: list[str] | None = None

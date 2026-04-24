@@ -249,7 +249,7 @@ decode:
   priorityClassName: {{ decode_priority }}
 {% endif %}
 
-{# GPU count = accelerator.count if explicit, else tensor × dataLocal (each DP-local rank needs its own GPU) #}
+{# GPU count = accelerator.count if explicit, else tensor x dataLocal (each DP-local rank needs its own GPU) #}
 {% set decode_default_gpus = (decode.parallelism.tensor | int) * (decode.parallelism.dataLocal | int) %}
 {% set decode_accel_count = (decode.accelerator.count | default(decode_default_gpus) | int) if decode.accelerator is defined else decode_default_gpus %}
 {% if decode_accel_count > 0 %}
@@ -358,7 +358,7 @@ decode:
   subGroupExclusiveTopology: {{ decode.subGroupExclusiveTopology | lower }}
 {% endif %}
 
-{# Init containers — default image to images.benchmark if not specified or set to "auto".
+{# Init containers - default image to images.benchmark if not specified or set to "auto".
    Propagate core env vars so preprocess scripts have access to port numbers,
    model parameters, and parallelism settings. This was not done in the bash
    implementation but is needed for preprocess scripts that configure NCCL,
@@ -656,7 +656,7 @@ prefill:
   priorityClassName: {{ prefill_priority }}
 {% endif %}
 
-{# GPU count = accelerator.count if explicit, else tensor × dataLocal (each DP-local rank needs its own GPU) #}
+{# GPU count = accelerator.count if explicit, else tensor x dataLocal (each DP-local rank needs its own GPU) #}
 {% set prefill_default_gpus = (prefill.parallelism.tensor | int) * (prefill.parallelism.dataLocal | int) %}
 {% set prefill_accel_count = (prefill.accelerator.count | default(prefill_default_gpus) | int) if prefill.accelerator is defined else prefill_default_gpus %}
 {% if prefill_accel_count > 0 %}

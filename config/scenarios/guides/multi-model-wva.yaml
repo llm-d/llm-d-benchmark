@@ -5,23 +5,23 @@
 # controller, reachable through ONE HTTPRoute with N backendRefs.
 #
 # Topology (with N=2):
-#                        ┌──── Gateway (infra-llmdbench, shared) ──────┐
-#                        │     HTTPRoute multi-model-route (shared)    │
-#                        │     ├── /qwen3-06b/v1   → InferencePool A   │
-#                        │     └── /llama-31-8b/v1 → InferencePool B   │
-#                        └─────────────────────────────────────────────┘
-#                              │                          │
-#                      ┌───────┴────────┐         ┌───────┴────────┐
-#                      │ EPP qwen3-06b  │         │ EPP llama-31-8b│
-#                      │ + InferencePool│         │ + InferencePool│
-#                      └───────┬────────┘         └───────┬────────┘
-#                              │                          │
-#                      ┌───────┴────────┐         ┌───────┴────────┐
-#                      │ vLLM decode    │         │ vLLM decode    │
-#                      │ + VA + HPA     │         │ + VA + HPA     │
-#                      └────────────────┘         └────────────────┘
-#                                     ▲                  ▲
-#                                     └──── WVA (1) ─────┘
+#                        +---- Gateway (infra-llmdbench, shared) ------+
+#                        |     HTTPRoute multi-model-route (shared)    |
+#                        |     +-- /qwen3-06b/v1   -> InferencePool A   |
+#                        |     +-- /llama-31-8b/v1 -> InferencePool B   |
+#                        +---------------------------------------------+
+#                              |                          |
+#                      +-------+--------+         +-------+--------+
+#                      | EPP qwen3-06b  |         | EPP llama-31-8b|
+#                      | + InferencePool|         | + InferencePool|
+#                      +-------+--------+         +-------+--------+
+#                              |                          |
+#                      +-------+--------+         +-------+--------+
+#                      | vLLM decode    |         | vLLM decode    |
+#                      | + VA + HPA     |         | + VA + HPA     |
+#                      +----------------+         +----------------+
+#                                     ^                  ^
+#                                     +---- WVA (1) -----+
 #                                           controller
 #
 # Architecture:
@@ -29,7 +29,7 @@
 #   - `shared:` block holds scenario-wide config (WVA controller,
 #     gateway, shared HTTPRoute, EPP plugin config, flowControl feature
 #     gate). It is merged into every stack's values in
-#     render_plans._process_stack BEFORE the per-stack overrides —
+#     render_plans._process_stack BEFORE the per-stack overrides -
 #     per-stack always wins.
 #
 #   - `scenario:` is a list of N stacks. Each gets its own
@@ -38,7 +38,7 @@
 #
 #   - One WVA controller per wva.namespace (deduplicated by
 #     install_wva_for_namespace). Leaving wva.namespace empty in the
-#     shared block sends it to the deploy namespace → one controller.
+#     shared block sends it to the deploy namespace -> one controller.
 #
 # Stack naming convention:
 #
@@ -46,7 +46,7 @@
 #   (`/{stack.name}/v1/...`). Pick short descriptive names that identify
 #   the model family + size (e.g. `qwen3-06b`, `llama-31-8b`) rather than
 #   opaque labels (`pool-a`). Keep them lowercase and URL-safe; no hard
-#   k8s limit on the name itself, but conventionally ≤30 chars.
+#   k8s limit on the name itself, but conventionally <=30 chars.
 #   `--list-endpoints` prints the rendered URLs so users rarely have to
 #   type these manually.
 #
@@ -83,7 +83,7 @@ shared:
   wva:
     enabled: true
     # Tag VAs as part of the inference-scheduling guide so upstream
-    # dashboards group them together with single-model WVA scenarios —
+    # dashboards group them together with single-model WVA scenarios -
     # the underlying architecture (gateway + EPP + InferencePool + VA +
     # HPA) is identical, only the number of pools differs.
     wellLitPath: inference-scheduling
@@ -118,7 +118,7 @@ shared:
   # it to rewriteTo before the upstream pod sees the request. We route on
   # `/{stack.name}` (e.g. `/pool-a`) rather than `/{stack.name}/v1` so the
   # smoketest can probe both `/{stack.name}/health` and
-  # `/{stack.name}/v1/models` — the vLLM `/health` endpoint lives at the
+  # `/{stack.name}/v1/models` - the vLLM `/health` endpoint lives at the
   # root, not under `/v1`, and a narrower prefix like `/pool-a/v1` would
   # not match it.
   # --------------------------------------------------------------------------

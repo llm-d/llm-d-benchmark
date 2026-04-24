@@ -129,7 +129,7 @@ class VerifyModelStep(Step):
             http://10.0.0.1:80/pool-a    -> ('10.0.0.1', '80', '/pool-a')
             http://10.0.0.1/pool-a/v1    -> ('10.0.0.1', '80', '/pool-a/v1')
 
-        The path prefix is whatever remains after ``host:port`` — empty
+        The path prefix is whatever remains after ``host:port`` - empty
         string for plain endpoints, and the full routing prefix for
         shared-HTTPRoute multi-model scenarios where step_03 baked it in.
         """

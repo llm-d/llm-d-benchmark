@@ -1,12 +1,12 @@
-{# HTTPRoute rendering — two modes:
+{# HTTPRoute rendering - two modes:
 
-   1. per-stack  (default): emit one HTTPRoute per stack, one backendRef →
+   1. per-stack  (default): emit one HTTPRoute per stack, one backendRef ->
       this stack's {model_id_label}-gaie InferencePool. This is the single-
       model behavior the repo has always had.
 
    2. shared:     emit ONE HTTPRoute in stack index 1 only, with one
       backendRef per sibling stack. Each sibling becomes its own rule with
-      its own PathPrefix → InferencePool routing. Other stacks render empty.
+      its own PathPrefix -> InferencePool routing. Other stacks render empty.
       Gives multi-model scenarios a single-gateway / many-pool frontend.
 
    `httpRoute.mode: shared` is the opt-in; scenarios without the key keep
@@ -14,7 +14,7 @@
 
    Knobs for shared mode (all optional, sensible defaults shown):
      httpRoute.name         (default: "multi-model-route")
-     httpRoute.pathPrefix   (default: "/{stack.name}/v1")  — `{stack.name}`
+     httpRoute.pathPrefix   (default: "/{stack.name}/v1")  - `{stack.name}`
                              is substituted per sibling; if the prefix has
                              no substitution token the stacks will collide
      httpRoute.rewriteTo    (default: "/v1")

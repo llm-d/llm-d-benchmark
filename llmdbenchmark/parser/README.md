@@ -56,7 +56,7 @@ For each stack in the scenario:
 
 1. Merge defaults with the optional top-level `shared:` block (scenario-wide
    settings applied to every stack), then with stack-specific overrides:
-   `defaults → shared → stack`.
+   `defaults -> shared -> stack`.
 2. Apply setup overrides (from DoE experiment treatments) if present.
 3. Apply resource preset (if `resourcePreset` is set in the config).
 4. Run the resolver chain (see below).
@@ -100,7 +100,7 @@ During plan rendering, the following resolvers execute in order on the merged va
 5. **Namespace resolution** -- Apply CLI `--namespace` override or resolve `"auto"` to default `"llmdbench"`. Supports comma-separated `deploy,harness,wva` format.
 6. **Model resolution** -- Apply CLI `--models` override.
 7. **Model ID label resolution** (`_resolve_model_id_label`) -- Compute `model_id_label` from the model name using the hashed format `{first8}-{sha256_8}-{last8}`. This label is used in all templates for Kubernetes resource naming.
-8. **Per-stack identity resolution** (`_resolve_per_stack_identity`) -- Multi-stack scenarios (N ≥ 2) only. Auto-suffix shipped-default resource names (`storage.modelPvc.name`, `downloadJob.name`, `inferenceExtension.monitoring.secretName`) with `-{model_id_label}` so each stack gets unique names and Helm releases / PVCs don't collide in a shared namespace. Explicit overrides are preserved. See `_STACK_SCOPED_DEFAULTS` for the full list.
+8. **Per-stack identity resolution** (`_resolve_per_stack_identity`) -- Multi-stack scenarios (N >= 2) only. Auto-suffix shipped-default resource names (`storage.modelPvc.name`, `downloadJob.name`, `inferenceExtension.monitoring.secretName`) with `-{model_id_label}` so each stack gets unique names and Helm releases / PVCs don't collide in a shared namespace. Explicit overrides are preserved. See `_STACK_SCOPED_DEFAULTS` for the full list.
 9. **Custom command conflict warning** -- Warns when CLI `--models` won't propagate into hardcoded `customCommand` values.
 10. **Deploy method resolution** -- Apply CLI `--methods` override (`standalone` or `modelservice`). Only one may be active.
 11. **Monitoring resolution** -- Apply CLI `--monitoring` flag. Enables PodMonitor and metrics scraping.
@@ -172,11 +172,11 @@ class RenderResult:
 
 ```
 parser/
-├── __init__.py                    -- Empty package marker
-├── render_specification.py        -- RenderSpecification
-├── render_plans.py                -- RenderPlans (full pipeline)
-├── render_result.py               -- RenderResult, StackErrors
-├── config_schema.py               -- Pydantic v2 config schema
-├── version_resolver.py            -- VersionResolver
-└── cluster_resource_resolver.py   -- ClusterResourceResolver
++-- __init__.py                    -- Empty package marker
++-- render_specification.py        -- RenderSpecification
++-- render_plans.py                -- RenderPlans (full pipeline)
++-- render_result.py               -- RenderResult, StackErrors
++-- config_schema.py               -- Pydantic v2 config schema
++-- version_resolver.py            -- VersionResolver
++-- cluster_resource_resolver.py   -- ClusterResourceResolver
 ```

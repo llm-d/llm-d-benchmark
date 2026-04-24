@@ -45,7 +45,7 @@ def compute_gateway_path_prefix(
     Used by smoketest + run-phase steps to route traffic at a specific
     stack in a shared-HTTPRoute scenario. Returns ``""`` for any scenario
     that doesn't use the shared-HTTPRoute pattern (standalone, FMA,
-    single-model modelservice) — preserves existing behavior.
+    single-model modelservice) - preserves existing behavior.
 
     For ``httpRoute.mode: shared``, substitutes the stack name into
     ``httpRoute.pathPrefix`` (e.g. ``/pool-a``). The shared HTTPRoute
@@ -492,7 +492,7 @@ def test_model_serving(
     the multi-model shared-HTTPRoute setup, each stack's prefix is its
     routing path (e.g. ``/pool-a/v1``); the HTTPRoute URLRewrite strips
     it and the upstream vLLM sees ``/v1/models`` as usual. Default is
-    empty — preserves existing behavior for every other scenario.
+    empty - preserves existing behavior for every other scenario.
 
     Retries up to *max_retries* times (default 12 x 15 s = 3 min) when
     the response indicates the model is still loading or the decode

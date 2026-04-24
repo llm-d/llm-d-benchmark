@@ -10,7 +10,7 @@ repositories:
     url: {{ helmRepositories.llmDInfra.url }}
 
 releases:
-{# `infra-llmdbench` (llm-d-infra chart → Gateway resource + CRDs) is scenario-
+{# `infra-llmdbench` (llm-d-infra chart -> Gateway resource + CRDs) is scenario-
    shared. In multi-stack scenarios, two parallel `helmfile apply` runs from
    different stacks would both try to upgrade the same release and race on
    helm's concurrency guard. Render it only in the shared-infra-owner stack;

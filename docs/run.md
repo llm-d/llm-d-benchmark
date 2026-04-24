@@ -36,21 +36,21 @@ A list of pre-defined profiles, each specific to particular harness, can be foun
 
 ```
 📦 workload
- ┣ 📂 profiles
- ┃ ┗ 📂 guidellm
- ┃ ┃ ┗ 📜 sanity_concurrent.yaml.in
- ┃ ┗ 📂 nop
- ┃ ┃ ┗ 📜 nop.yaml.in
- ┃ ┗ 📂 inference-perf
- ┃ ┃ ┣ 📜 sanity_random.yaml.in
- ┃ ┃ ┣ 📜 summarization_synthetic.yaml.in
- ┃ ┃ ┣ 📜 chatbot_sharegpt.yaml.in
- ┃ ┃ ┣ 📜 shared_prefix_synthetic.yaml.in
- ┃ ┃ ┣ 📜 chatbot_synthetic.yaml.in
- ┃ ┃ ┗ 📜 code_completion_synthetic.yaml.in
- ┃ ┗ 📂 vllm-benchmark
- ┃ ┃ ┣ 📜 sanity_random.yaml.in
- ┃ ┃ ┗ 📜 random_concurrent.yaml.in
+ + 📂 profiles
+ | + 📂 guidellm
+ | | + 📜 sanity_concurrent.yaml.in
+ | + 📂 nop
+ | | + 📜 nop.yaml.in
+ | + 📂 inference-perf
+ | | + 📜 sanity_random.yaml.in
+ | | + 📜 summarization_synthetic.yaml.in
+ | | + 📜 chatbot_sharegpt.yaml.in
+ | | + 📜 shared_prefix_synthetic.yaml.in
+ | | + 📜 chatbot_synthetic.yaml.in
+ | | + 📜 code_completion_synthetic.yaml.in
+ | + 📂 vllm-benchmark
+ | | + 📜 sanity_random.yaml.in
+ | | + 📜 random_concurrent.yaml.in
 ```
 What is shown here are the workload profile **templates** (hence, the `yaml.in`) and for each template, parameters which are specific for a particular standup are automatically replaced to generate a `yaml`. This rendered workload profile is then stored as a `configmap` on the target `Kubernetes` cluster. An illustrative example follows (`inference-perf/sanity_random.yaml.in`) :
 
@@ -146,14 +146,14 @@ The following table displays a comprehensive list of environment variables (and 
 
 When a scenario defines more than one stack (e.g.
 [`guides/multi-model-wva`](../config/scenarios/guides/multi-model-wva.yaml)),
-every per-stack step in the `run` phase executes once per rendered stack —
+every per-stack step in the `run` phase executes once per rendered stack -
 endpoint detection, model verification, profile rendering, configmap creation,
 harness deploy, wait, and collect. Each stack's results are collected into
 its own experiment-ID-keyed subdirectory under the workspace.
 
 **Per-stack endpoints.** For shared-HTTPRoute scenarios (`httpRoute.mode: shared`
 in the scenario file), step 03 `detect_endpoint` bakes the stack's path prefix
-into the detected URL — e.g. `http://gw:80/qwen3-06b` for stack `qwen3-06b`.
+into the detected URL - e.g. `http://gw:80/qwen3-06b` for stack `qwen3-06b`.
 Every downstream step treats the endpoint as an opaque base URL, so:
 
 - `test_model_serving` hits `http://gw:80/qwen3-06b/v1/models`.
@@ -161,10 +161,10 @@ Every downstream step treats the endpoint as an opaque base URL, so:
   `http://gw:80/qwen3-06b`; the harness script then calls
   `${endpoint_url}/v1/completions` which resolves to
   `http://gw:80/qwen3-06b/v1/completions`.
-- The shared HTTPRoute rewrites `/qwen3-06b/*` → `/*` so the upstream vLLM
+- The shared HTTPRoute rewrites `/qwen3-06b/*` -> `/*` so the upstream vLLM
   still sees `/v1/completions` and its friends.
 
-Nothing in the harness scripts changes — the routing prefix is invisible to them.
+Nothing in the harness scripts changes - the routing prefix is invisible to them.
 
 **Parallelism knobs.** `--parallel N` (default 4) caps how many stacks the
 executor runs per-stack steps for at once. Set `--parallel 1` to serialize
@@ -176,7 +176,7 @@ sequentially regardless of `--parallel`, since interleaved `/health` and
 ### Discovering deployed endpoints
 
 After standup, `--list-endpoints` prints a table of per-stack routing URLs
-and a copy-paste block of ready-to-run invocations — no harness pods
+and a copy-paste block of ready-to-run invocations - no harness pods
 launched:
 
 ```bash
@@ -192,7 +192,7 @@ any harness pods.
 ### Targeting a single pool (`--stack`)
 
 `--stack NAME` (or comma-separated list) restricts run execution to one
-stack. Endpoint URL auto-resolves for the selected stack — no need to
+stack. Endpoint URL auto-resolves for the selected stack - no need to
 pass `--endpoint-url` manually:
 
 ```bash
@@ -214,11 +214,11 @@ names fail loudly with a list of valid ones. Available via
 | `-t / --methods` | Applies to every stack. |
 | `-f / --monitoring` | Applies to every stack. |
 | `-u / --wva` | Applies to every stack. |
-| `-l / --harness`, `-w / --workload`, `-o / --overrides` | Applies to every stack's harness pod — all stacks run the same workload. |
-| `-j / --parallelism` | Applies to every stack — each stack launches N parallel harness pods. |
+| `-l / --harness`, `-w / --workload`, `-o / --overrides` | Applies to every stack's harness pod - all stacks run the same workload. |
+| `-j / --parallelism` | Applies to every stack - each stack launches N parallel harness pods. |
 | `--endpoint-url` | Single endpoint for run-only mode; bypasses auto-detect. In multi-stack, only meaningful when combined with `--stack` (otherwise every stack targets the same endpoint, which is rarely desired). |
-| `--stack NAME[,NAME…]` | Scopes every per-stack step to the named subset. |
-| **`-m / --models`** | **Scopes to the filter when `--stack NAME` names exactly one stack** — only that stack's model is overridden; siblings keep their scenario-defined models. Without `--stack` (or with a broader filter), `-m` applies to every stack and emits a warning — that collapses a multi-model scenario into N copies of one model, which is almost never desired. |
+| `--stack NAME[,NAME...]` | Scopes every per-stack step to the named subset. |
+| **`-m / --models`** | **Scopes to the filter when `--stack NAME` names exactly one stack** - only that stack's model is overridden; siblings keep their scenario-defined models. Without `--stack` (or with a broader filter), `-m` applies to every stack and emits a warning - that collapses a multi-model scenario into N copies of one model, which is almost never desired. |
 
 So the clean pattern for "rerun pool A against a different model":
 
@@ -234,12 +234,12 @@ The filter scopes `-m` to one stack; sibling stacks are left alone.
 The rule: anything that's inherently per-stack configuration (model name,
 path, shortName) is best edited in the scenario YAML, not overridden via
 CLI. CLI flags are designed to override *scenario-wide* knobs (namespace,
-harness, workload) uniformly across every stack — or, when combined with
+harness, workload) uniformly across every stack - or, when combined with
 `--stack`, to target a single stack without disturbing the others.
 
 ### Benchmarking a single stack from a multi-stack scenario
 
-Preferred — use `--stack`, endpoint auto-resolves:
+Preferred - use `--stack`, endpoint auto-resolves:
 
 ```bash
 # After standup of guides/multi-model-wva
@@ -248,7 +248,7 @@ llmdbenchmark --spec guides/multi-model-wva run -p <namespace> \
   -l inference-perf -w sanity_random.yaml
 ```
 
-Equivalent — pin `--endpoint-url` yourself (useful if the scenario file
+Equivalent - pin `--endpoint-url` yourself (useful if the scenario file
 isn't available locally):
 
 ```bash
@@ -259,7 +259,7 @@ llmdbenchmark run \
   -l inference-perf -w sanity_random.yaml
 ```
 
-Include the path prefix in the URL exactly as shown — the HTTPRoute
+Include the path prefix in the URL exactly as shown - the HTTPRoute
 rewrites it away before the request reaches vLLM.
 
 ## Harnesses

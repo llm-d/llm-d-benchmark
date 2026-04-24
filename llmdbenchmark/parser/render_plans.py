@@ -18,6 +18,7 @@ from jinja2 import Environment, TemplateSyntaxError, UndefinedError
 
 from llmdbenchmark.config import config
 from llmdbenchmark.logging.logger import get_logger
+from llmdbenchmark.parser.config_schema import validate_config
 from llmdbenchmark.parser.render_result import StackErrors, RenderResult
 
 
@@ -369,11 +370,11 @@ class RenderPlans:
 
         Multi-stack scoping rules:
 
-        1. Single-stack scenario → apply unconditionally (normal override).
-        2. Multi-stack + ``--stack NAME`` selecting exactly one stack →
+        1. Single-stack scenario -> apply unconditionally (normal override).
+        2. Multi-stack + ``--stack NAME`` selecting exactly one stack ->
            apply to that stack only; sibling stacks keep their
            scenario-defined models.
-        3. Multi-stack with no filter (or filter selecting >1 stack) →
+        3. Multi-stack with no filter (or filter selecting >1 stack) ->
            apply to every stack and emit a warning, because the same
            model across N stacks collapses the scenario into N copies.
 
@@ -383,7 +384,7 @@ class RenderPlans:
         if not self.cli_model:
             return values
 
-        # Rule 2: filter narrows to exactly one stack — skip non-matching
+        # Rule 2: filter narrows to exactly one stack - skip non-matching
         # stacks entirely so their scenario-defined models survive.
         filter_len = len(self.cli_stack_filter)
         if total_stacks > 1 and filter_len == 1:
@@ -391,7 +392,7 @@ class RenderPlans:
                 return values
             # Matching stack: apply silently (operator explicitly scoped).
 
-        # Rule 3: multi-stack with a broad (or missing) filter → warn once.
+        # Rule 3: multi-stack with a broad (or missing) filter -> warn once.
         elif total_stacks > 1 and not self._cli_model_multi_stack_warned:
             self.logger.log_warning(
                 f"-m/--models={self.cli_model!r} is applied identically "
@@ -589,7 +590,7 @@ class RenderPlans:
 
         return values
 
-    # Defaults whose "bare" form collides across multi-stack scenarios —
+    # Defaults whose "bare" form collides across multi-stack scenarios -
     # rewrite to {default}-{model_id_label} so each stack gets a uniquely
     # named resource. The rewrite only fires when the config is still at
     # the shipped default, so an explicit override (in ``defaults.yaml``,
@@ -597,7 +598,7 @@ class RenderPlans:
     # preserved as-is.
     #
     # Intentionally NOT included:
-    #   - storage.modelPvc.name — model weights share one PVC keyed by
+    #   - storage.modelPvc.name - model weights share one PVC keyed by
     #     the per-stack `model.path`, not by the PVC name. NVMe-backed
     #     RWX PVCs in particular want one volume with per-model subdirs,
     #     not N independent volumes. The download Job name still gets
@@ -605,7 +606,7 @@ class RenderPlans:
     _STACK_SCOPED_DEFAULTS: tuple[tuple[tuple[str, ...], str], ...] = (
         # config path, default value that triggers the rewrite
         (("downloadJob", "name"), "download-model"),
-        # EPP metrics-reader Secret — the gaie chart uses this to give its
+        # EPP metrics-reader Secret - the gaie chart uses this to give its
         # SA access to the user-workload-monitoring Prometheus. Two gaie
         # Helm releases sharing this Secret name in one namespace fail
         # with "owned by another helm release".
@@ -626,7 +627,7 @@ class RenderPlans:
         config is still at the default.
 
         Skipped for single-stack scenarios to keep their resource names
-        stable across releases — with only one stack, the collision this
+        stable across releases - with only one stack, the collision this
         resolver guards against can't happen.
 
         See ``_STACK_SCOPED_DEFAULTS`` for the list of rewritten paths.
@@ -808,7 +809,7 @@ class RenderPlans:
 
         self.logger.log_info(
             "HuggingFace token detected from environment "
-            f"(hf_{'*' * 4}…{env_token[-4:]})",
+            f"(hf_{'*' * 4}...{env_token[-4:]})",
             emoji="🔑",
         )
 
@@ -886,13 +887,13 @@ class RenderPlans:
         iterate over to emit one backendRef per sibling stack.
 
         Each entry contains:
-          * ``name``        — the stack's ``name`` (for logs / diagnostics)
-          * ``modelName``   — the raw ``model.name`` (HuggingFace ID); the
+          * ``name``        - the stack's ``name`` (for logs / diagnostics)
+          * ``modelName``   - the raw ``model.name`` (HuggingFace ID); the
                               template runs this through the ``model_id_label``
                               Jinja filter with the resolved namespace to
                               produce the same hashed label the rest of the
                               pipeline uses.
-          * ``standalone``  — True if this stack deploys via standalone mode
+          * ``standalone``  - True if this stack deploys via standalone mode
                               (no InferencePool, no gateway routing).
                               Templates iterating siblings for backendRefs
                               must skip these.
@@ -909,7 +910,7 @@ class RenderPlans:
                 continue
             model_name = (stack.get("model") or {}).get("name", "")
             # Stack-level standalone.enabled wins; otherwise shared-level;
-            # otherwise None (undetermined → treat as non-standalone).
+            # otherwise None (undetermined -> treat as non-standalone).
             stack_standalone = (stack.get("standalone") or {}).get("enabled")
             is_standalone = bool(
                 stack_standalone
@@ -935,13 +936,12 @@ class RenderPlans:
 
         Non-fatal: warnings only. Per-stack validation still runs later.
         """
-        from llmdbenchmark.parser.config_schema import validate_config
         shared_view = self.deep_merge(defaults, shared)
         warnings = validate_config(shared_view, self.logger)
         if warnings:
             self.logger.log_warning(
                 f"`shared:` block has {len(warnings)} potential issue(s) "
-                "— these will propagate to every stack. See above."
+                "- these will propagate to every stack. See above."
             )
 
     @staticmethod
@@ -950,11 +950,11 @@ class RenderPlans:
 
         This stack "owns" scenario-shared infra (`infra-llmdbench` release,
         istio helmfile, shared HTTPRoute). Standalone stacks cannot own
-        shared modelservice infra — they don't install the Helm charts
+        shared modelservice infra - they don't install the Helm charts
         those templates need. So a scenario with stack 1 standalone and
         stack 2 modelservice correctly promotes stack 2 to owner.
 
-        If every stack is standalone (edge case), returns 1 — the
+        If every stack is standalone (edge case), returns 1 - the
         rendered templates are empty for standalone anyway, so the
         choice is moot.
         """
@@ -992,7 +992,7 @@ class RenderPlans:
         result.stacks[stack_name] = stack_errors
 
         stack_config = {k: v for k, v in stack.items() if k != "name"}
-        # Merge order: defaults → shared (scenario-wide) → stack → CLI/setup
+        # Merge order: defaults -> shared (scenario-wide) -> stack -> CLI/setup
         # overrides. Per-stack always wins so a stack can opt out of any
         # shared value by setting it explicitly.
         merged_values = self.deep_merge(defaults, shared or {})
@@ -1040,8 +1040,6 @@ class RenderPlans:
         merged_values["siblingStacks"] = sibling_stacks or []
         merged_values["stackIndex"] = stack_index
         merged_values["sharedInfraStackIndex"] = shared_infra_stack_index
-
-        from llmdbenchmark.parser.config_schema import validate_config
 
         validation_warnings = validate_config(merged_values, self.logger)
         if validation_warnings:
@@ -1145,7 +1143,7 @@ class RenderPlans:
         # pipeline rather than silently passing through render and dying
         # when the executor iterates stacks. A stale defense-in-depth
         # check still lives in step_executor, but this is the primary
-        # catch now — fails fast with a list of known names.
+        # catch now - fails fast with a list of known names.
         if self.cli_stack_filter:
             known_stack_names = {
                 s.get("name") for s in stacks
@@ -1163,7 +1161,7 @@ class RenderPlans:
                 return result
 
         # Scenario-wide settings. Merged into every stack between `defaults`
-        # and the per-stack overrides — so per-stack always wins. See
+        # and the per-stack overrides - so per-stack always wins. See
         # docs/developer-guide.md for the merge semantics.
         shared = scenario.get("shared") or {}
         if not isinstance(shared, dict):

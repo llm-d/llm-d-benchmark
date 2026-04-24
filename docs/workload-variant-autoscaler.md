@@ -8,12 +8,12 @@ safely on a shared cluster, and how to debug the most common failure modes.
 
 For background on the autoscaler itself, see:
 
-- [llm-d/llm-d-workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) — the controller source
-- [llm-d well-lit-path WVA guide](https://github.com/llm-d/llm-d/blob/main/guides/workload-autoscaling/README.wva.md) — the upstream install reference our integration mirrors
+- [llm-d/llm-d-workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) - the controller source
+- [llm-d well-lit-path WVA guide](https://github.com/llm-d/llm-d/blob/main/guides/workload-autoscaling/README.wva.md) - the upstream install reference our integration mirrors
 
 > **Platform support:** WVA install is currently only verified on **OpenShift**.
 > On other platforms, every WVA-related step (install, smoketest, teardown) is
-> deliberately skipped — the scenario YAML can still render the WVA blocks, but
+> deliberately skipped - the scenario YAML can still render the WVA blocks, but
 > nothing is applied to the cluster.
 
 ---
@@ -62,7 +62,7 @@ llmdbenchmark --spec guides/inference-scheduling-wva standup  -p <namespace>
 ```
 
 The shared cluster-wide infrastructure (`prometheus-adapter`, ClusterRole,
-prometheus-ca ConfigMap) survives teardown automatically — see
+prometheus-ca ConfigMap) survives teardown automatically - see
 [Section 4](#4-cluster-wide-vs-per-tenant-resources--teardown-semantics)
 for the full preservation policy.
 
@@ -77,7 +77,7 @@ provisions the following resources, in this order:
 cluster-wide / shared
     prometheus-adapter      v5.2.0, in openshift-user-workload-monitoring
                             serves wva_desired_replicas via external-metrics API
-    prometheus-ca           ConfigMap, same ns — CA cert for thanos-querier auth
+    prometheus-ca           ConfigMap, same ns - CA cert for thanos-querier auth
     allow-thanos-querier-api-access
                             ClusterRole granting prometheus-adapter access
                             to OCP's monitoring stack
@@ -115,7 +115,7 @@ cluster-wide / shared
 
 Our integration ensures **every join along that chain is byte-aligned**
 (`controllerInstance` value, VA label, HPA selector). Misalignment in any
-one of them surfaces as `TARGETS: <unknown>` on the HPA — see the
+one of them surfaces as `TARGETS: <unknown>` on the HPA - see the
 [smoketest validations](#5-smoketest-checks) for what catches each case.
 
 ---
@@ -135,7 +135,7 @@ llmdbenchmark --spec guides/inference-scheduling standup -p <namespace> --wva
 ```
 
 That sets `wva.enabled: true` at render time. All other WVA settings come from
-defaults — fine for a quick test, but you can't tweak per-experiment HPA
+defaults - fine for a quick test, but you can't tweak per-experiment HPA
 behavior without editing the defaults file.
 
 ### 2b. Via the dedicated `inference-scheduling-wva` scenario
@@ -165,7 +165,7 @@ Deploys N models behind a single gateway, each with its own EPP +
 InferencePool + VariantAutoscaling + HPA. One WVA controller in the
 namespace watches every VA (deduplicated by `wva.namespace`), so the
 Prometheus/adapter/controller wiring is identical to the single-model
-case — only the number of autoscaling targets scales.
+case - only the number of autoscaling targets scales.
 
 The scenario uses the top-level `shared:` block to hold scenario-wide
 settings (controller image, chart versions, EPP plugin config, shared
@@ -178,36 +178,36 @@ Topology:
 
 ```
          Gateway (shared infra-llmdbench-inference-gateway)
-           │
-   ┌───────┴─────────── HTTPRoute multi-model-route ─────────────┐
-   │ /qwen3-06b/*                                 /llama-31-8b/* │
-   ▼                                                             ▼
+           |
+   +-------+----------- HTTPRoute multi-model-route -------------+
+   | /qwen3-06b/*                                 /llama-31-8b/* |
+   v                                                             v
 EPP+InferencePool (qwen3-06b)           EPP+InferencePool (llama-31-8b)
-   │                                                             │
+   |                                                             |
 vLLM decode + VA + HPA                   vLLM decode + VA + HPA
-             ▲                               ▲
-             └─────── WVA controller (1) ────┘
+             ^                               ^
+             +------- WVA controller (1) ----+
 ```
 
 What the scenario layout buys you:
 
-- **Shared control plane** — one `infra-llmdbench` gateway release, one
+- **Shared control plane** - one `infra-llmdbench` gateway release, one
   istio control plane, one WVA controller, one prometheus-adapter, one
   shared model PVC (sized for the sum of all models; each stack's weights
   live in its own `model.path` subdirectory). Rendered once in the
   scenario's "shared-infra-owner" stack (first non-standalone stack) and
   skipped on siblings to avoid parallel-helmfile races.
-- **Per-stack scaling intent** — each stack's VA caps what the controller
+- **Per-stack scaling intent** - each stack's VA caps what the controller
   is willing to compute (`variantAutoscaling.{min,max}Replicas`,
   `variantCost`) and each stack's HPA caps what actually gets applied to
   the Deployment. They're independent per pool, so pool A scaling up to
   its max doesn't push pool B past its own cap.
-- **One routing URL per pool** — the shared HTTPRoute uses
+- **One routing URL per pool** - the shared HTTPRoute uses
   `httpRoute.pathPrefix: /{stack.name}` so every pool is reachable at
   `http://<gateway>/{stack-name}/v1/...`. Gateway rewrites the prefix
   away before the request reaches upstream vLLM, so pods continue to see
   plain `/v1/*` paths.
-- **`flowControl` feature gate on every pool** — enabled in the
+- **`flowControl` feature gate on every pool** - enabled in the
   `shared.inferenceExtension.pluginsCustomConfig` block and inherited by
   every stack. This is non-optional for WVA: the controller reads EPP
   queue depth to compute scale signals, and flow-control is what
@@ -253,7 +253,7 @@ wva:
 **Image tag note:** the *helm chart* version is bare semver (`chartVersions.wva: 0.6.0`),
 the *container image* tag uses a leading `v` (`v0.6.0`). They're set independently.
 
-### 3.2 VariantAutoscaling spec — per-model scaling intent
+### 3.2 VariantAutoscaling spec - per-model scaling intent
 
 ```yaml
 wva:
@@ -271,13 +271,13 @@ wva:
 scale when several share GPU capacity. Lower `slo.tpot`/`slo.ttft` = more
 aggressive scale-up under load.
 
-### 3.3 HorizontalPodAutoscaler spec — what actually changes the replica count
+### 3.3 HorizontalPodAutoscaler spec - what actually changes the replica count
 
 ```yaml
 wva:
   hpa:
     enabled: true
-    minReplicas: 1               # never scale below this; must be ≥ 1
+    minReplicas: 1               # never scale below this; must be >= 1
     maxReplicas: 10              # safety ceiling regardless of controller computation
     targetAvgValue: 1            # 1 = "match controller's desiredReplicas exactly"
 
@@ -297,7 +297,7 @@ wva:
 ```
 
 Keep `wva.hpa.{min,max}Replicas` aligned with `wva.variantAutoscaling.{min,max}Replicas`
-— the VA caps what the controller is willing to compute, the HPA caps what
+- the VA caps what the controller is willing to compute, the HPA caps what
 actually gets applied to the Deployment.
 
 For more `behavior` tuning options:
@@ -329,7 +329,7 @@ multi-tenant clusters healthy, our standup and teardown follow this policy:
 
 **The principle:** `--deep` only removes resources that live in the target namespace.
 Cluster-shared infrastructure (`prometheus-adapter` + its supporting CRBs/CMs)
-is **never** removed by us — it's used by every WVA tenant in the cluster, so
+is **never** removed by us - it's used by every WVA tenant in the cluster, so
 its lifecycle belongs to the platform admin, not to a per-tenant teardown.
 
 If you need to fully remove the shared adapter, do it explicitly:
@@ -352,14 +352,14 @@ verifying so a failure points at the broken link rather than a vague
 | Check | What it verifies | Failure means |
 |---|---|---|
 | `wva_platform_gate` | Cluster is OpenShift (or stack is correctly skipped on other platforms) | informational only |
-| `wva_controller_deployment` | Polls `Deployment/workload-variant-autoscaler-controller-manager` until `Available` with all replicas Ready (≤180s). **Fails fast** if the manager container's `restartCount` grows mid-wait | controller pod is crash-looping; check `oc logs -n <ns> deploy/workload-variant-autoscaler-controller-manager --previous` |
+| `wva_controller_deployment` | Polls `Deployment/workload-variant-autoscaler-controller-manager` until `Available` with all replicas Ready (<=180s). **Fails fast** if the manager container's `restartCount` grows mid-wait | controller pod is crash-looping; check `oc logs -n <ns> deploy/workload-variant-autoscaler-controller-manager --previous` |
 | `wva_prometheus_adapter` | `Deployment/prometheus-adapter` in the user-workload monitoring ns is `Available` | adapter wasn't installed, or another tenant's broken install is squatting the cluster role |
 | `wva_variantautoscaling` | The per-stack `VariantAutoscaling/{model_id_label}-decode` exists | step_09 didn't apply the rendered VA |
-| `wva_va_controller_instance_label` | The VA carries `wva.llmd.ai/controller-instance=<value>` matching the controller's `CONTROLLER_INSTANCE` | the controller's predicate filters out the VA → "No active VariantAutoscalings found" loop, no metric ever emitted. **The most subtle WVA gate.** |
+| `wva_va_controller_instance_label` | The VA carries `wva.llmd.ai/controller-instance=<value>` matching the controller's `CONTROLLER_INSTANCE` | the controller's predicate filters out the VA -> "No active VariantAutoscalings found" loop, no metric ever emitted. **The most subtle WVA gate.** |
 | `wva_hpa_target` | The HPA's `scaleTargetRef.name` equals `{model_id_label}-decode` | template drift between VA and HPA |
-| `wva_hpa_selector_alignment` | The HPA's `metric.selector.matchLabels` has all three of `variant_name`, `exported_namespace`, `controller_instance` matching what the controller emits | HPA selector misalignment — controller's metric is in Prometheus but the HPA's selector matches zero rows |
+| `wva_hpa_selector_alignment` | The HPA's `metric.selector.matchLabels` has all three of `variant_name`, `exported_namespace`, `controller_instance` matching what the controller emits | HPA selector misalignment - controller's metric is in Prometheus but the HPA's selector matches zero rows |
 | `wva_hpa_able_to_scale` (best-effort) | HPA's `AbleToScale` condition is `True` | HPA hasn't initialized yet, or scale subresource lookup failed |
-| `wva_hpa_targets_resolved` | Polls the HPA's `.status.currentMetrics[*].external.current` until the value resolves from `<unknown>` to a number (≤180s). Includes the most recent `ScalingActive=False` reason in the failure message if it times out | full pipeline isn't producing a metric value — could be controller not reconciling, Prometheus not scraping, adapter rule missing, or selector mismatch |
+| `wva_hpa_targets_resolved` | Polls the HPA's `.status.currentMetrics[*].external.current` until the value resolves from `<unknown>` to a number (<=180s). Includes the most recent `ScalingActive=False` reason in the failure message if it times out | full pipeline isn't producing a metric value - could be controller not reconciling, Prometheus not scraping, adapter rule missing, or selector mismatch |
 
 All polling timeouts are constants at the top of
 [`llmdbenchmark/smoketests/validators/wva.py`](../llmdbenchmark/smoketests/validators/wva.py)
@@ -376,7 +376,7 @@ idle stack at `minReplicas: 1` would falsely fail when `decode.replicas: 2`.
 
 The role allow-list lives at module top in
 [`llmdbenchmark/smoketests/base.py`](../llmdbenchmark/smoketests/base.py)
-as `_WVA_HPA_MANAGED_ROLES = frozenset({"decode"})` — extend it if upstream
+as `_WVA_HPA_MANAGED_ROLES = frozenset({"decode"})` - extend it if upstream
 WVA grows native prefill autoscaling.
 
 ---
@@ -408,14 +408,14 @@ oc get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/<ns>/wva_desired_
 oc get hpa -n <ns>
 ```
 
-If 1–3 are green but 4 is empty → controller isn't reconciling (most likely
-`wva.llmd.ai/controller-instance` label mismatch — check #3 against the
+If 1-3 are green but 4 is empty -> controller isn't reconciling (most likely
+`wva.llmd.ai/controller-instance` label mismatch - check #3 against the
 controller's `CONTROLLER_INSTANCE` env var).
 
-If 4 has a value but 5 is empty → prometheus-adapter doesn't have the rule
+If 4 has a value but 5 is empty -> prometheus-adapter doesn't have the rule
 (install was wrong namespace, or rule values file wasn't applied).
 
-If 5 has a value but 6 is `<unknown>` → HPA selector doesn't match the
+If 5 has a value but 6 is `<unknown>` -> HPA selector doesn't match the
 metric's labels.
 
 ---
@@ -438,7 +438,7 @@ oc label va -n <ns> <model-id>-decode \
   wva.llmd.ai/controller-instance=<controller-instance> --overwrite
 ```
 
-…or re-run standup so the rendered template (which already includes the
+...or re-run standup so the rendered template (which already includes the
 label) is applied.
 
 ### HPA shows `TARGETS: <unknown>` indefinitely
@@ -548,7 +548,7 @@ llmdbenchmark --spec guides/multi-model-wva standup -p <namespace>
 Renders both stacks, installs shared infra (istio, Gateway,
 `infra-llmdbench`, WVA controller, prometheus-adapter, model PVC) once,
 then deploys each pool's `-ms` + `-gaie` + VA + HPA. Downloads run in
-parallel — wall time ≈ slowest model, not the sum. Standup
+parallel - wall time ~ slowest model, not the sum. Standup
 auto-chains into the smoketest phase unless you pass
 `--skip-smoketest`.
 
@@ -565,7 +565,7 @@ have produced) and exits before launching any harness pods.
 
 ### 10.3 Benchmark a single pool
 
-**Preferred — let `--stack` auto-resolve the endpoint:**
+**Preferred - let `--stack` auto-resolve the endpoint:**
 
 ```bash
 llmdbenchmark --spec guides/multi-model-wva run -p <namespace> \
@@ -576,9 +576,9 @@ llmdbenchmark --spec guides/multi-model-wva run -p <namespace> \
 With `--stack qwen3-06b`, step 03 auto-detects the gateway endpoint,
 bakes in the `/qwen3-06b` path prefix, and the harness pod hits
 `http://<gateway>/qwen3-06b/v1/completions`. The gateway rewrites
-`/qwen3-06b/*` → `/*` so vLLM sees plain `/v1/completions`.
+`/qwen3-06b/*` -> `/*` so vLLM sees plain `/v1/completions`.
 
-**Alternative — pin `--endpoint-url` yourself** (useful for run-only
+**Alternative - pin `--endpoint-url` yourself** (useful for run-only
 mode without the scenario file locally):
 
 ```bash
@@ -607,7 +607,7 @@ both pods; result collection pulls both directories back.
 ### 10.5 Compare two pools side-by-side (two shells)
 
 ```bash
-# Shell 1 — --workspace is a global option, placed before the subcommand
+# Shell 1 - --workspace is a global option, placed before the subcommand
 llmdbenchmark --spec guides/multi-model-wva --workspace /tmp/run-qwen run -p <namespace> \
   --stack qwen3-06b \
   -l guidellm -w sanity_random.yaml -j 2
@@ -622,7 +622,7 @@ Distinct `--workspace` dirs keep the two invocations' render plans,
 logs, and collected results fully isolated. The WVA controller will
 see load on both pools' VAs simultaneously and scale them
 independently. `--workspace` (and `--spec`, `--base-dir`, `--dry-run`,
-`--verbose`, `--non-admin`) are **global options** — they must appear
+`--verbose`, `--non-admin`) are **global options** - they must appear
 before the subcommand name (`run`, `standup`, etc.), not after.
 
 ### 10.6 Rerun one pool against a different model
@@ -637,7 +637,7 @@ llmdbenchmark --spec guides/multi-model-wva run -p <namespace> \
   -l inference-perf -w sanity_random.yaml
 ```
 
-Without `--stack`, `-m` applies to every stack and emits a warning —
+Without `--stack`, `-m` applies to every stack and emits a warning -
 it would collapse the multi-model scenario into N copies of one model,
 which is rarely desired.
 
@@ -653,7 +653,7 @@ llmdbenchmark --spec guides/multi-model-wva standup -p <namespace> \
 
 Global steps (admin prereqs, shared-infra helmfile, WVA controller,
 model PVC) still run (they're scenario-wide and idempotent). Per-stack
-steps only fire for `llama-31-8b` — qwen3-06b's running pods and VA
+steps only fire for `llama-31-8b` - qwen3-06b's running pods and VA
 are left completely alone.
 
 ### 10.8 Tear down one pool, keep siblings running
@@ -666,7 +666,7 @@ llmdbenchmark --spec guides/multi-model-wva teardown -p <namespace> \
 Uninstalls the `llama-31-8b-ms` and `llama-31-8b-gaie` Helm releases
 (plus their VA + HPA), leaves `qwen3-06b` and the shared
 `infra-llmdbench` + WVA controller + prometheus-adapter in place.
-Useful for cost management — shrink to one pool over a weekend
+Useful for cost management - shrink to one pool over a weekend
 without disturbing the other.
 
 ### 10.9 Observe scaling events

@@ -9,11 +9,13 @@ from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.smoketests.report import CheckResult, SmoketestReport
 from llmdbenchmark.utilities.endpoint import (
-    _rand_suffix,
     _build_overrides,
     _ephemeral_label_args,
-    find_standalone_endpoint,
+    _normalize_url_prefix,
+    _rand_suffix,
+    compute_gateway_path_prefix,
     find_gateway_endpoint,
+    find_standalone_endpoint,
     test_model_serving,
 )
 
@@ -61,7 +63,6 @@ class BaseSmoketest:
         Kept as a method so subclasses can still override if some future
         validator needs scenario-specific routing logic.
         """
-        from llmdbenchmark.utilities.endpoint import compute_gateway_path_prefix
         return compute_gateway_path_prefix(
             plan_config, stack_name, is_standalone=is_standalone,
         )
@@ -73,7 +74,7 @@ class BaseSmoketest:
         A shared HTTPRoute with ``rewriteTo: /`` routes everything, so
         `/{stack-prefix}/health` reaches vLLM's /health at the root. But
         ``rewriteTo: /v1`` (or any non-root path) narrows routing to the
-        /v1/* namespace — /health isn't under /v1, so the gateway would
+        /v1/* namespace - /health isn't under /v1, so the gateway would
         have no rule matching it and a smoketest probe would 404.
 
         The smoketest uses this to decide whether to skip the /health
@@ -82,9 +83,9 @@ class BaseSmoketest:
         """
         http_route = plan_config.get("httpRoute") or {}
         if http_route.get("mode") != "shared":
-            return True  # not a shared route — direct /health works
+            return True  # not a shared route - direct /health works
         rewrite_to = (http_route.get("rewriteTo") or "/").strip()
-        # "/" or "" means "rewrite to root" → /health routes cleanly.
+        # "/" or "" means "rewrite to root" -> /health routes cleanly.
         return rewrite_to in ("", "/")
 
     @staticmethod
@@ -200,7 +201,7 @@ class BaseSmoketest:
                         ))
                     else:
                         context.logger.log_info(
-                            f"All {len(phases)} {pod_type} pod(s) running ✓"
+                            f"All {len(phases)} {pod_type} pod(s) running (ok)"
                         )
                         report.add(CheckResult(
                             f"{pod_type}_pods_running", True,
@@ -236,7 +237,7 @@ class BaseSmoketest:
                                 ))
                             else:
                                 context.logger.log_info(
-                                    f"All {pod_type} containers ready ✓"
+                                    f"All {pod_type} containers ready (ok)"
                                 )
                 else:
                     report.add(CheckResult(
@@ -252,15 +253,15 @@ class BaseSmoketest:
             return report
 
         # When the scenario uses a shared HTTPRoute with path-based routing
-        # (e.g. /pool-a/v1 → pool A, /pool-b/v1 → pool B), prepend this
+        # (e.g. /pool-a/v1 -> pool A, /pool-b/v1 -> pool B), prepend this
         # stack's path prefix to the gateway URLs so requests actually hit
         # the InferencePool for THIS stack. Returns "" for the usual case
-        # (single-model scenarios, standalone) — unchanged behavior.
+        # (single-model scenarios, standalone) - unchanged behavior.
         url_path_prefix = self._gateway_path_prefix_for_stack(
             plan_config, is_standalone, stack_name=stack_path.name,
         )
 
-        # 2. Health check (/health) — skip gracefully when a shared
+        # 2. Health check (/health) - skip gracefully when a shared
         # HTTPRoute deliberately narrows routing to /v1/* (i.e.
         # rewriteTo != "/"). vLLM's /health endpoint lives at the root,
         # so a request to {prefix}/health wouldn't match any route rule
@@ -315,7 +316,7 @@ class BaseSmoketest:
         else:
             service_test_passed = True
             context.logger.log_info(
-                f"Service {service_ip}:{gateway_port} responding ✓"
+                f"Service {service_ip}:{gateway_port} responding (ok)"
             )
             report.add(CheckResult("service_endpoint", True, message="Service responding"))
 
@@ -357,7 +358,7 @@ class BaseSmoketest:
                             message=f"Curl to {pod_ip}:{inference_port} failed: {test_result}",
                         ))
                 else:
-                    context.logger.log_info(f"Pod {pod_ip} responding ✓")
+                    context.logger.log_info(f"Pod {pod_ip} responding (ok)")
 
         # 6. OpenShift route (only for modelservice -- standalone has no gateway route)
         if context.is_openshift and not is_standalone:
@@ -399,10 +400,10 @@ class BaseSmoketest:
 
         protocol = "https" if str(gateway_port) == "443" else "http"
         # Shared-HTTPRoute scenarios route by path prefix (e.g. /pool-a/*
-        # → this stack's InferencePool). Bake the prefix into base_url so
+        # -> this stack's InferencePool). Bake the prefix into base_url so
         # every downstream {base_url}/v1/completions becomes
-        # {base_url}/pool-a/v1/completions — the gateway then rewrites
-        # /pool-a/* → /* before the request reaches vLLM. Empty string for
+        # {base_url}/pool-a/v1/completions - the gateway then rewrites
+        # /pool-a/* -> /* before the request reaches vLLM. Empty string for
         # every other scenario, preserving existing behavior.
         prefix = self._gateway_path_prefix_for_stack(
             plan_config, _is_standalone, stack_name=stack_path.name,
@@ -780,7 +781,7 @@ class BaseSmoketest:
             # so a reader can still tell what's happening.
             #
             # Multinode (LWS) deployments scale via LeaderWorkerSet, not
-            # HPA, so the relaxation must not apply to them — keep strict
+            # HPA, so the relaxation must not apply to them - keep strict
             # equality there.
             hpa_managed = (
                 _nested_get(config, "wva", "enabled")
@@ -1141,7 +1142,6 @@ class BaseSmoketest:
         poll_interval: int = 10,
         url_path_prefix: str = "",
     ) -> str | None:
-        from llmdbenchmark.utilities.endpoint import _normalize_url_prefix
         protocol = "https" if str(port) == "443" else "http"
         prefix = _normalize_url_prefix(url_path_prefix)
         url = f"{protocol}://{host}:{port}{prefix}/health"
@@ -1188,7 +1188,7 @@ class BaseSmoketest:
 
             if status_code == "200":
                 context.logger.log_info(
-                    f"vLLM health check passed ✓ ({int(elapsed)}s elapsed)"
+                    f"vLLM health check passed (ok) ({int(elapsed)}s elapsed)"
                 )
                 return None
 
@@ -1240,7 +1240,7 @@ class BaseSmoketest:
 
             if result is None:
                 context.logger.log_info(
-                    f"Model ready at {host}:{port} ✓ ({int(elapsed)}s elapsed)"
+                    f"Model ready at {host}:{port} (ok) ({int(elapsed)}s elapsed)"
                 )
                 return
 
@@ -1294,7 +1294,7 @@ class BaseSmoketest:
                         message=f"Route test failed: {test_result}",
                     ))
             else:
-                context.logger.log_info(f"Route {route_host} responding ✓")
+                context.logger.log_info(f"Route {route_host} responding (ok)")
                 report.add(CheckResult(
                     "openshift_route", True,
                     message="Route responding",

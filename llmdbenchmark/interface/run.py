@@ -94,7 +94,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
             "Comma-separated list of stack names to restrict execution to. "
             "Useful in multi-stack scenarios (e.g. guides/multi-model-wva) "
             "to benchmark a single pool without re-deploying. "
-            "Endpoint URL auto-resolves for the selected stack — no need to "
+            "Endpoint URL auto-resolves for the selected stack - no need to "
             "pass --endpoint-url. Unknown names fail loudly. "
             "Example: --stack qwen3-06b."
         ),

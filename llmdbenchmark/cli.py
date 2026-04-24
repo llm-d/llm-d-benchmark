@@ -133,7 +133,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         # Pre-render Helm chart manifests so the plan directory contains
         # all K8s resources (both Jinja2-rendered and Helm-rendered).
         # This enables kustomize overlays and full manifest inspection.
-        # Runs even in dry-run mode — helmfile template is purely local
+        # Runs even in dry-run mode - helmfile template is purely local
         # and does not touch the cluster.
         _render_helm_manifests(config.plan_dir, logger)
 
@@ -159,7 +159,7 @@ def _render_helm_manifests(plan_dir: Path, logger) -> None:
     ``helm-modelservice.yaml`` in the stack directory alongside the
     Jinja2-rendered templates.
 
-    Stacks that deploy via ``standalone`` are skipped entirely — they
+    Stacks that deploy via ``standalone`` are skipped entirely - they
     do not use the modelservice Helm chart, so pre-rendering it would
     produce an empty helmfile and fail with "no top-level config keys".
 
@@ -181,7 +181,7 @@ def _render_helm_manifests(plan_dir: Path, logger) -> None:
         if not helmfile_src.exists() or not ms_values.exists():
             continue
 
-        # Read config once per stack — we need it both to decide
+        # Read config once per stack - we need it both to decide
         # whether modelservice rendering applies and to extract the
         # model_id_label used by the helmfile selector.
         config_file = stack_dir / "config.yaml"
@@ -221,7 +221,7 @@ def _render_helm_manifests(plan_dir: Path, logger) -> None:
         # directory and copy the values files with expected names.
         shutil.copy2(helmfile_src, helm_dir / "helmfile.yaml")
 
-        # Only the modelservice values file is needed — the selector
+        # Only the modelservice values file is needed - the selector
         # targets only the -ms release so infra/gaie values are not read.
         shutil.copy2(ms_values, helm_dir / "ms-values.yaml")
 
@@ -615,9 +615,9 @@ def _print_standup_summary(context, result, logger):
     stack_models = _collect_stack_models(context)
 
     W = 62
-    logger.log_info("═" * W)
+    logger.log_info("=" * W)
     logger.log_info(f"  STANDUP COMPLETE")
-    logger.log_info("═" * W)
+    logger.log_info("=" * W)
     logger.log_info(f"  User:       {username}")
     logger.log_info(f"  Platform:   {platform}")
     logger.log_info(f"  Mode:       {mode}")
@@ -652,12 +652,12 @@ def _print_standup_summary(context, result, logger):
     logger.log_info(f"  Steps:      {steps_summary}")
 
     if endpoints:
-        logger.log_info("─" * W)
+        logger.log_info("-" * W)
         logger.log_info(f"  Deployed Endpoints:")
         for name, url in endpoints.items():
             logger.log_info(f"    {name}: {url}")
 
-    logger.log_info("═" * W)
+    logger.log_info("=" * W)
     logger.line_break()
     logger.log_info(f"Workspace: {context.workspace}")
     logger.log_info("All standup steps complete.", emoji="✅")
@@ -833,14 +833,13 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
 
 
 def _collect_stack_models(context) -> list[tuple[str, str]]:
-    """Return ``[(stack_name, model_name), …]`` from rendered configs.
+    """Return ``[(stack_name, model_name), ...]`` from rendered configs.
 
     Honors the ``--stack`` filter so the benchmark summary reflects only
     the stacks that actually ran. Returns an empty list when there are
     no rendered stacks (run-only / endpoint-url mode), in which case the
     summary falls back to ``context.model_name``.
     """
-    import yaml as _yaml
     rendered = getattr(context, "rendered_stacks", []) or []
     if not rendered:
         return []
@@ -879,9 +878,6 @@ def _print_endpoints_table(context, logger, args) -> None:
     friendly: the copy-paste block can be pasted as-is to benchmark a
     specific pool.
     """
-    from pathlib import Path as _P
-    import yaml as _yaml
-
     endpoints = context.deployed_endpoints or {}
     if not endpoints:
         logger.log_warning(
@@ -926,15 +922,14 @@ def _print_endpoints_table(context, logger, args) -> None:
         )
     logger.line_break()
 
-    # Copy-paste block — one ready-to-run invocation per stack, with the
+    # Copy-paste block - one ready-to-run invocation per stack, with the
     # flags the user most likely wants to customize (harness, workload,
     # parallelism) left as placeholders.
     spec_raw = getattr(args, "specification_file", None)
     spec = str(spec_raw) if spec_raw else "<spec>"
     if "/" in spec or spec.endswith(".yaml.j2"):
         # Full path (e.g. /abs/path/config/specification/guides/multi-model-wva.yaml.j2)
-        # → trim to the friendly `category/name` form the CLI understands.
-        import os
+        # - trim to the friendly `category/name` form the CLI understands.
         parent = os.path.basename(os.path.dirname(spec)) if "/" in spec else ""
         stem = os.path.basename(spec)
         if stem.endswith(".yaml.j2"):
@@ -948,7 +943,7 @@ def _print_endpoints_table(context, logger, args) -> None:
     # copy-pastes cleanly from the terminal AND lands verbatim in the
     # log file for later auditing.
     for stack_name, model_name, url in rows:
-        logger.log_plain(f"  # {stack_name} — {model_name}")
+        logger.log_plain(f"  # {stack_name} - {model_name}")
         logger.log_plain(f"  llmdbenchmark --spec {spec} run \\")
         logger.log_plain(f"    --namespace {namespace} \\")
         logger.log_plain(f"    --endpoint-url {url} \\")
@@ -965,7 +960,7 @@ def _execute_run(args, logger, render_plan_errors):
         logger.log_error(str(e))
         sys.exit(1)
 
-    # --list-endpoints short-circuits the run — no harness pods launched,
+    # --list-endpoints short-circuits the run - no harness pods launched,
     # no results collected, no ConfigMap stored. Skip the benchmark
     # summary banner entirely; the endpoints table was the whole output.
     if getattr(args, "list_endpoints", False):
@@ -1168,7 +1163,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
 
 
 def _execute_experiment(args, logger):
-    """Orchestrate a full DoE experiment: setup × run treatment matrix."""
+    """Orchestrate a full DoE experiment: setup x run treatment matrix."""
     from llmdbenchmark.experiment.parser import parse_experiment, SetupTreatment
     from llmdbenchmark.experiment.summary import ExperimentSummary
 

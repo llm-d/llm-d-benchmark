@@ -1,5 +1,7 @@
 """Step 09 -- Deploy the model via the llm-d modelservice Helm chart."""
 
+import hashlib
+import time
 from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
@@ -326,7 +328,7 @@ class DeployModelserviceStep(Step):
         """Wait for each sibling stack's InferencePool CR to exist.
 
         Closes the race window between HTTPRoute apply and sibling gaie
-        helm releases finishing install — without this, the shared route
+        helm releases finishing install - without this, the shared route
         lingers in ResolvedRefs=False for the few seconds it takes other
         stacks' step 09 to finish their modelservice Helm release.
 
@@ -344,7 +346,6 @@ class DeployModelserviceStep(Step):
         # Template uses {model_id_label}-gaie for the InferencePool CR
         # name. Compute each sibling's label the same way render_plans
         # does (via its Jinja filter).
-        import hashlib
         def _label_for(model_name: str) -> str:
             if not model_name:
                 return ""
@@ -365,13 +366,12 @@ class DeployModelserviceStep(Step):
             return
 
         context.logger.log_info(
-            f"    │ Waiting for {len(pool_names)} sibling InferencePool(s) "
+            f"    | Waiting for {len(pool_names)} sibling InferencePool(s) "
             f"to exist so the shared HTTPRoute resolves cleanly..."
         )
 
         # Poll up to 2 minutes. Each gaie Helm release typically finishes
         # within seconds of being applied; 2 minutes is generous.
-        import time
         deadline = time.time() + 120
         missing = list(pool_names)
         while missing and time.time() < deadline:
@@ -393,14 +393,14 @@ class DeployModelserviceStep(Step):
             # Non-fatal: the route self-heals when pools eventually appear.
             # Log a warning so operators know the window is wider than expected.
             context.logger.log_warning(
-                f"    │ Shared HTTPRoute applied but {len(missing)} "
+                f"    | Shared HTTPRoute applied but {len(missing)} "
                 f"InferencePool(s) still not found after 120s: "
                 f"{', '.join(missing)}. Route will self-heal when they appear."
             )
         else:
             context.logger.log_info(
-                f"    │ All {len(pool_names)} referenced InferencePool(s) "
-                f"present — shared HTTPRoute fully resolved"
+                f"    | All {len(pool_names)} referenced InferencePool(s) "
+                f"present - shared HTTPRoute fully resolved"
             )
 
     def _check_priority_class(
@@ -582,7 +582,7 @@ class DeployModelserviceStep(Step):
 
         Lets the standup output show what got created (VA OPTIMIZED, HPA
         TARGETS / REPLICAS, etc.) without the operator needing a follow-up
-        ``oc get``. Best-effort — failures here don't fail step_09.
+        ``oc get``. Best-effort - failures here don't fail step_09.
         """
         wva_cfg = plan_config.get("wva", {}) or {}
         wva_ns = (

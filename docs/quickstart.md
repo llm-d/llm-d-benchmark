@@ -1,6 +1,6 @@
 # Quickstart
 
-This guide walks you through running your **first llm-d-benchmark deployment on a local [Kind](https://kind.sigs.k8s.io/) cluster** — no GPU required. By the end you will have stood up a simulated inference deployment, run a sanity benchmark workload against it, and torn everything down cleanly.
+This guide walks you through running your **first llm-d-benchmark deployment on a local [Kind](https://kind.sigs.k8s.io/) cluster** - no GPU required. By the end you will have stood up a simulated inference deployment, run a sanity benchmark workload against it, and torn everything down cleanly.
 
 This is the same scenario our CI runs on every PR (see [`ci-pr-benchmark.yaml`](../.github/workflows/ci-pr-benchmark.yaml)), so if the walkthrough works here it will work the same way in CI.
 
@@ -10,11 +10,11 @@ This is the same scenario our CI runs on every PR (see [`ci-pr-benchmark.yaml`](
 >
 > Kind is a local-Docker-in-Docker Kubernetes distribution. It is ideal for:
 >
-> - **First-time walkthroughs of the framework** — you can exercise the full `standup → smoketest → run → teardown` lifecycle without any cloud account, cluster access, or GPU hardware.
-> - **Iterating on framework code** — testing your changes to steps, templates, or scenarios locally in a fast feedback loop.
-> - **Reproducing CI failures** — the PR-benchmark workflow uses this exact `cicd/kind-sim` scenario on a Kind cluster, so a local repro is one `./util/test-scenarios.sh` invocation away.
+> - **First-time walkthroughs of the framework** - you can exercise the full `standup -> smoketest -> run -> teardown` lifecycle without any cloud account, cluster access, or GPU hardware.
+> - **Iterating on framework code** - testing your changes to steps, templates, or scenarios locally in a fast feedback loop.
+> - **Reproducing CI failures** - the PR-benchmark workflow uses this exact `cicd/kind-sim` scenario on a Kind cluster, so a local repro is one `./util/test-scenarios.sh` invocation away.
 >
-> Kind is **not** a benchmarking target. It runs a simulated inference engine (`llm-d-inference-sim`) on CPU, so any latency, throughput, or GPU-utilization numbers you collect here are meaningless as performance data. When you have access to a cluster with real accelerators, switch to one of the GPU-backed scenarios under [`config/specification/examples/gpu.yaml.j2`](../config/specification/examples/gpu.yaml.j2) or [`config/specification/guides/`](../config/specification/guides/) and skip steps 1 and 2 of this guide — jump straight to [step 3 (Install llmdbenchmark)](#3-install-llmdbenchmark) and use your existing kubeconfig.
+> Kind is **not** a benchmarking target. It runs a simulated inference engine (`llm-d-inference-sim`) on CPU, so any latency, throughput, or GPU-utilization numbers you collect here are meaningless as performance data. When you have access to a cluster with real accelerators, switch to one of the GPU-backed scenarios under [`config/specification/examples/gpu.yaml.j2`](../config/specification/examples/gpu.yaml.j2) or [`config/specification/guides/`](../config/specification/guides/) and skip steps 1 and 2 of this guide - jump straight to [step 3 (Install llmdbenchmark)](#3-install-llmdbenchmark) and use your existing kubeconfig.
 
 ## Table of Contents
 
@@ -35,8 +35,8 @@ This is the same scenario our CI runs on every PR (see [`ci-pr-benchmark.yaml`](
 |---|---|
 | Cluster | Kind (local Docker-in-Docker, CPU-only) |
 | Scenario | [`cicd/kind-sim`](../config/scenarios/cicd/kind-sim.yaml) |
-| Model | `facebook/opt-125m` (small — chosen so the quickstart works on a laptop) |
-| Inference engine | [`llm-d-inference-sim`](https://github.com/llm-d/llm-d-inference-sim) — fake inference, no GPU |
+| Model | `facebook/opt-125m` (small - chosen so the quickstart works on a laptop) |
+| Inference engine | [`llm-d-inference-sim`](https://github.com/llm-d/llm-d-inference-sim) - fake inference, no GPU |
 | Deploy methods | `modelservice` (default) or `standalone` |
 | Harness | `inference-perf` with the `sanity_random.yaml` workload profile |
 
@@ -55,7 +55,7 @@ You need these installed before starting:
 
 > **Resource note:** The `cicd/kind-sim` scenario deploys ~7 pods on a single Kind node. With the default 2 CPUs that Docker Desktop, Colima, and Podman ship with, the harness pod (and sometimes the gateway) cannot schedule due to `Insufficient cpu`. Bump your container runtime to **4 CPUs** before creating the Kind cluster. See [Troubleshooting](#pods-stuck-in-pending-during-standup-or-run) if you hit this.
 
-Everything else — `kubectl`, `helm`, `helmfile`, `kind`, `skopeo`, `crane`, `helm-diff`, `jq`, `yq`, `kustomize` — will be installed for you by `./install.sh` in [step 3](#3-install-llmdbenchmark), with one exception: `kind` itself, which we install first below because we want the cluster up before the installer runs.
+Everything else - `kubectl`, `helm`, `helmfile`, `kind`, `skopeo`, `crane`, `helm-diff`, `jq`, `yq`, `kustomize` - will be installed for you by `./install.sh` in [step 3](#3-install-llmdbenchmark), with one exception: `kind` itself, which we install first below because we want the cluster up before the installer runs.
 
 ## 1. Install Kind locally
 
@@ -95,7 +95,7 @@ If you prefer a different installation path or version manager, see the [upstrea
 
 ## 2. Create the Kind cluster
 
-Create a single-node cluster. The default Kind configuration is enough — we do **not** need any special port mappings, extra mounts, or registry config for `cicd/kind-sim`.
+Create a single-node cluster. The default Kind configuration is enough - we do **not** need any special port mappings, extra mounts, or registry config for `cicd/kind-sim`.
 
 ```bash
 kind create cluster --name llmd-quickstart
@@ -122,7 +122,7 @@ cd llm-d-benchmark
 source .venv/bin/activate
 ```
 
-We intentionally **do not** pass `-y` to `install.sh`. The `-y` flag forces the installer to use your system Python instead of creating a virtualenv, which is appropriate on CI runners (they are already isolated containers) but wrong for local development — it would pollute your system site-packages and skip the `.venv/` that `source .venv/bin/activate` on the next line expects. Always run `./install.sh` without flags on your laptop.
+We intentionally **do not** pass `-y` to `install.sh`. The `-y` flag forces the installer to use your system Python instead of creating a virtualenv, which is appropriate on CI runners (they are already isolated containers) but wrong for local development - it would pollute your system site-packages and skip the `.venv/` that `source .venv/bin/activate` on the next line expects. Always run `./install.sh` without flags on your laptop.
 
 Verify the CLI is on PATH:
 
@@ -136,7 +136,7 @@ You should see the `llmdbenchmark` help banner with `plan`, `standup`, `smoketes
 
 ## 4. First deployment: standup + smoketest + run (modelservice)
 
-Now we run the full four-phase lifecycle against the Kind cluster we created in [step 2](#2-create-the-kind-cluster). `modelservice` is the default deploy method — no `-t` flag needed.
+Now we run the full four-phase lifecycle against the Kind cluster we created in [step 2](#2-create-the-kind-cluster). `modelservice` is the default deploy method - no `-t` flag needed.
 
 Pick a namespace for your run. Anything unique is fine:
 
@@ -175,7 +175,7 @@ This sends a handful of real requests through the gateway, validates the respons
 
 ### 4c. Run the benchmark
 
-Now run the `inference-perf` harness with the `sanity_random.yaml` workload. This is the smallest benchmark profile we ship — perfect for a first run.
+Now run the `inference-perf` harness with the `sanity_random.yaml` workload. This is the smallest benchmark profile we ship - perfect for a first run.
 
 ```bash
 llmdbenchmark --spec cicd/kind-sim run -p "$NS" \
@@ -190,7 +190,7 @@ What to expect:
 - Per-request metrics are collected into a results directory printed at the end of the run.
 - The analysis phase generates summary CSVs and plots in that same directory.
 
-The results directory path is printed in the final log line — something like `/tmp/<user>-<timestamp>/<phase>/<stack>/results/`. You can open the plots with any image viewer or the CSVs with any spreadsheet.
+The results directory path is printed in the final log line - something like `/tmp/<user>-<timestamp>/<phase>/<stack>/results/`. You can open the plots with any image viewer or the CSVs with any spreadsheet.
 
 ## 5. Alternate path: standalone deployment
 
@@ -207,7 +207,7 @@ llmdbenchmark --spec cicd/kind-sim run       -p "$NS_SA" -t standalone \
     -l inference-perf -w sanity_random.yaml
 ```
 
-The `-t standalone` flag is the only difference from [step 4](#4-first-deployment-standup--smoketest--run-modelservice). Every other argument — spec, namespace, harness, workload — is identical.
+The `-t standalone` flag is the only difference from [step 4](#4-first-deployment-standup--smoketest--run-modelservice). Every other argument - spec, namespace, harness, workload - is identical.
 
 ## 6. Tear down
 
@@ -248,7 +248,7 @@ kind delete cluster --name llmd-quickstart
   **Check your current allocation:**
 
   ```bash
-  # Docker Desktop / Colima / Podman — any of these will work:
+  # Docker Desktop / Colima / Podman - any of these will work:
   docker info 2>/dev/null | grep -E "CPUs|Total Memory"
   podman info 2>/dev/null | grep -E "cpus|memTotal"
   colima status 2>/dev/null
@@ -257,11 +257,11 @@ kind delete cluster --name llmd-quickstart
   kubectl describe node | grep -A6 "Allocated resources"
   ```
 
-  **Fix — increase CPUs to at least 4 (8 GiB RAM recommended):**
+  **Fix - increase CPUs to at least 4 (8 GiB RAM recommended):**
 
   ```bash
   # Docker Desktop: Settings > Resources > CPUs: 4, Memory: 8 GiB
-  # (no CLI option — must be done through the GUI)
+  # (no CLI option - must be done through the GUI)
 
   # Colima
   colima stop && colima start --cpu 4 --memory 8
@@ -279,7 +279,7 @@ kind delete cluster --name llmd-quickstart
 
   Then re-run standup from scratch.
 
-- **PVC stuck**: `kubectl get pvc -n "$NS"` — the `standard` Kind storage class should provision immediately. If it does not, you're probably out of disk; see above.
+- **PVC stuck**: `kubectl get pvc -n "$NS"` - the `standard` Kind storage class should provision immediately. If it does not, you're probably out of disk; see above.
 - **Image pull backoff**: check `kubectl describe pod -n "$NS" <pod>` for the failing image and make sure your machine has network access to `ghcr.io`.
 - **Node selector mismatch**: if `kubectl describe pod -n "$NS" <pod>` shows `0/1 nodes are available: 1 node(s) didn't match Pod's node affinity/selector`, print the node's labels with `kubectl get node -o jsonpath='{.items[0].metadata.labels}' | jq` and cross-check against the scenario's `affinity.nodeSelector` in `config/scenarios/cicd/kind-sim.yaml`. On a standard Kind cluster this should always match because `kubernetes.io/os=linux` is a well-known label the kubelet sets automatically.
 
@@ -300,7 +300,7 @@ source .venv/bin/activate
 ./install.sh
 ```
 
-(no `-y` — we want the `.venv/` path, not system Python)
+(no `-y` - we want the `.venv/` path, not system Python)
 
 ### Standup reports "Model download failed"
 
@@ -311,14 +311,14 @@ The `facebook/opt-125m` model is public and small. If the download fails, you mo
 
 ### Run phase hangs on `waiting for harness pod` or reports `No pods deployed`
 
-- `kubectl get pods -n "$NS"` — check if the harness pod is `Pending`. If `kubectl describe pod -n "$NS" <harness-pod>` shows `Insufficient cpu` or `Insufficient memory`, see [Pods stuck in Pending](#pods-stuck-in-pending-during-standup-or-run) above.
+- `kubectl get pods -n "$NS"` - check if the harness pod is `Pending`. If `kubectl describe pod -n "$NS" <harness-pod>` shows `Insufficient cpu` or `Insufficient memory`, see [Pods stuck in Pending](#pods-stuck-in-pending-during-standup-or-run) above.
 - If a previous run failed and left a stale harness pod, clean it up before retrying:
 
   ```bash
   kubectl delete pod -n "$NS" -l app=llmdbench-harness-launcher --ignore-not-found
   ```
 
-- If you edited `harness.resources` in your scenario to reduce requests, you must re-run `plan` before `run` (no standup needed — the cluster infra is unchanged):
+- If you edited `harness.resources` in your scenario to reduce requests, you must re-run `plan` before `run` (no standup needed - the cluster infra is unchanged):
 
   ```bash
   llmdbenchmark --spec cicd/kind-sim plan -p "$NS"
@@ -340,10 +340,10 @@ The workspace directory printed at the top of every run contains all rendered te
 You just ran the same lifecycle CI exercises every PR. From here, natural next steps are:
 
 - **Try a real GPU scenario**: see [`config/specification/examples/gpu.yaml.j2`](../config/specification/examples/gpu.yaml.j2) and run it against a cluster that has GPU nodes.
-- **Explore the well-lit paths**: [`config/specification/guides/`](../config/specification/guides/) has scenarios for `inference-scheduling`, `inference-scheduling-wva`, `multi-model-wva`, `pd-disaggregation`, `precise-prefix-cache-aware`, `tiered-prefix-cache`, and `wide-ep-lws` — each worth a read even if you don't run them.
+- **Explore the well-lit paths**: [`config/specification/guides/`](../config/specification/guides/) has scenarios for `inference-scheduling`, `inference-scheduling-wva`, `multi-model-wva`, `pd-disaggregation`, `precise-prefix-cache-aware`, `tiered-prefix-cache`, and `wide-ep-lws` - each worth a read even if you don't run them.
 - **Try multi-model with WVA**: [`multi-model-wva`](../config/scenarios/guides/multi-model-wva.yaml) deploys two models behind one gateway with a single shared HTTPRoute and a single WVA controller autoscaling each pool independently. Standup: `llmdbenchmark --spec guides/multi-model-wva standup -p <namespace>`.
-- **Write a custom scenario**: see the [Developer Guide, Section 7](developer-guide.md#7-how-to-add-a-new-scenario-well-lit-path) — "How to Add a New Scenario".
-- **Add a new benchmark step**: see the [Developer Guide, Section 2](developer-guide.md#2-how-to-add-a-new-step) — "How to Add a New Step".
+- **Write a custom scenario**: see the [Developer Guide, Section 7](developer-guide.md#7-how-to-add-a-new-scenario-well-lit-path) - "How to Add a New Scenario".
+- **Add a new benchmark step**: see the [Developer Guide, Section 2](developer-guide.md#2-how-to-add-a-new-step) - "How to Add a New Step".
 - **Set up pre-commit** so your first PR passes CI on the first try: see [Local Development Checks in CONTRIBUTING.md](../CONTRIBUTING.md#local-development-checks-pre-commit).
 
-If you hit anything that didn't work for you in this guide, please [open an issue](https://github.com/llm-d/llm-d-benchmark/issues) — that's the fastest way to get the guide improved for the next person.
+If you hit anything that didn't work for you in this guide, please [open an issue](https://github.com/llm-d/llm-d-benchmark/issues) - that's the fastest way to get the guide improved for the next person.

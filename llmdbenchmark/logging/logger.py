@@ -58,7 +58,7 @@ class LLMDBenchmarkLogger:
     _shared_stderr_handler: FileHandler | None = None
     _shared_log_dir: Path | None = None
 
-    INDENT_PREFIX = "    │ "
+    INDENT_PREFIX = "    | "
 
     def __init__(self, log_dir: Path, log_name: str, verbose: bool = False):
         self._indent_level = 0
@@ -179,12 +179,12 @@ class LLMDBenchmarkLogger:
             handler.flush()
 
     def log_plain(self, msg: str) -> None:
-        """Write *msg* verbatim to every handler — no timestamp or level prefix.
+        """Write *msg* verbatim to every handler - no timestamp or level prefix.
 
         For human-facing payloads where the log formatting would be more
         noise than signal: copy-paste blocks, banners, ASCII art. Still
         routed through every logger handler, so the text lands in both
-        the terminal and any attached FileHandler(s) — unlike print(),
+        the terminal and any attached FileHandler(s) - unlike print(),
         which only reaches stdout.
         """
         for handler in self.logger.handlers:

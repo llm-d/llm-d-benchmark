@@ -145,8 +145,8 @@ class DetectEndpointStep(Step):
         # Build full URL. For shared-HTTPRoute multi-model scenarios,
         # append the per-stack path prefix (e.g. /pool-a) so that every
         # downstream `{endpoint_url}/v1/completions` becomes
-        # `{gateway}/pool-a/v1/completions` — the gateway rewrites
-        # /pool-a/* → /* and the request reaches THIS stack's
+        # `{gateway}/pool-a/v1/completions` - the gateway rewrites
+        # /pool-a/* -> /* and the request reaches THIS stack's
         # InferencePool. Returns "" (no-op) for every other scenario.
         protocol = "https" if gateway_port == "443" else "http"
         endpoint_url = f"{protocol}://{service_ip}:{gateway_port}"

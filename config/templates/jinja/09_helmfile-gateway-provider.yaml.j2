@@ -15,7 +15,7 @@
 {# Gateway provider (istio / agentgateway control plane) is cluster-scoped
    and lives in a shared namespace (e.g. istio-system). In multi-stack
    scenarios, running `helmfile apply` for the same release concurrently
-   from multiple stacks races on the upgrade — stack 2 hits
+   from multiple stacks races on the upgrade - stack 2 hits
    "release: already exists" while stack 1's upgrade is still in flight.
    Render empty for stacks other than the scenario's shared-infra owner
    so only one install runs per scenario. The per-stack apply step treats

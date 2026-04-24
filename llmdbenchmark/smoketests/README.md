@@ -35,8 +35,8 @@ Scenarios without a dedicated validator (cicd paths, sim, etc.) run steps 00 and
 
 ## Multi-Stack Smoketests
 
-Smoketest steps are per-stack — each rendered stack (e.g. `qwen3-06b`,
-`llama-31-8b`) runs through steps 00–02 independently. Two behaviors differ
+Smoketest steps are per-stack - each rendered stack (e.g. `qwen3-06b`,
+`llama-31-8b`) runs through steps 00-02 independently. Two behaviors differ
 from the standup and run phases:
 
 - **Sequential execution.** Smoketest pins `max_parallel_stacks=1` regardless
@@ -45,8 +45,8 @@ from the standup and run phases:
   real failures hard to spot. Configured in `cli.py`'s `_do_smoketest`.
 - **Per-stack gateway path prefix.** When a scenario uses a shared HTTPRoute
   (`httpRoute.mode: shared` in the scenario YAML), the smoketest inserts the
-  stack's routing prefix into every gateway URL — e.g. `/qwen3-06b/health`
-  and `/qwen3-06b/v1/models` — so requests actually reach this stack's
+  stack's routing prefix into every gateway URL - e.g. `/qwen3-06b/health`
+  and `/qwen3-06b/v1/models` - so requests actually reach this stack's
   InferencePool. Pod-direct-IP probes (which bypass the gateway) continue to
   hit `/health` and `/v1/models` without a prefix. The prefix is computed
   from `httpRoute.pathPrefix` by `compute_gateway_path_prefix` in
@@ -56,7 +56,7 @@ from the standup and run phases:
   `httpRoute.rewriteTo` to something other than `"/"` (e.g. `/v1`), the
   gateway intentionally doesn't route `/health` (which lives at vLLM's
   root, not under `/v1`). The smoketest detects this case via
-  `_gateway_routes_health` and logs an INFO skip instead of failing —
+  `_gateway_routes_health` and logs an INFO skip instead of failing -
   `/v1/models` + direct-pod-IP probes still run and still validate health.
 
 ## Step 00: Health check
@@ -158,23 +158,23 @@ The stack name is the `-name` field from the scenario YAML (e.g., `pd-disaggrega
 
 ```
 smoketests/
-├── __init__.py            -- get_validator() registry lookup
-├── base.py                -- BaseSmoketest: health checks, inference test, validate_role_pods
-├── report.py              -- SmoketestReport / CheckResult tracking
-├── steps/
-│   ├── __init__.py        -- get_smoketest_steps() registry
-│   ├── step_00_health_check.py
-│   ├── step_01_inference_test.py
-│   └── step_02_validate_config.py
-└── validators/
-    ├── __init__.py         -- VALIDATORS dict (stack name to validator class)
-    ├── cpu.py
-    ├── gpu.py
-    ├── spyre.py
-    ├── inference_scheduling.py
-    ├── pd_disaggregation.py
-    ├── precise_prefix_cache_aware.py
-    ├── simulated_accelerators.py
-    ├── tiered_prefix_cache.py
-    └── wide_ep_lws.py
++-- __init__.py            -- get_validator() registry lookup
++-- base.py                -- BaseSmoketest: health checks, inference test, validate_role_pods
++-- report.py              -- SmoketestReport / CheckResult tracking
++-- steps/
+|   +-- __init__.py        -- get_smoketest_steps() registry
+|   +-- step_00_health_check.py
+|   +-- step_01_inference_test.py
+|   +-- step_02_validate_config.py
++-- validators/
+    +-- __init__.py         -- VALIDATORS dict (stack name to validator class)
+    +-- cpu.py
+    +-- gpu.py
+    +-- spyre.py
+    +-- inference_scheduling.py
+    +-- pd_disaggregation.py
+    +-- precise_prefix_cache_aware.py
+    +-- simulated_accelerators.py
+    +-- tiered_prefix_cache.py
+    +-- wide_ep_lws.py
 ```

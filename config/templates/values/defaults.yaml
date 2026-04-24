@@ -286,7 +286,7 @@ storage:
       - ReadWriteMany
     storageClassName: *storage_class
 
-  # Extra PVC — only created when name is non-empty.
+  # Extra PVC - only created when name is non-empty.
   # Mirrors bash LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME.
   # The PVC is NOT automatically mounted; scenarios must also add matching
   # entries to vllmCommon.volumes/volumeMounts to wire it into pods.
@@ -563,7 +563,7 @@ inferenceExtension:
   #       ...
   pluginsCustomConfig: {}
   verbosity: "1"
-  # UDS tokenizer sidecar — runs alongside EPP for precise-prefix-cache scoring.
+  # UDS tokenizer sidecar - runs alongside EPP for precise-prefix-cache scoring.
   # Enable in scenarios that use `precise-prefix-cache-scorer` with UDS tokenizer.
   sidecar:
     enabled: false
@@ -758,13 +758,13 @@ decode:
   # Scheduler name override global schedulerName (optional)
   # schedulerName: default-scheduler
 
-  # PriorityClassName override (optional — inherits from vllmCommon if not set)
+  # PriorityClassName override (optional - inherits from vllmCommon if not set)
   # priorityClassName: ""
 
-  # Ephemeral storage override (optional — inherits from vllmCommon if not set)
+  # Ephemeral storage override (optional - inherits from vllmCommon if not set)
   # ephemeralStorage: ""
 
-  # Network resource override (optional — inherits from vllmCommon if not set)
+  # Network resource override (optional - inherits from vllmCommon if not set)
   # networkResource: ""
   # networkNr: ""
 
@@ -906,13 +906,13 @@ prefill:
   # Scheduler name override global schedulerName (optional)
   # schedulerName: default-scheduler
 
-  # PriorityClassName override (optional — inherits from vllmCommon if not set)
+  # PriorityClassName override (optional - inherits from vllmCommon if not set)
   # priorityClassName: ""
 
-  # Ephemeral storage override (optional — inherits from vllmCommon if not set)
+  # Ephemeral storage override (optional - inherits from vllmCommon if not set)
   # ephemeralStorage: ""
 
-  # Network resource override (optional — inherits from vllmCommon if not set)
+  # Network resource override (optional - inherits from vllmCommon if not set)
   # networkResource: ""
   # networkNr: ""
 
@@ -1035,13 +1035,13 @@ standalone:
   # Scheduler name override global schedulerName (optional)
   schedulerName: default-scheduler
 
-  # PriorityClassName override (optional — inherits from vllmCommon if not set)
+  # PriorityClassName override (optional - inherits from vllmCommon if not set)
   # priorityClassName: ""
 
-  # Ephemeral storage override (optional — inherits from vllmCommon if not set)
+  # Ephemeral storage override (optional - inherits from vllmCommon if not set)
   # ephemeralStorage: ""
 
-  # Network resource override (optional — inherits from vllmCommon if not set)
+  # Network resource override (optional - inherits from vllmCommon if not set)
   # networkResource: ""
   # networkNr: ""
 
@@ -1447,7 +1447,7 @@ openshiftMonitoring:
 
 # ============================================================================
 # IDLE CLEANUP (Experimental)
-# Automatic GPU reclamation — scales down idle model deployments to 0 replicas
+# Automatic GPU reclamation - scales down idle model deployments to 0 replicas
 # when no inference requests are observed over a configurable window.
 #
 # Deploys a namespace-scoped CronJob with its own ServiceAccount + RBAC.

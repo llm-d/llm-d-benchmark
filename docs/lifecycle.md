@@ -95,7 +95,7 @@ Smoketests include three steps:
 
 Well-lit-path scenarios (pd-disaggregation, precise-prefix-cache-aware, inference-scheduling, inference-scheduling-wva, tiered-prefix-cache, wide-ep-lws, simulated-accelerators) have dedicated validators with scenario-specific checks. Other scenarios (including multi-stack scenarios like `multi-model-wva`) run steps 00 and 01 only.
 
-Multi-stack scenarios run smoketest steps sequentially (one stack at a time) regardless of the `--parallel` flag — parallel probes of a shared gateway would be noisy and harder to debug. Each stack's `/health` and `/v1/models` requests are automatically prefixed with its routing path (e.g. `/qwen3-06b/...`) when the scenario uses a shared HTTPRoute.
+Multi-stack scenarios run smoketest steps sequentially (one stack at a time) regardless of the `--parallel` flag - parallel probes of a shared gateway would be noisy and harder to debug. Each stack's `/health` and `/v1/models` requests are automatically prefixed with its routing path (e.g. `/qwen3-06b/...`) when the scenario uses a shared HTTPRoute.
 
 #### Run
 

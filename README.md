@@ -67,14 +67,14 @@ The install script auto-detects if the repo is present -- if not, it clones it f
 
 Two supported entry points depending on what you have access to:
 
-**🖥️ No Accelerators  / No Cluster Access — Utilize a Kind Quickstart**
+**🖥️ No Accelerators  / No Cluster Access - Utilize a Kind Quickstart**
 
-Run the full `standup → smoketest → run → teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine. No accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind-sim` scenario that CI runs on every PR, so if it works locally it works in CI.
+Run the full `standup -> smoketest -> run -> teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine. No accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind-sim` scenario that CI runs on every PR, so if it works locally it works in CI.
 
 - **Requirements:** Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.11+
 - **Continue with Quick Start Guide:** [Quickstart on Kind](docs/quickstart.md)
 
-**🚀 Access to Compute cluster with Accelerators — full pipeline**
+**🚀 Access to Compute cluster with Accelerators - full pipeline**
 
 Deploy against a Kubernetes cluster with Accelerators (OpenShift, GKE, EKS, CKS, etc.). Use one of the built-in specs or a well-lit path guide tuned for your hardware.
 
@@ -127,32 +127,32 @@ each with its own EPP + InferencePool + VariantAutoscaling + HPA, sharing
 one WVA controller and one HTTPRoute with N backendRefs:
 
 ```bash
-# Standup — renders two stacks (qwen3-06b, llama-31-8b), installs shared
+# Standup - renders two stacks (qwen3-06b, llama-31-8b), installs shared
 # infra once, deploys a per-model Helm release + VA + HPA for each.
 llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace
 
-# Smoketest — runs stack-by-stack (sequential), hitting each pool at its
+# Smoketest - runs stack-by-stack (sequential), hitting each pool at its
 # routing prefix (/qwen3-06b/v1/models, /llama-31-8b/v1/models).
 llmdbenchmark --spec guides/multi-model-wva smoketest -p my-namespace
 
-# Run — iterates every stack, each harness pod targets its own pool's endpoint.
+# Run - iterates every stack, each harness pod targets its own pool's endpoint.
 llmdbenchmark --spec guides/multi-model-wva run -p my-namespace
 
 # See what's deployed: list detected endpoints + copy-paste run commands.
 llmdbenchmark --spec guides/multi-model-wva run -p my-namespace --list-endpoints
 
-# Benchmark just one pool (no --endpoint-url needed — auto-resolves):
+# Benchmark just one pool (no --endpoint-url needed - auto-resolves):
 llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
   --stack qwen3-06b \
   -l inference-perf -w sanity_random.yaml
 
-# Teardown — removes both stacks and the shared infra.
+# Teardown - removes both stacks and the shared infra.
 llmdbenchmark --spec guides/multi-model-wva teardown -p my-namespace
 ```
 
 Stack names (`qwen3-06b`, `llama-31-8b`) double as path prefixes on the
 shared HTTPRoute (`/qwen3-06b/v1/...`, `/llama-31-8b/v1/...`). Pick short
-descriptive names in your own scenario — `--list-endpoints` prints the
+descriptive names in your own scenario - `--list-endpoints` prints the
 rendered URLs so you rarely have to type them manually.
 
 #### Discovering what's deployed (`--list-endpoints`)
@@ -173,7 +173,7 @@ llmdbenchmark --spec guides/multi-model-wva run -p my-namespace --list-endpoints
 
 💡 Copy-paste to benchmark one pool:
 
-  # qwen3-06b — Qwen/Qwen3-0.6B
+  # qwen3-06b - Qwen/Qwen3-0.6B
   llmdbenchmark --spec guides/multi-model-wva run \
     --namespace my-namespace \
     --endpoint-url http://10.1.2.3:80/qwen3-06b \
@@ -186,7 +186,7 @@ llmdbenchmark --spec guides/multi-model-wva run -p my-namespace --list-endpoints
 
 `--stack NAME` restricts any lifecycle command to one pool (or a
 comma-separated subset). Endpoint URL auto-resolves for the selected
-stack — no need to pass `--endpoint-url` manually:
+stack - no need to pass `--endpoint-url` manually:
 
 ```bash
 # Benchmark qwen3-06b only with guidellm, two parallel harness pods
@@ -201,7 +201,7 @@ Breakdown of the Example:
 
 - `--stack qwen3-06b` filters per-stack steps to that pool. Endpoint
   detection (step 03) runs only for that stack and auto-resolves to
-  `http://<gateway>:80/qwen3-06b` — including the routing prefix — so every
+  `http://<gateway>:80/qwen3-06b` - including the routing prefix - so every
   downstream step targets the qwen3-06b InferencePool.
 - `-l guidellm` selects the guidellm harness
   ([workload/harnesses/guidellm-llm-d-benchmark.sh](workload/harnesses/guidellm-llm-d-benchmark.sh)).
@@ -214,7 +214,7 @@ Want to compare pools side-by-side? Launch two invocations in parallel
 shells (different `--workspace` each):
 
 ```bash
-# Terminal 1 — --workspace is a global option, placed before the subcommand
+# Terminal 1 - --workspace is a global option, placed before the subcommand
 llmdbenchmark --spec guides/multi-model-wva --workspace /tmp/run-qwen run -p my-namespace \
   --stack qwen3-06b \
   -l guidellm -w sanity_random.yaml -j 2 &
@@ -226,13 +226,13 @@ llmdbenchmark --spec guides/multi-model-wva --workspace /tmp/run-llama run -p my
 ```
 
 `--stack` also works on `standup`, `smoketest`, and `teardown`. Same
-flag, same semantics — restrict execution to the named subset of stacks
+flag, same semantics - restrict execution to the named subset of stacks
 without editing the scenario YAML. Scenario-wide steps (namespace
 creation, admin prereqs, shared infra, WVA controller install) always
 run; only the per-stack steps (06+ for standup) are filtered.
 
 ```bash
-# Standup only pool qwen3-06b from the multi-model scenario — shared
+# Standup only pool qwen3-06b from the multi-model scenario - shared
 # infra (istio, Gateway, WVA controller, model PVC) installs normally,
 # but only qwen3-06b's ms/gaie/VA/HPA resources get created.
 llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace \
@@ -250,7 +250,7 @@ llmdbenchmark --spec guides/multi-model-wva teardown -p my-namespace \
 Unknown stack names fail loudly with a list of valid ones.
 
 When `--stack NAME` selects exactly one stack, `-m/--models` scopes to
-that stack only — sibling stacks keep their scenario-defined models.
+that stack only - sibling stacks keep their scenario-defined models.
 Handy for "rerun pool A against a different model" without touching pool
 B:
 
@@ -352,7 +352,7 @@ source .venv/bin/activate
 
 The install script:
 
-1. Creates a Python virtual environment at `.venv/` (via [uv](https://docs.astral.sh/uv/) or `python3 -m venv` — see [Install](#install))
+1. Creates a Python virtual environment at `.venv/` (via [uv](https://docs.astral.sh/uv/) or `python3 -m venv` - see [Install](#install))
 2. Validates Python 3.11+ and pip
 3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile, kustomize, jq, yq, skopeo, crane)
 4. Installs the `helm-diff` plugin (required by helmfile)
@@ -411,7 +411,7 @@ llmdbenchmark --version
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
-| `--stack NAME[,NAME…]` | `LLMDBENCH_STACK` | Restrict per-stack execution to the named subset. Useful in multi-stack scenarios (e.g. `guides/multi-model-wva`) to re-deploy a single pool without touching siblings. Unknown names fail loudly. |
+| `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict per-stack execution to the named subset. Useful in multi-stack scenarios (e.g. `guides/multi-model-wva`) to re-deploy a single pool without touching siblings. Unknown names fail loudly. |
 | `-f` / `--monitoring` | `LLMDBENCH_MONITORING` | Enable PodMonitor creation and EPP verbosity during standup |
 | `--skip-smoketest` | | Skip automatic smoketest after standup completes |
 | `--affinity` | `LLMDBENCH_AFFINITY` | Node affinity / tolerations label |
@@ -428,7 +428,7 @@ llmdbenchmark --version
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name (default: `llmdbench`) |
 | `-d` / `--deep` | `LLMDBENCH_DEEP_CLEAN` | Deep clean: delete ALL resources in both namespaces |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Comma-separated namespaces (model,harness) |
-| `--stack NAME[,NAME…]` | `LLMDBENCH_STACK` | Restrict teardown to the named subset. Useful for removing one pool from a multi-stack scenario while leaving siblings in place. |
+| `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict teardown to the named subset. Useful for removing one pool from a multi-stack scenario while leaving siblings in place. |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 
 ### Experiment Options
@@ -479,7 +479,7 @@ llmdbenchmark --version
 | `--analyze` | | Run local analysis on results after collection |
 | `-z` / `--skip` | `LLMDBENCH_SKIP` | Skip execution, only collect existing results |
 | `-d` / `--debug` | `LLMDBENCH_DEBUG` | Debug mode: start harness pods with sleep infinity |
-| `--stack NAME[,NAME…]` | `LLMDBENCH_STACK` | Restrict the benchmark to the named subset of stacks. Endpoint URL auto-resolves for the selected stack — no need for `--endpoint-url`. When `--stack` selects exactly one stack, `-m/--models` scopes to that stack only. |
+| `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict the benchmark to the named subset of stacks. Endpoint URL auto-resolves for the selected stack - no need for `--endpoint-url`. When `--stack` selects exactly one stack, `-m/--models` scopes to that stack only. |
 | `--list-endpoints` | | Detect per-stack endpoint URLs, print a copy-paste table of `llmdbenchmark run` invocations, and exit without launching any harness pods. Useful after `standup` to discover what's deployed. |
 
 ### Smoketest Options
@@ -497,8 +497,8 @@ llmdbenchmark --spec gpu smoketest -p my-namespace -s 2   # config validation on
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (standalone, modelservice, fma) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
-| `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4). Smoketest pins this to 1 regardless — parallel probes across stacks are confusing. |
-| `--stack NAME[,NAME…]` | `LLMDBENCH_STACK` | Restrict smoketest to the named subset of stacks. |
+| `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4). Smoketest pins this to 1 regardless - parallel probes across stacks are confusing. |
+| `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict smoketest to the named subset of stacks. |
 
 Smoketests also run automatically after `standup` unless `--skip-smoketest` is passed. See [llmdbenchmark/smoketests/README.md](llmdbenchmark/smoketests/README.md) for details on what each step validates.
 

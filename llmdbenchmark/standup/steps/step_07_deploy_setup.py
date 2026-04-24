@@ -87,7 +87,7 @@ class DeploySetupStep(Step):
                 self._patch_helmfile_for_non_admin(helmfile_work)
 
             # Multi-stack scenarios dedupe the `infra-{release}` helm
-            # release into one stack (see 10_helmfile-main.yaml.j2 —
+            # release into one stack (see 10_helmfile-main.yaml.j2 -
             # stacks 2..N omit it). Pre-check whether THIS stack's
             # helmfile declares the release before invoking helmfile;
             # otherwise the apply exits non-zero with "no releases found
@@ -109,8 +109,8 @@ class DeploySetupStep(Step):
                     errors.append(f"Failed to apply infra helmfile: {result.stderr}")
             else:
                 context.logger.log_info(
-                    f"    │ infra-{release} not in this stack's helmfile "
-                    f"(shared infra is owned by another stack) — skipping"
+                    f"    | infra-{release} not in this stack's helmfile "
+                    f"(shared infra is owned by another stack) - skipping"
                 )
 
         if errors:
@@ -144,7 +144,7 @@ class DeploySetupStep(Step):
         otherwise "fail" noisily on stacks that intentionally dropped a
         shared release (e.g. ``infra-llmdbench`` in multi-stack scenarios).
 
-        Parses the helmfile YAML and walks ``releases[*].name`` — a
+        Parses the helmfile YAML and walks ``releases[*].name`` - a
         substring check was too permissive: a label value, annotation,
         or values-block key with the text ``name: X`` would falsely
         match without actually declaring a release.

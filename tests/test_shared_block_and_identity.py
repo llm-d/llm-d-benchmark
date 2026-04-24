@@ -2,9 +2,9 @@
 
 Covers two related pieces of render_plans.py:
 
-1. `shared:` merge — scenario-wide config applied to every stack before the
+1. `shared:` merge - scenario-wide config applied to every stack before the
    per-stack overrides. Per-stack always wins.
-2. `_resolve_per_stack_identity` — auto-suffixes shipped-default resource
+2. `_resolve_per_stack_identity` - auto-suffixes shipped-default resource
    names (model PVC, download Job, EPP Secret) with the model_id_label so
    multi-stack scenarios don't race on the same Kubernetes resource.
    Skipped for single-stack scenarios to keep their names stable.
@@ -21,7 +21,7 @@ from llmdbenchmark.parser.render_plans import RenderPlans
 
 @pytest.fixture
 def renderer():
-    """Bypass __init__ — we only need the pure logic under test."""
+    """Bypass __init__ - we only need the pure logic under test."""
     logger = MagicMock()
     logger.log_warning = MagicMock()
     logger.log_info = MagicMock()
@@ -31,7 +31,7 @@ def renderer():
 
 
 class TestPerStackIdentity:
-    """_resolve_per_stack_identity — auto-derived unique names."""
+    """_resolve_per_stack_identity - auto-derived unique names."""
 
     def _base_values(self, label: str = "my-model") -> dict:
         # Mirrors defaults.yaml shape for the keys we care about.
@@ -83,7 +83,7 @@ class TestPerStackIdentity:
         assert out["downloadJob"]["name"] == "download-model-qwen-07df-6b"
 
     def test_missing_model_id_label_is_a_noop(self, renderer):
-        """No label → nothing to suffix with; must not crash."""
+        """No label -> nothing to suffix with; must not crash."""
         values = self._base_values(label="")
         out = renderer._resolve_per_stack_identity(values, total_stacks=5)
         # Names stay at their shipped defaults.
@@ -92,7 +92,7 @@ class TestPerStackIdentity:
 
 
 class TestDeepMergeSharedBlock:
-    """Merge order for the scenario `shared:` block — defaults < shared < stack."""
+    """Merge order for the scenario `shared:` block - defaults < shared < stack."""
 
     def test_shared_overrides_defaults(self, renderer):
         defaults = {"gateway": {"className": "istio"}}
@@ -129,11 +129,11 @@ class TestDeepMergeSharedBlock:
         )
         # From shared
         assert merged["wva"]["enabled"] is True
-        # From defaults — preserved because shared didn't touch image.tag
+        # From defaults - preserved because shared didn't touch image.tag
         assert merged["wva"]["image"]["tag"] == "v0.5.0"
 
     def test_treatment_overrides_shared_and_stack(self, renderer):
-        """Full precedence chain: defaults → shared → stack → setup_overrides.
+        """Full precedence chain: defaults -> shared -> stack -> setup_overrides.
 
         Ensures DoE experiment treatments (applied as ``setup_overrides``)
         win over every earlier layer, so a sweep over a shared-block
@@ -160,7 +160,7 @@ class TestDeepMergeSharedBlock:
 
 
 class TestSharedInfraStackIndex:
-    """_resolve_shared_infra_stack_index — promote owner past standalone stacks."""
+    """_resolve_shared_infra_stack_index - promote owner past standalone stacks."""
 
     @pytest.fixture
     def resolve(self):
@@ -175,7 +175,7 @@ class TestSharedInfraStackIndex:
         assert resolve(siblings) == 1
 
     def test_standalone_first_skips_to_modelservice(self, resolve):
-        """Leading standalone stacks can't own shared infra — skip them."""
+        """Leading standalone stacks can't own shared infra - skip them."""
         siblings = [
             {"name": "pool-a", "standalone": True},
             {"name": "pool-b", "standalone": False},
@@ -191,7 +191,7 @@ class TestSharedInfraStackIndex:
         assert resolve(siblings) == 3
 
     def test_all_standalone_falls_back_to_one(self, resolve):
-        """Edge case: every stack is standalone → no modelservice infra
+        """Edge case: every stack is standalone -> no modelservice infra
         installs, so the index is moot but still deterministic."""
         siblings = [
             {"name": "a", "standalone": True},
@@ -201,7 +201,7 @@ class TestSharedInfraStackIndex:
 
 
 class TestHelmfileDeclaresRelease:
-    """step_07_deploy_setup._helmfile_declares_release — YAML walk not substring."""
+    """step_07_deploy_setup._helmfile_declares_release - YAML walk not substring."""
 
     @pytest.fixture
     def check(self):
@@ -251,7 +251,7 @@ releases:
 
 
 class TestGatewayRoutesHealth:
-    """BaseSmoketest._gateway_routes_health — skip /health when routing narrows."""
+    """BaseSmoketest._gateway_routes_health - skip /health when routing narrows."""
 
     @pytest.fixture
     def check(self):
@@ -259,7 +259,7 @@ class TestGatewayRoutesHealth:
         return BaseSmoketest._gateway_routes_health
 
     def test_non_shared_always_routes(self, check):
-        """Per-stack HTTPRoute is a single-backend catch-all — always routes /health."""
+        """Per-stack HTTPRoute is a single-backend catch-all - always routes /health."""
         assert check({}) is True
         assert check({"httpRoute": {"mode": "per-stack"}}) is True
 
@@ -268,18 +268,18 @@ class TestGatewayRoutesHealth:
         assert check(cfg) is True
 
     def test_shared_default_rewrite_routes(self, check):
-        """rewriteTo absent → falls back to '/' → /health routes."""
+        """rewriteTo absent -> falls back to '/' -> /health routes."""
         cfg = {"httpRoute": {"mode": "shared"}}
         assert check(cfg) is True
 
     def test_shared_with_v1_rewrite_does_not_route(self, check):
-        """rewriteTo: /v1 narrows routing to /v1/* — /health won't match."""
+        """rewriteTo: /v1 narrows routing to /v1/* - /health won't match."""
         cfg = {"httpRoute": {"mode": "shared", "rewriteTo": "/v1"}}
         assert check(cfg) is False
 
 
 class TestCliModelOverrideMultiStack:
-    """_resolve_model — warn (once) when -m/--models is used in multi-stack."""
+    """_resolve_model - warn (once) when -m/--models is used in multi-stack."""
 
     @pytest.fixture
     def renderer(self):
@@ -296,7 +296,7 @@ class TestCliModelOverrideMultiStack:
         return r
 
     def test_single_stack_no_warning(self, renderer):
-        """-m on a single-stack scenario is a normal override — no warning."""
+        """-m on a single-stack scenario is a normal override - no warning."""
         values = {
             "model": {"name": "Qwen/Qwen3-32B"},
             "namespace": {"name": "ns"},
@@ -312,14 +312,14 @@ class TestCliModelOverrideMultiStack:
         }
         renderer._resolve_model(values, total_stacks=2, stack_name="qwen3-06b")
         renderer._resolve_model(values, total_stacks=2, stack_name="llama-31-8b")
-        # Warn exactly once — not once per stack.
+        # Warn exactly once - not once per stack.
         assert renderer.logger.log_warning.call_count == 1
         msg = renderer.logger.log_warning.call_args[0][0]
         assert "--stack" in msg
         assert "N copies of one model" in msg
 
     def test_multi_stack_still_overrides(self, renderer):
-        """Warning doesn't block the override — current behavior preserved."""
+        """Warning doesn't block the override - current behavior preserved."""
         values = {
             "model": {"name": "Qwen/Qwen3-0.6B"},
             "namespace": {"name": "ns"},
@@ -339,7 +339,7 @@ class TestCliModelOverrideMultiStack:
         renderer.logger.log_warning.assert_not_called()
 
     def test_stack_filter_scopes_override_to_matching_stack(self, renderer):
-        """--stack NAME + -m MODEL → override only the named stack."""
+        """--stack NAME + -m MODEL -> override only the named stack."""
         renderer.cli_stack_filter = ["qwen3-06b"]
         target_values = {"model": {"name": "orig"}, "namespace": {"name": "ns"}}
         out = renderer._resolve_model(
@@ -349,7 +349,7 @@ class TestCliModelOverrideMultiStack:
         renderer.logger.log_warning.assert_not_called()
 
     def test_stack_filter_leaves_non_matching_stack_alone(self, renderer):
-        """--stack NAME + -m MODEL → sibling stacks preserve their model."""
+        """--stack NAME + -m MODEL -> sibling stacks preserve their model."""
         renderer.cli_stack_filter = ["qwen3-06b"]
         sibling_values = {"model": {"name": "orig-sibling"}, "namespace": {"name": "ns"}}
         out = renderer._resolve_model(
@@ -359,7 +359,7 @@ class TestCliModelOverrideMultiStack:
         renderer.logger.log_warning.assert_not_called()
 
     def test_broad_filter_still_warns(self, renderer):
-        """--stack X,Y + -m MODEL (>1 in filter) → warn as if unscoped."""
+        """--stack X,Y + -m MODEL (>1 in filter) -> warn as if unscoped."""
         renderer.cli_stack_filter = ["qwen3-06b", "llama-31-8b"]
         values = {"model": {"name": "orig"}, "namespace": {"name": "ns"}}
         renderer._resolve_model(values, total_stacks=2, stack_name="qwen3-06b")
@@ -367,7 +367,7 @@ class TestCliModelOverrideMultiStack:
 
 
 class TestPrintEndpointsTable:
-    """cli._print_endpoints_table — tolerates Path-typed specification_file."""
+    """cli._print_endpoints_table - tolerates Path-typed specification_file."""
 
     def _mock_ctx(self, tmp_path, stacks_with_models):
         from unittest.mock import MagicMock
@@ -406,7 +406,7 @@ class TestPrintEndpointsTable:
         ])
         logger, lines = self._capturing_logger()
 
-        # This is the real shape coming from RenderSpecification — a Path.
+        # This is the real shape coming from RenderSpecification - a Path.
         args = type("A", (), {"specification_file": Path(
             "/abs/path/config/specification/guides/multi-model-wva.yaml.j2"
         )})()
@@ -434,7 +434,7 @@ class TestPrintEndpointsTable:
         assert "guides/multi-model-wva" in combined
 
     def test_no_endpoints_warns(self, tmp_path):
-        """Empty endpoints dict → warn the user to stand up first."""
+        """Empty endpoints dict -> warn the user to stand up first."""
         from llmdbenchmark.cli import _print_endpoints_table
 
         from unittest.mock import MagicMock
@@ -453,7 +453,7 @@ class TestPrintEndpointsTable:
         )
 
     def test_copy_paste_block_goes_through_logger(self, tmp_path):
-        """log_plain lines end up in every handler — including log files."""
+        """log_plain lines end up in every handler - including log files."""
         from llmdbenchmark.cli import _print_endpoints_table
 
         ctx = self._mock_ctx(tmp_path, [
@@ -477,7 +477,7 @@ class TestPrintEndpointsTable:
 
 
 class TestRenderStackFilterValidation:
-    """RenderPlans.eval() — --stack typos fail at render time, not later."""
+    """RenderPlans.eval() - --stack typos fail at render time, not later."""
 
     def _write_scenario(self, tmp_path, names):
         import yaml as _yaml
@@ -517,7 +517,7 @@ class TestRenderStackFilterValidation:
     def test_valid_stack_passes_validation(self, tmp_path):
         scenario = self._write_scenario(tmp_path, ["qwen3-06b", "llama-31-8b"])
         r = self._renderer(tmp_path, scenario, ["qwen3-06b"])
-        # Can't fully render without templates — but the unknown-stack
+        # Can't fully render without templates - but the unknown-stack
         # gate must NOT fire. Validate by checking global_errors absence
         # BEFORE template loading starts. We short-circuit by returning
         # early in the first stages; the filter validation is among the
@@ -539,7 +539,7 @@ class TestRenderStackFilterValidation:
 
 
 class TestParseSizeToGib:
-    """step_04_model_namespace._parse_size_to_gib — warn-friendly parser."""
+    """step_04_model_namespace._parse_size_to_gib - warn-friendly parser."""
 
     @pytest.fixture
     def parse(self):
@@ -576,7 +576,7 @@ class TestRequiresPvcDownload:
 
     @pytest.fixture
     def step(self):
-        """A ModelNamespaceStep instance — the method under test is pure."""
+        """A ModelNamespaceStep instance - the method under test is pure."""
         from llmdbenchmark.standup.steps.step_04_model_namespace import (
             ModelNamespaceStep,
         )
@@ -592,7 +592,7 @@ class TestRequiresPvcDownload:
         assert step._requires_pvc_download(cfg) is True
 
     def test_hf_protocol_skips_pvc(self, step):
-        """hf uriProtocol means modelservice fetches at runtime — no PVC."""
+        """hf uriProtocol means modelservice fetches at runtime - no PVC."""
         cfg = {"modelservice": {"uriProtocol": "hf"}, "standalone": {"enabled": False}}
         assert step._requires_pvc_download(cfg) is False
 
@@ -619,7 +619,7 @@ class TestComputeGatewayPathPrefix:
         assert compute_gateway_path_prefix(cfg, "pool-a", is_standalone=True) == ""
 
     def test_per_stack_mode_returns_empty(self):
-        """httpRoute.mode: per-stack (or unset) → no prefix injection."""
+        """httpRoute.mode: per-stack (or unset) -> no prefix injection."""
         from llmdbenchmark.utilities.endpoint import compute_gateway_path_prefix
         cfg = {"httpRoute": {"mode": "per-stack", "pathPrefix": "/ignored"}}
         assert compute_gateway_path_prefix(cfg, "pool-a") == ""
@@ -641,7 +641,7 @@ class TestComputeGatewayPathPrefix:
 
 
 class TestParseEndpoint:
-    """step_04_verify_model._parse_endpoint — host/port/prefix extraction."""
+    """step_04_verify_model._parse_endpoint - host/port/prefix extraction."""
 
     @pytest.fixture
     def parse(self):

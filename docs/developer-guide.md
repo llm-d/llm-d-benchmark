@@ -999,16 +999,16 @@ share a namespace, the render engine auto-suffixes a small set of shipped-defaul
 resource names with the stack's ``model_id_label`` so Helm releases and
 Kubernetes objects don't collide:
 
-| Default path | Rewritten to (N ≥ 2) |
+| Default path | Rewritten to (N >= 2) |
 |---|---|
 | `downloadJob.name` (`download-model`) | `download-model-{model_id_label}` |
-| `inferenceExtension.monitoring.secretName` | `…-sa-metrics-reader-secret-{model_id_label}` |
+| `inferenceExtension.monitoring.secretName` | `...-sa-metrics-reader-secret-{model_id_label}` |
 
 Explicit overrides (in `defaults.yaml`, `shared:`, or a stack) are preserved.
 Single-stack scenarios skip the rewrite entirely.
 
 **Model PVCs are shared, not per-stack.** `storage.modelPvc.name` deliberately
-is **not** in the auto-suffix list — every stack writes its weights to a
+is **not** in the auto-suffix list - every stack writes its weights to a
 distinct subdirectory on one shared PVC (keyed by `model.path`). That matches
 how NVMe-backed and local-directory storage classes are typically deployed
 (one volume with per-model subdirs, not N volumes), and avoids wasting
@@ -1020,14 +1020,14 @@ for the implementation and `_STACK_SCOPED_DEFAULTS` for the full list.
 
 **Shared HTTPRoute template.** When `httpRoute.mode: shared`, only the first
 stack's render of [`08_httproute.yaml.j2`](../config/templates/jinja/08_httproute.yaml.j2)
-emits a non-empty file — a single HTTPRoute with one backendRef per sibling
+emits a non-empty file - a single HTTPRoute with one backendRef per sibling
 stack. Sibling stacks are exposed to templates via the injected
 `siblingStacks` list and `stackIndex` variable (see
 [`_build_sibling_stacks`](../llmdbenchmark/parser/render_plans.py)). The same
-`stackIndex > 1 → empty` gate dedupes cluster-shared infra templates —
+`stackIndex > 1 -> empty` gate dedupes cluster-shared infra templates -
 [`09_helmfile-gateway-provider.yaml.j2`](../config/templates/jinja/09_helmfile-gateway-provider.yaml.j2)
 (istio control plane) and the `infra-llmdbench` release in
-[`10_helmfile-main.yaml.j2`](../config/templates/jinja/10_helmfile-main.yaml.j2) —
+[`10_helmfile-main.yaml.j2`](../config/templates/jinja/10_helmfile-main.yaml.j2) -
 so N stacks don't race on the same Helm release during parallel per-stack step
 execution.
 
@@ -1039,7 +1039,7 @@ execution.
    YAML and the scenario YAML. For each stack it applies a four-layer merge:
 
    ```
-   defaults.yaml  →  scenario.shared  →  stack config  →  CLI / setup overrides
+   defaults.yaml  ->  scenario.shared  ->  stack config  ->  CLI / setup overrides
    ```
 
    Each later layer wins over earlier ones; dicts deep-merge, lists replace
