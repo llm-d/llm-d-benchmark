@@ -61,7 +61,7 @@ generation (and plan) time.
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
 | **benchmark** | `v0.6.0rc6` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 330 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
-| **inferenceScheduler** | `v0.8.0-rc.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 349 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
+| **inferenceScheduler** | `v0.7.1` | tag | `config/templates/values/defaults.yaml` line 349 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 368 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
 | **routingSidecar** | `v0.8.0-rc.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 355 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
 | **udsTokenizer** | `v0.7.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 361 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |

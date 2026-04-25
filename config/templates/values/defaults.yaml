@@ -348,7 +348,7 @@ images:
 
   inferenceScheduler:
     repository: ghcr.io/llm-d/llm-d-inference-scheduler
-    tag: auto
+    tag: v0.7.1
     pullPolicy: *pull_always
     sourceRepo: https://github.com/llm-d/llm-d-inference-scheduler
 
