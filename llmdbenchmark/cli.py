@@ -27,9 +27,11 @@ from llmdbenchmark.utilities.os.filesystem import (
     resolve_specification_file,
 )
 from llmdbenchmark.interface.commands import Command
+from llmdbenchmark.result_store.store import StoreManager
 from llmdbenchmark.interface import plan, standup, teardown, run
 from llmdbenchmark.interface import smoketest as smoketest_interface
 from llmdbenchmark.interface import experiment as experiment_interface
+from llmdbenchmark.interface import results
 from llmdbenchmark.parser.render_specification import RenderSpecification
 from llmdbenchmark.exceptions.exceptions import TemplateError
 from llmdbenchmark.parser.render_plans import RenderPlans
@@ -1393,33 +1395,40 @@ def cli() -> None:
     )
 
     parser.add_argument(
-        "--workspace",
-        "--ws",
-        default=env("LLMDBENCH_WORKSPACE"),
-        help="Supply a workspace directory for placing "
-        "generated items and logs, otherwise the default action is to create a "
-        "temporary directory on your system.",
+        "--version",
+        "--ver",
+        action="version",
+        version=f"{__package_name__}:{__version__}",
+        help="Show program's version number and exit.",
     )
-
     parser.add_argument(
-        "--base-dir",
-        "--bd",
-        default=env("LLMDBENCH_BASE_DIR", "."),
-        help="Base directory containing templates and scenarios. "
-        'The default base directory is the cwd "." - we highly suggest enforcing a '
-        'base_dir explicitly. For example: "BASE_DIR/templates", "BASE_DIR/scenarios".',
+        "--verbose", "-v", action="store_true", help="Enable debug logging to console."
     )
 
     parser.add_argument(
         "--specification_file",
         "--spec",
         default=env("LLMDBENCH_SPEC"),
-        required=not env("LLMDBENCH_SPEC"),
-        help="Specification file for the experiment. Accepts a bare name (e.g. 'gpu'), "
-        "a category/name (e.g. 'guides/inference-scheduling'), or a full path. "
-        "Bare names are searched in config/specification/**/<name>.yaml.j2.",
+        help="Specification file for the experiment.",
     )
-
+    parser.add_argument(
+        "--dry-run",
+        "-n",
+        action="store_true",
+        help="Log all commands without executing against compute cluster.",
+    )
+    parser.add_argument(
+        "--workspace",
+        "--ws",
+        default=env("LLMDBENCH_WORKSPACE"),
+        help="Supply a workspace directory for placing generated items and logs.",
+    )
+    parser.add_argument(
+        "--base-dir",
+        "--bd",
+        default=env("LLMDBENCH_BASE_DIR", "."),
+        help="Base directory containing templates and scenarios.",
+    )
     parser.add_argument(
         "--non-admin",
         "-i",
@@ -1427,24 +1436,45 @@ def cli() -> None:
         help="Run as non-cluster-level admin user.",
     )
 
-    parser.add_argument(
+    benchmark_parser = argparse.ArgumentParser(add_help=False)
+    benchmark_parser.add_argument(
+        "--workspace",
+        "--ws",
+        default=argparse.SUPPRESS,
+        help="Supply a workspace directory for placing "
+        "generated items and logs, otherwise the default action is to create a "
+        "temporary directory on your system.",
+    )
+    benchmark_parser.add_argument(
+        "--base-dir",
+        "--bd",
+        default=argparse.SUPPRESS,
+        help="Base directory containing templates and scenarios. "
+        'The default base directory is the cwd "." - we highly suggest enforcing a '
+        'base_dir explicitly. For example: "BASE_DIR/templates", "BASE_DIR/scenarios".',
+    )
+    benchmark_parser.add_argument(
+        "--specification_file",
+        "--spec",
+        default=argparse.SUPPRESS,
+        help="Specification file for the experiment. Accepts a bare name (e.g. 'gpu'), "
+        "a category/name (e.g. 'guides/inference-scheduling'), or a full path. "
+        "Bare names are searched in config/specification/**/<name>.yaml.j2.",
+    )
+    benchmark_parser.add_argument(
+        "--non-admin",
+        "-i",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Run as non-cluster-level admin user.",
+    )
+    benchmark_parser.add_argument(
         "--dry-run",
         "-n",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Log all commands without executing against compute cluster, while still "
         "generating YAML and Helm documents.",
-    )
-
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable debug logging to console."
-    )
-
-    parser.add_argument(
-        "--version",
-        "--ver",
-        action="version",
-        version=f"{__package_name__}:{__version__}",
-        help="Show program's version number and exit.",
     )
 
     subparsers = parser.add_subparsers(
@@ -1454,21 +1484,22 @@ def cli() -> None:
         description="Available commands:",
     )
 
-    plan.add_subcommands(subparsers)
-    standup.add_subcommands(subparsers)
-    smoketest_interface.add_subcommands(subparsers)
-    teardown.add_subcommands(subparsers)
-    run.add_subcommands(subparsers)
-    experiment_interface.add_subcommands(subparsers)
+    plan.add_subcommands(subparsers, parents=[benchmark_parser])
+    standup.add_subcommands(subparsers, parents=[benchmark_parser])
+    smoketest_interface.add_subcommands(subparsers, parents=[benchmark_parser])
+    teardown.add_subcommands(subparsers, parents=[benchmark_parser])
+    run.add_subcommands(subparsers, parents=[benchmark_parser])
+    experiment_interface.add_subcommands(subparsers, parents=[benchmark_parser])
+    results.add_subcommands(subparsers, parents=[])
 
     args = parser.parse_args()
 
     # Merge env vars for boolean flags (store_true can't use default=)
-    if not args.dry_run:
+    if hasattr(args, "dry_run") and not args.dry_run:
         args.dry_run = env_bool("LLMDBENCH_DRY_RUN")
-    if not args.verbose:
+    if hasattr(args, "verbose") and not args.verbose:
         args.verbose = env_bool("LLMDBENCH_VERBOSE")
-    if not args.non_admin:
+    if hasattr(args, "non_admin") and not args.non_admin:
         args.non_admin = env_bool("LLMDBENCH_NON_ADMIN")
     if hasattr(args, "monitoring") and not args.monitoring:
         args.monitoring = env_bool("LLMDBENCH_MONITORING")
@@ -1481,8 +1512,26 @@ def cli() -> None:
     if hasattr(args, "wva") and not args.wva:
         args.wva = env_bool("LLMDBENCH_WVA")
 
+    # Validate --spec for commands that require it
+    if args.command != Command.RESULTS.value and not args.specification_file:
+        parser.error("the following arguments are required: --specification_file/--spec")
+
+    # Results command is handled separately
+    if args.command == Command.RESULTS.value:
+        temp_dir = Path(tempfile.gettempdir()) / "llmdbenchmark" / "logs"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        logger = get_logger(temp_dir, config.verbose, __name__)
+        results.execute(args, logger)
+        return
+
     # Convert relative/~ paths to absolute
     args.base_dir = get_absolute_path(args.base_dir)
+
+    # AUTO-DISCOVERY FALLBACK: If base_dir doesnt have config/templates, fallback to package root
+    if not (Path(args.base_dir) / "config" / "templates").exists():
+        package_root = Path(__file__).resolve().parent.parent
+        if (package_root / "config" / "templates").exists():
+            args.base_dir = str(package_root)
 
     # Resolve --spec (bare name / category/name / full path)
     raw_spec = args.specification_file
@@ -1503,10 +1552,18 @@ def cli() -> None:
     if args.workspace:
         overall_workspace = Path(args.workspace)
     else:
-        scenario_work_dir = _extract_workspace_from_scenario(
+        try:
+            # Anchor the search for .result_store to the user's current directory, purely like Git.
+            # We explicitly decouple this from args.base_dir which is used for template resolution.
+            store_root = StoreManager.find_store_root(".", silent=True)
+        except Exception:
+            store_root = None
+            
+        if store_root:
+            overall_workspace = store_root / "workspaces"
+        elif scenario_work_dir := _extract_workspace_from_scenario(
             args.specification_file, args.base_dir
-        )
-        if scenario_work_dir:
+        ):
             overall_workspace = Path(scenario_work_dir).expanduser()
         else:
             overall_workspace = Path(tempfile.mkdtemp(prefix="workspace_llmdbench_"))

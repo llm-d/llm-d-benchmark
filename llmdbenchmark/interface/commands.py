@@ -12,3 +12,4 @@ class Command(Enum):
     RUN = "run"
     TEARDOWN = "teardown"
     EXPERIMENT = "experiment"
+    RESULTS = "results"
