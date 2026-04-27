@@ -24,10 +24,10 @@ scenario:
     # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST
     # -------------------------------------------------------------------------
     model:
-      name: ibm-ai-platform/micro-g3.3-8b-instruct-1b
-      shortName: micro-g3-3-8b-instruct-1b
-      path: models/ibm-ai-platform/micro-g3.3-8b-instruct-1b
-      huggingfaceId: ibm-ai-platform/micro-g3.3-8b-instruct-1b
+      name: ibm-granite/granite-3.3-8b-instruct
+      shortName: granite-3-3-8b-instruct
+      path: models/ibm-granite/granite-3.3-8b-instruct
+      huggingfaceId: ibm-granite/granite-3.3-8b-instruct
       maxModelLen: 32768
       maxNumSeq: 32
       maxNumBatchedTokens: 1024
@@ -57,7 +57,7 @@ scenario:
       # instead of the default nvidia.com/gpu. The template auto-generates
       # the chart's accelerator.resources map from type + resource.
       type: spyre
-      resource: ibm.com/spyre_vf
+      resource: ibm.com/spyre_pf
       # count must match parallelism.tensor -- each TP worker needs its own Spyre device
       count: 4
 
@@ -71,8 +71,8 @@ scenario:
     # -------------------------------------------------------------------------
     images:
       vllm:
-        repository: us.icr.io/wxpe-cicd-internal/amd64/aiu-vllm
-        tag: v1.1.1-rc.3-amd64
+        repository: icr.io/ibmaiu_internal/amd64/vllm-spyre
+        tag: v1.10.0-aiu1.2.0
 
     # -------------------------------------------------------------------------
     # Extra PVC for precompiled Spyre models
@@ -162,8 +162,8 @@ scenario:
     # Enable multinode (LeaderWorkerSet) for sequential pod naming.
     # Required when using contextLengthRanges or vllmVariants.
     # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
-    # multinode:
-    #   enabled: true
+    multinode:
+      enabled: true
 
     # =========================================================================
     # STANDALONE -- Only applies when standalone.enabled: true
@@ -182,8 +182,8 @@ scenario:
         tensor: 4
 
       image:
-        repository: us.icr.io/wxpe-cicd-internal/amd64/aiu-vllm
-        tag: v1.1.1-rc.3-amd64
+        repository: icr.io/ibmaiu_internal/amd64/vllm-spyre
+        tag: v1.10.0-aiu1.2.0
         pullPolicy: IfNotPresent
 
       acceleratorType:
@@ -221,7 +221,7 @@ scenario:
         - name: FLEX_COMPUTE
           value: SENTIENT
         - name: FLEX_DEVICE
-          value: VF
+          value: PF
         - name: VLLM_SPYRE_PERF_METRIC_LOGGING_ENABLED
           value: "1"
         - name: FLEX_HDMA_P2PSIZE
@@ -257,7 +257,7 @@ scenario:
       enabled: false
       replicas: 0
       accelerator:
-        resource: ibm.com/spyre_vf
+        resource: ibm.com/spyre_pf
         count: 4
       acceleratorType:
         labelKey: ibm.com/spyre.product
@@ -278,18 +278,18 @@ scenario:
       # Also requires the preprocess script (vllmCommon.preprocessScript) for
       # pod self-labeling and ,,-delimited env var splitting.
       # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
-      # contextLengthRanges:
-      #   - "0-8000"
-      #   - "8000-32768"
+      contextLengthRanges:
+        - "0-8000"
+        - "8000-32768"
 
       # Per-pod vllm parameter overrides (one per replica).
       # Values are converted to ,,-delimited env vars; the preprocess script
       # selects the right value based on pod index from LWS.
-      # vllmVariants:
-      #   - maxModelLen: 8000
-      #     maxNumSeq: 32
-      #   - maxModelLen: 32768
-      #     maxNumSeq: 32
+      vllmVariants:
+        - maxModelLen: 32768
+          maxNumSeq: 32
+        - maxModelLen: 32768
+          maxNumSeq: 32
 
       parallelism:
         tensor: 4
@@ -306,7 +306,7 @@ scenario:
           cpu: "20"
 
       accelerator:
-        resource: ibm.com/spyre_vf
+        resource: ibm.com/spyre_pf
         count: 4
 
       # Spyre uses affinity-based scheduling, not GPU label selection
@@ -338,7 +338,7 @@ scenario:
         - name: FLEX_COMPUTE
           value: SENTIENT
         - name: FLEX_DEVICE
-          value: VF
+          value: PF
         - name: VLLM_SPYRE_PERF_METRIC_LOGGING_ENABLED
           value: "1"
         - name: FLEX_HDMA_P2PSIZE
@@ -366,31 +366,31 @@ scenario:
     # vllmVariants above to enable context-length-aware routing.
     # See config/README.md "Context-Length-Aware Routing" section for full setup guide.
     # =========================================================================
-    # inferenceExtension:
-    #   pluginsConfigFile: "context-length-aware-config.yaml"
-    #   flags:
-    #     v: "2"  # use v: "4" for debugging, v: "1" or "2" for benchmarking
-    #   sidecar:
-    #     enabled: true
-    #   pluginsCustomConfig:
-    #     context-length-aware-config.yaml: |
-    #       apiVersion: inference.networking.x-k8s.io/v1alpha1
-    #       kind: EndpointPickerConfig
-    #       plugins:
-    #         - type: tokenizer
-    #           parameters:
-    #             modelName: "${model.name}"
-    #             udsTokenizerConfig:
-    #               socketFile: /tmp/tokenizer/tokenizer-uds.socket
-    #         - type: context-length-aware
-    #           parameters:
-    #             label: llm-d.ai/context-length-range
-    #             enableFiltering: true
-    #       schedulingProfiles:
-    #         - name: default
-    #           plugins:
-    #             - pluginRef: tokenizer
-    #             - pluginRef: context-length-aware
+    inferenceExtension:
+      pluginsConfigFile: "context-length-aware-config.yaml"
+      flags:
+        v: "1"  # use v: "4" for debugging, v: "1" or "2" for benchmarking
+      sidecar:
+        enabled: true
+      pluginsCustomConfig:
+        context-length-aware-config.yaml: |
+          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+            - type: tokenizer
+              parameters:
+                modelName: "${model.name}"
+                udsTokenizerConfig:
+                  socketFile: /tmp/tokenizer/tokenizer-uds.socket
+            - type: context-length-aware
+              parameters:
+                label: llm-d.ai/context-length-range
+                enableFiltering: true
+          schedulingProfiles:
+            - name: default
+              plugins:
+                - pluginRef: tokenizer
+                - pluginRef: context-length-aware
 
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration
@@ -405,6 +405,13 @@ scenario:
     # Corresponds to: LLMDBENCH_CONTROL_WORK_DIR=~/data/spyre
     # Used as workspace when --workspace is not specified on the CLI.
     workDir: "~/data/spyre"
+
+    # -------------------------------------------------------------------------
+    # Gateway API CRD override -- Spyre cluster K8s version lacks
+    # ValidatingAdmissionPolicy (requires K8s 1.30+), so use v1.2.1.
+    # -------------------------------------------------------------------------
+    gatewayApiCrd:
+      revision: v1.2.1
 
     harness:
       name: inference-perf

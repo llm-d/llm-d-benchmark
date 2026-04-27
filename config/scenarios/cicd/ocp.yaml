@@ -18,36 +18,36 @@ scenario:
     affinity:
       enabled: true
       nodeSelector:
-        nvidia.com/gpu.product: NVIDIA-L40S
-#        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+#        nvidia.com/gpu.product: NVIDIA-L40S
+        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
 
     prefill:
       enabled: true
       replicas: 1
       acceleratorType:
         labelKey: nvidia.com/gpu.product
-        labelValue: NVIDIA-L40S
-#        labelValue: NVIDIA-H100-80GB-HBM3
+#        labelValue: NVIDIA-L40S
+        labelValue: NVIDIA-H100-80GB-HBM3
 
     decode:
       enabled: true
       replicas: 1
       acceleratorType:
         labelKey: nvidia.com/gpu.product
-        labelValue: NVIDIA-L40S
-        #labelValue: NVIDIA-H100-80GB-HBM3
+#        labelValue: NVIDIA-L40S
+        labelValue: NVIDIA-H100-80GB-HBM3
 
     standalone:
       acceleratorType:
         labelKey: nvidia.com/gpu.product
-        labelValue: NVIDIA-L40S
-#        labelValue: NVIDIA-H100-80GB-HBM3
+#        labelValue: NVIDIA-L40S
+        labelValue: NVIDIA-H100-80GB-HBM3
 
-    storage:
-      modelPvc:
-        storageClassName: ocs-storagecluster-cephfs
-      workloadPvc:
-        storageClassName: ocs-storagecluster-cephfs
+#    storage:
+#      modelPvc:
+#        storageClassName: ocs-storagecluster-cephfs
+#      workloadPvc:
+#        storageClassName: ocs-storagecluster-cephfs
 
     vllmCommon:
       priorityClassName: nightly-gpu-critical

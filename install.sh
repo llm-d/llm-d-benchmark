@@ -29,6 +29,7 @@ set -euo pipefail
 REPO_URL="https://github.com/llm-d/llm-d-benchmark.git"
 REPO_DIR="llm-d-benchmark"
 DEFAULT_BRANCH="main"
+export _APT_GET_UPDATE_RUN=0
 export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 # ---------------------------------------------------------------------------
 # Bootstrap: if run via curl (no repo present), clone first
@@ -148,6 +149,11 @@ else
     target_os=linux
     # shellcheck disable=SC1091
     [[ -f /etc/os-release ]] && source /etc/os-release
+    if [[ $NAME == "Ubuntu" && ${_APT_GET_UPDATE_RUN} -eq 0 ]]; then
+        sudo apt-get update
+        export _APT_GET_UPDATE_RUN=1
+    fi
+    cat /etc/os-release
 fi
 
 # ---------------------------------------------------------------------------
@@ -383,8 +389,8 @@ elif command -v oc &>/dev/null; then
     kube_tool="oc"
 fi
 if [ -z "$kube_tool" ]; then
-    echo "  kubectl/oc -- NOT FOUND, attempting kubectl install..."
-    tools="$tools kubectl"
+    echo "  kubectl/oc -- NOT FOUND, attempting oc install..."
+    tools="$tools oc"
 else
     printf "  %-14s %-20s %s\n" "$kube_tool" "$($kube_tool version --client --short 2>/dev/null || $kube_tool version --client 2>/dev/null | head -1)" ""
 fi
@@ -447,8 +453,10 @@ install_oc_linux() {
     oc_file="${oc_file}.tar.gz"
     curl -sL "https://mirror.openshift.com/pub/openshift-v4/${arch}/clients/ocp/stable/${oc_file}" -o "/tmp/${oc_file}"
     tar xzf "/tmp/${oc_file}" -C /tmp
+    sudo mv /tmp/kubectl /usr/local/bin/
     sudo mv /tmp/oc /usr/local/bin/
     sudo chmod +x /usr/local/bin/oc
+    sudo chmod +x /usr/local/bin/kubectl
 }
 
 install_kustomize_linux() {
