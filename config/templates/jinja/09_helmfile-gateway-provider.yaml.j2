@@ -9,6 +9,10 @@
   and emit an empty helmfile here -- the step consumer treats an empty
   rendered file as "nothing to install" via _has_yaml_content().
 
+  Set gateway.externallyManaged: true when the gateway is managed outside
+  the benchmark tool (e.g. ArgoCD, platform operator); the helmfile then
+  renders empty and step 02 skips the CRD/chart install.
+
   The agentgateway release layout mirrors the canonical upstream helmfile:
     https://raw.githubusercontent.com/llm-d-incubation/llm-d-infra/refs/heads/main/quickstart/gateway-control-plane-providers/agentgateway.helmfile.yaml
 #}
@@ -27,6 +31,8 @@
    promotes ownership past any leading standalone stacks (which can't
    install istio themselves). #}
 {% if stackIndex is defined and stackIndex | int != sharedInfraStackIndex | default(1) | int %}
+{% elif gateway.externallyManaged | default(false) %}
+{# Gateway is externally managed -- nothing to install #}
 {% else %}
 {% set gw_class = gateway.className %}
 {% set gw_ns = gateway.providerNamespace %}
