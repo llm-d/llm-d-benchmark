@@ -80,7 +80,7 @@ jobs:
 
       - name: Standup
         run: |
-          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" standup -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" standup --no-monitoring -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
       - name: Debug info (on failure)
@@ -215,7 +215,7 @@ jobs:
 
       - name: Standup
         run: |
-          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" standup -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" standup --no-monitoring -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
       - name: Debug info (on failure)
