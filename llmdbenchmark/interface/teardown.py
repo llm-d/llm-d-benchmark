@@ -12,7 +12,14 @@ def add_subcommands(parser: argparse._SubParsersAction):
         description=(
             "The `teardown` command removes resources deployed by a previous standup. "
             "It uninstalls Helm releases, deletes namespaced resources, and optionally "
-            "removes cluster-scoped roles. Use --deep for a full namespace wipe."
+            "removes cluster-scoped roles. Use --deep for a full namespace wipe.\n"
+            "\n"
+            "By default --stack is unset, which means 'tear down every stack of the "
+            "scenario'. In that mode the per-namespace WVA controller is also "
+            "uninstalled (no remaining stacks of this scenario depend on it). "
+            "Pass --stack to scope teardown to specific stacks; the WVA controller "
+            "is then preserved so the sibling stacks keep autoscaling. --deep "
+            "uninstalls the controller regardless of --stack."
         ),
         help="Tear down a previously deployed llm-d stack.",
     )
@@ -39,7 +46,12 @@ def add_subcommands(parser: argparse._SubParsersAction):
     teardown_parser.add_argument(
         "-d", "--deep",
         action="store_true",
-        help="Deep cleaning: delete ALL resources in both namespaces.",
+        help=(
+            "Deep cleaning: delete ALL resources in both namespaces. "
+            "Forces the WVA controller to be uninstalled even when --stack "
+            "is set. prometheus-adapter and shared cluster-wide RBAC are "
+            "still preserved (other tenants depend on them)."
+        ),
     )
     teardown_parser.add_argument(
         "-p", "--namespace",
@@ -59,7 +71,11 @@ def add_subcommands(parser: argparse._SubParsersAction):
         default=env("LLMDBENCH_STACK"),
         help=(
             "Comma-separated list of stack names to restrict execution to. "
+            "Default: unset, meaning 'tear down every stack of the scenario'. "
             "Useful for removing one pool from a multi-stack scenario while "
-            "leaving siblings in place."
+            "leaving siblings in place. When set, the per-namespace WVA "
+            "controller is preserved (sibling stacks still need it); when "
+            "unset, the controller is also uninstalled. --deep overrides "
+            "this and always uninstalls the controller."
         ),
     )

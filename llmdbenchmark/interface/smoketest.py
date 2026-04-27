@@ -43,6 +43,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
         default=env("LLMDBENCH_STACK"),
         help=(
             "Comma-separated list of stack names to restrict execution to. "
+            "Default: unset, meaning 'smoketest every stack of the scenario'. "
             "Useful for re-running the smoketest against a single pool."
         ),
     )

@@ -92,6 +92,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
         default=env("LLMDBENCH_STACK"),
         help=(
             "Comma-separated list of stack names to restrict execution to. "
+            "Default: unset, meaning 'run against every stack of the scenario'. "
             "Useful in multi-stack scenarios (e.g. guides/multi-model-wva) "
             "to benchmark a single pool without re-deploying. "
             "Endpoint URL auto-resolves for the selected stack - no need to "
