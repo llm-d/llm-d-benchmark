@@ -64,6 +64,40 @@ class HarnessNamespaceStep(Step):
                         f"Failed to create workload PVC: {result.stderr}"
                     )
 
+            # Verify the PVC binds before applying anything that mounts it.
+            # A PVC stuck Pending (e.g. cluster has no default StorageClass
+            # and the manifest was rendered with storage_class=auto, which
+            # omits storageClassName) would otherwise surface only as a
+            # silent pod-readiness timeout on the data-access pod below.
+            if not errors:
+                bind_result = cmd.wait_for_pvc(
+                    pvc_name=pvc_name,
+                    namespace=harness_ns,
+                    timeout=context.pvc_bind_timeout,
+                    poll_interval=5,
+                    description=f'workload PVC "{pvc_name}"',
+                )
+                if not bind_result.success:
+                    errors.append(
+                        f'Workload PVC "{pvc_name}" did not bind: '
+                        f"{bind_result.stderr}. Common cause: cluster has no "
+                        "default StorageClass and storage_class is "
+                        '"auto"/"default" (which omits storageClassName so '
+                        "the cluster default is required). Run "
+                        "`kubectl get sc` to verify, or set "
+                        "storage.workloadPvc.storageClassName explicitly in "
+                        "the scenario."
+                    )
+                    for err in errors:
+                        context.logger.log_error(f"    {err}")
+                    return StepResult(
+                        step_number=self.number,
+                        step_name=self.name,
+                        success=False,
+                        message="Workload PVC failed to bind -- aborting",
+                        errors=errors,
+                    )
+
         pod_yaml = self._find_rendered_yaml(
             context, "06_pod_access_to_harness_data"
         )

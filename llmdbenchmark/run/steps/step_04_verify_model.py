@@ -69,8 +69,12 @@ class VerifyModelStep(Step):
                 stack_name=stack_name,
             )
 
-        # Parse host and port from endpoint URL
-        host, port = self._parse_endpoint(endpoint_url)
+        # Parse host, port, and optional path prefix from endpoint URL.
+        # Shared-HTTPRoute scenarios bake the per-stack prefix into the
+        # detected endpoint (e.g. http://gw:80/pool-a) so {endpoint_url}/v1/*
+        # works end-to-end in the harness. We peel it back off here to
+        # pass to test_model_serving, which reassembles it internally.
+        host, port, url_path_prefix = self._parse_endpoint(endpoint_url)
         namespace = context.harness_namespace or context.namespace or ""
 
         context.logger.log_info(
@@ -87,6 +91,7 @@ class VerifyModelStep(Step):
             max_retries=3,
             retry_interval=10,
             service_account=context.harness_service_account,
+            url_path_prefix=url_path_prefix,
         )
 
         # Clean up ephemeral smoketest/curl pods
@@ -115,24 +120,36 @@ class VerifyModelStep(Step):
         )
 
     @staticmethod
-    def _parse_endpoint(url: str) -> tuple[str, str]:
-        """Extract host and port from an endpoint URL.
+    def _parse_endpoint(url: str) -> tuple[str, str, str]:
+        """Extract host, port, and path prefix from an endpoint URL.
 
         Examples:
-            http://10.0.0.1:80 to ('10.0.0.1', '80')
-            https://gateway.example.com:443 to ('gateway.example.com', '443')
+            http://10.0.0.1:80           -> ('10.0.0.1', '80', '')
+            https://gw.example.com:443   -> ('gw.example.com', '443', '')
+            http://10.0.0.1:80/pool-a    -> ('10.0.0.1', '80', '/pool-a')
+            http://10.0.0.1/pool-a/v1    -> ('10.0.0.1', '80', '/pool-a/v1')
+
+        The path prefix is whatever remains after ``host:port`` - empty
+        string for plain endpoints, and the full routing prefix for
+        shared-HTTPRoute multi-model scenarios where step_03 baked it in.
         """
         # Strip protocol
         stripped = url
+        is_https = url.startswith("https")
         if "://" in stripped:
             stripped = stripped.split("://", 1)[1]
-        # Strip trailing path
-        stripped = stripped.split("/", 1)[0]
+        # Split authority from path
+        if "/" in stripped:
+            authority, rest = stripped.split("/", 1)
+            path_prefix = "/" + rest.rstrip("/")
+            if path_prefix == "/":
+                path_prefix = ""
+        else:
+            authority, path_prefix = stripped, ""
         # Split host:port
-        if ":" in stripped:
-            host, port = stripped.rsplit(":", 1)
-            return host, port
-        # Default port based on protocol
-        if url.startswith("https"):
-            return stripped, "443"
-        return stripped, "80"
+        if ":" in authority:
+            host, port = authority.rsplit(":", 1)
+        else:
+            host = authority
+            port = "443" if is_https else "80"
+        return host, port, path_prefix

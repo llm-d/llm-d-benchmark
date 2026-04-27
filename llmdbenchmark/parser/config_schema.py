@@ -296,6 +296,8 @@ class VllmFlagsConfig(BaseModel):
     enablePrefixCaching: bool | None = None
     enableAutoToolChoice: bool | None = None
     toolCallParser: str | None = None
+    chatTemplate: str | None = None
+    chatTemplateContentFormat: str | None = None
 
 
 class VllmCommonConfig(BaseModel):

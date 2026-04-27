@@ -37,8 +37,7 @@ GATEWAY_API_EXTENSION_CRDS_XK8S = [
     "inferencemodelrewrites.inference.networking.x-k8s.io",
     "inferenceobjectives.inference.networking.x-k8s.io",
     "inferencepoolimports.inference.networking.x-k8s.io",
-    "inferencepools.inference.networking.x-k8s.io",
-    "inferencepools.inference.networking.k8s.io",
+    "inferencepools.inference.networking.x-k8s.io"
 ]
 
 AGENTGATEWAY_CRDS = [

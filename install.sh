@@ -17,7 +17,9 @@
 # that required system tools are available.
 #
 # Usage:
-#   ./install.sh                   # interactive -- prompts if no venv
+#   ./install.sh                   # interactive -- prompts for uv choice
+#   ./install.sh --uv              # use uv for venv creation (no prompt)
+#   ./install.sh --no-uv           # use python3 -m venv (no prompt)
 #   ./install.sh -y                # non-interactive -- allows system python
 #   ./install.sh noreset           # skip cache reset (re-use previous checks)
 #   source install.sh              # also works when sourced
@@ -27,6 +29,7 @@ set -euo pipefail
 REPO_URL="https://github.com/llm-d/llm-d-benchmark.git"
 REPO_DIR="llm-d-benchmark"
 DEFAULT_BRANCH="main"
+export _APT_GET_UPDATE_RUN=0
 export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 # ---------------------------------------------------------------------------
 # Bootstrap: if run via curl (no repo present), clone first
@@ -105,13 +108,24 @@ DESCRIPTION
     6. Verifies that all Python packages are importable
 
     If no virtual environment is active, the script will automatically
-    create one at .venv/ and activate it for the install. After the
-    script finishes, run "source .venv/bin/activate" in your shell.
+    create one at .venv/ and activate it for the install. You will be
+    prompted whether to use uv (https://docs.astral.sh/uv/) or the
+    standard python3 -m venv. uv can automatically download the correct
+    Python version if your system Python is missing or older than 3.11.
+    Use --uv or --no-uv to skip the prompt.
+
+    When run non-interactively (e.g. curl pipe), the script auto-selects:
+    uv if system Python is missing or < 3.11, otherwise python3 -m venv.
+
+    After the script finishes, run "source .venv/bin/activate" in your shell.
 
     Pass -y to skip venv creation and install with system Python instead.
 
 OPTIONS
     -h, --help      Show this help message and exit.
+    --uv            Use uv to create the virtual environment (skips prompt).
+    --no-uv         Use python3 -m venv instead of uv (skips prompt).
+                    Requires Python 3.11+ to be available on the system.
     -y              Non-interactive mode — use system Python directly
                     instead of creating a virtual environment.
     noreset         Reuse the dependency cache (~/.llmdbench_dependencies_checked)
@@ -135,6 +149,11 @@ else
     target_os=linux
     # shellcheck disable=SC1091
     [[ -f /etc/os-release ]] && source /etc/os-release
+    if [[ $NAME == "Ubuntu" && ${_APT_GET_UPDATE_RUN} -eq 0 ]]; then
+        sudo apt-get update
+        export _APT_GET_UPDATE_RUN=1
+    fi
+    cat /etc/os-release
 fi
 
 # ---------------------------------------------------------------------------
@@ -142,11 +161,14 @@ fi
 # ---------------------------------------------------------------------------
 allow_system_python=false
 reset_cache=true
+use_uv=auto
 
 for arg in "$@"; do
     case $arg in
         -h|--help)    show_help; exit 0 ;;
         -y)           allow_system_python=true ;;
+        --uv)         use_uv=true ;;
+        --no-uv)      use_uv=false ;;
         noreset)      reset_cache=false ;;
     esac
 done
@@ -184,14 +206,31 @@ fi
 
 # ---------------------------------------------------------------------------
 # Python / pip detection — auto-creates a .venv if none is active
+#
+# If the system Python is missing or < 3.11, the script uses `uv` to create
+# a virtual environment with the correct Python version (similar to conda).
+# uv is installed automatically if not already present.
 # ---------------------------------------------------------------------------
 LLMDBENCH_VENV_DIR=${LLMDBENCH_VENV_DIR:-"${SCRIPT_DIR}/.venv"}
 LLMDBENCH_SYSTEM_PYTHON=${LLMDBENCH_SYSTEM_PYTHON:-python3}
 CREATED_VENV=false
+MIN_PYTHON="3.11"
 
-_detected_venv="${VIRTUAL_ENV:-${CONDA_PREFIX:-}}"
-if [[ -n "$_detected_venv" && -d "$_detected_venv" ]]; then
-    # Prefer "python", fall back to "python3" (macOS venvs may lack "python")
+# Helper — check whether a python command meets the minimum version requirement
+_python_meets_min() {
+    local cmd="$1"
+    if ! command -v "$cmd" &>/dev/null; then
+        return 1
+    fi
+    local ver major minor
+    ver=$("$cmd" -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null) || return 1
+    major=$(echo "$ver" | cut -d. -f1)
+    minor=$(echo "$ver" | cut -d. -f2)
+    (( major > 3 || (major == 3 && minor >= 11) ))
+}
+
+# Helper — resolve a python command, preferring "python" then "python3"
+_set_python_cmds() {
     if command -v python &>/dev/null; then
         PYTHON_CMD="python"
         PIP_CMD="python -m pip"
@@ -199,6 +238,31 @@ if [[ -n "$_detected_venv" && -d "$_detected_venv" ]]; then
         PYTHON_CMD="python3"
         PIP_CMD="python3 -m pip"
     fi
+}
+
+# Helper — ensure uv is available, install if missing
+_ensure_uv() {
+    if command -v uv &>/dev/null; then
+        return 0
+    fi
+    echo "  uv not found — installing..."
+    if ! curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null; then
+        echo "ERROR: Failed to install uv."
+        exit 1
+    fi
+    # Add uv to PATH for the current session
+    export PATH="${HOME}/.local/bin:${HOME}/.cargo/bin:${PATH}"
+    if ! command -v uv &>/dev/null; then
+        echo "ERROR: uv was installed but not found on PATH."
+        exit 1
+    fi
+    echo "  uv installed: $(uv --version)"
+}
+
+_detected_venv="${VIRTUAL_ENV:-${CONDA_PREFIX:-}}"
+if [[ -n "$_detected_venv" && -d "$_detected_venv" ]]; then
+    # Already inside a venv / conda env — use it as-is
+    _set_python_cmds
     echo "Virtual environment detected: ${_detected_venv}"
 elif [[ "$allow_system_python" == "true" ]]; then
     PYTHON_CMD=$LLMDBENCH_SYSTEM_PYTHON
@@ -214,22 +278,60 @@ else
             echo "venv created." >> "$dependencies_checked_file"
         fi
     else
-        PYTHON_CMD=$LLMDBENCH_SYSTEM_PYTHON
-        echo "No virtual environment detected — creating ${LLMDBENCH_VENV_DIR} with $PYTHON_CMD..."
-        $PYTHON_CMD -m venv "$LLMDBENCH_VENV_DIR"
+        echo "No virtual environment detected — creating ${LLMDBENCH_VENV_DIR} ..."
+
+        # Resolve use_uv if still "auto"
+        if [[ "$use_uv" == "auto" ]]; then
+            if [[ -t 0 ]]; then
+                # Interactive terminal — ask the user
+                echo ""
+                echo "  uv can create the virtual environment and automatically download"
+                echo "  the correct Python version if your system Python is missing or too old."
+                echo ""
+                read -r -p "  Use uv to manage the virtual environment? [y/N]: " _uv_answer
+                case "${_uv_answer}" in
+                    [yY]|[yY][eE][sS]) use_uv=true ;;
+                    *)                  use_uv=false ;;
+                esac
+            else
+                # Non-interactive (curl pipe) — use uv only if system python is inadequate
+                if _python_meets_min python3; then
+                    use_uv=false
+                else
+                    use_uv=true
+                fi
+            fi
+        fi
+
+        if [[ "$use_uv" == "true" ]]; then
+            if command -v python3 &>/dev/null && ! _python_meets_min python3; then
+                local_ver=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null || echo "unknown")
+                echo "  System python3 is ${local_ver} (need ${MIN_PYTHON}+) — uv will obtain the right version."
+            elif ! command -v python3 &>/dev/null; then
+                echo "  python3 not found — uv will obtain Python ${MIN_PYTHON}."
+            fi
+            _ensure_uv
+            uv venv --seed --python "${MIN_PYTHON}" "$LLMDBENCH_VENV_DIR"
+        elif _python_meets_min python3; then
+            python3 -m venv "$LLMDBENCH_VENV_DIR"
+        else
+            if command -v python3 &>/dev/null; then
+                local_ver=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null || echo "unknown")
+                echo "ERROR: Python ${MIN_PYTHON}+ is required but system python3 is ${local_ver}."
+            else
+                echo "ERROR: Python ${MIN_PYTHON}+ is required but python3 was not found."
+            fi
+            echo "       Re-run with --uv to let uv download the correct Python version."
+            exit 1
+        fi
+
         CREATED_VENV=true
         echo "Virtual environment created: ${LLMDBENCH_VENV_DIR}"
         echo "venv created." >> "$dependencies_checked_file"
     fi
     # shellcheck disable=SC1091
     source "${LLMDBENCH_VENV_DIR}/bin/activate"
-    if command -v python &>/dev/null; then
-        PYTHON_CMD="python"
-        PIP_CMD="python -m pip"
-    else
-        PYTHON_CMD="python3"
-        PIP_CMD="python3 -m pip"
-    fi
+    _set_python_cmds
 fi
 
 # ---------------------------------------------------------------------------
@@ -287,8 +389,8 @@ elif command -v oc &>/dev/null; then
     kube_tool="oc"
 fi
 if [ -z "$kube_tool" ]; then
-    echo "  kubectl/oc -- NOT FOUND, attempting kubectl install..."
-    tools="$tools kubectl"
+    echo "  kubectl/oc -- NOT FOUND, attempting oc install..."
+    tools="$tools oc"
 else
     printf "  %-14s %-20s %s\n" "$kube_tool" "$($kube_tool version --client --short 2>/dev/null || $kube_tool version --client 2>/dev/null | head -1)" ""
 fi
@@ -351,8 +453,10 @@ install_oc_linux() {
     oc_file="${oc_file}.tar.gz"
     curl -sL "https://mirror.openshift.com/pub/openshift-v4/${arch}/clients/ocp/stable/${oc_file}" -o "/tmp/${oc_file}"
     tar xzf "/tmp/${oc_file}" -C /tmp
+    sudo mv /tmp/kubectl /usr/local/bin/
     sudo mv /tmp/oc /usr/local/bin/
     sudo chmod +x /usr/local/bin/oc
+    sudo chmod +x /usr/local/bin/kubectl
 }
 
 install_kustomize_linux() {
@@ -527,8 +631,8 @@ fi
 # Pre-commit hook setup -- only when git is available AND we're inside
 # a working tree AND the repo ships a .pre-commit-config.yaml. This is
 # best-effort: a failure here logs a warning but does NOT abort the
-# install. Hooks are wired for both pre-commit and pre-push stages so
-# the same checks gate both local commits and pushes.
+# install. Hooks are wired for the pre-commit stage only -- CI is the
+# gate before push, no need to duplicate the local hooks at push time.
 # ===================================================================
 echo ""
 echo "=== Pre-commit hooks ==="
@@ -587,9 +691,8 @@ else
         fi
         if [[ -x "$precommit_bin" ]]; then
             (cd "${SCRIPT_DIR}" && \
-                "$precommit_bin" install --hook-type pre-commit >/dev/null 2>&1 && \
-                "$precommit_bin" install --hook-type pre-push >/dev/null 2>&1) && {
-                echo "  registered: pre-commit + pre-push (run 'pre-commit run --all-files' to exercise)"
+                "$precommit_bin" install --hook-type pre-commit >/dev/null 2>&1) && {
+                echo "  registered: pre-commit (run 'pre-commit run --all-files' to exercise)"
                 echo "pre-commit hooks installed." >> "$dependencies_checked_file"
             } || echo "  WARNING: pre-commit binary found but 'install' failed -- hooks NOT registered"
         else

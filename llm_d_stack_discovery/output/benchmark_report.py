@@ -8,10 +8,10 @@ import shlex
 from collections import defaultdict
 from typing import Any
 
-from benchmark_report.schema_v0_2 import (
+from llmdbenchmark.analysis.benchmark_report.schema_v0_2 import (
     Component as ReportComponent,
 )
-from benchmark_report.schema_v0_2_components import (
+from llmdbenchmark.analysis.benchmark_report.schema_v0_2_components import (
     HostType,
 )
 

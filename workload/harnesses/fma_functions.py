@@ -5,7 +5,9 @@ Benchmark FMA functions
 from __future__ import annotations
 from dataclasses import dataclass, field, fields
 from datetime import datetime, timezone
+from enum import StrEnum
 import logging
+import os
 import time
 from typing import Any
 from urllib.parse import urljoin, urlparse, urlunparse
@@ -26,14 +28,14 @@ from nop_functions import (
     get_vllm_server_instances,
     wait_for_vllm,
     populate_benchmark,
-    VllmLaunchedLogs,
+    VllmLauncherInfo,
     LoadFormat,
 )
 
 logger = logging.getLogger(__name__)
 
 DUAL_LABEL = "dual-pods.llm-d.ai/dual"
-FMA_TIMEOUT = 15.0 * 60.0  # time (seconds) to wait
+FMA_TIMEOUT = 10.0 * 60.0  # time (seconds) to wait
 
 
 @dataclass
@@ -62,15 +64,20 @@ class FMARequesterInfo:
 
 
 @dataclass
-class FMALauncherInfo:
+class FMALauncherInfo:  # pylint: disable=too-many-instance-attributes
     """Launcher info"""
 
+    v1: client.CoreV1Api | None = None
+    namespace: str = ""
+    pod_name: str = ""
+    container_name: str = ""
     name: str = ""
     requester_info: FMARequesterInfo = field(default_factory=FMARequesterInfo)
     vllm_instance_id: str | None = None
     launcher_endpoint: str = ""
     vllm_endpoint: str = ""
     ttft: float = 0.0
+    actuation_condition: FMAActuationCondition | None = None
 
     def dump(self) -> dict[str, Any]:
         """Convert FMALauncherInfo to dict.
@@ -80,7 +87,7 @@ class FMALauncherInfo:
         """
         dump_dict = {}
         for f in fields(self):
-            if f.name == "vllm_instance_id":
+            if f.name == "v1":
                 continue
             value = getattr(self, f.name)
             dump_dict[f.name] = (
@@ -92,12 +99,28 @@ class FMALauncherInfo:
         return dump_dict
 
 
+class FMAActuationCondition(StrEnum):
+    """Type of actuation"""
+
+    T_LUKE_WARM = "T_luke_warm"  # when new launcher created by DPC + new vllm
+    T_WARM = "T_warm"  # when existing launcher creates new vllm
+    T_HOT = "T_hot"  # when waking up sleeping vllm
+
+    def dump(self) -> str:
+        """Convert FMAActuationCondition to str.
+
+        Returns:
+            str: FMAActuationCondition value.
+        """
+        return self.value
+
+
 @dataclass
 class FMAMetricsIteration:
     """FMA Metrics Iteration"""
 
-    iteration: int = 0
-    launcher_infos: list[FMALauncherInfo] = field(default_factory=list[FMALauncherInfo])
+    iteration: int
+    launcher_infos: list[FMALauncherInfo]
 
     def dump(self) -> dict[str, Any]:
         """Convert FMAMetricsIteration to dict.
@@ -162,7 +185,8 @@ class FMAMetrics:
         return dump_dict
 
 
-def get_fma_launcher_infos(  # pylint: disable=too-many-locals
+def get_fma_launcher_infos(  # pylint: disable=too-many-locals,too-many-arguments,too-many-positional-arguments
+    v1: client.CoreV1Api,
     api,
     requester_infos: list[FMARequesterInfo],
     namespace: str,
@@ -238,6 +262,10 @@ def get_fma_launcher_infos(  # pylint: disable=too-many-locals
                 engine.image = container.image
                 benchmark_result.scenario.platform.engines[engine.name] = engine
                 launcher_info = FMALauncherInfo()
+                launcher_info.v1 = v1
+                launcher_info.namespace = launcher_pod.metadata.namespace
+                launcher_info.pod_name = launcher_pod.metadata.name
+                launcher_info.container_name = container.name
                 launcher_info.name = engine.name
                 launcher_info.requester_info = requester_info
                 launcher_info.launcher_endpoint = (
@@ -577,9 +605,16 @@ def inspect_vllm_instances(
 
     logger.info("Launcher '%s' info start:", launcher_info.name)
     for instance_id in instance_ids:
-        pod_logs = VllmLaunchedLogs(
-            launcher_info.launcher_endpoint, instance_id, timeout, False
-        ).get_logs()
+        pod_logs = VllmLauncherInfo(
+            launcher_info.v1,
+            launcher_info.namespace,
+            launcher_info.pod_name,
+            launcher_info.container_name,
+            timeout,
+            launcher_info.launcher_endpoint,
+            instance_id,
+            False,
+        ).get_vllm_logs()
         scenario = BenchmarkScenario()
         engine = PlatformEngineScenario()
         metrics = BenchmarkVllmMetrics()
@@ -600,7 +635,46 @@ def inspect_vllm_instances(
     logger.info("Launcher '%s' info end.", launcher_info.name)
 
 
-def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-branches
+def write_controller_log(
+    v1: client.CoreV1Api, namespace: str, label_selector: str, requests_dir: str
+) -> None:
+    """write controller logs"""
+
+    try:
+        pods = v1.list_namespaced_pod(
+            namespace=namespace, label_selector=label_selector
+        ).items
+        for pod in pods:
+            pod_name = pod.metadata.name
+            for container in pod.spec.containers:
+                container_name = container.name
+                response = v1.read_namespaced_pod_log(
+                    name=pod_name,
+                    container=container_name,
+                    namespace=pod.metadata.namespace,
+                    pretty=False,
+                    _preload_content=False,
+                )
+                logs_filepath = os.path.join(
+                    requests_dir, f"{pod_name}--{container_name}.log"
+                )
+                with open(logs_filepath, "wb") as file:
+                    file.write(response.data)
+                    logger.info(
+                        "controller pod '%s:%s' container '%s' log file saved to path: %s",
+                        pod.metadata.namespace,
+                        pod_name,
+                        container_name,
+                        logs_filepath,
+                    )
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception(
+            "Error ocurred when writing logs for controller with label selector '%s'.",
+            label_selector,
+        )
+
+
+def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-branches,too-many-statements
     v1: client.CoreV1Api,
     api: client.CustomObjectsApi,
     apps_v1: client.AppsV1Api,
@@ -641,95 +715,150 @@ def benchmark_fma(  # pylint: disable=too-many-arguments,too-many-positional-arg
         ):
             raise RuntimeError(f"Unable to scale replicaset {replicaset_name} to 0.")
 
-    fma_metrics = FMAMetrics()
-    benchmark_result.extra_metrics.append(fma_metrics)
-    for iteration in range(1, iterations + 1):
-        try:
-            logger.info("Benchmark FMA iteration '%d' start...", iteration)
-            # scale replicaset to 1
-            requester_infos = scale_replicaset(
-                v1, apps_v1, replicaset_name, namespace, 1, FMA_TIMEOUT
-            )
-            if requester_infos is None:
-                raise RuntimeError(
-                    f"Unable to scale replicaset {replicaset_name} to 1."
+    try:  # pylint: disable=too-many-nested-blocks
+        fma_metrics = FMAMetrics()
+        benchmark_result.extra_metrics.append(fma_metrics)
+        for iteration in range(1, iterations + 1):  # pylint: disable=too-many-nested-blocks
+            try:
+                logger.info("Benchmark FMA iteration '%d' start...", iteration)
+                # scale replicaset to 1
+                requester_infos = scale_replicaset(
+                    v1, apps_v1, replicaset_name, namespace, 1, FMA_TIMEOUT
                 )
-
-            launcher_infos = get_fma_launcher_infos(
-                api,
-                requester_infos,
-                namespace,
-                fma_launcher_port,
-                benchmark_result,
-            )
-            for launcher_info in launcher_infos:
-                try:
-                    wait_for_launcher(launcher_info.launcher_endpoint, timeout, wait)
-                    instance_ids = get_vllm_server_instances(
-                        launcher_info.launcher_endpoint, timeout
-                    )
-                    inspect_vllm_instances(instance_ids, launcher_info, timeout)
-                    launcher_info.vllm_instance_id = (
-                        instance_ids[-1] if len(instance_ids) > 0 else None
-                    )
-                    if launcher_info.vllm_instance_id is None:
-                        continue
-
-                    wait_for_vllm(launcher_info.vllm_endpoint, timeout, wait)
-                    model = get_vllm_model(launcher_info.vllm_endpoint, timeout)
-                    launcher_info.ttft = calculate_vllm_ttft(
-                        launcher_info.vllm_endpoint,
-                        model,
-                        timeout,
-                    )
-                except Exception as e:
+                if requester_infos is None:
                     raise RuntimeError(
-                        f"error on benchmark FMA '{launcher_info.name}' launcher"
-                    ) from e
+                        f"Unable to scale replicaset {replicaset_name} to 1."
+                    )
 
-            # scale replicaset to 0
-            if (
-                scale_replicaset(
-                    v1, apps_v1, replicaset_name, namespace, 0, FMA_TIMEOUT
+                launcher_infos = get_fma_launcher_infos(
+                    v1,
+                    api,
+                    requester_infos,
+                    namespace,
+                    fma_launcher_port,
+                    benchmark_result,
                 )
-                is None
-            ):
-                raise RuntimeError(
-                    f"Unable to scale replicaset {replicaset_name} to 0."
-                )
+                for launcher_info in launcher_infos:
+                    try:
+                        wait_for_launcher(
+                            launcher_info.launcher_endpoint, timeout, wait
+                        )
+                        instance_ids = get_vllm_server_instances(
+                            launcher_info.launcher_endpoint, timeout
+                        )
+                        inspect_vllm_instances(instance_ids, launcher_info, wait)
+                        launcher_info.vllm_instance_id = (
+                            instance_ids[-1] if len(instance_ids) > 0 else None
+                        )
+                        if launcher_info.vllm_instance_id is None:
+                            continue
 
-            for launcher_info in launcher_infos:
-                try:
-                    if launcher_info.vllm_instance_id is None:
-                        continue
-
-                    populate_benchmark(
-                        VllmLaunchedLogs(
-                            launcher_info.launcher_endpoint,
-                            launcher_info.vllm_instance_id,
+                        wait_for_vllm(launcher_info.vllm_endpoint, timeout, wait)
+                        model = get_vllm_model(launcher_info.vllm_endpoint, timeout)
+                        launcher_info.ttft = calculate_vllm_ttft(
+                            launcher_info.vllm_endpoint,
+                            model,
                             timeout,
-                            False,
-                        ),
-                        model,
-                        load_format,
-                        launcher_info.vllm_endpoint,
-                        benchmark_result,
-                        benchmark_result.scenario.platform.engines[launcher_info.name],
-                        requests_dir,
-                        False,
-                        write_log_per_process,
-                        False,
-                        timeout,
-                        wait,
-                    )
-                except Exception as e:
-                    raise RuntimeError(
-                        f"error on benchmark FMA '{launcher_info.name}' launcher"
-                    ) from e
+                        )
+                    except Exception as e:
+                        raise RuntimeError(
+                            f"error on benchmark FMA '{launcher_info.name}' launcher"
+                        ) from e
 
-            fma_metrics_iteration = FMAMetricsIteration()
-            fma_metrics_iteration.iteration = iteration
-            fma_metrics_iteration.launcher_infos = launcher_infos
-            fma_metrics.iterations.append(fma_metrics_iteration)
-        finally:
-            logger.info("Benchmark FMA iteration '%d' end.", iteration)
+                # scale replicaset to 0
+                if (
+                    scale_replicaset(
+                        v1, apps_v1, replicaset_name, namespace, 0, FMA_TIMEOUT
+                    )
+                    is None
+                ):
+                    raise RuntimeError(
+                        f"Unable to scale replicaset {replicaset_name} to 0."
+                    )
+
+                for launcher_info in launcher_infos:
+                    try:
+                        if launcher_info.vllm_instance_id is None:
+                            continue
+
+                        populate_benchmark(
+                            VllmLauncherInfo(
+                                launcher_info.v1,
+                                launcher_info.namespace,
+                                launcher_info.pod_name,
+                                launcher_info.container_name,
+                                wait,
+                                launcher_info.launcher_endpoint,
+                                launcher_info.vllm_instance_id,
+                                False,
+                            ),
+                            model,
+                            load_format,
+                            launcher_info.vllm_endpoint,
+                            benchmark_result,
+                            benchmark_result.scenario.platform.engines[
+                                launcher_info.name
+                            ],
+                            requests_dir,
+                            False,
+                            write_log_per_process,
+                            False,
+                            timeout,
+                            wait,
+                        )
+                        launcher_info.actuation_condition = None
+                        if (
+                            len(
+                                benchmark_result.vllm_metrics[
+                                    launcher_info.name
+                                ].sleep_wake
+                            )
+                            >= 2
+                        ):
+                            sleep = (
+                                benchmark_result.vllm_metrics[launcher_info.name]
+                                .sleep_wake[-1]
+                                .metrics_type()
+                                == "sleep"
+                            )
+                            wake = (
+                                benchmark_result.vllm_metrics[launcher_info.name]
+                                .sleep_wake[-2]
+                                .metrics_type()
+                                == "wake"
+                            )
+                            if sleep and wake:
+                                launcher_info.actuation_condition = (
+                                    FMAActuationCondition.T_HOT
+                                )
+
+                        # TODO: Improve the warm/luke_warm check instead of pod name
+                        if launcher_info.actuation_condition is None:
+                            launcher_info.actuation_condition = (
+                                FMAActuationCondition.T_WARM
+                                if launcher_info.name.startswith("launcher-fma-")
+                                else FMAActuationCondition.T_LUKE_WARM
+                            )
+
+                    except Exception as e:
+                        raise RuntimeError(
+                            f"error on benchmark FMA '{launcher_info.name}' launcher"
+                        ) from e
+
+                fma_metrics_iteration = FMAMetricsIteration(iteration, launcher_infos)
+                fma_metrics.iterations.append(fma_metrics_iteration)
+            finally:
+                logger.info("Benchmark FMA iteration '%d' end.", iteration)
+    finally:
+        write_controller_log(
+            v1,
+            namespace,
+            "app.kubernetes.io/component=dual-pods-controller",
+            requests_dir,
+        )
+        write_controller_log(
+            v1,
+            namespace,
+            "app.kubernetes.io/component=launcher-populator",
+            requests_dir,
+        )

@@ -502,6 +502,89 @@
       "title": "ComponentObservability",
       "type": "object"
     },
+    "ControllerReplicaStatus": {
+      "additionalProperties": false,
+      "description": "Replica status for a single controller (Deployment or StatefulSet).",
+      "properties": {
+        "kind": {
+          "description": "Controller kind (e.g., Deployment, StatefulSet).",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "description": "Controller name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model identifier.",
+          "title": "Model"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Role (e.g., prefill, decode).",
+          "title": "Role"
+        },
+        "desired_replicas": {
+          "description": "Number of desired replicas.",
+          "minimum": 0,
+          "title": "Desired Replicas",
+          "type": "integer"
+        },
+        "available_replicas": {
+          "description": "Number of available replicas.",
+          "minimum": 0,
+          "title": "Available Replicas",
+          "type": "integer"
+        },
+        "ready_replicas": {
+          "description": "Number of ready replicas.",
+          "minimum": 0,
+          "title": "Ready Replicas",
+          "type": "integer"
+        },
+        "updated_replicas": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of updated replicas.",
+          "title": "Updated Replicas"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "desired_replicas",
+        "available_replicas",
+        "ready_replicas"
+      ],
+      "title": "ControllerReplicaStatus",
+      "type": "object"
+    },
     "Distribution": {
       "description": "Distribution type.\n\nAttributes\n    FIXED: str\n        Length is a fixed value.\n    GAUSSIAN: str\n        Gaussian distribution, with a mean and standard deviation.\n    UNIFORM: str\n        Uniform distribution between a minimum and maximum value.\n    OTHER: str\n        An otherwise undefined distribution.",
       "enum": [
@@ -994,7 +1077,7 @@
       "type": "object"
     },
     "Observability": {
-      "additionalProperties": false,
+      "additionalProperties": true,
       "description": "Observability metrics.",
       "properties": {
         "components": {
@@ -1024,9 +1107,193 @@
           ],
           "default": null,
           "description": "Request drop rate."
+        },
+        "pod_startup_times": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PodStartupTimes"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pod startup times collected during or before the benchmark."
+        },
+        "replica_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReplicaStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Replica status across controllers at a point in time."
         }
       },
       "title": "Observability",
+      "type": "object"
+    },
+    "PodStartupInfo": {
+      "additionalProperties": false,
+      "description": "Startup timing information for a single pod.",
+      "properties": {
+        "name": {
+          "description": "Pod name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model identifier.",
+          "title": "Model"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pod role (e.g., prefill, decode, aggregate).",
+          "title": "Role"
+        },
+        "node": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Node the pod was scheduled on.",
+          "title": "Node"
+        },
+        "creation_timestamp": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timestamp when the pod was created.",
+          "title": "Creation Timestamp"
+        },
+        "ready_timestamp": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timestamp when the pod became ready.",
+          "title": "Ready Timestamp"
+        },
+        "startup_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Time in seconds from creation to ready.",
+          "title": "Startup Seconds"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "PodStartupInfo",
+      "type": "object"
+    },
+    "PodStartupTimes": {
+      "additionalProperties": false,
+      "description": "Pod startup times collected during or before the benchmark.",
+      "properties": {
+        "collected_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timestamp when startup times were collected.",
+          "title": "Collected At"
+        },
+        "pods": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/PodStartupInfo"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-pod startup information.",
+          "title": "Pods"
+        },
+        "aggregate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aggregate statistics (mean, p50, p99, etc.) across all pod startup times."
+        },
+        "graph_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to pod startup times visualization.",
+          "title": "Graph Path"
+        }
+      },
+      "title": "PodStartupTimes",
       "type": "object"
     },
     "ReplicaHealth": {
@@ -1083,6 +1350,149 @@
         "replica_id"
       ],
       "title": "ReplicaHealth",
+      "type": "object"
+    },
+    "ReplicaStatus": {
+      "additionalProperties": false,
+      "description": "Replica status across controllers, with optional time series and aggregate.",
+      "properties": {
+        "namespace": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Kubernetes namespace.",
+          "title": "Namespace"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timestamp of the latest snapshot.",
+          "title": "Timestamp"
+        },
+        "controllers": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ControllerReplicaStatus"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-controller replica status (latest snapshot).",
+          "title": "Controllers"
+        },
+        "time_series": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ReplicaStatusSnapshot"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Time series of replica status snapshots collected during the benchmark.",
+          "title": "Time Series"
+        },
+        "aggregate_ready_replicas": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Aggregate statistics (min, max, mean, etc.) of total ready replicas over time."
+        },
+        "graph_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to replica status visualization.",
+          "title": "Graph Path"
+        }
+      },
+      "title": "ReplicaStatus",
+      "type": "object"
+    },
+    "ReplicaStatusSnapshot": {
+      "additionalProperties": false,
+      "description": "A single point-in-time replica status snapshot.",
+      "properties": {
+        "timestamp": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timestamp when this snapshot was taken.",
+          "title": "Timestamp"
+        },
+        "namespace": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Kubernetes namespace.",
+          "title": "Namespace"
+        },
+        "controllers": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ControllerReplicaStatus"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-controller replica status at this point in time.",
+          "title": "Controllers"
+        }
+      },
+      "title": "ReplicaStatusSnapshot",
       "type": "object"
     },
     "RequestPerformance": {
@@ -1276,6 +1686,18 @@
           ],
           "default": null,
           "description": "Number of swapped out requests."
+        },
+        "preemptions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Statistics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of request preemptions due to memory pressure."
         }
       },
       "title": "ResourceMetrics",
@@ -1412,6 +1834,35 @@
           "default": null,
           "description": "Username that executed experiment.",
           "title": "User"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "User-provided description of the experiment.",
+          "title": "Description"
+        },
+        "keywords": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "User-provided keywords/tags for the experiment.",
+          "title": "Keywords"
         }
       },
       "required": [
@@ -1435,7 +1886,7 @@
             }
           ],
           "default": null,
-          "description": "ISO\u20118601 timestamp for experiment start.",
+          "description": "ISO-8601 timestamp for experiment start.",
           "title": "Start"
         },
         "end": {
@@ -1449,7 +1900,7 @@
             }
           ],
           "default": null,
-          "description": "ISO\u20118601 timestamp for experiment end.",
+          "description": "ISO-8601 timestamp for experiment end.",
           "title": "End"
         },
         "duration": {
@@ -1462,7 +1913,7 @@
             }
           ],
           "default": null,
-          "description": "ISO\u20118601 duration for experiment.",
+          "description": "ISO-8601 duration for experiment.",
           "title": "Duration"
         }
       },
@@ -1914,7 +2365,7 @@
       "description": "Time series data point.",
       "properties": {
         "ts": {
-          "description": "ISO\u20118601 timestamp.",
+          "description": "ISO-8601 timestamp.",
           "format": "date-time",
           "title": "Ts",
           "type": "string"

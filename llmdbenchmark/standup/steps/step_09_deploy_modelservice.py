@@ -1,19 +1,12 @@
 """Step 09 -- Deploy the model via the llm-d modelservice Helm chart."""
 
-import base64
-import random
-import tempfile
+import hashlib
+import time
 from pathlib import Path
-
-import yaml
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
-
-
-# Known GPU accelerator prefixes for WVA auto-detection
-_ACCELERATOR_PREFIXES = ["G2", "A100", "H100", "L40S", "MI300X"]
 
 
 class DeployModelserviceStep(Step):
@@ -120,6 +113,15 @@ class DeployModelserviceStep(Step):
             result = cmd.kube("apply", "-f", str(httproute_yaml))
             if not result.success:
                 errors.append(f"Failed to apply HTTPRoute: {result.stderr}")
+            elif plan_config.get("httpRoute", {}).get("mode") == "shared":
+                # Shared-mode HTTPRoute references sibling InferencePools
+                # that may still be installing (other stacks' `-gaie`
+                # helm releases run in parallel with this one). Wait for
+                # each referenced pool to exist so the route doesn't
+                # linger in ResolvedRefs=False after step 09 returns.
+                self._wait_for_sibling_inference_pools(
+                    cmd, context, errors, plan_config, namespace,
+                )
 
         if not errors:
             decode_wait = cmd.wait_for_pods(
@@ -285,14 +287,14 @@ class DeployModelserviceStep(Step):
                 f"service/{route_service}:80"
             )
 
+        # WVA controller + prometheus-adapter are installed up-front by
+        # step_02 (admin prerequisites). Here we only apply this stack's
+        # VariantAutoscaling + HPA resources so the (already-running)
+        # controller can manage THIS model's decode deployment.
         wva_config = plan_config.get("wva", {})
         if wva_config.get("enabled", False) and context.is_openshift:
-            self._install_wva(cmd, context, plan_config, stack_path, errors)
-        elif wva_config.get("enabled", False) and not context.is_openshift:
-            context.logger.log_info(
-                "ℹ️  WVA is enabled but platform is not OpenShift -- "
-                "skipping WVA installation (not yet verified on non-OCP)"
-            )
+            self._apply_wva_stack_resources(cmd, stack_path, errors)
+            self._log_wva_stack_state(cmd, context, plan_config)
 
         self._propagate_standup_parameters(cmd, context, plan_config)
 
@@ -326,6 +328,92 @@ class DeployModelserviceStep(Step):
             message=f"Modelservice deployed for {stack_name}",
             stack_name=stack_name,
         )
+
+    def _wait_for_sibling_inference_pools(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        errors: list[str],
+        plan_config: dict,
+        namespace: str,
+    ) -> None:
+        """Wait for each sibling stack's InferencePool CR to exist.
+
+        Closes the race window between HTTPRoute apply and sibling gaie
+        helm releases finishing install - without this, the shared route
+        lingers in ResolvedRefs=False for the few seconds it takes other
+        stacks' step 09 to finish their modelservice Helm release.
+
+        Only runs on the shared-infra-owner stack (the one that rendered
+        a non-empty HTTPRoute). Standalone siblings have no InferencePool
+        and are skipped.
+        """
+        if context.dry_run:
+            return
+
+        siblings = plan_config.get("siblingStacks") or []
+        if not siblings:
+            return
+
+        # Template uses {model_id_label}-gaie for the InferencePool CR
+        # name. Compute each sibling's label the same way render_plans
+        # does (via its Jinja filter).
+        def _label_for(model_name: str) -> str:
+            if not model_name:
+                return ""
+            model_id = model_name.replace("/", "-").replace(".", "-")
+            hash_input = f"{namespace}/{model_id}" if namespace else model_id
+            digest = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()
+            return f"{model_id[:8]}-{digest[:8]}-{model_id[-8:]}".lower()
+
+        pool_names: list[str] = []
+        for sibling in siblings:
+            if not isinstance(sibling, dict) or sibling.get("standalone"):
+                continue
+            label = _label_for(sibling.get("modelName", ""))
+            if label:
+                pool_names.append(f"{label}-gaie")
+
+        if not pool_names:
+            return
+
+        context.logger.log_info(
+            f"    | Waiting for {len(pool_names)} sibling InferencePool(s) "
+            f"to exist so the shared HTTPRoute resolves cleanly..."
+        )
+
+        # Poll up to 2 minutes. Each gaie Helm release typically finishes
+        # within seconds of being applied; 2 minutes is generous.
+        deadline = time.time() + 120
+        missing = list(pool_names)
+        while missing and time.time() < deadline:
+            still_missing = []
+            for name in missing:
+                check = cmd.kube(
+                    "get", "inferencepool", name,
+                    "--namespace", namespace,
+                    "-o", "name",
+                    check=False,
+                )
+                if not check.success:
+                    still_missing.append(name)
+            missing = still_missing
+            if missing:
+                time.sleep(3)
+
+        if missing:
+            # Non-fatal: the route self-heals when pools eventually appear.
+            # Log a warning so operators know the window is wider than expected.
+            context.logger.log_warning(
+                f"    | Shared HTTPRoute applied but {len(missing)} "
+                f"InferencePool(s) still not found after 120s: "
+                f"{', '.join(missing)}. Route will self-heal when they appear."
+            )
+        else:
+            context.logger.log_info(
+                f"    | All {len(pool_names)} referenced InferencePool(s) "
+                f"present - shared HTTPRoute fully resolved"
+            )
 
     def _check_priority_class(
         self,
@@ -475,288 +563,72 @@ class DeployModelserviceStep(Step):
                         log_file = logs_dir / f"{pod_name}.log"
                         log_file.write_text(log_result.stdout, encoding="utf-8")
 
-    def _install_wva(  # pylint: disable=too-many-arguments,too-many-locals
+    def _apply_wva_stack_resources(
+        self,
+        cmd: CommandExecutor,
+        stack_path: Path,
+        errors: list,
+    ) -> None:
+        """Apply this stack's VariantAutoscaling + HPA to the WVA namespace.
+
+        The WVA controller + prometheus-adapter were already installed by
+        step_02 once per unique wva.namespace. Here we only kubectl apply
+        the per-stack resources so a single controller can manage multiple
+        models.
+        """
+        for stem in ("27_wva-variantautoscaling", "28_wva-hpa"):
+            yaml_path = self._find_yaml(stack_path, stem)
+            if not (yaml_path and self._has_yaml_content(yaml_path)):
+                continue
+            result = cmd.kube("apply", "-f", str(yaml_path))
+            if not result.success:
+                errors.append(f"Failed to apply {stem}: {result.stderr}")
+
+    def _log_wva_stack_state(
         self,
         cmd: CommandExecutor,
         context: ExecutionContext,
         plan_config: dict,
-        stack_path: Path,
-        errors: list,
-    ):
-        """Install WVA and prometheus-adapter, patching runtime values into rendered templates."""
-        namespace = context.require_namespace()
-        wva_cfg = plan_config.get("wva", {})
+    ) -> None:
+        """Log the current state of this stack's VariantAutoscaling + HPA.
 
-        wva_namespace = context.wva_namespace or wva_cfg.get("namespace") or namespace
-
-        monitoring_ns = self._require_config(
-            plan_config, "openshiftMonitoring", "userWorkloadMonitoringNamespace"
+        Lets the standup output show what got created (VA OPTIMIZED, HPA
+        TARGETS / REPLICAS, etc.) without the operator needing a follow-up
+        ``oc get``. Best-effort - failures here don't fail step_09.
+        """
+        wva_cfg = plan_config.get("wva", {}) or {}
+        wva_ns = (
+            wva_cfg.get("namespace")
+            or plan_config.get("namespace", {}).get("name", "")
         )
-
-        ns_yaml = self._find_yaml(stack_path, "23_wva-namespace")
-        if ns_yaml and self._has_yaml_content(ns_yaml):
-            cmd.kube("apply", "-f", str(ns_yaml), check=False)
-        else:
-            context.logger.log_warning(
-                "WVA namespace template (23_wva-namespace) not found -- "
-                "creating namespace inline"
-            )
-            cmd.kube(
-                "create",
-                "namespace",
-                wva_namespace,
-                check=False,
-            )
-
-        wva_values_yaml = self._find_yaml(stack_path, "19_wva-values")
-        if not wva_values_yaml:
-            errors.append(
-                "WVA values template (19_wva-values) not found -- " "cannot install WVA"
-            )
+        model_id_label = plan_config.get("model_id_label", "")
+        if not (wva_ns and model_id_label):
             return
 
-        wva_config = yaml.safe_load(wva_values_yaml.read_text(encoding="utf-8"))
-        if not wva_config:
-            errors.append("WVA values template rendered empty -- is wva.enabled set?")
-            return
+        resource_name = f"{model_id_label}-decode"
 
-        prom_ca_cert = self._extract_prometheus_ca_cert(cmd, context)
-        if not prom_ca_cert:
-            context.logger.log_warning(
-                "Could not extract Prometheus CA cert from "
-                "thanos-querier-tls secret -- WVA may not connect to Prometheus"
-            )
-        if prom_ca_cert and "wva" in wva_config and "prometheus" in wva_config["wva"]:
-            wva_config["wva"]["prometheus"]["caCert"] = prom_ca_cert
-
-        affinity_str = ""
-        decode_cfg = plan_config.get("decode", {})
-        accel_types = decode_cfg.get("acceleratorType", {})
-        if accel_types:
-            label_values = accel_types.get("labelValues", [])
-            if label_values:
-                affinity_str = str(label_values[0])
-            elif accel_types.get("labelValue"):
-                affinity_str = str(accel_types["labelValue"])
-        accelerator_type = self._find_accelerator_prefix(affinity_str) or ""
-        if "va" in wva_config:
-            wva_config["va"]["accelerator"] = accelerator_type
-
-        vllm_svc_cfg = wva_cfg.get("vllmService", {})
-        node_port_min = int(self._require_config(plan_config, "wva", "vllmService", "nodePortMin"))
-        node_port_max = int(self._require_config(plan_config, "wva", "vllmService", "nodePortMax"))
-        node_port = self._get_random_node_port(
-            cmd, namespace, node_port_min, node_port_max
-        )
-        if "vllmService" in wva_config:
-            wva_config["vllmService"]["nodePort"] = node_port
-
-        tmp_dir = Path(tempfile.mkdtemp())
-        wva_values_path = tmp_dir / "wva_config.yaml"
-        wva_values_path.write_text(
-            yaml.dump(wva_config, sort_keys=False), encoding="utf-8"
-        )
-
-        wva_chart = plan_config.get("helmRepositories", {}).get("wva", {})
-        chart_url = wva_chart.get("url", "")
-        chart_version = plan_config.get("chartVersions", {}).get("wva", "")
-
-        if chart_url and chart_version:
-            result = cmd.helm(
-                "upgrade",
-                "--install",
-                "workload-variant-autoscaler",
-                chart_url,
-                "--version",
-                chart_version,
-                "--namespace",
-                wva_namespace,
-                "-f",
-                str(wva_values_path),
-            )
-            if not result.success:
-                errors.append(f"Failed to install WVA: {result.stderr}")
-        else:
-            errors.append(
-                "WVA chart URL or version not configured -- "
-                "check helmRepositories.wva and chartVersions.wva"
-            )
-
-        if prom_ca_cert:
-            self._install_prometheus_adapters(
-                cmd,
-                context,
-                plan_config=plan_config,
-                stack_path=stack_path,
-                monitoring_ns=monitoring_ns,
-                prom_ca_cert=prom_ca_cert,
-                tmp_dir=tmp_dir,
-                errors=errors,
-            )
-        else:
-            context.logger.log_warning(
-                "Skipping prometheus-adapter install -- no CA cert available"
-            )
-
-    def _install_prometheus_adapters(
-        self,
-        cmd: CommandExecutor,
-        context: ExecutionContext,
-        plan_config: dict,
-        stack_path: Path,
-        monitoring_ns: str,
-        prom_ca_cert: str,
-        tmp_dir: Path,
-        errors: list,
-    ):
-        """Install prometheus-adapter using pre-rendered templates."""
-        cert_path = tmp_dir / "prometheus-ca.crt"
-        cert_path.write_text(prom_ca_cert, encoding="utf-8")
-
-        result = cmd.kube(
-            "create",
-            "configmap",
-            "prometheus-ca",
-            f"--from-file=ca.crt={cert_path}",
-            "--dry-run=client",
-            "-o",
-            "yaml",
-            namespace=monitoring_ns,
-            check=False,
-        )
-        if result.success and result.stdout.strip():
-            cm_yaml_path = tmp_dir / "prometheus-ca-configmap.yaml"
-            cm_yaml_path.write_text(result.stdout, encoding="utf-8")
-            apply_result = cmd.kube(
-                "apply",
-                "-f",
-                str(cm_yaml_path),
-                namespace=monitoring_ns,
+        for kind, label in (
+            ("variantautoscaling.llmd.ai", "VariantAutoscaling"),
+            ("hpa", "HorizontalPodAutoscaler"),
+        ):
+            result = cmd.kube(
+                "get", kind, resource_name,
+                "--namespace", wva_ns,
                 check=False,
             )
-            if not apply_result.success:
-                context.logger.log_warning(
-                    f"prometheus-ca ConfigMap apply failed: {apply_result.stderr}"
+            if result.success and result.stdout.strip():
+                context.logger.log_info(
+                    f"📋 {label} state in ns/{wva_ns}:"
                 )
-        elif not result.success:
-            context.logger.log_warning(
-                f"prometheus-ca ConfigMap creation failed: {result.stderr}"
-            )
-
-        # Read the prometheus-adapter helm repo from defaults.yaml so the
-        # URL has a single source of truth (helmRepositories.prometheusAdapter).
-        # Fail loudly if the entry is missing -- we'd rather surface the
-        # config gap than silently install from a stale hardcoded URL.
-        repo_url = self._require_config(
-            plan_config, "helmRepositories", "prometheusAdapter", "url",
-        )
-        chart_name = self._require_config(
-            plan_config, "helmRepositories", "prometheusAdapter", "name",
-        )
-        repo_alias = "prometheus-community"
-
-        cmd.helm("repo", "add", repo_alias, repo_url, check=False)
-        cmd.helm("repo", "update", check=False)
-
-        adapter_values = self._find_yaml(stack_path, "21_prometheus-adapter-values")
-        if adapter_values:
-            result = cmd.helm(
-                "upgrade",
-                "--install",
-                "prometheus-adapter",
-                f"{repo_alias}/{chart_name}",
-                "--namespace",
-                monitoring_ns,
-                "-f",
-                str(adapter_values),
-            )
-            if not result.success:
-                errors.append(f"Failed to install prometheus-adapter: {result.stderr}")
-        else:
-            errors.append(
-                "prometheus-adapter values template (21_prometheus-adapter-values) "
-                "not found"
-            )
-
-        rbac_yaml = self._find_yaml(stack_path, "22_prometheus-rbac")
-        if rbac_yaml and self._has_yaml_content(rbac_yaml):
-            result = cmd.kube("apply", "-f", str(rbac_yaml), check=False)
-            if not result.success:
+                # Indent each line so it visually groups with the
+                # header above it in the standup log.
+                for line in result.stdout.rstrip().splitlines():
+                    context.logger.log_info(f"    {line}")
+            else:
                 context.logger.log_warning(
-                    f"ClusterRole creation failed (non-fatal): {result.stderr}"
+                    f"Could not query {label}/{resource_name} for state log: "
+                    f"{result.stderr.strip()[:200] or '(empty)'}"
                 )
-        else:
-            context.logger.log_warning(
-                "prometheus RBAC template (22_prometheus-rbac) not found"
-            )
-
-    def _extract_prometheus_ca_cert(
-        self, cmd: CommandExecutor, context: ExecutionContext
-    ) -> str | None:
-        """Extract Prometheus CA cert from thanos-querier-tls secret."""
-        result = cmd.kube(
-            "get",
-            "secret",
-            "thanos-querier-tls",
-            "--namespace",
-            "openshift-monitoring",
-            "-o",
-            "jsonpath={.data.tls\\.crt}",
-            check=False,
-        )
-        if not result.success or not result.stdout.strip():
-            return None
-
-        try:
-            cert_bytes = base64.b64decode(result.stdout.strip())
-            cert_str = cert_bytes.decode("utf-8")
-            if not cert_str.endswith("\n"):
-                cert_str += "\n"
-            return cert_str
-        except Exception as exc:
-            context.logger.log_warning(f"Failed to decode CA cert: {exc}")
-            return None
-
-    @staticmethod
-    def _find_accelerator_prefix(affinity_string: str) -> str | None:
-        """Find the first known accelerator prefix in the affinity string."""
-        if not affinity_string:
-            return None
-        for prefix in _ACCELERATOR_PREFIXES:
-            if prefix in affinity_string:
-                return prefix
-        return None
-
-    @staticmethod
-    def _get_random_node_port(
-        cmd: CommandExecutor,
-        namespace: str,
-        min_port: int = 30000,
-        max_port: int = 32767,
-    ) -> int:
-        """Return a random available NodePort in the given range."""
-        existing_ports: set[int] = set()
-        result = cmd.kube(
-            "get",
-            "services",
-            "--all-namespaces",
-            "-o",
-            "jsonpath={.items[*].spec.ports[*].nodePort}",
-            check=False,
-        )
-        if result.success and result.stdout.strip():
-            for port_str in result.stdout.strip().split():
-                try:
-                    existing_ports.add(int(port_str))
-                except ValueError:
-                    continue
-
-        for _ in range(100):
-            candidate = random.randint(min_port, max_port)
-            if candidate not in existing_ports:
-                return candidate
-
-        return random.randint(min_port, max_port)
 
     def _propagate_standup_parameters(
         self, cmd: CommandExecutor, context: ExecutionContext, plan_config: dict

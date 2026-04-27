@@ -93,7 +93,9 @@ Smoketests include three steps:
 - **Step 01** -- Inference test: sends a sample `/v1/completions` request, logs generated text and a demo curl command
 - **Step 02** -- Config validation: per-scenario checks that compare deployed pod configuration against the rendered scenario config (resources, parallelism, env vars, probes, volumes, security, vLLM flags, etc.)
 
-Well-lit-path scenarios (pd-disaggregation, precise-prefix-cache-aware, inference-scheduling, tiered-prefix-cache, wide-ep-lws, simulated-accelerators) have dedicated validators with scenario-specific checks. Other scenarios run steps 00 and 01 only.
+Well-lit-path scenarios (pd-disaggregation, precise-prefix-cache-aware, inference-scheduling, inference-scheduling-wva, tiered-prefix-cache, wide-ep-lws, simulated-accelerators) have dedicated validators with scenario-specific checks. Other scenarios (including multi-stack scenarios like `multi-model-wva`) run steps 00 and 01 only.
+
+Multi-stack scenarios run smoketest steps sequentially (one stack at a time) regardless of the `--parallel` flag - parallel probes of a shared gateway would be noisy and harder to debug. Each stack's `/health` and `/v1/models` requests are automatically prefixed with its routing path (e.g. `/qwen3-06b/...`) when the scenario uses a shared HTTPRoute.
 
 #### Run
 

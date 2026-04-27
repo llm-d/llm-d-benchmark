@@ -22,6 +22,7 @@ from urllib.parse import urljoin, urlparse
 from pathlib import Path
 import requests
 from kubernetes import client
+from kubernetes.client.exceptions import ApiException
 
 logger = logging.getLogger(__name__)
 
@@ -87,54 +88,92 @@ DEFINED_CATEGORIES = [
 
 
 @dataclass(frozen=True)
-class VllmLogs(ABC):
+class VllmInfo(ABC):
     """Abstract class for vllm logs request"""
-
-    @abstractmethod
-    def get_logs(self) -> bytes:
-        """get logs"""
-
-    @abstractmethod
-    def calculate_categories(self) -> bool:
-        """should calculate or not categories"""
-
-
-@dataclass(frozen=True)
-class VllmPodLogs(VllmLogs):
-    """vllm pod logs"""
 
     v1: client.CoreV1Api
     namespace: str
     pod_name: str
     container_name: str
+    timeout: float
 
-    def get_logs(self) -> bytes:
+    def get_pod_start(self) -> float:
+        """get pod start elapsed"""
+        try:
+            start = time.time()
+            elapsed = 0.0
+            while elapsed < self.timeout:
+                pod = self.v1.read_namespaced_pod(
+                    name=self.pod_name, namespace=self.namespace
+                )
+                start_time = pod.status.start_time
+                for cond in pod.status.conditions or []:
+                    if cond.type == "Ready" and cond.status == "True":
+                        return (cond.last_transition_time - start_time).total_seconds()
+
+                time.sleep(2)
+                elapsed = time.time() - start
+            raise RuntimeError(f"failed to get pod ready time after {elapsed} secs.")
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("error on pod '%s:%s'", self.namespace, self.pod_name)
+            return 0.0
+
+    def get_pod_logs(self) -> bytes:
         """get pod logs"""
+        data = bytes()
+        try:
+            response = self.v1.read_namespaced_pod_log(
+                name=self.pod_name,
+                container=self.container_name,
+                namespace=self.namespace,
+                pretty=False,
+                _preload_content=False,
+            )
+            data = response.data
+        except ApiException:
+            logger.exception("error on pod '%s:%s' logs", self.namespace, self.pod_name)
+        return data
 
-        response = self.v1.read_namespaced_pod_log(
-            name=self.pod_name,
-            container=self.container_name,
-            namespace=self.namespace,
-            pretty=False,
-            _preload_content=False,
-        )
-        return response.data
+    @abstractmethod
+    def get_vllm_logs(self) -> bytes:
+        """get vllm logs"""
+
+    @abstractmethod
+    def calculate_categories(self) -> bool:
+        """should calculate or not categories"""
+
+    @abstractmethod
+    def write_pod_logs(self) -> bool:
+        """should write or not pod logs"""
+
+
+@dataclass(frozen=True)
+class VllmStandaloneInfo(VllmInfo):
+    """vllm pod logs"""
+
+    def get_vllm_logs(self) -> bytes:
+        """get vllm logs"""
+
+        return self.get_pod_logs()
 
     def calculate_categories(self) -> bool:
         """should calculate or not categories"""
         return True
 
+    def write_pod_logs(self) -> bool:
+        """should write or not pod logs"""
+        return False
+
 
 @dataclass(frozen=True)
-class VllmLaunchedLogs(VllmLogs):
+class VllmLauncherInfo(VllmInfo):
     """vllm launched logs"""
 
     base_url: str
     instance_id: str
-    timeout: float
     categories_calculation: bool = True
 
-    def get_logs(self) -> bytes:
+    def get_vllm_logs(self) -> bytes:
         """get launched vllm logs"""
 
         url = urljoin(self.base_url, f"/v2/vllm/instances/{self.instance_id}/log")
@@ -185,6 +224,10 @@ class VllmLaunchedLogs(VllmLogs):
     def calculate_categories(self) -> bool:
         """should calculate or not categories"""
         return self.categories_calculation
+
+    def write_pod_logs(self) -> bool:
+        """should write or not pod logs"""
+        return True
 
 
 @dataclass
@@ -667,6 +710,9 @@ class BenchmarkVllmMetrics:
 
     # pylint: disable=too-many-instance-attributes
     name: str = ""
+    pod_start: float = 0.0
+    vllm_start_timestamp: float = 0.0
+    vllm_ready_timestamp: float = 0.0
     load: MetricsLoad = field(default_factory=MetricsLoad)
     size: float = 0.0
     dynamo_bytecode_transform: float = 0.0
@@ -927,10 +973,12 @@ def extract_datetime(log_line: str) -> datetime | None:
     value = match.group()
 
     # Define the format string that matches the input time string
-    time_format = "%m-%d %H:%M:%S.%f" if "." in value else "%m-%d %H:%M:%S"
+    time_format = "%Y-%m-%d %H:%M:%S.%f" if "." in value else "%Y-%m-%d %H:%M:%S"
 
     try:
-        return datetime.strptime(value, time_format)
+        # Add current year in front of the string
+        value_with_year = f"{datetime.now().year}-{value}"
+        return datetime.strptime(value_with_year, time_format)
     except ValueError:
         logger.info(
             "Failed converting time value '%s' using format '%s'",
@@ -1197,6 +1245,9 @@ def parse_logs(  # pylint: disable=too-many-locals,too-many-branches,too-many-st
 
     # Strings to be searched on logging ouput in order to extract values
 
+    plugins_init = "plugins/__init__.py"
+    available_routes = "Available routes are:"
+
     server_non_default_args = "non-default args:"
     model_sleep_mode = "'enable_sleep_mode':"
     model_load_format = "load_format="
@@ -1241,6 +1292,20 @@ def parse_logs(  # pylint: disable=too-many-locals,too-many-branches,too-many-st
     sleep_gpu_in_use = 0.0
     for log in logs:
         line = log.line.strip()
+
+        if metrics.vllm_start_timestamp == 0.0 and plugins_init in line:
+            metrics.vllm_start_timestamp = log.timestamp.astimezone(
+                timezone.utc
+            ).timestamp()
+
+        if (
+            available_routes in line
+            and metrics.vllm_start_timestamp > 0
+            and log.timestamp is not None
+        ):
+            metrics.vllm_ready_timestamp = log.timestamp.astimezone(
+                timezone.utc
+            ).timestamp()
 
         if args is None:
             start_index = line.find(server_non_default_args)
@@ -1675,7 +1740,7 @@ def wait_for_vllm(base_url: str, timeout: float, wait: float) -> None:
 
 
 def populate_benchmark(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
-    vllm_logs: VllmLogs,
+    vllm_info: VllmInfo,
     model: str,
     load_format: LoadFormat,
     base_url: str,
@@ -1693,28 +1758,36 @@ def populate_benchmark(  # pylint: disable=too-many-arguments,too-many-positiona
     engine.version = get_vllm_version(base_url, timeout)
     benchmark_result.scenario.model.name = model
 
-    pod_logs = vllm_logs.get_logs()
-    log_list = get_log_list(pod_logs.decode("utf-8"))
+    vllm_logs = vllm_info.get_vllm_logs()
+    log_list = get_log_list(vllm_logs.decode("utf-8"))
     if parse_gpus:
         parse_gpu_logs(benchmark_result.scenario, log_list)
 
+    pod_start = vllm_info.get_pod_start()
     metrics = BenchmarkVllmMetrics()
     metrics.name = engine.name
+    metrics.pod_start = pod_start
     parse_logs(
         benchmark_result.scenario,
         engine,
         metrics,
         log_list,
     )
-    if sleep_wake and benchmark_result.scenario.sleep_mode:
+    # if sleep wake request is necessary and sleep mode on and no sleep/wake requests yet
+    if (
+        sleep_wake
+        and benchmark_result.scenario.sleep_mode
+        and len(metrics.sleep_wake) < 2
+    ):
         logger.info("%s: request sleep/wake", metrics.name)
         sleep(base_url, 1, timeout, wait)
         wake(base_url, timeout, wait)
         # get logs again with latest sleep/wake statistics
-        pod_logs = vllm_logs.get_logs()
-        log_list = get_log_list(pod_logs.decode("utf-8"))
+        vllm_logs = vllm_info.get_vllm_logs()
+        log_list = get_log_list(vllm_logs.decode("utf-8"))
         metrics = BenchmarkVllmMetrics()
         metrics.name = engine.name
+        metrics.pod_start = pod_start
         parse_logs(
             benchmark_result.scenario,
             engine,
@@ -1729,21 +1802,31 @@ def populate_benchmark(  # pylint: disable=too-many-arguments,too-many-positiona
         benchmark_result.scenario.load_format = load_format
 
     log_list_per_process = {}
-    if vllm_logs.calculate_categories() or write_log_per_process:
+    if vllm_info.calculate_categories() or write_log_per_process:
         log_list_per_process = get_log_list_per_process(
             benchmark_result.scenario.model.name, log_list
         )
         # categorize logs
-        if vllm_logs.calculate_categories():
+        if vllm_info.calculate_categories():
             metrics.root_category = categorize_logs(log_list_per_process)
 
     output_dir = os.path.join(requests_dir, metrics.name.replace(" ", "_"))
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
+    # write pod log file
+    if vllm_info.write_pod_logs():
+        pod_logs = vllm_info.get_pod_logs()
+        logs_filepath = os.path.join(output_dir, "pod.log")
+        with open(logs_filepath, "wb") as file:
+            file.write(pod_logs)
+            logger.info(
+                "%s: pod log file saved to path: %s", metrics.name, logs_filepath
+            )
+
     # write vllm log file
     logs_filepath = os.path.join(output_dir, "vllm.log")
     with open(logs_filepath, "wb") as file:
-        file.write(pod_logs)
+        file.write(vllm_logs)
         logger.info("%s: vllm log file saved to path: %s", metrics.name, logs_filepath)
 
     if write_log_per_process:
@@ -1853,7 +1936,9 @@ def benchmark_nop(  # pylint: disable=too-many-arguments,too-many-positional-arg
     try:
         model = get_vllm_model(endpoint_url, timeout)
         populate_benchmark(
-            VllmPodLogs(v1, namespace, pod_info.name, pod_info.containers[0].name),
+            VllmStandaloneInfo(
+                v1, namespace, pod_info.name, pod_info.containers[0].name, wait
+            ),
             model,
             load_format,
             endpoint_url,
@@ -1892,7 +1977,15 @@ def benchmark_nop(  # pylint: disable=too-many-arguments,too-many-positional-arg
 
             model = get_vllm_model(endpoint_launcher_vllm_url, timeout)
             populate_benchmark(
-                VllmLaunchedLogs(endpoint_launcher_url, instance_id, timeout),
+                VllmLauncherInfo(
+                    v1,
+                    namespace,
+                    pod_info.name,
+                    pod_info.containers[1].name,
+                    wait,
+                    endpoint_launcher_url,
+                    instance_id,
+                ),
                 model,
                 load_format,
                 endpoint_launcher_vllm_url,

@@ -253,6 +253,10 @@ spec:
           value: "{{ vllmCommon.containerHome }}"
         - name: HF_HOME
           value: "{{ vllmCommon.hfHome }}"
+        - name: MODEL_NAME
+          value: "{{ model.name }}"
+        - name: MODEL_PATH
+          value: "{{ model.path }}"
         - name: VLLM_WORKER_MULTIPROC_METHOD
           value: "{{ standalone.vllm.workerMultiprocMethod }}"
         - name: VLLM_LOGGING_LEVEL

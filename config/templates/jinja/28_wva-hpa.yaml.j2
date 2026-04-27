@@ -1,0 +1,57 @@
+{# ============================================================================
+   28_wva-hpa.yaml.j2
+
+   Per-stack HorizontalPodAutoscaler that consumes the wva_desired_replicas
+   external metric emitted by the WVA controller (via prometheus-adapter).
+
+   Selector labels:
+     - variant_name        — matches the VariantAutoscaling resource's
+                             metadata.name (emitted by WVA as va.Name).
+     - exported_namespace  — the VA resource's namespace; Prometheus
+                             renames WVA's `namespace` label to
+                             `exported_namespace` because Prometheus
+                             reserves `namespace` for the scraped pod's
+                             namespace.
+     - controller_instance — narrows the match to this namespace's
+                             controller in multi-controller setups so
+                             HPAs in different namespaces don't cross-talk.
+                             Currently optional in WVA chart v0.6.0 — the
+                             chart accepts wva.controllerInstance but
+                             doesn't yet plumb it through to the running
+                             controller, so emitted metrics may have an
+                             empty `controller_instance` label until
+                             upstream makes it non-optional.
+
+   Only rendered when wva.enabled is true.
+   ============================================================================ #}
+{% if wva is defined and wva.enabled | default(false) %}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ model_id_label }}-decode
+  namespace: {{ wva.namespace | default(namespace.name, true) }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ model_id_label }}-decode
+  minReplicas: {{ wva.hpa.minReplicas | default(1) }}
+  maxReplicas: {{ wva.hpa.maxReplicas | default(16) }}
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: wva_desired_replicas
+          selector:
+            matchLabels:
+              variant_name: {{ model_id_label }}-decode
+              exported_namespace: {{ wva.namespace | default(namespace.name, true) }}
+              controller_instance: {{ wva.namespace | default(namespace.name, true) }}
+        target:
+          type: AverageValue
+          averageValue: "{{ wva.hpa.targetAvgValue | default(1) }}"
+{% if wva.hpa.behavior is defined %}
+  behavior:
+{{ wva.hpa.behavior | toyaml | indent(4, first=True) }}
+{% endif %}
+{% endif %}

@@ -80,6 +80,7 @@ Provisions model infrastructure from a specification. Implicitly generates a pla
 | `--standalone-deploy-timeout` | `LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT` | Seconds to wait for the vLLM pods to deploy during standup in standalone mode. |
 | `--gateway-deploy-timeout` | `LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT` | Seconds to wait for gateway infrastructure pods to deploy during standup with modelservice. |
 | `--modelservice-deploy-timeout` | `LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT` | Seconds to wait for decode, prefill and inference pool pods to deploy during standup with modelservice (Generic timeout for Step 9). |
+| `--pvc-bind-timeout` | `LLMDBENCH_PVC_BIND_TIMEOUT` | Seconds to wait for each PVC (workload, model, extra) to reach the Bound phase during standup. Fails fast on missing default StorageClass instead of masking as a downstream pod/job timeout. Default: 240 (some dynamic provisioners take 1-3 minutes per volume). |
 
 ### smoketest (`smoketest.py`)
 
