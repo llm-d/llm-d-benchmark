@@ -21,9 +21,12 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Model Configuration
-    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST
     # -------------------------------------------------------------------------
     model:
+#      name: ibm-ai-platform/micro-g3.3-8b-instruct-1b
+#      shortName: micro-g3-3-8b-instruct-1b
+#      path: models/ibm-ai-platform/micro-g3.3-8b-instruct-1b
+#      huggingfaceId: ibm-ai-platform/micro-g3.3-8b-instruct-1b
       name: ibm-granite/granite-3.3-8b-instruct
       shortName: granite-3-3-8b-instruct
       path: models/ibm-granite/granite-3.3-8b-instruct
@@ -58,8 +61,6 @@ scenario:
       # the chart's accelerator.resources map from type + resource.
       type: spyre
       resource: ibm.com/spyre_pf
-      # count must match parallelism.tensor -- each TP worker needs its own Spyre device
-      count: 4
 
     # -------------------------------------------------------------------------
     # Modelservice image override -- Spyre-specific vLLM image
@@ -200,7 +201,8 @@ scenario:
 
       vllm:
         customCommand: |
-          /home/senuser/container-scripts/simple_vllm_serve.sh ${model.name} \
+          /home/senuser/container-scripts/simple_vllm_serve.sh /model-storage/$MODEL_PATH \
+          --served-model-name $MODEL_NAME \
           --port $VLLM_INFERENCE_PORT \
           --max-model-len $VLLM_MAX_MODEL_LEN \
           --max-num-seq $VLLM_MAX_NUM_SEQ \
@@ -212,12 +214,6 @@ scenario:
 
       # Spyre-specific environment variables
       extraEnvVars:
-        - name: KUBECONFIG
-          value: "/etc/kubeconfig/llmdbench-context"
-        - name: PORT
-          value: "8000"
-        - name: SERVED_MODEL_NAME
-          value: "${model.name}"
         - name: FLEX_COMPUTE
           value: SENTIENT
         - name: FLEX_DEVICE
@@ -251,21 +247,19 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Prefill Configuration -- disabled (0 prefill pods)
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS=0
     # -------------------------------------------------------------------------
     prefill:
       enabled: false
       replicas: 0
       accelerator:
         resource: ibm.com/spyre_pf
-        count: 4
+
       acceleratorType:
         labelKey: ibm.com/spyre.product
         labelValue: IBM_Spyre
 
     # -------------------------------------------------------------------------
     # Decode Configuration -- 2 decode pods on Spyre
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_*
     # No customCommand -- the vLLM serve command is auto-generated
     # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
     # -------------------------------------------------------------------------
@@ -307,7 +301,6 @@ scenario:
 
       accelerator:
         resource: ibm.com/spyre_pf
-        count: 4
 
       # Spyre uses affinity-based scheduling, not GPU label selection
       acceleratorType:
@@ -316,8 +309,8 @@ scenario:
 
       vllm:
         customCommand: |
-          /home/senuser/container-scripts/simple_vllm_serve.sh /model-cache/${model.path} \
-          --served-model-name ${model.name} \
+          /home/senuser/container-scripts/simple_vllm_serve.sh /model-cache/$MODEL_PATH \
+          --served-model-name $MODEL_NAME \
           --port $VLLM_METRICS_PORT \
           --max-model-len $VLLM_MAX_MODEL_LEN \
           --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
@@ -329,12 +322,6 @@ scenario:
 
       # Same Spyre-specific env vars as standalone
       extraEnvVars:
-        - name: KUBECONFIG
-          value: "/etc/kubeconfig/llmdbench-context"
-        - name: PORT
-          value: "8000"
-        - name: SERVED_MODEL_NAME
-          value: "${model.name}"
         - name: FLEX_COMPUTE
           value: SENTIENT
         - name: FLEX_DEVICE

@@ -368,7 +368,6 @@ class TestCliModelOverrideMultiStack:
 
 class TestPrintEndpointsTable:
     """cli._print_endpoints_table - tolerates Path-typed specification_file."""
-
     def _mock_ctx(self, tmp_path, stacks_with_models):
         from unittest.mock import MagicMock
         ctx = MagicMock()

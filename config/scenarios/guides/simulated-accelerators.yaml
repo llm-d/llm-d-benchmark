@@ -105,7 +105,6 @@ scenario:
         pullPolicy: IfNotPresent
       routingSidecar:
         repository: ghcr.io/llm-d/llm-d-routing-sidecar
-        tag: v0.7.1
 
     # -------------------------------------------------------------------------
     # Decode Configuration -- 3 replicas with uds-tokenizer

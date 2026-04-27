@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-04-24 22:01:44` (UTC)
-- Generated against git ref: `c5075fb9af0b088a2a5ec5b55307f8e8b1c1e1f3`
+- Generated at: `2026-04-27 17:40:19` (UTC)
+- Generated against git ref: `1f4865888754eadffac79566d426cb43ccb7f7f3`
 
 ## System Tool Dependencies
 
@@ -24,7 +24,7 @@ whatever the host's package manager provides.
 | **git** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [git/git](https://github.com/git/git) |
 | **helm** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [helm/helm](https://github.com/helm/helm) |
 | **helm-diff** | `latest` | plugin (latest) | `install.sh` line 514 (`helm_diff_url`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
-| **helmfile** | `1.1.3` | version | `install.sh` line 436 (`install_helmfile_linux`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
+| **helmfile** | `1.4.2` | version | `install.sh` line 436 (`install_helmfile_linux`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
 | **jq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [jqlang/jq](https://github.com/jqlang/jq) |
 | **kustomize** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
 | **llm-d-planner (git)** | `f51812bebca30e0291ec541bd2ef2acf0572e8a4` | commit SHA | `install.sh` line 581 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
@@ -41,15 +41,15 @@ OCI registry at generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **agentgateway** | `v1.0.1` | tag | `config/templates/values/defaults.yaml` line 429 (`chartVersions.agentgateway`) | [agentgateway/agentgateway](https://github.com/agentgateway/agentgateway) (`oci://cr.agentgateway.dev/charts/`) |
-| **inferencePool** | `v1.4.0` | tag | `config/templates/values/defaults.yaml` line 428 (`chartVersions.inferencePool`) | [kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) |
-| **istioBase** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 419 (`chartVersions.istioBase`) | (unknown) |
-| **istiod** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 420 (`chartVersions.istiod`) | (unknown) |
-| **llmDInfra** | `v1.4.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 421 (`chartVersions.llmDInfra`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) (`https://llm-d-incubation.github.io/llm-d-infra/`) |
-| **llmDModelservice** | `v0.4.12` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 422 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
-| **lws** | `0.8.0` | tag | `config/templates/values/defaults.yaml` line 430 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
-| **prometheusAdapter** | `5.2.0` | tag | `config/templates/values/defaults.yaml` line 427 (`chartVersions.prometheusAdapter`) | [prometheus-community/helm-charts](https://github.com/prometheus-community/helm-charts) (`https://prometheus-community.github.io/helm-charts`) |
-| **wva** | `0.6.0` | tag | `config/templates/values/defaults.yaml` line 423 (`chartVersions.wva`) | [llm-d/llm-d-workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) (`oci://ghcr.io/llm-d/workload-variant-autoscaler`) |
+| **agentgateway** | `v1.0.1` | tag | `config/templates/values/defaults.yaml` line 434 (`chartVersions.agentgateway`) | [agentgateway/agentgateway](https://github.com/agentgateway/agentgateway) (`oci://cr.agentgateway.dev/charts/`) |
+| **inferencePool** | `v1.4.0` | tag | `config/templates/values/defaults.yaml` line 433 (`chartVersions.inferencePool`) | [kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) |
+| **istioBase** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 427 (`chartVersions.istioBase`) | (unknown) |
+| **istiod** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 428 (`chartVersions.istiod`) | (unknown) |
+| **llmDInfra** | `v1.4.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 429 (`chartVersions.llmDInfra`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) (`https://llm-d-incubation.github.io/llm-d-infra/`) |
+| **llmDModelservice** | `v0.4.12` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 430 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
+| **lws** | `0.8.0` | tag | `config/templates/values/defaults.yaml` line 435 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
+| **prometheusAdapter** | `5.2.0` | tag | `config/templates/values/defaults.yaml` line 432 (`chartVersions.prometheusAdapter`) | [prometheus-community/helm-charts](https://github.com/prometheus-community/helm-charts) (`https://prometheus-community.github.io/helm-charts`) |
+| **wva** | `0.6.0` | tag | `config/templates/values/defaults.yaml` line 431 (`chartVersions.wva`) | [llm-d/llm-d-workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) (`oci://ghcr.io/llm-d/workload-variant-autoscaler`) |
 
 
 ## Container Image Dependencies
@@ -60,13 +60,13 @@ generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **benchmark** | `v0.6.0rc6` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 330 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
-| **inferenceScheduler** | `v0.8.0-rc.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 349 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
-| **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 368 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
-| **routingSidecar** | `v0.8.0-rc.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 355 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
-| **udsTokenizer** | `v0.7.1` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 361 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |
-| **vllm** | `v0.6.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 336 (`images.vllm`) | [llm-d/llm-d (docker/Dockerfile.cuda)](https://github.com/llm-d/llm-d) (`ghcr.io/llm-d/llm-d-cuda`) |
-| **vllmOpenai** | `v0.9.2` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 343 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
+| **benchmark** | `v0.6.0rc6` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 338 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
+| **inferenceScheduler** | `v0.7.1` | tag | `config/templates/values/defaults.yaml` line 357 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
+| **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 376 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
+| **routingSidecar** | `v0.7.1` | tag | `config/templates/values/defaults.yaml` line 363 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
+| **udsTokenizer** | `v0.7.1` | tag | `config/templates/values/defaults.yaml` line 369 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |
+| **vllm** | `v0.6.0` | tag | `config/templates/values/defaults.yaml` line 344 (`images.vllm`) | [llm-d/llm-d (docker/Dockerfile.cuda)](https://github.com/llm-d/llm-d) (`ghcr.io/llm-d/llm-d-cuda`) |
+| **vllmOpenai** | `v0.9.2` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 351 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 
 
 ## Python Package Dependencies (declared)

@@ -433,7 +433,7 @@ install_yq_linux() {
 }
 
 install_helmfile_linux() {
-    local version=1.1.3
+    local version=1.4.2
     local pkg="helmfile_${version}_linux_amd64"
     curl -sL "https://github.com/helmfile/helmfile/releases/download/v${version}/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz"
     tar xzf "/tmp/${pkg}.tar.gz" -C /tmp
