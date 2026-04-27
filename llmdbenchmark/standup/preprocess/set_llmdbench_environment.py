@@ -476,12 +476,21 @@ if disable_acs == "1" :
 
 env_file_contents.append("echo")
 
+def _parse_pod_index(suffix):
+    """Safely compute pod index by summing dash-separated integers from a pod name suffix."""
+    parts = suffix.split('-')
+    total = 0
+    for p in parts:
+        if p.isdigit():
+            total += int(p)
+    return total
+
 pod_index = None
 if lws_leader_address :
     if pod_name.count("decode") :
-        pod_index=eval(pod_name.split('decode-')[-1].replace('-','+'))
+        pod_index = _parse_pod_index(pod_name.split('decode-')[-1])
     if pod_name.count("prefill") :
-        pod_index=eval(pod_name.split('prefill-')[-1].replace('-','+'))
+        pod_index = _parse_pod_index(pod_name.split('prefill-')[-1])
 
 print(f"DEBUG: Pod index is \"{pod_index}\"")
 
