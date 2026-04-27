@@ -73,7 +73,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
         "--monitoring",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Enable PodMonitor for Prometheus and vLLM /metrics scraping (default: enabled via defaults.yaml).",
+        help="Enable or disable monitoring. --monitoring creates PodMonitors and enables metrics scraping. --no-monitoring disables PodMonitor and GAIE ServiceMonitor creation (use when cluster lacks Prometheus CRDs). Omit to use scenario defaults.",
     )
     standup_parser.add_argument(
         "--parallel",

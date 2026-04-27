@@ -480,9 +480,13 @@ class RenderPlans:
             )
         else:
             podmonitor_config["enabled"] = False
+            ie = result.setdefault("inferenceExtension", {})
+            ie_mon = ie.setdefault("monitoring", {})
+            ie_prom = ie_mon.setdefault("prometheus", {})
+            ie_prom["enabled"] = False
             self.logger.log_info(
                 "Monitoring disabled from CLI (--no-monitoring): "
-                "PodMonitor will not be created"
+                "PodMonitor and GAIE ServiceMonitor will not be created"
             )
 
         return result

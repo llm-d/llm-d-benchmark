@@ -1,13 +1,35 @@
 ## Observability
 
+### CLI Monitoring Flags
+
+The `--monitoring` and `--no-monitoring` flags provide CLI control over monitoring behavior:
+
+```bash
+# Enable monitoring: creates PodMonitors at standup, enables metrics scraping during run
+llmdbenchmark standup -s <scenario> --monitoring
+llmdbenchmark run -f   # -f is shorthand for --monitoring
+
+# Disable monitoring: skips PodMonitor and GAIE ServiceMonitor creation
+# Use when the cluster lacks Prometheus CRDs (e.g. GKE without GMP enabled)
+llmdbenchmark standup -s <scenario> --no-monitoring
+
+# No flag: scenario defaults apply (PodMonitors created, but no metrics scraping during run)
+llmdbenchmark standup -s <scenario>
+llmdbenchmark run     # no metrics scraping
+```
+
+See [config/README.md — Monitoring and Metrics](../config/README.md#monitoring-and-metrics) for full configuration reference.
+
 ### Benchmark-Built-In Metrics
 
-The benchmark collects metrics automatically during runs when `metricsScrapeEnabled: true` is set in the scenario config. This includes:
+The benchmark collects metrics automatically during runs when `metricsScrapeEnabled: true` is set in the scenario config (or when `--monitoring` / `-f` is passed on the CLI). This includes:
 
-- **vLLM Prometheus metrics** — KV cache, request queues, prefix cache, NIXL transfers, preemptions (117+ metrics scraped every 15s)
+- **vLLM Prometheus metrics** — KV cache usage, GPU/CPU cache and memory, request queues, prefix cache hit rates, NIXL KV transfers, preemptions (scraped every 15s)
+- **EPP Prometheus metrics** — Pool-level gauges (KV cache utilization, queue size, ready pods), scheduler/plugin/request duration histograms, token distributions, P/D decision counters
+- **GPU/System metrics** — DCGM GPU utilization/power/memory (requires DCGM exporter), container memory/CPU/network via cAdvisor
 - **Replica status** — Desired vs ready vs available replica counts per model per role
 - **Pod startup times** — Creation-to-Ready duration per pod per node
-- **EPP metrics** — Endpoint Picker dispatch latency, routing scores, request distribution
+- **EPP log-derived metrics** — Dispatch latency, endpoint scores, request distribution, per-plugin filter/scorer latencies
 
 Results are written to the `metrics/` directory within each experiment's results and integrated into the benchmark report under `results.observability`.
 

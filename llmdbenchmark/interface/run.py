@@ -136,7 +136,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
         "--monitoring",
         action="store_true",
         default=None,
-        help="Enable vLLM /metrics scraping and pod log capture during the run.",
+        help="Enable vLLM /metrics scraping and pod log capture during the run. Without this flag, metrics are not collected.",
     )
 
     # Pod configuration
