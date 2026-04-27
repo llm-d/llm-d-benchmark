@@ -38,9 +38,11 @@ Harness Pod (in-cluster)
 
 ## Configuration
 
+Metrics collection can be enabled via CLI (`llmdbenchmark run -f` / `--monitoring`) or via scenario config. The CLI flag sets `metricsScrapeEnabled: true` at runtime, overriding the scenario default.
+
 | Environment Variable | Default | Description |
 |---|---|---|
-| `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED` | `false` | Enable/disable metrics collection |
+| `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED` | `false` | Enable/disable metrics collection. Set automatically when `--monitoring` / `-f` is passed. |
 | `METRICS_COLLECTION_INTERVAL` | `15` | Seconds between collection snapshots |
 | `LLMDBENCH_VLLM_COMMON_METRICS_PORT` | `8200` | Prometheus metrics port (modelservice) |
 | `LLMDBENCH_VLLM_COMMON_INFERENCE_PORT` | `8000` | Fallback port (standalone vLLM) |
@@ -62,81 +64,104 @@ Only pods with `status.phase=Running` are scraped.
 
 ### Currently Implemented and Working
 
-1. **Pod-Level Prometheus Metrics** - Collecting 117+ metrics from vLLM pods via `/metrics` endpoint
-2. **Metrics Processing** - Aggregating and calculating statistics (mean, stddev, min, max, percentiles)
-3. **Replica Status** - Desired vs ready vs available replica counts per Deployment/StatefulSet, grouped by model and role
-4. **Pod Startup Times** - Creation-to-Ready duration per pod, per node, grouped by model and role
-5. **EPP Metrics** - Endpoint Picker metrics (dispatch latency, endpoint scores, request distribution, plugin latencies)
-6. **Time-Series Visualization** - Static PNG graphs generated after benchmark completion
-7. **Benchmark Report Integration** - All metrics surfaced in `results.observability` section
-8. **RBAC Setup** - Automatic ServiceAccount creation with required permissions
-9. **Metrics Storage** - Raw and processed metrics saved to results directory
+1. **vLLM Pod Prometheus Metrics** - Cache, queue, memory, preemption, and NIXL KV transfer metrics scraped from vLLM pods
+2. **EPP Prometheus Metrics** - Pool-level gauges, scheduler histograms, token distributions, P/D decision counters scraped from EPP pods
+3. **DCGM GPU Metrics** - GPU utilization, framebuffer usage, and power consumption (requires DCGM exporter deployed on the cluster)
+4. **Container Metrics (cAdvisor)** - Memory, CPU, and network usage from kubelet
+5. **Metrics Processing** - Per-pod and cluster-wide aggregation with statistics (mean, stddev, min, max, p25/p50/p75/p90/p95/p99)
+6. **Replica Status** - Desired vs ready vs available replica counts per Deployment/StatefulSet, grouped by model and role
+7. **Pod Startup Times** - Creation-to-Ready duration per pod, per node, grouped by model and role
+8. **EPP Log-Derived Metrics** - Dispatch latency, endpoint scores, request distribution, plugin latencies, saturation config from EPP pod logs
+9. **Time-Series Visualization** - Static PNG graphs generated after benchmark completion
+10. **Benchmark Report Integration** - All metrics surfaced in `results.observability` section
+11. **RBAC Setup** - Automatic ServiceAccount creation with required permissions
+12. **Metrics Storage** - Raw and processed metrics saved to results directory
 
 ### Not Yet Implemented
 
-1. **DCGM GPU Metrics** - Direct GPU monitoring metrics (DCGM_FI_DEV_GPU_UTIL, DCGM_FI_DEV_POWER_USAGE, etc.)
-   - These metrics require DCGM exporter to be deployed in the cluster
-   - Currently relying on vLLM's built-in Prometheus metrics instead
-
-2. **Real-time Visualization** - Live metric streaming during benchmark execution
+1. **Real-time Visualization** - Live metric streaming during benchmark execution
    - Currently generates static graphs after benchmark completion
 
-3. **Custom Metric Queries** - User-defined Prometheus queries
+2. **Custom Metric Queries** - User-defined Prometheus queries
    - Currently collects predefined set of metrics
 
 ## Collected Metrics
 
-The metrics collection system gathers metrics from vLLM pod Prometheus endpoints.
+The metrics collection system scrapes Prometheus endpoints from vLLM pods and EPP pods, collects Kubernetes infrastructure snapshots, and extracts scheduling metrics from EPP logs. All metrics are aggregated into per-pod statistics (mean, stddev, min, max, p25/p50/p75/p90/p95/p99).
 
-### Pod-Level Metrics (vLLM Prometheus Endpoint)
+### vLLM Pod Metrics (Prometheus `/metrics` endpoint)
 
-Collected from each vLLM pod's `/metrics` endpoint (default port 8200 for modelservice, 8000 for standalone):
+Scraped from each vLLM pod (default port 8200 for modelservice, 8000 for standalone):
 
 #### Cache Metrics
-- **`vllm:kv_cache_usage_perc`** - KV cache utilization percentage (0-100)
-- **`vllm:prefix_cache_hits_total`** - Total number of prefix cache hits (tokens)
-- **`vllm:prefix_cache_queries_total`** - Total number of prefix cache queries (tokens)
-- **`vllm:external_prefix_cache_hits_total`** - External cache hits from KV connector cross-instance sharing
-- **`vllm:external_prefix_cache_queries_total`** - External cache queries from KV connector
-- **`vllm:mm_cache_hits_total`** - Multi-modal cache hits (items)
-- **`vllm:mm_cache_queries_total`** - Multi-modal cache queries (items)
-- **Prefix cache hit rate** - Computed from `prefix_cache_hits_total / prefix_cache_queries_total`
-- **External prefix cache hit rate** - Computed from `external_prefix_cache_hits_total / external_prefix_cache_queries_total`
+- **`vllm:kv_cache_usage_perc`** - KV cache utilization (%)
+- **`vllm:gpu_cache_usage_perc`** - GPU cache utilization (%)
+- **`vllm:cpu_cache_usage_perc`** - CPU cache utilization (%)
+- **`vllm:prefix_cache_hits_total`** - Prefix cache hits (tokens)
+- **`vllm:prefix_cache_queries_total`** - Prefix cache queries (tokens)
+- **`vllm:external_prefix_cache_hits_total`** - Cross-instance external cache hits (tokens)
+- **`vllm:external_prefix_cache_queries_total`** - Cross-instance external cache queries (tokens)
+- **`vllm:prefix_cache_hit_rate`** - Computed: `hits / queries` (%)
+- **`vllm:external_prefix_cache_hit_rate`** - Computed: `external_hits / external_queries` (%)
 
-#### Request & Token Metrics
-- **`vllm:num_requests_running`** - Number of requests currently in execution batches
-- **`vllm:num_requests_waiting`** - Number of requests waiting to be processed
-- **`vllm:prompt_tokens_total`** - Total number of prefill tokens processed
-- **`vllm:generation_tokens_total`** - Total number of generation tokens produced
-- **`vllm:iteration_tokens_total`** - Total tokens processed per iteration
-- **`vllm:request_prompt_tokens`** - Prompt tokens per request (histogram)
-- **`vllm:request_generation_tokens`** - Generation tokens per request (histogram)
-- **`vllm:request_max_num_generation_tokens`** - Maximum generation tokens per request
-- **`vllm:request_success_total`** - Total number of successful requests
+#### Request Queue Metrics
+- **`vllm:num_requests_running`** - Requests currently in execution batches (count)
+- **`vllm:num_requests_waiting`** - Requests waiting to be processed (count)
+- **`vllm:num_requests_swapped`** - Requests swapped to CPU (count)
+- **`vllm:num_preemptions_total`** - Cumulative request preemptions (count)
+
+#### Memory Metrics
+- **`vllm:gpu_memory_usage_bytes`** - GPU memory usage (bytes)
+- **`vllm:cpu_memory_usage_bytes`** - CPU memory usage (bytes)
 
 #### NIXL KV Transfer Metrics
-- **`vllm:nixl_xfer_time_seconds`** - Transfer duration for NIXL KV cache transfers (histogram)
-- **`vllm:nixl_bytes_transferred`** - Bytes transferred via NIXL (histogram)
-- **`vllm:nixl_num_descriptors`** - Number of NIXL descriptors (histogram)
-- **`vllm:nixl_num_failed_transfers_total`** - Failed NIXL transfers
-- **`vllm:nixl_num_failed_notifications_total`** - Failed NIXL notifications
-- **`vllm:nixl_num_kv_expired_reqs_total`** - Expired KV transfer requests
-- **`vllm:nixl_post_time_seconds`** - NIXL post time (histogram)
+- **`vllm:nixl_xfer_time_seconds_sum`** - Cumulative NIXL transfer time (seconds)
+- **`vllm:nixl_xfer_time_seconds_count`** - Number of NIXL transfers (count)
+- **`vllm:nixl_bytes_transferred_sum`** - Cumulative bytes transferred via NIXL (bytes)
+- **`vllm:nixl_bytes_transferred_count`** - Number of NIXL byte transfers (count)
 
-#### System Metrics
-- **`vllm:num_preemptions_total`** - Cumulative number of request preemptions
-- **`vllm:engine_sleep_state`** - Engine sleep state (awake/weights_offloaded/discard_all)
-- **`process_cpu_seconds_total`** - Total CPU time consumed by the process
-- **`process_resident_memory_bytes`** - Resident memory size (RSS)
-- **`process_virtual_memory_bytes`** - Virtual memory size
-- **`process_open_fds`** - Number of open file descriptors
-- **`process_max_fds`** - Maximum number of file descriptors
+### GPU/System Metrics (DCGM and cAdvisor)
 
-#### Python Runtime Metrics
-- **`python_gc_collections_total`** - Number of garbage collection cycles
-- **`python_gc_objects_collected_total`** - Objects collected during GC
-- **`python_gc_objects_uncollectable_total`** - Uncollectable objects found during GC
-- **`python_info`** - Python version information
+Scraped from cluster monitoring infrastructure when available (requires DCGM exporter or kubelet cAdvisor):
+
+#### DCGM GPU Metrics
+- **`DCGM_FI_DEV_FB_USED`** - GPU framebuffer memory used (bytes)
+- **`DCGM_FI_DEV_GPU_UTIL`** - GPU utilization (%)
+- **`DCGM_FI_DEV_POWER_USAGE`** - GPU power consumption (watts)
+
+#### Container Metrics (cAdvisor)
+- **`container_memory_usage_bytes`** - Container memory usage (converted to GB in output)
+- **`container_memory_working_set_bytes`** - Container working set memory (converted to GB)
+- **`container_network_receive_bytes_total`** - Network bytes received (converted to MB)
+- **`container_network_transmit_bytes_total`** - Network bytes transmitted (converted to MB)
+- **`container_cpu_usage_seconds_total`** - Container CPU time (seconds)
+
+### EPP Prometheus Metrics (Inference Extension)
+
+Scraped from EPP pods (default port 9090, bearer token auth):
+
+#### Pool-Level Gauges
+- **`inference_pool_average_kv_cache_utilization`** - Pool-wide KV cache utilization (%)
+- **`inference_pool_average_queue_size`** - Average request queue depth (count)
+- **`inference_pool_average_running_requests`** - Average running requests (count)
+- **`inference_pool_ready_pods`** - Ready pod count (count)
+
+#### Scheduler Histograms
+- **`inference_extension_scheduler_e2e_duration_seconds`** - End-to-end scheduling latency (bucket/sum/count)
+- **`inference_extension_plugin_duration_seconds`** - Per-plugin processing time (bucket/sum/count)
+- **`inference_extension_request_duration_seconds`** - Total request duration (bucket/sum/count)
+- **`inference_extension_request_ttft_duration_seconds`** - Time to first token (bucket/sum/count)
+
+#### Token and Routing Metrics
+- **`inference_extension_input_tokens`** - Input token count distribution (bucket)
+- **`inference_extension_output_tokens`** - Output token count distribution (bucket)
+- **`inference_extension_normalized_time_per_output_token`** - NTPOT distribution (bucket)
+- **`inference_extension_prefix_indexer_hit_ratio`** - Prefix indexer hit ratio (bucket)
+- **`inference_extension_prefix_indexer_size`** - Prefix indexer size (count)
+
+#### P/D Decision Metrics
+- **`llm_d_inference_scheduler_pd_decision_total`** - P/D routing decisions (count)
+- **`llm_d_inference_scheduler_disagg_decision_total`** - Disaggregation decisions (count)
 
 ### Infrastructure Metrics (Kubernetes API)
 
@@ -158,13 +183,15 @@ Per Running vLLM pod:
 - **`model`** - From `llm-d.ai/model` label
 - **`role`** - From `llm-d.ai/role` label
 
-### EPP Metrics (`epp_metrics_summary.json`)
+### EPP Log-Derived Metrics (`epp_metrics_summary.json`)
 
-Collected from EPP (Endpoint Picker) pod logs by `process_epp_logs.py`:
-- **Dispatch latency** - End-to-end request routing latency
-- **Endpoint scores** - Per-endpoint scoring metrics
-- **Request distribution** - Request count per endpoint
-- **Plugin latencies** - Per-plugin processing times (filter, scorer, picker)
+Extracted from EPP pod structured JSON logs by `process_epp_logs.py`:
+- **Dispatch latency** - End-to-end request routing latency (`assembled_time` to `picker_complete_time`), with mean/stddev/min/max/p50/p95/p99
+- **Endpoint scores** - Per-endpoint scoring statistics
+- **Request distribution** - Request count per picked endpoint
+- **Plugin latencies** - Per filter and scorer plugin processing times (seconds)
+- **Saturation config** - `queueDepthThreshold`, `kvCacheUtilThreshold`, `metricsStalenessThreshold` from EPP startup logs
+- **Error tracking** - Error message counts by type
 
 ## Key Files
 

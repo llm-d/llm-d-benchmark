@@ -114,7 +114,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             cli_namespace=getattr(args, "namespace", None),
             cli_model=getattr(args, "models", None),
             cli_methods=getattr(args, "methods", None),
-            cli_monitoring=getattr(args, "monitoring", False),
+            cli_monitoring=getattr(args, "monitoring", None),
             cli_wva=getattr(args, "wva", False),
             cli_stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
         ).eval()
@@ -1150,7 +1150,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         cli_namespace=getattr(args, "namespace", None),
         cli_model=getattr(args, "models", None),
         cli_methods=getattr(args, "methods", None),
-        cli_monitoring=getattr(args, "monitoring", False),
+        cli_monitoring=getattr(args, "monitoring", None),
         cli_wva=getattr(args, "wva", False),
         setup_overrides=setup_overrides,
     ).eval()
@@ -1646,8 +1646,8 @@ def cli() -> None:
         args.verbose = env_bool("LLMDBENCH_VERBOSE")
     if not args.non_admin:
         args.non_admin = env_bool("LLMDBENCH_NON_ADMIN")
-    if hasattr(args, "monitoring") and not args.monitoring:
-        args.monitoring = env_bool("LLMDBENCH_MONITORING")
+    if hasattr(args, "monitoring") and args.monitoring is None:
+        args.monitoring = env_bool("LLMDBENCH_MONITORING") or None
     if hasattr(args, "deep") and not args.deep:
         args.deep = env_bool("LLMDBENCH_DEEP_CLEAN")
     if hasattr(args, "skip") and not args.skip:

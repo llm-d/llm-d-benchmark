@@ -47,7 +47,7 @@ class RenderPlans:
         cli_namespace: str | None = None,
         cli_model: str | None = None,
         cli_methods: str | None = None,
-        cli_monitoring: bool = False,
+        cli_monitoring: bool | None = None,
         cli_wva: bool = False,
         setup_overrides: dict | None = None,
         cli_stack_filter: list[str] | None = None,
@@ -453,25 +453,42 @@ class RenderPlans:
                 )
 
     def _resolve_monitoring(self, values: dict) -> dict:
-        """Enable PodMonitor and metrics scraping when ``--monitoring`` is set.
+        """Override monitoring based on ``--monitoring`` / ``--no-monitoring``.
 
-        Matches the bash ``-f/--monitoring`` flag which sets:
-        - ``LLMDBENCH_VLLM_MONITORING_PODMONITOR_ENABLED=true``
-        - ``LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED=true``
+        When enabled (``--monitoring`` on standup, ``-f`` on run):
+        - ``podmonitor.enabled`` → PodMonitor CRDs created for Prometheus
+        - ``metricsScrapeEnabled`` → harness scrapes vLLM /metrics during run
+
+        When disabled (``--no-monitoring``):
+        - ``podmonitor.enabled`` → False (no PodMonitor created)
+
+        When neither flag is given, scenario/defaults values are used
+        (podmonitor enabled by default, metricsScrapeEnabled disabled).
         """
-        if not self.cli_monitoring:
+        if self.cli_monitoring is None:
             return values
 
         result = deepcopy(values)
-
         monitoring_config = result.setdefault("monitoring", {})
         podmonitor_config = monitoring_config.setdefault("podmonitor", {})
-        podmonitor_config["enabled"] = True
-        monitoring_config["metricsScrapeEnabled"] = True
 
-        self.logger.log_info(
-            "Monitoring enabled from CLI: PodMonitor + metrics scraping"
-        )
+        if self.cli_monitoring:
+            podmonitor_config["enabled"] = True
+            monitoring_config["metricsScrapeEnabled"] = True
+            self.logger.log_info(
+                "Monitoring enabled from CLI: PodMonitor + metrics scraping"
+            )
+        else:
+            podmonitor_config["enabled"] = False
+            ie = result.setdefault("inferenceExtension", {})
+            ie_mon = ie.setdefault("monitoring", {})
+            ie_prom = ie_mon.setdefault("prometheus", {})
+            ie_prom["enabled"] = False
+            self.logger.log_info(
+                "Monitoring disabled from CLI (--no-monitoring): "
+                "PodMonitor and GAIE ServiceMonitor will not be created"
+            )
+
         return result
 
     def _resolve_wva(self, values: dict) -> dict:

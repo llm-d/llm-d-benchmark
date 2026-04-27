@@ -1205,13 +1205,19 @@ decode:
 
 When `podmonitor.enabled: true`, the templates `17_standalone-podmonitor.yaml.j2` (standalone) or `18_podmonitor.yaml.j2` (modelservice) render PodMonitor CRDs that tell Prometheus to scrape vLLM pods.
 
-**Metrics exposed by vLLM pods** (scraped via PodMonitor):
-- `vllm:kv_cache_usage_perc` --KV cache utilization
-- `vllm:num_requests_running` --active requests in batch
-- `vllm:num_requests_waiting` --queued requests
-- `vllm:prompt_tokens_total` --prefill token count
-- `vllm:generation_tokens_total` --decode token count
-- `vllm:prefix_cache_hits_total` / `vllm:prefix_cache_queries_total` --cache hit rate
+**Key metrics exposed by vLLM pods** (scraped via PodMonitor):
+- `vllm:kv_cache_usage_perc` -- KV cache utilization (%)
+- `vllm:gpu_cache_usage_perc` / `vllm:cpu_cache_usage_perc` -- GPU/CPU cache utilization (%)
+- `vllm:gpu_memory_usage_bytes` / `vllm:cpu_memory_usage_bytes` -- memory usage
+- `vllm:num_requests_running` -- active requests in batch
+- `vllm:num_requests_waiting` -- queued requests
+- `vllm:num_requests_swapped` -- requests swapped to CPU
+- `vllm:num_preemptions_total` -- cumulative preemptions
+- `vllm:prefix_cache_hits_total` / `vllm:prefix_cache_queries_total` -- prefix cache hit rate
+- `vllm:external_prefix_cache_hits_total` / `vllm:external_prefix_cache_queries_total` -- cross-instance cache
+- `vllm:nixl_xfer_time_seconds` / `vllm:nixl_bytes_transferred` -- NIXL KV transfer metrics
+
+See [metrics_collection.md](../docs/metrics_collection.md) for the full list of collected metrics.
 
 #### EPP (Inference Scheduler) monitoring
 
@@ -1229,30 +1235,57 @@ inferenceExtension:
 ```
 
 This creates a ServiceMonitor for the EPP pod, enabling Prometheus to scrape inference scheduler metrics:
-- `inference_extension_scheduler_e2e_duration_seconds` --scheduling latency
-- `inference_pool_average_kv_cache_utilization` --pool-wide cache utilization
-- `inference_pool_average_queue_size` --average request queue depth
-- `inference_pool_ready_pods` --ready pod count
+
+**Pool-level gauges:**
+- `inference_pool_average_kv_cache_utilization` -- pool-wide KV cache utilization (%)
+- `inference_pool_average_queue_size` -- average request queue depth
+- `inference_pool_average_running_requests` -- average running requests
+- `inference_pool_ready_pods` -- ready pod count
+
+**Scheduler and request histograms:**
+- `inference_extension_scheduler_e2e_duration_seconds` -- end-to-end scheduling latency
+- `inference_extension_plugin_duration_seconds` -- per-plugin processing time
+- `inference_extension_request_duration_seconds` -- total request duration
+- `inference_extension_request_ttft_duration_seconds` -- time to first token
+
+**Token and routing metrics:**
+- `inference_extension_input_tokens` / `inference_extension_output_tokens` -- token distributions
+- `inference_extension_normalized_time_per_output_token` -- NTPOT distribution
+- `inference_extension_prefix_indexer_hit_ratio` / `inference_extension_prefix_indexer_size` -- prefix indexer
+
+**P/D decision metrics:**
+- `llm_d_inference_scheduler_pd_decision_total` -- P/D routing decisions
+- `llm_d_inference_scheduler_disagg_decision_total` -- disaggregation decisions
 
 When flow control is enabled (see [KV Transfer Configuration](#kv-transfer-configuration) for EPP config), additional metrics are emitted:
-- `inference_extension_flow_control_queue_size` --flow control queue depth
-- `inference_extension_flow_control_pool_saturation` --pool saturation level
+- `inference_extension_flow_control_queue_size` -- flow control queue depth
+- `inference_extension_flow_control_pool_saturation` -- pool saturation level
 
-#### CLI monitoring flag (`-f`)
+#### CLI monitoring flags (`--monitoring` / `--no-monitoring`)
 
-The `-f` / `--monitoring` flag enables monitoring across both standup and run phases:
+The `--monitoring` and `--no-monitoring` flags control monitoring across both standup and run phases. These are tri-state: when neither is passed, the scenario defaults apply unchanged.
 
-**During standup (`-f`):**
-- Creates PodMonitor resources for Prometheus scraping of vLLM pods
+**`--monitoring` (standup):**
+- Ensures PodMonitor resources are created for Prometheus scraping of vLLM pods
 - Sets EPP verbosity to 4 (richer logs for post-run analysis)
 
-**During run (`-f`):**
-- Sets `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED=true` on harness pods
-- The harness runs `collect_metrics.sh` to scrape `/metrics` from all vLLM pods during the benchmark
+**`--monitoring` (run / `-f`):**
+- Sets `metricsScrapeEnabled: true` — harness pods run `collect_metrics.sh` to scrape `/metrics` from all vLLM pods during the benchmark
 - After each treatment, captures model-serving, EPP, and IGW pod logs
 - Runs `process_epp_logs.py` on captured EPP logs to extract scheduling metrics
 
-Without `-f`, metrics scraping is disabled and pod logs are not captured.
+**`--no-monitoring` (standup):**
+- Disables PodMonitor creation (`monitoring.podmonitor.enabled: false`)
+- Disables GAIE ServiceMonitor creation (`inferenceExtension.monitoring.prometheus.enabled: false`)
+- Use this when the cluster lacks Prometheus CRDs (PodMonitor, ServiceMonitor) and you want to avoid CRD-not-found errors during Helm install
+
+**No flag passed:**
+- Scenario defaults from `defaults.yaml` apply as-is
+- By default, `monitoring.podmonitor.enabled: true` (PodMonitors are created at standup)
+- By default, `monitoring.metricsScrapeEnabled: false` (harness does not scrape metrics during run)
+- To enable metrics scraping during run, pass `-f` / `--monitoring` explicitly
+
+**Environment variable:** `LLMDBENCH_MONITORING=true` or `LLMDBENCH_MONITORING=false` can be used as an alternative to the CLI flags. The CLI flag takes precedence when both are set.
 
 #### Enabling monitoring in a scenario
 
