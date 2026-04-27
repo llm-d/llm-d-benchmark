@@ -47,7 +47,7 @@ class RenderPlans:
         cli_namespace: str | None = None,
         cli_model: str | None = None,
         cli_methods: str | None = None,
-        cli_monitoring: bool = False,
+        cli_monitoring: bool | None = None,
         cli_wva: bool = False,
         setup_overrides: dict | None = None,
         cli_stack_filter: list[str] | None = None,
@@ -453,19 +453,17 @@ class RenderPlans:
                 )
 
     def _resolve_monitoring(self, values: dict) -> dict:
-        """Override PodMonitor creation based on ``--monitoring`` / ``--no-monitoring``.
+        """Override monitoring based on ``--monitoring`` / ``--no-monitoring``.
 
-        Controls whether PodMonitor resources are created at standup so
-        Prometheus can scrape vLLM pods.  This is a zero-cost operation
-        (just a CRD declaration).
+        When enabled (``--monitoring`` on standup, ``-f`` on run):
+        - ``podmonitor.enabled`` → PodMonitor CRDs created for Prometheus
+        - ``metricsScrapeEnabled`` → harness scrapes vLLM /metrics during run
 
-        Harness-level metrics scraping (``metricsScrapeEnabled``) is a
-        separate concern that adds HTTP overhead during benchmarks and
-        is left to the scenario/defaults configuration.
+        When disabled (``--no-monitoring``):
+        - ``podmonitor.enabled`` → False (no PodMonitor created)
 
-        - ``--monitoring``    → force-enable PodMonitor (overrides scenario)
-        - ``--no-monitoring`` → force-disable PodMonitor (overrides scenario)
-        - neither             → use scenario/defaults values
+        When neither flag is given, scenario/defaults values are used
+        (podmonitor enabled by default, metricsScrapeEnabled disabled).
         """
         if self.cli_monitoring is None:
             return values
@@ -476,8 +474,9 @@ class RenderPlans:
 
         if self.cli_monitoring:
             podmonitor_config["enabled"] = True
+            monitoring_config["metricsScrapeEnabled"] = True
             self.logger.log_info(
-                "Monitoring enabled from CLI: PodMonitor for Prometheus scraping"
+                "Monitoring enabled from CLI: PodMonitor + metrics scraping"
             )
         else:
             podmonitor_config["enabled"] = False
