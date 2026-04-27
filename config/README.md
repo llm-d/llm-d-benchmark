@@ -1000,18 +1000,17 @@ The `shared-config` emptyDir volume and volumeMount are already configured in `d
 
 #### Image resolution
 
-Init container images follow the same `auto` resolution as all other images in the benchmark. The resolution works through two layers:
+Init container images can be specified three ways, in order of preference:
 
-1. **`images.benchmark` entry** (in `defaults.yaml`): Defines the benchmark image with `tag: auto`. During rendering, the `VersionResolver` resolves this tag to the latest available tag via `skopeo list-tags` (or `podman` as fallback).
+1. **`imageKey: <entry>`** -- references an entry under `images.*` in `defaults.yaml` (e.g. `imageKey: benchmark`, `imageKey: udsTokenizer`). The resolver expands it to `<repo>:<tag>` and inherits `imagePullPolicy` from the same entry. This is the recommended form -- single source of truth, automatically tracks version bumps in `defaults.yaml`.
 
-2. **Template defaulting** (in `13_ms-values.yaml.j2`): When rendering init containers, if an init container's `image` field is missing or ends with `:auto`, the template automatically replaces it with the resolved `images.benchmark.repository:images.benchmark.tag`.
+2. **`image: <full-string>`** -- any image string. Tags ending in `:auto` are resolved against the registry at render time via `skopeo list-tags` (falling back to `crane` then `podman`). Use for one-off images that don't have an `images.*` entry.
 
-This means:
-- You can set `image: ghcr.io/llm-d/llm-d-benchmark:auto` --the `:auto` suffix is resolved at render time
-- You can omit the `image` field entirely --it defaults to the benchmark image
-- You can set a specific image (e.g., `image: my-registry/my-init:v1.0`) --it is used as-is
+3. **Neither set** -- the template falls back to `images.benchmark`.
 
-The resolved image tag is visible in the rendered `ms-values.yaml` in the workspace directory.
+Setting both `image` and `imageKey` on the same entry is a config error and aborts plan generation. An unknown `imageKey` (no matching `images.*` entry) does too -- the error message lists the available keys.
+
+The resolved image is visible in the rendered `ms-values.yaml` in the workspace directory.
 
 #### Environment variable propagation
 
@@ -1029,7 +1028,7 @@ Init containers are configured per scenario (the default in `defaults.yaml` is `
 decode:
   initContainers:
     - name: preprocess
-      image: ghcr.io/llm-d/llm-d-benchmark:auto  # resolved to latest tag at render time
+      imageKey: benchmark  # -> images.benchmark.{repository,tag} from defaults.yaml
       imagePullPolicy: Always
       command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
       securityContext:
@@ -1072,19 +1071,19 @@ The script must write a sourceable shell file to `/shared-config/llmdbench_env.s
 decode:
   initContainers:
     - name: preprocess
-      image: ghcr.io/llm-d/llm-d-benchmark:auto
+      imageKey: benchmark
       command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
       volumeMounts:
         - name: shared-config
           mountPath: /shared-config
     - name: my-custom-init
-      image: my-registry/my-init:latest
+      image: my-registry/my-init:latest  # one-off image; no `images.*` entry needed
       command: ["my-setup-script.sh"]
 ```
 
 #### Disabling init containers
 
-Omit the `initContainers` field or leave it as the default (`[]`). CI/simulated scenarios like `simulated-accelerators` don't define init containers.
+Omit the `initContainers` field or leave it as the default (`[]`).
 
 ---
 
@@ -1301,7 +1300,8 @@ All images are defined in `defaults.yaml`. There are two groups: the shared `ima
 | `images.vllm` | `ghcr.io/llm-d/llm-d-cuda:auto` | Modelservice decode/prefill pods, standalone fallback |
 | `images.benchmark` | `ghcr.io/llm-d/llm-d-benchmark:auto` | Download job, harness pod, data access pod |
 | `images.inferenceScheduler` | `ghcr.io/llm-d/llm-d-inference-scheduler:auto` | GAIE inference extension |
-| `images.routingSidecar` | `ghcr.io/llm-d/llm-d-routing-sidecar:auto` | Modelservice routing sidecar |
+| `images.routingSidecar` | `ghcr.io/llm-d/llm-d-routing-sidecar:auto` | Modelservice routing sidecar (proxy in front of vLLM) |
+| `images.udsTokenizer` | `ghcr.io/llm-d/llm-d-uds-tokenizer:auto` | EPP sidecar (precise-prefix-cache scoring); also used as an init container in some scenarios |
 | `images.python` | `python:3.10` | Utility containers |
 | `images.vllmOpenai` | `docker.io/vllm/vllm-openai:auto` | Not currently used by any template (reserved) |
 
@@ -1325,6 +1325,8 @@ Each image key has `repository`, `tag`, and `pullPolicy` sub-fields. The one exc
 | `13_ms-values.yaml.j2` (decode) | `images.vllm` | Decode pods in modelservice |
 | `13_ms-values.yaml.j2` (prefill) | `images.vllm` | Prefill pods in modelservice |
 | `13_ms-values.yaml.j2` (sidecar) | `images.routingSidecar` | Routing sidecar in modelservice |
+| `13_ms-values.yaml.j2` (init containers) | `images.<imageKey>` | Per-init-container, via `imageKey:` (defaults to `images.benchmark`) |
+| `12_gaie-values.yaml.j2` (sidecar) | `images.udsTokenizer` | EPP sidecar (when `inferenceExtension.sidecar.enabled: true`) |
 | `14_standalone-deployment_yaml.j2` | `standalone.image` | Standalone vLLM container |
 | `14_standalone-deployment_yaml.j2` (launcher) | `standalone.launcher.image` | Standalone launcher container |
 | `19_wva-values.yaml.j2` | `wva.image` | Workload Variant Autoscaler |
@@ -1435,6 +1437,46 @@ scenario:
         repository: my-registry/llm-d-inference-scheduler
         tag: v1.2.3
 ```
+
+**Routing sidecar and EPP sidecar:**
+
+These are read directly from `images.routingSidecar` and `images.udsTokenizer` -- override the same way:
+
+```yaml
+scenario:
+  - name: "my-deployment"
+    images:
+      routingSidecar:
+        tag: v0.8.0
+      udsTokenizer:
+        repository: my-registry/uds-tokenizer
+        tag: dev
+```
+
+There is no per-block image field on `routing.proxy` or `inferenceExtension.sidecar` -- the `images.*` entry is the single source of truth.
+
+**Init containers** (`decode.initContainers[*]`, `prefill.initContainers[*]`, `standalone.initContainers[*]`):
+
+Three options, in order of preference:
+
+1. `imageKey: <entry>` -- references `images.<entry>` from `defaults.yaml` (recommended; tracks version bumps automatically). Inherits `imagePullPolicy` from the same entry when not set on the init container.
+
+2. `image: <full-string>` -- direct override; supports `:auto` tag resolution via the registry. Use for one-off images that don't have an `images.*` entry.
+
+3. Neither -- the template falls back to `images.benchmark`.
+
+```yaml
+decode:
+  initContainers:
+    - name: preprocess
+      imageKey: benchmark              # tracks images.benchmark
+      command: [...]
+    - name: my-custom
+      image: my-registry/init:v1.0     # one-off override; no images.* entry needed
+      command: [...]
+```
+
+To change the image used by every `imageKey: benchmark` reference at once, override `images.benchmark` in your scenario (same as any other entry above). Setting both `image:` and `imageKey:` on the same init container is a config error and aborts plan generation; an unknown `imageKey` does too (the error message lists the available keys).
 
 **How to tell which one to use:** Check whether your specification's scenario has `standalone.enabled: true`. If it does, the vLLM serving image comes from `standalone.image`. Otherwise (modelservice path), it comes from `images.vllm`. You can verify by running `plan` and inspecting the rendered YAML in the stack output directory.
 

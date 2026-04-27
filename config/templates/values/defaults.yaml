@@ -334,6 +334,12 @@ huggingface:
 #                often differs from the source repo URL, so we record both.)
 #   sourcePath:  optional path within sourceRepo (e.g. a Dockerfile or subdir)
 #
+# Init containers (decode/prefill/standalone) can reference an entry from
+# this section via `imageKey: <entry>`, which expands to repo:tag (and
+# inherits pullPolicy when the block doesn't set its own).  See
+# `decode.initContainers` for usage.  Setting both `image` and `imageKey`
+# on the same entry is an error.
+#
 images:
   benchmark:
     repository: ghcr.io/llm-d/llm-d-benchmark
@@ -570,6 +576,8 @@ inferenceExtension:
   verbosity: "1"
   # UDS tokenizer sidecar - runs alongside EPP for precise-prefix-cache scoring.
   # Enable in scenarios that use `precise-prefix-cache-scorer` with UDS tokenizer.
+  # Image is sourced from `images.udsTokenizer`; override that entry per scenario
+  # to change the version.
   sidecar:
     enabled: false
     name: tokenizer-uds
@@ -621,6 +629,8 @@ routing:
   secure: false
 
   # Proxy configuration
+  # Image is sourced from `images.routingSidecar`; override that entry per
+  # scenario to change the version.
   proxy:
     enabled: true
     imagePullPolicy: *pull_always
@@ -867,7 +877,9 @@ decode:
   # Extra pod config
   extraPodConfig: {}
 
-  # Init containers (optional, configured per scenario)
+  # Init containers (optional, configured per scenario).
+  # Each entry sets `image` directly or `imageKey` (an entry name from
+  # `images.*`); if neither is set, image defaults to `images.benchmark`.
   initContainers: []
 
   # LWS / Multinode options (optional)
@@ -978,7 +990,7 @@ prefill:
   # Extra pod config
   extraPodConfig: {}
 
-  # Init containers (optional, configured per scenario)
+  # Init containers (optional). See `decode.initContainers`.
   initContainers: []
 
 

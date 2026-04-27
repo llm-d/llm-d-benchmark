@@ -160,7 +160,7 @@ scenario:
 
       initContainers:
         - name: preprocess
-          image: ghcr.io/llm-d/llm-d-benchmark:auto
+          imageKey: benchmark
           imagePullPolicy: Always
           command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
           volumeMounts:
@@ -292,7 +292,7 @@ scenario:
 
       initContainers:
         - name: preprocess
-          image: ghcr.io/llm-d/llm-d-benchmark:auto
+          imageKey: benchmark
           imagePullPolicy: Always
           command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
           volumeMounts:

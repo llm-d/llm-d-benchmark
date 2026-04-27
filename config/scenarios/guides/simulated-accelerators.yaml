@@ -89,7 +89,6 @@ scenario:
       secure: false
       proxy:
         enabled: true
-        image: ghcr.io/llm-d/llm-d-routing-sidecar:v0.7.1
         connector: nixlv2
         secure: false
 
@@ -97,14 +96,13 @@ scenario:
     # MODELSERVICE CONFIGURATION
     # =========================================================================
 
-    # Override images for simulation
+    # Override images for simulation (only vllm needs swapping; routingSidecar
+    # and udsTokenizer come from defaults.yaml `images.*`)
     images:
       vllm:
         repository: ghcr.io/llm-d/llm-d-inference-sim
         tag: v0.8.2
         pullPolicy: IfNotPresent
-      routingSidecar:
-        repository: ghcr.io/llm-d/llm-d-routing-sidecar
 
     # -------------------------------------------------------------------------
     # Decode Configuration -- 3 replicas with uds-tokenizer
@@ -123,8 +121,7 @@ scenario:
 
       initContainers:
         - name: uds-tokenizer
-          image: ghcr.io/llm-d/llm-d-uds-tokenizer:v0.7.1
-          imagePullPolicy: IfNotPresent
+          imageKey: udsTokenizer
           restartPolicy: Always
           env:
             - name: LOG_LEVEL
@@ -223,8 +220,7 @@ scenario:
 
       initContainers:
         - name: uds-tokenizer
-          image: ghcr.io/llm-d/llm-d-uds-tokenizer:v0.7.1
-          imagePullPolicy: IfNotPresent
+          imageKey: udsTokenizer
           restartPolicy: Always
           env:
             - name: LOG_LEVEL

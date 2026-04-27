@@ -358,16 +358,15 @@ decode:
   subGroupExclusiveTopology: {{ decode.subGroupExclusiveTopology | lower }}
 {% endif %}
 
-{# Init containers - default image to images.benchmark if not specified or set to "auto".
-   Propagate core env vars so preprocess scripts have access to port numbers,
-   model parameters, and parallelism settings. This was not done in the bash
-   implementation but is needed for preprocess scripts that configure NCCL,
-   HCA detection, and other runtime environment. #}
+{# Init containers.  The version_resolver expands `imageKey` into `image`
+   and resolves any `:auto` tag before this template runs; this loop only
+   has to backfill the case where neither field was set. Propagate core env
+   vars so preprocess scripts have access to port numbers, model parameters,
+   and parallelism settings (needed for NCCL/HCA detection at pod runtime). #}
 {% if decode.initContainers is defined and decode.initContainers %}
   initContainers:
 {% for ic in decode.initContainers %}
-{% set ic_image = ic.image | default('') %}
-{% if not ic_image or ic_image.endswith(':auto') %}
+{% if not ic.image %}
 {% set _ = ic.update({'image': images.benchmark.repository ~ ':' ~ images.benchmark.tag}) %}
 {% endif %}
 {% endfor %}
@@ -765,12 +764,12 @@ prefill:
   subGroupExclusiveTopology: {{ prefill.subGroupExclusiveTopology | lower }}
 {% endif %}
 
-{# Prefill init containers -- rendered via shared macro #}
+{# Prefill init containers -- rendered via shared macro.  See decode block above
+   for the imageKey / image resolution flow. #}
 {% if prefill.initContainers is defined and prefill.initContainers %}
   initContainers:
 {% for ic in prefill.initContainers %}
-{% set ic_image = ic.image | default('') %}
-{% if not ic_image or ic_image.endswith(':auto') %}
+{% if not ic.image %}
 {% set _ = ic.update({'image': images.benchmark.repository ~ ':' ~ images.benchmark.tag}) %}
 {% endif %}
 {% endfor %}

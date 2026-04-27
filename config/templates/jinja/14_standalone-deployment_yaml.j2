@@ -108,9 +108,14 @@ spec:
                 - "{{ value }}"
 {% endfor %}
 {% endif %}
+{# The version_resolver expands `imageKey` into `image` and resolves any
+   `:auto` tag before this template runs.  Backfill the empty case here. #}
 {% if standalone.initContainers is defined and standalone.initContainers %}
       initContainers:
 {% for container in standalone.initContainers %}
+{% if not container.image %}
+{% set _ = container.update({'image': images.benchmark.repository ~ ':' ~ images.benchmark.tag}) %}
+{% endif %}
       - name: {{ container.name }}
         image: {{ container.image }}
 {% if container.imagePullPolicy is defined %}
