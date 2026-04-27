@@ -65,9 +65,10 @@ class UninstallHelmStep(Step):
                 self._delete_openshift_routes(cmd, context, ns, release)
                 self._delete_download_job(cmd, context, ns)
 
-        # WVA teardown: always remove per-stack VA+HPA. Only uninstall the
-        # shared controller + prometheus-adapter when the user passed -d
-        # (context.deep_clean) -- other stacks may still be using them.
+        # WVA teardown: always remove per-stack VA+HPA. The shared controller
+        # is uninstalled on full-scenario teardowns (no --stack filter); a
+        # partial-stack teardown preserves it because the remaining stacks
+        # still depend on it. --deep forces uninstall regardless.
         self._teardown_wva(cmd, context, errors)
 
         if errors:
@@ -167,9 +168,14 @@ class UninstallHelmStep(Step):
         """Tear down WVA resources.
 
         Always deletes the per-stack VariantAutoscaling + HPA so the model
-        no longer auto-scales after teardown. The (per-namespace) WVA
-        controller is preserved unless ``--deep`` (``deep_clean``) is set,
-        because other stacks in the same namespace may still depend on it.
+        no longer auto-scales after teardown.
+
+        The (per-namespace) WVA controller is uninstalled on full-scenario
+        teardowns (no ``--stack`` filter), because there are no remaining
+        stacks of this scenario to depend on it. A partial-stack teardown
+        (``--stack X``) preserves the controller -- the sibling stacks of
+        this scenario in the same namespace still need it. ``--deep``
+        forces uninstall regardless of the filter.
 
         prometheus-adapter and its supporting cluster-wide resources
         (``allow-thanos-querier-api-access`` ClusterRole, ``prometheus-ca``
@@ -236,11 +242,11 @@ class UninstallHelmStep(Step):
                         f"  Deleted {kind}/{resource_name}", emoji="🗑️"
                     )
 
-        # 2. WVA controller(s): only on --deep. The controller is per-namespace
-        # (one per unique wva.namespace, all of which are target namespaces
-        # for this teardown), so removing it on --deep is in-scope.
+        # 2. WVA controller(s): uninstalled on full-scenario teardowns and
+        # forced on --deep; preserved on partial-stack teardowns so sibling
+        # stacks of this scenario keep autoscaling.
         #
-        # PRINCIPLE: --deep only removes resources that live in the target
+        # PRINCIPLE: teardown only removes resources that live in the target
         # namespace(s). It MUST NOT touch cross-namespace or cluster-scoped
         # resources -- doing so would silently break other tenants. That's
         # why we explicitly do NOT remove on any teardown:
@@ -252,17 +258,22 @@ class UninstallHelmStep(Step):
         # (e.g. by a platform admin). Our standup install is idempotent
         # and skips when a cluster-wide install already exists, so leaving
         # them in place across teardowns is always correct.
-        if not context.deep_clean:
+        is_partial_stack_teardown = bool(context.stack_filter)
+        if is_partial_stack_teardown and not context.deep_clean:
             context.logger.log_info(
-                "Preserving WVA controller (pass -d/--deep to uninstall). "
-                "prometheus-adapter and shared cluster-wide RBAC are always "
-                "preserved regardless of --deep -- other tenants depend on them."
+                "Preserving WVA controller: --stack filter is active, "
+                "sibling stacks in this scenario still depend on it. "
+                "Pass -d/--deep to force uninstall."
             )
             return
 
+        if context.deep_clean:
+            mode_msg = "Deep clean: uninstalling WVA controller(s)."
+        else:
+            mode_msg = "Full-scenario teardown: uninstalling WVA controller(s)."
         context.logger.log_info(
-            "Deep clean: uninstalling WVA controller(s). "
-            "prometheus-adapter and shared cluster RBAC are kept intact."
+            f"{mode_msg} prometheus-adapter and shared cluster RBAC are "
+            "kept intact."
         )
         for wva_ns in sorted(seen_ns):
             context.logger.log_info(
