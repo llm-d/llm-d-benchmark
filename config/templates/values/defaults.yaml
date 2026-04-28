@@ -101,12 +101,13 @@ _anchors:
   gaie_version:                      &gaie_version                      v1.4.0
   wva_version:                       &wva_version                       0.6.0
   prometheus_version:                &prometheus_version                5.2.0
-  vllm-openai_version:               &vllm-openai_version               auto
+  vllm-openai_version:               &vllm-openai_version               v0.9.2
   llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.7.1
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.7.1
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.7.1
   llm-d-cuda_version:                &llm-d-cuda_version                v0.6.0
-  llm-d-inference-sim:               &llm-d-inference-sim_version       v0.8.2
+  llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.8.2
+  llm-d-benchmark_version:           &llm-d-benchmark_version           v0.6.0
 
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
@@ -343,7 +344,7 @@ huggingface:
 images:
   benchmark:
     repository: ghcr.io/llm-d/llm-d-benchmark
-    tag: auto
+    tag: *llm-d-benchmark_version
     pullPolicy: *pull_always
     sourceRepo: https://github.com/llm-d/llm-d-benchmark
 
