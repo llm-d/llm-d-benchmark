@@ -420,6 +420,12 @@ class AdminPrerequisitesStep(Step):
         ``servicemonitors.monitoring.coreos.com``.  If either is absent the
         step records an error with platform-aware remediation guidance.
         """
+        if context.dry_run:
+            cmd.logger.log_info(
+                "Skipping monitoring CRD validation (dry-run)"
+            )
+            return
+
         monitoring = plan_config.get("monitoring", {})
         podmonitor_enabled = monitoring.get("podmonitor", {}).get("enabled", False)
         scrape_enabled = monitoring.get("metricsScrapeEnabled", False)
