@@ -455,7 +455,7 @@ class RenderPlans:
     def _resolve_monitoring(self, values: dict) -> dict:
         """Override monitoring based on ``--monitoring`` / ``--no-monitoring``.
 
-        When enabled (``--monitoring`` on standup, ``-f`` on run):
+        When enabled (``--monitoring``):
         - ``podmonitor.enabled`` → PodMonitor CRDs created for Prometheus
         - ``metricsScrapeEnabled`` → harness scrapes vLLM /metrics during run
 

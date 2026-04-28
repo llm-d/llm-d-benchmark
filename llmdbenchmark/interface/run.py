@@ -133,7 +133,6 @@ def add_subcommands(parser: argparse._SubParsersAction):
 
     # Monitoring
     run_parser.add_argument(
-        "-f",
         "--monitoring",
         action="store_true",
         default=None,
