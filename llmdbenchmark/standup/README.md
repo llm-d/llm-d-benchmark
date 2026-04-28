@@ -41,14 +41,14 @@ After standup completes, smoketests run automatically as a separate phase. The s
 
 Use `--skip-smoketest` to skip the automatic post-standup smoketests. They can also be run independently via `llmdbenchmark smoketest`. See [smoketests/README.md](../smoketests/README.md) for details.
 
-## `-f` / `--monitoring` Flag
+## `--monitoring` Flag
 
-When passed, `-f` enables monitoring infrastructure during standup:
+When passed, `--monitoring` enables monitoring infrastructure during standup:
 
 - Creates PodMonitor resources for Prometheus to scrape vLLM pods
 - Sets EPP (inference scheduler) log verbosity to level 4 for detailed scheduling diagnostics
 
-This is separate from the run-phase `-f` flag, which controls metrics scraping and log capture during benchmark execution.
+This is separate from the run-phase `--monitoring` flag, which controls metrics scraping and log capture during benchmark execution.
 
 ## Dry-Run Behavior
 

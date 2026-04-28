@@ -1269,7 +1269,7 @@ The `--monitoring` and `--no-monitoring` flags control monitoring across both st
 - Ensures PodMonitor resources are created for Prometheus scraping of vLLM pods
 - Sets EPP verbosity to 4 (richer logs for post-run analysis)
 
-**`--monitoring` (run / `-f`):**
+**`--monitoring` (run):**
 - Sets `metricsScrapeEnabled: true` — harness pods run `collect_metrics.sh` to scrape `/metrics` from all vLLM pods during the benchmark
 - After each treatment, captures model-serving, EPP, and IGW pod logs
 - Runs `process_epp_logs.py` on captured EPP logs to extract scheduling metrics
@@ -1283,7 +1283,7 @@ The `--monitoring` and `--no-monitoring` flags control monitoring across both st
 - Scenario defaults from `defaults.yaml` apply as-is
 - By default, `monitoring.podmonitor.enabled: true` (PodMonitors are created at standup)
 - By default, `monitoring.metricsScrapeEnabled: false` (harness does not scrape metrics during run)
-- To enable metrics scraping during run, pass `-f` / `--monitoring` explicitly
+- To enable metrics scraping during run, pass `--monitoring` explicitly
 
 **Environment variable:** `LLMDBENCH_MONITORING=true` or `LLMDBENCH_MONITORING=false` can be used as an alternative to the CLI flags. The CLI flag takes precedence when both are set.
 

@@ -412,7 +412,7 @@ llmdbenchmark --version
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
 | `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict per-stack execution to the named subset. Useful in multi-stack scenarios (e.g. `guides/multi-model-wva`) to re-deploy a single pool without touching siblings. Unknown names fail loudly. |
-| `-f` / `--monitoring` | `LLMDBENCH_MONITORING` | Enable PodMonitor creation and EPP verbosity during standup |
+| `--monitoring` | `LLMDBENCH_MONITORING` | Enable PodMonitor creation and EPP verbosity during standup |
 | `--skip-smoketest` | | Skip automatic smoketest after standup completes |
 | `--affinity` | `LLMDBENCH_AFFINITY` | Node affinity / tolerations label |
 | `--annotations` | `LLMDBENCH_ANNOTATIONS` | Extra annotations for deployed resources |
@@ -473,7 +473,7 @@ llmdbenchmark --version
 | `--generate-config` | | Generate config and exit |
 | `-x DATASET` | `LLMDBENCH_DATASET` | Dataset URL for harness replay |
 | `--wait-timeout N` | `LLMDBENCH_WAIT_TIMEOUT` | Seconds to wait for harness completion |
-| `-f` / `--monitoring` | | Enable metrics scraping and EPP log capture during benchmark |
+| `--monitoring` | | Enable metrics scraping and EPP log capture during benchmark |
 | `-q` / `--serviceaccount` | `LLMDBENCH_SERVICE_ACCOUNT` | Service account name for harness pods |
 | `-g` / `--envvarspod` | `LLMDBENCH_HARNESS_ENVVARS_TO_YAML` | Comma-separated env var names to propagate into harness pod |
 | `--analyze` | | Run local analysis on results after collection |

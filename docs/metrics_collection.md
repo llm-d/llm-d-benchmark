@@ -38,11 +38,11 @@ Harness Pod (in-cluster)
 
 ## Configuration
 
-Metrics collection can be enabled via CLI (`llmdbenchmark run -f` / `--monitoring`) or via scenario config. The CLI flag sets `metricsScrapeEnabled: true` at runtime, overriding the scenario default.
+Metrics collection can be enabled via CLI (`llmdbenchmark run --monitoring`) or via scenario config. The CLI flag sets `metricsScrapeEnabled: true` at runtime, overriding the scenario default.
 
 | Environment Variable | Default | Description |
 |---|---|---|
-| `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED` | `false` | Enable/disable metrics collection. Set automatically when `--monitoring` / `-f` is passed. |
+| `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED` | `false` | Enable/disable metrics collection. Set automatically when `--monitoring` is passed. |
 | `METRICS_COLLECTION_INTERVAL` | `15` | Seconds between collection snapshots |
 | `LLMDBENCH_VLLM_COMMON_METRICS_PORT` | `8200` | Prometheus metrics port (modelservice) |
 | `LLMDBENCH_VLLM_COMMON_INFERENCE_PORT` | `8000` | Fallback port (standalone vLLM) |

@@ -212,7 +212,7 @@ names fail loudly with a list of valid ones. Available via
 |------|----------------------|
 | `-p / --namespace` | Applies to every stack (namespaces are scenario-wide). |
 | `-t / --methods` | Applies to every stack. |
-| `-f / --monitoring` | Applies to every stack. |
+| `--monitoring` | Applies to every stack. |
 | `-u / --wva` | Applies to every stack. |
 | `-l / --harness`, `-w / --workload`, `-o / --overrides` | Applies to every stack's harness pod - all stacks run the same workload. |
 | `-j / --parallelism` | Applies to every stack - each stack launches N parallel harness pods. |

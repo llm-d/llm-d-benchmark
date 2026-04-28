@@ -73,7 +73,7 @@ Provisions model infrastructure from a specification. Implicitly generates a pla
 | `-b` / `--annotations` | `LLMDBENCH_ANNOTATIONS` | Pod annotations |
 | `-r` / `--release` | `LLMDBENCH_RELEASE` | Helm chart release name |
 | `-u` / `--wva` | `LLMDBENCH_WVA` | Enable Workload Variant Autoscaler |
-| `-f` / `--monitoring` | -- | Enable PodMonitor and metrics scraping |
+| `--monitoring` | -- | Enable PodMonitor and metrics scraping |
 | `--parallel` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
 | `-k` / `--kubeconfig` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--skip-smoketest` | -- | Skip automatic post-standup smoketests |
@@ -113,7 +113,7 @@ Executes benchmark experiments against deployed infrastructure.
 | `-j` / `--parallelism` | `LLMDBENCH_PARALLELISM` | Parallel harness pods |
 | `--wait-timeout` | `LLMDBENCH_WAIT_TIMEOUT` | Wait timeout in seconds (0 = don't wait) |
 | `-x` / `--dataset` | `LLMDBENCH_DATASET` | Dataset URL for replay |
-| `-f` / `--monitoring` | -- | Enable metrics scraping and log capture |
+| `--monitoring` | -- | Enable metrics scraping and log capture |
 | `-q` / `--serviceaccount` | `LLMDBENCH_SERVICE_ACCOUNT` | Service account for harness pods |
 | `-g` / `--envvarspod` | `LLMDBENCH_HARNESS_ENVVARS_TO_YAML` | Env vars to propagate to harness pods |
 | `-z` / `--skip` | -- | Skip execution, collect existing results only |

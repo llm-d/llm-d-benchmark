@@ -7,7 +7,7 @@ The `--monitoring` and `--no-monitoring` flags provide CLI control over monitori
 ```bash
 # Enable monitoring: creates PodMonitors at standup, enables metrics scraping during run
 llmdbenchmark standup -s <scenario> --monitoring
-llmdbenchmark run -f   # -f is shorthand for --monitoring
+llmdbenchmark run --monitoring
 
 # Disable monitoring: skips PodMonitor and GAIE ServiceMonitor creation
 # Use when the cluster lacks Prometheus CRDs (e.g. GKE without GMP enabled)
@@ -22,7 +22,7 @@ See [config/README.md — Monitoring and Metrics](../config/README.md#monitoring
 
 ### Benchmark-Built-In Metrics
 
-The benchmark collects metrics automatically during runs when `metricsScrapeEnabled: true` is set in the scenario config (or when `--monitoring` / `-f` is passed on the CLI). This includes:
+The benchmark collects metrics automatically during runs when `metricsScrapeEnabled: true` is set in the scenario config (or when `--monitoring` is passed on the CLI). This includes:
 
 - **vLLM Prometheus metrics** — KV cache usage, GPU/CPU cache and memory, request queues, prefix cache hit rates, NIXL KV transfers, preemptions (scraped every 15s)
 - **EPP Prometheus metrics** — Pool-level gauges (KV cache utilization, queue size, ready pods), scheduler/plugin/request duration histograms, token distributions, P/D decision counters
