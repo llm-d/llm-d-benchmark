@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_CICD_NS: llmdbenchcicdsns-ocp
+      LLMDBENCH_CICD_NS: llmdbenchcicdfns-ocp
       LLMDBENCH_CICD_R: llmdbenchcicdr-ocp
       LLMDBENCH_CICD_TARGET: cicd/ocp
       LLMDBENCH_CICD_METHOD: fma

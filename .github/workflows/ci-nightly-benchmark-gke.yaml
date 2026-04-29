@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_CICD_NS: llmdbenchcicdsns-gke
+      LLMDBENCH_CICD_NS: llmdbenchcicdfns-gke
       LLMDBENCH_CICD_R: llmdbenchcicdr-gke
       LLMDBENCH_CICD_TARGET: cicd/gke
       LLMDBENCH_CICD_METHOD: fma
