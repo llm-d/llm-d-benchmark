@@ -5,16 +5,14 @@
 scenario:
   - name: "cks-cicd"
 
-    # Model
     model:
       name: facebook/opt-125m
       shortName: facebook-opt-125m
       path: models/facebook/opt-125m
       huggingfaceId: facebook/opt-125m
 
-    # Deployment method
     modelservice:
-      enabled: true
+      enabled: false
     standalone:
       enabled: false
     fma:
@@ -28,25 +26,6 @@ scenario:
       enabled: true
       nodeSelector:
         gpu.nvidia.com/class: H200
-
-    decode:
-      enabled: true
-      acceleratorType:
-          labelKey: gpu.nvidia.com/class
-          labelValue: H200
-      replicas: 1
-
-    prefill:
-      enabled: true
-      acceleratorType:
-          labelKey: gpu.nvidia.com/class
-          labelValue: H200
-      replicas: 1
-
-    standalone:
-      acceleratorType:
-        labelKey: gpu.nvidia.com/class
-        labelValue: H200
 
     vllmCommon:
       priorityClassName: nightly-gpu-critical
