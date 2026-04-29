@@ -46,7 +46,7 @@ jobs:
     env:
       LLMDBENCH_CICD_NS: llmdbenchcicdfns-gke
       LLMDBENCH_CICD_R: llmdbenchcicdr-gke
-      LLMDBENCH_CICD_TARGET: cicd/gke
+      LLMDBENCH_CICD_TARGET: cicd/gke-fma
       LLMDBENCH_CICD_METHOD: fma
       LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdf-gke
       GCP_PROJECT_ID: llm-d-scale
@@ -129,8 +129,7 @@ jobs:
 
       - name: Run
         run: |
-          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD" \
-            --overrides "harness.name=nop,harness.experimentProfile=nop.yaml,harness.executable=llm-d-benchmark.py"
+          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
       - name: Teardown (standalone)

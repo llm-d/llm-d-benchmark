@@ -1,0 +1,66 @@
+# OpenShift Container Platform CI/CD Scenario - FMA
+# Variant of cicd/ocp.yaml for Fast Model Actuation (FMA) runs.
+# Uses nop harness since FMA manages its own endpoint discovery.
+
+scenario:
+  - name: "ocp-cicd"
+
+    # Model
+    model:
+      name: facebook/opt-125m
+      shortName: facebook-opt-125m
+      path: models/facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
+
+    affinity:
+      enabled: true
+      nodeSelector:
+#        nvidia.com/gpu.product: NVIDIA-L40S
+        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+
+    prefill:
+      enabled: true
+      replicas: 1
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+#        labelValue: NVIDIA-L40S
+        labelValue: NVIDIA-H100-80GB-HBM3
+
+    decode:
+      enabled: true
+      replicas: 1
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+#        labelValue: NVIDIA-L40S
+        labelValue: NVIDIA-H100-80GB-HBM3
+
+    standalone:
+      acceleratorType:
+        labelKey: nvidia.com/gpu.product
+#        labelValue: NVIDIA-L40S
+        labelValue: NVIDIA-H100-80GB-HBM3
+
+#    storage:
+#      modelPvc:
+#        storageClassName: ocs-storagecluster-cephfs
+#      workloadPvc:
+#        storageClassName: ocs-storagecluster-cephfs
+
+    fma:
+      enabled: false
+      iterations: 3
+
+    vllmCommon:
+      priorityClassName: nightly-gpu-critical
+
+    workDir: /tmp/llmdbenchcicd-ocp/
+
+    harness:
+      name: nop
+      experimentProfile: nop.yaml
+      executable: llm-d-benchmark.py
+
+    images:
+      benchmark:
+        repository: ghcr.io/llm-d/llm-d-benchmark
+        tag: nightly
