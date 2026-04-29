@@ -24,14 +24,13 @@ scenario:
     # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST
     # -------------------------------------------------------------------------
     model:
-      name: ibm-ai-platform/micro-g3.3-8b-instruct-1b
-      shortName: micro-g3-3-8b-instruct-1b
-      path: models/ibm-ai-platform/micro-g3.3-8b-instruct-1b
-      huggingfaceId: ibm-ai-platform/micro-g3.3-8b-instruct-1b
+      name: ibm-granite/granite-3.3-8b-instruct
+      shortName: granite-3-3-8b-instruct
+      path: models/ibm-granite/granite-3.3-8b-instruct
+      huggingfaceId: ibm-granite/granite-3.3-8b-instruct
       maxModelLen: 32768
-      maxNumSeq: 32
-      maxNumBatchedTokens: 1024
-
+      maxNumSeq: 4
+      maxNumBatchedTokens: 512
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
     # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY="ibm.com/spyre.product:IBM_Spyre"
@@ -58,8 +57,6 @@ scenario:
       # the chart's accelerator.resources map from type + resource.
       type: spyre
       resource: ibm.com/spyre_vf
-      # count must match parallelism.tensor -- each TP worker needs its own Spyre device
-      count: 4
 
     gateway:
       name: infra-llmdbench-inference-gateway #your gateway
@@ -82,8 +79,8 @@ scenario:
     # -------------------------------------------------------------------------
     images:
       benchmark:
-        repository: quay.io/morana/llm-d-benchmark
-        tag: 0.0.1
+        repository: icr.io/vopo/llm-d-benchmark
+        tag: latest
         pullPolicy: IfNotPresent
       vllm:
         repository: registry.redhat.io/rhaii-early-access/vllm-spyre-rhel9
@@ -139,7 +136,7 @@ scenario:
     # -------------------------------------------------------------------------
     # Spyre cluster requires spyre-scheduler via admission webhook
     # Corresponds to: schedulerName in the Helm chart values
-    schedulerName: spyre-scheduler
+    schedulerName: default-scheduler
 
     vllmCommon:
       preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && source $HOME/llmdbench_env.sh"
@@ -212,18 +209,44 @@ scenario:
         labelKey: ibm.com/spyre.product
         labelValue: IBM_Spyre
 
+      # -----------------------------------------------------------------------
+      # Model is not pre-compiled , so vllm is taking around to 17 min for coming up completely
+      # Added Startup probe for 1200 sec 
+      # Then validating liveness on /health & readiness o n /v1/models
+      # -----------------------------------------------------------------------
+
+      probes:
+        startup:
+          path: /health
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 120
+        readiness:
+          path: /v1/models
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        liveness:
+          path: /health
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+
       resources:
         limits:
           memory: 200Gi
-          cpu: "20"
+          cpu: "8"
         requests:
           memory: 200Gi
-          cpu: "20"
+          cpu: "8"
 
       vllm:
         customCommand: |
-          /home/senuser/container-scripts/simple_vllm_serve.sh ${model.name} \
-          --port $VLLM_INFERENCE_PORT \
+          /opt/app-root/spyre_entrypoint.sh --model /model-cache/$MODEL_PATH \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_METRICS_PORT \
           --max-model-len $VLLM_MAX_MODEL_LEN \
           --max-num-seq $VLLM_MAX_NUM_SEQ \
           --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
@@ -234,12 +257,6 @@ scenario:
 
       # Spyre-specific environment variables
       extraEnvVars:
-        - name: KUBECONFIG
-          value: "/etc/kubeconfig/llmdbench-context"
-        - name: PORT
-          value: "8000"
-        - name: SERVED_MODEL_NAME
-          value: "${model.name}"
         - name: FLEX_COMPUTE
           value: SENTIENT
         - name: FLEX_DEVICE
@@ -253,9 +270,13 @@ scenario:
         - name: HF_HUB_DISABLE_XET
           value: "1"
         - name: TORCH_SENDNN_CACHE_ENABLE
-          value: "1"
+          value: "0"
         - name: TORCH_SENDNN_CACHE_DIR
           value: /mnt/spyre-precompiled-model
+        - name: TORCH_SENDNN_CACHE_DIR
+          value: /mnt/spyre-precompiled-model
+        - name: VLLM_SPYRE_REQUIRE_PRECOMPILED_DECODERS
+          value: "0"
         - name: VLLM_SPYRE_DYNAMO_BACKEND
           value: sendnn
         - name: VLLM_SPYRE_USE_CB
@@ -263,7 +284,7 @@ scenario:
         - name: VLLM_SPYRE_USE_CHUNKED_PREFILL
           value: "1"
         - name: VLLM_DT_CHUNK_LEN
-          value: "1024"
+          value: "512"
 
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
@@ -277,10 +298,8 @@ scenario:
     # -------------------------------------------------------------------------
     prefill:
       enabled: false
-      replicas: 0
       accelerator:
         resource: ibm.com/spyre_vf
-        count: 4
       acceleratorType:
         labelKey: ibm.com/spyre.product
         labelValue: IBM_Spyre
@@ -312,9 +331,31 @@ scenario:
       #     maxNumSeq: 32
       #   - maxModelLen: 32768
       #     maxNumSeq: 32
+      #
+      # Model is not pre-compiled , so vllm is taking around to 17 min for coming up completely
+      # Added Startup probe for 1200 sec 
+      # Then validating liveness on /health & readiness o n /v1/models
+
+      probes:
+        startup:
+          path: /health
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 120
+        readiness:
+          path: /v1/models
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        liveness:
+          path: /health
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
 
       parallelism:
-        tensor: 4
+        tensor: 2
         data: 1
         dataLocal: 1
         workers: 1
@@ -322,14 +363,13 @@ scenario:
       resources:
         limits:
           memory: 200Gi
-          cpu: "20"
+          cpu: "8"
         requests:
           memory: 200Gi
-          cpu: "20"
+          cpu: "8"
 
       accelerator:
         resource: ibm.com/spyre_vf
-        count: 4
 
       # Spyre uses affinity-based scheduling, not GPU label selection
       acceleratorType:
@@ -338,8 +378,8 @@ scenario:
 
       vllm:
         customCommand: |
-          /home/senuser/container-scripts/simple_vllm_serve.sh /model-cache/${model.path} \
-          --served-model-name ${model.name} \
+          /opt/app-root/spyre_entrypoint.sh --model /model-cache/$MODEL_PATH \
+          --served-model-name $MODEL_PATH \
           --port $VLLM_METRICS_PORT \
           --max-model-len $VLLM_MAX_MODEL_LEN \
           --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
@@ -351,12 +391,6 @@ scenario:
 
       # Same Spyre-specific env vars as standalone
       extraEnvVars:
-        - name: KUBECONFIG
-          value: "/etc/kubeconfig/llmdbench-context"
-        - name: PORT
-          value: "8000"
-        - name: SERVED_MODEL_NAME
-          value: "${model.name}"
         - name: FLEX_COMPUTE
           value: SENTIENT
         - name: FLEX_DEVICE
@@ -370,9 +404,11 @@ scenario:
         - name: HF_HUB_DISABLE_XET
           value: "1"
         - name: TORCH_SENDNN_CACHE_ENABLE
-          value: "1"
+          value: "0"
         - name: TORCH_SENDNN_CACHE_DIR
           value: /mnt/spyre-precompiled-model
+        - name: VLLM_SPYRE_REQUIRE_PRECOMPILED_DECODERS
+          value: "0"
         - name: VLLM_SPYRE_DYNAMO_BACKEND
           value: sendnn
         - name: VLLM_SPYRE_USE_CB
@@ -380,7 +416,7 @@ scenario:
         - name: VLLM_SPYRE_USE_CHUNKED_PREFILL
           value: "1"
         - name: VLLM_DT_CHUNK_LEN
-          value: "1024"
+          value: "512"
 
     # =========================================================================
     # INFERENCE EXTENSION (EPP) -- Context-length-aware routing with UDS tokenizer
