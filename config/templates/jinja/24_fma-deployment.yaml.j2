@@ -96,11 +96,13 @@ spec:
             value: "{{ fma.modelMountPath }}/config"
           - name: HF_HOME
             value: "{{ fma.modelMountPath }}"
+{% if huggingface.enabled and huggingface.secretName is defined and huggingface.secretName %}
           - name: HF_TOKEN
             valueFrom:
               secretKeyRef:
                 name: {{ huggingface.secretName }}
                 key:  {{ huggingface.tokenKey }}
+{% endif %}
           resources:
             limits:
               nvidia.com/gpu: "1"
