@@ -16,8 +16,12 @@ scenario:
       nodeSelector:
         nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
 
-    fma:
+    modelservice:
       enabled: false
+    standalone:
+      enabled: false
+    fma:
+      enabled: true
       iterations: 3
 
     vllmCommon:

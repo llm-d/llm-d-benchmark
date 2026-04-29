@@ -16,7 +16,7 @@ scenario:
     standalone:
       enabled: false
     fma:
-      enabled: false
+      enabled: true
       iterations: 3
 
     gateway:

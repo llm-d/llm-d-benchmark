@@ -15,8 +15,12 @@ scenario:
         prometheus:
           enabled: false
 
-    fma:
+    modelservice:
       enabled: false
+    standalone:
+      enabled: false
+    fma:
+      enabled: true
       iterations: 3
       launcher:
         customPreprocessCommands:
