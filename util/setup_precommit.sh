@@ -10,17 +10,17 @@
 # Why delegate to install.sh?
 #   - It installs the system tools (helm, helmfile, kubectl, skopeo,
 #     crane, helm-diff, ...) that the render-validation hooks need.
-#   - It creates + reuses .venv/ and installs llmdbenchmark + config_explorer
-#     editably, and it caches its work in ~/.llmdbench_dependencies_checked
+#   - It creates + reuses .venv/ and installs llmdbenchmark + planner,
+#     and it caches its work in ~/.llmdbench_dependencies_checked
 #     so repeat runs skip already-verified dependencies.
 #   - It is the same bootstrap CI runs, minus the -y flag. CI passes -y
 #     to force system Python (the GitHub runner is already isolated), but
 #     for local development we want a real virtualenv so hook execution
 #     stays reproducible and does not pollute the user's system Python.
 #
-# Installs both pre-commit and pre-push hooks. Same hook set runs on
-# both stages -- the pre-push stage is a last-chance gate, not an
-# expanded one. The exhaustive per-spec render lives in CI.
+# Installs only the pre-commit stage. CI is the gate before push, so we
+# do not duplicate the local hooks at push time. The exhaustive per-spec
+# render lives in CI.
 # -----------------------------------------------------------------------
 set -euo pipefail
 
@@ -36,7 +36,7 @@ pushd "$REPO_ROOT" > /dev/null
 
 # ---------------------------------------------------------------------
 # 1. Delegate to install.sh -- creates .venv, installs llmdbenchmark,
-#    config_explorer, all system tools, and verifies imports. Matches CI
+#    planner, all system tools, and verifies imports. Matches CI
 #    exactly and uses its own ~/.llmdbench_dependencies_checked cache to
 #    skip already-verified dependencies on repeat invocations.
 # ---------------------------------------------------------------------
@@ -68,16 +68,17 @@ pip3 install --upgrade pip
 pip3 install -r .pre-commit_requirements.txt
 
 # ---------------------------------------------------------------------
-# 3. Register both hook types
+# 3. Register the pre-commit hook only. We deliberately don't register
+#    a pre-push hook -- CI runs the full per-spec validation, so the
+#    push-time gate would just duplicate work.
 # ---------------------------------------------------------------------
 echo ""
-echo "==> Registering git hooks..."
+echo "==> Registering pre-commit hook..."
 pre-commit install
-pre-commit install --hook-type pre-push
 
 echo ""
-echo "pre-commit hooks installed."
-echo "  pre-commit + pre-push: py-compile, pytest, render-validation-changed, detect-secrets"
+echo "pre-commit hook installed."
+echo "  pre-commit: py-compile, pytest, render-validation-changed, generate-sbom, detect-secrets"
 echo ""
 echo "Run 'pre-commit run --all-files' to exercise the hooks now."
 

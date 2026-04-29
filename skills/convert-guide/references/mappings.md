@@ -65,10 +65,10 @@ The infrastructure Helm chart is deployed via `setup/steps/07_deploy_setup.py`.
 
 | Helm Chart | LLMDBENCH Variable | ev[] Key | Default |
 |------------|-------------------|----------|---------|
-| llm-d-infra | `LLMDBENCH_VLLM_INFRA_CHART_VERSION` | `vllm_infra_chart_version` | `v1.3.5` |
+| llm-d-infra | `LLMDBENCH_VLLM_INFRA_CHART_VERSION` | `vllm_infra_chart_version` | `v1.4.0` |
 | llm-d-modelservice | `LLMDBENCH_VLLM_MODELSERVICE_CHART_VERSION` | `vllm_modelservice_chart_version` | `auto` |
 | inferencepool (GAIE) | `LLMDBENCH_VLLM_GAIE_CHART_VERSION` | `vllm_gaie_chart_version` | `v1.2.0` |
-| kgateway | `LLMDBENCH_GATEWAY_PROVIDER_KGATEWAY_CHART_VERSION` | `gateway_provider_kgateway_chart_version` | `v2.1.1` |
+| kgateway | `LLMDBENCH_GATEWAY_PROVIDER_KGATEWAY_CHART_VERSION` | `gateway_provider_kgateway_chart_version` | `v2.2.3` |
 | istio | `LLMDBENCH_GATEWAY_PROVIDER_ISTIO_CHART_VERSION` | `gateway_provider_istio_chart_version` | `1.28.1` |
 
 ## ModelService Configuration

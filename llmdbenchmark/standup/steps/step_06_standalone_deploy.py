@@ -138,10 +138,11 @@ class StandaloneDeployStep(Step):
                 self._require_config(plan_config, "standalone", "replicas")
             )
 
+            timeout = context.standalone_deploy_timeout
             wait_result = cmd.wait_for_pods(
                 label=f"app={deploy_name}",
                 namespace=namespace,
-                timeout=900,
+                timeout=timeout,
                 poll_interval=10,
                 description=f"standalone {deploy_name}",
             )

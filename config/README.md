@@ -22,6 +22,7 @@ All declarative configuration for `llmdbenchmark` lives in this directory. The t
 - [Affinity Configuration](#affinity-configuration)
 - [Scenario Organization](#scenario-organization)
 - [vLLM Command Generation](#vllm-command-generation)
+- [Context-Length-Aware Routing](#context-length-aware-routing)
 - [Init Containers](#init-containers)
 - [Harness Entrypoint Configuration](#harness-entrypoint-configuration)
 - [Flow Control Configuration](#flow-control-configuration)
@@ -101,6 +102,55 @@ scenario:
 ```
 
 Only the keys you specify are overridden. Everything else comes from `defaults.yaml`.
+
+**Multi-stack scenarios - the `shared:` block.** The scenario file also
+accepts an optional top-level `shared:` key that's merged into every stack
+before the per-stack overrides. Use it to lift scenario-wide config out of
+duplicated per-stack blocks. Per-stack still wins, so any stack can override
+a shared value:
+
+```yaml
+shared:
+  modelservice: { enabled: true }
+  wva:
+    enabled: true
+    image: { tag: v0.6.0 }
+  httpRoute:
+    mode: shared
+    name: multi-model-route
+    pathPrefix: /{stack.name}
+    rewriteTo: /
+
+scenario:
+  - name: pool-a
+    model: { name: Qwen/Qwen3-0.6B, ... }
+    decode: { replicas: 1 }
+  - name: pool-b
+    model: { name: unsloth/Meta-Llama-3.1-8B, ... }
+    decode: { replicas: 1 }
+```
+
+Render-time conveniences that activate only when `len(scenario) >= 2`:
+
+- `downloadJob.name` and `inferenceExtension.monitoring.secretName` are
+  auto-suffixed with each stack's `model_id_label` so parallel download
+  Jobs and sibling gaie Helm releases don't collide. Explicit overrides
+  (in `defaults.yaml`, `shared:`, or per-stack) are preserved.
+- `storage.modelPvc.name` is **not** suffixed - every stack writes weights
+  to a distinct `model.path` subdirectory on one shared PVC. This matches
+  how NVMe / local-directory storage classes are typically deployed and
+  lets cached weights be reused across runs without per-model duplication.
+- When `httpRoute.mode: shared`, [08_httproute.yaml.j2](templates/jinja/08_httproute.yaml.j2)
+  renders a single HTTPRoute in the first stack with one backendRef per
+  sibling stack; other stacks render an empty file.
+- Step 04 iterates `context.rendered_stacks` so every stack with
+  `modelservice.uriProtocol: pvc` (or standalone) runs a download Job
+  against the shared PVC. Downloads run in parallel - total wall time
+  ~ slowest model, not sum.
+
+See [guides/multi-model-wva.yaml](scenarios/guides/multi-model-wva.yaml) for a
+complete example and the developer guide's [Multi-Stack Scenarios](../docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
+section for the merge semantics.
 
 **Example: GPU scenario with a custom vLLM image**
 
@@ -293,12 +343,12 @@ Scenario files support `${dotted.path}` references that are resolved at render t
 
 ### Syntax
 
-Use `${section.key}` to reference any scalar value in the config. The path must contain at least one dot — this distinguishes config variables from shell variables, which are left untouched.
+Use `${section.key}` to reference any scalar value in the config. The path must contain at least one dot - this distinguishes config variables from shell variables, which are left untouched.
 
 | Pattern | Resolved? | Why |
 |---|---|---|
-| `${model.name}` | Yes | Dotted path → config lookup |
-| `${model.path}` | Yes | Dotted path → config lookup |
+| `${model.name}` | Yes | Dotted path -> config lookup |
+| `${model.path}` | Yes | Dotted path -> config lookup |
 
 ### Available variables
 
@@ -316,9 +366,9 @@ Any scalar value in the merged config (defaults + scenario) can be referenced. C
 
 Config variables work in any string field in the scenario YAML, including fields that are normally passed through as raw text:
 
-- `customCommand` — vLLM serve commands for decode/prefill/standalone
-- `extraEnvVars` — environment variable values
-- `pluginsCustomConfig` — inline EPP plugin configuration
+- `customCommand` - vLLM serve commands for decode/prefill/standalone
+- `extraEnvVars` - environment variable values
+- `pluginsCustomConfig` - inline EPP plugin configuration
 
 ### Example
 
@@ -355,7 +405,7 @@ Shell variables like `$VLLM_METRICS_PORT` are preserved for runtime resolution. 
 - Substitution runs after all resolvers (model, namespace, version, etc.) so all values are available.
 - If a reference cannot be resolved, it is left as-is and a warning is logged.
 - Non-string values (integers, booleans) are converted to strings when embedded.
-- The original config dict is not mutated — a deep copy is used.
+- The original config dict is not mutated - a deep copy is used.
 
 ## Model Artifact Protocol (`modelservice.uriProtocol`)
 
@@ -376,7 +426,7 @@ Controls how the modelservice Helm chart locates and loads model weights. Set vi
 4. Template 13 generates `modelArtifacts.uri: pvc://<pvc-name>/<model-path>`
 5. The modelservice Helm chart mounts the PVC and serves from it
 
-This is the recommended protocol for production — models are pre-cached and startup is fast.
+This is the recommended protocol for production - models are pre-cached and startup is fast.
 
 **`hf://` protocol:**
 
@@ -397,14 +447,14 @@ scenario:
       huggingfaceId: facebook/opt-125m
     modelservice:
       enabled: true
-      uriProtocol: hf     # No PVC, no download job — fetch at runtime
+      uriProtocol: hf     # No PVC, no download job - fetch at runtime
 ```
 
 ### Code path
 
-1. `llmdbenchmark/standup/steps/step_04_model_namespace.py` — `_requires_pvc_download()` returns `False` when `uriProtocol != "pvc"`
-2. `config/templates/jinja/13_ms-values.yaml.j2` — conditionally generates `hf://` or `pvc://` URI
-3. `config/templates/jinja/04_download_job.yaml.j2` — only rendered/applied when protocol is `pvc`
+1. `llmdbenchmark/standup/steps/step_04_model_namespace.py` - `_requires_pvc_download()` returns `False` when `uriProtocol != "pvc"`
+2. `config/templates/jinja/13_ms-values.yaml.j2` - conditionally generates `hf://` or `pvc://` URI
+3. `config/templates/jinja/04_download_job.yaml.j2` - only rendered/applied when protocol is `pvc`
 
 ## Chart Versions
 
@@ -417,16 +467,15 @@ All Helm chart and component versions are centralized in the `chartVersions` sec
 | `chartVersions.llmDInfra` | `auto` | llm-d-infra Helm chart (auto-resolved via helm) |
 | `chartVersions.llmDModelservice` | `auto` | llm-d-modelservice Helm chart (auto-resolved via helm) |
 | `chartVersions.inferencePool` | `v1.3.0` | Inference pool chart version |
-| `chartVersions.gaie` | `v1.3.1` | GAIE chart version |
 | `chartVersions.wva` | `auto` | Workload Variant Autoscaler chart (auto-resolved) |
-| `chartVersions.kgateway` | `v2.2.1` | kgateway chart version |
+| `chartVersions.kgateway` | `v2.2.3` | kgateway chart version |
 | `chartVersions.lws` | `0.8.0` | LeaderWorkerSet chart version |
 
 Versions set to `auto` are resolved at plan time by `VersionResolver` using `helm search repo` or OCI registry queries (skopeo/crane). Fixed versions are used as-is.
 
 ### Overriding versions in a scenario
 
-Add a `chartVersions` section to your scenario YAML. Only include the versions you want to change — the rest inherit from defaults:
+Add a `chartVersions` section to your scenario YAML. Only include the versions you want to change - the rest inherit from defaults:
 
 ```yaml
 scenario:
@@ -776,6 +825,167 @@ The preprocess script runs before the vLLM command (separated by `;` or `&&`). P
 
 ---
 
+## Context-Length-Aware Routing
+
+This section explains how to configure per-pod context-length-aware routing. This feature allows different decode (or prefill) pods to handle different context length ranges, enabling the [llm-d inference scheduler](https://github.com/llm-d/llm-d-inference-scheduler) to route requests to the most appropriate pod based on token count.
+
+### How It Works
+
+The setup has three layers:
+
+1. **Scenario YAML** -- you define `contextLengthRanges` and optionally `vllmVariants` per role (decode/prefill)
+2. **Template rendering** -- the benchmark tool converts these lists into environment variables injected into pods:
+   - `LLMDBENCH_POD_LABELS` for pod self-labeling (format: `label_eq_value,label_eq_value`)
+   - `,,`-delimited `VLLM_*` env vars for per-pod vllm parameter overrides
+3. **Pod startup** -- the preprocess script (`set_llmdbench_environment.py`) runs inside each pod, extracts the pod's index from its hostname (via LeaderWorkerSet), selects the correct variant values, re-exports the env vars, and self-labels the pod using pykube
+
+The inference scheduler's `context-length-aware` plugin then reads the `llm-d.ai/context-length-range` label from each pod and routes requests accordingly.
+
+### Prerequisites
+
+- **Multinode (LeaderWorkerSet) must be enabled.** The per-pod index is derived from sequential pod names assigned by LWS (e.g., `decode-0`, `decode-1`). Without LWS, pods get random Deployment hash suffixes and the index cannot be determined.
+- **Kubeconfig secret must be mounted.** Pods need K8s API access to self-label. This is handled by mounting the `llmdbench-context` secret (created automatically by step 04).
+- **Preprocess script must be configured.** The `vllmCommon.preprocessScript` must run `set_llmdbench_environment.py` and source the generated env file.
+
+### Scenario Configuration
+
+Add the following to your scenario YAML under the `decode` (or `prefill`) section:
+
+```yaml
+scenario:
+  - name: "my-context-aware-deployment"
+
+    # Enable multinode -- REQUIRED for per-pod variants
+    multinode:
+      enabled: true
+
+    modelservice:
+      enabled: true
+
+    decode:
+      replicas: 2
+
+      # Per-pod context-length-range labels.
+      # List length must match replicas.
+      # Each pod gets the label at its index (pod-0 gets first, pod-1 gets second).
+      contextLengthRanges:
+        - "0-8000"
+        - "8000-32768"
+
+      # Per-pod vllm parameter overrides (optional).
+      # Supported keys: maxModelLen, maxNumSeq, maxNumBatchedTokens
+      # List length must match replicas.
+      vllmVariants:
+        - maxModelLen: 8000
+          maxNumSeq: 64
+        - maxModelLen: 32768
+          maxNumSeq: 16
+
+      parallelism:
+        tensor: 4
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+    # Configure the inference extension with context-length-aware plugin
+    inferenceExtension:
+      pluginsConfigFile: "context-length-aware-config.yaml"
+      sidecar:
+        enabled: true
+      pluginsCustomConfig:
+        context-length-aware-config.yaml: |
+          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+            - type: tokenizer
+              parameters:
+                modelName: "${model.name}"
+                udsTokenizerConfig:
+                  socketFile: /tmp/tokenizer/tokenizer-uds.socket
+            - type: context-length-aware
+              parameters:
+                label: llm-d.ai/context-length-range
+                enableFiltering: true
+          schedulingProfiles:
+            - name: default
+              plugins:
+                - pluginRef: tokenizer
+                - pluginRef: context-length-aware
+
+    # Preprocess script and kubeconfig secret volume are required
+    vllmCommon:
+      preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && source $HOME/llmdbench_env.sh"
+      volumes:
+        - name: k8s-llmdbench-context
+          type: secret
+          secret:
+            secretName: llmdbench-context
+      volumeMounts:
+        - name: k8s-llmdbench-context
+          mountPath: /etc/kubeconfig
+          readOnly: true
+```
+
+### What Gets Generated
+
+Given the configuration above, the rendered pod template will contain:
+
+```yaml
+env:
+  - name: VLLM_MAX_MODEL_LEN
+    value: "8000,,32768"
+  - name: VLLM_MAX_NUM_SEQ
+    value: "64,,16"
+  - name: LLMDBENCH_POD_LABELS
+    value: "llm-d.ai/context-length-range_eq_0-8000,llm-d.ai/context-length-range_eq_8000-32768"
+```
+
+At pod startup, the preprocess script:
+- **Pod decode-0**: sets `VLLM_MAX_MODEL_LEN=8000`, `VLLM_MAX_NUM_SEQ=64`, labels itself with `llm-d.ai/context-length-range=0-8000`
+- **Pod decode-1**: sets `VLLM_MAX_MODEL_LEN=32768`, `VLLM_MAX_NUM_SEQ=16`, labels itself with `llm-d.ai/context-length-range=8000-32768`
+
+### Standalone Deployments
+
+Context-length-aware routing is **not applicable** to standalone deployments. Standalone mode has no inference extension (EPP) or routing layer, so there is nothing to route requests based on context length. The `contextLengthRanges`, `vllmVariants`, and `inferenceExtension` fields only apply to the modelservice deployment path.
+
+### Verifying the Setup
+
+After standup, verify the labels are applied:
+
+```bash
+kubectl get pods -l llm-d.ai/role=decode -n <namespace> --show-labels
+```
+
+You should see each pod with a distinct `llm-d.ai/context-length-range` label.
+
+Check the EPP logs for context-length-aware plugin activation:
+
+```bash
+kubectl logs <epp-pod> -c epp -n <namespace> | grep -i "context-length"
+```
+
+### Preprocess Script
+
+The preprocess script (`set_llmdbench_environment.py`) is required when using `contextLengthRanges` or `vllmVariants`. It runs inside each pod at startup and performs two tasks:
+
+1. **Splits `,,`-delimited env vars** -- when `vllmVariants` is configured, env vars like `VLLM_MAX_MODEL_LEN="8000,,32768"` are split by the pod's LWS index, so each pod gets its own value.
+2. **Self-labels pods** -- applies the `llm-d.ai/context-length-range` label to each pod via the K8s API, so the inference scheduler can route requests based on context length.
+
+The script requires:
+- `vllmCommon.preprocessScript` set to run the script and source the env file
+- The `preprocesses` ConfigMap volume mounted at `/setup/preprocess`
+- The `llmdbench-context` secret volume mounted at `/etc/kubeconfig` (for K8s API access)
+
+See the commented-out sections in the example scenarios for the exact configuration.
+
+### Reference
+
+- [llm-d inference scheduler architecture: context-length-aware](https://github.com/llm-d/llm-d-inference-scheduler/blob/main/docs/architecture.md#contextlengthaware)
+- [GPU example scenario](scenarios/examples/gpu.yaml) -- contains commented-out `contextLengthRanges`, `vllmVariants`, and `inferenceExtension` configuration
+- [Spyre example scenario](scenarios/examples/spyre.yaml) -- contains commented-out `contextLengthRanges`, `vllmVariants`, and `inferenceExtension` configuration with Spyre-specific volumes
+
+---
+
 ## Init Containers
 
 Init containers run before the main vLLM container to perform environment setup tasks such as network configuration (RDMA/InfiniBand route tables), hardware detection, and environment variable preparation.
@@ -790,18 +1000,17 @@ The `shared-config` emptyDir volume and volumeMount are already configured in `d
 
 #### Image resolution
 
-Init container images follow the same `auto` resolution as all other images in the benchmark. The resolution works through two layers:
+Init container images can be specified three ways, in order of preference:
 
-1. **`images.benchmark` entry** (in `defaults.yaml`): Defines the benchmark image with `tag: auto`. During rendering, the `VersionResolver` resolves this tag to the latest available tag via `skopeo list-tags` (or `podman` as fallback).
+1. **`imageKey: <entry>`** -- references an entry under `images.*` in `defaults.yaml` (e.g. `imageKey: benchmark`, `imageKey: udsTokenizer`). The resolver expands it to `<repo>:<tag>` and inherits `imagePullPolicy` from the same entry. This is the recommended form -- single source of truth, automatically tracks version bumps in `defaults.yaml`.
 
-2. **Template defaulting** (in `13_ms-values.yaml.j2`): When rendering init containers, if an init container's `image` field is missing or ends with `:auto`, the template automatically replaces it with the resolved `images.benchmark.repository:images.benchmark.tag`.
+2. **`image: <full-string>`** -- any image string. Tags ending in `:auto` are resolved against the registry at render time via `skopeo list-tags` (falling back to `crane` then `podman`). Use for one-off images that don't have an `images.*` entry.
 
-This means:
-- You can set `image: ghcr.io/llm-d/llm-d-benchmark:auto` --the `:auto` suffix is resolved at render time
-- You can omit the `image` field entirely --it defaults to the benchmark image
-- You can set a specific image (e.g., `image: my-registry/my-init:v1.0`) --it is used as-is
+3. **Neither set** -- the template falls back to `images.benchmark`.
 
-The resolved image tag is visible in the rendered `ms-values.yaml` in the workspace directory.
+Setting both `image` and `imageKey` on the same entry is a config error and aborts plan generation. An unknown `imageKey` (no matching `images.*` entry) does too -- the error message lists the available keys.
+
+The resolved image is visible in the rendered `ms-values.yaml` in the workspace directory.
 
 #### Environment variable propagation
 
@@ -819,7 +1028,7 @@ Init containers are configured per scenario (the default in `defaults.yaml` is `
 decode:
   initContainers:
     - name: preprocess
-      image: ghcr.io/llm-d/llm-d-benchmark:auto  # resolved to latest tag at render time
+      imageKey: benchmark  # -> images.benchmark.{repository,tag} from defaults.yaml
       imagePullPolicy: Always
       command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
       securityContext:
@@ -862,19 +1071,19 @@ The script must write a sourceable shell file to `/shared-config/llmdbench_env.s
 decode:
   initContainers:
     - name: preprocess
-      image: ghcr.io/llm-d/llm-d-benchmark:auto
+      imageKey: benchmark
       command: ["set_llmdbench_environment.py", "-e", "/shared-config/llmdbench_env.sh", "-i"]
       volumeMounts:
         - name: shared-config
           mountPath: /shared-config
     - name: my-custom-init
-      image: my-registry/my-init:latest
+      image: my-registry/my-init:latest  # one-off image; no `images.*` entry needed
       command: ["my-setup-script.sh"]
 ```
 
 #### Disabling init containers
 
-Omit the `initContainers` field or leave it as the default (`[]`). CI/simulated scenarios like `simulated-accelerators` don't define init containers.
+Omit the `initContainers` field or leave it as the default (`[]`).
 
 ---
 
@@ -996,13 +1205,19 @@ decode:
 
 When `podmonitor.enabled: true`, the templates `17_standalone-podmonitor.yaml.j2` (standalone) or `18_podmonitor.yaml.j2` (modelservice) render PodMonitor CRDs that tell Prometheus to scrape vLLM pods.
 
-**Metrics exposed by vLLM pods** (scraped via PodMonitor):
-- `vllm:kv_cache_usage_perc` --KV cache utilization
-- `vllm:num_requests_running` --active requests in batch
-- `vllm:num_requests_waiting` --queued requests
-- `vllm:prompt_tokens_total` --prefill token count
-- `vllm:generation_tokens_total` --decode token count
-- `vllm:prefix_cache_hits_total` / `vllm:prefix_cache_queries_total` --cache hit rate
+**Key metrics exposed by vLLM pods** (scraped via PodMonitor):
+- `vllm:kv_cache_usage_perc` -- KV cache utilization (%)
+- `vllm:gpu_cache_usage_perc` / `vllm:cpu_cache_usage_perc` -- GPU/CPU cache utilization (%)
+- `vllm:gpu_memory_usage_bytes` / `vllm:cpu_memory_usage_bytes` -- memory usage
+- `vllm:num_requests_running` -- active requests in batch
+- `vllm:num_requests_waiting` -- queued requests
+- `vllm:num_requests_swapped` -- requests swapped to CPU
+- `vllm:num_preemptions_total` -- cumulative preemptions
+- `vllm:prefix_cache_hits_total` / `vllm:prefix_cache_queries_total` -- prefix cache hit rate
+- `vllm:external_prefix_cache_hits_total` / `vllm:external_prefix_cache_queries_total` -- cross-instance cache
+- `vllm:nixl_xfer_time_seconds` / `vllm:nixl_bytes_transferred` -- NIXL KV transfer metrics
+
+See [metrics_collection.md](../docs/metrics_collection.md) for the full list of collected metrics.
 
 #### EPP (Inference Scheduler) monitoring
 
@@ -1020,30 +1235,57 @@ inferenceExtension:
 ```
 
 This creates a ServiceMonitor for the EPP pod, enabling Prometheus to scrape inference scheduler metrics:
-- `inference_extension_scheduler_e2e_duration_seconds` --scheduling latency
-- `inference_pool_average_kv_cache_utilization` --pool-wide cache utilization
-- `inference_pool_average_queue_size` --average request queue depth
-- `inference_pool_ready_pods` --ready pod count
+
+**Pool-level gauges:**
+- `inference_pool_average_kv_cache_utilization` -- pool-wide KV cache utilization (%)
+- `inference_pool_average_queue_size` -- average request queue depth
+- `inference_pool_average_running_requests` -- average running requests
+- `inference_pool_ready_pods` -- ready pod count
+
+**Scheduler and request histograms:**
+- `inference_extension_scheduler_e2e_duration_seconds` -- end-to-end scheduling latency
+- `inference_extension_plugin_duration_seconds` -- per-plugin processing time
+- `inference_extension_request_duration_seconds` -- total request duration
+- `inference_extension_request_ttft_duration_seconds` -- time to first token
+
+**Token and routing metrics:**
+- `inference_extension_input_tokens` / `inference_extension_output_tokens` -- token distributions
+- `inference_extension_normalized_time_per_output_token` -- NTPOT distribution
+- `inference_extension_prefix_indexer_hit_ratio` / `inference_extension_prefix_indexer_size` -- prefix indexer
+
+**P/D decision metrics:**
+- `llm_d_inference_scheduler_pd_decision_total` -- P/D routing decisions
+- `llm_d_inference_scheduler_disagg_decision_total` -- disaggregation decisions
 
 When flow control is enabled (see [KV Transfer Configuration](#kv-transfer-configuration) for EPP config), additional metrics are emitted:
-- `inference_extension_flow_control_queue_size` --flow control queue depth
-- `inference_extension_flow_control_pool_saturation` --pool saturation level
+- `inference_extension_flow_control_queue_size` -- flow control queue depth
+- `inference_extension_flow_control_pool_saturation` -- pool saturation level
 
-#### CLI monitoring flag (`-f`)
+#### CLI monitoring flags (`--monitoring` / `--no-monitoring`)
 
-The `-f` / `--monitoring` flag enables monitoring across both standup and run phases:
+The `--monitoring` and `--no-monitoring` flags control monitoring across both standup and run phases. These are tri-state: when neither is passed, the scenario defaults apply unchanged.
 
-**During standup (`-f`):**
-- Creates PodMonitor resources for Prometheus scraping of vLLM pods
+**`--monitoring` (standup):**
+- Ensures PodMonitor resources are created for Prometheus scraping of vLLM pods
 - Sets EPP verbosity to 4 (richer logs for post-run analysis)
 
-**During run (`-f`):**
-- Sets `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED=true` on harness pods
-- The harness runs `collect_metrics.sh` to scrape `/metrics` from all vLLM pods during the benchmark
+**`--monitoring` (run):**
+- Sets `metricsScrapeEnabled: true` — harness pods run `collect_metrics.sh` to scrape `/metrics` from all vLLM pods during the benchmark
 - After each treatment, captures model-serving, EPP, and IGW pod logs
 - Runs `process_epp_logs.py` on captured EPP logs to extract scheduling metrics
 
-Without `-f`, metrics scraping is disabled and pod logs are not captured.
+**`--no-monitoring` (standup):**
+- Disables PodMonitor creation (`monitoring.podmonitor.enabled: false`)
+- Disables GAIE ServiceMonitor creation (`inferenceExtension.monitoring.prometheus.enabled: false`)
+- Use this when the cluster lacks Prometheus CRDs (PodMonitor, ServiceMonitor) and you want to avoid CRD-not-found errors during Helm install
+
+**No flag passed:**
+- Scenario defaults from `defaults.yaml` apply as-is
+- By default, `monitoring.podmonitor.enabled: true` (PodMonitors are created at standup)
+- By default, `monitoring.metricsScrapeEnabled: false` (harness does not scrape metrics during run)
+- To enable metrics scraping during run, pass `--monitoring` explicitly
+
+**Environment variable:** `LLMDBENCH_MONITORING=true` or `LLMDBENCH_MONITORING=false` can be used as an alternative to the CLI flags. The CLI flag takes precedence when both are set.
 
 #### Enabling monitoring in a scenario
 
@@ -1091,7 +1333,8 @@ All images are defined in `defaults.yaml`. There are two groups: the shared `ima
 | `images.vllm` | `ghcr.io/llm-d/llm-d-cuda:auto` | Modelservice decode/prefill pods, standalone fallback |
 | `images.benchmark` | `ghcr.io/llm-d/llm-d-benchmark:auto` | Download job, harness pod, data access pod |
 | `images.inferenceScheduler` | `ghcr.io/llm-d/llm-d-inference-scheduler:auto` | GAIE inference extension |
-| `images.routingSidecar` | `ghcr.io/llm-d/llm-d-routing-sidecar:auto` | Modelservice routing sidecar |
+| `images.routingSidecar` | `ghcr.io/llm-d/llm-d-routing-sidecar:auto` | Modelservice routing sidecar (proxy in front of vLLM) |
+| `images.udsTokenizer` | `ghcr.io/llm-d/llm-d-uds-tokenizer:auto` | EPP sidecar (precise-prefix-cache scoring); also used as an init container in some scenarios |
 | `images.python` | `python:3.10` | Utility containers |
 | `images.vllmOpenai` | `docker.io/vllm/vllm-openai:auto` | Not currently used by any template (reserved) |
 
@@ -1115,6 +1358,8 @@ Each image key has `repository`, `tag`, and `pullPolicy` sub-fields. The one exc
 | `13_ms-values.yaml.j2` (decode) | `images.vllm` | Decode pods in modelservice |
 | `13_ms-values.yaml.j2` (prefill) | `images.vllm` | Prefill pods in modelservice |
 | `13_ms-values.yaml.j2` (sidecar) | `images.routingSidecar` | Routing sidecar in modelservice |
+| `13_ms-values.yaml.j2` (init containers) | `images.<imageKey>` | Per-init-container, via `imageKey:` (defaults to `images.benchmark`) |
+| `12_gaie-values.yaml.j2` (sidecar) | `images.udsTokenizer` | EPP sidecar (when `inferenceExtension.sidecar.enabled: true`) |
 | `14_standalone-deployment_yaml.j2` | `standalone.image` | Standalone vLLM container |
 | `14_standalone-deployment_yaml.j2` (launcher) | `standalone.launcher.image` | Standalone launcher container |
 | `19_wva-values.yaml.j2` | `wva.image` | Workload Variant Autoscaler |
@@ -1225,6 +1470,46 @@ scenario:
         repository: my-registry/llm-d-inference-scheduler
         tag: v1.2.3
 ```
+
+**Routing sidecar and EPP sidecar:**
+
+These are read directly from `images.routingSidecar` and `images.udsTokenizer` -- override the same way:
+
+```yaml
+scenario:
+  - name: "my-deployment"
+    images:
+      routingSidecar:
+        tag: v0.8.0
+      udsTokenizer:
+        repository: my-registry/uds-tokenizer
+        tag: dev
+```
+
+There is no per-block image field on `routing.proxy` or `inferenceExtension.sidecar` -- the `images.*` entry is the single source of truth.
+
+**Init containers** (`decode.initContainers[*]`, `prefill.initContainers[*]`, `standalone.initContainers[*]`):
+
+Three options, in order of preference:
+
+1. `imageKey: <entry>` -- references `images.<entry>` from `defaults.yaml` (recommended; tracks version bumps automatically). Inherits `imagePullPolicy` from the same entry when not set on the init container.
+
+2. `image: <full-string>` -- direct override; supports `:auto` tag resolution via the registry. Use for one-off images that don't have an `images.*` entry.
+
+3. Neither -- the template falls back to `images.benchmark`.
+
+```yaml
+decode:
+  initContainers:
+    - name: preprocess
+      imageKey: benchmark              # tracks images.benchmark
+      command: [...]
+    - name: my-custom
+      image: my-registry/init:v1.0     # one-off override; no images.* entry needed
+      command: [...]
+```
+
+To change the image used by every `imageKey: benchmark` reference at once, override `images.benchmark` in your scenario (same as any other entry above). Setting both `image:` and `imageKey:` on the same init container is a config error and aborts plan generation; an unknown `imageKey` does too (the error message lists the available keys).
 
 **How to tell which one to use:** Check whether your specification's scenario has `standalone.enabled: true`. If it does, the vLLM serving image comes from `standalone.image`. Otherwise (modelservice path), it comes from `images.vllm`. You can verify by running `plan` and inspecting the rendered YAML in the stack output directory.
 

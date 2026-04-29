@@ -66,7 +66,7 @@ The repository ships a [pre-commit](https://pre-commit.com/) configuration that 
 
 That script:
 
-1. Delegates to `./install.sh` (no `-y` flag — we deliberately want a virtualenv, not system Python) to create/reuse `.venv/`, install the `llmdbenchmark` CLI and `config_explorer` editably, and provision all required system tools (`helm`, `helmfile`, `kubectl`, `skopeo`, `crane`, `helm-diff`, `jq`, `yq`, `kustomize`). This is the same bootstrap CI uses (see [`.github/workflows/ci-pr-benchmark.yaml`](.github/workflows/ci-pr-benchmark.yaml)), with `-y` omitted so local development stays in `.venv/` instead of polluting your system Python.
+1. Delegates to `./install.sh` (no `-y` flag — we deliberately want a virtualenv, not system Python) to create/reuse `.venv/`, install the `llmdbenchmark` CLI and `planner` (from [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner)), and provision all required system tools (`helm`, `helmfile`, `kubectl`, `skopeo`, `crane`, `helm-diff`, `jq`, `yq`, `kustomize`). This is the same bootstrap CI uses (see [`.github/workflows/ci-pr-benchmark.yaml`](.github/workflows/ci-pr-benchmark.yaml)), with `-y` omitted so local development stays in `.venv/` instead of polluting your system Python.
 2. Installs `pre-commit`, `pytest`, and `detect-secrets` from [`.pre-commit_requirements.txt`](.pre-commit_requirements.txt).
 3. Registers both the `pre-commit` and `pre-push` hook types.
 

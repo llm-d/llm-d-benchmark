@@ -37,7 +37,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
     plan_parser.add_argument(
         "-t", "--methods",
         default=env("LLMDBENCH_METHODS"),
-        help="Deployment method (standalone, modelservice).",
+        help="Deployment method (standalone, modelservice, fma).",
     )
     plan_parser.add_argument(
         "-f",

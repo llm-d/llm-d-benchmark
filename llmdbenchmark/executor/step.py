@@ -309,9 +309,14 @@ class Step(ABC):
             return True
 
         if existing_gi > requested_gi:
-            context.logger.log_warning(
-                f"PVC '{pvc_name}' exists with size {existing_size_str} "
-                f"(requested {requested_size}) -- larger than needed, continuing"
+            # Benign: a shared PVC sized for ALL models in a multi-model
+            # scenario will appear "larger than needed" on stacks past the
+            # first one (their per-stack size covers only their own model).
+            # Also covers operators who pre-provisioned a PVC with headroom.
+            # Log info, not warning — nothing is wrong.
+            context.logger.log_info(
+                f"PVC '{pvc_name}' already exists ({existing_size_str}) with "
+                f"enough capacity for requested {requested_size} — reusing"
             )
             return True
 

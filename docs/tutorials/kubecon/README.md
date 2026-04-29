@@ -304,11 +304,4 @@ The experiment will take some time to run to completion. You may decrease the ex
     # ... and so on
 ```
 
-Feel free to use the [Config Explorer](../../../config_explorer/) to explore the data.
 
-```
-pip install ./config_explorer
-streamlit run ./config_explorer/Capacity_Planner.py
-```
-
-The UI should be up and running. You can get a preview of the Config Explorer [here](https://drive.google.com/file/d/1lzdj2P65yhQG3w5gsVxULkTqSYwMH3ec/view?usp=sharing).

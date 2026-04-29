@@ -5,6 +5,15 @@ import subprocess
 from copy import deepcopy
 
 
+class ImageOverrideConfigError(RuntimeError):
+    """Raised when a sidecar/init-container image override is misconfigured.
+
+    Distinct from generic ``RuntimeError`` so callers can distinguish user
+    config errors (which must abort plan generation) from registry/network
+    resolution failures (which can be downgraded to a warning).
+    """
+
+
 class VersionResolver:
     """Resolve ``"auto"`` image tags (skopeo/podman) and chart versions (helm)."""
 
@@ -206,8 +215,83 @@ class VersionResolver:
         tag = self.resolve_image_tag("", repo)
         return f"{repo}:{tag}"
 
+    def _resolve_image_override(
+        self,
+        owner: dict,
+        images: dict,
+        path: str,
+    ) -> None:
+        """Resolve ``image`` / ``imageKey`` on a single init-container entry.
+
+        Mutates ``owner`` in place:
+          * ``imageKey: <k>`` -> expands to ``image: "<repo>:<tag>"`` from
+            ``images[k]``; fills ``imagePullPolicy`` from ``images[k].pullPolicy``
+            when the block doesn't already set one; deletes the ``imageKey`` field.
+          * ``image: "<repo>:auto"`` -> resolves the ``:auto`` tag via the registry.
+          * Neither set -> no change (the template fills a default).
+
+        Raises:
+            ImageOverrideConfigError: invalid configuration -- both fields set,
+                unknown imageKey, imageKey points at an entry with empty
+                ``repository`` or ``tag``.
+            RuntimeError: registry resolution failed (skopeo/crane/podman
+                unavailable or image not found).
+        """
+        has_image = bool(owner.get("image"))
+        has_image_key = bool(owner.get("imageKey"))
+
+        if has_image and has_image_key:
+            raise ImageOverrideConfigError(
+                f"{path}: cannot set both 'image' ({owner['image']!r}) and "
+                f"'imageKey' ({owner['imageKey']!r}). Use one or the other."
+            )
+
+        if has_image_key:
+            key = owner["imageKey"]
+            if not isinstance(key, str):
+                raise ImageOverrideConfigError(
+                    f"{path}.imageKey must be a string (got {type(key).__name__})"
+                )
+            img_cfg = images.get(key)
+            if not isinstance(img_cfg, dict):
+                available = sorted(
+                    k for k, v in images.items() if isinstance(v, dict)
+                )
+                raise ImageOverrideConfigError(
+                    f"{path}.imageKey={key!r} does not match any entry in "
+                    f"images.* (available: {available})"
+                )
+            repo = img_cfg.get("repository", "")
+            tag = img_cfg.get("tag", "")
+            if not repo or not tag:
+                raise ImageOverrideConfigError(
+                    f"{path}.imageKey={key!r} -> images.{key} has empty "
+                    f"repository or tag (repository={repo!r}, tag={tag!r})"
+                )
+            if tag == "auto":
+                tag = self.resolve_image_tag("", repo)
+                img_cfg["tag"] = tag
+            owner["image"] = f"{repo}:{tag}"
+            if not owner.get("imagePullPolicy"):
+                policy = img_cfg.get("pullPolicy")
+                if policy:
+                    owner["imagePullPolicy"] = policy
+            del owner["imageKey"]
+            return
+
+        if has_image:
+            image = owner["image"]
+            if isinstance(image, str) and image.endswith(":auto"):
+                owner["image"] = self._resolve_image_string(image)
+
     def _resolve_init_container_images(self, values: dict, unresolved: list) -> None:
-        """Resolve ``:auto`` tags in initContainers across decode, prefill, and standalone."""
+        """Resolve ``image`` / ``imageKey`` in initContainers across decode, prefill, standalone.
+
+        Config errors (``ImageOverrideConfigError``) propagate up; registry
+        resolution failures are downgraded to a warning + ``unresolved`` entry,
+        matching the pre-existing graceful-degradation behavior.
+        """
+        images = values.get("images", {})
         sections = []
         for role in ("decode", "prefill"):
             role_cfg = values.get(role, {})
@@ -223,16 +307,17 @@ class VersionResolver:
             for i, container in enumerate(containers):
                 if not isinstance(container, dict):
                     continue
-                image = container.get("image", "")
-                if isinstance(image, str) and image.endswith(":auto"):
-                    try:
-                        container["image"] = self._resolve_image_string(image)
-                    except RuntimeError as exc:
-                        self.logger.log_warning(
-                            f"⚠️  Could not resolve init container image "
-                            f"{section_name}[{i}]: {exc}"
-                        )
-                        unresolved.append(f"{section_name}[{i}].image")
+                path = f"{section_name}[{i}]"
+                try:
+                    self._resolve_image_override(container, images, path)
+                except ImageOverrideConfigError:
+                    raise
+                except RuntimeError as exc:
+                    self.logger.log_warning(
+                        f"⚠️  Could not resolve init container image "
+                        f"{path}: {exc}"
+                    )
+                    unresolved.append(f"{path}.image")
 
     def resolve_all(self, values: dict) -> dict:
         """Resolve all ``"auto"`` image tags and chart versions in the values dict."""
@@ -351,7 +436,7 @@ class VersionResolver:
         wva = values.get("wva", {}).get("image", {})
         if isinstance(wva, dict) and wva.get("tag") == "auto":
             unresolved.append("wva.image.tag")
-        # Check init container images
+        # Init container images
         for role in ("decode", "prefill", "standalone"):
             role_cfg = values.get(role, {})
             if isinstance(role_cfg, dict):

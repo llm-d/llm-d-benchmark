@@ -8,12 +8,20 @@ from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
 
+# Name of the custom OpenShift SCC for the agentgateway data-plane proxy.
+# The SCC definition lives in config/templates/jinja/05a_agentgateway_scc.yaml.j2
+# and is rendered at plan time.
+_AGENTGATEWAY_SCC_NAME = "llmdbench-agentgateway"
+
 GATEWAY_API_CRDS = [
+    "backendtlspolicies.gateway.networking.k8s.io",
     "gatewayclasses.gateway.networking.k8s.io",
     "gateways.gateway.networking.k8s.io",
     "grpcroutes.gateway.networking.k8s.io",
     "httproutes.gateway.networking.k8s.io",
+    "listenersets.gateway.networking.k8s.io",
     "referencegrants.gateway.networking.k8s.io",
+    "tlsroutes.gateway.networking.k8s.io"
 ]
 
 # Inference extension CRDs may use the graduated (.k8s.io) or
@@ -29,16 +37,13 @@ GATEWAY_API_EXTENSION_CRDS_XK8S = [
     "inferencemodelrewrites.inference.networking.x-k8s.io",
     "inferenceobjectives.inference.networking.x-k8s.io",
     "inferencepoolimports.inference.networking.x-k8s.io",
-    "inferencepools.inference.networking.x-k8s.io",
+    "inferencepools.inference.networking.x-k8s.io"
 ]
 
-KGATEWAY_CRDS = [
-    "backends.gateway.kgateway.dev",
-    "directresponses.gateway.kgateway.dev",
-    "gatewayextensions.gateway.kgateway.dev",
-    "gatewayparameters.gateway.kgateway.dev",
-    "httplistenerpolicies.gateway.kgateway.dev",
-    "trafficpolicies.gateway.kgateway.dev",
+AGENTGATEWAY_CRDS = [
+    "agentgatewaybackends.agentgateway.dev",
+    "agentgatewayparameters.agentgateway.dev",
+    "agentgatewaypolicies.agentgateway.dev"
 ]
 
 ISTIO_CRDS = [
@@ -142,6 +147,12 @@ class AdminPrerequisitesStep(Step):
                 cmd, plan_config, existing_crds,
             )
 
+        # After any auto-install attempt, validate that monitoring CRDs are
+        # present when monitoring is enabled.  Re-fetch CRDs so we pick up
+        # anything that was just installed above.
+        refreshed_crds = self._get_existing_crds(cmd, context)
+        self._validate_monitoring_crds(cmd, context, plan_config, refreshed_crds, errors)
+
         self._apply_namespace_yaml(cmd, context, errors)
         self._apply_openshift_sccs(cmd, context, plan_config)
 
@@ -229,10 +240,13 @@ class AdminPrerequisitesStep(Step):
         cmd.logger.log_info(
             f"📦 Installing Gateway API CRDs (revision {gw_revision})..."
         )
-        crd_url = (
-            f"github.com/kubernetes-sigs/gateway-api/"
-            f"config/crd?ref={gw_revision}"
+        # URL template lives in defaults.yaml so it has a single source of
+        # truth (gatewayApiCrd.crdUrlTemplate). Fail loudly if missing -- we
+        # don't want a stale hardcoded URL silently substituting in.
+        crd_url_template = self._require_config(
+            plan_config, "gatewayApiCrd", "crdUrlTemplate",
         )
+        crd_url = crd_url_template.format(revision=gw_revision)
         result = cmd.kube("apply", "--server-side", "-k", crd_url)
         if not result.success:
             errors.append(f"Failed to install Gateway API CRDs: {result.stderr}")
@@ -269,11 +283,13 @@ class AdminPrerequisitesStep(Step):
             f"📦 Installing inference extension CRDs "
             f"(revision {inf_ext_revision})..."
         )
-        ext_url = (
-            f"https://github.com/kubernetes-sigs/"
-            f"gateway-api-inference-extension/"
-            f"releases/download/{inf_ext_revision}/manifests.yaml"
+        # URL template lives in defaults.yaml so it has a single source of
+        # truth (gatewayApiCrd.inferenceExtensionUrlTemplate). Fail loudly if
+        # missing -- silent fallback would hide config drift.
+        ext_url_template = self._require_config(
+            plan_config, "gatewayApiCrd", "inferenceExtensionUrlTemplate",
         )
+        ext_url = ext_url_template.format(revision=inf_ext_revision)
         result = cmd.kube("apply", "-f", ext_url)
         if not result.success:
             errors.append(
@@ -292,14 +308,14 @@ class AdminPrerequisitesStep(Step):
         gateway_config = plan_config.get("gateway", {})
         gateway_class = self._require_config(plan_config, "gateway", "className")
 
-        if gateway_class == "kgateway":
-            if not _any_crds_missing(KGATEWAY_CRDS, existing_crds):
+        if gateway_class == "agentgateway":
+            if not _any_crds_missing(AGENTGATEWAY_CRDS, existing_crds):
                 cmd.logger.log_info(
-                    "✅ kgateway already installed "
-                    "(*.gateway.kgateway.dev CRDs found)"
+                    "✅ agentgateway already installed "
+                    "(*.agentgateway.dev CRDs found)"
                 )
                 return
-            self._install_kgateway(cmd, plan_config, errors)
+            self._install_agentgateway(cmd, context, errors)
 
         elif gateway_class == "istio":
             if not _any_crds_missing(ISTIO_CRDS, existing_crds):
@@ -390,6 +406,108 @@ class AdminPrerequisitesStep(Step):
             "✅ Prometheus Operator CRDs installed (PodMonitor, ServiceMonitor)"
         )
 
+    def _validate_monitoring_crds(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        plan_config: dict,
+        existing_crds: list[str],
+        errors: list,
+    ):
+        """Fail early when monitoring is enabled but required CRDs are missing.
+
+        Checks for ``podmonitors.monitoring.coreos.com`` and
+        ``servicemonitors.monitoring.coreos.com``.  If either is absent the
+        step records an error with platform-aware remediation guidance.
+        """
+        if context.dry_run:
+            cmd.logger.log_info(
+                "Skipping monitoring CRD validation (dry-run)"
+            )
+            return
+
+        monitoring = plan_config.get("monitoring", {})
+        podmonitor_enabled = monitoring.get("podmonitor", {}).get("enabled", False)
+        scrape_enabled = monitoring.get("metricsScrapeEnabled", False)
+
+        if not podmonitor_enabled and not scrape_enabled:
+            return
+
+        required_crds = [
+            "podmonitors.monitoring.coreos.com",
+            "servicemonitors.monitoring.coreos.com",
+        ]
+        missing = [c for c in required_crds if c not in existing_crds]
+        if not missing:
+            cmd.logger.log_info(
+                "✅ Monitoring CRDs present on cluster"
+            )
+            return
+
+        missing_str = ", ".join(missing)
+        guidance = self._monitoring_guidance(context)
+        msg = (
+            f"Monitoring is enabled but the following required CRDs are missing "
+            f"from the cluster: {missing_str}.\n{guidance}"
+        )
+        cmd.logger.log_error(msg)
+        errors.append(msg)
+
+    @staticmethod
+    def _monitoring_guidance(context: ExecutionContext) -> str:
+        """Return platform-specific remediation guidance for missing monitoring CRDs."""
+        common_tail = (
+            "Alternatively, pass '--no-monitoring' to disable monitoring."
+        )
+
+        if context.is_gke:
+            return (
+                "On GKE, enable Google Managed Prometheus with managed collection:\n"
+                "  gcloud container clusters update <CLUSTER> \\\n"
+                "    --enable-managed-prometheus \\\n"
+                "    --location=<LOCATION>\n"
+                "This lets GKE natively scrape PodMonitor resources.\n"
+                "See: https://cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed\n"
+                f"{common_tail}"
+            )
+
+        if context.is_kind or context.is_minikube:
+            return (
+                f"On {context.platform_type}, install the kube-prometheus-stack Helm chart:\n"
+                "  helm repo add prometheus-community "
+                "https://prometheus-community.github.io/helm-charts\n"
+                "  helm install prometheus prometheus-community/kube-prometheus-stack \\\n"
+                "    --namespace monitoring --create-namespace\n"
+                f"{common_tail}"
+            )
+
+        if context.is_openshift:
+            return (
+                "On OpenShift, ensure user workload monitoring is enabled:\n"
+                "  oc apply -f - <<EOF\n"
+                "  apiVersion: v1\n"
+                "  kind: ConfigMap\n"
+                "  metadata:\n"
+                "    name: cluster-monitoring-config\n"
+                "    namespace: openshift-monitoring\n"
+                "  data:\n"
+                "    config.yaml: |\n"
+                "      enableUserWorkload: true\n"
+                "  EOF\n"
+                f"{common_tail}"
+            )
+
+        # Generic Kubernetes
+        return (
+            "Install the Prometheus Operator (or its CRDs) on the cluster.\n"
+            "For example, using the kube-prometheus-stack Helm chart:\n"
+            "  helm repo add prometheus-community "
+            "https://prometheus-community.github.io/helm-charts\n"
+            "  helm install prometheus prometheus-community/kube-prometheus-stack \\\n"
+            "    --namespace monitoring --create-namespace\n"
+            f"{common_tail}"
+        )
+
     def _apply_namespace_yaml(
         self, cmd: CommandExecutor, context: ExecutionContext, errors: list
     ):
@@ -403,7 +521,15 @@ class AdminPrerequisitesStep(Step):
     def _apply_openshift_sccs(
         self, cmd: CommandExecutor, context: ExecutionContext, plan_config: dict
     ):
-        """Apply OpenShift SCC assignments if on OpenShift."""
+        """Apply OpenShift SCC assignments if on OpenShift.
+
+        Grants ``anyuid`` and ``privileged`` SCCs to the vLLM workload
+        service account.  When the gateway provider is **agentgateway**,
+        creates a minimal custom SCC (``llmdbench-agentgateway``) that
+        permits only UID 10101 and the ``NET_BIND_SERVICE`` capability,
+        then binds it to the gateway proxy service account
+        (``infra-{release}-inference-gateway``).
+        """
         if context.is_openshift:
             namespace = plan_config.get("namespace", {}).get("name", "")
             if namespace:
@@ -420,57 +546,110 @@ class AdminPrerequisitesStep(Step):
                         namespace,
                     )
 
-    def _install_kgateway(self, cmd: CommandExecutor, plan_config: dict, errors: list):
-        kgw = plan_config.get("gatewayProviders", {}).get("kgateway", {})
-        chart_version = plan_config.get("chartVersions", {}).get("kgateway", "") or kgw.get("chartVersion", "")
-        namespace = self._require_config(kgw, "namespace")
-        helm_repo = kgw.get("helmRepository", "")
+                # agentgateway proxy pods run as UID 10101 and add the
+                # NET_BIND_SERVICE capability.  Instead of granting the
+                # overly broad "privileged" SCC, we create a minimal
+                # custom SCC that only permits what the proxy needs and
+                # bind it to the gateway service account.
+                gateway_class = plan_config.get("gateway", {}).get("className", "")
+                if gateway_class == "agentgateway":
+                    self._ensure_agentgateway_scc(cmd, context, namespace, plan_config)
 
-        if not (helm_repo and chart_version):
+    def _ensure_agentgateway_scc(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+        plan_config: dict,
+    ):
+        """Apply the custom agentgateway SCC and bind it to the gateway SA.
+
+        The SCC definition is rendered from
+        ``config/templates/jinja/05a_agentgateway_scc.yaml.j2`` at plan
+        time.  This method applies it (cluster-scoped, idempotent) and
+        grants it to the gateway service account in the target namespace.
+        """
+        release = plan_config.get("release", "llmdbench")
+        gw_sa = f"infra-{release}-inference-gateway"
+
+        # Apply the rendered SCC template.
+        scc_yaml = self._find_rendered_yaml(context, "05a_agentgateway_scc")
+        if not scc_yaml or not self._has_yaml_content(scc_yaml):
+            cmd.logger.log_info(
+                "    No agentgateway SCC template rendered -- skipping"
+            )
             return
 
-        def chart_ref(chart_name: str) -> str:
-            if helm_repo.startswith("oci://"):
-                return f"{helm_repo.rstrip('/')}/{chart_name}"
-            return f"{helm_repo}/{chart_name}"
-
-        cmd.logger.log_info(f"📦 Installing kgateway {chart_version}...")
-
-        result = cmd.helm(
-            "upgrade",
-            "--install",
-            "kgateway-crds",
-            chart_ref("kgateway-crds"),
-            "--version",
-            chart_version,
-            "--namespace",
-            namespace,
-            "--create-namespace",
-            "--wait",
-        )
+        result = cmd.kube("apply", "-f", str(scc_yaml))
         if not result.success:
-            errors.append(f"Failed to install kgateway-crds: {result.stderr}")
+            cmd.logger.log_warning(
+                f"    Failed to apply SCC '{_AGENTGATEWAY_SCC_NAME}': "
+                f"{result.stderr}"
+            )
             return
 
-        result = cmd.helm(
-            "upgrade",
-            "--install",
-            "kgateway",
-            chart_ref("kgateway"),
-            "--version",
-            chart_version,
-            "--namespace",
-            namespace,
-            "--create-namespace",
-            "--set", "inferenceExtension.enabled=true",
-            "--set", "controller.deployment.container.securityContext.seccompProfile.type=RuntimeDefault",
-            "--set", "controller.deployment.container.securityContext.runAsNonRoot=true",
-            "--set", "controller.deployment.container.securityContext.capabilities.drop={ALL}",
-            "--wait",
+        cmd.logger.log_info(
+            f"    ✅ SCC '{_AGENTGATEWAY_SCC_NAME}' applied"
         )
 
+        # Bind the SCC to the gateway service account.
+        cmd.logger.log_info(
+            f"    Granting '{_AGENTGATEWAY_SCC_NAME}' SCC to gateway SA "
+            f"'{gw_sa}' in namespace '{namespace}'"
+        )
+        cmd.kube(
+            "adm",
+            "policy",
+            "add-scc-to-user",
+            _AGENTGATEWAY_SCC_NAME,
+            "-z",
+            gw_sa,
+            "-n",
+            namespace,
+        )
+
+    def _install_agentgateway(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        errors: list,
+    ):
+        """Install agentgateway CRDs + controller via the rendered helmfile.
+
+        The helmfile itself is rendered by
+        ``config/templates/jinja/09_helmfile-gateway-provider.yaml.j2``
+        during the ``plan`` phase -- we just locate the rendered file
+        and hand it to ``helmfile apply``. This is the same pattern
+        ``_install_istio`` uses, and it keeps all YAML assembly in the
+        templates rather than in Python string-concatenation here.
+
+        The canonical upstream helmfile this mirrors is:
+          https://raw.githubusercontent.com/llm-d-incubation/llm-d-infra/refs/heads/main/quickstart/gateway-control-plane-providers/kgateway.helmfile.yaml
+
+        We deliberately pass ``use_kubeconfig=False`` for the same
+        reason ``_install_istio`` does: helmfile must resolve release
+        namespaces from the helmfile itself (``kgateway-system``), not
+        from whatever namespace context the kubeconfig carries, or the
+        ``needs:`` wiring between the CRDs release and the controller
+        release will not resolve correctly.
+        """
+        helmfile_yaml = self._find_rendered_yaml(
+            context, "09_helmfile-gateway-provider"
+        )
+        if not helmfile_yaml or not self._has_yaml_content(helmfile_yaml):
+            return
+
+        cmd.logger.log_info("📦 Installing agentgateway via helmfile...")
+
+        result = cmd.helmfile(
+            "apply",
+            "-f",
+            str(helmfile_yaml),
+            "--skip-diff-on-install",
+            use_kubeconfig=False,
+        )
         if not result.success:
-            errors.append(f"Failed to install kgateway: {result.stderr}")
+            errors.append(f"Failed to install agentgateway via helmfile: {result.stderr}")
 
     def _install_istio(
         self,

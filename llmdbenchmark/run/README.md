@@ -17,7 +17,7 @@ llmdbenchmark --spec guides/pd-disaggregation run -p <NS> \
 
 # Run with monitoring (metrics scraping + pod log capture)
 llmdbenchmark --spec guides/pd-disaggregation run -p <NS> \
-  -l inference-perf -w sanity_random.yaml -f
+  -l inference-perf -w sanity_random.yaml --monitoring
 
 # Run with a different harness
 llmdbenchmark --spec guides/pd-disaggregation run -p <NS> \
@@ -110,7 +110,7 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> -z
 | `-U URL` | `LLMDBENCH_ENDPOINT_URL` | Explicit endpoint URL -- enables run-only mode, skips auto-detection |
 | `-c FILE` | | Run config YAML file -- enables run-only mode |
 | `--generate-config` | | Generate a run config YAML from current settings and exit |
-| `-f` | `LLMDBENCH_MONITORING` | Enable vLLM metrics scraping and pod log capture |
+| `--monitoring` | `LLMDBENCH_MONITORING` | Enable vLLM metrics scraping and pod log capture |
 | `-q SA` | `LLMDBENCH_SERVICE_ACCOUNT` | Service account for harness pods |
 | `-g VARS` | `LLMDBENCH_HARNESS_ENVVARS_TO_YAML` | Comma-separated env var names to propagate into harness pod |
 | `-e FILE` | `LLMDBENCH_EXPERIMENTS` | Experiment treatments YAML for parameter sweeping |
@@ -124,6 +124,7 @@ llmdbenchmark --spec guides/inference-scheduling run -p <NS> -z
 | `--analyze` | | Run local analysis on collected results |
 | `-s STEPS` | | Step filter (e.g., `0,1,6` or `2-8`) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` | Kubeconfig path |
+| `--data-access-timeout N` | `LLMDBENCH_DATA_ACCESS_TIMEOUT` | Seconds to wait for the harness data-access pod to become Ready (default: 120). |
 
 ## Step Details
 
@@ -218,10 +219,10 @@ results to a separate subdirectory on the PVC.
 
 ```bash
 llmdbenchmark --spec guides/pd-disaggregation run -p <NS> \
-  -l inference-perf -w sanity_random.yaml -f
+  -l inference-perf -w sanity_random.yaml --monitoring
 ```
 
-With `-f`, the run:
+With `--monitoring`, the run:
 
 1. Sets `LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED=true` on the harness pod --
    the harness entrypoint scrapes vLLM `/metrics` before and after each benchmark

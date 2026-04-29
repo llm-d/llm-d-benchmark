@@ -1,5 +1,5 @@
 {% if standalone.enabled is defined and not standalone.enabled %}
-{% set gw_class = gateway.className | default('istio') %}
+{% set gw_class = gateway.className %}
 {% if gw_class == 'gke' %}
 {# ── GKE: managed gateway with destinationRule ── #}
 gateway:
@@ -51,10 +51,12 @@ gateway:
   service:
     type: {{ gateway.service.type | default('ClusterIP') }}
 
-{% elif gw_class == 'kgateway' %}
-{# ── kgateway: base config (step_07 patches for OpenShift) ── #}
+{% elif gw_class == 'agentgateway' %}
+{# ── agentgateway: no ConfigMap-based gatewayParameters (uses AgentgatewayParameters CRD) ── #}
 gateway:
-  gatewayClassName: kgateway
+  gatewayClassName: agentgateway
+  gatewayParameters:
+    enabled: false
   service:
     type: {{ gateway.service.type | default('NodePort') }}
 

@@ -397,6 +397,7 @@ def capture_label_logs(
         "logs",
         "--tail=-1",
         "--prefix=true",
+        "--all-containers=true",
         "-l", label,
         "--namespace", namespace,
         check=False,

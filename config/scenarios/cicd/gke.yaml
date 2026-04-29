@@ -1,0 +1,126 @@
+# GKE H100 CI/CD Scenario
+# Based on scenarios/cicd/gke_H100_fb.sh
+#
+# CI/CD scenario for Google Kubernetes Engine clusters with H100 GPUs.
+# Uses the default model (facebook/opt-125m) for fast validation.
+# PR 868: GKE fix for v0.5.1 llm-d-cuda image -- LD_LIBRARY_PATH
+# set inline in custom commands instead of via extraEnvVars.
+
+scenario:
+  - name: "gke-cicd"
+
+    # GPU affinity for GKE H100
+    affinity:
+      enabled: true
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-h100-80gb
+
+    # Disable monitoring for CI/CD
+    inferenceExtension:
+      monitoring:
+        prometheus:
+          enabled: false
+
+    # Decode configuration with GKE-specific custom command
+    # LD_LIBRARY_PATH is set inline because the llm-d-cuda image
+    # needs the CUDA compat library path on GKE nodes.
+    decode:
+      enabled: true
+      acceleratorType:
+          labelKey: cloud.google.com/gke-accelerator
+          labelValue: nvidia-h100-80gb
+      replicas: 1
+      vllm:
+        customCommand: |
+          export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+          export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+          vllm serve /model-cache/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_METRICS_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --tensor-parallel-size $TP_SIZE \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --no-enable-log-requests \
+          --disable-uvicorn-access-log \
+          --no-enable-prefix-caching
+
+    # Prefill with same GKE LD_LIBRARY_PATH fix
+    prefill:
+      enabled: true
+      acceleratorType:
+          labelKey: cloud.google.com/gke-accelerator
+          labelValue: nvidia-h100-80gb
+      replicas: 1
+      vllm:
+        customCommand: |
+          export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+          export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+          vllm serve /model-cache/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_INFERENCE_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --tensor-parallel-size $TP_SIZE \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --no-enable-log-requests \
+          --disable-uvicorn-access-log \
+          --no-enable-prefix-caching
+
+    # Standalone with GKE LD_LIBRARY_PATH (nvidia path, not cuda compat)
+    standalone:
+      acceleratorType:
+        labelKey: cloud.google.com/gke-accelerator
+        labelValue: nvidia-h100-80gb
+      enabled: false
+      vllm:
+        customCommand: |
+          export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+          export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+          vllm serve /model-storage/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_INFERENCE_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --load-format $VLLM_LOAD_FORMAT \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --max-num-seqs $VLLM_MAX_NUM_SEQ \
+          --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
+          --disable-log-requests \
+          --disable-uvicorn-access-log \
+          --no-enable-prefix-caching
+
+    fma:
+      enabled: false
+      iterations: 3
+      launcher:
+        customPreprocessCommands:
+          - export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+          - export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+
+    vllmCommon:
+      priorityClassName: nightly-gpu-critical
+
+    # Storage
+    storage:
+      modelPvc:
+        storageClassName: standard-rwx
+        size: 1Ti
+      workloadPvc:
+        storageClassName: standard-rwx
+
+    workDir: /tmp/llmdbenchcicd-gke/
+
+    harness:
+      name: inference-perf
+      experimentProfile: sanity_random.yaml
+
+    images:
+      benchmark:
+        repository: ghcr.io/llm-d/llm-d-benchmark
+        tag: nightly
+

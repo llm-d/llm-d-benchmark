@@ -21,6 +21,49 @@ EPHEMERAL_POD_LABEL = "llm-d-benchmark/ephemeral=true"
 """Label applied to all ephemeral curl/smoketest pods for cleanup."""
 
 
+def _normalize_url_prefix(prefix: str | None) -> str:
+    """Normalize a URL path prefix for safe concatenation with ``/v1/models``.
+
+    Returns an empty string for None or empty input; otherwise returns
+    the prefix with a leading slash and no trailing slash. Lets callers
+    write ``f"http://{host}:{port}{prefix}/v1/models"`` without worrying
+    about double-slashes or missing leading slashes.
+    """
+    if not prefix:
+        return ""
+    p = prefix if prefix.startswith("/") else "/" + prefix
+    return p.rstrip("/")
+
+
+def compute_gateway_path_prefix(
+    plan_config: dict,
+    stack_name: str,
+    is_standalone: bool = False,
+) -> str:
+    """Return the URL path prefix a caller should prepend to the gateway host.
+
+    Used by smoketest + run-phase steps to route traffic at a specific
+    stack in a shared-HTTPRoute scenario. Returns ``""`` for any scenario
+    that doesn't use the shared-HTTPRoute pattern (standalone, FMA,
+    single-model modelservice) - preserves existing behavior.
+
+    For ``httpRoute.mode: shared``, substitutes the stack name into
+    ``httpRoute.pathPrefix`` (e.g. ``/pool-a``). The shared HTTPRoute
+    then rewrites that prefix to ``httpRoute.rewriteTo`` before the
+    request reaches the upstream InferencePool, so the pod still sees
+    the usual ``/v1/*`` paths.
+    """
+    if is_standalone:
+        return ""
+    http_route = (plan_config or {}).get("httpRoute") or {}
+    if http_route.get("mode") != "shared":
+        return ""
+    tmpl = http_route.get("pathPrefix") or ""
+    if not (stack_name and tmpl):
+        return ""
+    return _normalize_url_prefix(tmpl.replace("{stack.name}", stack_name))
+
+
 def _build_overrides(plan_config: dict | None, service_account: str | None = None) -> list[str]:
     """Build --overrides args for ephemeral curl pods (imagePullSecrets, serviceAccount)."""
     overrides: dict = {}
@@ -96,6 +139,31 @@ def find_standalone_endpoint(
         svc_port = parts[2] if len(parts) > 2 else "80"
         return ip, name, svc_port
     return None, None, "80"
+
+def find_fma_endpoint(cmd: CommandExecutor, namespace: str) -> str | None:
+    """Find FMA replicaset name.
+
+    Queries for replicaset labelled ``stood-up-from=llm-d-benchmark``.
+
+    Returns:
+        name -- None if not found.
+    """
+
+    result = cmd.kube(
+        "get",
+        "replicaset",
+        "-l",
+        "stood-up-from=llm-d-benchmark",
+        "--namespace",
+        namespace,
+        "-o",
+        "jsonpath={.items[*].metadata.name}",
+        check=False,
+    )
+    if result.success and result.stdout.strip():
+        return f"{result.stdout.strip()}.{namespace}.cluster.local"
+
+    return None
 
 
 def find_gateway_endpoint(
@@ -415,8 +483,16 @@ def test_model_serving(
     max_retries: int = 12,
     retry_interval: int = 15,
     service_account: str | None = None,
+    url_path_prefix: str = "",
 ) -> str | None:
     """Test an endpoint by querying /v1/models via an ephemeral curl pod.
+
+    ``url_path_prefix`` is inserted before ``/v1/models`` (without a
+    trailing slash) to support gateways with path-based routing. For
+    the multi-model shared-HTTPRoute setup, each stack's prefix is its
+    routing path (e.g. ``/pool-a/v1``); the HTTPRoute URLRewrite strips
+    it and the upstream vLLM sees ``/v1/models`` as usual. Default is
+    empty - preserves existing behavior for every other scenario.
 
     Retries up to *max_retries* times (default 12 x 15 s = 3 min) when
     the response indicates the model is still loading or the decode
@@ -425,7 +501,8 @@ def test_model_serving(
     Returns None on success, or an error string describing the failure.
     """
     protocol = "https" if str(port) == "443" else "http"
-    url = f"{protocol}://{host}:{port}/v1/models"
+    prefix = _normalize_url_prefix(url_path_prefix)
+    url = f"{protocol}://{host}:{port}{prefix}/v1/models"
     
     # Auto-ensure service account and RBAC
     sa_name = service_account or (plan_config.get("serviceAccount", {}).get("name") if plan_config else "default")
@@ -459,7 +536,7 @@ def test_model_serving(
             )
 
     override_args = _build_overrides(plan_config, service_account=service_account)
-    curl_image = "curlimages/curl"
+    curl_image = "quay.io/curl/curl"
     last_error: str | None = None
 
     for attempt in range(1, max_retries + 1):

@@ -54,8 +54,8 @@ class DeploySetupStep(Step):
         helm_dir = self._prepare_helm_dir(context, stack_path, errors)
 
         gateway_class = self._require_config(plan_config, "gateway", "className")
-        if context.is_openshift and gateway_class == "kgateway" and helm_dir:
-            self._patch_infra_for_openshift_kgateway(helm_dir, context)
+        if context.is_openshift and gateway_class == "agentgateway" and helm_dir:
+            self._patch_infra_for_openshift_agentgateway(helm_dir, context)
 
         # Gateway provider helmfile (Istio) -- matches bash behavior:
         # call helmfile WITHOUT --kubeconfig so it uses the default context.
@@ -86,19 +86,32 @@ class DeploySetupStep(Step):
             if context.non_admin:
                 self._patch_helmfile_for_non_admin(helmfile_work)
 
-            result = cmd.helmfile(
-                "--namespace",
-                namespace,
-                "--selector",
-                f"name=infra-{release}",
-                "apply",
-                "-f",
-                str(helmfile_work),
-                "--skip-diff-on-install",
-                "--skip-schema-validation",
-            )
-            if not result.success:
-                errors.append(f"Failed to apply infra helmfile: {result.stderr}")
+            # Multi-stack scenarios dedupe the `infra-{release}` helm
+            # release into one stack (see 10_helmfile-main.yaml.j2 -
+            # stacks 2..N omit it). Pre-check whether THIS stack's
+            # helmfile declares the release before invoking helmfile;
+            # otherwise the apply exits non-zero with "no releases found
+            # that matches specified selector" which is harmless but
+            # noisy in the standup log.
+            if self._helmfile_declares_release(helmfile_work, f"infra-{release}"):
+                result = cmd.helmfile(
+                    "--namespace",
+                    namespace,
+                    "--selector",
+                    f"name=infra-{release}",
+                    "apply",
+                    "-f",
+                    str(helmfile_work),
+                    "--skip-diff-on-install",
+                    "--skip-schema-validation",
+                )
+                if not result.success:
+                    errors.append(f"Failed to apply infra helmfile: {result.stderr}")
+            else:
+                context.logger.log_info(
+                    f"    | infra-{release} not in this stack's helmfile "
+                    f"(shared infra is owned by another stack) - skipping"
+                )
 
         if errors:
             for err in errors:
@@ -123,6 +136,32 @@ class DeploySetupStep(Step):
             stack_name=stack_path.name,
         )
 
+    @staticmethod
+    def _helmfile_declares_release(helmfile_path: Path, release_name: str) -> bool:
+        """Return True if *helmfile_path* declares a release named *release_name*.
+
+        Used to skip a ``helmfile apply --selector`` invocation that would
+        otherwise "fail" noisily on stacks that intentionally dropped a
+        shared release (e.g. ``infra-llmdbench`` in multi-stack scenarios).
+
+        Parses the helmfile YAML and walks ``releases[*].name`` - a
+        substring check was too permissive: a label value, annotation,
+        or values-block key with the text ``name: X`` would falsely
+        match without actually declaring a release.
+        """
+        try:
+            content = helmfile_path.read_text(encoding="utf-8")
+            docs = list(yaml.safe_load_all(content))
+        except (OSError, yaml.YAMLError):
+            return False
+        for doc in docs:
+            if not isinstance(doc, dict):
+                continue
+            for release in doc.get("releases") or []:
+                if isinstance(release, dict) and release.get("name") == release_name:
+                    return True
+        return False
+
     def _prepare_helm_dir(
         self, context: ExecutionContext, stack_path: Path, errors: list
     ) -> Path | None:
@@ -141,36 +180,32 @@ class DeploySetupStep(Step):
             errors.append(f"Failed to prepare helm directory: {exc}")
             return None
 
-    def _patch_infra_for_openshift_kgateway(
+    def _patch_infra_for_openshift_agentgateway(
         self, helm_dir: Path, context: ExecutionContext
     ):
-        """Patch infra.yaml to add floatingUserId for kgateway on OpenShift."""
-        infra_file = helm_dir / "infra.yaml"
-        if not infra_file.exists():
-            return
+        """Patch infra.yaml for agentgateway on OpenShift.
 
-        try:
-            content = yaml.safe_load(infra_file.read_text(encoding="utf-8"))
-            if not content or "gateway" not in content:
-                return
+        Unlike Istio, agentgateway does NOT use ConfigMap-based
+        ``gatewayParameters``.  Setting ``gatewayParameters.enabled: true``
+        causes the llm-d-infra chart to create a ``parametersRef`` of
+        ``kind: ConfigMap`` on the Gateway, which agentgateway rejects:
 
-            gw = content["gateway"]
-            if gw.get("gatewayClassName") != "kgateway":
-                return
+            references unsupported type: group= kind=ConfigMap;
+            use AgentgatewayParameters instead
 
-            gw.setdefault("gatewayParameters", {})
-            gw["gatewayParameters"]["floatingUserId"] = True
-            gw["gatewayParameters"]["enabled"] = True
+        The agentgateway controller manages its own security context
+        through the helm values installed via the helmfile
+        (``securityContext.runAsNonRoot``, ``allowPrivilegeEscalation: false``),
+        so we do NOT need to inject ``floatingUserId`` here.
 
-            with open(infra_file, "w", encoding="utf-8") as f:
-                yaml.dump(content, f, default_flow_style=False)
-
-            context.logger.log_info(
-                "Patched infra.yaml: kgateway to kgateway-openshift "
-                "(floatingUserId=true)"
-            )
-        except (OSError, yaml.YAMLError):
-            pass
+        This method is intentionally a no-op.  It is kept as a placeholder
+        in case agentgateway-specific OpenShift patches are needed in the
+        future (e.g., creating an ``AgentgatewayParameters`` CR).
+        """
+        context.logger.log_info(
+            "agentgateway on OpenShift: no infra.yaml patch needed "
+            "(controller handles securityContext via helm values)"
+        )
 
     def _patch_helmfile_for_non_admin(self, helmfile_path: Path):
         """Prepend ``helmDefaults: createNamespace: false`` for non-admin users."""

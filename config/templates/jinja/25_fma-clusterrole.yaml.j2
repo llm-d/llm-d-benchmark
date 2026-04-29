@@ -1,0 +1,22 @@
+{# ============================================================================
+   25_fma-clusterrole.yaml.j2
+
+   ClusterRole granting access to FMA.
+   Required by FMA.
+
+   Only rendered when fma.enabled is true.
+   ============================================================================ #}
+{% if fma is defined and fma.enabled | default(false) %}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fma-node-viewer
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+{% endif %}

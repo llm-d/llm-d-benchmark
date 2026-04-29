@@ -31,6 +31,7 @@ scenario:
       maxModelLen: 1024
       size: 2Gi
 
+
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
     # Corresponds to: LLMDBENCH_VLLM_COMMON_AFFINITY=kubernetes.io/os:linux
@@ -248,7 +249,8 @@ scenario:
         # storageClassName: shared-vast       # Kubernetes
         # storageClassName: ocs-storagecluster-cephfs  # OpenShift
         size: 2Gi
-        accessMode: ReadWriteOnce
+        accessMode:
+          - ReadWriteOnce
       uriProtocol: hf
 
     # -------------------------------------------------------------------------

@@ -16,6 +16,7 @@ from llmdbenchmark.standup.steps.step_03_workload_monitoring import (
 )
 from llmdbenchmark.standup.steps.step_04_model_namespace import ModelNamespaceStep
 from llmdbenchmark.standup.steps.step_05_harness_namespace import HarnessNamespaceStep
+from llmdbenchmark.standup.steps.step_06_fma_deploy import FMADeployStep
 from llmdbenchmark.standup.steps.step_06_standalone_deploy import StandaloneDeployStep
 from llmdbenchmark.standup.steps.step_07_deploy_setup import DeploySetupStep
 from llmdbenchmark.standup.steps.step_08_deploy_gaie import DeployGaieStep
@@ -32,6 +33,7 @@ def get_standup_steps() -> list[Step]:
         WorkloadMonitoringStep(),
         ModelNamespaceStep(),
         HarnessNamespaceStep(),
+        FMADeployStep(),
         StandaloneDeployStep(),
         DeploySetupStep(),
         DeployGaieStep(),

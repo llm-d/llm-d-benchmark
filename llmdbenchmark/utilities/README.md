@@ -52,7 +52,7 @@ Establish a Kubernetes API connection. Resolution order:
 
 ## capacity_validator.py -- GPU Memory and KV Cache Validation
 
-Validates vLLM deployment parameters against model and GPU hardware constraints using the `config_explorer.capacity_planner` library.
+Validates vLLM deployment parameters against model and GPU hardware constraints using `planner.capacity_planner` from [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner).
 
 ### `run_capacity_planner(plan_config, logger, ignore_failures=False) -> list[str]`
 

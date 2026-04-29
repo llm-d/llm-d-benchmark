@@ -24,7 +24,7 @@ jobs:
     steps:
       - name: Check for existing PR or assignment
         id: check
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             // Skip if Copilot is already assigned
@@ -58,7 +58,7 @@ jobs:
 
       - name: Add instructions comment
         if: steps.check.outputs.skip != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const issue = context.payload.issue;
@@ -107,7 +107,7 @@ jobs:
 
       - name: Assign Copilot SWE agent
         if: steps.check.outputs.skip != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.COPILOT_PAT }}
           script: |

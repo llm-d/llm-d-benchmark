@@ -5,7 +5,6 @@ This repository provides an automated workflow for benchmarking LLM inference us
 > [!TIP]
 > We acknowledge many users are still utilizing our previous (now deprecated) library, and to make the transition easier, we still have that library available. It can be found in our [v0.5.2](https://github.com/llm-d/llm-d-benchmark/tree/v0.5.2) version tag.
 
-
 ### Main Goal
 
 Provide a single source of automation for repeatable and reproducible experiments and performance evaluation on `llm-d`:
@@ -27,10 +26,11 @@ For the client setup, the provided `install.sh` will install the necessary tools
 Deploying the llm-d stack requires **cluster-level admin** privileges, as you will be configuring cluster-level resources.
 However, the scripts can be executed by **namespace-level admin** users, as long as the [Kubernetes infrastructure components](https://github.com/llm-d-incubation/llm-d-infra) are configured and the **target namespace already exists**.
 
-
 ## Getting Started
 
 ### Install
+
+The install script supports both [uv](https://docs.astral.sh/uv/) and the standard `python3 -m venv` for virtual environment creation. When run interactively, it will prompt you to choose; in non-interactive mode (e.g. curl pipe), it auto-selects uv if your system Python is missing or older than 3.11. You can also pass `--uv` or `--no-uv` to skip the prompt.
 
 **Quick install (one-liner):**
 
@@ -46,7 +46,7 @@ llmdbenchmark --version
 ```bash
 git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
-./install.sh
+./install.sh              # or: --uv / --no-uv
 source .venv/bin/activate
 llmdbenchmark --version
 ```
@@ -63,6 +63,24 @@ The install script auto-detects if the repo is present -- if not, it clones it f
 > [!TIP]
 > The last line of output from `llmdbenchmark standup` shows the workspace path where all rendered configs, manifests, and results are stored.
 
+### Pick your path: with or without Accelerators
+
+Two supported entry points depending on what you have access to:
+
+**🖥️ No Accelerators  / No Cluster Access - Utilize a Kind Quickstart**
+
+Run the full `standup -> smoketest -> run -> teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine. No accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind-sim` scenario that CI runs on every PR, so if it works locally it works in CI.
+
+- **Requirements:** Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.11+
+- **Continue with Quick Start Guide:** [Quickstart on Kind](docs/quickstart.md)
+
+**🚀 Access to Compute cluster with Accelerators - full pipeline**
+
+Deploy against a Kubernetes cluster with Accelerators (OpenShift, GKE, EKS, CKS, etc.). Use one of the built-in specs or a well-lit path guide tuned for your hardware.
+
+- **Requirements:** cluster admin to install infra  (or utilize an namespace admin with infra pre-installed), kubeconfig, compute nodes
+- **Continue below** with [Choose a specification](#choose-a-specification) and [Deploy and benchmark](#deploy-and-benchmark-full-pipeline)
+
 ### Choose a specification
 
 Every command takes a `--spec` that selects the configuration for your cluster and GPU type. Specs are Jinja2 templates under `config/specification/`:
@@ -70,7 +88,10 @@ Every command takes a `--spec` that selects the configuration for your cluster a
 ```bash
 --spec gpu                              # NVIDIA GPU setup (config/specification/examples/gpu.yaml.j2)
 --spec inference-scheduling             # inference scheduling guide
+--spec inference-scheduling-wva         # inference scheduling + WVA autoscaling
+--spec multi-model-wva                  # multi-model WVA: N pools, 1 gateway, 1 shared HTTPRoute
 --spec pd-disaggregation               # prefill-decode disaggregation guide
+...
 --spec /full/path/to/my-spec.yaml.j2    # custom spec
 ```
 
@@ -99,6 +120,157 @@ llmdbenchmark --spec gpu teardown
 
 Each command renders Kubernetes manifests from your spec's templates and defaults, then applies them. The workspace directory captures rendered configs, manifests, and results for later inspection.
 
+### Deploy multiple models behind one gateway
+
+The `multi-model-wva` scenario deploys N models under a single gateway,
+each with its own EPP + InferencePool + VariantAutoscaling + HPA, sharing
+one WVA controller and one HTTPRoute with N backendRefs:
+
+```bash
+# Standup - renders two stacks (qwen3-06b, llama-31-8b), installs shared
+# infra once, deploys a per-model Helm release + VA + HPA for each.
+llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace
+
+# Smoketest - runs stack-by-stack (sequential), hitting each pool at its
+# routing prefix (/qwen3-06b/v1/models, /llama-31-8b/v1/models).
+llmdbenchmark --spec guides/multi-model-wva smoketest -p my-namespace
+
+# Run - iterates every stack, each harness pod targets its own pool's endpoint.
+llmdbenchmark --spec guides/multi-model-wva run -p my-namespace
+
+# See what's deployed: list detected endpoints + copy-paste run commands.
+llmdbenchmark --spec guides/multi-model-wva run -p my-namespace --list-endpoints
+
+# Benchmark just one pool (no --endpoint-url needed - auto-resolves):
+llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
+  --stack qwen3-06b \
+  -l inference-perf -w sanity_random.yaml
+
+# Teardown - removes both stacks and the shared infra.
+llmdbenchmark --spec guides/multi-model-wva teardown -p my-namespace
+```
+
+Stack names (`qwen3-06b`, `llama-31-8b`) double as path prefixes on the
+shared HTTPRoute (`/qwen3-06b/v1/...`, `/llama-31-8b/v1/...`). Pick short
+descriptive names in your own scenario - `--list-endpoints` prints the
+rendered URLs so you rarely have to type them manually.
+
+#### Discovering what's deployed (`--list-endpoints`)
+
+After standup, `--list-endpoints` detects each pool's routing URL, prints a
+copy-paste-ready table, and exits without launching any harness pods:
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva run -p my-namespace --list-endpoints
+```
+
+```
+📋 Detected endpoints:
+  STACK        MODEL                      ENDPOINT URL
+  -----------  -------------------------  ------------------------------
+  qwen3-06b    Qwen/Qwen3-0.6B            http://10.1.2.3:80/qwen3-06b
+  llama-31-8b  unsloth/Meta-Llama-3.1-8B  http://10.1.2.3:80/llama-31-8b
+
+💡 Copy-paste to benchmark one pool:
+
+  # qwen3-06b - Qwen/Qwen3-0.6B
+  llmdbenchmark --spec guides/multi-model-wva run \
+    --namespace my-namespace \
+    --endpoint-url http://10.1.2.3:80/qwen3-06b \
+    --model Qwen/Qwen3-0.6B \
+    -l <harness> -w <workload.yaml> -j <parallel-pods>
+  ...
+```
+
+#### Example Targeting a single pool (`--stack`)
+
+`--stack NAME` restricts any lifecycle command to one pool (or a
+comma-separated subset). Endpoint URL auto-resolves for the selected
+stack - no need to pass `--endpoint-url` manually:
+
+```bash
+# Benchmark qwen3-06b only with guidellm, two parallel harness pods
+llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
+  --stack qwen3-06b \
+  -l guidellm \
+  -w sanity_random.yaml \
+  -j 2
+```
+
+Breakdown of the Example:
+
+- `--stack qwen3-06b` filters per-stack steps to that pool. Endpoint
+  detection (step 03) runs only for that stack and auto-resolves to
+  `http://<gateway>:80/qwen3-06b` - including the routing prefix - so every
+  downstream step targets the qwen3-06b InferencePool.
+- `-l guidellm` selects the guidellm harness
+  ([workload/harnesses/guidellm-llm-d-benchmark.sh](workload/harnesses/guidellm-llm-d-benchmark.sh)).
+- `-j 2` launches two guidellm pods hitting the same endpoint. Both pods
+  run the same treatment (`-w`) but write to distinct result
+  subdirectories (`{experiment_id}_1`, `{experiment_id}_2`) on the
+  workload PVC.
+
+Want to compare pools side-by-side? Launch two invocations in parallel
+shells (different `--workspace` each):
+
+```bash
+# Terminal 1 - --workspace is a global option, placed before the subcommand
+llmdbenchmark --spec guides/multi-model-wva --workspace /tmp/run-qwen run -p my-namespace \
+  --stack qwen3-06b \
+  -l guidellm -w sanity_random.yaml -j 2 &
+
+# Terminal 2 (or same shell, backgrounded)
+llmdbenchmark --spec guides/multi-model-wva --workspace /tmp/run-llama run -p my-namespace \
+  --stack llama-31-8b \
+  -l guidellm -w sanity_random.yaml -j 2
+```
+
+`--stack` also works on `standup`, `smoketest`, and `teardown`. Same
+flag, same semantics - restrict execution to the named subset of stacks
+without editing the scenario YAML. Scenario-wide steps (namespace
+creation, admin prereqs, shared infra, WVA controller install) always
+run; only the per-stack steps (06+ for standup) are filtered.
+
+```bash
+# Standup only pool qwen3-06b from the multi-model scenario - shared
+# infra (istio, Gateway, WVA controller, model PVC) installs normally,
+# but only qwen3-06b's ms/gaie/VA/HPA resources get created.
+llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace \
+  --stack qwen3-06b
+
+# Standup two named pools out of a larger scenario:
+llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace \
+  --stack qwen3-06b,llama-31-8b
+
+# Tear down just one pool later, leaving the other running:
+llmdbenchmark --spec guides/multi-model-wva teardown -p my-namespace \
+  --stack qwen3-06b
+```
+
+Unknown stack names fail loudly with a list of valid ones.
+
+When `--stack NAME` selects exactly one stack, `-m/--models` scopes to
+that stack only - sibling stacks keep their scenario-defined models.
+Handy for "rerun pool A against a different model" without touching pool
+B:
+
+```bash
+llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
+  --stack qwen3-06b \
+  --model meta-llama/Llama-3.2-3B \
+  -l inference-perf -w sanity_random.yaml
+```
+
+Without `--stack`, `-m` applies to every stack and emits a warning.
+
+Add a third model by copying a stack block in
+[`config/scenarios/guides/multi-model-wva.yaml`](config/scenarios/guides/multi-model-wva.yaml)
+and changing `name` + `model`. Scenario-wide config (gateway class, WVA
+controller image, shared HTTPRoute, EPP plugin config) lives in the
+top-level `shared:` block and is inherited by every stack. See
+[Workload Variant Autoscaler](docs/workload-variant-autoscaler.md#2c-via-the-multi-model-wva-scenario-multiple-pools-one-wva-controller)
+for the full architecture.
+
 ### Benchmark an existing endpoint (run-only mode)
 
 Already have a model-serving endpoint running? Skip deployment entirely:
@@ -117,37 +289,15 @@ This uses the same harness, profile rendering, and result collection pipeline --
 > [!TIP]
 > `run` can also be used in debug mode (`-d` / `--debug`) which starts the harness pod with `sleep infinity` so you can exec into it and run commands interactively. See [this example](docs/tutorials/run/run_interactively_example.md).
 
-### Run a parameter sweep
-
-Experiment files in `workload/experiments/` define structured parameter sweeps. Each file lists treatments (combinations of factor levels) that the benchmark iterates over:
-
-```bash
-# Sweep workload parameters against an existing stack
-llmdbenchmark --spec inference-scheduling run \
-  --experiments workload/experiments/inference-scheduling.yaml
-
-# Full DoE: auto standup/run/teardown per infrastructure configuration
-llmdbenchmark --spec tiered-prefix-cache experiment \
-  --experiments workload/experiments/tiered-prefix-cache.yaml
-```
-
-The `run --experiments` form varies workload parameters (prompt length, concurrency) against a single endpoint.
-
-The `experiment` command goes even further by providing an interface to variy infrastructure parameters (replica counts, cache sizes, routing plugins) and stands up a fresh stack for each configuration. This is for advanced performance benchmarking that expands beyond simple configurations - **everything** becomes tunable from infrastructure to inference time.
-
 See [workload/README.md](workload/README.md) for the full experiment file format and all pre-built experiments, as well as advanced functionality.
-
-## Get started without accelerators
-
-No GPU? No problem. The **[Quickstart](docs/quickstart.md)** walks you through the full `standup → smoketest → run → teardown` lifecycle on a local [Kind](https://kind.sigs.k8s.io/) cluster using a simulated inference engine — no accelerators, no cloud account, no cluster operator required. It uses the same `cicd/kind-sim` scenario that CI runs on every PR, so if it works locally it works in CI.
-
-All you need is Docker (or Podman/Colima) with **4 CPUs / 8 GiB RAM** and Python 3.11+.
 
 ## Next Steps
 
 | Topic | Where to look |
 |-------|---------------|
 | Configuration system, defaults, scenarios, overrides | [config/README.md](config/README.md) |
+| Multi-model scenarios and the `shared:` block | [config/README.md](config/README.md#method-1-scenario-file-recommended-for-deployment-specific-config), [developer-guide](docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block) |
+| Workload-variant-autoscaler, including multi-pool setup | [docs/workload-variant-autoscaler.md](docs/workload-variant-autoscaler.md) |
 | Workloads, harnesses, profiles, experiments | [workload/README.md](workload/README.md) |
 | Standup phase, deployment methods, step details | [llmdbenchmark/standup/README.md](llmdbenchmark/standup/README.md) |
 | Smoketests, per-scenario validation, adding validators | [llmdbenchmark/smoketests/README.md](llmdbenchmark/smoketests/README.md) |
@@ -196,17 +346,17 @@ Or manually:
 ```bash
 git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
-./install.sh
+./install.sh              # or: --uv / --no-uv
 source .venv/bin/activate
 ```
 
 The install script:
 
-1. Creates a Python virtual environment at `.venv/`
+1. Creates a Python virtual environment at `.venv/` (via [uv](https://docs.astral.sh/uv/) or `python3 -m venv` - see [Install](#install))
 2. Validates Python 3.11+ and pip
 3. Checks for required system tools (curl, git, kubectl or oc, helm, helmfile, kustomize, jq, yq, skopeo, crane)
 4. Installs the `helm-diff` plugin (required by helmfile)
-5. Installs `llmdbenchmark` and `config_explorer` in editable mode
+5. Installs `llmdbenchmark` and `planner` (from [llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner))
 6. Verifies all Python packages are importable
 
 ### Manual Install w/o Install Script
@@ -216,7 +366,7 @@ git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-pip install -e config_explorer/
+pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@f51812bebca30e0291ec541bd2ef2acf0572e8a4"
 ```
 
 ### Verify Installation
@@ -261,7 +411,8 @@ llmdbenchmark --version
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
-| `-f` / `--monitoring` | `LLMDBENCH_MONITORING` | Enable PodMonitor creation and EPP verbosity during standup |
+| `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict per-stack execution to the named subset. Useful in multi-stack scenarios (e.g. `guides/multi-model-wva`) to re-deploy a single pool without touching siblings. Unknown names fail loudly. |
+| `--monitoring` | `LLMDBENCH_MONITORING` | Enable PodMonitor creation and EPP verbosity during standup |
 | `--skip-smoketest` | | Skip automatic smoketest after standup completes |
 | `--affinity` | `LLMDBENCH_AFFINITY` | Node affinity / tolerations label |
 | `--annotations` | `LLMDBENCH_ANNOTATIONS` | Extra annotations for deployed resources |
@@ -277,6 +428,7 @@ llmdbenchmark --version
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name (default: `llmdbench`) |
 | `-d` / `--deep` | `LLMDBENCH_DEEP_CLEAN` | Deep clean: delete ALL resources in both namespaces |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Comma-separated namespaces (model,harness) |
+| `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict teardown to the named subset. Useful for removing one pool from a multi-stack scenario while leaving siblings in place. |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 
 ### Experiment Options
@@ -321,12 +473,14 @@ llmdbenchmark --version
 | `--generate-config` | | Generate config and exit |
 | `-x DATASET` | `LLMDBENCH_DATASET` | Dataset URL for harness replay |
 | `--wait-timeout N` | `LLMDBENCH_WAIT_TIMEOUT` | Seconds to wait for harness completion |
-| `-f` / `--monitoring` | | Enable metrics scraping and EPP log capture during benchmark |
+| `--monitoring` | | Enable metrics scraping and EPP log capture during benchmark |
 | `-q` / `--serviceaccount` | `LLMDBENCH_SERVICE_ACCOUNT` | Service account name for harness pods |
 | `-g` / `--envvarspod` | `LLMDBENCH_HARNESS_ENVVARS_TO_YAML` | Comma-separated env var names to propagate into harness pod |
 | `--analyze` | | Run local analysis on results after collection |
 | `-z` / `--skip` | `LLMDBENCH_SKIP` | Skip execution, only collect existing results |
 | `-d` / `--debug` | `LLMDBENCH_DEBUG` | Debug mode: start harness pods with sleep infinity |
+| `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict the benchmark to the named subset of stacks. Endpoint URL auto-resolves for the selected stack - no need for `--endpoint-url`. When `--stack` selects exactly one stack, `-m/--models` scopes to that stack only. |
+| `--list-endpoints` | | Detect per-stack endpoint URLs, print a copy-paste table of `llmdbenchmark run` invocations, and exit without launching any harness pods. Useful after `standup` to discover what's deployed. |
 
 ### Smoketest Options
 
@@ -341,9 +495,10 @@ llmdbenchmark --spec gpu smoketest -p my-namespace -s 2   # config validation on
 |------|---------|-------------|
 | `-s STEPS` | | Step filter (e.g., `0,1,2` or `0-2`) |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
-| `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (standalone, modelservice) |
+| `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (standalone, modelservice, fma) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
-| `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
+| `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4). Smoketest pins this to 1 regardless - parallel probes across stacks are confusing. |
+| `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict smoketest to the named subset of stacks. |
 
 Smoketests also run automatically after `standup` unless `--skip-smoketest` is passed. See [llmdbenchmark/smoketests/README.md](llmdbenchmark/smoketests/README.md) for details on what each step validates.
 
@@ -562,10 +717,6 @@ Benchmark load specifications including LLM use case, traffic pattern, input/out
 ### [Experiments](docs/doe.md)
 
 Design of Experiments (DOE) files describing parameter sweeps across standup and run configurations. The `experiment` command automates the full setup x run treatment matrix -- standing up a different infrastructure configuration for each setup treatment, running all workload variations, tearing down, and producing a summary. See [llmdbenchmark/experiment/README.md](llmdbenchmark/experiment/README.md) for the full experiment lifecycle documentation.
-
-### [Configuration Explorer](config_explorer/README.md)
-
-The configuration explorer is a library that helps find the most cost-effective, optimal configuration for serving models on llm-d based on hardware specification, workload characteristics, and SLO requirements. A "Capacity Planner" is provided as an initial component to help determine if a vLLM configuration is feasible for deployment.
 
 ### [Benchmark Report](llmdbenchmark/analysis/benchmark_report/README.md)
 

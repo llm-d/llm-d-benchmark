@@ -12,6 +12,53 @@ b) "llm-d", which leverages a combination of [llm-d-infra](https://github.com/ll
 ## Scenarios
 All the information required for the standup of a stack is contained on a "scenario file". This information is encoded in the form of environment variables, with default values defined in `config/defaults.yaml` which can be then overriden inside a [scenario file](../config/scenarios) (YAML-based) or via [specification templates](../config/specification) (Jinja2 `.yaml.j2` files).
 
+### Multi-Stack Scenarios
+
+A scenario may define more than one stack in its `scenario:` list. Standup
+iterates every per-stack step across all stacks (in parallel, bounded by
+`--parallel`), so you can stand up N models behind one gateway in a single
+`llmdbenchmark standup` invocation. Scenario-wide config (gateway class,
+WVA controller, shared HTTPRoute, chart versions) lives in an optional
+top-level `shared:` block that's merged into every stack before per-stack
+overrides.
+
+Cluster-scoped infrastructure that would race with itself across N parallel
+standup executions is deduplicated at render time - only the first stack
+emits the istio control-plane helmfile and the `infra-llmdbench` Helm
+release; subsequent stacks render empty files for those templates. WVA
+controller installation is deduplicated at the step level (one per
+`wva.namespace`).
+
+Currently shipped multi-stack guide:
+
+- [`guides/multi-model-wva`](../config/scenarios/guides/multi-model-wva.yaml) -
+  two models (Qwen3-0.6B + Meta-Llama-3.1-8B), each with its own EPP +
+  InferencePool + VariantAutoscaling + HPA, one shared WVA controller,
+  one HTTPRoute with two backendRefs routing by path prefix
+  (`/qwen3-06b/*` -> Qwen pool, `/llama-31-8b/*` -> Llama pool).
+
+See [`config/README.md`](../config/README.md#method-1-scenario-file-recommended-for-deployment-specific-config)
+for the `shared:` merge semantics and the developer guide's
+[Multi-Stack Scenarios](developer-guide.md#multi-stack-scenarios-and-the-shared-block)
+section for the render-engine details.
+
+`--stack NAME[,NAME...]` (also `LLMDBENCH_STACK=NAME`) restricts standup to
+a subset of rendered stacks - handy for re-deploying a single pool after a
+scenario edit without tearing down siblings. Global steps (cluster admin
+prereqs, shared-infra helmfile, WVA controller install, scenario-wide
+PVCs) still run as usual; only per-stack steps (06+ for standup) are
+filtered. Unknown names fail loudly with a list of valid ones.
+
+```bash
+# One stack:
+llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace --stack qwen3-06b
+
+# Multiple named stacks (comma-separated):
+llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace --stack qwen3-06b,llama-31-8b
+```
+
+The same flag works on `smoketest`, `run`, and `teardown` with identical
+semantics, so you can scope every lifecycle phase to the same subset.
 
 ## Multiple steps
 The full standup of a stack is a multi-step process. The [lifecycle](lifecycle.md) document go into more details explaning the meaning of each different individual step.
@@ -89,6 +136,47 @@ The scenario parameters can be roughly categorized in four groups:
 | LLMDBENCH_VLLM_STANDALONE_HTTPROUTE                     |                                            |                                                |
 | LLMDBENCH_VLLM_STANDALONE_ARGS                          |                                            |                                                |
 | LLMDBENCH_VLLM_STANDALONE_EPHEMERAL_STORAGE             |                                            |                                                |
+
+- Gateway provider
+
+| Variable                                     | Meaning                                                                | Note                                                                                                     |
+| -------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| LLMDBENCH_VLLM_MODELSERVICE_GATEWAY_CLASS_NAME | Gateway implementation used for the inference gateway                 | Default=`istio`. Set to `agentgateway` to use the agentgateway data plane instead of Istio               |
+
+### Switching from Istio to agentgateway
+
+By default, `llm-d-benchmark` deploys [Istio](https://istio.io/) as the gateway provider for the `modelservice` deployment method.  To use [agentgateway](https://agentgateway.dev/) instead, add a `gateway` block to your scenario YAML:
+
+```yaml
+scenario:
+  - name: "my-stack"
+    gateway:
+      className: agentgateway       # default is "istio"
+
+    modelservice:
+      enabled: true
+    # ... rest of scenario config
+```
+
+That single change is all that's needed.  The benchmark tool handles everything else automatically:
+
+1. **Installs agentgateway** -- the controller and CRDs are installed via helmfile during step 02 (admin prerequisites), the same way Istio is installed
+2. **Configures the Gateway resource** -- the llm-d-infra Helm chart creates a `Gateway` with `gatewayClassName: agentgateway`
+3. **OpenShift SCC** -- on OpenShift clusters, a minimal custom SCC (`llmdbench-agentgateway`) is automatically created and granted to the gateway service account, allowing the proxy to run as UID 10101 with `NET_BIND_SERVICE`
+
+#### Differences from Istio
+
+| Aspect                    | Istio                                                  | agentgateway                                                          |
+|---------------------------|--------------------------------------------------------|-----------------------------------------------------------------------|
+| Gateway pod creation      | Created by the llm-d-infra Helm chart directly         | Created dynamically by the agentgateway controller                    |
+| `gatewayParameters`       | Uses `ConfigMap`-based `parametersRef`                 | Not used -- agentgateway manages its own `AgentgatewayParameters` CRD |
+| OpenShift compatibility   | Built-in via `floatingUserId` (uses namespace UID range) | Requires custom SCC (auto-created by the tool)                      |
+| Service name              | `infra-{release}-inference-gateway-istio`              | `infra-{release}-inference-gateway`                                   |
+
+#### Example scenarios using agentgateway
+
+- [`config/scenarios/examples/cpu.yaml`](../config/scenarios/examples/cpu.yaml) -- CPU-only deployment
+- [`config/scenarios/guides/inference-scheduling.yaml`](../config/scenarios/guides/inference-scheduling.yaml) -- inference scheduling guide
 
 - "llm-d"-specific VLLM paramaters
 

@@ -30,13 +30,22 @@ def add_subcommands(parser: argparse._SubParsersAction):
     smoketest_parser.add_argument(
         "-t", "--methods",
         default=env("LLMDBENCH_METHODS"),
-        help="Deployment methods (standalone, modelservice).",
+        help="Deployment methods (standalone, modelservice, fma).",
     )
     smoketest_parser.add_argument(
         "--parallel",
         type=int,
         default=env_int("LLMDBENCH_PARALLEL", 4),
         help="Max number of stacks to test in parallel (default: 4).",
+    )
+    smoketest_parser.add_argument(
+        "--stack",
+        default=env("LLMDBENCH_STACK"),
+        help=(
+            "Comma-separated list of stack names to restrict execution to. "
+            "Default: unset, meaning 'smoketest every stack of the scenario'. "
+            "Useful for re-running the smoketest against a single pool."
+        ),
     )
     smoketest_parser.add_argument(
         "--kubeconfig",

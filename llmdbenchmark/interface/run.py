@@ -88,6 +88,31 @@ def add_subcommands(parser: argparse._SubParsersAction):
         help="Number of parallel harness pods to create.",
     )
     run_parser.add_argument(
+        "--stack",
+        default=env("LLMDBENCH_STACK"),
+        help=(
+            "Comma-separated list of stack names to restrict execution to. "
+            "Default: unset, meaning 'run against every stack of the scenario'. "
+            "Useful in multi-stack scenarios (e.g. guides/multi-model-wva) "
+            "to benchmark a single pool without re-deploying. "
+            "Endpoint URL auto-resolves for the selected stack - no need to "
+            "pass --endpoint-url. Unknown names fail loudly. "
+            "Example: --stack qwen3-06b."
+        ),
+    )
+    run_parser.add_argument(
+        "--list-endpoints",
+        action="store_true",
+        default=False,
+        help=(
+            "Detect and print per-stack endpoint URLs for a deployed "
+            "scenario, then exit (no harness pods launched). The output "
+            "includes a copy-paste block with ready-to-run `llmdbenchmark` "
+            "invocations pre-populated with each stack's --endpoint-url "
+            "and --model."
+        ),
+    )
+    run_parser.add_argument(
         "--wait-timeout",
         type=int,
         default=env_int("LLMDBENCH_WAIT_TIMEOUT"),
@@ -99,14 +124,19 @@ def add_subcommands(parser: argparse._SubParsersAction):
         default=env("LLMDBENCH_DATASET"),
         help="URL for dataset to be replayed by the harness.",
     )
+    run_parser.add_argument(
+        "--data-access-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_DATA_ACCESS_TIMEOUT"),
+        help="Seconds to wait for the harness data-access pod to become Ready.",
+    )
 
     # Monitoring
     run_parser.add_argument(
-        "-f",
         "--monitoring",
         action="store_true",
-        default=False,
-        help="Enable vLLM /metrics scraping and pod log capture during the run.",
+        default=None,
+        help="Enable vLLM /metrics scraping and pod log capture during the run. Without this flag, metrics are not collected.",
     )
 
     # Pod configuration

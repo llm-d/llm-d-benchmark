@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 
 import pykube
 
-from benchmark_report.schema_v0_2_components import HostType
+from llmdbenchmark.analysis.benchmark_report.schema_v0_2_components import HostType
 
 from .base import BaseCollector
 from ..utils import get_node_info

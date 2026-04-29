@@ -399,7 +399,8 @@ class ClusterResourceResolver:
             sec_net = section_dict.get("networkResource")
             sec_nr = section_dict.get("networkNr")
 
-            if sec_net is not None and (sec_net == "auto" or not sec_net):
+            # Propagate when absent (None), "auto", or empty string
+            if sec_net is None or sec_net == "auto" or not sec_net:
                 section_dict["networkResource"] = common_net_resource
-            if sec_nr is not None and (sec_nr == "auto" or not sec_nr):
+            if sec_nr is None or sec_nr == "auto" or not sec_nr:
                 section_dict["networkNr"] = common_net_nr
