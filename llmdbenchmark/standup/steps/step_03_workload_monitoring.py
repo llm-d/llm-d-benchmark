@@ -279,6 +279,12 @@ class WorkloadMonitoringStep(Step):
             for key, value in affinity["nodeSelector"].items():
                 selectors.append(("affinity.nodeSelector", key, str(value)))
 
+        # FMA deploys launcher pods, not standalone/decode/prefill vLLM pods.
+        # Skip their acceleratorType validation.
+        is_fma = plan_config.get("fma", {}).get("enabled", False)
+        if is_fma:
+            return
+
         for method in ("standalone", "decode", "prefill"):
             method_config = plan_config.get(method, {})
             if not method_config:

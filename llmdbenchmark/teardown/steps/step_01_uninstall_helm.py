@@ -59,6 +59,12 @@ class UninstallHelmStep(Step):
 
         is_fma_enabled = "fma" in context.deployed_methods
 
+        # Delete FMA CRs before uninstalling the Helm chart so the
+        # controller is still running and can remove pod finalizers.
+        if is_fma_enabled:
+            for ns in namespaces:
+                self._delete_fma_crs(cmd, context, ns)
+
         for ns in namespaces:
             self._uninstall_releases(cmd, context, ns, release, model_labels, errors)
             if not is_fma_enabled:
@@ -86,6 +92,40 @@ class UninstallHelmStep(Step):
             success=True,
             message="Helm releases uninstalled",
         )
+
+    def _delete_fma_crs(
+        self,
+        cmd: CommandExecutor,
+        context: ExecutionContext,
+        namespace: str,
+    ) -> None:
+        """Deletes LauncherPopulationPolicy, InferenceServerConfig, and
+        LauncherConfig so the dual-pods controller can remove pod
+        finalizers before the Helm chart uninstall takes the controller down.
+        """
+        fma_cr_kinds = [
+            "launcherpopulationpolicy",
+            "inferenceserverconfig",
+            "launcherconfig",
+        ]
+        for kind in fma_cr_kinds:
+            result = cmd.kube(
+                "get", kind, "--namespace", namespace,
+                "-o", "name", "--ignore-not-found",
+                check=False,
+            )
+            if not result.success or not result.stdout.strip():
+                continue
+            for cr in result.stdout.strip().splitlines():
+                context.logger.log_info(
+                    f"  Deleting FMA CR {cr} (before Helm uninstall)",
+                    emoji="🗑️",
+                )
+                cmd.kube(
+                    "delete", "--namespace", namespace,
+                    "--ignore-not-found=true",
+                    cr, check=False,
+                )
 
     def _collect_model_labels(self, context: ExecutionContext) -> list[str]:
         """Collect model ID labels used to match helm releases."""
