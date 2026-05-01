@@ -1,5 +1,13 @@
 # llm-d-benchmark
 
+[![Release Status](https://img.shields.io/badge/Version-0.6-yellow)](https://github.com/llm-d/llm-d/releases)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+[![Join Slack](https://img.shields.io/badge/Join_Slack-blue?logo=slack)](https://llm-d.ai/slack)
+
+[![CI - Nightly Run Benchmark on CKS](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-cks.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-cks.yaml)
+[![CI - Nightly Run Benchmark on GKE](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-gke.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-gke.yaml)
+[![CI - Nightly Run Benchmark on OCP](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-ocp.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-ocp.yaml)
+
 This repository provides an automated workflow for benchmarking LLM inference using the `llm-d` stack. It includes tools for deployment, experiment execution, data collection, and teardown across multiple environments and deployment styles.
 
 > [!TIP]
