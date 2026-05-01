@@ -532,10 +532,10 @@ def _server_from_kubeconfig_data(data: dict) -> str | None:
     current_ctx = data.get("current-context", "")
     if not current_ctx:
         return None
-    for ctx in data.get("contexts", []):
+    for ctx in data.get("contexts") or []:
         if ctx.get("name") == current_ctx:
             cluster_ref = ctx.get("context", {}).get("cluster", "")
-            for cluster_entry in data.get("clusters", []):
+            for cluster_entry in data.get("contexts") or []:
                 if cluster_entry.get("name") == cluster_ref:
                     return cluster_entry.get("cluster", {}).get("server")
     return None
@@ -551,10 +551,10 @@ def _resolve_cluster_metadata(cmd: CommandExecutor, context: ExecutionContext) -
 
     context.context_name = data.get("current-context", "")
 
-    for ctx in data.get("contexts", []):
+    for ctx in data.get("contexts") or []:
         if ctx.get("name") == context.context_name:
             cluster_ref = ctx.get("context", {}).get("cluster", "")
-            for cluster_entry in data.get("clusters", []):
+            for cluster_entry in data.get("clusters") or []:
                 if cluster_entry.get("name") == cluster_ref:
                     server = cluster_entry.get("cluster", {}).get("server", "")
                     context.cluster_server = server
