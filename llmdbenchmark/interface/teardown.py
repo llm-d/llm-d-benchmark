@@ -2,7 +2,7 @@
 
 import argparse
 from llmdbenchmark.interface.commands import Command
-from llmdbenchmark.interface.env import env
+from llmdbenchmark.interface.env import env, env_int
 
 
 def add_subcommands(parser: argparse._SubParsersAction):
@@ -78,4 +78,11 @@ def add_subcommands(parser: argparse._SubParsersAction):
             "unset, the controller is also uninstalled. --deep overrides "
             "this and always uninstalls the controller."
         ),
+    )
+    teardown_parser.add_argument(
+        "--fma-teardown-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_FMA_TEARDOWN_TIMEOUT"),
+        help="Seconds to wait for FMA launcher and requester pods to terminate "
+             "before the Helm chart uninstall removes the controller. Default: 120.",
     )

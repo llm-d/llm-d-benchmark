@@ -105,6 +105,9 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
 
     pvc_bind_timeout: int = 240
 
+    # Teardown timeouts
+    fma_teardown_timeout: int = 120
+
     # Run-only mode (existing-stack)
     endpoint_url: str | None = None
     run_config_file: str | None = None

@@ -54,6 +54,38 @@ def find_data_access_pod(cmd, namespace: str) -> str | None:
 # Pod waiting
 # ---------------------------------------------------------------------------
 
+def wait_for_pods_deleted(
+    cmd,
+    selector: str,
+    namespace: str,
+    timeout: int,
+    context: ExecutionContext,
+) -> None:
+    """Wait for all pods matching a label selector to be fully deleted.
+
+    Uses ``kubectl wait pod --for=delete --selector=<selector>``.
+    Errors are logged as warnings but not raised, so teardown continues
+    even if the wait times out.
+    """
+    context.logger.log_info(
+        f"Waiting for pods ({selector}) to be deleted in {namespace} "
+        f"(timeout={timeout}s)..."
+    )
+    result = cmd.kube(
+        "wait", "pod",
+        "--for=delete",
+        f"--selector={selector}",
+        "--namespace", namespace,
+        f"--timeout={timeout}s",
+        check=False,
+    )
+    if not result.success and result.stderr.strip():
+        context.logger.log_warning(
+            f"Wait for pod deletion timed out or failed ({selector}): "
+            f"{result.stderr.strip()}"
+        )
+
+
 def wait_for_pods_by_label(
     cmd,
     label: str,

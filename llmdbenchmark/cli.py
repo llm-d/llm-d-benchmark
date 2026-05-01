@@ -698,6 +698,7 @@ def _do_teardown(args, logger, render_plan_errors):
         harness_namespace=harness_ns,
         model_name=plan_info.get("model_name"),
         logger=logger,
+        fma_teardown_timeout=int(getattr(args, "fma_teardown_timeout", 120) or 120),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
@@ -1440,6 +1441,7 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT": ("gateway_deploy_timeout", "--gateway-deploy-timeout"),
         "LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT": ("modelservice_deploy_timeout", "--modelservice-deploy-timeout"),
         "LLMDBENCH_PVC_BIND_TIMEOUT": ("pvc_bind_timeout", "--pvc-bind-timeout"),
+        "LLMDBENCH_FMA_TEARDOWN_TIMEOUT": ("fma_teardown_timeout", "--fma-teardown-timeout"),
     }
 
     active = {k: v for k, v in os.environ.items() if k in _ENV_TO_CLI}
