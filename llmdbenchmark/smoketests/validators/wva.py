@@ -346,7 +346,7 @@ class WvaSmoketestMixin:
         ``wva.llmd.ai/controller-instance`` label that matches the
         controller's ``CONTROLLER_INSTANCE`` env.
 
-        The label check is the most subtle of the WVA gates: the v0.6.0
+        The label check is the most subtle of the WVA gates: the v0.7.0
         controller's predicate filters out any in-namespace VA that
         doesn't carry this label when ``CONTROLLER_INSTANCE`` is set.
         Without it, the VA shows up in ``oc get va`` but the controller

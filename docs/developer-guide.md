@@ -935,7 +935,7 @@ shared:
     rewriteTo: /
   wva:
     enabled: true
-    image: { tag: v0.6.0 }
+    image: { tag: v0.7.0 }
 
 scenario:
   - name: qwen3-06b
@@ -973,7 +973,7 @@ shared:
   standalone:   { enabled: false }
   wva:
     enabled: true
-    image: { repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler, tag: v0.6.0 }
+    image: { repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler, tag: v0.7.0 }
   httpRoute:
     mode: shared
     name: multi-model-route

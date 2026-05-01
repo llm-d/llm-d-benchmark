@@ -114,7 +114,7 @@ shared:
   modelservice: { enabled: true }
   wva:
     enabled: true
-    image: { tag: v0.6.0 }
+    image: { tag: v0.7.0 }
   httpRoute:
     mode: shared
     name: multi-model-route

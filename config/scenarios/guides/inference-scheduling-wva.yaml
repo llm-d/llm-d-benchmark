@@ -70,15 +70,15 @@ scenario:
       # Controller container image.
       # Pin `tag` to a release version for reproducibility, or set to "auto"
       # to let the version-resolver pick latest at plan time.
-      # NOTE: image tags use a leading "v" (v0.6.0), distinct from the
-      # helm chart version pinned in chartVersions.wva (which is bare 0.6.0).
+      # NOTE: image tags use a leading "v" (v0.7.0), distinct from the
+      # helm chart version pinned in chartVersions.wva (which is bare 0.7.0).
       # Available version tags can be listed with:
       #   curl -sL "https://ghcr.io/token?scope=repository:llm-d/llm-d-workload-variant-autoscaler:pull" \
       #     | jq -r .token | xargs -I{} curl -sH "Authorization: Bearer {}" \
       #       https://ghcr.io/v2/llm-d/llm-d-workload-variant-autoscaler/tags/list
       image:
         repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
-        tag: v0.6.0
+        tag: v0.7.0
 
       replicaCount: 1                # WVA controller pod replicas (1 is the chart default)
 
@@ -191,7 +191,7 @@ scenario:
     # =========================================================================
     chartVersions:
       # WVA controller chart (oci://ghcr.io/llm-d/workload-variant-autoscaler)
-      wva: 0.6.0
+      wva: 0.7.0
       # prometheus-adapter chart (prometheus-community/prometheus-adapter).
       # Pinned because newer releases have broken external-metric
       # compatibility with the rule format the WVA chart emits.

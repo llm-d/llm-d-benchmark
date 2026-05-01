@@ -83,7 +83,7 @@ cluster-wide / shared
                             to OCP's monitoring stack
 
   <wva namespace>           = deploy namespace by default
-      workload-variant-autoscaler   Helm chart v0.6.0, namespaced mode
+      workload-variant-autoscaler   Helm chart v0.7.0, namespaced mode
                                     (reconciles only VAs in this namespace)
 
       per stack (per model)
@@ -238,7 +238,7 @@ wva:
 
   image:
     repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
-    tag: v0.6.0                  # NOTE: image tags use a leading "v"
+    tag: v0.7.0                  # NOTE: image tags use a leading "v"
 
   metrics:
     enabled: true
@@ -250,8 +250,8 @@ wva:
     port: 9091
 ```
 
-**Image tag note:** the *helm chart* version is bare semver (`chartVersions.wva: 0.6.0`),
-the *container image* tag uses a leading `v` (`v0.6.0`). They're set independently.
+**Image tag note:** the *helm chart* version is bare semver (`chartVersions.wva: 0.7.0`),
+the *container image* tag uses a leading `v` (`v0.7.0`). They're set independently.
 
 ### 3.2 VariantAutoscaling spec - per-model scaling intent
 
@@ -307,7 +307,7 @@ For more `behavior` tuning options:
 
 ```yaml
 chartVersions:
-  wva: 0.6.0                     # WVA controller chart (oci://ghcr.io/llm-d/workload-variant-autoscaler)
+  wva: 0.7.0                     # WVA controller chart (oci://ghcr.io/llm-d/workload-variant-autoscaler)
   prometheusAdapter: 5.2.0       # bumped charts have broken external-metric rule format
 ```
 
@@ -482,8 +482,8 @@ curl -sH "Authorization: Bearer $TOKEN" \
   https://ghcr.io/v2/llm-d/llm-d-workload-variant-autoscaler/tags/list | jq
 ```
 
-Note that **chart versions are bare semver** (`0.6.0`) but **image tags use
-a leading `v`** (`v0.6.0`). Mixing them up is a common source of pull failures.
+Note that **chart versions are bare semver** (`0.7.0`) but **image tags use
+a leading `v`** (`v0.7.0`). Mixing them up is a common source of pull failures.
 
 ---
 
