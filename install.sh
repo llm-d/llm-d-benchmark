@@ -31,6 +31,16 @@ REPO_DIR="llm-d-benchmark"
 DEFAULT_BRANCH="main"
 export _APT_GET_UPDATE_RUN=0
 export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
+
+declare -A TOOL_VERSION=(
+    ["yq"]="v4.52.5"
+    ["helmfile"]="1.4.2"
+    ["helm"]="v3.16.0"
+    ["oc"]="4.16.0"
+    ["kustomize"]="v5.0.0"
+    ["crane"]="0.20.3"
+)
+
 # ---------------------------------------------------------------------------
 # Bootstrap: if run via curl (no repo present), clone first
 #   curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
@@ -422,10 +432,26 @@ tool_version() {
 }
 
 # ---------------------------------------------------------------------------
+# Version comparison — returns 0 if ver1 >= ver2
+# ---------------------------------------------------------------------------
+version_gte() {
+    local ver1="${1}" ver2="${2}"
+    local higher
+
+    [[ "$ver1" == "$ver2" ]] && return 0
+    [[ -z "$ver1" || "$ver1" == "(unknown)" ]] && return 1
+    [[ -z "$ver2" ]] && return 0
+
+    higher=$(printf "%s\n%s" "$ver1" "$ver2" | sort -V | tail -1)
+    [[ "$higher" == "$ver1" ]] && return 0
+    return 1
+}
+
+# ---------------------------------------------------------------------------
 # Per-tool Linux install helpers
 # ---------------------------------------------------------------------------
 install_yq_linux() {
-    local version=v4.52.5
+    local version="${TOOL_VERSION["yq"]}"
     local binary=yq_linux_amd64
     curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}"
     chmod +x "/tmp/${binary}"
@@ -433,7 +459,7 @@ install_yq_linux() {
 }
 
 install_helmfile_linux() {
-    local version=1.4.2
+    local version="${TOOL_VERSION["helmfile"]}"
     local pkg="helmfile_${version}_linux_amd64"
     curl -sL "https://github.com/helmfile/helmfile/releases/download/v${version}/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz"
     tar xzf "/tmp/${pkg}.tar.gz" -C /tmp
@@ -465,7 +491,7 @@ install_kustomize_linux() {
 }
 
 install_crane_linux() {
-    local version=v0.20.3
+    local version="v${TOOL_VERSION["crane"]}"
     local arch
     arch=$(uname -m)
     local go_arch="x86_64"
@@ -480,15 +506,44 @@ install_crane_linux() {
 install_oc_mac() { brew install openshift-cli; }
 
 # ---------------------------------------------------------------------------
-# Check required tools (fail if missing)
+# Check required tools (fail if missing, upgrade if outdated)
 # ---------------------------------------------------------------------------
 for tool in $tools; do
     if grep -q "${tool} already installed." "$dependencies_checked_file" 2>/dev/null; then
         continue
     fi
+
     if command -v "$tool" &>/dev/null; then
-        printf "  %-14s %-20s %s\n" "$tool" "$(tool_version "$tool")" ""
-        echo "${tool} already installed." >> "$dependencies_checked_file"
+        current_ver=$(tool_version "$tool")
+        expected_ver="${TOOL_VERSION[$tool]:-}"
+        needs_upgrade=false
+
+        if [[ -n "$expected_ver" ]] && ! version_gte "$current_ver" "$expected_ver"; then
+            needs_upgrade=true
+        fi
+
+        if [[ "$needs_upgrade" == "true" ]]; then
+            echo "  ${tool} — ${current_ver} (outdated, upgrading to ${expected_ver})..."
+            install_func="install_${tool}_${target_os}"
+            if declare -F "$install_func" &>/dev/null; then
+                eval "$install_func"
+                if command -v "$tool" &>/dev/null; then
+                    new_ver=$(tool_version "$tool")
+                    printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(upgraded)"
+                    echo "${tool} already installed." >> "$dependencies_checked_file"
+                else
+                    echo "ERROR: Failed to upgrade ${tool}"
+                    exit 1
+                fi
+            else
+                echo "  WARNING: No upgrade function available for ${tool}, keeping ${current_ver}"
+                printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
+                echo "${tool} already installed." >> "$dependencies_checked_file"
+            fi
+        else
+            printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
+            echo "${tool} already installed." >> "$dependencies_checked_file"
+        fi
     else
         echo "  ${tool} — NOT FOUND, attempting install..."
         install_func="install_${tool}_${target_os}"
@@ -529,15 +584,45 @@ if command -v helm &>/dev/null; then
 fi
 
 # ---------------------------------------------------------------------------
-# Check optional tools (warn but don't fail)
+# Check optional tools (warn but don't fail, upgrade if outdated)
 # ---------------------------------------------------------------------------
 for tool in $optional_tools; do
     if grep -q "${tool} already installed." "$dependencies_checked_file" 2>/dev/null; then
         continue
     fi
+
     if command -v "$tool" &>/dev/null; then
-        printf "  %-14s %-20s %s\n" "$tool" "$(tool_version "$tool")" ""
-        echo "${tool} already installed." >> "$dependencies_checked_file"
+        current_ver=$(tool_version "$tool")
+        expected_ver="${TOOL_VERSION[$tool]:-}"
+        needs_upgrade=false
+
+        if [[ -n "$expected_ver" ]] && ! version_gte "$current_ver" "$expected_ver"; then
+            needs_upgrade=true
+        fi
+
+        if [[ "$needs_upgrade" == "true" ]]; then
+            echo "  ${tool} — ${current_ver} (outdated, upgrading to ${expected_ver})..."
+            install_func="install_${tool}_${target_os}"
+            if declare -F "$install_func" &>/dev/null; then
+                eval "$install_func"
+                if command -v "$tool" &>/dev/null; then
+                    new_ver=$(tool_version "$tool")
+                    printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(upgraded)"
+                    echo "${tool} already installed." >> "$dependencies_checked_file"
+                else
+                    echo "  WARNING: Failed to upgrade optional tool ${tool}, keeping ${current_ver}"
+                    printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
+                    echo "${tool} already installed." >> "$dependencies_checked_file"
+                fi
+            else
+                echo "  WARNING: No upgrade function available for ${tool}, keeping ${current_ver}"
+                printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
+                echo "${tool} already installed." >> "$dependencies_checked_file"
+            fi
+        else
+            printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
+            echo "${tool} already installed." >> "$dependencies_checked_file"
+        fi
     else
         printf "  %-14s %-20s %s\n" "$tool" "—" "(optional, not found)"
     fi
