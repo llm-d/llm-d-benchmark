@@ -168,6 +168,12 @@ class _StdLogger:
 _VERSION_LINE_RE = re.compile(
     r"^\s*(?:local\s+)?version=(?P<v>[\"']?)(?P<val>[^\s\"']+)(?P=v)\s*$"
 )
+_VERSION_INDIRECT_RE = re.compile(
+    r'^\s*(?:local\s+)?version="?(?P<prefix>[^$]*)\$\{TOOL_VERSION\["(?P<tool>[a-zA-Z0-9_-]+)"\]\}"?\s*$'
+)
+_TOOL_VERSION_ENTRY_RE = re.compile(
+    r'^\s*\["(?P<tool>[a-zA-Z0-9_-]+)"\]="(?P<ver>[^"]+)"\s*$'
+)
 _INSTALL_FN_RE = re.compile(
     r"^\s*install_(?P<tool>[a-zA-Z0-9_-]+?)_(?:linux|mac)\s*\(\s*\)\s*\{?\s*$"
 )
@@ -200,11 +206,30 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
     planner_line: int | None = None
     helm_diff_line: int | None = None
 
+    # Parse the TOOL_VERSION associative array (declare -A TOOL_VERSION=(...))
+    # so we can resolve indirect version references like ${TOOL_VERSION["tool"]}.
+    tool_version_map: dict[str, tuple[str, int]] = {}  # tool -> (version, line_num)
+    in_tool_version_block = False
+
     current_fn: str | None = None
     current_fn_line: int = 0
     rel = install_sh_path.name
 
     for i, raw in enumerate(lines, start=1):
+        # Detect start of declare -A TOOL_VERSION=( block
+        if re.search(r'\bTOOL_VERSION\s*=\s*\(', raw):
+            in_tool_version_block = True
+            continue
+
+        if in_tool_version_block:
+            if raw.strip() == ")":
+                in_tool_version_block = False
+                continue
+            m = _TOOL_VERSION_ENTRY_RE.match(raw)
+            if m:
+                tool_version_map[m.group("tool")] = (m.group("ver"), i)
+            continue
+
         m = _INSTALL_FN_RE.match(raw)
         if m:
             current_fn = m.group("tool")
@@ -212,9 +237,21 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
             continue
 
         if current_fn:
+            # Direct hardcoded version: local version=1.2.3 or local version="v1.2.3"
             m = _VERSION_LINE_RE.match(raw)
             if m and current_fn not in pinned:
                 pinned[current_fn] = (m.group("val"), i, f"install_{current_fn}_linux")
+                continue
+
+            # Indirect version reference: local version="${TOOL_VERSION["tool"]}"
+            # Also handles prefixed forms like: local version="v${TOOL_VERSION["crane"]}"
+            m = _VERSION_INDIRECT_RE.match(raw)
+            if m and current_fn not in pinned:
+                ref_tool = m.group("tool")
+                if ref_tool in tool_version_map:
+                    ver, arr_line = tool_version_map[ref_tool]
+                    prefix = m.group("prefix")
+                    pinned[current_fn] = (f"{prefix}{ver}", arr_line, f"TOOL_VERSION[\"{ref_tool}\"]")
                 continue
 
         m = _TOOLS_VAR_RE.match(raw)

@@ -57,6 +57,44 @@ helm_diff_url="https://github.com/databus23/helm-diff"
 PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
 """
 
+_INSTALL_SH_TOOL_VERSION_FIXTURE = """\
+#!/bin/bash
+# Toy install.sh fragment using TOOL_VERSION array indirection
+
+declare -A TOOL_VERSION=(
+    ["yq"]="v4.52.5"
+    ["helmfile"]="1.5.0"
+    ["crane"]="0.20.3"
+    ["skopeo"]="1.14.6"
+)
+
+tools="curl git helm helmfile yq crane jq skopeo"
+
+install_yq_linux() {
+    local version="${TOOL_VERSION["yq"]}"
+    curl -sL "https://example/${version}/yq" -o /tmp/yq
+}
+
+install_helmfile_linux() {
+    local version="${TOOL_VERSION["helmfile"]}"
+    curl -sL "https://example/v${version}/helmfile" -o /tmp/helmfile
+}
+
+install_crane_linux() {
+    local version="v${TOOL_VERSION["crane"]}"
+    curl -sL "https://example/${version}/crane" -o /tmp/crane
+}
+
+install_skopeo_linux() {
+    local version="v${TOOL_VERSION["skopeo"]}"
+    sudo apt-get install -y "skopeo=${version#v}"
+}
+
+helm_diff_url="https://github.com/databus23/helm-diff"
+
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
+"""
+
 
 _DEFAULTS_YAML_FIXTURE = """\
 images:
@@ -106,6 +144,13 @@ dependencies = [
 def install_sh(tmp_path: Path) -> Path:
     p = tmp_path / "install.sh"
     p.write_text(_INSTALL_SH_FIXTURE, encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def install_sh_tool_version(tmp_path: Path) -> Path:
+    p = tmp_path / "install.sh"
+    p.write_text(_INSTALL_SH_TOOL_VERSION_FIXTURE, encoding="utf-8")
     return p
 
 
@@ -181,6 +226,36 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/mikefarah/yq" in by_name["yq"].upstream
     assert "github.com/helmfile/helmfile" in by_name["helmfile"].upstream
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
+
+
+def test_parse_install_sh_tool_version_array_indirect(
+    sbom_module, install_sh_tool_version: Path,
+) -> None:
+    """Tools using TOOL_VERSION array indirection should be detected as pinned."""
+    entries = sbom_module.parse_install_sh(install_sh_tool_version)
+    by_name = {e.name: e for e in entries}
+
+    # helmfile uses local version="${TOOL_VERSION["helmfile"]}" (no prefix)
+    assert by_name["helmfile"].pin == "1.5.0"
+    assert by_name["helmfile"].pin_type == "version"
+    assert "TOOL_VERSION" in by_name["helmfile"].location
+    assert "line " in by_name["helmfile"].location
+
+    # yq uses local version="${TOOL_VERSION["yq"]}" (v already in the array value)
+    assert by_name["yq"].pin == "v4.52.5"
+    assert by_name["yq"].pin_type == "version"
+
+    # crane uses local version="v${TOOL_VERSION["crane"]}" (v prefix added)
+    assert by_name["crane"].pin == "v0.20.3"
+    assert by_name["crane"].pin_type == "version"
+
+    # skopeo uses local version="v${TOOL_VERSION["skopeo"]}" (v prefix added)
+    assert by_name["skopeo"].pin == "v1.14.6"
+    assert by_name["skopeo"].pin_type == "version"
+    assert "TOOL_VERSION" in by_name["skopeo"].location
+
+    # jq is still system-provided (no install function / no TOOL_VERSION entry)
+    assert by_name["jq"].pin == "system-provided"
 
 
 # --------------------------------------------------------------------------- #

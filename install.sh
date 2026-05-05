@@ -505,7 +505,7 @@ install_crane_linux() {
 }
 
 install_skopeo_linux() {
-    local version=v1.14.6
+    local version="v${TOOL_VERSION["skopeo"]}"
     if [[ ! -f /etc/os-release ]]; then
         echo "ERROR: /etc/os-release not found; cannot determine Ubuntu version for skopeo install"
         return 1
