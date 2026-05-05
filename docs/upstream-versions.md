@@ -30,7 +30,7 @@ whatever the host's package manager provides.
 | **llm-d-planner (git)** | `f51812bebca30e0291ec541bd2ef2acf0572e8a4` | commit SHA | `install.sh` line 666 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
 | **oc** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [openshift/oc](https://github.com/openshift/oc) |
 | **skopeo** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [containers/skopeo](https://github.com/containers/skopeo) |
-| **yq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [mikefarah/yq](https://github.com/mikefarah/yq) |
+| **yq** | `v4.53.2` | version | `install.sh`: `TOOL_VERSION["yq"]` | [mikefarah/yq](https://github.com/mikefarah/yq) |
 
 
 ## Helm Chart Dependencies

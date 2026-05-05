@@ -33,7 +33,7 @@ export _APT_GET_UPDATE_RUN=0
 export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 
 declare -A TOOL_VERSION=(
-    ["yq"]="v4.52.5"
+    ["yq"]="v4.53.2"
     ["helmfile"]="1.4.2"
     ["helm"]="v3.16.0"
     ["oc"]="4.16.0"
