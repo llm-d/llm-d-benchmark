@@ -33,6 +33,7 @@ export _APT_GET_UPDATE_RUN=0
 export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 
 declare -A TOOL_VERSION=(
+    ["curl"]="8.20.0"
     ["yq"]="v4.52.5"
     ["helmfile"]="1.4.2"
     ["helm"]="v3.16.0"
@@ -501,6 +502,21 @@ install_crane_linux() {
     tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane
     sudo cp -f /tmp/crane /usr/local/bin/crane
     sudo chmod +x /usr/local/bin/crane
+}
+
+install_curl_linux() {
+    # NOTE: version must be a literal string here so the SBOM generator
+    # (_VERSION_LINE_RE in util/generate_sbom.py) can capture it.
+    # Keep this in sync with TOOL_VERSION["curl"] above.
+    local version="8.20.0"
+    local arch
+    arch=$(uname -m)
+    local curl_arch="amd64"
+    [[ "$arch" == "aarch64" ]] && curl_arch="arm64"
+    curl -sL "https://github.com/moparisthebest/static-curl/releases/download/v${version}/curl-${curl_arch}" \
+        -o "/tmp/curl-${curl_arch}"
+    sudo cp -f "/tmp/curl-${curl_arch}" /usr/local/bin/curl
+    sudo chmod +x /usr/local/bin/curl
 }
 
 install_oc_mac() { brew install openshift-cli; }
