@@ -34,7 +34,7 @@ export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 
 declare -A TOOL_VERSION=(
     ["yq"]="v4.52.5"
-    ["helmfile"]="1.4.2"
+    ["helmfile"]="1.5.0"
     ["helm"]="v3.16.0"
     ["oc"]="4.16.0"
     ["kustomize"]="v5.0.0"
