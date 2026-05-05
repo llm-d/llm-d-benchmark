@@ -19,6 +19,7 @@ llmdbenchmark/
 ├── smoketests/              -- Post-deployment validation (health, inference, config checks)
 ├── standup/                 -- Standup phase steps (provision infrastructure, deploy models)
 ├── teardown/                -- Teardown phase steps (uninstall, clean up resources)
+├── telemetry/               -- Queue-based async usage telemetry
 ├── utilities/               -- Shared helpers (Kubernetes, endpoint detection, cloud upload)
 └── exceptions/              -- Custom exception hierarchy
 ```
@@ -47,6 +48,24 @@ A typical benchmark session follows this pipeline:
 5. **Teardown** -- Execute teardown steps: uninstall Helm releases, delete pods/secrets/ConfigMaps, clean cluster-scoped resources (5 steps, 00-04).
 
 The `experiment` command automates this lifecycle across multiple setup treatments (Design of Experiments).
+
+## Telemetry
+
+The package includes a queue-based asynchronous HTTP telemetry system to track usage.
+
+### Configuration
+Telemetry is enabled and configured via environment variables:
+* `LLMDBENCH_TELEMETRY_ENABLED`: Set to `true` to enable.
+* `LLMDBENCH_TELEMETRY_ENDPOINT`: The HTTP URL to POST JSON data to.
+* `LLMDBENCH_TELEMETRY_API_KEY`: Optional API key sent in `X-API-Key` header.
+
+### Usage in Code
+```python
+from llmdbenchmark.telemetry import get_telemetry
+
+if telemetry := get_telemetry():
+    telemetry.push({"event": "action_name", "custom_data": "value"})
+```
 
 ## How Submodules Relate
 
