@@ -96,7 +96,7 @@ _anchors:
 
   # General versions
   istio_version:                     &istio_version                     1.29.2
-  agentgateway_version:              &agentgateway_version              v1.0.1
+  agentgateway_version:              &agentgateway_version              v1.1.0
   lws_version:                       &lws_version                       0.8.0
   gaie_version:                      &gaie_version                      v1.4.0
   wva_version:                       &wva_version                       0.6.0
