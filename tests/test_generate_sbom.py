@@ -143,6 +143,107 @@ def test_parse_install_sh_pinned_versions(sbom_module, install_sh: Path) -> None
     assert by_name["crane"].pin == "v0.20.3"
 
 
+# --------------------------------------------------------------------------- #
+# TOOL_VERSION reference resolution
+# --------------------------------------------------------------------------- #
+
+_INSTALL_SH_TOOL_VERSION_FIXTURE = """\
+#!/bin/bash
+
+declare -A TOOL_VERSION=(
+    ["yq"]="v4.52.5"
+    ["kustomize"]="v5.0.0"
+    ["crane"]="0.20.3"
+    ["helmfile"]="1.4.2"
+)
+
+tools="curl yq kustomize crane helmfile jq"
+
+install_yq_linux() {
+    local version="${TOOL_VERSION["yq"]}"
+    curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/yq_linux_amd64" -o /tmp/yq
+}
+
+install_kustomize_linux() {
+    local version="${TOOL_VERSION["kustomize"]}"
+    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s -- "${version#v}"
+    sudo mv kustomize /usr/local/bin/
+}
+
+install_crane_linux() {
+    local version="v${TOOL_VERSION["crane"]}"
+    curl -sL "https://example/${version}/crane" -o /tmp/crane
+}
+
+install_helmfile_linux() {
+    local version="${TOOL_VERSION["helmfile"]}"
+    curl -sL "https://example/v${version}/helmfile" -o /tmp/helmfile
+}
+
+helm_diff_url="https://github.com/databus23/helm-diff"
+
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@abc123"
+"""
+
+
+@pytest.fixture
+def install_sh_tool_version(tmp_path: Path) -> Path:
+    p = tmp_path / "install.sh"
+    p.write_text(_INSTALL_SH_TOOL_VERSION_FIXTURE, encoding="utf-8")
+    return p
+
+
+def test_parse_install_sh_resolves_tool_version_refs(
+    sbom_module, install_sh_tool_version: Path,
+) -> None:
+    entries = sbom_module.parse_install_sh(install_sh_tool_version)
+    by_name = {e.name: e for e in entries}
+
+    # TOOL_VERSION reference without v-prefix: version should come from the dict
+    assert by_name["yq"].pin == "v4.52.5"
+    assert by_name["yq"].pin_type == "version"
+    assert "install_yq_linux" in by_name["yq"].location
+
+    # kustomize uses TOOL_VERSION reference — must be resolved to the dict value
+    assert by_name["kustomize"].pin == "v5.0.0"
+    assert by_name["kustomize"].pin_type == "version"
+    assert "install_kustomize_linux" in by_name["kustomize"].location
+
+    # crane prepends "v" to the TOOL_VERSION value
+    assert by_name["crane"].pin == "v0.20.3"
+    assert by_name["crane"].pin_type == "version"
+
+    # helmfile TOOL_VERSION reference without v-prefix
+    assert by_name["helmfile"].pin == "1.4.2"
+    assert by_name["helmfile"].pin_type == "version"
+
+    # jq has no install function → system-provided
+    assert by_name["jq"].pin == "system-provided"
+
+
+def test_parse_install_sh_no_double_v_prefix(
+    sbom_module, tmp_path: Path,
+) -> None:
+    """v-prefix in function + v-prefix in TOOL_VERSION must not produce 'vv'."""
+    content = """\
+#!/bin/bash
+declare -A TOOL_VERSION=(
+    ["mytool"]="v1.2.3"
+)
+tools="mytool"
+install_mytool_linux() {
+    local version="v${TOOL_VERSION["mytool"]}"
+    curl -sL "https://example/${version}/mytool" -o /tmp/mytool
+}
+"""
+    p = tmp_path / "install.sh"
+    p.write_text(content, encoding="utf-8")
+    entries = sbom_module.parse_install_sh(p)
+    by_name = {e.name: e for e in entries}
+    # Should be "v1.2.3" not "vv1.2.3"
+    assert by_name["mytool"].pin == "v1.2.3"
+
+
 def test_parse_install_sh_unpinned_marks_system_provided(
     sbom_module, install_sh: Path,
 ) -> None:

@@ -486,7 +486,8 @@ install_oc_linux() {
 }
 
 install_kustomize_linux() {
-    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+    local version="${TOOL_VERSION["kustomize"]}"
+    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s -- "${version#v}"
     sudo mv kustomize /usr/local/bin/
 }
 
