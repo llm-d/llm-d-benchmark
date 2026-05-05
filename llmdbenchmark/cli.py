@@ -618,7 +618,7 @@ def _print_standup_summary(context, result, logger):
 
     W = 62
     logger.log_info("=" * W)
-    logger.log_info(f"  STANDUP COMPLETE")
+    logger.log_info("  STANDUP COMPLETE")
     logger.log_info("=" * W)
     logger.log_info(f"  User:       {username}")
     logger.log_info(f"  Platform:   {platform}")
@@ -655,7 +655,7 @@ def _print_standup_summary(context, result, logger):
 
     if endpoints:
         logger.log_info("-" * W)
-        logger.log_info(f"  Deployed Endpoints:")
+        logger.log_info("  Deployed Endpoints:")
         for name, url in endpoints.items():
             logger.log_info(f"    {name}: {url}")
 

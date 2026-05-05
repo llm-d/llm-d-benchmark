@@ -12,7 +12,6 @@ import sys
 import glob
 import re
 from datetime import datetime
-from pathlib import Path
 
 try:
     import matplotlib

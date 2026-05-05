@@ -1,33 +1,27 @@
 import asyncio
 import json
 import logging
-import sys
 import os
 import argparse
 import functools
 import numpy as np
 
 from dataclasses import dataclass
-from typing import Generator, List, Optional, Tuple, Dict, Any
+from typing import Generator, List, Optional, Dict, Any
 from pydantic import ConfigDict, Field
 
 from inference_perf.apis.base import InferenceAPIData, LazyLoadInferenceAPIData
 from inference_perf.apis.completion import CompletionAPIData
-from inference_perf.apis.user_session import LocalUserSession, UserSessionCompletionAPIData
-from inference_perf.apis.base import InferenceAPIData, LazyLoadInferenceAPIData, InferenceInfo
+from inference_perf.apis.base import InferenceInfo
 from inference_perf.client.modelserver.vllm_client import vLLMModelServerClient
 from inference_perf.client.requestdatacollector.multiprocess import MultiprocessRequestDataCollector
 from aiohttp import ClientResponse
-import random
-import time
 from inference_perf.config import (
     APIConfig,
     APIType,
     DataConfig,
     LoadConfig,
     StandardLoadStage,
-    ModelServerClientConfig,
-    ModelServerType,
     CustomTokenizerConfig,
     LoadType,
     ReportConfig,
@@ -43,7 +37,6 @@ from inference_perf.loadgen.load_generator import LoadGenerator
 from inference_perf.loadgen.load_timer import LoadTimer
 from inference_perf.utils.custom_tokenizer import CustomTokenizer
 from inference_perf.reportgen.base import ReportGenerator
-from inference_perf.client.metricsclient.base import StageRuntimeInfo
 from inference_perf.client.metricsclient import PerfRuntimeParameters
 
 # Configure logging
@@ -377,7 +370,7 @@ async def main():
     limit = args.limit
     trace_file = args.trace_file
     
-    logger.info(f"Starting Multi-turn Benchmark")
+    logger.info("Starting Multi-turn Benchmark")
     logger.info(f"Model: {model_name}")
     logger.info(f"Base URL: {base_url}")
     logger.info(f"Limit: {limit}")
