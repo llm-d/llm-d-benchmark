@@ -237,18 +237,17 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
             m = _VERSION_LINE_RE.match(raw)
             if m and current_fn not in pinned:
                 pinned[current_fn] = (m.group("val"), i, f"install_{current_fn}_linux")
-                continue
-            # Also handle version lines that reference the TOOL_VERSION map,
-            # e.g. local version="${TOOL_VERSION["yq"]}" or
-            #      local version="v${TOOL_VERSION["crane"]}"
-            m = _TOOL_VER_REF_RE.match(raw)
-            if m and current_fn not in pinned:
-                ref_tool = m.group("ref_tool")
-                prefix = m.group("prefix")
-                if ref_tool in tool_version_map:
-                    val = prefix + tool_version_map[ref_tool]
-                    pinned[current_fn] = (val, i, f"install_{current_fn}_linux")
-                continue
+            else:
+                # Also handle version lines that reference the TOOL_VERSION map,
+                # e.g. local version="${TOOL_VERSION["yq"]}" or
+                #      local version="v${TOOL_VERSION["crane"]}"
+                m = _TOOL_VER_REF_RE.match(raw)
+                if m and current_fn not in pinned:
+                    ref_tool = m.group("ref_tool")
+                    prefix = m.group("prefix")
+                    if ref_tool in tool_version_map:
+                        val = prefix + tool_version_map[ref_tool]
+                        pinned[current_fn] = (val, i, f"install_{current_fn}_linux")
 
         m = _TOOLS_VAR_RE.match(raw)
         if m:
