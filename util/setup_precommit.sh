@@ -77,8 +77,12 @@ echo "==> Registering pre-commit hook..."
 pre-commit install
 
 echo ""
+echo "==> Installing pre-commit hook environments..."
+pre-commit install-hooks
+
+echo ""
 echo "pre-commit hook installed."
-echo "  pre-commit: py-compile, pytest, render-validation-changed, generate-sbom, detect-secrets"
+echo "  pre-commit: py-compile, pytest, render-validation-changed, generate-sbom, detect-secrets, ruff-check, ruff-format"
 echo ""
 echo "Run 'pre-commit run --all-files' to exercise the hooks now."
 
