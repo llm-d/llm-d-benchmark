@@ -15,6 +15,7 @@ dependencies = [
     "huggingface_hub",
     "transformers",
     "pydantic>=2.0",
+    "google-auth",
 ]
 
 #
