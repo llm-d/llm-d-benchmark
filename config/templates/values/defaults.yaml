@@ -104,7 +104,7 @@ _anchors:
   vllm-openai_version:               &vllm-openai_version               v0.9.2
   llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.7.1
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.7.1
-  llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.7.1
+  llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.8.0
   llm-d-cuda_version:                &llm-d-cuda_version                v0.6.0
   llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.8.2
   llm-d-benchmark_version:           &llm-d-benchmark_version           v0.6.0

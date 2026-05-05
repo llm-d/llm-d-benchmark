@@ -64,7 +64,7 @@ generation (and plan) time.
 | **inferenceScheduler** | `v0.7.1` | tag | `config/templates/values/defaults.yaml` line 364 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 383 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
 | **routingSidecar** | `v0.7.1` | tag | `config/templates/values/defaults.yaml` line 370 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
-| **udsTokenizer** | `v0.7.1` | tag | `config/templates/values/defaults.yaml` line 376 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |
+| **udsTokenizer** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 376 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |
 | **vllm** | `v0.6.0` | tag | `config/templates/values/defaults.yaml` line 351 (`images.vllm`) | [llm-d/llm-d (docker/Dockerfile.cuda)](https://github.com/llm-d/llm-d) (`ghcr.io/llm-d/llm-d-cuda`) |
 | **vllmOpenai** | `v0.9.2` | tag | `config/templates/values/defaults.yaml` line 358 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 
