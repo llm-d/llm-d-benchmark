@@ -98,7 +98,7 @@ scenario:
 
       udsTokenizer:
         repository: quay.io/satyam16/llm-d-uds-tokenizer
-        tag: downstream-Apr-20
+        tag: may-3-s390x
         pullPolicy: IfNotPresent
 
     # -------------------------------------------------------------------------
@@ -273,8 +273,6 @@ scenario:
           value: "0"
         - name: TORCH_SENDNN_CACHE_DIR
           value: /mnt/spyre-precompiled-model
-        - name: TORCH_SENDNN_CACHE_DIR
-          value: /mnt/spyre-precompiled-model
         - name: VLLM_SPYRE_REQUIRE_PRECOMPILED_DECODERS
           value: "0"
         - name: VLLM_SPYRE_DYNAMO_BACKEND
@@ -379,7 +377,7 @@ scenario:
       vllm:
         customCommand: |
           /opt/app-root/spyre_entrypoint.sh --model /model-cache/$MODEL_PATH \
-          --served-model-name $MODEL_PATH \
+          --served-model-name $MODEL_NAME \
           --port $VLLM_METRICS_PORT \
           --max-model-len $VLLM_MAX_MODEL_LEN \
           --tensor-parallel-size $VLLM_TENSOR_PARALLELISM \
@@ -468,3 +466,6 @@ scenario:
       name: inference-perf
       experimentProfile: sanity_random.yaml
       waitTimeout: 36000
+      extraEnvVars:
+        - name: LD_LIBRARY_PATH
+          value: "/tmp/arrow/cpp/release/release"
