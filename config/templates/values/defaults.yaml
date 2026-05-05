@@ -102,7 +102,7 @@ _anchors:
   wva_version:                       &wva_version                       0.6.0
   prometheus_version:                &prometheus_version                5.2.0
   vllm-openai_version:               &vllm-openai_version               v0.9.2
-  llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.7.1
+  llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.8.0
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.7.1
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.7.1
   llm-d-cuda_version:                &llm-d-cuda_version                v0.6.0
