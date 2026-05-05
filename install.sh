@@ -36,6 +36,7 @@ declare -A TOOL_VERSION=(
     ["yq"]="v4.52.5"
     ["helmfile"]="1.4.2"
     ["helm"]="v3.16.0"
+    ["jq"]="jq-1.8.1"
     ["oc"]="4.16.0"
     ["kustomize"]="v5.0.0"
     ["crane"]="0.20.3"
@@ -456,6 +457,20 @@ install_yq_linux() {
     curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}"
     chmod +x "/tmp/${binary}"
     sudo cp -f "/tmp/${binary}" /usr/local/bin/yq
+}
+
+install_jq_linux() {
+    # Literal version required so util/generate_sbom.py can extract it via regex.
+    # Keep in sync with TOOL_VERSION["jq"] above (strip the leading "jq-" prefix).
+    local version="1.8.1"
+    local arch
+    arch=$(uname -m)
+    local jq_arch="amd64"
+    [[ "$arch" == "aarch64" ]] && jq_arch="arm64"
+    local binary="jq-linux-${jq_arch}"
+    curl -sL "https://github.com/jqlang/jq/releases/download/jq-${version}/${binary}" -o /tmp/jq
+    chmod +x /tmp/jq
+    sudo cp -f /tmp/jq /usr/local/bin/jq
 }
 
 install_helmfile_linux() {
