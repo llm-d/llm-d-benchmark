@@ -39,6 +39,7 @@ declare -A TOOL_VERSION=(
     ["oc"]="4.16.0"
     ["kustomize"]="v5.0.0"
     ["crane"]="0.20.3"
+    ["skopeo"]="1.14.6"
 )
 
 # ---------------------------------------------------------------------------
@@ -501,6 +502,31 @@ install_crane_linux() {
     tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane
     sudo cp -f /tmp/crane /usr/local/bin/crane
     sudo chmod +x /usr/local/bin/crane
+}
+
+install_skopeo_linux() {
+    local version=v1.14.6
+    if [[ ! -f /etc/os-release ]]; then
+        echo "ERROR: /etc/os-release not found; cannot determine Ubuntu version for skopeo install"
+        return 1
+    fi
+    . /etc/os-release
+    if [[ -z "${VERSION_ID:-}" ]]; then
+        echo "ERROR: VERSION_ID not set after sourcing /etc/os-release; cannot install skopeo"
+        return 1
+    fi
+    local ver="${version#v}"
+    local keyring="/etc/apt/keyrings/libcontainers-stable.gpg"
+    local repo="https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}"
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL "${repo}/Release.key" | sudo gpg --dearmor -o "${keyring}"
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=${keyring}] ${repo}/ /" \
+        | sudo tee /etc/apt/sources.list.d/libcontainers-stable.list
+    sudo apt-get update -qq
+    if ! sudo apt-get install -y "skopeo=${ver}~ubuntu${VERSION_ID}~1"; then
+        echo "WARNING: skopeo ${version} not found in kubic repo; installing latest available version"
+        sudo apt-get install -y skopeo
+    fi
 }
 
 install_oc_mac() { brew install openshift-cli; }
