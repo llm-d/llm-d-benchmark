@@ -217,7 +217,7 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
 
     for i, raw in enumerate(lines, start=1):
         # Detect start of declare -A TOOL_VERSION=( block
-        if re.search(r'\bTOOL_VERSION\s*=\s*\(', raw):
+        if re.match(r'^\s*declare\s+-A\s+TOOL_VERSION\s*=\s*\(', raw):
             in_tool_version_block = True
             continue
 

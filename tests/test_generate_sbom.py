@@ -86,6 +86,7 @@ install_crane_linux() {
 }
 
 install_skopeo_linux() {
+    # Simplified for parser testing; actual function includes OS detection and repo setup.
     local version="v${TOOL_VERSION["skopeo"]}"
     sudo apt-get install -y "skopeo=${version#v}"
 }
