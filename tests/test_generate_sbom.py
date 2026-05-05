@@ -57,6 +57,38 @@ helm_diff_url="https://github.com/databus23/helm-diff"
 PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
 """
 
+_INSTALL_SH_TOOL_VERSION_FIXTURE = """\
+#!/bin/bash
+# Toy install.sh fragment using TOOL_VERSION associative array (matches real install.sh)
+
+declare -A TOOL_VERSION=(
+    ["yq"]="v4.52.5"
+    ["helmfile"]="1.4.2"
+    ["crane"]="0.21.5"
+)
+
+tools="curl git crane yq helmfile jq"
+
+install_yq_linux() {
+    local version="${TOOL_VERSION["yq"]}"
+    curl -sL "https://example/${version}/yq" -o /tmp/yq
+}
+
+install_helmfile_linux() {
+    local version="${TOOL_VERSION["helmfile"]}"
+    curl -sL "https://example/v${version}/helmfile" -o /tmp/helmfile
+}
+
+install_crane_linux() {
+    local version="v${TOOL_VERSION["crane"]}"
+    curl -sL "https://example/${version}/crane" -o /tmp/crane
+}
+
+helm_diff_url="https://github.com/databus23/helm-diff"
+
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
+"""
+
 
 _DEFAULTS_YAML_FIXTURE = """\
 images:
@@ -181,6 +213,30 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/mikefarah/yq" in by_name["yq"].upstream
     assert "github.com/helmfile/helmfile" in by_name["helmfile"].upstream
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
+
+
+def test_parse_install_sh_tool_version_references(sbom_module, tmp_path: Path) -> None:
+    """TOOL_VERSION array references in install functions are resolved correctly."""
+    p = tmp_path / "install_tool_ver.sh"
+    p.write_text(_INSTALL_SH_TOOL_VERSION_FIXTURE, encoding="utf-8")
+    entries = sbom_module.parse_install_sh(p)
+    by_name = {e.name: e for e in entries}
+
+    # crane uses prefix "v" + TOOL_VERSION reference
+    assert by_name["crane"].pin == "v0.21.5"
+    assert by_name["crane"].pin_type == "version"
+    assert "install_crane_linux" in by_name["crane"].location
+
+    # yq uses no prefix; TOOL_VERSION value already has "v"
+    assert by_name["yq"].pin == "v4.52.5"
+    assert by_name["yq"].pin_type == "version"
+
+    # helmfile uses no prefix; TOOL_VERSION value has no "v"
+    assert by_name["helmfile"].pin == "1.4.2"
+    assert by_name["helmfile"].pin_type == "version"
+
+    # jq has no install function, so it remains system-provided
+    assert by_name["jq"].pin == "system-provided"
 
 
 # --------------------------------------------------------------------------- #
