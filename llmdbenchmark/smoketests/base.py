@@ -1016,7 +1016,8 @@ class BaseSmoketest:
         poll_interval: int = 10,
     ) -> str | None:
         protocol = "https" if str(port) == "443" else "http"
-        url = f"{protocol}://{host}:{port}/health"
+        prefix = _normalize_url_prefix(url_path_prefix)
+        url = f"{protocol}://{host}:{port}{prefix}/health"
         curl_image = get_curl_image()
         override_args = _build_overrides(plan_config)
 
