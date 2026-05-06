@@ -72,14 +72,17 @@ case "$ARCH_UNAME" in
         ARCH_GO="amd64"; ARCH_DEB="amd64"
         ;;
 
-declare -A TOOL_VERSION=(
-    ["yq"]="v4.52.5"
-    ["helmfile"]="1.4.2"
-    ["helm"]="v3.16.0"
-    ["oc"]="4.16.0"
-    ["kustomize"]="v5.0.0"
-    ["crane"]="0.20.3"
-)
+tool_version_for() {
+    case "$1" in
+        yq)        echo "v4.52.5" ;;
+        helmfile)  echo "1.4.2"   ;;
+        helm)      echo "v3.16.0" ;;
+        oc)        echo "4.16.0"  ;;
+        kustomize) echo "v5.0.0"  ;;
+        crane)     echo "0.20.3"  ;;
+        *)         echo ""        ;;
+    esac
+}
 
 # ---------------------------------------------------------------------------
 # Bootstrap: if run via curl (no repo present), clone first
@@ -484,7 +487,7 @@ version_gte() {
 # ---------------------------------------------------------------------------------
 
 install_yq_linux() {
-    local version="${TOOL_VERSION["yq"]}"
+    local version=$(tool_version_for yq)
     local binary=yq_linux_${ARCH_GO}"
     curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}"
     chmod +x "/tmp/${binary}"
@@ -548,7 +551,8 @@ install_kustomize_linux() {
 }
 
 install_crane_linux() {
-    local version="v${TOOL_VERSION["crane"]}"
+    local version
+    version="v$(tool_version_for crane)"
     # go-containerregistry release tarballs use Go arch names (X86_64 capitalised)
     local go_arch_cap
     case "$ARCH_GO" in
