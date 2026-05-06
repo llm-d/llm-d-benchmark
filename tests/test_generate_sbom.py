@@ -57,6 +57,36 @@ helm_diff_url="https://github.com/databus23/helm-diff"
 PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
 """
 
+# Fixture demonstrating the TOOL_VERSION dictionary pattern where versions are
+# referenced via ${TOOL_VERSION["key"]} rather than literal assignments.
+# This matches the actual install.sh style used for yq and helmfile.
+_INSTALL_SH_TOOL_VERSION_FIXTURE = """\
+#!/bin/bash
+# Toy install.sh fragment with TOOL_VERSION dict
+
+declare -A TOOL_VERSION=(
+    ["yq"]="v4.53.2"
+    ["helmfile"]="1.4.2"
+)
+
+tools="curl git helm helmfile yq crane jq"
+
+install_yq_linux() {
+    local version="${TOOL_VERSION["yq"]}"
+    local binary=yq_linux_amd64
+    curl -sL "https://example/${version}/${binary}" -o "/tmp/${binary}"
+}
+
+install_helmfile_linux() {
+    local version="${TOOL_VERSION["helmfile"]}"
+    curl -sL "https://example/v${version}/helmfile" -o /tmp/helmfile
+}
+
+helm_diff_url="https://github.com/databus23/helm-diff"
+
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
+"""
+
 
 _DEFAULTS_YAML_FIXTURE = """\
 images:
@@ -106,6 +136,13 @@ dependencies = [
 def install_sh(tmp_path: Path) -> Path:
     p = tmp_path / "install.sh"
     p.write_text(_INSTALL_SH_FIXTURE, encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def install_sh_tool_version(tmp_path: Path) -> Path:
+    p = tmp_path / "install.sh"
+    p.write_text(_INSTALL_SH_TOOL_VERSION_FIXTURE, encoding="utf-8")
     return p
 
 
@@ -181,6 +218,25 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/mikefarah/yq" in by_name["yq"].upstream
     assert "github.com/helmfile/helmfile" in by_name["helmfile"].upstream
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
+
+
+def test_parse_install_sh_tool_version_dict_references(
+    sbom_module, install_sh_tool_version: Path,
+) -> None:
+    """Versions specified via ${TOOL_VERSION["key"]} are resolved from the dict."""
+    entries = sbom_module.parse_install_sh(install_sh_tool_version)
+    by_name = {e.name: e for e in entries}
+
+    assert by_name["yq"].pin == "v4.53.2"
+    assert by_name["yq"].pin_type == "version"
+    assert "install_yq_linux" in by_name["yq"].location
+
+    assert by_name["helmfile"].pin == "1.4.2"
+    assert by_name["helmfile"].pin_type == "version"
+    assert "install_helmfile_linux" in by_name["helmfile"].location
+
+    # Tools without an install function still show as system-provided.
+    assert by_name["jq"].pin == "system-provided"
 
 
 # --------------------------------------------------------------------------- #

@@ -180,18 +180,50 @@ _PLANNER_RE = re.compile(
 _HELM_DIFF_RE = re.compile(
     r"^\s*helm_diff_url=[\"']?(https://[^\s\"']+)"
 )
+_TOOL_VERSION_DICT_START_RE = re.compile(
+    r"^\s*declare\s+-A\s+TOOL_VERSION\s*=\s*\("
+)
+_TOOL_VERSION_ENTRY_RE = re.compile(
+    r'^\s*\["(?P<key>[^"]+)"\]="(?P<val>[^"]+)"\s*$'
+)
+_VERSION_TOOL_REF_RE = re.compile(
+    r'^\s*(?:local\s+)?version="\$\{TOOL_VERSION\["(?P<key>[^"]+)"\]\}"\s*$'
+)
 
 
 def parse_install_sh(install_sh_path: Path) -> list[Entry]:
     """Extract pinned tool versions and the required-tool list from install.sh.
 
     Tracks 1-based line numbers so file_location includes them.
+    Resolves both literal ``local version=X`` assignments and
+    ``local version="${TOOL_VERSION["key"]}"`` variable references.
     """
     if not install_sh_path.exists():
         return []
 
     text = install_sh_path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
+
+    # First pass: extract the TOOL_VERSION associative array so we can
+    # resolve ${TOOL_VERSION["key"]} references in install functions.
+    # Expected format:
+    #   declare -A TOOL_VERSION=(
+    #       ["yq"]="v4.53.2"
+    #       ["helmfile"]="1.4.2"
+    #   )
+    tool_version_map: dict[str, str] = {}
+    in_tv_dict = False
+    for raw in lines:
+        if _TOOL_VERSION_DICT_START_RE.match(raw):
+            in_tv_dict = True
+            continue
+        if in_tv_dict:
+            if raw.strip() == ")":
+                in_tv_dict = False
+                continue
+            m = _TOOL_VERSION_ENTRY_RE.match(raw)
+            if m:
+                tool_version_map[m.group("key")] = m.group("val")
 
     # tool_name -> (version, line_number, fn_name) for pinned installs
     pinned: dict[str, tuple[str, int, str]] = {}
@@ -216,6 +248,14 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
             if m and current_fn not in pinned:
                 pinned[current_fn] = (m.group("val"), i, f"install_{current_fn}_linux")
                 continue
+            # Also resolve ${TOOL_VERSION["key"]} variable references.
+            m = _VERSION_TOOL_REF_RE.match(raw)
+            if m and current_fn not in pinned:
+                key = m.group("key")
+                resolved = tool_version_map.get(key)
+                if resolved:
+                    pinned[current_fn] = (resolved, i, f"install_{current_fn}_linux")
+                    continue
 
         m = _TOOLS_VAR_RE.match(raw)
         if m:
