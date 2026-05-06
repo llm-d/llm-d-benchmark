@@ -5,10 +5,11 @@ from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env, env_int
 
 
-def add_subcommands(parser: argparse._SubParsersAction):
+def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []):
     """Register the ``smoketest`` subcommand and its arguments."""
     smoketest_parser = parser.add_parser(
         Command.SMOKETEST.value,
+        parents=parents,
         description=(
             "The `smoketest` command validates a deployed model infrastructure. "
             "It runs health checks, a sample inference request, and per-scenario "

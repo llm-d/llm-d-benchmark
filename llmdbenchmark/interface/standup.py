@@ -5,10 +5,11 @@ from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env, env_int
 
 
-def add_subcommands(parser: argparse._SubParsersAction):
+def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []):
     """Register the ``standup`` subcommand and its arguments."""
     standup_parser = parser.add_parser(
         Command.STANDUP.value,
+        parents=parents,
         description=(
             "The `standup` command provisions the model infrastructure for a given specification. "
             "It implicitly generates a plan (YAMLs) and then executes the provisioning steps."

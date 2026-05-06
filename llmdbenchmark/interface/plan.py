@@ -5,7 +5,7 @@ from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env
 
 
-def add_subcommands(parser: argparse._SubParsersAction):
+def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []):
     """Register the ``plan`` subcommand and its arguments.
 
     The plan subcommand renders templates without applying anything to the
@@ -15,6 +15,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
     """
     plan_parser = parser.add_parser(
         Command.PLAN.value,
+        parents=parents,
         description=(
             "The `plan` command generates a complete plan for a model infrastructure. "
             "It produces YAML and Helm manifests required for provisioning, "
