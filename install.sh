@@ -32,14 +32,22 @@ DEFAULT_BRANCH="main"
 export _APT_GET_UPDATE_RUN=0
 export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 
-declare -A TOOL_VERSION=(
-    ["yq"]="v4.52.5"
-    ["helmfile"]="1.4.2"
-    ["helm"]="v3.16.0"
-    ["oc"]="4.16.0"
-    ["kustomize"]="v5.0.0"
-    ["crane"]="0.20.3"
-)
+# Pinned tool versions. Implemented as a function (not an associative
+# array) so the script runs on macOS's stock /bin/bash 3.2, which does
+# not support `declare -A`. Each case arm matches the tool name passed
+# to `tool_version_for`; an unknown tool yields an empty string, which
+# the call sites already handle as "no version pinned".
+tool_version_for() {
+    case "$1" in
+        yq)        echo "v4.52.5" ;;
+        helmfile)  echo "1.4.2"   ;;
+        helm)      echo "v3.16.0" ;;
+        oc)        echo "4.16.0"  ;;
+        kustomize) echo "v5.0.0"  ;;
+        crane)     echo "0.20.3"  ;;
+        *)         echo ""        ;;
+    esac
+}
 
 # ---------------------------------------------------------------------------
 # Bootstrap: if run via curl (no repo present), clone first
@@ -451,7 +459,8 @@ version_gte() {
 # Per-tool Linux install helpers
 # ---------------------------------------------------------------------------
 install_yq_linux() {
-    local version="${TOOL_VERSION["yq"]}"
+    local version
+    version=$(tool_version_for yq)
     local binary=yq_linux_amd64
     curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}"
     chmod +x "/tmp/${binary}"
@@ -459,7 +468,8 @@ install_yq_linux() {
 }
 
 install_helmfile_linux() {
-    local version="${TOOL_VERSION["helmfile"]}"
+    local version
+    version=$(tool_version_for helmfile)
     local pkg="helmfile_${version}_linux_amd64"
     curl -sL "https://github.com/helmfile/helmfile/releases/download/v${version}/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz"
     tar xzf "/tmp/${pkg}.tar.gz" -C /tmp
@@ -491,7 +501,8 @@ install_kustomize_linux() {
 }
 
 install_crane_linux() {
-    local version="v${TOOL_VERSION["crane"]}"
+    local version
+    version="v$(tool_version_for crane)"
     local arch
     arch=$(uname -m)
     local go_arch="x86_64"
@@ -515,7 +526,7 @@ for tool in $tools; do
 
     if command -v "$tool" &>/dev/null; then
         current_ver=$(tool_version "$tool")
-        expected_ver="${TOOL_VERSION[$tool]:-}"
+        expected_ver=$(tool_version_for "$tool")
         needs_upgrade=false
 
         if [[ -n "$expected_ver" ]] && ! version_gte "$current_ver" "$expected_ver"; then
@@ -593,7 +604,7 @@ for tool in $optional_tools; do
 
     if command -v "$tool" &>/dev/null; then
         current_ver=$(tool_version "$tool")
-        expected_ver="${TOOL_VERSION[$tool]:-}"
+        expected_ver=$(tool_version_for "$tool")
         needs_upgrade=false
 
         if [[ -n "$expected_ver" ]] && ! version_gte "$current_ver" "$expected_ver"; then
