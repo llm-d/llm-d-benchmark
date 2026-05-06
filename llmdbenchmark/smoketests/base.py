@@ -19,6 +19,7 @@ from llmdbenchmark.utilities.endpoint import (
     test_model_serving,
 )
 
+from llmdbenchmark.smoketests.curl_plat import get_curl_image
 
 _RETRYABLE_INDICATORS = ("502", "503", "504", "ServiceUnavailable", "not ready")
 
@@ -1145,11 +1146,11 @@ class BaseSmoketest:
         protocol = "https" if str(port) == "443" else "http"
         prefix = _normalize_url_prefix(url_path_prefix)
         url = f"{protocol}://{host}:{port}{prefix}/health"
-        curl_image = "quay.io/curl/curl"
+        curl_image = get_curl_image()
         override_args = _build_overrides(plan_config)
 
         context.logger.log_info(
-            f"Health check: verifying vLLM is listening at {host}:{port}/health..."
+            f"Health check: verifying vLLM is listening at {host}:{port}/health... Using curl image: {curl_image}"
         )
         start = time.time()
         attempt = 0
@@ -1469,7 +1470,7 @@ class BaseSmoketest:
         timeout_seconds: int = 120,
     ) -> tuple[str, str | None]:
         override_args = _build_overrides(plan_config)
-        curl_image = "quay.io/curl/curl"
+        curl_image = get_curl_image()
         pod_name = f"inference-test-{_rand_suffix()}"
         payload_json = json.dumps(payload)
         payload_b64 = base64.b64encode(payload_json.encode()).decode()
