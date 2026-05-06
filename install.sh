@@ -37,7 +37,7 @@ declare -A TOOL_VERSION=(
     ["helmfile"]="1.4.2"
     ["helm"]="v3.16.0"
     ["oc"]="4.16.0"
-    ["kustomize"]="v5.0.0"
+    ["kustomize"]="v5.8.1"
     ["crane"]="0.20.3"
 )
 
@@ -486,8 +486,15 @@ install_oc_linux() {
 }
 
 install_kustomize_linux() {
-    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-    sudo mv kustomize /usr/local/bin/
+    local version=v5.8.1
+    local arch
+    arch=$(uname -m)
+    local go_arch="amd64"
+    [[ "$arch" == "aarch64" ]] && go_arch="arm64"
+    local pkg="kustomize_${version}_linux_${go_arch}.tar.gz"
+    curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/${version}/${pkg}" -o "/tmp/${pkg}"
+    tar xzf "/tmp/${pkg}" -C /tmp kustomize
+    sudo cp -f /tmp/kustomize /usr/local/bin/kustomize
 }
 
 install_crane_linux() {
