@@ -294,6 +294,12 @@ class StackTracer:  # pylint: disable=too-many-instance-attributes
                 for listener in spec.get("listeners", []):
                     if listener.get("hostname") == hostname:
                         return gateway
+                
+                # Check status.addresses for IP-based gateway discovery
+                status = gateway.obj.get("status", {})
+                for address in status.get("addresses", []):
+                    if address.get("value") == hostname:
+                        return gateway
 
             logger.info("No gateway found for hostname: %s", hostname)
         except Exception as e:  # pylint: disable=broad-exception-caught

@@ -1,0 +1,59 @@
+{# ============================================================================
+   21_prometheus-adapter-values.yaml.j2
+
+   Helm values for the prometheus-community/prometheus-adapter chart.
+   Installed alongside WVA to bridge WVA metrics into the Kubernetes
+   external metrics API for HPA consumption.
+
+   Only rendered when wva.enabled is true.
+   ============================================================================ #}
+{% if wva is defined and wva.enabled | default(false) %}
+prometheus:
+  url: {{ wva.prometheus.baseUrl | default('https://thanos-querier.openshift-monitoring.svc.cluster.local') }}
+  port: {{ wva.prometheus.port | default(9091) }}
+
+rules:
+  external:
+  - seriesQuery: 'wva_desired_replicas{variant_name!="",exported_namespace!=""}'
+    resources:
+      overrides:
+        exported_namespace: {resource: "namespace"}
+        variant_name: {resource: "deployment"}
+    name:
+      matches: "^wva_desired_replicas"
+      as: "wva_desired_replicas"
+    metricsQuery: 'wva_desired_replicas{<<.LabelMatchers>>}'
+
+replicas: 2
+logLevel: 4
+
+tls:
+  enable: false
+
+extraVolumes:
+  - name: prometheus-ca
+    configMap:
+      name: prometheus-ca
+
+extraVolumeMounts:
+  - name: prometheus-ca
+    mountPath: /etc/prometheus-ca
+    readOnly: true
+
+extraArguments:
+  - --prometheus-ca-file=/etc/prometheus-ca/ca.crt
+  - --prometheus-token-file=/var/run/secrets/kubernetes.io/serviceaccount/token
+
+podSecurityContext:
+  fsGroup: null
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: null
+  seccompProfile:
+    type: RuntimeDefault
+{% endif %}

@@ -200,7 +200,7 @@ And see results in the output directory `~/data/shared-prefix-cache-aware`
 ## PD Disaggregation with vllm-benchmark
 
 - Scenario: [pd-disaggregation.sh](./scenarios/pd-disaggregation.sh)
-- Experiment: [pd-disaggregation.yaml](https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/experiments/pd-disaggregation.yaml)
+- Experiment: [pd-disaggregation.yaml](https://raw.githubusercontent.com/llm-d/llm-d-benchmark/refs/heads/main/workload/experiments/pd-disaggregation.yaml)
 
 Command (from `llm-d-benchmark` root directory):
 
@@ -304,11 +304,4 @@ The experiment will take some time to run to completion. You may decrease the ex
     # ... and so on
 ```
 
-Feel free to use the [Config Explorer](../../../config_explorer/) to explore the data.
 
-```
-pip install ./config_explorer
-streamlit run ./config_explorer/Capacity_Planner.py
-```
-
-The UI should be up and running. You can get a preview of the Config Explorer [here](https://drive.google.com/file/d/1lzdj2P65yhQG3w5gsVxULkTqSYwMH3ec/view?usp=sharing).

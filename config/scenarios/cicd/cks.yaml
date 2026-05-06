@@ -1,0 +1,71 @@
+# CKS (Cloud Kubernetes Service) CI/CD Scenario
+# Based on scenarios/cicd/cks_fb.sh
+#
+# CI/CD scenario for CKS clusters with H200 GPUs.
+# Uses facebook/opt-125m for fast validation.
+
+scenario:
+  - name: "cks-cicd"
+
+    # Model
+    model:
+      name: facebook/opt-125m
+      shortName: facebook-opt-125m
+      path: models/facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
+
+    # Deployment method
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
+    fma:
+      enabled: false
+      iterations: 3
+
+    gateway:
+      className: agentgateway
+
+    affinity:
+      enabled: true
+      nodeSelector:
+        gpu.nvidia.com/class: H200
+
+    decode:
+      enabled: true
+      acceleratorType:
+          labelKey: gpu.nvidia.com/class
+          labelValue: H200
+      replicas: 1
+
+    prefill:
+      enabled: true
+      acceleratorType:
+          labelKey: gpu.nvidia.com/class
+          labelValue: H200
+      replicas: 1
+
+    standalone:
+      acceleratorType:
+        labelKey: gpu.nvidia.com/class
+        labelValue: H200
+
+    vllmCommon:
+      priorityClassName: nightly-gpu-critical
+
+    # Storage
+    storage:
+      modelPvc:
+        storageClassName: shared-vast
+
+    workDir: /tmp/llmdbenchcicd-gke/
+
+    harness:
+      name: guidellm
+      experimentProfile: sanity_random.yaml
+
+    images:
+      benchmark:
+        repository: ghcr.io/llm-d/llm-d-benchmark
+        tag: nightly
+

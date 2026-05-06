@@ -1,0 +1,138 @@
+# =====================================================================
+# Experiment: Inference Scheduling Workload Matrix
+# =====================================================================
+#
+# Evaluates how different prompt and output token lengths affect
+# inference latency and throughput when using shared-prefix workloads.
+# Designed to be run against multiple scheduling strategies (none,
+# prefix-aware, KV-aware, queue-based) to compare their behavior
+# across a full factorial workload matrix.
+#
+# Usage (full DoE — automatic standup/run/teardown per setup treatment):
+#   llmdbenchmark --spec inference-scheduling experiment \
+#     --experiments workload/experiments/inference-scheduling.yaml
+#
+# Usage (run-only — targets an already-running endpoint):
+#   llmdbenchmark --spec inference-scheduling run \
+#     --endpoint-url http://<HOST>:<PORT> \
+#     --model <MODEL_NAME> \
+#     --namespace <NAMESPACE> \
+#     --harness inference-perf \
+#     --workload shared_prefix_synthetic.yaml \
+#     --experiments workload/experiments/inference-scheduling.yaml
+#
+# The experiment form auto-detects the endpoint from stood-up stacks
+# and reads harness/profile defaults from the plan config.
+# The run-only form requires explicit --endpoint-url, --model, and
+# --namespace since there is no stood-up stack to detect from.
+#
+# =====================================================================
+
+# --- DoE Metadata (informational — not consumed by the runtime) ------
+
+experiment:
+  name: inference-scheduling
+  description: >
+    Full factorial sweep of prompt length (question_len) and output
+    length (output_len) to measure the effect on inference performance
+    with shared-prefix workloads under different scheduling strategies.
+  harness: inference-perf
+  profile: shared_prefix_synthetic.yaml
+
+design:
+  type: full_factorial
+
+  setup:
+    factors:
+      - name: scheduling_plugin
+        key: scenario_override
+        levels: [inf-sche-none, inf-sche-prefix, inf-sche-kv, inf-sche-queue]
+        description: >
+          Scheduling strategy scenario file used during standup.
+          Each scenario configures a different scheduling plugin.
+
+  run:
+    factors:
+      - name: question_len
+        key: data.shared_prefix.question_len
+        levels: [100, 300, 1000]
+        unit: tokens
+        description: Number of tokens in each per-request question
+
+      - name: output_len
+        key: data.shared_prefix.output_len
+        levels: [100, 300, 1000]
+        unit: tokens
+        description: Number of output tokens generated per request
+
+    constants:
+      - key: data.shared_prefix.system_prompt_len
+        value: 2048
+        description: Shared system prompt length (held fixed)
+      - key: data.shared_prefix.num_groups
+        value: 32
+        description: Number of prefix groups
+      - key: data.shared_prefix.num_prompts_per_group
+        value: 32
+        description: Prompts per prefix group
+      - key: api.streaming
+        value: true
+        description: Streaming inference enabled
+
+  total_setup_treatments: 4
+  total_run_treatments: 9
+  total_matrix: 36
+
+  response_variables:
+    - TTFT (Time to First Token)
+    - TPOT (Time per Output Token)
+    - ITL (Inter-Token Latency)
+    - E2EL (End-to-End Latency)
+    - Throughput (tokens/sec)
+
+# --- Treatments (consumed by step_04 render_profiles) ----------------
+#
+# Full factorial: 3 levels of question_len x 3 levels of output_len
+# = 9 treatments.
+#
+# Naming: qlen{question_len}-olen{output_len}
+
+treatments:
+  # --- question_len = 100 (short prompts) ---
+  - name: qlen100-olen100
+    data.shared_prefix.question_len: 100
+    data.shared_prefix.output_len: 100
+
+  - name: qlen100-olen300
+    data.shared_prefix.question_len: 100
+    data.shared_prefix.output_len: 300
+
+  - name: qlen100-olen1000
+    data.shared_prefix.question_len: 100
+    data.shared_prefix.output_len: 1000
+
+  # --- question_len = 300 (medium prompts) ---
+  - name: qlen300-olen100
+    data.shared_prefix.question_len: 300
+    data.shared_prefix.output_len: 100
+
+  - name: qlen300-olen300
+    data.shared_prefix.question_len: 300
+    data.shared_prefix.output_len: 300
+
+  - name: qlen300-olen1000
+    data.shared_prefix.question_len: 300
+    data.shared_prefix.output_len: 1000
+
+  # --- question_len = 1000 (long prompts) ---
+  - name: qlen1000-olen100
+    data.shared_prefix.question_len: 1000
+    data.shared_prefix.output_len: 100
+
+  - name: qlen1000-olen300
+    data.shared_prefix.question_len: 1000
+    data.shared_prefix.output_len: 300
+
+  - name: qlen1000-olen1000
+    data.shared_prefix.question_len: 1000
+    data.shared_prefix.output_len: 1000

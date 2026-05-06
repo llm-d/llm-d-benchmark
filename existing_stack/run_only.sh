@@ -41,6 +41,8 @@ Usage: ${_script_name} -c <config-file> [options]
     -c/--config path to configuration file
     -o/--output destination for the results. (e.g. local/folder, gs://my-bucket, s3://my-bucket)
     -R/--repeat number of times to repeat the experiment (default: 1). Results are aggregated with mean/std dev.
+    --pre-workload bash script to run on the harness pod before each workload (overrides config hooks.pre_workload)
+    --post-workload bash script to run on the harness pod after each workload (overrides config hooks.post_workload)
     -v/--verbose print the command being executed, and result
     -d/--debug execute harness in "debug-mode"
     -n/--dry-run do not execute commands, just print what would be executed
@@ -205,6 +207,10 @@ spec:
     ${is_dataset_url}  value: "${harness_dataset_url}"
     - name: LLMDBENCH_HARNESS_STACK_NAME
       value: "${endpoint_stack_name}"
+    - name: LLMDBENCH_DESCRIPTION_TEXT
+      value: "${_description_text}"
+    - name: LLMDBENCH_DESCRIPTION_KEYWORDS
+      value: "${_description_keywords}"
     volumeMounts:
     - name: results
       mountPath: ${RESULTS_DIR_PREFIX}
@@ -261,6 +267,20 @@ while [[ $# -gt 0 ]]; do
         _repeat="$2"
         shift
         ;;
+        --pre-workload=*)
+        _cli_pre_workload=$(echo $key | cut -d '=' -f 2-)
+        ;;
+        --pre-workload)
+        _cli_pre_workload="$2"
+        shift
+        ;;
+        --post-workload=*)
+        _cli_post_workload=$(echo $key | cut -d '=' -f 2-)
+        ;;
+        --post-workload)
+        _cli_post_workload="$2"
+        shift
+        ;;
         -n|--dry-run)
         export $kubectl=1
         ;;
@@ -296,7 +316,21 @@ if ! [[ -f $_config_file  ]]; then
   announce "❌ ERROR: could not find config file \"$_config_file\""
   exit 1
 fi
-eval $( yq -o shell '. | del(.workload)| del (.env)' "$_config_file")
+eval $( yq -o shell '. | del(.workload)| del (.env) | del(.description)' "$_config_file")
+
+# Extract optional description metadata
+_description_text=$(yq '.description.text // ""' "$_config_file")
+_description_keywords=$(yq '.description.keywords // [] | join(",")' "$_config_file")
+
+# Resolve workload hooks (CLI flags override config file values)
+# ========================================================
+_pre_workload="${_cli_pre_workload:-${hooks_pre_workload:-}}"
+_post_workload="${_cli_post_workload:-${hooks_post_workload:-}}"
+if [[ -n "$_pre_workload" || -n "$_post_workload" ]]; then
+  announce "ℹ️ Workload hooks configured:
+  pre_workload: ${_pre_workload:-(none)}
+  post_workload: ${_post_workload:-(none)}"
+fi
 
 # Verify output destination
 # ========================================================
@@ -500,6 +534,16 @@ for _run_idx in $(seq 1 $_repeat); do
       _run_experiment_id="${_uid}_${workload}"
     fi
     announce "ℹ️ Running benchmark with workload ${workload} (experiment_id=${_run_experiment_id})."
+
+    # Run pre-workload hook
+    if [[ -n "${_pre_workload}" ]]; then
+      announce "🔧 Running pre-workload hook..."
+      $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "${_pre_workload}"
+      if [[ $? -ne 0 ]]; then
+        announce "⚠️ Warning: pre-workload hook failed for workload ${workload}."
+      fi
+    fi
+
     run_workload=$(cat <<RUN_WORKLOAD
     # redirect to root fds so that kubectl logs can capture output
     exec 1> >(tee /proc/1/fd/1 >&1)
@@ -512,6 +556,26 @@ RUN_WORKLOAD
     )
     : | ${_timeout} $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "$run_workload"
     res=$?
+
+    # Save description metadata to results directory
+    if [[ -n "$_description_text" || -n "$_description_keywords" ]]; then
+      _results_dir=$(results_dir_name "$endpoint_stack_name" "$harness_name" "$_run_experiment_id")
+      $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "cat > ${_results_dir}/description.yaml <<'DESCEOF'
+description:
+  text: \"${_description_text}\"
+  keywords: [${_description_keywords}]
+DESCEOF"
+    fi
+
+    # Run post-workload hook
+    if [[ -n "${_post_workload}" ]]; then
+      announce "🔧 Running post-workload hook..."
+      $control_kubectl exec -i ${_pod_name} -n ${harness_namespace} -- bash -c "${_post_workload}"
+      if [[ $? -ne 0 ]]; then
+        announce "⚠️ Warning: post-workload hook failed for workload ${workload}."
+      fi
+    fi
+
     if [ $res -eq 0 ]; then
       announce "ℹ️ Benchmark workload ${workload} (repeat ${_run_idx}/${_repeat}) complete."
     elif [ $res -eq 124 ]; then

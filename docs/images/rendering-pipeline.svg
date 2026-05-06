@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" font-family="'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <marker id="a1" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#94a3b8"/>
+    </marker>
+    <marker id="a2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#f59e0b"/>
+    </marker>
+    <marker id="a3" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#10b981"/>
+    </marker>
+    <marker id="a4" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="#0d9488"/>
+    </marker>
+  </defs>
+
+  <rect width="800" height="500" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="400" y="30" text-anchor="middle" font-size="16" font-weight="600" fill="#0f172a" letter-spacing="0.3">Plan Phase Rendering Pipeline</text>
+  <line x1="260" y1="40" x2="540" y2="40" stroke="#e2e8f0" stroke-width="1"/>
+
+  <!-- Specification entry -->
+  <rect x="280" y="56" width="240" height="40" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)"/>
+  <text x="400" y="81" text-anchor="middle" font-size="13" font-weight="500" fill="#334155">specification.yaml.j2</text>
+
+  <!-- Arrow down -->
+  <line x1="400" y1="96" x2="400" y2="118" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a1)"/>
+
+  <!-- RenderSpecification -->
+  <rect x="280" y="122" width="240" height="36" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="280" y="122" width="4" height="36" rx="2" fill="#7c3aed"/>
+  <text x="404" y="145" text-anchor="middle" font-size="12" font-weight="600" fill="#5b21b6">RenderSpecification</text>
+
+  <!-- Arrow down to fork -->
+  <line x1="400" y1="158" x2="400" y2="182" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a1)"/>
+
+  <!-- Fork into defaults + scenario -->
+  <line x1="400" y1="182" x2="200" y2="182" stroke="#f59e0b" stroke-width="1"/>
+  <line x1="400" y1="182" x2="600" y2="182" stroke="#f59e0b" stroke-width="1"/>
+  <line x1="200" y1="182" x2="200" y2="198" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#a2)"/>
+  <line x1="600" y1="182" x2="600" y2="198" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#a2)"/>
+
+  <!-- defaults.yaml -->
+  <rect x="110" y="202" width="180" height="40" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="110" y="202" width="4" height="40" rx="2" fill="#f59e0b"/>
+  <text x="204" y="227" text-anchor="middle" font-size="13" font-weight="500" fill="#92400e">defaults.yaml</text>
+
+  <!-- scenario.yaml -->
+  <rect x="510" y="202" width="180" height="40" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="510" y="202" width="4" height="40" rx="2" fill="#f59e0b"/>
+  <text x="604" y="227" text-anchor="middle" font-size="13" font-weight="500" fill="#92400e">scenario.yaml</text>
+
+  <!-- Merge arrows -->
+  <line x1="200" y1="242" x2="200" y2="264" stroke="#f59e0b" stroke-width="1"/>
+  <line x1="600" y1="242" x2="600" y2="264" stroke="#f59e0b" stroke-width="1"/>
+  <line x1="200" y1="264" x2="400" y2="264" stroke="#f59e0b" stroke-width="1"/>
+  <line x1="600" y1="264" x2="400" y2="264" stroke="#f59e0b" stroke-width="1"/>
+  <line x1="400" y1="264" x2="400" y2="282" stroke="#10b981" stroke-width="1.5" marker-end="url(#a3)"/>
+
+  <!-- Deep Merge box -->
+  <rect x="310" y="286" width="180" height="36" rx="6" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="310" y="286" width="4" height="36" rx="2" fill="#10b981"/>
+  <text x="404" y="309" text-anchor="middle" font-size="12" font-weight="600" fill="#065f46">Deep Merge + CLI</text>
+
+  <!-- Side resolvers -->
+  <rect x="50" y="296" width="170" height="30" rx="6" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1" filter="url(#shadow)"/>
+  <text x="135" y="316" text-anchor="middle" font-size="11" font-weight="500" fill="#0d9488">VersionResolver</text>
+  <line x1="220" y1="311" x2="308" y2="300" stroke="#0d9488" stroke-width="1" stroke-dasharray="4,2" marker-end="url(#a4)"/>
+
+  <rect x="580" y="296" width="190" height="30" rx="6" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1" filter="url(#shadow)"/>
+  <text x="675" y="316" text-anchor="middle" font-size="11" font-weight="500" fill="#0d9488">ClusterResourceResolver</text>
+  <line x1="580" y1="311" x2="492" y2="300" stroke="#0d9488" stroke-width="1" stroke-dasharray="4,2" marker-end="url(#a4)"/>
+
+  <!-- Arrow down -->
+  <line x1="400" y1="322" x2="400" y2="344" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a1)"/>
+
+  <!-- RenderPlans.eval() -->
+  <rect x="290" y="348" width="220" height="36" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="290" y="348" width="4" height="36" rx="2" fill="#7c3aed"/>
+  <text x="404" y="371" text-anchor="middle" font-size="12" font-weight="600" fill="#5b21b6">RenderPlans.eval()</text>
+
+  <!-- Arrow down to fan-out -->
+  <line x1="400" y1="384" x2="400" y2="404" stroke="#94a3b8" stroke-width="1.5"/>
+
+  <!-- Fan out -->
+  <line x1="400" y1="404" x2="150" y2="404" stroke="#94a3b8" stroke-width="1"/>
+  <line x1="400" y1="404" x2="650" y2="404" stroke="#94a3b8" stroke-width="1"/>
+  <line x1="150" y1="404" x2="150" y2="420" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a1)"/>
+  <line x1="400" y1="404" x2="400" y2="420" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a1)"/>
+  <line x1="650" y1="404" x2="650" y2="420" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a1)"/>
+
+  <!-- Stack boxes -->
+  <rect x="70" y="424" width="160" height="56" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="70" y="424" width="4" height="56" rx="2" fill="#64748b"/>
+  <text x="154" y="448" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">Stack 1</text>
+  <text x="154" y="466" text-anchor="middle" font-size="10" font-weight="400" fill="#64748b">config.yaml + YAMLs</text>
+
+  <rect x="320" y="424" width="160" height="56" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="320" y="424" width="4" height="56" rx="2" fill="#64748b"/>
+  <text x="404" y="448" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">Stack 2</text>
+  <text x="404" y="466" text-anchor="middle" font-size="10" font-weight="400" fill="#64748b">config.yaml + YAMLs</text>
+
+  <rect x="570" y="424" width="160" height="56" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="570" y="424" width="4" height="56" rx="2" fill="#64748b"/>
+  <text x="654" y="448" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">Stack N</text>
+  <text x="654" y="466" text-anchor="middle" font-size="10" font-weight="400" fill="#64748b">config.yaml + YAMLs</text>
+</svg>

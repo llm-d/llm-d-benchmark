@@ -7,7 +7,7 @@ inputs:
   args:
     description: Arguments to pass to markdown-link-check
     required: false
-    default: "--retry"
+    default: "--retry --verbose"
 
 runs:
   using: "composite"
@@ -20,30 +20,51 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        echo "🔍 Scanning all Markdown files for broken links..."
+        echo "Scanning all Markdown files for broken links..."
         failed=0
         total_dead_links=0
+        failed_files=""
+
+        CONFIG_ARG=""
+        if [ -f ".markdown-link-check.json" ]; then
+          CONFIG_ARG="--config .markdown-link-check.json"
+          echo "Using config: .markdown-link-check.json"
+        fi
 
         while IFS= read -r -d '' file; do
           echo "------------------------------------------------------------"
-          echo "📄 Checking: $file"
-          output=$(markdown-link-check ${{ inputs.args }} "$file" 2>&1)
+          echo "Checking: $file"
+          output=$(markdown-link-check ${{ inputs.args }} $CONFIG_ARG "$file" 2>&1) || true
           echo "$output"
 
-          if echo "$output" | grep -q '✖'; then
-            num_file_dead_links=$(echo "$output" | grep '✖' | wc -l)
-            echo "❌ $num_file_dead_links broken links in $file"
+          if echo "$output" | grep -q '[✖]'; then
+            num_file_dead_links=$(echo "$output" | grep '[✖]' | wc -l)
+            echo ""
+            echo "FAILED: $file ($num_file_dead_links broken links)"
+            echo "Broken links:"
+            echo "$output" | grep '[✖]' | while read -r line; do
+              echo "  $line"
+            done
+            echo ""
             total_dead_links=$((total_dead_links + num_file_dead_links))
+            failed_files="${failed_files}\n  - ${file} (${num_file_dead_links} broken)"
             failed=1
-          else
-            echo "✅ No broken links in $file"
           fi
-        done < <(find . -type f -name "*.md" -not -name "*-template.md" -print0)
+        done < <(find . -type f -name "*.md" -not -name "*-template.md" -not -path "./.git/*" -not -path "./node_modules/*" -print0)
 
-        echo "------------------------------------------------------------"
+        echo "============================================================"
         if [ "$failed" -ne 0 ]; then
-          echo "❌ Total broken links found: $total_dead_links"
+          echo "LINK CHECK FAILED"
+          echo "Total broken links: $total_dead_links"
+          echo ""
+          echo "Files with broken links:"
+          echo -e "$failed_files"
+          echo ""
+          echo "To fix:"
+          echo "  1. Update broken relative paths to point to existing files"
+          echo "  2. Remove links to deleted/moved files"
+          echo "  3. Add flaky external URLs to .markdown-link-check.json ignorePatterns"
           exit 1
         else
-          echo "✅ All Markdown files passed link checks."
+          echo "All Markdown files passed link checks."
         fi

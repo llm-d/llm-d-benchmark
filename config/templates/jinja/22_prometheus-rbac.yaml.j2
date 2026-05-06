@@ -1,0 +1,32 @@
+{# ============================================================================
+   22_prometheus-rbac.yaml.j2
+
+   ClusterRole granting access to Thanos Querier API endpoints.
+   Required by the prometheus-adapter to query WVA metrics.
+
+   Only rendered when wva.enabled is true.
+   ============================================================================ #}
+{% if wva is defined and wva.enabled | default(false) %}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: allow-thanos-querier-api-access
+rules:
+- nonResourceURLs:
+  - /api/v1/query
+  - /api/v1/query_range
+  - /api/v1/labels
+  - /api/v1/label/*/values
+  - /api/v1/series
+  - /api/v1/metadata
+  - /api/v1/rules
+  - /api/v1/alerts
+  verbs: [get]
+- apiGroups: [monitoring.coreos.com]
+  resourceNames: [k8s]
+  resources: [prometheuses/api]
+  verbs: [get, create, update]
+- apiGroups: [""]
+  resources: [namespaces]
+  verbs: [get]
+{% endif %}

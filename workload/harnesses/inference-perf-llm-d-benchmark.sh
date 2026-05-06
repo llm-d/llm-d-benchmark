@@ -36,7 +36,25 @@ fi
 export LLMDBENCH_HARNESS_START=$(date -d "@${start}" --iso-8601=seconds)
 export LLMDBENCH_HARNESS_STOP=$(date -d "@${stop}" --iso-8601=seconds)
 export LLMDBENCH_HARNESS_DELTA=PT$(echo "$stop - $start" | bc)S
-export LLMDBENCH_HARNESS_VERSION=$(cd /workspace/inference-perf; git rev-parse HEAD)
+export LLMDBENCH_HARNESS_VERSION=$(cd /workspace/inference-perf 2>/dev/null && git rev-parse HEAD 2>/dev/null || grep '^inference-perf:' /workspace/repos.txt 2>/dev/null | cut -d' ' -f3 || echo 'unknown')
+
+# Write run metadata to a file so the analyzer can read it.
+# Environment variables exported here are lost when this subshell exits,
+# so the file serves as the handoff mechanism to the analysis phase.
+cat > "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/run_metadata.yaml" <<METADATA
+harness_start: "${LLMDBENCH_HARNESS_START}"
+harness_stop: "${LLMDBENCH_HARNESS_STOP}"
+harness_delta: "${LLMDBENCH_HARNESS_DELTA}"
+harness_args: "${LLMDBENCH_HARNESS_ARGS}"
+harness_version: "${LLMDBENCH_HARNESS_VERSION}"
+harness_name: "${LLMDBENCH_HARNESS_NAME:-inference-perf}"
+harness_workload: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME:-}"
+harness_rc: "${LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC}"
+model: "${LLMDBENCH_DEPLOY_CURRENT_MODEL:-}"
+endpoint_url: "${LLMDBENCH_HARNESS_STACK_ENDPOINT_URL:-}"
+namespace: "${LLMDBENCH_VLLM_COMMON_NAMESPACE:-}"
+METADATA
+echo "Run metadata written to $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/run_metadata.yaml"
 
 # If benchmark harness returned with an error, exit here
 if [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_RC -ne 0 ]]; then

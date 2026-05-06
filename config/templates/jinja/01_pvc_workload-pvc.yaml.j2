@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ storage.workloadPvc.name }}
+  namespace: {{ namespace.name }}
+spec:
+  accessModes:
+  {% for mode in storage.workloadPvc.accessModes %}
+    - {{ mode }}
+  {% endfor %}
+  resources:
+    requests:
+      storage: {{ harness.pvcSize | default(storage.workloadPvc.size) }}
+{% if storage.workloadPvc.storageClassName is defined and storage.workloadPvc.storageClassName not in ["default", "auto", ""] %}
+  storageClassName: {{ storage.workloadPvc.storageClassName }}
+{% endif %}

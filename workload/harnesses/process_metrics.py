@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# Copyright 2025 The llm-d Authors.
+# Licensed under the Apache License, Version 2.0 (the "License");
+
 """
 Metrics processing script for llm-d-benchmark
 Parses and aggregates Prometheus metrics and vLLM logs
@@ -16,193 +19,116 @@ metrics_dir = os.environ.get('METRICS_DIR', 'metrics')
 raw_dir = os.path.join(metrics_dir, 'raw')
 processed_dir = os.path.join(metrics_dir, 'processed')
 
+# Metrics to aggregate across all pods for cluster-wide stats
+AGGREGATE_METRICS = {
+    'vllm:kv_cache_usage_perc', 'vllm:num_requests_running',
+    'vllm:num_requests_waiting', 'vllm:num_preemptions_total',
+    'vllm:prefix_cache_hit_rate', 'vllm:external_prefix_cache_hit_rate',
+    # EPP pool-level gauges (already aggregated by EPP across endpoints)
+    'inference_pool_average_kv_cache_utilization',
+    'inference_pool_average_queue_size',
+    'inference_pool_average_running_requests',
+    'inference_pool_ready_pods',
+}
 
-def parse_prometheus_metrics(file_path):
-    """Parse Prometheus metrics from a file."""
-    metrics = defaultdict(list)
-    timestamp = None
-    pod_name = None
-    namespace = None
-    source = None
+# Ratio metrics: (output_name, numerator_metric, denominator_metric)
+RATIO_METRICS = [
+    ('vllm:prefix_cache_hit_rate',
+     'vllm:prefix_cache_hits_total', 'vllm:prefix_cache_queries_total'),
+    ('vllm:external_prefix_cache_hit_rate',
+     'vllm:external_prefix_cache_hits_total',
+     'vllm:external_prefix_cache_queries_total'),
+]
 
-    with open(file_path, 'r') as f:
-        for line in f:
-            line = line.strip()
+# Metric name -> unit mapping
+METRIC_UNITS = {
+    # Cache metrics
+    'vllm:kv_cache_usage_perc': '%',
+    'vllm:gpu_cache_usage_perc': '%',
+    'vllm:cpu_cache_usage_perc': '%',
+    'vllm:prefix_cache_hits_total': 'tokens',
+    'vllm:prefix_cache_queries_total': 'tokens',
+    'vllm:external_prefix_cache_hits_total': 'tokens',
+    'vllm:external_prefix_cache_queries_total': 'tokens',
+    # Memory metrics
+    'vllm:gpu_memory_usage_bytes': 'bytes',
+    'DCGM_FI_DEV_FB_USED': 'bytes',
+    'vllm:cpu_memory_usage_bytes': 'bytes',
+    'container_memory_usage_bytes': 'bytes',
+    # Compute metrics
+    'DCGM_FI_DEV_GPU_UTIL': '%',
+    'container_cpu_usage_seconds_total': 'seconds',
+    # Performance metrics
+    'DCGM_FI_DEV_POWER_USAGE': 'watts',
+    # NIXL KV transfer metrics
+    'vllm:nixl_xfer_time_seconds_sum': 'seconds',
+    'vllm:nixl_xfer_time_seconds_count': 'count',
+    'vllm:nixl_bytes_transferred_sum': 'bytes',
+    'vllm:nixl_bytes_transferred_count': 'count',
+    # Preemption metrics
+    'vllm:num_preemptions_total': 'count',
+    # Queue metrics
+    'vllm:num_requests_running': 'count',
+    'vllm:num_requests_waiting': 'count',
+    'vllm:num_requests_swapped': 'count',
+    # Computed ratio metrics
+    'vllm:prefix_cache_hit_rate': '%',
+    'vllm:external_prefix_cache_hit_rate': '%',
+    # EPP (inference scheduler) Prometheus metrics
+    'inference_pool_average_kv_cache_utilization': '%',
+    'inference_pool_average_queue_size': 'count',
+    'inference_pool_average_running_requests': 'count',
+    'inference_pool_ready_pods': 'count',
+    'inference_extension_scheduler_e2e_duration_seconds_bucket': 'seconds',
+    'inference_extension_scheduler_e2e_duration_seconds_sum': 'seconds',
+    'inference_extension_scheduler_e2e_duration_seconds_count': 'count',
+    'inference_extension_plugin_duration_seconds_bucket': 'seconds',
+    'inference_extension_plugin_duration_seconds_sum': 'seconds',
+    'inference_extension_plugin_duration_seconds_count': 'count',
+    'inference_extension_request_duration_seconds_bucket': 'seconds',
+    'inference_extension_request_duration_seconds_sum': 'seconds',
+    'inference_extension_request_duration_seconds_count': 'count',
+    'inference_extension_request_ttft_duration_seconds_bucket': 'seconds',
+    'inference_extension_request_ttft_duration_seconds_sum': 'seconds',
+    'inference_extension_request_ttft_duration_seconds_count': 'count',
+    'inference_extension_input_tokens_bucket': 'tokens',
+    'inference_extension_output_tokens_bucket': 'tokens',
+    'inference_extension_normalized_time_per_output_token_bucket': 'seconds',
+    'inference_extension_prefix_indexer_hit_ratio_bucket': 'ratio',
+    'inference_extension_prefix_indexer_size': 'count',
+    'llm_d_inference_scheduler_pd_decision_total': 'count',
+    'llm_d_inference_scheduler_disagg_decision_total': 'count',
+}
 
-            # Extract metadata
-            if line.startswith('# Timestamp:'):
-                timestamp = line.split(':', 1)[1].strip()
-            elif line.startswith('# Pod:'):
-                pod_name = line.split(':', 1)[1].strip()
-            elif line.startswith('# Namespace:'):
-                namespace = line.split(':', 1)[1].strip()
-            elif line.startswith('# Source:'):
-                source = line.split(':', 1)[1].strip()
-
-            # Skip other comments and empty lines
-            if line.startswith('#') or not line:
-                continue
-
-            # Parse Prometheus metric line: metric_name{labels} value timestamp
-            # Example: vllm:kv_cache_usage_perc 45.2
-            # Or cluster metrics: container_memory_usage_bytes{...} 1234567890 1234567890
-            match = re.match(
-                r'([a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^}]*\})?) ([\d.eE+-]+)(?:\s+\d+)?', line)
-            if match:
-                metric_name = match.group(1)
-                value = float(match.group(2))
-
-                # Extract base metric name (without labels)
-                base_name = metric_name.split('{')[0]
-
-                # For cluster metrics, convert bytes to GB for readability
-                if base_name in ['container_memory_usage_bytes', 'container_memory_working_set_bytes']:
-                    value = value / (1024**3)  # Convert to GB
-                    base_name = base_name.replace('_bytes', '_gb')
-                elif base_name in ['container_network_receive_bytes_total', 'container_network_transmit_bytes_total']:
-                    value = value / (1024**2)  # Convert to MB
-                    base_name = base_name.replace('_bytes_total', '_mb_total')
-
-                metrics[base_name].append(value)
-
-    return timestamp, pod_name, namespace, dict(metrics)
+# Byte-unit conversions applied during parsing
+_BYTE_CONVERSIONS = {
+    'container_memory_usage_bytes': (1024**3, '_bytes', '_gb'),
+    'container_memory_working_set_bytes': (1024**3, '_bytes', '_gb'),
+    'container_network_receive_bytes_total': (1024**2, '_bytes_total', '_mb_total'),
+    'container_network_transmit_bytes_total': (1024**2, '_bytes_total', '_mb_total'),
+}
 
 
-def parse_vllm_log(file_path):
-    """Parse vLLM logs to extract metrics."""
-    metrics = defaultdict(list)
-    timestamp = None
-    pod_name = None
-    namespace = None
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-    with open(file_path, 'r') as f:
-        for line in f:
-            line = line.strip()
+def _load_json(filepath):
+    """Load a JSON file, returning {} if it doesn't exist."""
+    if not os.path.exists(filepath):
+        return {}
+    with open(filepath, 'r') as f:
+        return json.load(f)
 
-            # Extract metadata
-            if line.startswith('# Timestamp:'):
-                timestamp = line.split(':', 1)[1].strip()
-            elif line.startswith('# Pod:'):
-                pod_name = line.split(':', 1)[1].strip()
-            elif line.startswith('# Namespace:'):
-                namespace = line.split(':', 1)[1].strip()
 
-            # Parse KV cache usage: "GPU KV cache usage: 45.2%" or "GPU KV cache usage: 0.0%"
-            match = re.search(r'GPU KV cache usage:\s*([\d.]+)%', line)
-            if match:
-                metrics['kv_cache_usage_percent'].append(float(match.group(1)))
-
-            # Parse KV cache hit rate: "Prefix cache hit rate: 51.0%"
-            match = re.search(r'Prefix cache hit rate:\s*([\d.]+)%', line)
-            if match:
-                hit_rate = float(match.group(1))
-                metrics['cache_hit_rate_percent'].append(hit_rate)
-
-            # Parse cache hits and misses: "Cache hits: 1234, misses: 56"
-            match = re.search(
-                r'Cache hits:\s*(\d+)(?:,\s*misses:\s*(\d+))?', line)
-            if match:
-                hits = int(match.group(1))
-                metrics['cache_hits'].append(hits)
-                if match.group(2):
-                    misses = int(match.group(2))
-                    metrics['cache_misses'].append(misses)
-                    # Calculate hit rate
-                    total = hits + misses
-                    if total > 0:
-                        metrics['cache_hit_rate_percent'].append(
-                            (hits / total) * 100)
-
-            # Parse GPU memory: "GPU memory usage: 12.5 GB / 80.0 GB"
-            match = re.search(
-                r'GPU memory usage:\s*([\d.]+)\s*GB\s*/\s*([\d.]+)\s*GB', line)
-            if match:
-                used_gb = float(match.group(1))
-                total_gb = float(match.group(2))
-                metrics['gpu_memory_used_gb'].append(used_gb)
-                metrics['gpu_memory_total_gb'].append(total_gb)
-                metrics['gpu_memory_usage_percent'].append(
-                    (used_gb / total_gb) * 100 if total_gb > 0 else 0)
-
-            # Parse CPU memory: "CPU memory usage: 2.3 GB"
-            match = re.search(r'CPU memory usage:\s*([\d.]+)\s*GB', line)
-            if match:
-                metrics['cpu_memory_used_gb'].append(float(match.group(1)))
-
-            # Parse GPU utilization: "GPU utilization: 87%"
-            match = re.search(r'GPU utilization:\s*([\d.]+)%', line)
-            if match:
-                metrics['gpu_utilization_percent'].append(
-                    float(match.group(1)))
-
-            # Parse requests: "Avg prompt throughput: 123.4 tokens/s, Avg generation throughput: 456.7 tokens/s"
-            match = re.search(
-                r'Avg prompt throughput:\s*([\d.]+)\s*tokens/s', line)
-            if match:
-                metrics['prompt_throughput_tokens_per_sec'].append(
-                    float(match.group(1)))
-
-            match = re.search(
-                r'Avg generation throughput:\s*([\d.]+)\s*tokens/s', line)
-            if match:
-                metrics['generation_throughput_tokens_per_sec'].append(
-                    float(match.group(1)))
-
-            # Parse running requests: "Running: 5 reqs"
-            match = re.search(r'Running:\s*(\d+)\s*reqs?', line)
-            if match:
-                metrics['running_requests'].append(int(match.group(1)))
-
-            # Parse waiting requests: "Waiting: 12 reqs"
-            match = re.search(r'Waiting:\s*(\d+)\s*reqs?', line)
-            if match:
-                metrics['waiting_requests'].append(int(match.group(1)))
-
-            # Parse swapped requests: "Swapped: 3 reqs"
-            match = re.search(r'Swapped:\s*(\d+)\s*reqs?', line)
-            if match:
-                metrics['swapped_requests'].append(int(match.group(1)))
-
-            # Additional patterns for vLLM metrics logs
-            # Parse: "KV cache usage: 45.2%" (alternative format)
-            if 'kv_cache_usage_percent' not in metrics or not metrics['kv_cache_usage_percent']:
-                match = re.search(
-                    r'KV cache usage:\s*([\d.]+)%', line, re.IGNORECASE)
-                if match:
-                    metrics['kv_cache_usage_percent'].append(
-                        float(match.group(1)))
-
-            # Parse: "cache_hit_rate=0.512" or "cache_hit_rate: 51.2%"
-            match = re.search(
-                r'cache[_\s]hit[_\s]rate[=:]\s*([\d.]+)', line, re.IGNORECASE)
-            if match:
-                value = float(match.group(1))
-                # If value is between 0 and 1, convert to percentage
-                if value <= 1.0:
-                    value = value * 100
-                if 'cache_hit_rate_percent' not in metrics or value not in metrics['cache_hit_rate_percent']:
-                    metrics['cache_hit_rate_percent'].append(value)
-
-            # Parse power consumption: "Power: 285W" or "Power usage: 285 W"
-            match = re.search(
-                r'Power(?:\s+usage)?:\s*([\d.]+)\s*W', line, re.IGNORECASE)
-            if match:
-                metrics['power_consumption_watts'].append(
-                    float(match.group(1)))
-
-    return timestamp, pod_name, namespace, dict(metrics)
+def _save_json(filepath, data):
+    """Save data to a JSON file."""
+    with open(filepath, 'w') as f:
+        json.dump(data, f, indent=2)
 
 
 def percentile(sorted_values, p):
-    """Calculate the p-th percentile from a sorted list using linear interpolation.
-
-    Args:
-        sorted_values: Sorted list of numeric values
-        p: Percentile (0-100)
-
-    Returns:
-        Interpolated percentile value
-    """
+    """Calculate the p-th percentile from a sorted list using linear interpolation."""
     n = len(sorted_values)
     if n == 0:
         return None
@@ -210,31 +136,87 @@ def percentile(sorted_values, p):
         return sorted_values[0]
     k = (n - 1) * p / 100.0
     f = int(k)
-    c = f + 1
-    if c >= n:
-        return sorted_values[f]
+    c = min(f + 1, n - 1)
     return sorted_values[f] + (k - f) * (sorted_values[c] - sorted_values[f])
 
 
+def _compute_stats(values, unit=''):
+    """Compute statistics dict from a list of numeric values."""
+    sorted_vals = sorted(values)
+    return {
+        'mean': statistics.mean(values),
+        'stddev': statistics.stdev(values) if len(values) > 1 else 0,
+        'min': min(values),
+        'p25': percentile(sorted_vals, 25),
+        'p50': percentile(sorted_vals, 50),
+        'p75': percentile(sorted_vals, 75),
+        'p90': percentile(sorted_vals, 90),
+        'p95': percentile(sorted_vals, 95),
+        'p99': percentile(sorted_vals, 99),
+        'max': max(values),
+        'count': len(values),
+        'unit': unit,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Parsing
+# ---------------------------------------------------------------------------
+
+def parse_prometheus_metrics(file_path):
+    """Parse Prometheus metrics from a file."""
+    metrics = defaultdict(list)
+    timestamp = None
+    pod_name = None
+    namespace = None
+
+    with open(file_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+
+            # Extract metadata
+            if line.startswith('# Timestamp:'):
+                timestamp = line.split(':', 1)[1].strip()
+            elif line.startswith('# Pod:'):
+                pod_name = line.split(':', 1)[1].strip()
+            elif line.startswith('# Namespace:'):
+                namespace = line.split(':', 1)[1].strip()
+
+            # Skip comments and empty lines
+            if line.startswith('#') or not line:
+                continue
+
+            match = re.match(
+                r'([a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^}]*\})?) ([\d.eE+-]+)(?:\s+\d+)?', line)
+            if match:
+                base_name = match.group(1).split('{')[0]
+                value = float(match.group(2))
+
+                # Apply byte-unit conversions
+                if base_name in _BYTE_CONVERSIONS:
+                    divisor, old_suffix, new_suffix = _BYTE_CONVERSIONS[base_name]
+                    value = value / divisor
+                    base_name = base_name.replace(old_suffix, new_suffix)
+
+                metrics[base_name].append(value)
+
+    return timestamp, pod_name, namespace, dict(metrics)
+
+
+# ---------------------------------------------------------------------------
+# Aggregation
+# ---------------------------------------------------------------------------
+
 def aggregate_metrics():
     """Aggregate metrics from all collected files."""
-    # Structure: {pod_name: {metric_name: [values]}}
     pod_metrics = defaultdict(lambda: defaultdict(list))
     pod_metadata = {}
 
-    # Process all raw metric and log files
-    metrics_files = glob.glob(os.path.join(raw_dir, '*_metrics.txt'))
-    log_files = glob.glob(os.path.join(raw_dir, '*_logs.txt'))
-
-    # Also support old format (*.log files)
-    old_log_files = glob.glob(os.path.join(raw_dir, '*.log'))
-
-    all_files = metrics_files + log_files + old_log_files
+    all_files = glob.glob(os.path.join(raw_dir, '*_metrics.log'))
 
     if not all_files:
         print("Warning: No raw files found to process")
         print(f"Checked directory: {raw_dir}")
-        # Create an informative empty result
         results = {
             '_info': {
                 'status': 'no_data',
@@ -248,21 +230,15 @@ def aggregate_metrics():
                 ]
             }
         }
-        output_file = os.path.join(processed_dir, 'metrics_summary.json')
-        with open(output_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        print(f"Empty metrics summary saved to: {output_file}")
+        _save_json(os.path.join(processed_dir, 'metrics_summary.json'), results)
+        print(f"Empty metrics summary saved")
         return results
 
     print(f"Processing {len(all_files)} files...")
 
     for file_path in all_files:
-        # Determine file type and parse accordingly
-        if file_path.endswith('_metrics.txt'):
-            timestamp, pod_name, namespace, metrics = parse_prometheus_metrics(
-                file_path)
-        else:
-            timestamp, pod_name, namespace, metrics = parse_vllm_log(file_path)
+        timestamp, pod_name, namespace, metrics = parse_prometheus_metrics(
+            file_path)
 
         if pod_name:
             if pod_name not in pod_metadata:
@@ -272,80 +248,98 @@ def aggregate_metrics():
             for metric_name, values in metrics.items():
                 pod_metrics[pod_name][metric_name].extend(values)
 
-    # Calculate statistics for each metric
+    # Compute ratio metrics per-pod before aggregation
+    for pod_name, metrics in pod_metrics.items():
+        for ratio_name, num_metric, den_metric in RATIO_METRICS:
+            if num_metric in metrics and den_metric in metrics:
+                num_vals = metrics[num_metric]
+                den_vals = metrics[den_metric]
+                ratio_vals = [
+                    (num_vals[i] / den_vals[i] * 100) if den_vals[i] > 0 else 0.0
+                    for i in range(min(len(num_vals), len(den_vals)))
+                ]
+                if ratio_vals:
+                    metrics[ratio_name] = ratio_vals
+
+    # Per-pod statistics
     results = {}
     for pod_name, metrics in pod_metrics.items():
         results[pod_name] = {
             'metadata': pod_metadata.get(pod_name, {}),
-            'metrics': {}
+            'metrics': {
+                name: _compute_stats(values, METRIC_UNITS.get(name, ''))
+                for name, values in metrics.items()
+                if values
+            }
         }
 
-        for metric_name, values in metrics.items():
-            if values:
-                sorted_vals = sorted(values)
-                results[pod_name]['metrics'][metric_name] = {
-                    'mean': statistics.mean(values),
-                    'stddev': statistics.stdev(values) if len(values) > 1 else 0,
-                    'min': min(values),
-                    'p25': percentile(sorted_vals, 25),
-                    'p50': percentile(sorted_vals, 50),
-                    'p75': percentile(sorted_vals, 75),
-                    'p90': percentile(sorted_vals, 90),
-                    'p95': percentile(sorted_vals, 95),
-                    'p99': percentile(sorted_vals, 99),
-                    'max': max(values),
-                    'count': len(values),
-                    'unit': get_metric_unit(metric_name)
-                }
+    # Cluster-wide aggregated statistics
+    aggregated_values = defaultdict(list)
+    for metrics in pod_metrics.values():
+        for name, values in metrics.items():
+            if name in AGGREGATE_METRICS and values:
+                aggregated_values[name].extend(values)
 
-    # Save aggregated results
+    if aggregated_values:
+        results['_aggregated'] = {
+            'metrics': {
+                name: _compute_stats(values, METRIC_UNITS.get(name, ''))
+                for name, values in aggregated_values.items()
+            }
+        }
+        print(f"Aggregated {len(aggregated_values)} metrics across all pods")
+
     output_file = os.path.join(processed_dir, 'metrics_summary.json')
-    with open(output_file, 'w') as f:
-        json.dump(results, f, indent=2)
-
+    _save_json(output_file, results)
     print(f"Metrics summary saved to: {output_file}")
     print(f"Processed metrics from {len(results)} pods")
     return results
 
 
-def get_metric_unit(metric_name):
-    """Get the unit for a metric."""
-    units = {
-        # Cache metrics
-        'vllm:kv_cache_usage_perc': '%',
-        'kv_cache_usage_percent': '%',
-        'cache_hit_rate_percent': '%',
-        'vllm:gpu_cache_usage_perc': '%',
-        'vllm:cpu_cache_usage_perc': '%',
-        'cache_hits': 'count',
-        'cache_misses': 'count',
-        # Memory metrics
-        'vllm:gpu_memory_usage_bytes': 'bytes',
-        'DCGM_FI_DEV_FB_USED': 'bytes',
-        'vllm:cpu_memory_usage_bytes': 'bytes',
-        'container_memory_usage_bytes': 'bytes',
-        'gpu_memory_used_gb': 'GB',
-        'gpu_memory_total_gb': 'GB',
-        'gpu_memory_usage_percent': '%',
-        'cpu_memory_used_gb': 'GB',
-        # Compute metrics
-        'DCGM_FI_DEV_GPU_UTIL': '%',
-        'container_cpu_usage_seconds_total': 'seconds',
-        'gpu_utilization_percent': '%',
-        # Performance metrics
-        'DCGM_FI_DEV_POWER_USAGE': 'watts',
-        'prompt_throughput_tokens_per_sec': 'tokens/s',
-        'generation_throughput_tokens_per_sec': 'tokens/s',
-        # Queue metrics
-        'vllm:num_requests_running': 'count',
-        'vllm:num_requests_waiting': 'count',
-        'vllm:num_requests_swapped': 'count',
-        'running_requests': 'count',
-        'waiting_requests': 'count',
-        'swapped_requests': 'count',
-    }
-    return units.get(metric_name, '')
+def aggregate_pod_startup_stats():
+    """Compute aggregate statistics for pod startup times."""
+    startup_file = os.path.join(processed_dir, 'pod_startup_times.json')
+    data = _load_json(startup_file)
+
+    values = [
+        p['startup_seconds'] for p in data.get('pods', [])
+        if isinstance(p.get('startup_seconds'), (int, float))
+    ]
+    if not values:
+        return
+
+    data['aggregate'] = _compute_stats(values, 's')
+    _save_json(startup_file, data)
+    print(f"Pod startup stats: {len(values)} pods, "
+          f"mean={data['aggregate']['mean']:.1f}s")
+
+
+def aggregate_replica_stats():
+    """Compute aggregate statistics from replica status time series."""
+    ts_data = _load_json(
+        os.path.join(processed_dir, 'replica_status_timeseries.json'))
+    snapshots = ts_data.get('snapshots', [])
+    if not snapshots:
+        return
+
+    ready_counts = [
+        sum(c.get('ready_replicas', 0) for c in snap.get('controllers', []))
+        for snap in snapshots
+    ]
+
+    status_file = os.path.join(processed_dir, 'replica_status.json')
+    status_data = _load_json(status_file)
+    if status_data:
+        status_data['aggregate_ready_replicas'] = _compute_stats(
+            ready_counts, 'count')
+        _save_json(status_file, status_data)
+
+    print(f"Replica stats: {len(snapshots)} snapshots, "
+          f"ready replicas min={min(ready_counts)} max={max(ready_counts)} "
+          f"mean={statistics.mean(ready_counts):.1f}")
 
 
 if __name__ == '__main__':
     aggregate_metrics()
+    aggregate_pod_startup_stats()
+    aggregate_replica_stats()

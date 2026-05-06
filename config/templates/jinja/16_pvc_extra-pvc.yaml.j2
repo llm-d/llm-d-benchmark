@@ -1,0 +1,51 @@
+{# ============================================================================
+   Extra PVC Template
+
+   Creates an additional PersistentVolumeClaim when storage.extraPvc.name
+   is defined and non-empty.
+
+   Mirrors the bash LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME feature — the extra
+   PVC is only created when a scenario explicitly configures it. By default,
+   storage.extraPvc.name is empty and this template produces no output.
+
+   The extra PVC is NOT automatically mounted. Scenarios must also add matching
+   entries to vllmCommon.volumes/volumeMounts or additionalVolumes/Mounts
+   to reference the PVC in their pods.
+
+   Example usage in a scenario YAML:
+     storage:
+       extraPvc:
+         name: spyre-precompiled-model
+         size: 50Gi
+     vllmCommon:
+       volumes:
+         - name: spyre-precompiled-model
+           type: persistentVolumeClaim
+           persistentVolumeClaim:
+             claimName: spyre-precompiled-model
+       volumeMounts:
+         - name: spyre-precompiled-model
+           mountPath: /mnt/spyre-precompiled-model
+   ============================================================================ #}
+{% if storage.extraPvc is defined and storage.extraPvc.name is defined and storage.extraPvc.name %}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ storage.extraPvc.name }}
+  namespace: {{ namespace.name }}
+spec:
+  accessModes:
+{% if storage.extraPvc.accessModes is defined %}
+{% for mode in storage.extraPvc.accessModes %}
+    - {{ mode }}
+{% endfor %}
+{% else %}
+    - ReadWriteMany
+{% endif %}
+  resources:
+    requests:
+      storage: {{ storage.extraPvc.size | default('10Gi') }}
+{% if storage.extraPvc.storageClassName is defined and storage.extraPvc.storageClassName not in ["default", "auto", ""] %}
+  storageClassName: {{ storage.extraPvc.storageClassName }}
+{% endif %}
+{% endif %}
