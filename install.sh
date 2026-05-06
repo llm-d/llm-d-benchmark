@@ -71,6 +71,7 @@ case "$ARCH_UNAME" in
         echo "WARNING: Unrecognised architecture '${ARCH_UNAME}'. Assuming amd64."
         ARCH_GO="amd64"; ARCH_DEB="amd64"
         ;;
+esac
 
 tool_version_for() {
     case "$1" in
