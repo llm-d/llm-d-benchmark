@@ -33,6 +33,7 @@ export _APT_GET_UPDATE_RUN=0
 export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 
 declare -A TOOL_VERSION=(
+    ["curl"]="8.20.0"
     ["yq"]="v4.52.5"
     ["helmfile"]="1.4.2"
     ["helm"]="v3.16.0"
@@ -450,6 +451,11 @@ version_gte() {
 # ---------------------------------------------------------------------------
 # Per-tool Linux install helpers
 # ---------------------------------------------------------------------------
+install_curl_linux() {
+    local version=8.20.0
+    ${PKG_MGR} curl
+}
+
 install_yq_linux() {
     local version="${TOOL_VERSION["yq"]}"
     local binary=yq_linux_amd64
