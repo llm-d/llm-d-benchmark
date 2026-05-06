@@ -57,6 +57,37 @@ helm_diff_url="https://github.com/databus23/helm-diff"
 PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
 """
 
+_INSTALL_SH_TOOL_VERSION_FIXTURE = """\
+#!/bin/bash
+# Toy install.sh fragment with TOOL_VERSION dict and variable references
+
+declare -A TOOL_VERSION=(
+    ["crane"]="0.21.5"
+    ["yq"]="v4.52.5"
+    ["helmfile"]="1.4.2"
+)
+
+tools="curl crane yq helmfile jq"
+
+install_crane_linux() {
+    local version="v${TOOL_VERSION["crane"]}"
+    curl -sL "https://example/${version}/crane" -o /tmp/crane
+}
+
+install_yq_linux() {
+    local version="${TOOL_VERSION["yq"]}"
+    curl -sL "https://example/${version}/yq" -o /tmp/yq
+}
+
+install_helmfile_linux() {
+    local version="${TOOL_VERSION["helmfile"]}"
+    curl -sL "https://example/v${version}/helmfile" -o /tmp/helmfile
+}
+
+helm_diff_url="https://github.com/databus23/helm-diff"
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
+"""
+
 
 _DEFAULTS_YAML_FIXTURE = """\
 images:
@@ -181,6 +212,30 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/mikefarah/yq" in by_name["yq"].upstream
     assert "github.com/helmfile/helmfile" in by_name["helmfile"].upstream
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
+
+
+def test_parse_install_sh_tool_version_dict_refs(sbom_module, tmp_path: Path) -> None:
+    """Tools using ${TOOL_VERSION["key"]} variable references get properly resolved."""
+    p = tmp_path / "install.sh"
+    p.write_text(_INSTALL_SH_TOOL_VERSION_FIXTURE, encoding="utf-8")
+    entries = sbom_module.parse_install_sh(p)
+    by_name = {e.name: e for e in entries}
+
+    # crane uses `"v${TOOL_VERSION["crane"]}"` — value from dict (without the v prefix added by the shell)
+    assert by_name["crane"].pin == "0.21.5"
+    assert by_name["crane"].pin_type == "version"
+    assert "install_crane_linux" in by_name["crane"].location
+
+    # yq uses `"${TOOL_VERSION["yq"]}"` — value from dict verbatim
+    assert by_name["yq"].pin == "v4.52.5"
+    assert by_name["yq"].pin_type == "version"
+
+    # helmfile uses `"${TOOL_VERSION["helmfile"]}"` — value from dict verbatim
+    assert by_name["helmfile"].pin == "1.4.2"
+    assert by_name["helmfile"].pin_type == "version"
+
+    # jq has no install function — still system-provided
+    assert by_name["jq"].pin == "system-provided"
 
 
 # --------------------------------------------------------------------------- #
