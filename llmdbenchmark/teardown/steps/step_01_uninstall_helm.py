@@ -7,7 +7,10 @@ import yaml
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
-from llmdbenchmark.utilities.kube_helpers import wait_for_pods_deleted
+from llmdbenchmark.utilities.kube_helpers import (
+    force_remove_finalizers_by_selector,
+    wait_for_pods_deleted,
+)
 
 
 class UninstallHelmStep(Step):
@@ -142,13 +145,16 @@ class UninstallHelmStep(Step):
                     cr, check=False,
                 )
 
-        # Wait for all FMA pods to terminate while the controller is still running
+        # Wait for all FMA pods to terminate while the controller is still running.
+        # Then force-remove any remaining finalizers: this handles
+        # pods left stuck from a previous teardown.
         timeout = context.fma_teardown_timeout
         for selector in [
             "app.kubernetes.io/component=launcher",
             "llm-d.ai/role=requester",
         ]:
             wait_for_pods_deleted(cmd, selector, namespace, timeout, context)
+            force_remove_finalizers_by_selector(cmd, selector, namespace, context)
 
     def _collect_model_labels(self, context: ExecutionContext) -> list[str]:
         """Collect model ID labels used to match helm releases."""
