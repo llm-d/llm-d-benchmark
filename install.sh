@@ -39,6 +39,7 @@ declare -A TOOL_VERSION=(
     ["oc"]="4.16.0"
     ["kustomize"]="v5.0.0"
     ["crane"]="0.20.3"
+    ["jq"]="1.8.1"
 )
 
 # ---------------------------------------------------------------------------
@@ -501,6 +502,18 @@ install_crane_linux() {
     tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane
     sudo cp -f /tmp/crane /usr/local/bin/crane
     sudo chmod +x /usr/local/bin/crane
+}
+
+install_jq_linux() {
+    local version="${TOOL_VERSION["jq"]}"
+    local arch
+    arch=$(uname -m)
+    local jq_arch="amd64"
+    [[ "$arch" == "aarch64" ]] && jq_arch="arm64"
+    local binary="jq-linux-${jq_arch}"
+    curl -sL "https://github.com/jqlang/jq/releases/download/jq-${version}/${binary}" -o "/tmp/${binary}"
+    chmod +x "/tmp/${binary}"
+    sudo cp -f "/tmp/${binary}" /usr/local/bin/jq
 }
 
 install_oc_mac() { brew install openshift-cli; }

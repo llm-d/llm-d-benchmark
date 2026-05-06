@@ -35,6 +35,10 @@ _INSTALL_SH_FIXTURE = """\
 #!/bin/bash
 # Toy install.sh fragment
 
+declare -A TOOL_VERSION=(
+    ["jq"]="1.8.1"
+)
+
 tools="curl git helm helmfile yq crane jq"
 
 install_yq_linux() {
@@ -50,6 +54,11 @@ install_helmfile_linux() {
 install_crane_linux() {
     local version=v0.20.3
     curl -sL "https://example/${version}/crane" -o /tmp/crane
+}
+
+install_jq_linux() {
+    local version="${TOOL_VERSION["jq"]}"
+    curl -sL "https://example/${version}/jq" -o /tmp/jq
 }
 
 helm_diff_url="https://github.com/databus23/helm-diff"
@@ -148,9 +157,21 @@ def test_parse_install_sh_unpinned_marks_system_provided(
 ) -> None:
     entries = sbom_module.parse_install_sh(install_sh)
     by_name = {e.name: e for e in entries}
-    assert by_name["jq"].pin == "system-provided"
-    assert by_name["jq"].pin_type == "system-provided"
-    assert "command -v" in by_name["jq"].location
+    # `git` and `helm` have no install function, so they use whatever the host provides.
+    assert by_name["git"].pin == "system-provided"
+    assert by_name["git"].pin_type == "system-provided"
+    assert "command -v" in by_name["git"].location
+
+
+def test_parse_install_sh_tool_version_ref_resolved(
+    sbom_module, install_sh: Path,
+) -> None:
+    entries = sbom_module.parse_install_sh(install_sh)
+    by_name = {e.name: e for e in entries}
+    # jq uses `${TOOL_VERSION["jq"]}` which should be resolved to "1.8.1".
+    assert by_name["jq"].pin == "1.8.1"
+    assert by_name["jq"].pin_type == "version"
+    assert "install_jq_linux" in by_name["jq"].location
 
 
 def test_parse_install_sh_planner_commit(sbom_module, install_sh: Path) -> None:
