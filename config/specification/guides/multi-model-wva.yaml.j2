@@ -1,7 +1,3 @@
-# GKE H100 CI/CD Specification
-# CI/CD scenario for Google Kubernetes Engine clusters with H100 GPUs.
-# See scenarios/cicd/gke-h100.yaml for details.
-
 # [REQUIRED]
 {% set base_dir = base_dir | default('../') -%}
 base_dir: {{ base_dir }}
@@ -16,4 +12,7 @@ template_dir:
 
 # [OPTIONAL]
 scenario_file:
-  path: {{ base_dir }}/config/scenarios/cicd/gke-h100.yaml
+  path: {{ base_dir }}/config/scenarios/guides/multi-model-wva.yaml
+
+# Experiment definitions are shared with inference-scheduling - the workload
+# shape is the same, only the number of models/pools differs.

@@ -3,6 +3,7 @@
 """
 Benchmark 'nop' analysis
 """
+# pylint: disable=invalid-name
 
 from datetime import datetime
 import io
@@ -12,8 +13,8 @@ from typing import Any
 import pandas as pd
 import yaml
 
-from benchmark_report import BenchmarkReportV01 as BenchmarkReport
-from benchmark_report.schema_v0_1 import Scenario
+from benchmark_report import BenchmarkReportV01 as BenchmarkReport  # pylint: disable=import-error
+from benchmark_report.schema_v0_1 import Scenario  # pylint: disable=import-error
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -164,13 +165,21 @@ def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkR
             logger.info("Unhandled metrics name '%s'", metadata["name"])
 
 
-def write_vllm_metrics(
+def write_vllm_metrics(  # pylint: disable=too-many-locals,too-many-statements
     file: io.TextIOWrapper, metadatas: list[dict], left_padding: int
 ):
     """prints vLLM metrics"""
 
     for metrics_metadata in metadatas:
         name = metrics_metadata["name"]
+        pod_start = metrics_metadata["pod_start"]["value"]
+        vllm_start = (
+            metrics_metadata["vllm_ready_timestamp"]["value"]
+            - metrics_metadata["vllm_start_timestamp"]["value"]
+            if metrics_metadata["vllm_ready_timestamp"]["value"]
+            > metrics_metadata["vllm_start_timestamp"]["value"]
+            else 0.0
+        )
         elapsed = metrics_metadata["load"]["time"]["value"]
         rate = metrics_metadata["load"]["transfer_rate"]["value"]
         dynamo_bytecode_transform = metrics_metadata["dynamo_bytecode_transform"][
@@ -184,6 +193,8 @@ def write_vllm_metrics(
         compile_graph = metrics_metadata.get("compile_graph")
 
         file.write(f"\n  Name                              : {name}\n")
+        file.write(f"    Pod  Start(secs)                : {pod_start:7.3f}\n")
+        file.write(f"    vLLM Start(secs)                : {vllm_start:7.3f}\n")
         file.write("    Model Load\n")
         file.write(f"      Elapsed(secs)                 : {elapsed:7.3f}\n")
         file.write(f"      Rate(GiB/secs)                : {rate:7.3f}\n")
@@ -210,10 +221,21 @@ def write_vllm_metrics(
 
         metrics_sleep_wake = metrics_metadata.get("sleep_wake", [])
         if len(metrics_sleep_wake) > 0:
+            file.write(
+                "\n    After: Time elapsed after the previous vLLM sleep, wake, or ready state\n"
+            )
+            file.write(
+                "    Elapsed: Time it took to transition to vLLM sleep or wait\n\n"
+            )
             pandas_datas = []
+            prev_timestamp = metrics_metadata["vllm_ready_timestamp"]["value"]
             for sleep_wake in metrics_sleep_wake:
+                curr_timestamp = sleep_wake["timestamp"]["value"]
+                diff = curr_timestamp - prev_timestamp if prev_timestamp > 0 else None
+                prev_timestamp = curr_timestamp
                 data = {
                     "Type": sleep_wake["type"],
+                    "After(secs)": diff,
                     "Elapsed(secs)": sleep_wake["time"]["value"],
                     "GPU Freed(GiB)": None,
                     "GPU In Use(GiB)": None,
@@ -227,6 +249,7 @@ def write_vllm_metrics(
             file.write("\n")
             header = (
                 f"{'Type':<6} "
+                f"{'After(secs)':>13} "
                 f"{'Elapsed(secs)':>13} "
                 f"{'GPU Freed(GiB)':>15} "
                 f"{'GPU In Use(GiB)':>15}"
@@ -237,6 +260,7 @@ def write_vllm_metrics(
                 file.write(
                     f"{' ' * left_padding}"
                     f"{r['Type']:<6} "
+                    f"{fmt(r['After(secs)'], '13.3f')} "
                     f"{fmt(r['Elapsed(secs)'], '13.3f')} "
                     f"{fmt(r['GPU Freed(GiB)'], '15.2f')} "
                     f"{fmt(r['GPU In Use(GiB)'], '15.2f')}\n"
@@ -262,44 +286,60 @@ def write_extra_metrics(file: io.TextIOWrapper, metadatas: list[dict]):
             logger.info("Unhandled extra metrics name '%s'", metrics_metadata["name"])
 
 
-def write_fma_metrics(
+def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
     file: io.TextIOWrapper, iterations: list[dict], left_padding: int
 ):
     """prints FMA metrics"""
 
     file.write("\n\n")
-    file.write("TTRR: Time for the Requester Pod to be ready\n")
+    file.write("Actuation Conditions:\n")
+    file.write(
+        "  T_luke_warm: when new launcher created by Dual Pod Controller + new vLLM\n"
+    )
+    file.write("  T_warm: when existing launcher creates new vLLM\n")
+    file.write("  T_hot: when waking up sleeping vLLM\n\n")
+    file.write("T_actuation: Time for the Requester Pod to be ready\n")
     file.write("TTRD: Time for the Requester Pod to have dual label set\n")
-    file.write("TTFT: Time for vLLM server to return first token\n")
+    file.write("T_first_token: Time for vLLM server to return first token\n")
+    file.write("TTRD + T_first_token == T_e2e\n")
     file.write("Each iteration scales ReplicaSet from 0 to 1 and then from 1 to 0\n")
+    file.write("Hit_rate (count(hot starts) / total iterations)\n")
 
+    hot_starts = 0
+    total_iterations = len(iterations)
     pandas_datas = []
     for iteration in iterations:
         for launcher_info in iteration["launcher_infos"]:
-            ct = float(launcher_info["requester_info"]["creation_timestamp"])
-            rt = float(launcher_info["requester_info"]["ready_timestamp"])
-            dt = float(launcher_info["requester_info"]["dual_label_timestamp"])
+            ct = float(launcher_info["requester_info"]["creation_timestamp"]["value"])
+            rt = float(launcher_info["requester_info"]["ready_timestamp"]["value"])
+            dt = float(launcher_info["requester_info"]["dual_label_timestamp"]["value"])
             ttrr = rt - ct if rt > 0.0 else 0.0
             ttrd = dt - ct if dt > 0.0 else 0.0
-            ttft = float(launcher_info["ttft"])
+            ttft = float(launcher_info["ttft"]["value"])
+            actuation_condition = launcher_info["actuation_condition"]
+            if actuation_condition == "T_hot":
+                hot_starts += 1
 
             pandas_datas.append(
                 {
-                    "Iteration": iteration["iteration"],
+                    "Iteration": iteration["iteration"]["value"],
                     "vLLM Name": launcher_info["name"],
-                    "TTRR(secs)": ttrr,
+                    "Actuation Condition": actuation_condition,
+                    "T_actuation(secs)": ttrr,
                     "TTRD(secs)": ttrd,
-                    "TTFT(secs)": ttft,
-                    "TTRD+TTFT": ttrd + ttft,
+                    "T_first_token(secs)": ttft,
+                    "T_e2e": ttrd + ttft,
                 }
             )
+
+    hit_rate = hot_starts / total_iterations if total_iterations > 0 else 0.0
 
     df = pd.DataFrame(pandas_datas)
 
     file.write("\n")
 
     # Float formatting
-    float_columns = ["TTRR(secs)", "TTRD(secs)", "TTFT(secs)", "TTRD+TTFT"]
+    float_columns = ["T_actuation(secs)", "TTRD(secs)", "T_first_token(secs)", "T_e2e"]
 
     # Compute column widths dynamically
     col_widths = {}
@@ -337,6 +377,8 @@ def write_fma_metrics(
             else:
                 row.append(f"{val:<{col_widths[col]}}")  # left-align strings
         file.write(f"{' ' * left_padding}{(' ' * space_between_cols).join(row)}\n")
+
+    file.write(f"\nHit_rate: {hit_rate:8.2f}\n")
 
     file.write("\n")
 
@@ -392,7 +434,7 @@ if __name__ == "__main__":
     try:
         logger.info("Starting analysis run")
         main()
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         logger.exception("Error running analysis")
     finally:
         logger.info("End analysis run")

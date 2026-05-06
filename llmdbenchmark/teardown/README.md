@@ -22,12 +22,24 @@ Loads the rendered plan config (`config.yaml`) from the first rendered stack. Po
 
 ### Step 01 -- Uninstall Helm Releases
 
-Skipped when `modelservice` is not in `context.deployed_methods`.
+Skipped when `modelservice` is not in `context.deployed_methods` and no rendered stack has `wva.enabled: true`.
 
 For each target namespace:
 - Uninstalls Helm releases matching the release prefix and model labels.
 - Deletes OpenShift routes (if on OpenShift) matching the release prefix.
 - Deletes model download jobs.
+
+#### WVA controller teardown policy
+
+When any rendered stack has `wva.enabled: true`, the step also tears down WVA resources:
+
+- **Per-stack `VariantAutoscaling` + `HPA`**: always deleted, so the model stops auto-scaling after teardown.
+- **Per-namespace WVA controller (`workload-variant-autoscaler` helm release)**:
+  - Default (no `--stack` filter, i.e. tearing down the entire scenario): **uninstalled**. No remaining stacks of this scenario depend on it.
+  - With `--stack X` (partial-stack teardown): **preserved**. Sibling stacks of this scenario in the same namespace still need it to autoscale.
+  - With `--deep`: **uninstalled** regardless of `--stack` (deep wins).
+- **Shared cluster-wide infrastructure** (`prometheus-adapter`, the `prometheus-ca` ConfigMap, the `allow-thanos-querier-api-access` ClusterRole): **never** removed by teardown -- not even with `--deep`. They are managed once at the cluster level (e.g. by a platform admin) and removing them on a per-tenant teardown would break every other namespace's autoscaling.
+- **Non-OpenShift platforms**: WVA teardown is a no-op (standup never installs WVA off-OpenShift).
 
 ### Step 02 -- Clean Harness
 

@@ -25,6 +25,10 @@ inferenceExtension:
           key: {{ huggingface.tokenKey }}
 {% endif %}
   pluginsConfigFile: "{{ inferenceExtension.pluginsConfigFile }}"
+{% if inferenceExtension.resources is defined and inferenceExtension.resources %}
+  resources:
+{{ inferenceExtension.resources | toyaml | indent(4, true) }}
+{% endif %}
 {% if inferenceExtension.pluginsCustomConfig is defined and inferenceExtension.pluginsCustomConfig %}
   pluginsCustomConfig:
 {% for filename, content in inferenceExtension.pluginsCustomConfig.items() %}
@@ -33,13 +37,17 @@ inferenceExtension:
 {% endfor %}
 {% endif %}
   monitoring:
-    secret:
-      name: {{ inferenceExtension.monitoring.secretName | default('inference-gateway-sa-metrics-reader-secret') }}
     interval: "{{ inferenceExtension.monitoring.interval | default('10s') }}"
     prometheus:
       enabled: {{ inferenceExtension.monitoring.prometheus.enabled | default(true) | lower }}
       auth:
         enabled: {{ inferenceExtension.monitoring.prometheus.auth.enabled | default(true) | lower }}
+        # Overridable Secret name for the Prometheus ServiceAccount token.
+        # The gaie (inferencepool) chart v1.4.0 uses this exact path; older
+        # templates wrote `monitoring.secret.name` which the chart silently
+        # ignored and fell back to its hardcoded default, causing
+        # cross-release Helm ownership conflicts in multi-stack scenarios.
+        secretName: {{ inferenceExtension.monitoring.secretName | default('inference-gateway-sa-metrics-reader-secret') }}
   flags:
 {% if inferenceExtension.flags is defined and inferenceExtension.flags %}
 {% for key, value in inferenceExtension.flags.items() %}
@@ -58,6 +66,9 @@ inferenceExtension:
     image: "{{ images.udsTokenizer.repository }}:{{ images.udsTokenizer.tag }}"
     imagePullPolicy: {{ inferenceExtension.sidecar.imagePullPolicy | default('IfNotPresent') }}
     name: {{ inferenceExtension.sidecar.name | default('tokenizer-uds') }}
+    configMap:
+      name: {{ model_id_label }}-gaie-sidecar-config
+      data: {}
     env:
 {% if huggingface.enabled %}
       - name: HF_TOKEN

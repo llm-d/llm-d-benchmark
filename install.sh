@@ -17,7 +17,9 @@
 # that required system tools are available.
 #
 # Usage:
-#   ./install.sh                   # interactive -- prompts if no venv
+#   ./install.sh                   # interactive -- prompts for uv choice
+#   ./install.sh --uv              # use uv for venv creation (no prompt)
+#   ./install.sh --no-uv           # use python3 -m venv (no prompt)
 #   ./install.sh -y                # non-interactive -- allows system python
 #   ./install.sh noreset           # skip cache reset (re-use previous checks)
 #   source install.sh              # also works when sourced
@@ -27,6 +29,7 @@ set -euo pipefail
 REPO_URL="https://github.com/llm-d/llm-d-benchmark.git"
 REPO_DIR="llm-d-benchmark"
 DEFAULT_BRANCH="main"
+export _APT_GET_UPDATE_RUN=0
 export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 
 # ---------------------------------------------------------------------------
@@ -68,7 +71,15 @@ case "$ARCH_UNAME" in
         echo "WARNING: Unrecognised architecture '${ARCH_UNAME}'. Assuming amd64."
         ARCH_GO="amd64"; ARCH_DEB="amd64"
         ;;
-esac
+
+declare -A TOOL_VERSION=(
+    ["yq"]="v4.52.5"
+    ["helmfile"]="1.4.2"
+    ["helm"]="v3.16.0"
+    ["oc"]="4.16.0"
+    ["kustomize"]="v5.0.0"
+    ["crane"]="0.20.3"
+)
 
 # ---------------------------------------------------------------------------
 # Bootstrap: if run via curl (no repo present), clone first
@@ -145,13 +156,24 @@ DESCRIPTION
     Supported architectures: x86_64 (amd64), aarch64/arm64, armv7l, ppc64le, s390x.
 
     If no virtual environment is active, the script will automatically
-    create one at .venv/ and activate it for the install. After the
-    script finishes, run "source .venv/bin/activate" in your shell.
+    create one at .venv/ and activate it for the install. You will be
+    prompted whether to use uv (https://docs.astral.sh/uv/) or the
+    standard python3 -m venv. uv can automatically download the correct
+    Python version if your system Python is missing or older than 3.11.
+    Use --uv or --no-uv to skip the prompt.
+
+    When run non-interactively (e.g. curl pipe), the script auto-selects:
+    uv if system Python is missing or < 3.11, otherwise python3 -m venv.
+
+    After the script finishes, run "source .venv/bin/activate" in your shell.
 
     Pass -y to skip venv creation and install with system Python instead.
 
 OPTIONS
     -h, --help      Show this help message and exit.
+    --uv            Use uv to create the virtual environment (skips prompt).
+    --no-uv         Use python3 -m venv instead of uv (skips prompt).
+                    Requires Python 3.11+ to be available on the system.
     -y              Non-interactive mode — use system Python directly
                     instead of creating a virtual environment.
     noreset         Reuse the dependency cache (~/.llmdbench_dependencies_checked)
@@ -175,6 +197,11 @@ else
     target_os=linux
     # shellcheck disable=SC1091
     [[ -f /etc/os-release ]] && source /etc/os-release
+    if [[ $NAME == "Ubuntu" && ${_APT_GET_UPDATE_RUN} -eq 0 ]]; then
+        sudo apt-get update
+        export _APT_GET_UPDATE_RUN=1
+    fi
+    cat /etc/os-release
 fi
 
 # ---------------------------------------------------------------------------
@@ -182,11 +209,14 @@ fi
 # ---------------------------------------------------------------------------
 allow_system_python=false
 reset_cache=true
+use_uv=auto
 
 for arg in "$@"; do
     case $arg in
         -h|--help)    show_help; exit 0 ;;
         -y)           allow_system_python=true ;;
+        --uv)         use_uv=true ;;
+        --no-uv)      use_uv=false ;;
         noreset)      reset_cache=false ;;
     esac
 done
@@ -224,13 +254,31 @@ fi
 
 # ---------------------------------------------------------------------------
 # Python / pip detection — auto-creates a .venv if none is active
+#
+# If the system Python is missing or < 3.11, the script uses `uv` to create
+# a virtual environment with the correct Python version (similar to conda).
+# uv is installed automatically if not already present.
 # ---------------------------------------------------------------------------
 LLMDBENCH_VENV_DIR=${LLMDBENCH_VENV_DIR:-"${SCRIPT_DIR}/.venv"}
 LLMDBENCH_SYSTEM_PYTHON=${LLMDBENCH_SYSTEM_PYTHON:-python3}
 CREATED_VENV=false
+MIN_PYTHON="3.11"
 
-_detected_venv="${VIRTUAL_ENV:-${CONDA_PREFIX:-}}"
-if [[ -n "$_detected_venv" && -d "$_detected_venv" ]]; then
+# Helper — check whether a python command meets the minimum version requirement
+_python_meets_min() {
+    local cmd="$1"
+    if ! command -v "$cmd" &>/dev/null; then
+        return 1
+    fi
+    local ver major minor
+    ver=$("$cmd" -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null) || return 1
+    major=$(echo "$ver" | cut -d. -f1)
+    minor=$(echo "$ver" | cut -d. -f2)
+    (( major > 3 || (major == 3 && minor >= 11) ))
+}
+
+# Helper — resolve a python command, preferring "python" then "python3"
+_set_python_cmds() {
     if command -v python &>/dev/null; then
         PYTHON_CMD="python"
         PIP_CMD="python -m pip"
@@ -238,6 +286,31 @@ if [[ -n "$_detected_venv" && -d "$_detected_venv" ]]; then
         PYTHON_CMD="python3"
         PIP_CMD="python3 -m pip"
     fi
+}
+
+# Helper — ensure uv is available, install if missing
+_ensure_uv() {
+    if command -v uv &>/dev/null; then
+        return 0
+    fi
+    echo "  uv not found — installing..."
+    if ! curl -LsSf https://astral.sh/uv/install.sh | sh 2>/dev/null; then
+        echo "ERROR: Failed to install uv."
+        exit 1
+    fi
+    # Add uv to PATH for the current session
+    export PATH="${HOME}/.local/bin:${HOME}/.cargo/bin:${PATH}"
+    if ! command -v uv &>/dev/null; then
+        echo "ERROR: uv was installed but not found on PATH."
+        exit 1
+    fi
+    echo "  uv installed: $(uv --version)"
+}
+
+_detected_venv="${VIRTUAL_ENV:-${CONDA_PREFIX:-}}"
+if [[ -n "$_detected_venv" && -d "$_detected_venv" ]]; then
+    # Already inside a venv / conda env — use it as-is
+    _set_python_cmds
     echo "Virtual environment detected: ${_detected_venv}"
 elif [[ "$allow_system_python" == "true" ]]; then
     PYTHON_CMD=$LLMDBENCH_SYSTEM_PYTHON
@@ -252,22 +325,60 @@ else
             echo "venv created." >> "$dependencies_checked_file"
         fi
     else
-        PYTHON_CMD=$LLMDBENCH_SYSTEM_PYTHON
-        echo "No virtual environment detected — creating ${LLMDBENCH_VENV_DIR} with $PYTHON_CMD..."
-        $PYTHON_CMD -m venv "$LLMDBENCH_VENV_DIR"
+        echo "No virtual environment detected — creating ${LLMDBENCH_VENV_DIR} ..."
+
+        # Resolve use_uv if still "auto"
+        if [[ "$use_uv" == "auto" ]]; then
+            if [[ -t 0 ]]; then
+                # Interactive terminal — ask the user
+                echo ""
+                echo "  uv can create the virtual environment and automatically download"
+                echo "  the correct Python version if your system Python is missing or too old."
+                echo ""
+                read -r -p "  Use uv to manage the virtual environment? [y/N]: " _uv_answer
+                case "${_uv_answer}" in
+                    [yY]|[yY][eE][sS]) use_uv=true ;;
+                    *)                  use_uv=false ;;
+                esac
+            else
+                # Non-interactive (curl pipe) — use uv only if system python is inadequate
+                if _python_meets_min python3; then
+                    use_uv=false
+                else
+                    use_uv=true
+                fi
+            fi
+        fi
+
+        if [[ "$use_uv" == "true" ]]; then
+            if command -v python3 &>/dev/null && ! _python_meets_min python3; then
+                local_ver=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null || echo "unknown")
+                echo "  System python3 is ${local_ver} (need ${MIN_PYTHON}+) — uv will obtain the right version."
+            elif ! command -v python3 &>/dev/null; then
+                echo "  python3 not found — uv will obtain Python ${MIN_PYTHON}."
+            fi
+            _ensure_uv
+            uv venv --seed --python "${MIN_PYTHON}" "$LLMDBENCH_VENV_DIR"
+        elif _python_meets_min python3; then
+            python3 -m venv "$LLMDBENCH_VENV_DIR"
+        else
+            if command -v python3 &>/dev/null; then
+                local_ver=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))' 2>/dev/null || echo "unknown")
+                echo "ERROR: Python ${MIN_PYTHON}+ is required but system python3 is ${local_ver}."
+            else
+                echo "ERROR: Python ${MIN_PYTHON}+ is required but python3 was not found."
+            fi
+            echo "       Re-run with --uv to let uv download the correct Python version."
+            exit 1
+        fi
+
         CREATED_VENV=true
         echo "Virtual environment created: ${LLMDBENCH_VENV_DIR}"
         echo "venv created." >> "$dependencies_checked_file"
     fi
     # shellcheck disable=SC1091
     source "${LLMDBENCH_VENV_DIR}/bin/activate"
-    if command -v python &>/dev/null; then
-        PYTHON_CMD="python"
-        PIP_CMD="python -m pip"
-    else
-        PYTHON_CMD="python3"
-        PIP_CMD="python3 -m pip"
-    fi
+    _set_python_cmds
 fi
 
 # ---------------------------------------------------------------------------
@@ -321,8 +432,8 @@ elif command -v oc &>/dev/null; then
     kube_tool="oc"
 fi
 if [ -z "$kube_tool" ]; then
-    echo "  kubectl/oc -- NOT FOUND, attempting kubectl install..."
-    tools="$tools kubectl"
+    echo "  kubectl/oc -- NOT FOUND, attempting oc install..."
+    tools="$tools oc"
 else
     printf "  %-14s %-20s %s\n" "$kube_tool" "$($kube_tool version --client --short 2>/dev/null || $kube_tool version --client 2>/dev/null | head -1)" ""
 fi
@@ -353,14 +464,29 @@ tool_version() {
 }
 
 # ---------------------------------------------------------------------------
-# Linux install helpers — all now arch-aware via $ARCH_GO / $ARCH_UNAME
+# Version comparison — returns 0 if ver1 >= ver2
 # ---------------------------------------------------------------------------
+version_gte() {
+    local ver1="${1}" ver2="${2}"
+    local higher
+
+    [[ "$ver1" == "$ver2" ]] && return 0
+    [[ -z "$ver1" || "$ver1" == "(unknown)" ]] && return 1
+    [[ -z "$ver2" ]] && return 0
+
+    higher=$(printf "%s\n%s" "$ver1" "$ver2" | sort -V | tail -1)
+    [[ "$higher" == "$ver1" ]] && return 0
+    return 1
+}
+
+# --------------------------------------------------------------------------------
+# Per-tool Linux install helpers - — all now arch-aware via $ARCH_GO / $ARCH_UNAME
+# ---------------------------------------------------------------------------------
 
 install_yq_linux() {
-    local version=v4.52.5
-    local binary="yq_linux_${ARCH_GO}"
-    curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" \
-        -o "/tmp/${binary}"
+    local version="${TOOL_VERSION["yq"]}"
+    local binary=yq_linux_${ARCH_GO}"
+    curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}"
     chmod +x "/tmp/${binary}"
     sudo cp -f "/tmp/${binary}" /usr/local/bin/yq
 }
@@ -409,8 +535,10 @@ install_oc_linux() {
     curl -sL "https://mirror.openshift.com/pub/openshift-v4/${oc_arch}/clients/ocp/stable/${oc_file}" \
         -o "/tmp/${oc_file}"
     tar xzf "/tmp/${oc_file}" -C /tmp
+    sudo mv /tmp/kubectl /usr/local/bin/
     sudo mv /tmp/oc /usr/local/bin/
     sudo chmod +x /usr/local/bin/oc
+    sudo chmod +x /usr/local/bin/kubectl
 }
 
 install_kustomize_linux() {
@@ -420,7 +548,7 @@ install_kustomize_linux() {
 }
 
 install_crane_linux() {
-    local version=v0.20.3
+    local version="v${TOOL_VERSION["crane"]}"
     # go-containerregistry release tarballs use Go arch names (X86_64 capitalised)
     local go_arch_cap
     case "$ARCH_GO" in
@@ -434,6 +562,7 @@ install_crane_linux() {
     local pkg="go-containerregistry_Linux_${go_arch_cap}"
     curl -sL "https://github.com/google/go-containerregistry/releases/download/${version}/${pkg}.tar.gz" \
         -o "/tmp/${pkg}.tar.gz"
+    
     tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane
     sudo cp -f /tmp/crane /usr/local/bin/crane
     sudo chmod +x /usr/local/bin/crane
@@ -482,15 +611,44 @@ install_skopeo_mac()   { brew install skopeo; }
 install_jq_mac()       { brew install jq; }
 
 # ---------------------------------------------------------------------------
-# Check required tools (fail if missing)
+# Check required tools (fail if missing, upgrade if outdated)
 # ---------------------------------------------------------------------------
 for tool in $tools; do
     if grep -q "${tool} already installed." "$dependencies_checked_file" 2>/dev/null; then
         continue
     fi
+
     if command -v "$tool" &>/dev/null; then
-        printf "  %-14s %-20s %s\n" "$tool" "$(tool_version "$tool")" ""
-        echo "${tool} already installed." >> "$dependencies_checked_file"
+        current_ver=$(tool_version "$tool")
+        expected_ver="${TOOL_VERSION[$tool]:-}"
+        needs_upgrade=false
+
+        if [[ -n "$expected_ver" ]] && ! version_gte "$current_ver" "$expected_ver"; then
+            needs_upgrade=true
+        fi
+
+        if [[ "$needs_upgrade" == "true" ]]; then
+            echo "  ${tool} — ${current_ver} (outdated, upgrading to ${expected_ver})..."
+            install_func="install_${tool}_${target_os}"
+            if declare -F "$install_func" &>/dev/null; then
+                eval "$install_func"
+                if command -v "$tool" &>/dev/null; then
+                    new_ver=$(tool_version "$tool")
+                    printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(upgraded)"
+                    echo "${tool} already installed." >> "$dependencies_checked_file"
+                else
+                    echo "ERROR: Failed to upgrade ${tool}"
+                    exit 1
+                fi
+            else
+                echo "  WARNING: No upgrade function available for ${tool}, keeping ${current_ver}"
+                printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
+                echo "${tool} already installed." >> "$dependencies_checked_file"
+            fi
+        else
+            printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
+            echo "${tool} already installed." >> "$dependencies_checked_file"
+        fi
     else
         echo "  ${tool} — NOT FOUND, attempting install..."
         install_func="install_${tool}_${target_os}"
@@ -530,15 +688,45 @@ if command -v helm &>/dev/null; then
 fi
 
 # ---------------------------------------------------------------------------
-# Check optional tools (warn but don't fail)
+# Check optional tools (warn but don't fail, upgrade if outdated)
 # ---------------------------------------------------------------------------
 for tool in $optional_tools; do
     if grep -q "${tool} already installed." "$dependencies_checked_file" 2>/dev/null; then
         continue
     fi
+
     if command -v "$tool" &>/dev/null; then
-        printf "  %-14s %-20s %s\n" "$tool" "$(tool_version "$tool")" ""
-        echo "${tool} already installed." >> "$dependencies_checked_file"
+        current_ver=$(tool_version "$tool")
+        expected_ver="${TOOL_VERSION[$tool]:-}"
+        needs_upgrade=false
+
+        if [[ -n "$expected_ver" ]] && ! version_gte "$current_ver" "$expected_ver"; then
+            needs_upgrade=true
+        fi
+
+        if [[ "$needs_upgrade" == "true" ]]; then
+            echo "  ${tool} — ${current_ver} (outdated, upgrading to ${expected_ver})..."
+            install_func="install_${tool}_${target_os}"
+            if declare -F "$install_func" &>/dev/null; then
+                eval "$install_func"
+                if command -v "$tool" &>/dev/null; then
+                    new_ver=$(tool_version "$tool")
+                    printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(upgraded)"
+                    echo "${tool} already installed." >> "$dependencies_checked_file"
+                else
+                    echo "  WARNING: Failed to upgrade optional tool ${tool}, keeping ${current_ver}"
+                    printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
+                    echo "${tool} already installed." >> "$dependencies_checked_file"
+                fi
+            else
+                echo "  WARNING: No upgrade function available for ${tool}, keeping ${current_ver}"
+                printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
+                echo "${tool} already installed." >> "$dependencies_checked_file"
+            fi
+        else
+            printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
+            echo "${tool} already installed." >> "$dependencies_checked_file"
+        fi
     else
         printf "  %-14s %-20s %s\n" "$tool" "—" "(optional, not found)"
     fi
@@ -571,8 +759,10 @@ else
     fi
 fi
 
-# 2. Install planner
-PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@f51812bebca30e0291ec541bd2ef2acf0572e8a4"
+# ---------------------------------------------------------------------------
+# 2. Install planner (from llm-d-planner)
+# ---------------------------------------------------------------------------
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@e50305af90f0812e77e1827f3bc740fe75b76370"
 
 if grep -q "planner is already installed." "$dependencies_checked_file" 2>/dev/null; then
     print_pkg planner ""
@@ -626,6 +816,80 @@ if ! ${PYTHON_CMD} -c "from planner.capacity_planner import model_memory_req" 2>
 fi
 if [[ "$import_ok" == "true" ]]; then
     echo "All imports verified."
+fi
+
+# ===================================================================
+# Pre-commit hook setup -- only when git is available AND we're inside
+# a working tree AND the repo ships a .pre-commit-config.yaml. This is
+# best-effort: a failure here logs a warning but does NOT abort the
+# install. Hooks are wired for the pre-commit stage only -- CI is the
+# gate before push, no need to duplicate the local hooks at push time.
+# ===================================================================
+echo ""
+echo "=== Pre-commit hooks ==="
+
+precommit_skip_reason=""
+if ! command -v git &>/dev/null; then
+    precommit_skip_reason="git not found"
+elif ! git -C "${SCRIPT_DIR}" rev-parse --git-dir &>/dev/null; then
+    precommit_skip_reason="${SCRIPT_DIR} is not a git working tree"
+elif [[ ! -f "${SCRIPT_DIR}/.pre-commit-config.yaml" ]]; then
+    precommit_skip_reason=".pre-commit-config.yaml not found"
+fi
+
+# NOTE: install.sh wipes "$dependencies_checked_file" at the start of
+# every run unless the user passes the `noreset` argument. So the cache
+# check below only avoids work when a previous invocation used `noreset`.
+# Without `noreset`, this section runs every time -- but `pip install`
+# and `pre-commit install` are both idempotent, so re-running is safe
+# (just adds a few seconds).
+precommit_cache_hit=false
+if [[ -z "$precommit_skip_reason" ]] && \
+   [[ -f "$dependencies_checked_file" ]] && \
+   grep -Fq "pre-commit hooks installed." "$dependencies_checked_file"; then
+    precommit_cache_hit=true
+fi
+
+if [[ -n "$precommit_skip_reason" ]]; then
+    echo "  skipped: ${precommit_skip_reason}"
+elif [[ "$precommit_cache_hit" == "true" ]]; then
+    print_pkg pre-commit ""
+    echo "  hooks already registered (cache hit)"
+else
+    # Install pre-commit framework + dev extras into the same venv.
+    # If a .pre-commit_requirements.txt exists, prefer it (matches CI);
+    # otherwise install just the framework.
+    if [[ -f "${SCRIPT_DIR}/.pre-commit_requirements.txt" ]]; then
+        precommit_install_target="-r ${SCRIPT_DIR}/.pre-commit_requirements.txt"
+    else
+        precommit_install_target="pre-commit"
+    fi
+
+    if ${PIP_CMD} install --quiet ${precommit_install_target} 2>/dev/null; then
+        print_pkg pre-commit "(installed)"
+    else
+        echo "  WARNING: failed to install pre-commit framework -- skipping hook registration"
+        precommit_skip_reason="pip install failed"
+    fi
+
+    if [[ -z "$precommit_skip_reason" ]]; then
+        # Register hooks for both stages. Use the venv's pre-commit
+        # binary explicitly so we don't accidentally pick up a
+        # system-wide install with a different version.
+        precommit_bin="${LLMDBENCH_VENV_DIR}/bin/pre-commit"
+        if [[ ! -x "$precommit_bin" ]]; then
+            precommit_bin="$(command -v pre-commit 2>/dev/null || true)"
+        fi
+        if [[ -x "$precommit_bin" ]]; then
+            (cd "${SCRIPT_DIR}" && \
+                "$precommit_bin" install --hook-type pre-commit >/dev/null 2>&1) && {
+                echo "  registered: pre-commit (run 'pre-commit run --all-files' to exercise)"
+                echo "pre-commit hooks installed." >> "$dependencies_checked_file"
+            } || echo "  WARNING: pre-commit binary found but 'install' failed -- hooks NOT registered"
+        else
+            echo "  WARNING: pre-commit binary not found after install -- hooks NOT registered"
+        fi
+    fi
 fi
 
 echo ""

@@ -2143,6 +2143,18 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
         categories = _import_categories(vllm_metrics.get("categories", []))
         metadata_dict = {
             "name": vllm_metrics["name"],
+            "pod_start": {
+                "units": Units.S,
+                "value": vllm_metrics["pod_start"],
+            },
+            "vllm_start_timestamp": {
+                "units": Units.S,
+                "value": vllm_metrics["vllm_start_timestamp"],
+            },
+            "vllm_ready_timestamp": {
+                "units": Units.S,
+                "value": vllm_metrics["vllm_ready_timestamp"],
+            },
             "load": {
                 "time": {
                     "units": Units.S,
@@ -2219,7 +2231,39 @@ def import_nop(results_file: str) -> BenchmarkReportV01:
     results_dict["metrics"]["metadata"].append({"name": metrics_name, "value": vllm_metadatas})
 
     metrics_name = "extra_metrics"
-    results_dict["metrics"]["metadata"].append({"name": metrics_name, "value": results.get(metrics_name, [])})
+    fma_metadatas = []
+    for extra_metric in  results.get(metrics_name, []):
+        if extra_metric["name"] != "fma":
+            continue
+
+        metadata_dict = {"name": extra_metric["name"]}
+        iterations = []
+        for iteration in extra_metric.get("iterations", []):
+            it = { "iteration": { "units": Units.COUNT, "value": iteration["iteration"] } }
+            launcher_infos = []
+            for launcher_info in iteration.get("launcher_infos", []):
+                info = { "name": launcher_info["name"] }
+
+                requester_info = launcher_info["requester_info"]
+                ri = { "name": requester_info["name"] }
+                ri["creation_timestamp"] = { "units": Units.S, "value": requester_info["creation_timestamp"]}
+                ri["ready_timestamp"] = { "units": Units.S, "value": requester_info["ready_timestamp"]}
+                ri["dual_label_timestamp"] = { "units": Units.S, "value": requester_info["dual_label_timestamp"]}
+                info["requester_info"] = ri
+
+                info["actuation_condition"] = launcher_info["actuation_condition"]
+                info["launcher_endpoint"] = launcher_info["launcher_endpoint"]
+                info["vllm_endpoint"] = launcher_info["vllm_endpoint"]
+                info["ttft"] = { "units": Units.S, "value": launcher_info["ttft"]}
+                launcher_infos.append(info)
+
+            it["launcher_infos"] = launcher_infos
+            iterations.append(it)
+
+        metadata_dict["iterations"] = iterations
+        fma_metadatas.append(metadata_dict)
+
+    results_dict["metrics"]["metadata"].append({"name": metrics_name, "value": fma_metadatas})
 
     update_dict(br_dict, results_dict)
 

@@ -1,4 +1,4 @@
-name: CI - Nightly Benchmark on CKS
+name: CI - Nightly Run Benchmark on CKS
 
 on:
   workflow_dispatch:
@@ -12,8 +12,12 @@ on:
         required: false
         default: ''
 
+#  push:
+#    branches:
+#      - main
+
   schedule:
-    - cron: '0 8 * * *'  # 08:00 UTC daily (staggered from OCP/GKE)
+    - cron: '0 0 * * *'  # Daily at midnight UTC
 
 jobs:
   build-image:
@@ -33,46 +37,30 @@ jobs:
           github-token: ${{ secrets.GHCR_TOKEN }}
           platform: linux/amd64
 
-  run-benchmark:
-    name: Benchmark Test (CKS)
+  benchmark-fma:
+    name: Benchmark - FMA (CKS)
+    runs-on: ubuntu-latest
     needs: build-image
-    runs-on: [self-hosted, linux, waldorf]
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_IMAGE_TAG: nightly
+      LLMDBENCH_CICD_NS: llmdbenchcicdfns-cks
+      LLMDBENCH_CICD_R: llmdbenchcicdrf-cks
+      LLMDBENCH_CICD_TARGET: cicd/cks-fma
+      LLMDBENCH_CICD_METHOD: fma
+      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdf-cks
+      LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v6.0.2
-
-      - uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          fetch-depth: 0
 
-      - name: Display OS used
-        run: |
-          cat /etc/*os-*
-        shell: bash
-
-      - name: Set input and output directory environment variables
-        run: |
-          DEFAULT_INPUT_DIR=/tmp/cicd/analysis
-          INPUT_DIR="${{ github.event.inputs.input_dir }}"
-          if [ -z "$INPUT_DIR" ]; then
-            INPUT_DIR="$DEFAULT_INPUT_DIR"
-          fi
-          echo "INPUT_DIR=$INPUT_DIR" >> $GITHUB_ENV
-
-          if [ -z "${{ github.event.inputs.output_dir }}" ]; then
-            timestamp=$(date -u +%Y%m%dT%H%M%SZ)
-            echo "OUTPUT_DIR=benchmark-results-cks-${timestamp}" >> $GITHUB_ENV
-            echo "Using generated output dir: benchmark-results-cks-${timestamp}"
-          else
-            echo "OUTPUT_DIR=${{ github.event.inputs.output_dir }}" >> $GITHUB_ENV
-            echo "Using provided output dir: ${{ github.event.inputs.output_dir }}"
-          fi
-        shell: bash
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
 
       - name: Set up kubeconfig from secret
         run: |
@@ -81,164 +69,372 @@ jobs:
           chmod 600 ~/.kube/config
         shell: bash
 
-      - name: Run install_deps.sh
+      - name: Install llmdbenchmark
         run: |
-          sudo apt-get update
-          sudo apt install bc
-          ./setup/install_deps.sh -y
-        shell: bash
+          ./install.sh -y 2>&1
 
-      - name: Install planner dependencies
-        run: pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@f51812bebca30e0291ec541bd2ef2acf0572e8a4"
-        shell: bash
-
-      - name: Install kubectl-view-allocations
+      - name: Cleanup target cloud
         run: |
-          cd /
-          curl https://raw.githubusercontent.com/davidB/kubectl-view-allocations/master/scripts/getLatest.sh | sudo bash
-          kubectl-view-allocations -h
+            llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
-      - name: Count preemptible GPUs (negative-priority pods)
+      - name: Standup
         run: |
-          # Count GPUs held by Running pods with priority < 0 (e.g. hpc-verification at -1).
-          # Our benchmark pods (default priority 0) will preempt these, so they
-          # should count as "available" for the simulator-fallback decision.
-          PREEMPTABLE_GPUS=$(kubectl get pods --all-namespaces -o json | \
-            jq '[.items[] | select((.spec.priority // 0) < 0 and .status.phase == "Running") |
-              (.spec.containers[]?.resources.limits["nvidia.com/gpu"] // "0" | tonumber)] | add // 0')
-          echo "PREEMPTABLE_GPUS=$PREEMPTABLE_GPUS" >> $GITHUB_ENV
-          echo "Preemptible GPUs (held by negative-priority Running pods): $PREEMPTABLE_GPUS"
+          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" standup --no-monitoring -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
-      - name: Cleanup target cloud (modelservice)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: ./setup/teardown.sh -c cks_fb -t modelservice -d
-        shell: bash
-
-      - name: Cleanup target cloud (standalone)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+      - name: Debug info (on failure)
+        if: failure()
         run: |
-          ./setup/teardown.sh -c cks_fb -t standalone -d
-        shell: bash
+          echo "=== All pods ==="
+          kubectl get pods -n "$NS" -o wide || true
+          echo ""
+          echo "=== Download job logs ==="
+          kubectl logs job/download-model -n "$NS" --tail=50 || true
+          echo ""
+          echo "=== Download pod logs (previous) ==="
+          for pod in $(kubectl get pods -n "$NS" -l job-name=download-model -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=50 2>/dev/null || true
+            kubectl logs -n "$NS" "$pod" --previous --tail=50 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Disk usage on node ==="
+          kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: allocatable ephemeral={.status.allocatable.ephemeral-storage}, capacity={.status.capacity.ephemeral-storage}{"\n"}{end}' || true
+          echo ""
+          echo "=== Failed pod descriptions ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n "$NS" "$pod" 2>/dev/null | tail -20
+            echo "--- logs ---"
+            kubectl logs -n "$NS" "$pod" --tail=30 --all-containers 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -20 || true
 
-      - name: Standup target cloud (standalone)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+      - name: Run
         run: |
-          AVAIL=$(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) + ${PREEMPTABLE_GPUS:-0}" | bc)
-          if [[ $(echo "$AVAIL - 10.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR (available+preemptible=$AVAIL < 10)"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
-          ./setup/standup.sh -c cks_fb -t standalone
+          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
-      - name: Run benchmark (standalone, inference-perf)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+      - name: Teardown (standalone)
+        if: always()
         run: |
-          ./setup/run.sh -c cks_fb -t standalone
+          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
-      - name: Run benchmark (standalone, guidellm)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: |
-          ./setup/run.sh -c cks_fb -t standalone -l guidellm -w sanity_concurrent
-        shell: bash
-
-      - name: Run benchmark (standalone, vllm-benchmark)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: |
-          ./setup/run.sh -c cks_fb -t standalone -l vllm-benchmark
-        shell: bash
-
-      - name: Cleanup target cloud (standalone)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: |
-          ./setup/teardown.sh -c cks_fb -t standalone -d
-        shell: bash
-
-      - name: E2E target cloud (modelservice, inference-perf)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: |
-          AVAIL=$(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) + ${PREEMPTABLE_GPUS:-0}" | bc)
-          if [[ $(echo "$AVAIL - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR (available+preemptible=$AVAIL < 20)"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
-          ./setup/e2e.sh -c cks_fb -t modelservice --deep
-        shell: bash
-
-      - name: E2E target cloud (modelservice, guidellm)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: |
-          AVAIL=$(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) + ${PREEMPTABLE_GPUS:-0}" | bc)
-          if [[ $(echo "$AVAIL - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR (available+preemptible=$AVAIL < 20)"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
-          ./setup/e2e.sh -c cks_fb -t modelservice --deep -l guidellm -w sanity_concurrent.yaml
-        shell: bash
-
-      - name: E2E target cloud (modelservice, vllm-benchmark)
-        env:
-          LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-        run: |
-          AVAIL=$(echo "$(kubectl-view-allocations -r gpu -o csv | grep resource,nvidia.com/gpu | cut -d ',' -f 11) + ${PREEMPTABLE_GPUS:-0}" | bc)
-          if [[ $(echo "$AVAIL - 20.00" | bc | cut -d '.' -f 1) -lt 0 ]]; then echo "LLM-D SIMULATOR (available+preemptible=$AVAIL < 20)"; sed -i 's^####^^g' scenarios/cicd/cks_fb.sh; fi
-          ./setup/e2e.sh -c cks_fb -t modelservice --deep -l vllm-benchmark
-        shell: bash
-
-      - name: Collect failure diagnostics
+      - name: Debug info (on failure)
         if: failure()
         run: |
           echo "=== Pod status ==="
-          kubectl get pods -n llmdbenchcicd -o wide || true
+          kubectl get pods -n "$NS" -o wide || true
           echo ""
-          echo "=== Describe failed pods ==="
-          for pod in $(kubectl get pods -n llmdbenchcicd --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+          echo "=== Pod descriptions (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
             echo "--- $pod ---"
-            kubectl describe -n llmdbenchcicd "$pod" || true
+            kubectl describe -n "$NS" "$pod" || true
           done
           echo ""
-          echo "=== Pod logs (crashed/errored) ==="
-          for pod in $(kubectl get pods -n llmdbenchcicd --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
-            echo "--- $pod logs ---"
-            kubectl logs -n llmdbenchcicd "$pod" --tail=200 --all-containers || true
-            echo "--- $pod previous logs ---"
-            kubectl logs -n llmdbenchcicd "$pod" --previous --tail=200 --all-containers 2>/dev/null || true
+          echo "=== Pod logs (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=200 --all-containers || true
           done
           echo ""
-          echo "=== Harness launcher pods ==="
-          kubectl get pods -n llmdbenchcicd -l app=llmdbench-harness-launcher -o wide || true
-          for pod in $(kubectl get pods -n llmdbenchcicd -l app=llmdbench-harness-launcher -o name 2>/dev/null); do
-            echo "--- $pod logs ---"
-            kubectl logs -n llmdbenchcicd "$pod" --tail=200 --all-containers || true
-          done
-          echo ""
-          echo "=== Recent events ==="
-          kubectl get events -n llmdbenchcicd --sort-by='.lastTimestamp' | tail -30 || true
-        shell: bash
+          echo "=== Events ==="
+          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true
 
       - name: Install AWS CLI
         run: |
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install
+          unzip awscliv2.zip  >/dev/null 2>&1
+          sudo ./aws/install || sudo ./aws/install --update
           aws --version
 
-      - name: Upload results to IBM COS
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          aws configure set default.s3.signature_version s3v4
-          aws s3 cp "$INPUT_DIR" "s3://${{ secrets.COS_BUCKET_NAME }}/$OUTPUT_DIR/" \
-            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }} || true
+#      - name: Upload results to IBM COS
+#        env:
+#          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#        run: |
+#          aws configure set default.s3.signature_version s3v4
+#          aws s3 cp "$INPUT_DIR" "s3://${{ secrets.COS_BUCKET_NAME }}/$OUTPUT_DIR/" \
+#            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }} || true
 
-      - name: Archive benchmark results as GitHub artifact
-        if: success() || failure()
-        uses: actions/upload-artifact@v7.0.1
+#      - name: Archive benchmark results as GitHub artifact
+#        if: success() || failure()
+#        uses: actions/upload-artifact@v7.0.1
+#        with:
+#          name: ${{ env.OUTPUT_DIR }}
+#          path: ${{ env.INPUT_DIR }}
+#          retention-days: 14
+
+  benchmark-standalone:
+    name: Benchmark - Standalone (CKS)
+    runs-on: ubuntu-latest
+    needs: build-image
+    timeout-minutes: 240
+
+    env:
+      LLMDBENCH_CICD_NS: llmdbenchcicdsns-cks
+      LLMDBENCH_CICD_R: llmdbenchcicdr-cks
+      LLMDBENCH_CICD_TARGET: cicd/cks
+      LLMDBENCH_CICD_METHOD: standalone
+      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicds-cks
+      LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
         with:
-          name: ${{ env.OUTPUT_DIR }}
-          path: ${{ env.INPUT_DIR }}
-          retention-days: 14
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up kubeconfig from secret
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+        shell: bash
+
+      - name: Install llmdbenchmark
+        run: |
+          ./install.sh -y 2>&1
+
+      - name: Cleanup target cloud
+        run: |
+            llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+        shell: bash
+
+      - name: Standup
+        run: |
+          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" standup --no-monitoring -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+        shell: bash
+
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          echo "=== PVC status ==="
+          kubectl get pvc -n "$NS" -o wide || true
+          echo ""
+          echo "=== All pods ==="
+          kubectl get pods -n "$NS" -o wide || true
+          echo ""
+          echo "=== Download job logs ==="
+          kubectl logs job/download-model -n "$NS" --tail=50 || true
+          echo ""
+          echo "=== Download pod logs (previous) ==="
+          for pod in $(kubectl get pods -n "$NS" -l job-name=download-model -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=50 2>/dev/null || true
+            kubectl logs -n "$NS" "$pod" --previous --tail=50 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Disk usage on node ==="
+          kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: allocatable ephemeral={.status.allocatable.ephemeral-storage}, capacity={.status.capacity.ephemeral-storage}{"\n"}{end}' || true
+          echo ""
+          echo "=== Failed pod descriptions ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n "$NS" "$pod" 2>/dev/null | tail -20
+            echo "--- logs ---"
+            kubectl logs -n "$NS" "$pod" --tail=30 --all-containers 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -20 || true
+
+      - name: Run
+        run: |
+          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
+        shell: bash
+
+      - name: Teardown (standalone)
+        if: always()
+        run: |
+          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+        shell: bash
+
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          echo "=== Pod status ==="
+          kubectl get pods -n "$NS" -o wide || true
+          echo ""
+          echo "=== Pod descriptions (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n "$NS" "$pod" || true
+          done
+          echo ""
+          echo "=== Pod logs (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=200 --all-containers || true
+          done
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true
+
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip  >/dev/null 2>&1
+          sudo ./aws/install || sudo ./aws/install --update
+          aws --version
+
+#      - name: Upload results to IBM COS
+#        env:
+#          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#        run: |
+#          aws configure set default.s3.signature_version s3v4
+#          aws s3 cp "$INPUT_DIR" "s3://${{ secrets.COS_BUCKET_NAME }}/$OUTPUT_DIR/" \
+#            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }} || true
+
+#      - name: Archive benchmark results as GitHub artifact
+#        if: success() || failure()
+#        uses: actions/upload-artifact@v7.0.1
+#        with:
+#          name: ${{ env.OUTPUT_DIR }}
+#          path: ${{ env.INPUT_DIR }}
+#          retention-days: 14
+
+  benchmark-modelservice:
+    name: Benchmark - ModelService (CKS)
+    runs-on: ubuntu-latest
+    needs: build-image
+    timeout-minutes: 240
+
+    env:
+      LLMDBENCH_CICD_NS: llmdbenchcicdmns-cks
+      LLMDBENCH_CICD_R: llmdbenchcicdr-cks
+      LLMDBENCH_CICD_TARGET: cicd/cks
+      LLMDBENCH_CICD_METHOD: modelservice
+      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdm-cks
+      LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up kubeconfig from secret
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+        shell: bash
+
+      - name: Install llmdbenchmark
+        run: |
+          ./install.sh -y 2>&1
+
+      - name: Cleanup target cloud
+        run: |
+            llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+        shell: bash
+
+      - name: Standup
+        run: |
+          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" standup --no-monitoring -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+        shell: bash
+
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          echo "=== PVC status ==="
+          kubectl get pvc -n "$NS" -o wide || true
+          echo ""
+          echo "=== All pods ==="
+          kubectl get pods -n "$NS" -o wide || true
+          echo ""
+          echo "=== Download job logs ==="
+          kubectl logs job/download-model -n "$NS" --tail=50 || true
+          echo ""
+          echo "=== Download pod logs (previous) ==="
+          for pod in $(kubectl get pods -n "$NS" -l job-name=download-model -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=50 2>/dev/null || true
+            kubectl logs -n "$NS" "$pod" --previous --tail=50 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Disk usage on node ==="
+          kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: allocatable ephemeral={.status.allocatable.ephemeral-storage}, capacity={.status.capacity.ephemeral-storage}{"\n"}{end}' || true
+          echo ""
+          echo "=== Failed pod descriptions ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n "$NS" "$pod" 2>/dev/null | tail -20
+            echo "--- logs ---"
+            kubectl logs -n "$NS" "$pod" --tail=30 --all-containers 2>/dev/null || true
+          done
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -20 || true
+
+      - name: Run
+        run: |
+          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
+        shell: bash
+
+      - name: Teardown (standalone)
+        if: always()
+        run: |
+          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+        shell: bash
+
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          echo "=== Pod status ==="
+          kubectl get pods -n "$NS" -o wide || true
+          echo ""
+          echo "=== Pod descriptions (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl describe -n "$NS" "$pod" || true
+          done
+          echo ""
+          echo "=== Pod logs (non-running) ==="
+          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
+            echo "--- $pod ---"
+            kubectl logs -n "$NS" "$pod" --tail=200 --all-containers || true
+          done
+          echo ""
+          echo "=== Events ==="
+          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true
+
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip >/dev/null 2>&1
+          sudo ./aws/install || sudo ./aws/install --update
+          aws --version
+
+#      - name: Upload results to IBM COS
+#        env:
+#          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#        run: |
+#          aws configure set default.s3.signature_version s3v4
+#          aws s3 cp "$INPUT_DIR" "s3://${{ secrets.COS_BUCKET_NAME }}/$OUTPUT_DIR/" \
+#            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }} || true
+
+#      - name: Archive benchmark results as GitHub artifact
+#        if: success() || failure()
+#        uses: actions/upload-artifact@v7.0.1
+#        with:
+#          name: ${{ env.OUTPUT_DIR }}
+#          path: ${{ env.INPUT_DIR }}
+#          retention-days: 14

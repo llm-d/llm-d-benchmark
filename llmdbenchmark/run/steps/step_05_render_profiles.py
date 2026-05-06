@@ -1,5 +1,6 @@
 """Step 04 -- Render workload profile templates with runtime values."""
 
+import posixpath
 import shutil
 from pathlib import Path
 
@@ -82,7 +83,11 @@ class RenderProfilesStep(Step):
             runtime_values["LLMDBENCH_DEPLOY_CURRENT_TOKENIZER"] = context.model_name
 
         if context.dataset_url:
-            runtime_values["LLMDBENCH_RUN_DATASET_DIR"] = context.dataset_url
+            # Split into directory and filename so both tokens get replaced.
+            # Use posixpath to handle URLs and absolute paths correctly.
+            dir_part, file_part = posixpath.split(context.dataset_url.rstrip("/"))
+            runtime_values["LLMDBENCH_RUN_DATASET_DIR"] = dir_part
+            runtime_values["LLMDBENCH_RUN_DATASET_FILE"] = file_part
 
         env_map = build_env_map(
             plan_config=plan_config,

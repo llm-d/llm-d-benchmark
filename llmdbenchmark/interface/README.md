@@ -73,13 +73,14 @@ Provisions model infrastructure from a specification. Implicitly generates a pla
 | `-b` / `--annotations` | `LLMDBENCH_ANNOTATIONS` | Pod annotations |
 | `-r` / `--release` | `LLMDBENCH_RELEASE` | Helm chart release name |
 | `-u` / `--wva` | `LLMDBENCH_WVA` | Enable Workload Variant Autoscaler |
-| `-f` / `--monitoring` | -- | Enable PodMonitor and metrics scraping |
+| `--monitoring` | -- | Enable PodMonitor and metrics scraping |
 | `--parallel` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
 | `-k` / `--kubeconfig` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--skip-smoketest` | -- | Skip automatic post-standup smoketests |
 | `--standalone-deploy-timeout` | `LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT` | Seconds to wait for the vLLM pods to deploy during standup in standalone mode. |
 | `--gateway-deploy-timeout` | `LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT` | Seconds to wait for gateway infrastructure pods to deploy during standup with modelservice. |
 | `--modelservice-deploy-timeout` | `LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT` | Seconds to wait for decode, prefill and inference pool pods to deploy during standup with modelservice (Generic timeout for Step 9). |
+| `--pvc-bind-timeout` | `LLMDBENCH_PVC_BIND_TIMEOUT` | Seconds to wait for each PVC (workload, model, extra) to reach the Bound phase during standup. Fails fast on missing default StorageClass instead of masking as a downstream pod/job timeout. Default: 240 (some dynamic provisioners take 1-3 minutes per volume). |
 
 ### smoketest (`smoketest.py`)
 
@@ -112,7 +113,7 @@ Executes benchmark experiments against deployed infrastructure.
 | `-j` / `--parallelism` | `LLMDBENCH_PARALLELISM` | Parallel harness pods |
 | `--wait-timeout` | `LLMDBENCH_WAIT_TIMEOUT` | Wait timeout in seconds (0 = don't wait) |
 | `-x` / `--dataset` | `LLMDBENCH_DATASET` | Dataset URL for replay |
-| `-f` / `--monitoring` | -- | Enable metrics scraping and log capture |
+| `--monitoring` | -- | Enable metrics scraping and log capture |
 | `-q` / `--serviceaccount` | `LLMDBENCH_SERVICE_ACCOUNT` | Service account for harness pods |
 | `-g` / `--envvarspod` | `LLMDBENCH_HARNESS_ENVVARS_TO_YAML` | Env vars to propagate to harness pods |
 | `-z` / `--skip` | -- | Skip execution, collect existing results only |

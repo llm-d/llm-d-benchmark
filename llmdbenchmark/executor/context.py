@@ -23,6 +23,12 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     base_dir: Path | None = None  # project root (for templates, scenarios, etc.)
     specification_file: str | None = None  # resolved --spec path
     rendered_stacks: list[Path] = field(default_factory=list)
+    # Optional CLI filter: if set, per-stack steps only execute for stacks
+    # whose name appears here. Useful in multi-stack scenarios to run
+    # (or re-run) just one pool - e.g. `--stack pool-a` when benchmarking
+    # a single model in the multi-model-wva scenario. Global steps are
+    # unaffected. Empty / None means "all stacks" (existing behavior).
+    stack_filter: list[str] | None = None
 
     # Execution flags
     dry_run: bool = False
@@ -39,6 +45,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
 
     # Platform detection flags (set by step 00)
     is_openshift: bool = False
+    is_gke: bool = False
     is_kind: bool = False
     is_minikube: bool = False
     # Resolved cluster metadata
@@ -95,6 +102,11 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     standalone_deploy_timeout: int = 900
     gateway_deploy_timeout: int = 120
     modelservice_deploy_timeout: int = 1500
+
+    pvc_bind_timeout: int = 240
+
+    # Teardown timeouts
+    fma_teardown_timeout: int = 120
 
     # Run-only mode (existing-stack)
     endpoint_url: str | None = None
@@ -162,6 +174,8 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
         """Human-readable platform label (e.g. 'OpenShift', 'Kind')."""
         if self.is_openshift:
             return "OpenShift"
+        if self.is_gke:
+            return "GKE"
         if self.is_kind:
             return "Kind"
         if self.is_minikube:

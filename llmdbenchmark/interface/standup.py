@@ -65,21 +65,31 @@ def add_subcommands(parser: argparse._SubParsersAction):
     standup_parser.add_argument(
         "-u",
         "--wva",
-        default=env("LLMDBENCH_WVA"),
-        help="Enable Workload Variant Autoscaler.",
-    )
-    standup_parser.add_argument(
-        "-f",
-        "--monitoring",
         action="store_true",
         default=False,
-        help="Enable PodMonitor for Prometheus and vLLM /metrics scraping.",
+        help="Enable Workload Variant Autoscaler (WVA) for this standup.",
+    )
+    standup_parser.add_argument(
+        "--monitoring",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable monitoring. --monitoring creates PodMonitors and enables metrics scraping. --no-monitoring disables PodMonitor and GAIE ServiceMonitor creation (use when cluster lacks Prometheus CRDs). Omit to use scenario defaults.",
     )
     standup_parser.add_argument(
         "--parallel",
         type=int,
         default=env_int("LLMDBENCH_PARALLEL", 4),
         help="Max number of stacks to deploy in parallel (default: 4).",
+    )
+    standup_parser.add_argument(
+        "--stack",
+        default=env("LLMDBENCH_STACK"),
+        help=(
+            "Comma-separated list of stack names to restrict execution to. "
+            "Default: unset, meaning 'deploy every stack of the scenario'. "
+            "Useful for re-deploying a single pool in a multi-stack scenario "
+            "without tearing down siblings."
+        ),
     )
     standup_parser.add_argument(
         "--kubeconfig",
@@ -110,4 +120,14 @@ def add_subcommands(parser: argparse._SubParsersAction):
         type=int,
         default=env_int("LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT"),
         help="Seconds to wait for decode, prefill and inference pool pods to deploy during standup with modelservice.",
+    )
+    standup_parser.add_argument(
+        "--pvc-bind-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_PVC_BIND_TIMEOUT"),
+        help="Seconds to wait for each PVC (workload, model, extra) to reach "
+             "the Bound phase during standup. A PVC that never binds (e.g. no "
+             "default StorageClass on the cluster) fails fast instead of "
+             "masquerading as a downstream pod/job timeout. Default: 240 "
+             "(some dynamic provisioners take 1-3 minutes per volume).",
     )

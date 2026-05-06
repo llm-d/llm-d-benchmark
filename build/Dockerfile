@@ -91,8 +91,8 @@ RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install -e . --no-build-isolation
 
 # GuideLLM also requires torch, installed above
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
-ARG GUIDELLM_BRANCH=v0.5.3
-ARG GUIDELLM_COMMIT=v0.5.3
+ARG GUIDELLM_BRANCH=v0.5.4
+ARG GUIDELLM_COMMIT=v0.5.4
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \

@@ -94,8 +94,20 @@ _anchors:
   pull_always: &pull_always Always
   pull_if_not_present: &pull_if_not_present IfNotPresent
 
-  # Chart versions
-  istio_version: &istio_version 1.29.1
+  # General versions
+  istio_version:                     &istio_version                     1.29.2
+  agentgateway_version:              &agentgateway_version              v1.1.0
+  lws_version:                       &lws_version                       0.8.0
+  gaie_version:                      &gaie_version                      v1.4.0
+  wva_version:                       &wva_version                       0.6.0
+  prometheus_version:                &prometheus_version                5.2.0
+  vllm-openai_version:               &vllm-openai_version               v0.20.1
+  llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.7.1
+  llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.7.1
+  llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.8.0
+  llm-d-cuda_version:                &llm-d-cuda_version                v0.6.0
+  llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.8.2
+  llm-d-benchmark_version:           &llm-d-benchmark_version           v0.6.0
 
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
@@ -283,7 +295,7 @@ storage:
       - ReadWriteMany
     storageClassName: *storage_class
 
-  # Extra PVC — only created when name is non-empty.
+  # Extra PVC - only created when name is non-empty.
   # Mirrors bash LLMDBENCH_VLLM_COMMON_EXTRA_PVC_NAME.
   # The PVC is NOT automatically mounted; scenarios must also add matching
   # entries to vllmCommon.volumes/volumeMounts to wire it into pods.
@@ -292,6 +304,7 @@ storage:
     size: 10Gi
     accessModes:
       - ReadWriteMany
+    volumeMode: Filesystem
     storageClassName: *storage_class
 
 # ============================================================================
@@ -312,60 +325,107 @@ huggingface:
 # ============================================================================
 # IMAGE CONFIGURATION
 # ============================================================================
+#
+# Each entry has:
+#   repository:  registry path used at pod-spec render time (consumed by templates)
+#   tag:         image tag, "auto" resolves to the latest at plan time
+#   pullPolicy:  Kubernetes imagePullPolicy
+#   sourceRepo:  upstream source code repository URL (NOT consumed by templates --
+#                read by util/generate_sbom.py to build the SBOM. The registry path
+#                often differs from the source repo URL, so we record both.)
+#   sourcePath:  optional path within sourceRepo (e.g. a Dockerfile or subdir)
+#
+# Init containers (decode/prefill/standalone) can reference an entry from
+# this section via `imageKey: <entry>`, which expands to repo:tag (and
+# inherits pullPolicy when the block doesn't set its own).  See
+# `decode.initContainers` for usage.  Setting both `image` and `imageKey`
+# on the same entry is an error.
+#
 images:
   benchmark:
     repository: ghcr.io/llm-d/llm-d-benchmark
-    tag: auto
+    tag: *llm-d-benchmark_version
     pullPolicy: *pull_always
+    sourceRepo: https://github.com/llm-d/llm-d-benchmark
 
   vllm:
     repository: ghcr.io/llm-d/llm-d-cuda
-    tag: auto
+    tag: *llm-d-cuda_version
     pullPolicy: *pull_if_not_present
+    sourceRepo: https://github.com/llm-d/llm-d
+    sourcePath: docker/Dockerfile.cuda
 
   vllmOpenai:
     repository: docker.io/vllm/vllm-openai
-    tag: auto
+    tag: *vllm-openai_version
     pullPolicy: *pull_always
+    sourceRepo: https://github.com/vllm-project/vllm
 
   inferenceScheduler:
     repository: ghcr.io/llm-d/llm-d-inference-scheduler
-    tag: auto
+    tag: *llm-d-inference-scheduler_version
     pullPolicy: *pull_always
+    sourceRepo: https://github.com/llm-d/llm-d-inference-scheduler
 
   routingSidecar:
     repository: ghcr.io/llm-d/llm-d-routing-sidecar
-    tag: auto
+    tag: *llm-d-routing-sidecar_version
     pullPolicy: *pull_if_not_present
+    sourceRepo: https://github.com/llm-d/llm-d-routing-sidecar
 
   udsTokenizer:
     repository: ghcr.io/llm-d/llm-d-uds-tokenizer
-    tag: auto
+    tag: *llm-d-uds-tokenizer_version
     pullPolicy: *pull_if_not_present
+    sourceRepo: https://github.com/llm-d/llm-d-kv-cache
+    sourcePath: services/uds_tokenizer
 
   python:
     repository: python
     tag: "3.10"
+    sourceRepo: https://hub.docker.com/_/python
 
 # ============================================================================
 # HELM REPOSITORY CONFIGURATION
 # ============================================================================
+#
+# Each entry has:
+#   url:         chart repository URL used by `helm`/`helmfile` (consumed by templates)
+#   name:        optional chart name override when it differs from the key
+#   sourceRepo:  upstream source code URL (read by util/generate_sbom.py for SBOM,
+#                NOT consumed by templates)
+#
 helmRepositories:
   istio:
     url: https://istio-release.storage.googleapis.com/charts
+    sourceRepo: https://github.com/istio/istio
   llmDModelservice:
     url: https://llm-d-incubation.github.io/llm-d-modelservice/
+    sourceRepo: https://github.com/llm-d-incubation/llm-d-modelservice
   llmDInfra:
     url: https://llm-d-incubation.github.io/llm-d-infra/
+    sourceRepo: https://github.com/llm-d-incubation/llm-d-infra
   wva:
     name: workload-variant-autoscaler
     url: oci://ghcr.io/llm-d/workload-variant-autoscaler
+    sourceRepo: https://github.com/llm-d/llm-d-workload-variant-autoscaler
   prometheusAdapter:
     name: prometheus-adapter
     url: https://prometheus-community.github.io/helm-charts
+    sourceRepo: https://github.com/prometheus-community/helm-charts
   agentgateway:
     name: agentgateway
     url: oci://cr.agentgateway.dev/charts/
+    sourceRepo: https://github.com/agentgateway/agentgateway
+  # The next three entries hold metadata only -- the charts are pulled from
+  # OCI registries directly in the helmfile templates (no `url` needed for
+  # `helm repo add`). They live here so the SBOM can find the source repo.
+  inferencePool:
+    sourceRepo: https://github.com/kubernetes-sigs/gateway-api-inference-extension
+  gaie:
+    sourceRepo: https://github.com/kubernetes-sigs/gateway-api-inference-extension
+  lws:
+    sourceRepo: https://github.com/kubernetes-sigs/lws
 
 # ============================================================================
 # CHART VERSIONS
@@ -375,11 +435,11 @@ chartVersions:
   istiod: *istio_version
   llmDInfra: auto
   llmDModelservice: auto
-  inferencePool: v1.3.0
-  gaie: v1.3.1
-  wva: auto
-  agentgateway: v1.0.1
-  lws: "0.8.0"
+  wva: *wva_version
+  prometheusAdapter: *prometheus_version
+  inferencePool: *gaie_version
+  agentgateway: *agentgateway_version
+  lws: *lws_version
 
 # ============================================================================
 # SERVICE ACCOUNT CONFIGURATION
@@ -515,8 +575,10 @@ inferenceExtension:
   #       ...
   pluginsCustomConfig: {}
   verbosity: "1"
-  # UDS tokenizer sidecar — runs alongside EPP for precise-prefix-cache scoring.
+  # UDS tokenizer sidecar - runs alongside EPP for precise-prefix-cache scoring.
   # Enable in scenarios that use `precise-prefix-cache-scorer` with UDS tokenizer.
+  # Image is sourced from `images.udsTokenizer`; override that entry per scenario
+  # to change the version.
   sidecar:
     enabled: false
     name: tokenizer-uds
@@ -531,6 +593,9 @@ inferenceExtension:
         name: tokenizers
       - mountPath: /tmp/tokenizer
         name: tokenizer-uds
+  # Resources are intentionally NOT set here.
+  # CI runners override this in their scenario YAML -- see
+  # config/scenarios/cicd/kind-sim.yaml for an example.
   # Extra volumes and volume mounts for the EPP pod (e.g., tokenizer sidecar shared volumes)
   volumes: []
   volumeMounts: []
@@ -565,6 +630,8 @@ routing:
   secure: false
 
   # Proxy configuration
+  # Image is sourced from `images.routingSidecar`; override that entry per
+  # scenario to change the version.
   proxy:
     enabled: true
     imagePullPolicy: *pull_always
@@ -578,25 +645,6 @@ routing:
     # zapDevel: false
     # zapStacktraceLevel: error
     # zapTimeEncoding: epoch
-
-# ============================================================================
-# REQUESTER (FMA - Fast Model Actuation) - Optional
-# ============================================================================
-requester:
-  enable: false
-  # image: "ghcr.io/llm-d-incubation/llm-d-fast-model-actuation-requester:latest"
-  # adminPort: 8081
-  # port:
-  #   probes: 8080
-  #   spi: 8081
-  # readinessProbe:
-  #   initialDelaySeconds: 2
-  #   periodSeconds: 5
-  # resources:
-  #   limits:
-  #     gpus: 1
-  #     cpus: 1
-  #     memory: 250Mi
 
 # ============================================================================
 # VLLM COMMON CONFIGURATION
@@ -674,6 +722,8 @@ vllmCommon:
     disableUvicornAccessLog: true
     allowLongMaxModelLen: "1"
     serverDevMode: "1"
+    # chatTemplate: null
+    # chatTemplateContentFormat: null # Format for inline chat template: string, leave null for file
     # Additional vLLM flags (optional)
     # enableChunkedPrefill: false
     # maxNumBatchedTokens: null
@@ -705,13 +755,13 @@ decode:
   # Scheduler name override global schedulerName (optional)
   # schedulerName: default-scheduler
 
-  # PriorityClassName override (optional — inherits from vllmCommon if not set)
+  # PriorityClassName override (optional - inherits from vllmCommon if not set)
   # priorityClassName: ""
 
-  # Ephemeral storage override (optional — inherits from vllmCommon if not set)
+  # Ephemeral storage override (optional - inherits from vllmCommon if not set)
   # ephemeralStorage: ""
 
-  # Network resource override (optional — inherits from vllmCommon if not set)
+  # Network resource override (optional - inherits from vllmCommon if not set)
   # networkResource: ""
   # networkNr: ""
 
@@ -809,7 +859,9 @@ decode:
   # Extra pod config
   extraPodConfig: {}
 
-  # Init containers (optional, configured per scenario)
+  # Init containers (optional, configured per scenario).
+  # Each entry sets `image` directly or `imageKey` (an entry name from
+  # `images.*`); if neither is set, image defaults to `images.benchmark`.
   initContainers: []
 
   # LWS / Multinode options (optional)
@@ -853,13 +905,13 @@ prefill:
   # Scheduler name override global schedulerName (optional)
   # schedulerName: default-scheduler
 
-  # PriorityClassName override (optional — inherits from vllmCommon if not set)
+  # PriorityClassName override (optional - inherits from vllmCommon if not set)
   # priorityClassName: ""
 
-  # Ephemeral storage override (optional — inherits from vllmCommon if not set)
+  # Ephemeral storage override (optional - inherits from vllmCommon if not set)
   # ephemeralStorage: ""
 
-  # Network resource override (optional — inherits from vllmCommon if not set)
+  # Network resource override (optional - inherits from vllmCommon if not set)
   # networkResource: ""
   # networkNr: ""
 
@@ -920,7 +972,7 @@ prefill:
   # Extra pod config
   extraPodConfig: {}
 
-  # Init containers (optional, configured per scenario)
+  # Init containers (optional). See `decode.initContainers`.
   initContainers: []
 
 
@@ -982,13 +1034,13 @@ standalone:
   # Scheduler name override global schedulerName (optional)
   schedulerName: default-scheduler
 
-  # PriorityClassName override (optional — inherits from vllmCommon if not set)
+  # PriorityClassName override (optional - inherits from vllmCommon if not set)
   # priorityClassName: ""
 
-  # Ephemeral storage override (optional — inherits from vllmCommon if not set)
+  # Ephemeral storage override (optional - inherits from vllmCommon if not set)
   # ephemeralStorage: ""
 
-  # Network resource override (optional — inherits from vllmCommon if not set)
+  # Network resource override (optional - inherits from vllmCommon if not set)
   # networkResource: ""
   # networkNr: ""
 
@@ -1147,23 +1199,23 @@ fma:
     stood-up-via: "fma"
 
   crds:
-    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/main/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
-    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/main/config/crd/fma.llm-d.ai_launcherconfigs.yaml
-    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/main/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
+    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.8/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
+    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.8/config/crd/fma.llm-d.ai_launcherconfigs.yaml
+    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.8/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
 
   chart:
     url: oci://ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/charts/fma-controllers
-    version: 0.5.1-alpha.6
+    version: 0.6.0-alpha.8
 
   image:
     repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation
-    tag: v0.5.1-alpha.6
+    tag: v0.6.0-alpha.8
     pullPolicy: IfNotPresent
 
   requester:
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/requester
-      tag: v0.5.1-alpha.6
+      tag: v0.6.0-alpha.8
       pullPolicy: IfNotPresent
     probePort: 8080
     spiPort: 8081
@@ -1176,8 +1228,17 @@ fma:
   launcher:
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
-      tag: v0.5.1-alpha.6
+      tag: v0.6.0-alpha.8
       pullPolicy: IfNotPresent
+    runtimeClassName: nvidia-legacy
+    podTemplate:
+      metadata:
+        labels:
+          stood-up-by: "auto"
+          stood-up-from: llm-d-benchmark
+          stood-up-via: "fma"
+        annotations: {}
+    customPreprocessCommands: []
 
   dualPod:
     sleeperLimit: 2
@@ -1200,6 +1261,11 @@ fma:
 # DOWNLOAD JOB CONFIGURATION
 # ============================================================================
 downloadJob:
+  # Job name. Multi-stack scenarios auto-suffix this with the model ID
+  # label (render_plans._resolve_per_stack_identity) so each stack gets
+  # its own download-{model_id_label} Job and the waits don't cross-talk.
+  # Set explicitly here to opt out of the auto-suffix.
+  name: download-model
   backoffLimit: 3
   mountPath: /cache
 
@@ -1239,17 +1305,27 @@ extraObjects: []
 
 # ============================================================================
 # WVA (Workload Variant Autoscaler)
+#
+# Installed in *namespaced* mode: the controller watches only the namespace
+# it is deployed in. One controller per unique wva.namespace across rendered
+# stacks. VariantAutoscaling + HPA are rendered per-stack so a single
+# controller can manage multiple models in the same namespace.
 # ============================================================================
 wva:
   enabled: false
   wellLitPath: inference-scheduling
-  namespace: ""  # defaults to common namespace
+  # When blank, resolves to namespace.name at render time. Overridable via
+  # the third component of `--namespace deploy,harness,wva`.
+  namespace: ""
   image:
     repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
     tag: auto
   replicaCount: 1
+  # Chart-level top-level switch (v0.6.0): enables the controller Deployment.
   controller:
     enabled: true
+  # When true, the controller only watches the namespace it runs in.
+  namespaceScoped: true
   metrics:
     enabled: true
     port: 8443
@@ -1259,13 +1335,28 @@ wva:
     port: 9091
   variantAutoscaling:
     enabled: true
+    variantCost: "10.0"
     slo:
       tpot: 10
       ttft: 1000
   hpa:
     enabled: true
-    maxReplicas: 10
+    minReplicas: 1
+    maxReplicas: 16
     targetAvgValue: 1
+    behavior:
+      scaleUp:
+        stabilizationWindowSeconds: 120
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 15
+      scaleDown:
+        stabilizationWindowSeconds: 120
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 15
   vllmService:
     enabled: true
     nodePortMin: 30000
@@ -1295,7 +1386,13 @@ lws:
 # ============================================================================
 gatewayApiCrd:
   revision: v1.5.1
-  inferenceExtensionRevision: v1.4.0
+  inferenceExtensionRevision: *gaie_version
+  # Install URLs for the CRD bundles. ``{revision}`` is substituted with
+  # ``revision`` / ``inferenceExtensionRevision`` above at standup time.
+  # Kept here so the URL has a single source of truth (read by
+  # llmdbenchmark/standup/steps/step_02_admin_prerequisites.py).
+  crdUrlTemplate: "github.com/kubernetes-sigs/gateway-api/config/crd?ref={revision}"
+  inferenceExtensionUrlTemplate: "https://github.com/kubernetes-sigs/gateway-api-inference-extension/releases/download/{revision}/manifests.yaml"
 
 # ============================================================================
 # HARNESS CONFIGURATION
@@ -1350,7 +1447,7 @@ openshiftMonitoring:
 
 # ============================================================================
 # IDLE CLEANUP (Experimental)
-# Automatic GPU reclamation — scales down idle model deployments to 0 replicas
+# Automatic GPU reclamation - scales down idle model deployments to 0 replicas
 # when no inference requests are observed over a configurable window.
 #
 # Deploys a namespace-scoped CronJob with its own ServiceAccount + RBAC.

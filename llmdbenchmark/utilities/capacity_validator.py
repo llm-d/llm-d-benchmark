@@ -417,6 +417,11 @@ def run_capacity_planner(
             "(deployment will halt if validation fails)"
         )
 
+    is_fma = plan_config.get("fma", {}).get("enabled", False)
+    if is_fma:
+        log.log_info("Deployment method is fma -- skipping vLLM capacity validation")
+        return all_messages
+
     standalone = plan_config.get("standalone", {})
     is_standalone = (
         standalone.get("enabled", False) and int(standalone.get("replicas", 0)) > 0

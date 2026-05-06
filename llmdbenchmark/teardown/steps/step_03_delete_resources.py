@@ -1,5 +1,6 @@
 """Teardown Step 03 -- Delete namespaced resources (normal or deep mode)."""
 
+import json
 from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
@@ -8,7 +9,8 @@ from llmdbenchmark.executor.command import CommandExecutor
 
 
 NORMAL_RESOURCE_LIST = (
-    "deployment,httproute,service,gateway,gatewayparameters,"
+    "leaderworkerset,deployment,statefulset,httproute,service,"
+    "gateway,gatewayparameters,"
     "inferencepool,inferencemodel,configmap,ingress,pod,job"
 )
 
@@ -35,10 +37,10 @@ MODELSERVICE_PATTERNS = [
 ]
 
 DEEP_RESOURCE_KINDS = [
-    "deployment", "service", "secret", "gateway", "inferencemodel",
-    "inferencepool", "httproute", "configmap", "job", "role",
-    "rolebinding", "serviceaccount", "hpa", "va", "servicemonitor",
-    "podmonitor", "pod", "pvc",
+    "leaderworkerset", "deployment", "statefulset", "service", "secret",
+    "gateway", "inferencemodel", "inferencepool", "httproute", "configmap",
+    "job", "role", "rolebinding", "serviceaccount", "hpa", "va",
+    "servicemonitor", "podmonitor", "pod", "pvc",
 ]
 
 OPENSHIFT_RESOURCE_KINDS = ["route"]
@@ -191,9 +193,9 @@ class DeleteResourcesStep(Step):
                 "-o", "name",
             )
             if not result.success or not result.stdout.strip():
-                continue
-
-            all_resources = result.stdout.strip().splitlines()
+                all_resources = []
+            else:
+                all_resources = result.stdout.strip().splitlines()
 
             filtered = [
                 r for r in all_resources
@@ -210,6 +212,60 @@ class DeleteResourcesStep(Step):
                     r for r in filtered
                     if self._matches_any(r, MODELSERVICE_PATTERNS)
                 ]
+
+            # Also find model-serving workload controllers by pod
+            # template labels. oc get -l only filters by metadata.labels,
+            # but the llm-d.ai/inferenceServing label is on the pod
+            # template, so we query as JSON and filter in Python.
+            workload_result = cmd.kube(
+                "get", "leaderworkerset,deployment,statefulset",
+                "--namespace", ns,
+                "-o", "json",
+                "--ignore-not-found",
+                check=False,
+            )
+            if workload_result.success and workload_result.stdout.strip():
+                try:
+                    items = json.loads(workload_result.stdout).get("items", [])
+                    existing = set(filtered)
+                    for item in items:
+                        spec = item.get("spec", {})
+                        # Deployment/StatefulSet: spec.template.metadata.labels
+                        # LeaderWorkerSet: spec.leaderWorkerTemplate.workerTemplate.metadata.labels
+                        tmpl_labels = (
+                            spec.get("template", {})
+                            .get("metadata", {})
+                            .get("labels", {})
+                        )
+                        if not tmpl_labels.get("llm-d.ai/inferenceServing"):
+                            tmpl_labels = (
+                                spec.get("leaderWorkerTemplate", {})
+                                .get("workerTemplate", {})
+                                .get("metadata", {})
+                                .get("labels", {})
+                            )
+                        if tmpl_labels.get("llm-d.ai/inferenceServing") != "true":
+                            continue
+                        # Use apiVersion/kind to build the resource name
+                        # that oc delete accepts (e.g.,
+                        # "leaderworkerset.leaderworkerset.x-k8s.io/name")
+                        api_version = item.get("apiVersion", "")
+                        kind = item.get("kind", "")
+                        name = item.get("metadata", {}).get("name", "")
+                        # For core/apps resources (Deployment, StatefulSet),
+                        # "deployment/name" works. For CRDs, use the full
+                        # group-qualified form from apiVersion.
+                        if "/" in api_version and not api_version.startswith("apps/"):
+                            group = api_version.split("/")[0]
+                            resource = f"{kind.lower()}.{group}/{name}"
+                        else:
+                            resource = f"{kind.lower()}/{name}"
+                        if resource and resource not in existing:
+                            filtered.append(resource)
+                            existing.add(resource)
+                except (json.JSONDecodeError, KeyError):
+                    pass
+
             if not filtered:
                 context.logger.log_info(
                     f"  No matching resources found in {ns}"
