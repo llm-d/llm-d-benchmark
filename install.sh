@@ -562,7 +562,6 @@ install_crane_linux() {
     local pkg="go-containerregistry_Linux_${go_arch_cap}"
     curl -sL "https://github.com/google/go-containerregistry/releases/download/${version}/${pkg}.tar.gz" \
         -o "/tmp/${pkg}.tar.gz"
-    
     tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane
     sudo cp -f /tmp/crane /usr/local/bin/crane
     sudo chmod +x /usr/local/bin/crane
@@ -620,7 +619,7 @@ for tool in $tools; do
 
     if command -v "$tool" &>/dev/null; then
         current_ver=$(tool_version "$tool")
-        expected_ver="${TOOL_VERSION[$tool]:-}"
+        expected_ver=$(tool_version_for "$tool")
         needs_upgrade=false
 
         if [[ -n "$expected_ver" ]] && ! version_gte "$current_ver" "$expected_ver"; then
@@ -697,7 +696,7 @@ for tool in $optional_tools; do
 
     if command -v "$tool" &>/dev/null; then
         current_ver=$(tool_version "$tool")
-        expected_ver="${TOOL_VERSION[$tool]:-}"
+        expected_ver=$(tool_version_for "$tool")
         needs_upgrade=false
 
         if [[ -n "$expected_ver" ]] && ! version_gte "$current_ver" "$expected_ver"; then
