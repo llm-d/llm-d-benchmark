@@ -35,6 +35,12 @@ _INSTALL_SH_FIXTURE = """\
 #!/bin/bash
 # Toy install.sh fragment
 
+declare -A TOOL_VERSION=(
+    ["yq"]="v4.52.5"
+    ["helmfile"]="1.1.3"
+    ["crane"]="v0.20.3"
+)
+
 tools="curl git helm helmfile yq crane jq"
 
 install_yq_linux() {
@@ -50,6 +56,32 @@ install_helmfile_linux() {
 install_crane_linux() {
     local version=v0.20.3
     curl -sL "https://example/${version}/crane" -o /tmp/crane
+}
+
+helm_diff_url="https://github.com/databus23/helm-diff"
+
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
+"""
+
+_INSTALL_SH_TOOL_VERSION_REF_FIXTURE = """\
+#!/bin/bash
+# install.sh fragment where versions are stored in TOOL_VERSION array
+
+declare -A TOOL_VERSION=(
+    ["helmfile"]="1.5.0"
+    ["yq"]="v4.52.5"
+)
+
+tools="curl git helmfile yq"
+
+install_helmfile_linux() {
+    local version="${TOOL_VERSION["helmfile"]}"
+    curl -sL "https://github.com/helmfile/helmfile/releases/download/v${version}/helmfile_${version}_linux_amd64.tar.gz" -o /tmp/helmfile.tar.gz
+}
+
+install_yq_linux() {
+    local version="${TOOL_VERSION["yq"]}"
+    curl -sL "https://example/${version}/yq" -o /tmp/yq
 }
 
 helm_diff_url="https://github.com/databus23/helm-diff"
@@ -106,6 +138,13 @@ dependencies = [
 def install_sh(tmp_path: Path) -> Path:
     p = tmp_path / "install.sh"
     p.write_text(_INSTALL_SH_FIXTURE, encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def install_sh_tool_version_ref(tmp_path: Path) -> Path:
+    p = tmp_path / "install.sh"
+    p.write_text(_INSTALL_SH_TOOL_VERSION_REF_FIXTURE, encoding="utf-8")
     return p
 
 
@@ -181,6 +220,20 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/mikefarah/yq" in by_name["yq"].upstream
     assert "github.com/helmfile/helmfile" in by_name["helmfile"].upstream
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
+
+
+def test_parse_install_sh_tool_version_ref_resolved(
+    sbom_module, install_sh_tool_version_ref: Path
+) -> None:
+    """Versions specified as ${TOOL_VERSION["key"]} should be resolved."""
+    entries = sbom_module.parse_install_sh(install_sh_tool_version_ref)
+    by_name = {e.name: e for e in entries}
+
+    assert by_name["helmfile"].pin == "1.5.0"
+    assert by_name["helmfile"].pin_type == "version"
+    assert "install_helmfile_linux" in by_name["helmfile"].location
+    assert by_name["yq"].pin == "v4.52.5"
+    assert by_name["yq"].pin_type == "version"
 
 
 # --------------------------------------------------------------------------- #
