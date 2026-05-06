@@ -16,6 +16,7 @@ dependencies = [
     "transformers",
     "pydantic>=2.0",
     "google-auth",
+    "google-cloud-storage>=2.10.0",
 ]
 
 #
