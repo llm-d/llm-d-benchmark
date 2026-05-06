@@ -29,8 +29,6 @@ from llmdbenchmark.utilities.endpoint import (
     find_gateway_endpoint,
 )
 
-from llmdbenchmark.smoketests.curl_plat import get_curl_image
-
 # Transient HTTP status codes / error substrings that warrant a retry.
 _RETRYABLE_INDICATORS = ("502", "503", "504", "ServiceUnavailable", "not ready")
 
@@ -417,7 +415,7 @@ class InferenceTestStep(Step):
         avoid shell quoting issues when passing through kubectl to sh -c.
         """
         override_args = _build_overrides(plan_config)
-        curl_image = get_curl_image()
+        curl_image = "quay.io/fedora/fedora"
         pod_name = f"inference-test-{_rand_suffix()}"
         payload_json = json.dumps(payload)
         payload_b64 = base64.b64encode(payload_json.encode()).decode()

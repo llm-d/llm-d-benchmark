@@ -211,7 +211,7 @@ scenario:
 
       # -----------------------------------------------------------------------
       # Model is not pre-compiled , so vllm is taking around to 17 min for coming up completely
-      # Added Startup probe for 1200 sec 
+      # Added Startup probe for 1200 sec
       # Then validating liveness on /health & readiness o n /v1/models
       # -----------------------------------------------------------------------
 
@@ -237,10 +237,10 @@ scenario:
       resources:
         limits:
           memory: 200Gi
-          cpu: "8"
+          cpu: "4"
         requests:
           memory: 200Gi
-          cpu: "8"
+          cpu: "4"
 
       vllm:
         customCommand: |
@@ -331,7 +331,7 @@ scenario:
       #     maxNumSeq: 32
       #
       # Model is not pre-compiled , so vllm is taking around to 17 min for coming up completely
-      # Added Startup probe for 1200 sec 
+      # Added Startup probe for 1200 sec
       # Then validating liveness on /health & readiness o n /v1/models
 
       probes:

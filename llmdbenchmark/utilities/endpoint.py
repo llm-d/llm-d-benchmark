@@ -10,7 +10,6 @@ import string
 import time
 
 from llmdbenchmark.executor.command import CommandExecutor
-from llmdbenchmark.smoketests.curl_plat import get_curl_image
 
 def _rand_suffix(length: int = 8) -> str:
     """Generate a random lowercase alphanumeric suffix for pod names."""
@@ -503,7 +502,7 @@ def test_model_serving(
     protocol = "https" if str(port) == "443" else "http"
     prefix = _normalize_url_prefix(url_path_prefix)
     url = f"{protocol}://{host}:{port}{prefix}/v1/models"
-    
+
     # Auto-ensure service account and RBAC
     sa_name = service_account or (plan_config.get("serviceAccount", {}).get("name") if plan_config else "default")
     if sa_name:
@@ -512,7 +511,7 @@ def test_model_serving(
             if not sa_check.success or "not found" in (sa_check.stderr + sa_check.stdout).lower():
                 cmd.logger.log_info(f"ServiceAccount '{sa_name}' not found, auto-creating it...")
                 cmd.kube("create", "sa", sa_name, "--namespace", namespace, check=False)
-        
+
         # Always ensure the required RBAC role exists
         role_name = f"{sa_name}-role"
         role_check = cmd.kube("get", "role", role_name, "--namespace", namespace, check=False)
@@ -524,7 +523,7 @@ def test_model_serving(
                 "--namespace", namespace,
                 check=False
             )
-            
+
             # Always ensure RoleBinding
             binding_name = f"{sa_name}-binding"
             cmd.kube(
@@ -536,7 +535,7 @@ def test_model_serving(
             )
 
     override_args = _build_overrides(plan_config, service_account=service_account)
-    curl_image = get_curl_image()
+    curl_image = "quay.io/fedora/fedora"
     last_error: str | None = None
 
     for attempt in range(1, max_retries + 1):

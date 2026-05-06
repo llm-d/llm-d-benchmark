@@ -56,8 +56,8 @@ WORKDIR /workspace
 # Install harnesses
 
 ARG INFERENCE_PERF_REPO=https://github.com/kubernetes-sigs/inference-perf.git
-ARG INFERENCE_PERF_BRANCH=main
-ARG INFERENCE_PERF_COMMIT=v0.4.0
+ARG INFERENCE_PERF_BRANCH=release-v0.5.0
+ARG INFERENCE_PERF_COMMIT=v0.5.0
 RUN git clone --branch ${INFERENCE_PERF_BRANCH} ${INFERENCE_PERF_REPO}
 RUN cd inference-perf; \
     git checkout ${INFERENCE_PERF_COMMIT}; \
@@ -91,8 +91,8 @@ RUN cd vllm; VLLM_TARGET_DEVICE=empty pip install -e . --no-build-isolation
 
 # GuideLLM also requires torch, installed above
 ARG GUIDELLM_REPO=https://github.com/vllm-project/guidellm.git
-ARG GUIDELLM_BRANCH=v0.5.4
-ARG GUIDELLM_COMMIT=v0.5.4
+ARG GUIDELLM_BRANCH=v0.6.0
+ARG GUIDELLM_COMMIT=v0.6.0
 RUN git clone --branch ${GUIDELLM_BRANCH} ${GUIDELLM_REPO}
 RUN cd guidellm; \
     git checkout ${GUIDELLM_COMMIT}; \

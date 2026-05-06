@@ -8,7 +8,7 @@
 
    Volume handling:
      Uses vllmCommon.volumes/volumeMounts as the dynamic base (shared with
-     modelservice), plus a conditional model-storage PVC and any additional
+     modelservice), plus a conditional model-cache PVC and any additional
      volumes defined in standalone.additionalVolumes/additionalVolumeMounts.
      This matches the original bash behavior where ALL volumes are injected
      dynamically — no hard-coded volumes.
@@ -411,7 +411,7 @@ spec:
 {% endfor %}
 {# Conditional model storage volume mount #}
 {% if standalone.mountModelVolume %}
-        - name: model-storage
+        - name: model-cache
           mountPath: {{ standalone.modelMountPath }}
           readOnly: true
 {% endif %}
@@ -611,7 +611,7 @@ spec:
 {% endif %}
 {% endfor %}
 {% if standalone.mountModelVolume %}
-        - name: model-storage
+        - name: model-cache
           mountPath: {{ standalone.modelMountPath }}
           readOnly: true
 {% endif %}
@@ -666,7 +666,7 @@ spec:
 {% endfor %}
 {# Conditional model storage PVC volume #}
 {% if standalone.mountModelVolume %}
-      - name: model-storage
+      - name: model-cache
         persistentVolumeClaim:
           claimName: {{ standalone.modelPvcName }}
 {% endif %}
