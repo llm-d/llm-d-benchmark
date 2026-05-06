@@ -57,6 +57,38 @@ helm_diff_url="https://github.com/databus23/helm-diff"
 PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
 """
 
+# Fixture that uses a TOOL_VERSION associative-array block and variable
+# references inside install functions — exercises the reference-resolver.
+_INSTALL_SH_TOOL_VERSION_FIXTURE = """\
+#!/bin/bash
+# Toy install.sh fragment with TOOL_VERSION map
+
+declare -A TOOL_VERSION=(
+    ["skopeo"]="v1.14.6"
+    ["crane"]="0.20.3"
+    ["yq"]="v4.52.5"
+)
+
+tools="skopeo crane yq jq"
+
+install_skopeo_linux() {
+    local version="${TOOL_VERSION["skopeo"]}"
+    apt-get install -y skopeo
+}
+
+install_crane_linux() {
+    local version="v${TOOL_VERSION["crane"]}"
+    curl -sL "https://example/${version}/crane" -o /tmp/crane
+}
+
+install_yq_linux() {
+    local version="${TOOL_VERSION["yq"]}"
+    curl -sL "https://example/${version}/yq" -o /tmp/yq
+}
+
+helm_diff_url="https://github.com/databus23/helm-diff"
+"""
+
 
 _DEFAULTS_YAML_FIXTURE = """\
 images:
@@ -181,6 +213,62 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/mikefarah/yq" in by_name["yq"].upstream
     assert "github.com/helmfile/helmfile" in by_name["helmfile"].upstream
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
+
+
+# --------------------------------------------------------------------------- #
+# install.sh parser — TOOL_VERSION variable-reference resolution
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def install_sh_tool_version(tmp_path: Path) -> Path:
+    p = tmp_path / "install.sh"
+    p.write_text(_INSTALL_SH_TOOL_VERSION_FIXTURE, encoding="utf-8")
+    return p
+
+
+def test_parse_install_sh_tool_version_ref_resolved(
+    sbom_module, install_sh_tool_version: Path,
+) -> None:
+    """${TOOL_VERSION["key"]} references are resolved to their map values."""
+    entries = sbom_module.parse_install_sh(install_sh_tool_version)
+    by_name = {e.name: e for e in entries}
+
+    assert by_name["skopeo"].pin == "v1.14.6"
+    assert by_name["skopeo"].pin_type == "version"
+    assert "install_skopeo_linux" in by_name["skopeo"].location
+
+
+def test_parse_install_sh_tool_version_v_prefix_resolved(
+    sbom_module, install_sh_tool_version: Path,
+) -> None:
+    """``"v${TOOL_VERSION["key"]}"`` prepends 'v' to the map value."""
+    entries = sbom_module.parse_install_sh(install_sh_tool_version)
+    by_name = {e.name: e for e in entries}
+
+    # TOOL_VERSION["crane"]="0.20.3" and install uses "v${TOOL_VERSION["crane"]}"
+    assert by_name["crane"].pin == "v0.20.3"
+    assert by_name["crane"].pin_type == "version"
+
+
+def test_parse_install_sh_tool_version_ref_no_double_prefix(
+    sbom_module, install_sh_tool_version: Path,
+) -> None:
+    """If the map value already starts with 'v', no extra 'v' is added."""
+    entries = sbom_module.parse_install_sh(install_sh_tool_version)
+    by_name = {e.name: e for e in entries}
+
+    # TOOL_VERSION["yq"]="v4.52.5" and install uses "${TOOL_VERSION["yq"]}"
+    assert by_name["yq"].pin == "v4.52.5"
+
+
+def test_parse_install_sh_tool_version_unpinned_still_system_provided(
+    sbom_module, install_sh_tool_version: Path,
+) -> None:
+    """Tools in the tools= list with no install function remain system-provided."""
+    entries = sbom_module.parse_install_sh(install_sh_tool_version)
+    by_name = {e.name: e for e in entries}
+    assert by_name["jq"].pin == "system-provided"
 
 
 # --------------------------------------------------------------------------- #

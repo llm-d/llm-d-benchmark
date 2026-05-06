@@ -180,12 +180,31 @@ _PLANNER_RE = re.compile(
 _HELM_DIFF_RE = re.compile(
     r"^\s*helm_diff_url=[\"']?(https://[^\s\"']+)"
 )
+# Matches `local version="${TOOL_VERSION["key"]}"` and
+# `local version="v${TOOL_VERSION["key"]}"` (optional leading 'v' prefix).
+_VERSION_TOOL_REF_RE = re.compile(
+    r'^\s*(?:local\s+)?version="(?P<prefix>v?)\$\{TOOL_VERSION\["(?P<key>[^"]+)"\]\}"\s*$'
+)
+# Matches the opening `declare -A TOOL_VERSION=(` line.
+_TOOL_VERSION_MAP_START_RE = re.compile(
+    r"^\s*declare\s+-A\s+TOOL_VERSION\s*=\s*\("
+)
+# Matches individual entries inside the TOOL_VERSION block: `["key"]="val"`.
+_TOOL_VERSION_MAP_ENTRY_RE = re.compile(
+    r'^\s*\["(?P<key>[^"]+)"\]="(?P<val>[^"]+)"\s*$'
+)
 
 
 def parse_install_sh(install_sh_path: Path) -> list[Entry]:
     """Extract pinned tool versions and the required-tool list from install.sh.
 
     Tracks 1-based line numbers so file_location includes them.
+
+    Resolves both literal ``local version=X`` lines and
+    ``local version="${TOOL_VERSION["key"]}"`` variable references (including
+    the ``"v${TOOL_VERSION["key"]}"`` prefix form).  The
+    ``declare -A TOOL_VERSION=(...)`` block is parsed first so references can
+    be resolved in a single forward pass.
     """
     if not install_sh_path.exists():
         return []
@@ -200,11 +219,30 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
     planner_line: int | None = None
     helm_diff_line: int | None = None
 
+    # Populated when we encounter the `declare -A TOOL_VERSION=(...)` block.
+    tool_version_map: dict[str, str] = {}
+    in_tool_version_block = False
+
     current_fn: str | None = None
     current_fn_line: int = 0
     rel = install_sh_path.name
 
     for i, raw in enumerate(lines, start=1):
+        # ---- parse the TOOL_VERSION associative-array block ----
+        if _TOOL_VERSION_MAP_START_RE.match(raw):
+            in_tool_version_block = True
+            continue
+
+        if in_tool_version_block:
+            if raw.strip() == ")":
+                in_tool_version_block = False
+            else:
+                m = _TOOL_VERSION_MAP_ENTRY_RE.match(raw)
+                if m:
+                    tool_version_map[m.group("key")] = m.group("val")
+            continue
+
+        # ---- install function detection ----
         m = _INSTALL_FN_RE.match(raw)
         if m:
             current_fn = m.group("tool")
@@ -212,9 +250,20 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
             continue
 
         if current_fn:
+            # Literal version line: `local version=v1.2.3`
             m = _VERSION_LINE_RE.match(raw)
             if m and current_fn not in pinned:
                 pinned[current_fn] = (m.group("val"), i, f"install_{current_fn}_linux")
+                continue
+
+            # Variable-reference line: `local version="${TOOL_VERSION["key"]}"`
+            # or `local version="v${TOOL_VERSION["key"]}"`
+            m = _VERSION_TOOL_REF_RE.match(raw)
+            if m and current_fn not in pinned:
+                key = m.group("key")
+                prefix = m.group("prefix")  # "" or "v"
+                base_val = tool_version_map.get(key, f"${{TOOL_VERSION[{key}]}}")
+                pinned[current_fn] = (prefix + base_val, i, f"install_{current_fn}_linux")
                 continue
 
         m = _TOOLS_VAR_RE.match(raw)

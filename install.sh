@@ -39,6 +39,7 @@ declare -A TOOL_VERSION=(
     ["oc"]="4.16.0"
     ["kustomize"]="v5.0.0"
     ["crane"]="0.20.3"
+    ["skopeo"]="v1.14.6"
 )
 
 # ---------------------------------------------------------------------------
@@ -504,6 +505,15 @@ install_crane_linux() {
 }
 
 install_oc_mac() { brew install openshift-cli; }
+
+install_skopeo_linux() {
+    local version="${TOOL_VERSION["skopeo"]}"
+    ${PKG_MGR} skopeo
+}
+
+install_skopeo_mac() {
+    brew install skopeo
+}
 
 # ---------------------------------------------------------------------------
 # Check required tools (fail if missing, upgrade if outdated)
