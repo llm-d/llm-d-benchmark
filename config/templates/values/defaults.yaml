@@ -1111,7 +1111,7 @@ standalone:
   # NOTE: The model PVC is standalone-specific (not in vllmCommon.volumes)
   # because modelservice handles its own model volume via the Helm chart.
   mountModelVolume: true
-  modelMountPath: /model-storage
+  modelMountPath: /model-cache
   modelPvcName: model-pvc
 
   # Launcher container (optional second container in the same pod)
