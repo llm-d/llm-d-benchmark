@@ -201,7 +201,7 @@ scenario:
 
       vllm:
         customCommand: |
-          /home/senuser/container-scripts/simple_vllm_serve.sh /model-storage/$MODEL_PATH \
+          /home/senuser/container-scripts/simple_vllm_serve.sh /model-cache/$MODEL_PATH \
           --served-model-name $MODEL_NAME \
           --port $VLLM_INFERENCE_PORT \
           --max-model-len $VLLM_MAX_MODEL_LEN \
