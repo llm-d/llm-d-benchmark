@@ -128,3 +128,30 @@ class TestSubstituteConfigVariables:
         }
         result = renderer._substitute_config_variables(values)
         assert result["field"] == "max len is 32768"
+
+
+class TestModelIdLabelAlias:
+    """Tests that _resolve_model_id_label exposes model_id_label as model.idLabel."""
+
+    def test_model_id_label_available_as_dotted_path(self, renderer):
+        """${model.idLabel} resolves to the computed model_id_label value."""
+        values = {
+            "model": {"name": "meta-llama/Llama-3.2-1B-Instruct"},
+            "namespace": {"name": "benchmark"},
+            "extraObjects": [
+                {
+                    "apiVersion": "inference.networking.x-k8s.io/v1alpha2",
+                    "kind": "InferenceObjective",
+                    "spec": {"poolRef": {"name": "${model.idLabel}-gaie"}},
+                }
+            ],
+        }
+        resolved = renderer._resolve_model_id_label(values)
+        result = renderer._substitute_config_variables(resolved)
+
+        expected_label = resolved["model_id_label"]
+        assert expected_label, "model_id_label should be computed"
+        assert (
+            result["extraObjects"][0]["spec"]["poolRef"]["name"]
+            == f"{expected_label}-gaie"
+        )

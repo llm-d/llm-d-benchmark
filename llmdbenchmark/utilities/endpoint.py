@@ -10,7 +10,7 @@ import string
 import time
 
 from llmdbenchmark.executor.command import CommandExecutor
-
+from llmdbenchmark.smoketests.curl_plat import get_curl_image
 
 def _rand_suffix(length: int = 8) -> str:
     """Generate a random lowercase alphanumeric suffix for pod names."""
@@ -536,7 +536,7 @@ def test_model_serving(
             )
 
     override_args = _build_overrides(plan_config, service_account=service_account)
-    curl_image = "quay.io/curl/curl"
+    curl_image = get_curl_image()
     last_error: str | None = None
 
     for attempt in range(1, max_retries + 1):

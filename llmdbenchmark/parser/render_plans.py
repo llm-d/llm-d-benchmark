@@ -605,6 +605,8 @@ class RenderPlans:
         else:
             values["model_id_label"] = model.get("shortName", "")
 
+        model["idLabel"] = values["model_id_label"]
+
         return values
 
     # Defaults whose "bare" form collides across multi-stack scenarios -
