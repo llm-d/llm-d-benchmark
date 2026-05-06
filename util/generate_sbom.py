@@ -168,6 +168,10 @@ class _StdLogger:
 _VERSION_LINE_RE = re.compile(
     r"^\s*(?:local\s+)?version=(?P<v>[\"']?)(?P<val>[^\s\"']+)(?P=v)\s*$"
 )
+# Matches `local version="${TOOL_VERSION["key"]}"` or `local version="v${TOOL_VERSION["key"]}"`
+_VERSION_TV_REF_RE = re.compile(
+    r'^\s*(?:local\s+)?version="?(?P<prefix>v?)\$\{TOOL_VERSION\["(?P<key>[^"]+)"\]\}"?\s*$'
+)
 _INSTALL_FN_RE = re.compile(
     r"^\s*install_(?P<tool>[a-zA-Z0-9_-]+?)_(?:linux|mac)\s*\(\s*\)\s*\{?\s*$"
 )
@@ -180,18 +184,51 @@ _PLANNER_RE = re.compile(
 _HELM_DIFF_RE = re.compile(
     r"^\s*helm_diff_url=[\"']?(https://[^\s\"']+)"
 )
+# Matches the `declare -A TOOL_VERSION=(` opening line
+_TV_BLOCK_START_RE = re.compile(r'^\s*declare\s+-A\s+TOOL_VERSION\s*=\s*\(')
+# Matches a closing `)` that ends the TOOL_VERSION block
+_TV_BLOCK_END_RE = re.compile(r'^\s*\)\s*$')
+# Matches individual `["key"]="value"` entries inside the TOOL_VERSION block
+_TV_ENTRY_RE = re.compile(r'\["(?P<key>[^"]+)"\]="(?P<val>[^"]+)"')
+
+
+def _extract_tool_version_dict(lines: list[str]) -> dict[str, str]:
+    """Parse the ``declare -A TOOL_VERSION=(...)`` block from install.sh lines.
+
+    Returns a mapping of tool name to pinned version string.
+    """
+    tool_version: dict[str, str] = {}
+    in_block = False
+    for raw in lines:
+        if not in_block:
+            if _TV_BLOCK_START_RE.match(raw):
+                in_block = True
+                # Entries may appear on the same line as the opening `(`
+                for em in _TV_ENTRY_RE.finditer(raw):
+                    tool_version[em.group("key")] = em.group("val")
+            continue
+        if _TV_BLOCK_END_RE.match(raw):
+            break
+        for em in _TV_ENTRY_RE.finditer(raw):
+            tool_version[em.group("key")] = em.group("val")
+    return tool_version
 
 
 def parse_install_sh(install_sh_path: Path) -> list[Entry]:
     """Extract pinned tool versions and the required-tool list from install.sh.
 
     Tracks 1-based line numbers so file_location includes them.
+    Resolves ``${TOOL_VERSION["key"]}`` references using the
+    ``declare -A TOOL_VERSION=(...)`` block at the top of the file.
     """
     if not install_sh_path.exists():
         return []
 
     text = install_sh_path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
+
+    # First pass: build the TOOL_VERSION map so we can resolve variable refs.
+    tool_version_dict = _extract_tool_version_dict(lines)
 
     # tool_name -> (version, line_number, fn_name) for pinned installs
     pinned: dict[str, tuple[str, int, str]] = {}
@@ -212,9 +249,23 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
             continue
 
         if current_fn:
+            # Try literal `local version=<value>` first.
             m = _VERSION_LINE_RE.match(raw)
             if m and current_fn not in pinned:
                 pinned[current_fn] = (m.group("val"), i, f"install_{current_fn}_linux")
+                continue
+            # Also try `local version="${TOOL_VERSION["key"]}"` style.
+            m = _VERSION_TV_REF_RE.match(raw)
+            if m and current_fn not in pinned:
+                key = m.group("key")
+                prefix = m.group("prefix")  # "" or "v"
+                resolved = tool_version_dict.get(key)
+                if resolved is not None:
+                    pinned[current_fn] = (
+                        f"{prefix}{resolved}",
+                        i,
+                        f"install_{current_fn}_linux",
+                    )
                 continue
 
         m = _TOOLS_VAR_RE.match(raw)

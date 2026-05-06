@@ -57,6 +57,46 @@ helm_diff_url="https://github.com/databus23/helm-diff"
 PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
 """
 
+# Fixture that uses `${TOOL_VERSION["key"]}` variable references, mirroring
+# the actual install.sh pattern for tools like helm, helmfile, crane, and yq.
+_INSTALL_SH_TOOL_VERSION_FIXTURE = """\
+#!/bin/bash
+# Toy install.sh fragment with TOOL_VERSION variable references
+
+declare -A TOOL_VERSION=(
+    ["yq"]="v4.52.5"
+    ["helmfile"]="1.4.2"
+    ["helm"]="v4.1.4"
+    ["crane"]="0.20.3"
+)
+
+tools="curl git helm helmfile yq crane jq"
+
+install_yq_linux() {
+    local version="${TOOL_VERSION["yq"]}"
+    curl -sL "https://example/${version}/yq" -o /tmp/yq
+}
+
+install_helmfile_linux() {
+    local version="${TOOL_VERSION["helmfile"]}"
+    curl -sL "https://example/v${version}/helmfile" -o /tmp/helmfile
+}
+
+install_helm_linux() {
+    local version="${TOOL_VERSION["helm"]}"
+    curl -fsSL "https://get.helm.sh/helm-${version}-linux-amd64.tar.gz" -o /tmp/helm.tar.gz
+}
+
+install_crane_linux() {
+    local version="v${TOOL_VERSION["crane"]}"
+    curl -sL "https://example/${version}/crane" -o /tmp/crane
+}
+
+helm_diff_url="https://github.com/databus23/helm-diff"
+
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
+"""
+
 
 _DEFAULTS_YAML_FIXTURE = """\
 images:
@@ -106,6 +146,13 @@ dependencies = [
 def install_sh(tmp_path: Path) -> Path:
     p = tmp_path / "install.sh"
     p.write_text(_INSTALL_SH_FIXTURE, encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def install_sh_tool_version(tmp_path: Path) -> Path:
+    p = tmp_path / "install.sh"
+    p.write_text(_INSTALL_SH_TOOL_VERSION_FIXTURE, encoding="utf-8")
     return p
 
 
@@ -181,6 +228,59 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/mikefarah/yq" in by_name["yq"].upstream
     assert "github.com/helmfile/helmfile" in by_name["helmfile"].upstream
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
+
+
+# --------------------------------------------------------------------------- #
+# TOOL_VERSION variable reference resolution
+# --------------------------------------------------------------------------- #
+
+
+def test_extract_tool_version_dict(sbom_module, install_sh_tool_version: Path) -> None:
+    """_extract_tool_version_dict correctly parses the declare -A block."""
+    lines = install_sh_tool_version.read_text().splitlines()
+    tv = sbom_module._extract_tool_version_dict(lines)
+    assert tv["helm"] == "v4.1.4"
+    assert tv["helmfile"] == "1.4.2"
+    assert tv["yq"] == "v4.52.5"
+    assert tv["crane"] == "0.20.3"
+
+
+def test_extract_tool_version_dict_inline_entries(sbom_module, tmp_path: Path) -> None:
+    """_extract_tool_version_dict handles entries on the same line as the opening '('."""
+    content = '#!/bin/bash\ndeclare -A TOOL_VERSION=(["helm"]="v4.1.4" ["yq"]="v4.52.5")\n'
+    p = tmp_path / "install.sh"
+    p.write_text(content)
+    tv = sbom_module._extract_tool_version_dict(content.splitlines())
+    assert tv["helm"] == "v4.1.4"
+    assert tv["yq"] == "v4.52.5"
+
+
+def test_parse_install_sh_tool_version_references(
+    sbom_module, install_sh_tool_version: Path,
+) -> None:
+    """Tools using ${TOOL_VERSION["key"]} references are resolved and pinned."""
+    entries = sbom_module.parse_install_sh(install_sh_tool_version)
+    by_name = {e.name: e for e in entries}
+
+    # helm uses `local version="${TOOL_VERSION["helm"]}"` (no v prefix)
+    assert by_name["helm"].pin == "v4.1.4"
+    assert by_name["helm"].pin_type == "version"
+    assert "install_helm_linux" in by_name["helm"].location
+
+    # helmfile uses `local version="${TOOL_VERSION["helmfile"]}"` (no v prefix)
+    assert by_name["helmfile"].pin == "1.4.2"
+    assert by_name["helmfile"].pin_type == "version"
+
+    # crane uses `local version="v${TOOL_VERSION["crane"]}"` (with v prefix)
+    assert by_name["crane"].pin == "v0.20.3"
+    assert by_name["crane"].pin_type == "version"
+
+    # yq uses `local version="${TOOL_VERSION["yq"]}"` (already has v in value)
+    assert by_name["yq"].pin == "v4.52.5"
+    assert by_name["yq"].pin_type == "version"
+
+    # jq has no install function, so remains system-provided
+    assert by_name["jq"].pin == "system-provided"
 
 
 # --------------------------------------------------------------------------- #

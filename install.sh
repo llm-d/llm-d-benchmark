@@ -35,7 +35,7 @@ export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 declare -A TOOL_VERSION=(
     ["yq"]="v4.52.5"
     ["helmfile"]="1.4.2"
-    ["helm"]="v3.16.0"
+    ["helm"]="v4.1.4"
     ["oc"]="4.16.0"
     ["kustomize"]="v5.0.0"
     ["crane"]="0.20.3"
@@ -467,7 +467,15 @@ install_helmfile_linux() {
 }
 
 install_helm_linux() {
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash || { echo "ERROR: Failed to install Helm"; exit 1; }
+    local version="${TOOL_VERSION["helm"]}"
+    local arch
+    arch=$(uname -m)
+    local go_arch="amd64"
+    [[ "$arch" == "aarch64" ]] && go_arch="arm64"
+    curl -fsSL "https://get.helm.sh/helm-${version}-linux-${go_arch}.tar.gz" -o "/tmp/helm.tar.gz"
+    tar xzf "/tmp/helm.tar.gz" -C /tmp "linux-${go_arch}/helm"
+    sudo cp -f "/tmp/linux-${go_arch}/helm" /usr/local/bin/helm
+    sudo chmod +x /usr/local/bin/helm
     helm version --short || { echo "ERROR: Helm installation verification failed"; exit 1; }
 }
 
