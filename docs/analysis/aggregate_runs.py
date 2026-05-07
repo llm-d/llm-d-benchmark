@@ -35,7 +35,6 @@ import json
 import math
 import os
 import sys
-from pathlib import Path
 
 try:
     import yaml
