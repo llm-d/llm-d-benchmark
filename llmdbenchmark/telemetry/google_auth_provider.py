@@ -1,4 +1,3 @@
-import logging
 from typing import Optional
 
 def get_google_oidc_token(audience: str, logger) -> Optional[str]:

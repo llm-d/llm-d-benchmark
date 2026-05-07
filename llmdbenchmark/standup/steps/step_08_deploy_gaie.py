@@ -1,6 +1,5 @@
 """Step 08 -- Deploy GAIE (Gateway API Inference Extension)."""
 
-import shutil
 from pathlib import Path
 
 import yaml
