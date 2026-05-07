@@ -5,7 +5,6 @@ from enum import Enum
 
 from huggingface_hub import (
     model_info as hf_model_info,
-    HfApi,
 )
 from huggingface_hub.utils import (
     GatedRepoError,

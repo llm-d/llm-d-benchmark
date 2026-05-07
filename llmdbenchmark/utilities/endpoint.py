@@ -98,7 +98,7 @@ def cleanup_ephemeral_pods(
     for phase in ("Succeeded", "Failed"):
         result = cmd.kube(
             "delete", "pods",
-            f"-l", EPHEMERAL_POD_LABEL,
+            "-l", EPHEMERAL_POD_LABEL,
             f"--field-selector=status.phase={phase}",
             "--namespace", namespace,
             check=False,
