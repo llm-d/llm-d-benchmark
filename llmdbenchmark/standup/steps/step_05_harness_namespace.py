@@ -1,6 +1,5 @@
 """Step 05 -- Prepare the harness namespace (PVC, data access pod, secrets)."""
 
-import base64
 from pathlib import Path
 
 import yaml

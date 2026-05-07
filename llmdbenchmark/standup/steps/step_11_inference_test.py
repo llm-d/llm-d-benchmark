@@ -508,18 +508,18 @@ class InferenceTestStep(Step):
 
         if external_url:
             context.logger.log_info("   To reproduce or demo, run:")
-            context.logger.log_info(f"   curl -sk -X POST \\")
+            context.logger.log_info("   curl -sk -X POST \\")
             context.logger.log_info(f"     {external_url} \\")
-            context.logger.log_info(f"     -H 'Content-Type: application/json' \\")
+            context.logger.log_info("     -H 'Content-Type: application/json' \\")
             context.logger.log_info(f"     -d '{payload_compact}'")
         else:
             cluster_url = f"{base_url}{endpoint}"
             context.logger.log_info(
                 "   To reproduce (from inside the cluster or via port-forward):"
             )
-            context.logger.log_info(f"   curl -sk -X POST \\")
+            context.logger.log_info("   curl -sk -X POST \\")
             context.logger.log_info(f"     {cluster_url} \\")
-            context.logger.log_info(f"     -H 'Content-Type: application/json' \\")
+            context.logger.log_info("     -H 'Content-Type: application/json' \\")
             context.logger.log_info(f"     -d '{payload_compact}'")
 
     def _detect_external_url(
