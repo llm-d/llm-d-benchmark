@@ -1528,13 +1528,13 @@ class BaseSmoketest:
         payload_pretty = json.dumps(payload, indent=2)
         context.logger.log_info("   To reproduce or demo, run:")
         context.logger.log_info("")
-        context.logger.log_info(f"   curl -sk -X POST \\")
+        context.logger.log_info("   curl -sk -X POST \\")
         context.logger.log_info(f"     {demo_url} \\")
-        context.logger.log_info(f"     -H 'Content-Type: application/json' \\")
-        context.logger.log_info(f"     -d '{{")
+        context.logger.log_info("     -H 'Content-Type: application/json' \\")
+        context.logger.log_info("     -d '{")
         for line in payload_pretty.splitlines()[1:]:
             context.logger.log_info(f"       {line}")
-        context.logger.log_info(f"     '")
+        context.logger.log_info("     '")
 
     def _detect_external_url(
         self,
