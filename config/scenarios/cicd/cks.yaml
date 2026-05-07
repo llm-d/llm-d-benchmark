@@ -58,7 +58,7 @@ scenario:
       modelPvc:
         storageClassName: shared-vast
 
-    workDir: /tmp/llmdbenchcicd-gke/
+    workDir: /tmp/llmdbenchcicd-cks/
 
     harness:
       name: guidellm
