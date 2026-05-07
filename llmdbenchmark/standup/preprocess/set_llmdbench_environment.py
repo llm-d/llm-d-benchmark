@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import subprocess
-import sys
 import ipaddress
 import os
 import json
@@ -547,7 +546,8 @@ if pod_labels.count('_eq_') and kubeconfig_path :
 
             ssl_ctx = ssl.create_default_context()
             if 'certificate-authority-data' in cluster:
-                import base64, tempfile
+                import base64
+                import tempfile
                 ca_data = base64.b64decode(cluster['certificate-authority-data'])
                 ca_file = tempfile.NamedTemporaryFile(delete=False, suffix='.crt')
                 ca_file.write(ca_data)
@@ -560,7 +560,8 @@ if pod_labels.count('_eq_') and kubeconfig_path :
                 ssl_ctx.verify_mode = ssl.CERT_NONE
 
             if 'client-certificate-data' in user and 'client-key-data' in user:
-                import base64, tempfile
+                import base64
+                import tempfile
                 cert_data = base64.b64decode(user['client-certificate-data'])
                 key_data = base64.b64decode(user['client-key-data'])
                 cert_file = tempfile.NamedTemporaryFile(delete=False, suffix='.crt')
