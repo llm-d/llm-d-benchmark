@@ -110,13 +110,13 @@ spec:
               nvidia.com/gpu: "1"
           volumeMounts:
 {% if fma.mountModelVolume %}
-          - name: model-storage
+          - name: model-cache
             mountPath: {{ fma.modelMountPath }}
             readOnly: False
 {% endif %}
       volumes:
 {% if fma.mountModelVolume %}
-      - name: model-storage
+      - name: model-cache
         persistentVolumeClaim:
           claimName: {{ fma.modelPvcName }}
 {% endif %}
