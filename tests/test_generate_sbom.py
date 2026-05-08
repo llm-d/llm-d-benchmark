@@ -48,7 +48,7 @@ install_helmfile_linux() {
 }
 
 install_crane_linux() {
-    local version=v0.20.3
+    local version=v0.21.5
     curl -sL "https://example/${version}/crane" -o /tmp/crane
 }
 
@@ -140,7 +140,7 @@ def test_parse_install_sh_pinned_versions(sbom_module, install_sh: Path) -> None
     assert "line " in by_name["yq"].location
 
     assert by_name["helmfile"].pin == "1.1.3"
-    assert by_name["crane"].pin == "v0.20.3"
+    assert by_name["crane"].pin == "v0.21.5"
 
 
 def test_parse_install_sh_unpinned_marks_system_provided(
@@ -364,7 +364,7 @@ def test_render_markdown_deterministic(sbom_module) -> None:
     args = dict(
         system_tools=[
             sbom_module.Entry("yq", "v4.52.5", "version", "loc-y", "ups-y"),
-            sbom_module.Entry("crane", "v0.20.3", "version", "loc-c", "ups-c"),
+            sbom_module.Entry("crane", "v0.21.5", "version", "loc-c", "ups-c"),
         ],
         py_direct=[],
         py_installed=[],
