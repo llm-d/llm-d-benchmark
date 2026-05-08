@@ -80,7 +80,6 @@ tool_version_for() {
         helm)      echo "v3.16.0" ;;
         oc)        echo "4.16.0"  ;;
         kustomize) echo "v5.0.0"  ;;
-        crane)     echo "0.21.5"  ;;
         *)         echo ""        ;;
     esac
 }
