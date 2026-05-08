@@ -75,6 +75,7 @@ esac
 
 tool_version_for() {
     case "$1" in
+        curl)      echo "8.20.0"  ;;
         yq)        echo "v4.52.5" ;;
         helmfile)  echo "1.4.2"   ;;
         helm)      echo "v3.16.0" ;;
@@ -487,6 +488,18 @@ version_gte() {
 # Per-tool Linux install helpers - — all now arch-aware via $ARCH_GO / $ARCH_UNAME
 # ---------------------------------------------------------------------------------
 
+install_curl_linux() {
+    local version=8_20_0
+    local deb_version="${version//_/.}"
+    if command -v apt-get &>/dev/null; then
+        sudo apt-get install -y "curl=${deb_version}*" || sudo apt-get install -y curl
+    elif command -v apt &>/dev/null; then
+        sudo apt install -y "curl=${deb_version}*" || sudo apt install -y curl
+    else
+        ${PKG_MGR} curl || true
+    fi
+}
+
 install_yq_linux() {
     local version=$(tool_version_for yq)
     local binary="yq_linux_${ARCH_GO}"
@@ -613,6 +626,7 @@ install_kustomize_mac(){ brew install kustomize; }
 install_crane_mac()    { brew install crane; }
 install_skopeo_mac()   { brew install skopeo; }
 install_jq_mac()       { brew install jq; }
+install_curl_mac()     { brew install curl; }
 
 # ---------------------------------------------------------------------------
 # Check required tools (fail if missing, upgrade if outdated)

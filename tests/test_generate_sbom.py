@@ -37,6 +37,11 @@ _INSTALL_SH_FIXTURE = """\
 
 tools="curl git helm helmfile yq crane jq"
 
+install_curl_linux() {
+    local version=8_20_0
+    curl -sL "https://example/${version}/curl" -o /tmp/curl
+}
+
 install_yq_linux() {
     local version=v4.52.5
     curl -sL "https://example/${version}/yq" -o /tmp/yq
@@ -141,6 +146,7 @@ def test_parse_install_sh_pinned_versions(sbom_module, install_sh: Path) -> None
 
     assert by_name["helmfile"].pin == "1.1.3"
     assert by_name["crane"].pin == "v0.20.3"
+    assert by_name["curl"].pin == "8_20_0"
 
 
 def test_parse_install_sh_unpinned_marks_system_provided(
