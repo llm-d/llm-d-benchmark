@@ -35,7 +35,7 @@ _INSTALL_SH_FIXTURE = """\
 #!/bin/bash
 # Toy install.sh fragment
 
-tools="curl git helm helmfile yq crane jq"
+tools="curl git helm helmfile yq crane jq skopeo"
 
 install_yq_linux() {
     local version=v4.52.5
@@ -50,6 +50,11 @@ install_helmfile_linux() {
 install_crane_linux() {
     local version=v0.20.3
     curl -sL "https://example/${version}/crane" -o /tmp/crane
+}
+
+install_skopeo_linux() {
+    local version=v1.14.6
+    apt-get install -y skopeo || true
 }
 
 helm_diff_url="https://github.com/databus23/helm-diff"
@@ -141,6 +146,9 @@ def test_parse_install_sh_pinned_versions(sbom_module, install_sh: Path) -> None
 
     assert by_name["helmfile"].pin == "1.1.3"
     assert by_name["crane"].pin == "v0.20.3"
+    assert by_name["skopeo"].pin == "v1.14.6"
+    assert by_name["skopeo"].pin_type == "version"
+    assert "install_skopeo_linux" in by_name["skopeo"].location
 
 
 def test_parse_install_sh_unpinned_marks_system_provided(
@@ -181,6 +189,7 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/mikefarah/yq" in by_name["yq"].upstream
     assert "github.com/helmfile/helmfile" in by_name["helmfile"].upstream
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
+    assert "github.com/containers/skopeo" in by_name["skopeo"].upstream
 
 
 # --------------------------------------------------------------------------- #

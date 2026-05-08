@@ -81,6 +81,7 @@ tool_version_for() {
         oc)        echo "4.16.0"  ;;
         kustomize) echo "v5.0.0"  ;;
         crane)     echo "0.20.3"  ;;
+        skopeo)    echo "v1.14.6" ;;
         *)         echo ""        ;;
     esac
 }
@@ -573,6 +574,7 @@ install_crane_linux() {
 }
 
 install_skopeo_linux() {
+    local version=v1.14.6
     # skopeo is widely available in distro package managers
     ${PKG_MGR} skopeo || true
 }
