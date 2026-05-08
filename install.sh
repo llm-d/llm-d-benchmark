@@ -592,6 +592,7 @@ install_jq_linux() {
     curl -sL "https://github.com/jqlang/jq/releases/download/jq-${version}/${binary}" -o "/tmp/${binary}"
     chmod +x "/tmp/${binary}"
     sudo cp -f "/tmp/${binary}" /usr/local/bin/jq
+    rm -f "/tmp/${binary}"
 }
 
 # ---------------------------------------------------------------------------
