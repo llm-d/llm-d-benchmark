@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-05-08 05:01:44` (UTC)
-- Generated against git ref: `42f17d604876b2706aacbec60d54e0b0d8644841`
+- Generated at: `2026-05-08 05:03:50` (UTC)
+- Generated against git ref: `731d894f40571498d0c0fd1cb6cf047a08e0a43e`
 
 ## System Tool Dependencies
 
@@ -45,8 +45,8 @@ OCI registry at generation (and plan) time.
 | **inferencePool** | `v1.4.0` | tag | `config/templates/values/defaults.yaml` line 440 (`chartVersions.inferencePool`) | [kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) |
 | **istioBase** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 434 (`chartVersions.istioBase`) | (unknown) |
 | **istiod** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 435 (`chartVersions.istiod`) | (unknown) |
-| **llmDInfra** | `v1.4.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 436 (`chartVersions.llmDInfra`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) (`https://llm-d-incubation.github.io/llm-d-infra/`) |
-| **llmDModelservice** | `v0.4.12` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 437 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
+| **llmDInfra** | `auto (resolution failed: Unable to resolve chart version for "llmDInfra". Ensure helm is installed and the repository is added, or provide a vali...)` | tag (auto, failed) | `config/templates/values/defaults.yaml` line 436 (`chartVersions.llmDInfra`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) (`https://llm-d-incubation.github.io/llm-d-infra/`) |
+| **llmDModelservice** | `auto (resolution failed: Unable to resolve chart version for "llmDModelservice". Ensure helm is installed and the repository is added, or provide...)` | tag (auto, failed) | `config/templates/values/defaults.yaml` line 437 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
 | **lws** | `0.8.0` | tag | `config/templates/values/defaults.yaml` line 442 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
 | **prometheusAdapter** | `5.2.0` | tag | `config/templates/values/defaults.yaml` line 439 (`chartVersions.prometheusAdapter`) | [prometheus-community/helm-charts](https://github.com/prometheus-community/helm-charts) (`https://prometheus-community.github.io/helm-charts`) |
 | **wva** | `0.6.0` | tag | `config/templates/values/defaults.yaml` line 438 (`chartVersions.wva`) | [llm-d/llm-d-workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) (`oci://ghcr.io/llm-d/workload-variant-autoscaler`) |
@@ -60,7 +60,7 @@ generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **benchmark** | `v0.6.0` | tag | `config/templates/values/defaults.yaml` line 345 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
+| **benchmark** | `v0.6.2` | tag | `config/templates/values/defaults.yaml` line 345 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
 | **inferenceScheduler** | `v0.7.1` | tag | `config/templates/values/defaults.yaml` line 364 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 383 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
 | **routingSidecar** | `v0.7.1` | tag | `config/templates/values/defaults.yaml` line 370 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
@@ -79,6 +79,7 @@ captured in the snapshot table below.
 |---|---|---|---|---|
 | **GitPython** | `(unpinned)` | (unpinned) | `pyproject.toml` line 14 | [GitPython (PyPI)](https://pypi.org/project/gitpython/) |
 | **google-auth** | `(unpinned)` | (unpinned) | `pyproject.toml` line 18 | [google-auth (PyPI)](https://pypi.org/project/google-auth/) |
+| **google-cloud-storage** | `>=2.10.0` | constraint | `pyproject.toml` line 19 | [google-cloud-storage (PyPI)](https://pypi.org/project/google-cloud-storage/) |
 | **huggingface_hub** | `(unpinned)` | (unpinned) | `pyproject.toml` line 15 | [huggingface_hub (PyPI)](https://pypi.org/project/huggingface-hub/) |
 | **Jinja2** | `(unpinned)` | (unpinned) | `pyproject.toml` line 8 | [Jinja2 (PyPI)](https://pypi.org/project/jinja2/) |
 | **kubernetes** | `(unpinned)` | (unpinned) | `pyproject.toml` line 11 | [kubernetes (PyPI)](https://pypi.org/project/kubernetes/) |
