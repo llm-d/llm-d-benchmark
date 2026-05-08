@@ -47,6 +47,11 @@ install_helmfile_linux() {
     curl -sL "https://example/v${version}/helmfile" -o /tmp/helmfile
 }
 
+install_helm_linux() {
+    local version=v4.1.4
+    curl -sL "https://example/${version}/helm" -o /tmp/helm
+}
+
 install_crane_linux() {
     local version=v0.20.3
     curl -sL "https://example/${version}/crane" -o /tmp/crane
@@ -140,6 +145,7 @@ def test_parse_install_sh_pinned_versions(sbom_module, install_sh: Path) -> None
     assert "line " in by_name["yq"].location
 
     assert by_name["helmfile"].pin == "1.1.3"
+    assert by_name["helm"].pin == "v4.1.4"
     assert by_name["crane"].pin == "v0.20.3"
 
 
