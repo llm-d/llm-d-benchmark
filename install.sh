@@ -546,8 +546,9 @@ install_oc_linux() {
 }
 
 install_kustomize_linux() {
+    local version=kyaml/v0.21.1
     # The upstream install_kustomize.sh script is arch-aware (detects GOARCH internally)
-    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/${version}/hack/install_kustomize.sh" | bash
     sudo mv kustomize /usr/local/bin/
 }
 
