@@ -1,9 +1,55 @@
 # GKE H100 CI/CD Scenario - FMA
-# Variant of cicd/gke.yaml for Fast Model Actuation (FMA) runs.
-# Uses nop harness since FMA manages its own endpoint discovery.
+# Two scenarios: a standalone cold-start baseline, then FMA actuation.
+# Both use the nop harness to measure pod startup + TTFT.
 
 scenario:
-  - name: "gke-cicd"
+  # Standalone cold-start baseline (no FMA, no launchers)
+  - name: "gke-cicd-baseline"
+
+    affinity:
+      enabled: true
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-h100-80gb
+
+    inferenceExtension:
+      monitoring:
+        prometheus:
+          enabled: false
+
+    modelservice:
+      enabled: false
+    standalone:
+      enabled: true
+      acceleratorType:
+        labelKey: cloud.google.com/gke-accelerator
+        labelValue: nvidia-h100-80gb
+    fma:
+      enabled: false
+
+    vllmCommon:
+      priorityClassName: nightly-gpu-critical
+
+    storage:
+      modelPvc:
+        storageClassName: standard-rwx
+        size: 1Ti
+      workloadPvc:
+        storageClassName: standard-rwx
+
+    workDir: /tmp/llmdbenchcicd-gke/
+
+    harness:
+      name: nop
+      experimentProfile: nop.yaml
+      executable: llm-d-benchmark.py
+
+    images:
+      benchmark:
+        repository: ghcr.io/llm-d/llm-d-benchmark
+        tag: nightly
+
+  # FMA actuation benchmark
+  - name: "gke-cicd-fma"
 
     affinity:
       enabled: true

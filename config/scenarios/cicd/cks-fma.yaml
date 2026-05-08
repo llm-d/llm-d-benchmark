@@ -1,9 +1,56 @@
 # CKS (Cloud Kubernetes Service) CI/CD Scenario - FMA
-# Variant of cicd/cks.yaml for Fast Model Actuation (FMA) runs.
-# Uses nop harness since FMA manages its own endpoint discovery.
+# Two scenarios: a standalone cold-start baseline, then FMA actuation.
+# Both use the nop harness to measure pod startup + TTFT.
 
 scenario:
-  - name: "cks-cicd"
+  # Standalone cold-start baseline (no FMA, no launchers)
+  - name: "cks-cicd-baseline"
+
+    model:
+      name: facebook/opt-125m
+      shortName: facebook-opt-125m
+      path: models/facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
+
+    modelservice:
+      enabled: false
+    standalone:
+      enabled: true
+      acceleratorType:
+        labelKey: gpu.nvidia.com/class
+        labelValue: H200
+    fma:
+      enabled: false
+
+    gateway:
+      className: agentgateway
+
+    affinity:
+      enabled: true
+      nodeSelector:
+        gpu.nvidia.com/class: H200
+
+    vllmCommon:
+      priorityClassName: nightly-gpu-critical
+
+    storage:
+      modelPvc:
+        storageClassName: shared-vast
+
+    workDir: /tmp/llmdbenchcicd-cks/
+
+    harness:
+      name: nop
+      experimentProfile: nop.yaml
+      executable: llm-d-benchmark.py
+
+    images:
+      benchmark:
+        repository: ghcr.io/llm-d/llm-d-benchmark
+        tag: nightly
+
+  # FMA actuation benchmark
+  - name: "cks-cicd-fma"
 
     model:
       name: facebook/opt-125m
@@ -34,7 +81,7 @@ scenario:
       modelPvc:
         storageClassName: shared-vast
 
-    workDir: /tmp/llmdbenchcicd-gke/
+    workDir: /tmp/llmdbenchcicd-cks/
 
     harness:
       name: nop
