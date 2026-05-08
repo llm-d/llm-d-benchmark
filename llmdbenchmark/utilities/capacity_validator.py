@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol, TYPE_CHECKING
 
 from planner.capacity_planner import (
@@ -17,7 +17,6 @@ from planner.capacity_planner import (
     estimate_vllm_non_torch_memory,
     find_possible_tp,
     get_model_config_from_hf,
-    get_model_info_from_hf,
     get_text_config,
     gpus_required,
     max_concurrent_requests,
@@ -312,15 +311,15 @@ def validate_vllm_params(
 
 def _log_config_suggestions(msg_fn, params: ValidationParams) -> None:
     """Log configuration suggestions when deployment will fail."""
-    msg_fn(f"  Current config:")
+    msg_fn("  Current config:")
     msg_fn(f"    GPU memory per device: {params.gpu_memory} GB")
     msg_fn(f"    GPU memory utilization: {params.gpu_memory_util}")
     msg_fn(f"    maxModelLen: {params.max_model_len}")
     msg_fn(f"    TP: {params.tp}, PP: {params.pp}, DP: {params.dp}")
-    msg_fn(f"  Possible solutions:")
+    msg_fn("  Possible solutions:")
     msg_fn(f"    1. Reduce maxModelLen (currently {params.max_model_len})")
-    msg_fn(f"    2. Increase tensor parallelism to use more GPUs")
-    msg_fn(f"    3. Use GPUs with more memory")
+    msg_fn("    2. Increase tensor parallelism to use more GPUs")
+    msg_fn("    3. Use GPUs with more memory")
     msg_fn(
         f"    4. Increase gpu_memory_utilization "
         f"(currently {params.gpu_memory_util}, may cause OOM)"
