@@ -75,7 +75,7 @@ esac
 
 tool_version_for() {
     case "$1" in
-        yq)        echo "v4.52.5" ;;
+        yq)        echo "v4.53.2" ;;
         helmfile)  echo "1.4.2"   ;;
         helm)      echo "v3.16.0" ;;
         oc)        echo "4.16.0"  ;;
@@ -488,7 +488,9 @@ version_gte() {
 # ---------------------------------------------------------------------------------
 
 install_yq_linux() {
-    local version=$(tool_version_for yq)
+    # Keep this literal in sync with tool_version_for() so the SBOM parser
+    # can detect the pinned version and the upgrade-check path stays consistent.
+    local version=v4.53.2
     local binary="yq_linux_${ARCH_GO}"
     curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}"
     chmod +x "/tmp/${binary}"
