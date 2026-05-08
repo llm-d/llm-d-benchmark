@@ -81,7 +81,7 @@ tool_version_for() {
         oc)        echo "4.16.0"  ;;
         kustomize) echo "v5.0.0"  ;;
         crane)     echo "0.20.3"  ;;
-        jq)        echo "jq-1.8.1" ;;
+        jq)        echo "1.8.1" ;;
         *)         echo ""        ;;
     esac
 }
@@ -460,7 +460,7 @@ tool_version() {
         oc)         oc version --client 2>&1 | head -1 | awk '{print $NF}' ;;
         helmfile)   helmfile --version 2>&1 | awk '{print $NF}' ;;
         kustomize)  kustomize version 2>&1 | head -1 ;;
-        jq)         jq --version 2>&1 ;;
+        jq)         jq --version 2>&1 | sed 's/^jq-//' ;;
         yq)         yq --version 2>&1 | awk '{print $NF}' ;;
         skopeo)     skopeo --version 2>&1 | awk '{print $NF}' ;;
         crane)      crane version 2>&1 | tr -d '\n' ;;
