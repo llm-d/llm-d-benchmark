@@ -43,7 +43,7 @@ install_yq_linux() {
 }
 
 install_helmfile_linux() {
-    local version=1.1.3
+    local version=1.5.0
     curl -sL "https://example/v${version}/helmfile" -o /tmp/helmfile
 }
 
@@ -139,7 +139,7 @@ def test_parse_install_sh_pinned_versions(sbom_module, install_sh: Path) -> None
     # Pin is on the `local version=...` line, not the function header.
     assert "line " in by_name["yq"].location
 
-    assert by_name["helmfile"].pin == "1.1.3"
+    assert by_name["helmfile"].pin == "1.5.0"
     assert by_name["crane"].pin == "v0.20.3"
 
 
