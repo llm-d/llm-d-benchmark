@@ -81,6 +81,7 @@ tool_version_for() {
         oc)        echo "4.16.0"  ;;
         kustomize) echo "v5.0.0"  ;;
         crane)     echo "0.20.3"  ;;
+        jq)        echo "jq-1.8.1" ;;
         *)         echo ""        ;;
     esac
 }
@@ -575,6 +576,22 @@ install_crane_linux() {
 install_skopeo_linux() {
     # skopeo is widely available in distro package managers
     ${PKG_MGR} skopeo || true
+}
+
+install_jq_linux() {
+    local version=1.8.1
+    local binary
+    case "$ARCH_GO" in
+        amd64) binary="jq-linux-amd64" ;;
+        arm64) binary="jq-linux-arm64" ;;
+        *)
+            ${PKG_MGR} jq || true
+            return 0
+            ;;
+    esac
+    curl -sL "https://github.com/jqlang/jq/releases/download/jq-${version}/${binary}" -o "/tmp/${binary}"
+    chmod +x "/tmp/${binary}"
+    sudo cp -f "/tmp/${binary}" /usr/local/bin/jq
 }
 
 # ---------------------------------------------------------------------------

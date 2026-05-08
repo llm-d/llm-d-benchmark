@@ -153,6 +153,24 @@ def test_parse_install_sh_unpinned_marks_system_provided(
     assert "command -v" in by_name["jq"].location
 
 
+def test_parse_install_sh_jq_pinned_version(sbom_module, tmp_path: Path) -> None:
+    install_text = """\
+tools="jq"
+
+install_jq_linux() {
+    local version=1.8.1
+    curl -sL "https://example/jq-${version}/jq-linux-amd64" -o /tmp/jq
+}
+"""
+    install_sh = tmp_path / "install.sh"
+    install_sh.write_text(install_text, encoding="utf-8")
+    entries = sbom_module.parse_install_sh(install_sh)
+    by_name = {e.name: e for e in entries}
+    assert by_name["jq"].pin == "1.8.1"
+    assert by_name["jq"].pin_type == "version"
+    assert "install_jq_linux" in by_name["jq"].location
+
+
 def test_parse_install_sh_planner_commit(sbom_module, install_sh: Path) -> None:
     entries = sbom_module.parse_install_sh(install_sh)
     planner = next((e for e in entries if e.name == "llm-d-planner (git)"), None)
