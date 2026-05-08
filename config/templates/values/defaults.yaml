@@ -100,7 +100,7 @@ _anchors:
   lws_version:                       &lws_version                       0.8.0
   gaie_version:                      &gaie_version                      v1.4.0
   wva_version:                       &wva_version                       0.6.0
-  prometheus_version:                &prometheus_version                5.2.0
+  prometheus_version:                &prometheus_version                prometheus-operator-admission-webhook-0.40.0
   vllm-openai_version:               &vllm-openai_version               v0.20.1
   llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.7.1
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.7.1

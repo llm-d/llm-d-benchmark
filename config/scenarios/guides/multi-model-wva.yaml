@@ -107,7 +107,7 @@ shared:
 
   chartVersions:
     wva: 0.6.0
-    prometheusAdapter: 5.2.0
+    prometheusAdapter: prometheus-operator-admission-webhook-0.40.0
 
   # --------------------------------------------------------------------------
   # HTTPROUTE - one shared route with N URLRewrite rules, one per stack.
