@@ -43,7 +43,7 @@ inferenceExtension:
       auth:
         enabled: {{ inferenceExtension.monitoring.prometheus.auth.enabled | default(true) | lower }}
         # Overridable Secret name for the Prometheus ServiceAccount token.
-        # The gaie (inferencepool) chart v1.4.0 uses this exact path; older
+        # The current gaie (inferencepool) chart uses this exact path; older
         # templates wrote `monitoring.secret.name` which the chart silently
         # ignored and fell back to its hardcoded default, causing
         # cross-release Helm ownership conflicts in multi-stack scenarios.
