@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-05-09 05:19:10` (UTC)
-- Generated against git ref: `0f6bd5890ca8d86ca310b27216e6326abceb884f`
+- Generated at: `2026-05-09 05:20:11` (UTC)
+- Generated against git ref: `5a28f141f73154e5ff9c47ffda1d37e82cc349d7`
 
 ## System Tool Dependencies
 
@@ -29,7 +29,7 @@ whatever the host's package manager provides.
 | **kustomize** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
 | **llm-d-planner (git)** | `e50305af90f0812e77e1827f3bc740fe75b76370` | commit SHA | `install.sh` line 771 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
 | **oc** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [openshift/oc](https://github.com/openshift/oc) |
-| **skopeo** | `v1.14.6` | version | `install.sh` line 577 (`install_skopeo_linux`) | [containers/skopeo](https://github.com/containers/skopeo) |
+| **skopeo** | `1.14.6` | version | `install.sh` line 577 (`install_skopeo_linux`) | [containers/skopeo](https://github.com/containers/skopeo) |
 | **yq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [mikefarah/yq](https://github.com/mikefarah/yq) |
 
 

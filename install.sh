@@ -574,7 +574,7 @@ install_crane_linux() {
 }
 
 install_skopeo_linux() {
-    local version=v1.14.6
+    local version=1.14.6
     # skopeo is widely available in distro package managers
     ${PKG_MGR} skopeo || true
 }
