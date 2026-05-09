@@ -489,6 +489,7 @@ version_gte() {
 # ---------------------------------------------------------------------------------
 
 install_curl_linux() {
+    # minimum required version; tracked by SBOM generator
     local version=8.20.0
     ${PKG_MGR} curl
 }

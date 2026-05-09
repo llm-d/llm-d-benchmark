@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-05-09 05:05:34` (UTC)
-- Generated against git ref: `649658e20e82affd3606c1cf79b8cd60bb7d7295`
+- Generated at: `2026-05-09 05:07:33` (UTC)
+- Generated against git ref: `e1e5c2e8168f2f195873dab9ad10427fd66d5f44`
 
 ## System Tool Dependencies
 
@@ -20,14 +20,14 @@ whatever the host's package manager provides.
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
 | **crane** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [google/go-containerregistry](https://github.com/google/go-containerregistry) |
-| **curl** | `8.20.0` | version | `install.sh` line 492 (`install_curl_linux`) | [curl/curl](https://github.com/curl/curl) |
+| **curl** | `8.20.0` | version | `install.sh` line 493 (`install_curl_linux`) | [curl/curl](https://github.com/curl/curl) |
 | **git** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [git/git](https://github.com/git/git) |
 | **helm** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [helm/helm](https://github.com/helm/helm) |
-| **helm-diff** | `latest` | plugin (latest) | `install.sh` line 683 (`helm_diff_url`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
-| **helmfile** | `1.1.3` | version | `install.sh` line 505 (`install_helmfile_linux`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
+| **helm-diff** | `latest` | plugin (latest) | `install.sh` line 684 (`helm_diff_url`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
+| **helmfile** | `1.1.3` | version | `install.sh` line 506 (`install_helmfile_linux`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
 | **jq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [jqlang/jq](https://github.com/jqlang/jq) |
 | **kustomize** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
-| **llm-d-planner (git)** | `e50305af90f0812e77e1827f3bc740fe75b76370` | commit SHA | `install.sh` line 775 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
+| **llm-d-planner (git)** | `e50305af90f0812e77e1827f3bc740fe75b76370` | commit SHA | `install.sh` line 776 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
 | **oc** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [openshift/oc](https://github.com/openshift/oc) |
 | **skopeo** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [containers/skopeo](https://github.com/containers/skopeo) |
 | **yq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [mikefarah/yq](https://github.com/mikefarah/yq) |
