@@ -180,6 +180,37 @@ _PLANNER_RE = re.compile(
 _HELM_DIFF_RE = re.compile(
     r"^\s*helm_diff_url=[\"']?(https://[^\s\"']+)"
 )
+# Detects the tool_version_for() function definition header.
+_TOOL_VER_FN_START_RE = re.compile(r"^\s*tool_version_for\s*\(\s*\)\s*\{?\s*$")
+# Parses individual case entries: e.g. `    crane)     echo "0.21.5"  ;;`
+_TOOL_VER_FN_ENTRY_RE = re.compile(
+    r"^\s*(?P<tool>[a-zA-Z0-9_-]+)\)\s+echo\s+[\"']?(?P<ver>[^\s\"')]+)[\"']?\s*;;"
+)
+# Detects a version assignment that delegates to tool_version_for, e.g.
+#   version="v$(tool_version_for crane)"
+#   local version=$(tool_version_for yq)
+_TOOL_VER_FOR_REF_RE = re.compile(
+    r"^\s*(?:local\s+)?version=[\"']?(?P<prefix>[^\"'$]*)\$\(tool_version_for\s+"
+    r"(?P<tool>[a-zA-Z0-9_-]+)\s*\)"
+)
+
+
+def _parse_tool_version_for_map(lines: list[str]) -> dict[str, str]:
+    """Return the {tool: version} map from the tool_version_for() function."""
+    in_fn = False
+    result: dict[str, str] = {}
+    for raw in lines:
+        if not in_fn:
+            if _TOOL_VER_FN_START_RE.match(raw):
+                in_fn = True
+            continue
+        # A closing brace ends the function.
+        if raw.strip() == "}":
+            break
+        m = _TOOL_VER_FN_ENTRY_RE.match(raw)
+        if m and m.group("tool") != "*":
+            result[m.group("tool")] = m.group("ver")
+    return result
 
 
 def parse_install_sh(install_sh_path: Path) -> list[Entry]:
@@ -192,6 +223,9 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
 
     text = install_sh_path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
+
+    # Build the tool_version_for map first (used to resolve function-call pins).
+    tool_ver_map = _parse_tool_version_for_map(lines)
 
     # tool_name -> (version, line_number, fn_name) for pinned installs
     pinned: dict[str, tuple[str, int, str]] = {}
@@ -212,9 +246,24 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
             continue
 
         if current_fn:
+            # First check for a literal version assignment.
             m = _VERSION_LINE_RE.match(raw)
             if m and current_fn not in pinned:
                 pinned[current_fn] = (m.group("val"), i, f"install_{current_fn}_linux")
+                continue
+
+            # Also accept `version=$(tool_version_for <tool>)` with optional prefix.
+            m = _TOOL_VER_FOR_REF_RE.match(raw)
+            if m and current_fn not in pinned:
+                ref_tool = m.group("tool")
+                prefix = m.group("prefix") or ""
+                resolved = tool_ver_map.get(ref_tool, "")
+                if resolved:
+                    pinned[current_fn] = (
+                        f"{prefix}{resolved}",
+                        i,
+                        f"install_{current_fn}_linux",
+                    )
                 continue
 
         m = _TOOLS_VAR_RE.match(raw)

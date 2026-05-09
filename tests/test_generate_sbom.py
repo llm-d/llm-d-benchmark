@@ -35,10 +35,19 @@ _INSTALL_SH_FIXTURE = """\
 #!/bin/bash
 # Toy install.sh fragment
 
+tool_version_for() {
+    case "$1" in
+        yq)        echo "v4.52.5" ;;
+        helmfile)  echo "1.4.2"   ;;
+        crane)     echo "0.21.5"  ;;
+        *)         echo ""        ;;
+    esac
+}
+
 tools="curl git helm helmfile yq crane jq"
 
 install_yq_linux() {
-    local version=v4.52.5
+    local version=$(tool_version_for yq)
     curl -sL "https://example/${version}/yq" -o /tmp/yq
 }
 
@@ -48,7 +57,8 @@ install_helmfile_linux() {
 }
 
 install_crane_linux() {
-    local version=v0.20.3
+    local version
+    version="v$(tool_version_for crane)"
     curl -sL "https://example/${version}/crane" -o /tmp/crane
 }
 
@@ -136,11 +146,11 @@ def test_parse_install_sh_pinned_versions(sbom_module, install_sh: Path) -> None
     assert by_name["yq"].pin_type == "version"
     assert "install.sh" in by_name["yq"].location
     assert "install_yq_linux" in by_name["yq"].location
-    # Pin is on the `local version=...` line, not the function header.
+    # Pin is on the `version=$(tool_version_for yq)` line, not the function header.
     assert "line " in by_name["yq"].location
 
     assert by_name["helmfile"].pin == "1.1.3"
-    assert by_name["crane"].pin == "v0.20.3"
+    assert by_name["crane"].pin == "v0.21.5"
 
 
 def test_parse_install_sh_unpinned_marks_system_provided(
