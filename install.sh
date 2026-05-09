@@ -79,7 +79,7 @@ tool_version_for() {
         helmfile)  echo "1.4.2"   ;;
         helm)      echo "v3.16.0" ;;
         oc)        echo "4.16.0"  ;;
-        kustomize) echo "v5.0.0"  ;;
+        kustomize) echo "5.6.0"   ;;
         crane)     echo "0.20.3"  ;;
         *)         echo ""        ;;
     esac
@@ -546,8 +546,10 @@ install_oc_linux() {
 }
 
 install_kustomize_linux() {
+    local version=5.6.0
     # The upstream install_kustomize.sh script is arch-aware (detects GOARCH internally)
-    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+    # Pass the version explicitly so the install is reproducible and pinned.
+    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s -- "${version}"
     sudo mv kustomize /usr/local/bin/
 }
 
