@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-05-06 17:39:38` (UTC)
-- Generated against git ref: `3da85b8644d889ad48f823da422a1825fea86c37`
+- Generated at: `2026-05-09 05:05:34` (UTC)
+- Generated against git ref: `649658e20e82affd3606c1cf79b8cd60bb7d7295`
 
 ## System Tool Dependencies
 
@@ -20,14 +20,14 @@ whatever the host's package manager provides.
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
 | **crane** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [google/go-containerregistry](https://github.com/google/go-containerregistry) |
-| **curl** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [curl/curl](https://github.com/curl/curl) |
+| **curl** | `8.20.0` | version | `install.sh` line 492 (`install_curl_linux`) | [curl/curl](https://github.com/curl/curl) |
 | **git** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [git/git](https://github.com/git/git) |
 | **helm** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [helm/helm](https://github.com/helm/helm) |
-| **helm-diff** | `latest` | plugin (latest) | `install.sh` line 677 (`helm_diff_url`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
-| **helmfile** | `1.1.3` | version | `install.sh` line 499 (`install_helmfile_linux`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
+| **helm-diff** | `latest` | plugin (latest) | `install.sh` line 683 (`helm_diff_url`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
+| **helmfile** | `1.1.3` | version | `install.sh` line 505 (`install_helmfile_linux`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
 | **jq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [jqlang/jq](https://github.com/jqlang/jq) |
 | **kustomize** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
-| **llm-d-planner (git)** | `e50305af90f0812e77e1827f3bc740fe75b76370` | commit SHA | `install.sh` line 769 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
+| **llm-d-planner (git)** | `e50305af90f0812e77e1827f3bc740fe75b76370` | commit SHA | `install.sh` line 775 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
 | **oc** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [openshift/oc](https://github.com/openshift/oc) |
 | **skopeo** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [containers/skopeo](https://github.com/containers/skopeo) |
 | **yq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [mikefarah/yq](https://github.com/mikefarah/yq) |
@@ -45,8 +45,8 @@ OCI registry at generation (and plan) time.
 | **inferencePool** | `v1.4.0` | tag | `config/templates/values/defaults.yaml` line 440 (`chartVersions.inferencePool`) | [kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) |
 | **istioBase** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 434 (`chartVersions.istioBase`) | (unknown) |
 | **istiod** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 435 (`chartVersions.istiod`) | (unknown) |
-| **llmDInfra** | `v1.4.0` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 436 (`chartVersions.llmDInfra`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) (`https://llm-d-incubation.github.io/llm-d-infra/`) |
-| **llmDModelservice** | `v0.4.12` | tag (auto-resolved) | `config/templates/values/defaults.yaml` line 437 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
+| **llmDInfra** | `auto (resolution failed: Unable to resolve chart version for "llmDInfra". Ensure helm is installed and the repository is added, or provide a vali...)` | tag (auto, failed) | `config/templates/values/defaults.yaml` line 436 (`chartVersions.llmDInfra`) | [llm-d-incubation/llm-d-infra](https://github.com/llm-d-incubation/llm-d-infra) (`https://llm-d-incubation.github.io/llm-d-infra/`) |
+| **llmDModelservice** | `auto (resolution failed: Unable to resolve chart version for "llmDModelservice". Ensure helm is installed and the repository is added, or provide...)` | tag (auto, failed) | `config/templates/values/defaults.yaml` line 437 (`chartVersions.llmDModelservice`) | [llm-d-incubation/llm-d-modelservice](https://github.com/llm-d-incubation/llm-d-modelservice) (`https://llm-d-incubation.github.io/llm-d-modelservice/`) |
 | **lws** | `0.8.0` | tag | `config/templates/values/defaults.yaml` line 442 (`chartVersions.lws`) | [kubernetes-sigs/lws](https://github.com/kubernetes-sigs/lws) |
 | **prometheusAdapter** | `5.2.0` | tag | `config/templates/values/defaults.yaml` line 439 (`chartVersions.prometheusAdapter`) | [prometheus-community/helm-charts](https://github.com/prometheus-community/helm-charts) (`https://prometheus-community.github.io/helm-charts`) |
 | **wva** | `0.6.0` | tag | `config/templates/values/defaults.yaml` line 438 (`chartVersions.wva`) | [llm-d/llm-d-workload-variant-autoscaler](https://github.com/llm-d/llm-d-workload-variant-autoscaler) (`oci://ghcr.io/llm-d/workload-variant-autoscaler`) |
@@ -60,7 +60,7 @@ generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **benchmark** | `v0.6.0` | tag | `config/templates/values/defaults.yaml` line 345 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
+| **benchmark** | `v0.6.2` | tag | `config/templates/values/defaults.yaml` line 345 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
 | **inferenceScheduler** | `v0.7.1` | tag | `config/templates/values/defaults.yaml` line 364 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 383 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
 | **routingSidecar** | `v0.7.1` | tag | `config/templates/values/defaults.yaml` line 370 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
@@ -79,6 +79,7 @@ captured in the snapshot table below.
 |---|---|---|---|---|
 | **GitPython** | `(unpinned)` | (unpinned) | `pyproject.toml` line 14 | [GitPython (PyPI)](https://pypi.org/project/gitpython/) |
 | **google-auth** | `(unpinned)` | (unpinned) | `pyproject.toml` line 18 | [google-auth (PyPI)](https://pypi.org/project/google-auth/) |
+| **google-cloud-storage** | `>=2.10.0` | constraint | `pyproject.toml` line 19 | [google-cloud-storage (PyPI)](https://pypi.org/project/google-cloud-storage/) |
 | **huggingface_hub** | `(unpinned)` | (unpinned) | `pyproject.toml` line 15 | [huggingface_hub (PyPI)](https://pypi.org/project/huggingface-hub/) |
 | **Jinja2** | `(unpinned)` | (unpinned) | `pyproject.toml` line 8 | [Jinja2 (PyPI)](https://pypi.org/project/jinja2/) |
 | **kubernetes** | `(unpinned)` | (unpinned) | `pyproject.toml` line 11 | [kubernetes (PyPI)](https://pypi.org/project/kubernetes/) |

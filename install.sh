@@ -75,6 +75,7 @@ esac
 
 tool_version_for() {
     case "$1" in
+        curl)      echo "8.20.0"  ;;
         yq)        echo "v4.52.5" ;;
         helmfile)  echo "1.4.2"   ;;
         helm)      echo "v3.16.0" ;;
@@ -486,6 +487,11 @@ version_gte() {
 # --------------------------------------------------------------------------------
 # Per-tool Linux install helpers - — all now arch-aware via $ARCH_GO / $ARCH_UNAME
 # ---------------------------------------------------------------------------------
+
+install_curl_linux() {
+    local version=8.20.0
+    ${PKG_MGR} curl
+}
 
 install_yq_linux() {
     local version=$(tool_version_for yq)
