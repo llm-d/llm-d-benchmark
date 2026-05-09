@@ -38,7 +38,7 @@ _INSTALL_SH_FIXTURE = """\
 tools="curl git helm helmfile yq crane jq"
 
 install_yq_linux() {
-    local version=v4.52.5
+    local version=v4.53.2
     curl -sL "https://example/${version}/yq" -o /tmp/yq
 }
 
@@ -132,7 +132,7 @@ def test_parse_install_sh_pinned_versions(sbom_module, install_sh: Path) -> None
     entries = sbom_module.parse_install_sh(install_sh)
     by_name = {e.name: e for e in entries}
 
-    assert by_name["yq"].pin == "v4.52.5"
+    assert by_name["yq"].pin == "v4.53.2"
     assert by_name["yq"].pin_type == "version"
     assert "install.sh" in by_name["yq"].location
     assert "install_yq_linux" in by_name["yq"].location
@@ -363,7 +363,7 @@ def test_render_markdown_includes_all_sections(sbom_module) -> None:
 def test_render_markdown_deterministic(sbom_module) -> None:
     args = dict(
         system_tools=[
-            sbom_module.Entry("yq", "v4.52.5", "version", "loc-y", "ups-y"),
+            sbom_module.Entry("yq", "v4.53.2", "version", "loc-y", "ups-y"),
             sbom_module.Entry("crane", "v0.20.3", "version", "loc-c", "ups-c"),
         ],
         py_direct=[],
@@ -383,7 +383,7 @@ def test_render_markdown_deterministic(sbom_module) -> None:
 def test_render_markdown_uses_bold_names_and_backticked_pins(sbom_module) -> None:
     out = sbom_module.render_markdown(
         system_tools=[
-            sbom_module.Entry("yq", "v4.52.5", "version", "`install.sh` line 326", "[mikefarah/yq](http://x)"),
+            sbom_module.Entry("yq", "v4.53.2", "version", "`install.sh` line 326", "[mikefarah/yq](http://x)"),
         ],
         py_direct=[],
         py_installed=[],
@@ -393,7 +393,7 @@ def test_render_markdown_uses_bold_names_and_backticked_pins(sbom_module) -> Non
         generated_at_utc="y",
     )
     assert "**yq**" in out
-    assert "`v4.52.5`" in out
+    assert "`v4.53.2`" in out
     assert "[mikefarah/yq]" in out
 
 
