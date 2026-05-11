@@ -40,14 +40,14 @@ jobs:
   benchmark-fma:
     name: Benchmark - FMA (GKE)
     runs-on: ubuntu-latest
-    needs: build-image
+    needs: [build-image, benchmark-standalone]
     timeout-minutes: 240
 
     env:
       LLMDBENCH_CICD_NS: llmdbenchcicdfns-gke
       LLMDBENCH_CICD_R: llmdbenchcicdr-gke
       LLMDBENCH_CICD_TARGET: cicd/gke-fma
-      LLMDBENCH_CICD_METHOD: fma,standalone
+      LLMDBENCH_CICD_METHOD: fma
       LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdf-gke
       GCP_PROJECT_ID: llm-d-scale
       GKE_CLUSTER_NAME: llm-d-e2e-us-east5
@@ -132,6 +132,7 @@ jobs:
           llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
+
       - name: Teardown (standalone)
         if: always()
         run: |
@@ -159,15 +160,39 @@ jobs:
           echo "=== Events ==="
           kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true
 
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip  >/dev/null 2>&1
+          sudo ./aws/install || sudo ./aws/install --update
+          aws --version
+
+#      - name: Upload results to IBM COS
+#        env:
+#          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#        run: |
+#          aws configure set default.s3.signature_version s3v4
+#          aws s3 cp "$INPUT_DIR" "s3://${{ secrets.COS_BUCKET_NAME }}/$OUTPUT_DIR/" \
+#            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }} || true
+
+      - name: Download standalone results
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-results-gke-standalone
+          path: /tmp/standalone-results
+        continue-on-error: true
+
       - name: Display benchmark results
         if: always()
         run: |
           echo "## Benchmark Results" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           found=0
-          for f in $(find "$LLMDBENCH_WORKSPACE" -path "*/analysis/result.txt" 2>/dev/null | sort); do
+          for f in $(find "$LLMDBENCH_WORKSPACE" /tmp/standalone-results -path "*/analysis/*" \( -name "result.txt" -o -name "summary.txt" \) 2>/dev/null | sort || true); do
             found=1
-            stack_dir=$(basename "$(dirname "$(dirname "$f")")")
+            stack_dir=$(basename "$(dirname "$f")")
             echo "### $stack_dir" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             cat "$f" >> "$GITHUB_STEP_SUMMARY"
@@ -180,11 +205,11 @@ jobs:
         shell: bash
 
       - name: Archive benchmark results as GitHub artifact
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: success() || failure()
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: benchmark-results-gke-fma
-          path: /tmp/llmdbenchcicdf-gke/runner-*/results/
+          path: ${{ env.LLMDBENCH_WORKSPACE }}
           retention-days: 14
 
   benchmark-standalone:
@@ -328,13 +353,13 @@ jobs:
 #          aws s3 cp "$INPUT_DIR" "s3://${{ secrets.COS_BUCKET_NAME }}/$OUTPUT_DIR/" \
 #            --recursive --endpoint-url ${{ secrets.COS_ENDPOINT_URL }} || true
 
-#      - name: Archive benchmark results as GitHub artifact
-#        if: success() || failure()
-#        uses: actions/upload-artifact@v7.0.1
-#        with:
-#          name: ${{ env.OUTPUT_DIR }}
-#          path: ${{ env.INPUT_DIR }}
-#          retention-days: 14
+      - name: Archive benchmark results as GitHub artifact
+        if: success() || failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: benchmark-results-gke-standalone
+          path: ${{ env.LLMDBENCH_WORKSPACE }}
+          retention-days: 14
 
   benchmark-modelservice:
     name: Benchmark - ModelService (GKE)
