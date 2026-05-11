@@ -17,7 +17,7 @@ from llmdbenchmark.run.steps.step_09_collect_results import CollectResultsStep
 from llmdbenchmark.run.steps.step_10_upload_results import UploadResultsStep
 from llmdbenchmark.run.steps.step_11_cleanup_post import RunCleanupPostStep
 from llmdbenchmark.run.steps.step_12_analyze_results import AnalyzeResultsStep
-from llmdbenchmark.executor.step import Phase
+from llmdbenchmark.executor.step import Phase as Phase
 
 
 def get_run_steps() -> list[Step]:
