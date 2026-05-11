@@ -98,7 +98,17 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     analyze_locally: bool = False
     harness_data_access_timeout: int = 120
 
+    # Path to local llm-d repository clone (for kustomize method)
+    llmd_repo_path: str | None = None
+
+    # When True and kustomize is the only deploy method, skip the
+    # heavyweight infra steps (2-5) that are not part of the guide
+    # README.  The README handles its own prerequisites (CRDs,
+    # namespace creation).  Override with --full-infra on the CLI.
+    kustomize_skip_infra: bool = True
+
     # Standup pod deployment timeouts
+    kustomize_deploy_timeout: int = 900
     standalone_deploy_timeout: int = 900
     gateway_deploy_timeout: int = 120
     modelservice_deploy_timeout: int = 1500

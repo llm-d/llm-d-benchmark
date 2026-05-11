@@ -18,6 +18,7 @@ from llmdbenchmark.standup.steps.step_04_model_namespace import ModelNamespaceSt
 from llmdbenchmark.standup.steps.step_05_harness_namespace import HarnessNamespaceStep
 from llmdbenchmark.standup.steps.step_06_fma_deploy import FMADeployStep
 from llmdbenchmark.standup.steps.step_06_standalone_deploy import StandaloneDeployStep
+from llmdbenchmark.standup.steps.step_06_kustomize_deploy import KustomizeDeployStep
 from llmdbenchmark.standup.steps.step_07_deploy_setup import DeploySetupStep
 from llmdbenchmark.standup.steps.step_08_deploy_gaie import DeployGaieStep
 from llmdbenchmark.standup.steps.step_09_deploy_modelservice import (
@@ -35,6 +36,7 @@ def get_standup_steps() -> list[Step]:
         HarnessNamespaceStep(),
         FMADeployStep(),
         StandaloneDeployStep(),
+        KustomizeDeployStep(),
         DeploySetupStep(),
         DeployGaieStep(),
         DeployModelserviceStep(),

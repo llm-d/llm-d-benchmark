@@ -14,7 +14,9 @@ from llmdbenchmark.utilities.endpoint import (
     _normalize_url_prefix,
     _rand_suffix,
     compute_gateway_path_prefix,
+    find_custom_endpoint,
     find_gateway_endpoint,
+    find_kustomize_endpoint,
     find_standalone_endpoint,
     test_model_serving,
 )
@@ -99,6 +101,7 @@ class BaseSmoketest:
         """
         is_standalone = "standalone" in context.deployed_methods
         is_fma = "fma" in context.deployed_methods
+        is_kustomize = "kustomize" in context.deployed_methods
         namespace = context.require_namespace()
 
         inference_port = _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
@@ -110,6 +113,16 @@ class BaseSmoketest:
             )
         elif is_fma:
             return None, "0", False
+        elif is_kustomize:
+            guide_name = _nested_get(plan_config, "kustomize", "guideName") or ""
+            if guide_name:
+                service_ip, _, gateway_port = find_kustomize_endpoint(
+                    cmd, namespace, guide_name,
+                )
+            else:
+                service_ip, _, gateway_port = find_custom_endpoint(
+                    cmd, namespace, "epp",
+                )
         else:
             service_ip, _, gateway_port = find_gateway_endpoint(
                 cmd, namespace, release
@@ -137,6 +150,8 @@ class BaseSmoketest:
         model_name = _nested_get(plan_config, "model", "name") or ""
         model_id_label = plan_config.get("model_id_label", "") or _nested_get(plan_config, "model", "shortName") or ""
         standalone_role = _nested_get(plan_config, "standalone", "role") or "standalone"
+        is_kustomize = "kustomize" in context.deployed_methods
+        guide_name = _nested_get(plan_config, "kustomize", "guideName") or ""
 
         # skip base healh checks for FMA
         if "fma" in context.deployed_methods:
@@ -147,7 +162,9 @@ class BaseSmoketest:
         )
 
         # 1. Check pods running for each configured role
-        if is_standalone:
+        if is_kustomize:
+            roles_to_check = [("decode", "decode")]
+        elif is_standalone:
             roles_to_check = [("standalone", standalone_role)]
         else:
             # Check whichever roles are configured (decode, prefill, or both)
@@ -173,7 +190,10 @@ class BaseSmoketest:
             ))
 
         for pod_type, role_label in roles_to_check:
-            role_selector = f"llm-d.ai/model={model_id_label},llm-d.ai/role={role_label}"
+            if is_kustomize and guide_name:
+                role_selector = f"llm-d.ai/guide={guide_name},llm-d.ai/role={role_label}"
+            else:
+                role_selector = f"llm-d.ai/model={model_id_label},llm-d.ai/role={role_label}"
             context.logger.log_info(
                 f"Checking {pod_type} pod status (selector: {role_selector})..."
             )
@@ -322,7 +342,10 @@ class BaseSmoketest:
         # 5. Test pod IPs directly (use the first role -- decode for ms, standalone for standalone)
         inference_port = _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
         primary_role = roles_to_check[0] if roles_to_check else ("decode", "decode")
-        primary_selector = f"llm-d.ai/model={model_id_label},llm-d.ai/role={primary_role[1]}"
+        if is_kustomize and guide_name:
+            primary_selector = f"llm-d.ai/guide={guide_name},llm-d.ai/role={primary_role[1]}"
+        else:
+            primary_selector = f"llm-d.ai/model={model_id_label},llm-d.ai/role={primary_role[1]}"
         pod_ips_result = cmd.kube(
             "get", "pods", "-l", primary_selector,
             "--namespace", namespace,
@@ -359,8 +382,8 @@ class BaseSmoketest:
                 else:
                     context.logger.log_info(f"Pod {pod_ip} responding (ok)")
 
-        # 6. OpenShift route (only for modelservice -- standalone has no gateway route)
-        if context.is_openshift and not is_standalone:
+        # 6. OpenShift route (only for modelservice -- standalone/kustomize have no gateway route)
+        if context.is_openshift and not is_standalone and not is_kustomize:
             context.logger.log_info("Testing OpenShift route...")
             self._test_openshift_route(
                 cmd, context, namespace, model_name, plan_config,
