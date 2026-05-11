@@ -103,7 +103,13 @@ class KustomizeDeployStep(Step):
             )
 
         if not gaie_version:
-            gaie_version = parsed.variables.get("GAIE_VERSION", "v1.5.0")
+            gaie_version = parsed.variables.get("GAIE_VERSION", "")
+        if not gaie_version:
+            return self._fail(
+                ["GAIE_VERSION not set: specify kustomize.gaieVersion in "
+                 "scenario config or ensure the guide README exports it"],
+                stack_path, "GAIE_VERSION not resolved",
+            )
 
         resolver = GuideVariableResolver(
             guide_name=guide_name,

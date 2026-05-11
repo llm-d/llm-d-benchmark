@@ -1663,7 +1663,7 @@ kustomize:
                       name: triton-cache
 ```
 
-Inject an HF_TOKEN env var for gated models (the secret is auto-created from your `HF_TOKEN` environment variable):
+Inject an HF_TOKEN env var for gated models (e.g. Llama). Set `HF_TOKEN` in your shell environment before running -- the tool auto-creates a `llm-d-hf-token` Kubernetes secret in the namespace. Then add this patch so the pod reads it:
 
 ```yaml
 kustomize:
@@ -1685,6 +1685,8 @@ kustomize:
                           name: llm-d-hf-token
                           key: HF_TOKEN
 ```
+
+Env vars from patches are merged with the guide's existing env vars, not replaced. The container is matched by `name: modelserver`.
 
 Set resource requests:
 

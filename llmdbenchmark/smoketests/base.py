@@ -280,12 +280,20 @@ class BaseSmoketest:
             plan_config, is_standalone, stack_name=stack_path.name,
         )
 
-        # 2. Health check (/health) - skip gracefully when a shared
-        # HTTPRoute deliberately narrows routing to /v1/* (i.e.
-        # rewriteTo != "/"). vLLM's /health endpoint lives at the root,
-        # so a request to {prefix}/health wouldn't match any route rule
-        # and would return 404 regardless of pod health.
-        if url_path_prefix and not self._gateway_routes_health(plan_config):
+        # 2. Health check (/health) - skip when the endpoint doesn't
+        # serve /health directly (EPP proxies /v1/* only; shared
+        # HTTPRoute with rewriteTo narrows to /v1/* paths).
+        if is_kustomize:
+            context.logger.log_info(
+                "Skipping /health probe: EPP proxies inference requests "
+                "(/v1/*) only. /v1/models + direct-pod-IP health check "
+                "still run."
+            )
+            report.add(CheckResult(
+                "health_endpoint_skipped", True,
+                message="/health not served by EPP; relying on /v1/models + direct-pod-IP probe",
+            ))
+        elif url_path_prefix and not self._gateway_routes_health(plan_config):
             context.logger.log_info(
                 f"Skipping /health probe: gateway rewriteTo="
                 f"{(plan_config.get('httpRoute') or {}).get('rewriteTo', '/')!r} "
