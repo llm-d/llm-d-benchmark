@@ -67,7 +67,7 @@ class KustomizeDeployStep(Step):
         accel_backend = kust_config.get("acceleratorBackend", "gpu/vllm")
         monitoring = kust_config.get("monitoring", False)
         overlay_path = kust_config.get("overlayPath", "")
-        patches = kust_config.get("patches", [])
+        patches = list(kust_config.get("patches", []))
         extra_helm_values = kust_config.get("extraHelmValues", [])
         extra_helm_sets = kust_config.get("extraHelmSets", {})
         deploy_timeout = int(
@@ -155,6 +155,7 @@ class KustomizeDeployStep(Step):
                               context=context)
 
         # --- 3. Model Server ---
+        patches = self._inject_env_patches(patches, context)
         modelserver_cmds = parsed.get_commands(CommandPhase.MODELSERVER)
         target_cmd = self._select_modelserver_command(
             modelserver_cmds, accel_backend, resolver,
@@ -407,6 +408,32 @@ class KustomizeDeployStep(Step):
         for k, v in extra_sets.items():
             parts.append(f"--set {k}={v}")
         return " ".join(parts)
+
+    @staticmethod
+    def _inject_env_patches(
+        patches: list[dict],
+        context: ExecutionContext,
+    ) -> list[dict]:
+        import os
+
+        priority_class = os.environ.get("LLMDBENCH_PRIORITY_CLASS", "")
+        if priority_class:
+            context.logger.log_info(
+                f"Injecting priorityClassName={priority_class} "
+                "from LLMDBENCH_PRIORITY_CLASS"
+            )
+            patches.append({"patch": (
+                "apiVersion: apps/v1\n"
+                "kind: Deployment\n"
+                "metadata:\n"
+                "  name: decode\n"
+                "spec:\n"
+                "  template:\n"
+                "    spec:\n"
+                f"      priorityClassName: {priority_class}\n"
+            )})
+
+        return patches
 
     @staticmethod
     def _build_overlay_wrapper(
