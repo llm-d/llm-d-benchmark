@@ -1,49 +1,9 @@
 # OpenShift Container Platform CI/CD Scenario - FMA
-# Two scenarios: a standalone cold-start baseline, then FMA actuation.
-# Both use the nop harness to measure pod startup + TTFT.
+# Variant of cicd/ocp.yaml for Fast Model Actuation (FMA) runs.
+# Uses nop harness since FMA manages its own endpoint discovery.
 
 scenario:
-  # Standalone cold-start baseline (no FMA, no launchers)
-  - name: "ocp-cicd-baseline"
-
-    model:
-      name: facebook/opt-125m
-      shortName: facebook-opt-125m
-      path: models/facebook/opt-125m
-      huggingfaceId: facebook/opt-125m
-
-    affinity:
-      enabled: true
-      nodeSelector:
-        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
-
-    modelservice:
-      enabled: false
-    standalone:
-      enabled: true
-      acceleratorType:
-        labelKey: nvidia.com/gpu.product
-        labelValue: NVIDIA-H100-80GB-HBM3
-    fma:
-      enabled: false
-
-    vllmCommon:
-      priorityClassName: nightly-gpu-critical
-
-    workDir: /tmp/llmdbenchcicd-ocp/
-
-    harness:
-      name: nop
-      experimentProfile: nop.yaml
-      executable: llm-d-benchmark.py
-
-    images:
-      benchmark:
-        repository: ghcr.io/llm-d/llm-d-benchmark
-        tag: nightly
-
-  # FMA actuation benchmark
-  - name: "ocp-cicd-fma"
+  - name: "ocp-cicd"
 
     model:
       name: facebook/opt-125m
@@ -62,7 +22,7 @@ scenario:
       enabled: false
     fma:
       enabled: true
-      iterations: 3
+      iterations: 5
 
     vllmCommon:
       priorityClassName: nightly-gpu-critical
