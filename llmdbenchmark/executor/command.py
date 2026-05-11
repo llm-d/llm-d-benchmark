@@ -329,7 +329,7 @@ class CommandExecutor:
 
         while True:
             elapsed = time.time() - start
-            remaining = max(0, timeout - elapsed)
+            remaining = max(0, timeout - elapsed) # noqa: F841
 
             if elapsed > timeout:
                 self._clear_progress_line(last_status_line)

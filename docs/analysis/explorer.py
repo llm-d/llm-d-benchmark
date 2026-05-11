@@ -958,7 +958,7 @@ def add_benchmark_report_to_df(
             num_gpus += rp['p_tp'] * rp['p_dp'] * rp['p_pp'] * rp['p_replicas']
         if rp['d_replicas']:
             num_gpus += rp['d_tp'] * rp['d_dp'] * rp['d_pp'] * rp['d_replicas']
-    elif rp['is_pd'] == False:
+    elif not rp['is_pd']:
         num_gpus = rp['tp'] * rp['replicas']
     else:
         # Cannot determine number of GPUs
