@@ -1335,6 +1335,113 @@ def import_guidellm(results_file: str, index: int = 0) -> BenchmarkReportV01:
     return load_benchmark_report(br_dict)
 
 
+def import_inference_perf_session(results_file: str) -> BenchmarkReportV01:
+    """Import data from an Inference Perf session lifecycle file as a BenchmarkReportV01.
+
+    Args:
+        results_file (str): Session lifecycle results file to import.
+
+    Returns:
+        BenchmarkReportV01: Imported data.
+    """
+    check_file(results_file)
+
+    results = import_yaml(results_file)
+
+    # Get stage number from metrics filename
+    stage = int(results_file.rsplit("stage_")[-1].split("_", 1)[0])
+
+    # Get environment variables from llm-d-benchmark run as a dict following the
+    # schema of BenchmarkReportV01
+    br_dict = _get_llmd_benchmark_envars()
+    if br_dict:
+        model_name = get_nested(br_dict, ["scenario", "model", "name"])
+    else:
+        model_name = "unknown"
+
+    def _stats(raw: dict | None, units: Units) -> dict | None:
+        if raw is None:
+            return None
+        return {
+            "units": units,
+            "mean": raw.get("mean"),
+            "min": raw.get("min"),
+            "p0p1": raw.get("p0.1"),
+            "p1": raw.get("p1"),
+            "p5": raw.get("p5"),
+            "p10": raw.get("p10"),
+            "p25": raw.get("p25"),
+            "p50": raw.get("median"),
+            "p75": raw.get("p75"),
+            "p90": raw.get("p90"),
+            "p95": raw.get("p95"),
+            "p99": raw.get("p99"),
+            "p99p9": raw.get("p99.9"),
+            "max": raw.get("max"),
+        }
+
+    session_metadata = {
+        "num_sessions": results.get("num_sessions"),
+        "num_sessions_succeeded": results.get("num_sessions_succeeded"),
+        "num_sessions_failed": results.get("num_sessions_failed"),
+        "total_events": results.get("total_events"),
+        "total_events_completed": results.get("total_events_completed"),
+        "total_events_cancelled": results.get("total_events_cancelled"),
+        "sessions_per_second": results.get("sessions_per_second"),
+        "session_duration": _stats(results.get("session_duration_sec"), Units.S),
+        "num_events": _stats(results.get("num_events"), Units.COUNT),
+        "num_events_cancelled": _stats(results.get("num_events_cancelled"), Units.COUNT),
+        "total_input_tokens": _stats(results.get("total_input_tokens"), Units.COUNT),
+        "total_output_tokens": _stats(results.get("total_output_tokens"), Units.COUNT),
+    }
+
+    update_dict(
+        br_dict,
+        {
+            "version": "0.1",
+            "scenario": {
+                "model": {"name": model_name},
+                "load": {
+                    "name": WorkloadGenerator.INFERENCE_PERF,
+                    "metadata": {
+                        "stage": stage,
+                        "file_type": "session_lifecycle",
+                    },
+                },
+            },
+            "metrics": {
+                "time": {
+                    "duration": 0.0,
+                },
+                "requests": {
+                    "total": results.get("total_events", 0),
+                    "failures": results.get("total_events", 0) - results.get("total_events_completed", 0),
+                    "input_length": {
+                        "units": Units.COUNT,
+                        "mean": get_nested(results, ["total_input_tokens", "mean"], 0),
+                    },
+                    "output_length": {
+                        "units": Units.COUNT,
+                        "mean": get_nested(results, ["total_output_tokens", "mean"], 0),
+                    },
+                },
+                "latency": {
+                    "time_to_first_token": {
+                        "units": Units.S,
+                        "mean": 0.0,
+                    },
+                },
+                "throughput": {
+                    "total_tokens_per_sec": 0.0,
+                },
+                "metadata": session_metadata,
+            },
+        },
+    )
+
+    return load_benchmark_report(br_dict)
+
+
 def _get_num_guidellm_runs(results_file: str) -> int:
     """Get the number of benchmark runs in a GuideLLM results JSON file.
 

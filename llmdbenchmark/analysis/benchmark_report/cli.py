@@ -60,6 +60,12 @@ def main() -> None:
         help="Benchmark report version to create.",
     )
     parser.add_argument(
+        "-s",
+        "--session",
+        action=argparse.BooleanOptionalAction,
+        help="Input file is a session lifecycle metrics file.",
+    )
+    parser.add_argument(
         "-j",
         "--json-schema",
         action=argparse.BooleanOptionalAction,
@@ -79,6 +85,7 @@ def main() -> None:
             import_inference_max,
             import_vllm_benchmark,
             import_inference_perf,
+            import_inference_perf_session,
             import_guidellm,
             import_guidellm_all,
         )
@@ -87,6 +94,7 @@ def main() -> None:
             import_inference_max,
             import_vllm_benchmark,
             import_inference_perf,
+            import_inference_perf_session,
             import_guidellm,
             import_guidellm_all,
         )
@@ -102,6 +110,13 @@ def main() -> None:
     if args.output_file and os.path.exists(args.output_file) and not args.force:
         sys.stderr.write(f"Output file already exists: {args.output_file}\n")
         sys.exit(1)
+
+    if args.session:
+        if args.output_file:
+            import_inference_perf_session(args.results_file).export_yaml(args.output_file)
+        else:
+            print(import_inference_perf_session(args.results_file).get_yaml_str())
+        sys.exit(0)
 
     match args.workload_generator:
         case WorkloadGenerator.GUIDELLM:

@@ -162,6 +162,10 @@ def _convert_to_benchmark_report(
     return _convert_via_cli(result_file, output_file, writer_name, br_version)
 
 
+def _is_session_lifecycle_file(result_file: Path) -> bool:
+    return result_file.name.endswith("_session_lifecycle_metrics.json")
+
+
 def _convert_via_api(
     result_file: Path,
     output_file: Path,
@@ -173,6 +177,7 @@ def _convert_via_api(
         if br_version == "0.1":
             from llmdbenchmark.analysis.benchmark_report.native_to_br0_1 import (
                 import_inference_perf,
+                import_inference_perf_session,
                 import_guidellm,
                 import_vllm_benchmark,
                 import_inference_max,
@@ -180,6 +185,7 @@ def _convert_via_api(
         elif br_version == "0.2":
             from llmdbenchmark.analysis.benchmark_report.native_to_br0_2 import (
                 import_inference_perf,
+                import_inference_perf_session,
                 import_guidellm,
                 import_vllm_benchmark,
                 import_inference_max,
@@ -187,16 +193,18 @@ def _convert_via_api(
         else:
             return f"Unsupported BR version: {br_version}"
 
-        converters = {
-            "inference-perf": import_inference_perf,
-            "guidellm": import_guidellm,
-            "vllm-benchmark": import_vllm_benchmark,
-            "inferencemax": import_inference_max,
-        }
-
-        convert_fn = converters.get(writer_name)
-        if not convert_fn:
-            return f"No API converter for writer '{writer_name}'"
+        if writer_name == "inference-perf" and _is_session_lifecycle_file(result_file):
+            convert_fn = import_inference_perf_session
+        else:
+            converters = {
+                "inference-perf": import_inference_perf,
+                "guidellm": import_guidellm,
+                "vllm-benchmark": import_vllm_benchmark,
+                "inferencemax": import_inference_max,
+            }
+            convert_fn = converters.get(writer_name)
+            if not convert_fn:
+                return f"No API converter for writer '{writer_name}'"
 
         br = convert_fn(str(result_file))
         br.export_yaml(str(output_file))
@@ -214,14 +222,12 @@ def _convert_via_cli(
 ) -> str | None:
     """Fallback: call the ``benchmark-report`` CLI."""
     try:
+        cmd = ["benchmark-report", str(result_file), "-b", br_version, "-w", writer_name]
+        if writer_name == "inference-perf" and _is_session_lifecycle_file(result_file):
+            cmd.append("-s")
+        cmd.append(str(output_file))
         result = subprocess.run(
-            [
-                "benchmark-report",
-                str(result_file),
-                "-b", br_version,
-                "-w", writer_name,
-                str(output_file),
-            ],
+            cmd,
             capture_output=True,
             text=True,
             timeout=120,
