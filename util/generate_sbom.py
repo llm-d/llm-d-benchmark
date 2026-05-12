@@ -189,8 +189,13 @@ _TOOL_VERSION_FOR_ENTRY_RE = re.compile(
     r"""^\s*(?P<tool>[a-zA-Z0-9_-]+)\)\s+echo\s+(?P<q>[\"']?)(?P<ver>[^\s\"']+)(?P=q)\s*;;\s*$"""
 )
 # Matches version lines that delegate to tool_version_for, e.g.:
-#   local version=$(tool_version_for yq)
-#   version="v$(tool_version_for crane)"
+#   local version=$(tool_version_for yq)          -- no prefix, version string
+#                                                    already includes any 'v'
+#   version="v$(tool_version_for crane)"           -- literal 'v' prefix prepended
+#                                                    before the raw version string
+# The optional [vV] prefix group captures any literal character prepended to the
+# substitution result inside the assignment (case-insensitive for robustness, but
+# in practice always lowercase 'v').
 _TOOL_VERSION_FOR_REF_RE = re.compile(
     r"""^\s*(?:local\s+)?version=[\"']?(?P<prefix>[vV]?)\$\(tool_version_for\s+(?P<tool>[a-zA-Z0-9_-]+)\)[\"']?\s*$"""
 )
@@ -230,6 +235,8 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
         # Detect entry into the tool_version_for() function.
         if _TOOL_VERSION_FOR_FN_RE.match(raw):
             in_tool_version_for = True
+            # Reset current_fn so version lines inside tool_version_for() are
+            # not accidentally attributed to a previous install_*_linux function.
             current_fn = None
             continue
 
