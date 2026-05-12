@@ -182,19 +182,30 @@ _HELM_DIFF_RE = re.compile(
 )
 # Matches a case entry inside tool_version_for():
 #   <tool>)   echo "vX.Y.Z" ;;
+# The `|` and `;` in the character class exclude shell metacharacters that
+# cannot appear in version strings, preventing partial matches against lines
+# that continue with a pipe or compound command.
 _TOOL_VER_FOR_ENTRY_RE = re.compile(
     r"""^\s+(?P<tool>[a-z][a-z0-9_-]*)\)\s+echo\s+[\"']?(?P<ver>[^\s\"'|;]+)[\"']?\s*;;\s*$"""
 )
-# Matches version lines that delegate to tool_version_for, e.g.:
-#   local version=$(tool_version_for yq)
-#   local version="v$(tool_version_for crane)"
+# Matches version assignment lines that delegate to tool_version_for(), e.g.:
+#   local version=$(tool_version_for yq)          # no prefix, v already in value
+#   local version="v$(tool_version_for crane)"    # explicit v prefix, quotes optional
+# The optional [\"']? handles both quoted and unquoted assignments; we only
+# parse install.sh which is authored by the project, so mismatched quotes are
+# not expected.
 _VERSION_TOOL_FOR_REF_RE = re.compile(
     r"""^\s*(?:local\s+)?version=[\"']?(?P<prefix>v?)\$\(tool_version_for\s+(?P<tool>[a-z0-9_-]+)\)[\"']?\s*$"""
 )
 
 
 def _parse_tool_version_for_map(lines: list[str]) -> dict[str, str]:
-    """Return the tool->version mapping from install.sh's tool_version_for() function."""
+    """Return the tool->version mapping from install.sh's tool_version_for() function.
+
+    Handles both ``tool_version_for() {`` (brace on same line) and
+    ``tool_version_for()`` followed by ``{`` on the next line, which is the
+    standard Bash style used in install.sh.  Stops at the closing ``}``.
+    """
     in_fn = False
     result: dict[str, str] = {}
     for raw in lines:
