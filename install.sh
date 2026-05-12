@@ -79,7 +79,7 @@ tool_version_for() {
         helmfile)  echo "1.4.2"   ;;
         helm)      echo "v3.16.0" ;;
         oc)        echo "4.16.0"  ;;
-        kustomize) echo "v5.0.0"  ;;
+        kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.20.3"  ;;
         *)         echo ""        ;;
     esac
@@ -546,8 +546,10 @@ install_oc_linux() {
 }
 
 install_kustomize_linux() {
+    # literal version required so the SBOM generator can detect the pin
+    local version=5.8.1
     # The upstream install_kustomize.sh script is arch-aware (detects GOARCH internally)
-    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash -s -- "${version}"
     sudo mv kustomize /usr/local/bin/
 }
 
