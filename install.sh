@@ -81,6 +81,7 @@ tool_version_for() {
         oc)        echo "4.16.0"  ;;
         kustomize) echo "v5.0.0"  ;;
         crane)     echo "0.20.3"  ;;
+        jq)        echo "1.8.1"   ;;
         *)         echo ""        ;;
     esac
 }
@@ -459,7 +460,7 @@ tool_version() {
         oc)         oc version --client 2>&1 | head -1 | awk '{print $NF}' ;;
         helmfile)   helmfile --version 2>&1 | awk '{print $NF}' ;;
         kustomize)  kustomize version 2>&1 | head -1 ;;
-        jq)         jq --version 2>&1 ;;
+        jq)         jq --version 2>&1 | sed 's/^jq-//' ;;
         yq)         yq --version 2>&1 | awk '{print $NF}' ;;
         skopeo)     skopeo --version 2>&1 | awk '{print $NF}' ;;
         crane)      crane version 2>&1 | tr -d '\n' ;;
@@ -575,6 +576,15 @@ install_crane_linux() {
 install_skopeo_linux() {
     # skopeo is widely available in distro package managers
     ${PKG_MGR} skopeo || true
+}
+
+install_jq_linux() {
+    local version=1.8.1
+    local binary="jq-linux-${ARCH_GO}"
+    curl -sL "https://github.com/jqlang/jq/releases/download/jq-${version}/${binary}" \
+        -o "/tmp/${binary}"
+    chmod +x "/tmp/${binary}"
+    sudo cp -f "/tmp/${binary}" /usr/local/bin/jq
 }
 
 # ---------------------------------------------------------------------------

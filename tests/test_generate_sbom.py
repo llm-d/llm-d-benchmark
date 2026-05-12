@@ -52,6 +52,12 @@ install_crane_linux() {
     curl -sL "https://example/${version}/crane" -o /tmp/crane
 }
 
+install_jq_linux() {
+    local version=1.8.1
+    curl -sL "https://github.com/jqlang/jq/releases/download/jq-${version}/jq-linux-amd64" \
+        -o /tmp/jq
+}
+
 helm_diff_url="https://github.com/databus23/helm-diff"
 
 PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
@@ -148,9 +154,17 @@ def test_parse_install_sh_unpinned_marks_system_provided(
 ) -> None:
     entries = sbom_module.parse_install_sh(install_sh)
     by_name = {e.name: e for e in entries}
-    assert by_name["jq"].pin == "system-provided"
-    assert by_name["jq"].pin_type == "system-provided"
-    assert "command -v" in by_name["jq"].location
+    assert by_name["git"].pin == "system-provided"
+    assert by_name["git"].pin_type == "system-provided"
+    assert "command -v" in by_name["git"].location
+
+
+def test_parse_install_sh_jq_pinned(sbom_module, install_sh: Path) -> None:
+    entries = sbom_module.parse_install_sh(install_sh)
+    by_name = {e.name: e for e in entries}
+    assert by_name["jq"].pin == "1.8.1"
+    assert by_name["jq"].pin_type == "version"
+    assert "install_jq_linux" in by_name["jq"].location
 
 
 def test_parse_install_sh_planner_commit(sbom_module, install_sh: Path) -> None:
