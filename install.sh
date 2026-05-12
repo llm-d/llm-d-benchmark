@@ -77,7 +77,7 @@ tool_version_for() {
     case "$1" in
         yq)        echo "v4.52.5" ;;
         helmfile)  echo "1.4.2"   ;;
-        helm)      echo "v3.16.0" ;;
+        helm)      echo "v4.1.4"   ;;
         oc)        echo "4.16.0"  ;;
         kustomize) echo "v5.0.0"  ;;
         crane)     echo "0.20.3"  ;;
@@ -515,8 +515,9 @@ install_helmfile_linux() {
 }
 
 install_helm_linux() {
-    # The official get-helm-3 script is arch-aware
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash \
+    local version=v4.1.4
+    # The official get-helm-3 script is arch-aware and supports DESIRED_VERSION
+    DESIRED_VERSION="${version}" curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash \
         || { echo "ERROR: Failed to install Helm"; exit 1; }
     helm version --short || { echo "ERROR: Helm installation verification failed"; exit 1; }
 }
