@@ -766,7 +766,7 @@ fi
 # ---------------------------------------------------------------------------
 # 2. Install planner (from llm-d-planner)
 # ---------------------------------------------------------------------------
-PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@e50305af90f0812e77e1827f3bc740fe75b76370"
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@4e11faaab6c9521b7d55a892364b3822da5c817e"
 
 if grep -q "planner is already installed." "$dependencies_checked_file" 2>/dev/null; then
     print_pkg planner ""
