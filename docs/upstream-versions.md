@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-05-12 05:13:32` (UTC)
-- Generated against git ref: `be9e225b0dcc5b00a7b008c48aeaf60fb5817e50`
+- Generated at: `2026-05-12 05:19:15` (UTC)
+- Generated against git ref: `7b81cd67ecbb144786cc59b13b114942e6be5018`
 
 ## System Tool Dependencies
 
@@ -30,7 +30,7 @@ whatever the host's package manager provides.
 | **llm-d-planner (git)** | `e50305af90f0812e77e1827f3bc740fe75b76370` | commit SHA | `install.sh` line 768 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
 | **oc** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [openshift/oc](https://github.com/openshift/oc) |
 | **skopeo** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [containers/skopeo](https://github.com/containers/skopeo) |
-| **yq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [mikefarah/yq](https://github.com/mikefarah/yq) |
+| **yq** | `v4.52.5` | version | `install.sh` line 491 (`install_yq_linux`) | [mikefarah/yq](https://github.com/mikefarah/yq) |
 
 
 ## Helm Chart Dependencies

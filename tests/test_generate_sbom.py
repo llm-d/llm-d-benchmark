@@ -183,6 +183,65 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
 
 
+# Fixture that exercises tool_version_for() reference resolution.
+_INSTALL_SH_TOOL_VER_FOR_FIXTURE = """\
+#!/bin/bash
+
+tool_version_for() {
+    case "$1" in
+        crane)     echo "0.21.5"  ;;
+        yq)        echo "v4.52.5" ;;
+        *)         echo ""        ;;
+    esac
+}
+
+tools="crane yq jq"
+
+install_crane_linux() {
+    local version="v$(tool_version_for crane)"
+    curl -sL "https://example/${version}/crane" -o /tmp/crane
+}
+
+install_yq_linux() {
+    local version=$(tool_version_for yq)
+    curl -sL "https://example/${version}/yq" -o /tmp/yq
+}
+
+helm_diff_url="https://github.com/databus23/helm-diff"
+
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
+"""
+
+
+@pytest.fixture
+def install_sh_tool_ver_for(tmp_path: Path) -> Path:
+    p = tmp_path / "install.sh"
+    p.write_text(_INSTALL_SH_TOOL_VER_FOR_FIXTURE, encoding="utf-8")
+    return p
+
+
+def test_parse_install_sh_tool_version_for_ref_with_prefix(
+    sbom_module, install_sh_tool_ver_for: Path
+) -> None:
+    """version="v$(tool_version_for crane)" should resolve to v0.21.5."""
+    entries = sbom_module.parse_install_sh(install_sh_tool_ver_for)
+    by_name = {e.name: e for e in entries}
+    assert by_name["crane"].pin == "v0.21.5"
+    assert by_name["crane"].pin_type == "version"
+    assert "install_crane_linux" in by_name["crane"].location
+
+
+def test_parse_install_sh_tool_version_for_ref_no_prefix(
+    sbom_module, install_sh_tool_ver_for: Path
+) -> None:
+    """local version=$(tool_version_for yq) should resolve to v4.52.5 (v already in the value)."""
+    entries = sbom_module.parse_install_sh(install_sh_tool_ver_for)
+    by_name = {e.name: e for e in entries}
+    assert by_name["yq"].pin == "v4.52.5"
+    assert by_name["yq"].pin_type == "version"
+    assert "install_yq_linux" in by_name["yq"].location
+
+
 # --------------------------------------------------------------------------- #
 # pyproject.toml parser (tracks line numbers)
 # --------------------------------------------------------------------------- #

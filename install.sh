@@ -552,7 +552,7 @@ install_kustomize_linux() {
 }
 
 install_crane_linux() {
-    local version=v0.21.5
+    local version="v$(tool_version_for crane)"
     # go-containerregistry release tarballs use Go arch names (X86_64 capitalised)
     local go_arch_cap
     case "$ARCH_GO" in
