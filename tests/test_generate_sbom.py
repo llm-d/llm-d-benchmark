@@ -57,6 +57,42 @@ helm_diff_url="https://github.com/databus23/helm-diff"
 PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
 """
 
+# Fixture that mirrors the real install.sh pattern: versions are stored in
+# tool_version_for() and referenced via $(tool_version_for TOOL).
+_INSTALL_SH_TOOL_VERSION_FOR_FIXTURE = """\
+#!/bin/bash
+# Toy install.sh fragment using tool_version_for()
+
+tool_version_for() {
+    case "$1" in
+        yq)        echo "v4.53.2" ;;
+        crane)     echo "0.20.3"  ;;
+        *)         echo ""        ;;
+    esac
+}
+
+tools="curl git helmfile yq crane jq"
+
+install_yq_linux() {
+    local version=$(tool_version_for yq)
+    curl -sL "https://example/${version}/yq" -o /tmp/yq
+}
+
+install_crane_linux() {
+    version="v$(tool_version_for crane)"
+    curl -sL "https://example/${version}/crane" -o /tmp/crane
+}
+
+install_helmfile_linux() {
+    local version=1.1.3
+    curl -sL "https://example/v${version}/helmfile" -o /tmp/helmfile
+}
+
+helm_diff_url="https://github.com/databus23/helm-diff"
+
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefcafe"
+"""
+
 
 _DEFAULTS_YAML_FIXTURE = """\
 images:
@@ -106,6 +142,14 @@ dependencies = [
 def install_sh(tmp_path: Path) -> Path:
     p = tmp_path / "install.sh"
     p.write_text(_INSTALL_SH_FIXTURE, encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def install_sh_tvf(tmp_path: Path) -> Path:
+    """Fixture using tool_version_for() indirection, as in the real install.sh."""
+    p = tmp_path / "install.sh"
+    p.write_text(_INSTALL_SH_TOOL_VERSION_FOR_FIXTURE, encoding="utf-8")
     return p
 
 
@@ -181,6 +225,44 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/mikefarah/yq" in by_name["yq"].upstream
     assert "github.com/helmfile/helmfile" in by_name["helmfile"].upstream
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
+
+
+# --------------------------------------------------------------------------- #
+# install.sh parser — tool_version_for() indirection
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_install_sh_tvf_yq_resolved(sbom_module, install_sh_tvf: Path) -> None:
+    """Versions delegated to tool_version_for() must be resolved correctly."""
+    entries = sbom_module.parse_install_sh(install_sh_tvf)
+    by_name = {e.name: e for e in entries}
+
+    assert by_name["yq"].pin == "v4.53.2"
+    assert by_name["yq"].pin_type == "version"
+    assert "install.sh" in by_name["yq"].location
+    assert "tool_version_for" in by_name["yq"].location
+    assert "line " in by_name["yq"].location
+
+
+def test_parse_install_sh_tvf_crane_v_prefix(sbom_module, install_sh_tvf: Path) -> None:
+    """version=\"v$(tool_version_for crane)\" must prepend the 'v' prefix."""
+    entries = sbom_module.parse_install_sh(install_sh_tvf)
+    by_name = {e.name: e for e in entries}
+
+    assert by_name["crane"].pin == "v0.20.3"
+    assert by_name["crane"].pin_type == "version"
+    assert "tool_version_for" in by_name["crane"].location
+
+
+def test_parse_install_sh_tvf_literal_version_still_works(
+    sbom_module, install_sh_tvf: Path,
+) -> None:
+    """Literal local version= pins coexist with tool_version_for entries."""
+    entries = sbom_module.parse_install_sh(install_sh_tvf)
+    by_name = {e.name: e for e in entries}
+
+    assert by_name["helmfile"].pin == "1.1.3"
+    assert "install_helmfile_linux" in by_name["helmfile"].location
 
 
 # --------------------------------------------------------------------------- #
