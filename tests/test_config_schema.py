@@ -139,10 +139,10 @@ class TestTypoDetection:
         )
 
     def test_model_typo_caught(self, defaults_copy: dict) -> None:
-        defaults_copy["model"]["naem"] = "test"
+        defaults_copy["model"]["name"] = "test"
         warnings = validate_config(defaults_copy)
-        assert any("naem" in w for w in warnings), (
-            f"Expected 'naem' typo to be caught, got: {warnings}"
+        assert any("name" in w for w in warnings), (
+            f"Expected 'name' typo to be caught, got: {warnings}"
         )
 
     def test_vllm_common_typo_caught(self, defaults_copy: dict) -> None:
@@ -153,17 +153,17 @@ class TestTypoDetection:
         )
 
     def test_harness_typo_caught(self, defaults_copy: dict) -> None:
-        defaults_copy["harness"]["waitTimout"] = 3600
+        defaults_copy["harness"]["waitTimeout"] = 3600
         warnings = validate_config(defaults_copy)
-        assert any("waitTimout" in w for w in warnings), (
-            f"Expected 'waitTimout' typo to be caught, got: {warnings}"
+        assert any("waitTimeout" in w for w in warnings), (
+            f"Expected 'waitTimeout' typo to be caught, got: {warnings}"
         )
 
     def test_prefill_vllm_typo_caught(self, defaults_copy: dict) -> None:
-        defaults_copy["prefill"]["vllm"]["addtionalFlags"] = []
+        defaults_copy["prefill"]["vllm"]["additionalFlags"] = []
         warnings = validate_config(defaults_copy)
-        assert any("addtionalFlags" in w for w in warnings), (
-            f"Expected 'addtionalFlags' typo to be caught, got: {warnings}"
+        assert any("additionalFlags" in w for w in warnings), (
+            f"Expected 'additionalFlags' typo to be caught, got: {warnings}"
         )
 
 
@@ -204,7 +204,7 @@ class TestNonBlocking:
         assert isinstance(result, list)
 
     def test_returns_list_on_invalid(self, defaults_copy: dict) -> None:
-        defaults_copy["model"]["naem"] = "bad"
+        defaults_copy["model"]["name"] = "bad"
         result = validate_config(defaults_copy)
         assert isinstance(result, list)
         assert len(result) > 0

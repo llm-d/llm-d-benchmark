@@ -28,7 +28,7 @@ def generate_per_request_plots(
 
     Args:
         results_dir: Directory containing per_request_lifecycle_metrics.json.
-        output_dir: Where to write PNGs (default: results_dir/analysis/distributions).
+        output_dir: Where to write ONGs (default: results_dir/analysis/distributions).
         context: Optional execution context for logging.
 
     Returns:
