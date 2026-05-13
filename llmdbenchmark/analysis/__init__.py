@@ -129,6 +129,10 @@ def run_analysis(
     # --- 5. Generate per-request distribution plots ---
     _run_per_request_plots(results_dir, context)
 
+    # --- 6. Generate session lifecycle plots (inference-perf only) ---
+    if harness_name == "inference-perf":
+        _run_session_plots(results_dir, context)
+
     if errors:
         return f"Conversion errors: {'; '.join(errors)}"
     return None
@@ -408,6 +412,115 @@ def _run_per_request_plots(
             _log(context, f"Generated {count} per-request distribution plot(s)")
     except Exception as exc:
         _log(context, f"Per-request plot generation failed: {exc}", warning=True)
+
+
+# ---------------------------------------------------------------------------
+# Session lifecycle plot generation
+# ---------------------------------------------------------------------------
+
+def _run_session_plots(
+    results_dir: Path,
+    context: ExecutionContext | None,
+) -> None:
+    """Generate bar charts for session lifecycle metrics from benchmark report v0.2 files.
+
+    Reads all ``benchmark_report_v0.2,_*_session_lifecycle_metrics.json.yaml``
+    files in results_dir and produces bar charts in ``analysis/session/``.
+    """
+    try:
+        import yaml as _yaml
+    except ImportError:
+        _log(context, "PyYAML not available -- skipping session plots")
+        return
+
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import numpy as np
+    except ImportError:
+        _log(context, "matplotlib not available -- skipping session plots")
+        return
+
+    session_br_files = sorted(
+        results_dir.glob("benchmark_report_v0.2,_*_session_lifecycle_metrics.json.yaml")
+    )
+    if not session_br_files:
+        return
+
+    from llmdbenchmark.analysis.cross_treatment import SESSION_METRICS_OF_INTEREST, deep_get
+
+    # Load all stages into rows
+    rows: list[dict] = []
+    for br_file in session_br_files:
+        try:
+            with open(br_file, encoding="utf-8") as f:
+                report = _yaml.safe_load(f)
+            if not report:
+                continue
+        except Exception:
+            continue
+
+        row: dict = {"stage_file": br_file.name}
+        for dotted_path, col_name in SESSION_METRICS_OF_INTEREST:
+            row[col_name] = deep_get(report, dotted_path)
+        rows.append(row)
+
+    if not rows:
+        return
+
+    out_dir = results_dir / "analysis" / "session"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # (column_name, title, unit)
+    plot_specs = [
+        ("session_rate_qps", "Session Rate", "sessions/s"),
+        ("session_duration_mean_s", "Session Duration (Mean)", "seconds"),
+        ("session_duration_p99_s", "Session Duration P99", "seconds"),
+        ("events_per_session_mean", "Events per Session (Mean)", "count"),
+        ("events_cancelled_per_session_mean", "Cancelled Events per Session (Mean)", "count"),
+        ("output_tokens_per_session_mean", "Output Tokens per Session (Mean)", "tokens"),
+        ("failed_sessions", "Failed Sessions", "count"),
+    ]
+
+    bar_color = "#3498db"
+    generated = 0
+
+    stage_labels = [r["stage_file"].replace("benchmark_report_v0.2,_", "").replace("_session_lifecycle_metrics.json.yaml", "") for r in rows]
+
+    for col_name, title, unit in plot_specs:
+        values = [r.get(col_name) for r in rows]
+        if all(v is None for v in values):
+            continue
+        values_plot = [float(v) if v is not None else float("nan") for v in values]
+
+        fig, ax = plt.subplots(figsize=(max(6, len(rows) * 1.5), 5))
+        x_pos = range(len(rows))
+        bars = ax.bar(x_pos, values_plot, color=bar_color, alpha=0.85)
+
+        for bar, val in zip(bars, values_plot):
+            if np.isnan(val):
+                continue
+            text = f"{val:.4f}" if val < 10 else f"{val:.1f}"
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height(),
+                text, ha="center", va="bottom", fontsize=8, fontweight="bold",
+            )
+
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(stage_labels, rotation=30, ha="right", fontsize=9)
+        ax.set_ylabel(unit)
+        ax.set_title(title)
+        ax.grid(axis="y", alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig(str(out_dir / f"session_{col_name}.png"), dpi=150)
+        plt.close()
+        generated += 1
+
+    if generated:
+        _log(context, f"Generated {generated} session plot(s) in {out_dir}")
 
 
 # ---------------------------------------------------------------------------

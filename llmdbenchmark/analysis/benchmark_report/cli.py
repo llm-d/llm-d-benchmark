@@ -62,7 +62,7 @@ def main() -> None:
     parser.add_argument(
         "-s",
         "--session",
-        action=argparse.BooleanOptionalAction,
+        action="store_true",
         help="Input file is a session lifecycle metrics file.",
     )
     parser.add_argument(

@@ -1112,7 +1112,10 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
     results = import_yaml(results_file)
 
     # Get stage number from metrics filename
-    stage = int(results_file.rsplit("stage_")[-1].split("_", 1)[0])
+    try:
+        stage = int(results_file.rsplit("stage_")[-1].split("_", 1)[0])
+    except (ValueError, IndexError):
+        stage = 0
 
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReportV02
@@ -1934,7 +1937,10 @@ def import_inference_perf_session(results_file: str) -> BenchmarkReportV02:
     results = import_yaml(results_file)
 
     # Get stage number from metrics filename
-    stage = int(results_file.rsplit("stage_")[-1].split("_", 1)[0])
+    try:
+        stage = int(results_file.rsplit("stage_")[-1].split("_", 1)[0])
+    except (ValueError, IndexError):
+        stage = 0
 
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReportV02

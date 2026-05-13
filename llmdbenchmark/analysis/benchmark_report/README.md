@@ -32,7 +32,29 @@ The workload details under `scenario.load` follow the same methodology as compon
 
 ### `results` Field
 
-The `results` field contains outputs from a benchmarking experiment. This may include any one of request-level performance metrics, observability data, stack component health, or profiling.
+The `results` field contains outputs from a benchmarking experiment. This may include any one of request-level performance metrics, session-level performance metrics, observability data, stack component health, or profiling.
+
+#### `results.request_performance`
+
+Aggregate statistics for individual inference requests: latencies (TTFT, TPOT, ITL, E2E), throughput (input/output/total token rates, request rate), and request counts.
+
+#### `results.session_performance`
+
+Session-level statistics for multi-turn workloads. Populated from `*_session_lifecycle_metrics.json` files produced by `inference-perf` when multi-turn sessions are enabled. The `session_performance.sessions` object contains:
+
+| Field | Description |
+|---|---|
+| `total` | Total number of sessions run |
+| `succeeded` / `failed` | Session outcome counts |
+| `total_events` / `total_events_completed` / `total_events_cancelled` | Event (per-turn request) counts |
+| `session_rate` | Rate of session completions per second (`Statistics`) |
+| `session_duration` | Distribution of session wall-clock durations in seconds (`Statistics`) |
+| `events_per_session` | Distribution of event counts per session (`Statistics`) |
+| `events_cancelled_per_session` | Distribution of cancelled event counts per session (`Statistics`) |
+| `input_tokens_per_session` | Distribution of total input tokens per session (`Statistics`) |
+| `output_tokens_per_session` | Distribution of total output tokens per session (`Statistics`) |
+
+A `session_performance` report is generated alongside the standard `request_performance` report for each stage that has a corresponding session lifecycle file. The `scenario.load.standardized.stage` field identifies which stage the report covers, and `scenario.load.standardized.multi_turn.enabled` is set to `true`.
 
 ## v0.1 Format Description
 
@@ -165,4 +187,16 @@ print(br.get_yaml_str())
 
 ### Transforming harness native formats to a benchmark report
 
-The native formats returned by different harnesses may be converted to a benchmark report using functions in [native_to_br0_2.py](native_to_br0_2.py), or using the CLI defined in `cli.py`. This CLI may be executed with `python -m benchmark_report.cli ...` at the root of ths repository, and can import native results data of a harness and print to `stdout` a benchmark report, or save a report to file if a second argument is provided.
+The native formats returned by different harnesses may be converted to a benchmark report using functions in [native_to_br0_2.py](native_to_br0_2.py), or using the CLI defined in `cli.py`. This CLI may be executed with `python -m benchmark_report.cli ...` at the root of this repository, and can import native results data of a harness and print to `stdout` a benchmark report, or save a report to file if a second argument is provided.
+
+For `inference-perf` session lifecycle files (`*_session_lifecycle_metrics.json`), pass the `-s` / `--session` flag:
+
+```bash
+# Print to stdout
+benchmark-report stage_0_session_lifecycle_metrics.json -w inference-perf -s
+
+# Save to file
+benchmark-report stage_0_session_lifecycle_metrics.json -w inference-perf -s benchmark_report_session.yaml
+```
+
+The `-s` flag selects the `import_inference_perf_session` converter, which populates `results.session_performance` instead of `results.request_performance`. The `inference-perf-analyze_results.sh` script detects `*_session_lifecycle_metrics.json` files automatically and passes `-s` without manual intervention.
