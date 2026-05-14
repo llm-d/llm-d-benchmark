@@ -573,8 +573,16 @@ install_crane_linux() {
 }
 
 install_skopeo_linux() {
-    # skopeo is widely available in distro package managers
-    ${PKG_MGR} skopeo || true
+    local version=1.14.6
+    local pkg="skopeo-linux-${ARCH_GO}"
+    if curl -sfL "https://github.com/lework/skopeo-binary/releases/download/v${version}/${pkg}" \
+            -o "/tmp/${pkg}"; then
+        chmod +x "/tmp/${pkg}"
+        sudo cp -f "/tmp/${pkg}" /usr/local/bin/skopeo
+    else
+        echo "  Pre-built binary for skopeo ${version} not available; falling back to package manager"
+        ${PKG_MGR} skopeo || true
+    fi
 }
 
 # ---------------------------------------------------------------------------
