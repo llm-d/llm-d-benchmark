@@ -552,6 +552,8 @@ install_kustomize_linux() {
 }
 
 install_crane_linux() {
+    # Version is hardcoded here (not via tool_version_for) so the SBOM generator
+    # regex can detect the pin; keep in sync with tool_version_for above.
     local version=0.21.5
     # go-containerregistry release tarballs use Go arch names (X86_64 capitalised)
     local go_arch_cap
