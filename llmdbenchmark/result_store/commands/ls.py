@@ -2,7 +2,6 @@
 
 import sys
 import fnmatch
-from pathlib import Path
 from llmdbenchmark.result_store.config import ConfigManager
 from llmdbenchmark.result_store.utils import color_pad, parse_report_path
 from llmdbenchmark.result_store.commands import register_command

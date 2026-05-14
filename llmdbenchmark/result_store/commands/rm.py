@@ -1,6 +1,5 @@
 """Command to unstage tracked benchmark runs."""
 
-import sys
 import fnmatch
 from pathlib import Path
 from llmdbenchmark.result_store.workspace import WorkspaceManager

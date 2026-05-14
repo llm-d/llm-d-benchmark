@@ -2,7 +2,6 @@
 Handles self-registration of commands to avoid central mapping.
 """
 
-import os
 import importlib
 from pathlib import Path
 

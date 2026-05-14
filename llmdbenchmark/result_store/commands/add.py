@@ -5,7 +5,6 @@ import fnmatch
 from pathlib import Path
 from llmdbenchmark.result_store.store import StoreManager, StoreNotFound
 from llmdbenchmark.result_store.workspace import WorkspaceManager
-from llmdbenchmark.result_store.utils import color_pad
 from llmdbenchmark.result_store.commands import register_command
 
 @register_command("add")
@@ -92,7 +91,7 @@ def execute(args, logger):
                                 value = f"{value}-x{count_part}"
                             
                             if "-x" not in value:
-                                logger.log_plain(f"\033[31mError: Hardware count could not be inferred. Please specify count (e.g., l4-x1).\033[0m")
+                                logger.log_plain("\033[31mError: Hardware count could not be inferred. Please specify count (e.g., l4-x1).\033[0m")
                                 continue
                                 
                         overrides[field] = value
