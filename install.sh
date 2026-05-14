@@ -579,6 +579,7 @@ install_skopeo_linux() {
             -o "/tmp/${pkg}"; then
         chmod +x "/tmp/${pkg}"
         sudo cp -f "/tmp/${pkg}" /usr/local/bin/skopeo
+        rm -f "/tmp/${pkg}"
     else
         echo "  Pre-built binary for skopeo ${version} not available; falling back to package manager"
         ${PKG_MGR} skopeo || true
