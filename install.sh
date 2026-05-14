@@ -519,7 +519,13 @@ install_helm_linux() {
     local pkg="helm-${version}-linux-${ARCH_GO}"
     curl -fsSL "https://get.helm.sh/${pkg}.tar.gz" \
         -o "/tmp/${pkg}.tar.gz"
+    curl -fsSL "https://get.helm.sh/${pkg}.tar.gz.sha256" \
+        -o "/tmp/${pkg}.tar.gz.sha256"
+    (cd /tmp && sha256sum -c "${pkg}.tar.gz.sha256") \
+        || { echo "ERROR: Helm tarball checksum verification failed"; exit 1; }
     tar xzf "/tmp/${pkg}.tar.gz" -C /tmp
+    [[ -f "/tmp/linux-${ARCH_GO}/helm" ]] \
+        || { echo "ERROR: Helm binary not found after extraction"; exit 1; }
     sudo cp -f "/tmp/linux-${ARCH_GO}/helm" /usr/local/bin/helm
     sudo chmod +x /usr/local/bin/helm
 }
