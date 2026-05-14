@@ -35,7 +35,7 @@ _INSTALL_SH_FIXTURE = """\
 #!/bin/bash
 # Toy install.sh fragment
 
-tools="curl git helm helmfile yq crane jq"
+tools="curl git helm helmfile yq crane jq kustomize"
 
 install_yq_linux() {
     local version=v4.52.5
@@ -50,6 +50,11 @@ install_helmfile_linux() {
 install_crane_linux() {
     local version=v0.20.3
     curl -sL "https://example/${version}/crane" -o /tmp/crane
+}
+
+install_kustomize_linux() {
+    local version=v5.8.1
+    curl -sL "https://example/${version}/kustomize" -o /tmp/kustomize
 }
 
 helm_diff_url="https://github.com/databus23/helm-diff"
@@ -141,6 +146,7 @@ def test_parse_install_sh_pinned_versions(sbom_module, install_sh: Path) -> None
 
     assert by_name["helmfile"].pin == "1.1.3"
     assert by_name["crane"].pin == "v0.20.3"
+    assert by_name["kustomize"].pin == "v5.8.1"
 
 
 def test_parse_install_sh_unpinned_marks_system_provided(
