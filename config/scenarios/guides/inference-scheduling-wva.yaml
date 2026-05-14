@@ -193,9 +193,8 @@ scenario:
       # WVA controller chart (oci://ghcr.io/llm-d/workload-variant-autoscaler)
       wva: 0.6.0
       # prometheus-adapter chart (prometheus-community/prometheus-adapter).
-      # Pinned because newer releases have broken external-metric
-      # compatibility with the rule format the WVA chart emits.
-      # The upstream WVA README also pins this version.
+      # Pinned to a known-compatible version; verify external-metric rule
+      # format compatibility when bumping this pin.
       prometheusAdapter: 5.3.0
 
     # =========================================================================
