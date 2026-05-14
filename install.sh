@@ -78,6 +78,7 @@ tool_version_for() {
         yq)        echo "v4.52.5" ;;
         helmfile)  echo "1.4.2"   ;;
         helm)      echo "v3.16.0" ;;
+        jq)        echo "1.8.1"   ;;
         oc)        echo "4.16.0"  ;;
         kustomize) echo "v5.0.0"  ;;
         crane)     echo "0.20.3"  ;;
@@ -575,6 +576,14 @@ install_crane_linux() {
 install_skopeo_linux() {
     # skopeo is widely available in distro package managers
     ${PKG_MGR} skopeo || true
+}
+
+install_jq_linux() {
+    local version=1.8.1
+    curl -sL "https://github.com/jqlang/jq/releases/download/jq-${version}/jq-linux-${ARCH_GO}" \
+        -o /tmp/jq
+    chmod +x /tmp/jq
+    sudo cp -f /tmp/jq /usr/local/bin/jq
 }
 
 # ---------------------------------------------------------------------------
