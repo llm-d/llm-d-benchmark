@@ -496,12 +496,12 @@ install_yq_linux() {
 }
 
 install_helmfile_linux() {
-    local version=1.1.3
+    local version=1.5.1
     local oc_arch="${ARCH_UNAME}"
     if [ "${oc_arch}" = "s390x" ]; then
 	    git clone  https://github.com/helmfile/helmfile.git
 	    cd helmfile || exit 1
-	    git checkout v1.1.3
+	    git checkout v1.5.1
 	    GOARCH=s390x GOOS=linux go build -o helmfile
 	    sudo mv helmfile /usr/local/bin/
 	    sudo chmod +x /usr/local/bin/helmfile
