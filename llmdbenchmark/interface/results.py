@@ -1,7 +1,6 @@
 """CLI definition for the ``results`` subcommand."""
 
 import argparse
-from pathlib import Path
 
 from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.result_store.commands import COMMAND_MAP

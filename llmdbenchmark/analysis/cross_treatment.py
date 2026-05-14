@@ -189,7 +189,6 @@ def _generate_comparison_plots(
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        import numpy as np
     except ImportError:
         _log(context, "matplotlib not available -- skipping comparison plots")
         return 0

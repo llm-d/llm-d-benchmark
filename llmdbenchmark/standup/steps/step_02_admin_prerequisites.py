@@ -317,7 +317,7 @@ class AdminPrerequisitesStep(Step):
         existing_crds: list[str],
     ):
         """Install the gateway provider only if its CRDs are missing."""
-        gateway_config = plan_config.get("gateway", {})
+        gateway_config = plan_config.get("gateway", {}) # noqa: F841
         gateway_class = self._require_config(plan_config, "gateway", "className")
 
         if gateway_class == "agentgateway":

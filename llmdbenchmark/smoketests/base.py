@@ -1544,7 +1544,7 @@ class BaseSmoketest:
         payload: dict,
         generated_text: str,
     ):
-        payload_compact = json.dumps(payload, separators=(",", ":"))
+        payload_compact = json.dumps(payload, separators=(",", ":")) # noqa: F841
 
         context.logger.log_info(f"✅ Inference test passed via {endpoint}")
         if generated_text:

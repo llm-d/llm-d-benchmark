@@ -104,7 +104,7 @@ class WideEpLwsValidator(BaseSmoketest):
             # Scenario-specific: mount model volume override
             mount_model = _nested_get(config, "decode", "mountModelVolume")
             if mount_model is False:
-                volumes = self.get_pod_volumes(pod)
+                volumes = self.get_pod_volumes(pod) # noqa: F841
                 mounts = self._get_container_volume_mounts(pod)
                 # When mountModelVolume is false, model-cache mount should be absent
                 report.add(CheckResult(
