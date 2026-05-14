@@ -501,7 +501,7 @@ install_helmfile_linux() {
     if [ "${oc_arch}" = "s390x" ]; then
 	    git clone  https://github.com/helmfile/helmfile.git
 	    cd helmfile || exit 1
-	    git checkout v1.5.1
+	    git checkout "v${version}"
 	    GOARCH=s390x GOOS=linux go build -o helmfile
 	    sudo mv helmfile /usr/local/bin/
 	    sudo chmod +x /usr/local/bin/helmfile
