@@ -946,7 +946,7 @@ class RenderPlans:
     def _validate_shared_block(self, defaults: dict, shared: dict) -> None:
         """Pre-validate defaults+shared against the config schema.
 
-        A typo at the root of `shared:` (e.g. ``modle:`` instead of
+        A typo at the root of `shared:` (e.g. ``model:`` instead of
         ``model:``) silently merges into every stack's root where
         ``extra="allow"`` accepts it, so the typo propagates without a
         visible error and the misspelled value never takes effect. By

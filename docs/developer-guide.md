@@ -731,7 +731,7 @@ def generate_my_plots(
         output_dir = results_dir / "analysis" / "custom"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load data, generate plots, save PNGs...
+    # Load data, generate plots, save ONGs...
     # Return the count of generated plots
     return 0
 ```

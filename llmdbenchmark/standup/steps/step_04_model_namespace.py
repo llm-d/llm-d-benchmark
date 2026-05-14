@@ -136,7 +136,7 @@ class ModelNamespaceStep(Step):
     def _parse_size_to_gib(raw: str | None) -> float:
         """Parse a k8s resource-size string to GiB as a float.
 
-        Returns 0.0 when input is empty or unparseable - caller treats
+        Returns 0.0 when input is empty or unparsable - caller treats
         that as "unknown, skip comparison", which is the right fallback
         for a warn-only pre-flight.
         """
@@ -190,7 +190,7 @@ class ModelNamespaceStep(Step):
             total_gib += self._parse_size_to_gib(model_size)
 
         if total_gib == 0:
-            return  # all model.size unset/unparseable - skip quietly
+            return  # all model.size unset/unparsable - skip quietly
 
         if total_gib > capacity_gib * 0.9:
             breakdown = ", ".join(f"{n}={s}" for n, s in per_stack_sizes)

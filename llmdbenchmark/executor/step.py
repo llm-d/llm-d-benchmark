@@ -279,7 +279,7 @@ class Step(ABC):
 
         Returns True if the PVC exists (caller should skip creation),
         False if it doesn't exist (caller should create it).
-        Appends to *errors* if existing size is too small or unparseable.
+        Appends to *errors* if existing size is too small or unparsable.
         """
         result = cmd.kube(
             "get", "pvc", pvc_name,

@@ -566,7 +566,7 @@ class TestParseSizeToGib:
         assert parse("") == 0.0
         assert parse(None) == 0.0
 
-    def test_unparseable_returns_zero(self, parse):
+    def test_unparsable_returns_zero(self, parse):
         assert parse("not-a-size") == 0.0
 
 

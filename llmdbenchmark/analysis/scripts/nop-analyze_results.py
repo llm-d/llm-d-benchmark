@@ -156,21 +156,21 @@ def write_benchmark_reports(file: io.TextIOWrapper, benchmark_report: BenchmarkR
 
     left_padding = 4
     for metadata in benchmark_report.metrics.metadata:
-        metadatas = metadata["value"]
+        metadata = metadata["value"]
         if metadata["name"] == "vllm_metrics":
-            write_vllm_metrics(file, metadatas, left_padding)
+            write_vllm_metrics(file, metadata, left_padding)
         elif metadata["name"] == "extra_metrics":
-            write_extra_metrics(file, metadatas)
+            write_extra_metrics(file, metadata)
         else:
             logger.info("Unhandled metrics name '%s'", metadata["name"])
 
 
 def write_vllm_metrics(  # pylint: disable=too-many-locals,too-many-statements
-    file: io.TextIOWrapper, metadatas: list[dict], left_padding: int
+    file: io.TextIOWrapper, metadata: list[dict], left_padding: int
 ):
     """prints vLLM metrics"""
 
-    for metrics_metadata in metadatas:
+    for metrics_metadata in metadata:
         name = metrics_metadata["name"]
         pod_start = metrics_metadata["pod_start"]["value"]
         vllm_start = (
@@ -227,7 +227,7 @@ def write_vllm_metrics(  # pylint: disable=too-many-locals,too-many-statements
             file.write(
                 "    Elapsed: Time it took to transition to vLLM sleep or wait\n\n"
             )
-            pandas_datas = []
+            pandas_data = []
             prev_timestamp = metrics_metadata["vllm_ready_timestamp"]["value"]
             for sleep_wake in metrics_sleep_wake:
                 curr_timestamp = sleep_wake["timestamp"]["value"]
@@ -243,9 +243,9 @@ def write_vllm_metrics(  # pylint: disable=too-many-locals,too-many-statements
                 if sleep_wake["type"] == "sleep":
                     data["GPU Freed(GiB)"] = sleep_wake["gpu_freed"]["value"]
                     data["GPU In Use(GiB)"] = sleep_wake["gpu_in_use"]["value"]
-                pandas_datas.append(data)
+                pandas_data.append(data)
 
-            df = pd.DataFrame(pandas_datas)
+            df = pd.DataFrame(pandas_data)
             file.write("\n")
             header = (
                 f"{'Type':<6} "
@@ -276,10 +276,10 @@ def write_vllm_metrics(  # pylint: disable=too-many-locals,too-many-statements
             )
 
 
-def write_extra_metrics(file: io.TextIOWrapper, metadatas: list[dict]):
+def write_extra_metrics(file: io.TextIOWrapper, metadata: list[dict]):
     """prints extra metrics"""
 
-    for metrics_metadata in metadatas:
+    for metrics_metadata in metadata:
         if metrics_metadata["name"] == "fma":
             write_fma_metrics(file, metrics_metadata["iterations"], 0)
         else:
@@ -307,7 +307,7 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
 
     hot_starts = 0
     total_iterations = len(iterations)
-    pandas_datas = []
+    pandas_data = []
     for iteration in iterations:
         for launcher_info in iteration["launcher_infos"]:
             ct = float(launcher_info["requester_info"]["creation_timestamp"]["value"])
@@ -320,7 +320,7 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
             if actuation_condition == "T_hot":
                 hot_starts += 1
 
-            pandas_datas.append(
+            pandas_data.append(
                 {
                     "Iteration": iteration["iteration"]["value"],
                     "vLLM Name": launcher_info["name"],
@@ -334,7 +334,7 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
 
     hit_rate = hot_starts / total_iterations if total_iterations > 0 else 0.0
 
-    df = pd.DataFrame(pandas_datas)
+    df = pd.DataFrame(pandas_data)
 
     file.write("\n")
 
