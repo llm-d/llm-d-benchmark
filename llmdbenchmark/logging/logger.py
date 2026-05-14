@@ -186,7 +186,7 @@ class LLMDBenchmarkLogger:
             handler.stream.write("\n")
             handler.flush()
 
-    def log_plain(self, msg: str) -> None:
+    def log_plain(self, msg: str) -> None: # noqa: F811
         """Write *msg* verbatim to every handler - no timestamp or level prefix.
 
         For human-facing payloads where the log formatting would be more
