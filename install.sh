@@ -552,7 +552,7 @@ install_kustomize_linux() {
 }
 
 install_crane_linux() {
-    local version=v0.21.5
+    local version=0.21.5
     # go-containerregistry release tarballs use Go arch names (X86_64 capitalised)
     local go_arch_cap
     case "$ARCH_GO" in
@@ -564,7 +564,7 @@ install_crane_linux() {
         *)       go_arch_cap="x86_64" ;;
     esac
     local pkg="go-containerregistry_Linux_${go_arch_cap}"
-    curl -sL "https://github.com/google/go-containerregistry/releases/download/${version}/${pkg}.tar.gz" \
+    curl -sL "https://github.com/google/go-containerregistry/releases/download/v${version}/${pkg}.tar.gz" \
         -o "/tmp/${pkg}.tar.gz"
     tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane
     sudo cp -f /tmp/crane /usr/local/bin/crane

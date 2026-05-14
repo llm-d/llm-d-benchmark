@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-05-14 05:16:45` (UTC)
-- Generated against git ref: `a3546673df954fa79fbf6f7340bc44272c48953e`
+- Generated at: `2026-05-14 05:18:23` (UTC)
+- Generated against git ref: `9afedeb66d4e7fe327c89ec81800c081c6ec24b4`
 
 ## System Tool Dependencies
 
@@ -19,7 +19,7 @@ whatever the host's package manager provides.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **crane** | `v0.21.5` | version | `install.sh` line 555 (`install_crane_linux`) | [google/go-containerregistry](https://github.com/google/go-containerregistry) |
+| **crane** | `0.21.5` | version | `install.sh` line 555 (`install_crane_linux`) | [google/go-containerregistry](https://github.com/google/go-containerregistry) |
 | **curl** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [curl/curl](https://github.com/curl/curl) |
 | **git** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [git/git](https://github.com/git/git) |
 | **helm** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [helm/helm](https://github.com/helm/helm) |
