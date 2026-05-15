@@ -12,7 +12,7 @@ import yaml
 
 import numpy as np
 
-from .base import Units
+from llmdbenchmark_schema.base import Units
 from .core import (
     check_file,
     get_nested,
@@ -20,7 +20,7 @@ from .core import (
     load_benchmark_report,
     update_dict,
 )
-from .schema_v0_1 import BenchmarkReportV01, HostType, WorkloadGenerator
+from llmdbenchmark_schema.schema_v0_1 import BenchmarkReportV01, HostType, WorkloadGenerator
 
 
 def _get_llmd_benchmark_envars() -> dict:

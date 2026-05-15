@@ -17,6 +17,9 @@ dependencies = [
     "pydantic>=2.0",
     "google-auth",
     "google-cloud-storage>=2.10.0",
+    # Schema types live in their own distribution so external benchmark
+    # tooling can depend on just the schema. See ``llmdbenchmark-schema/``.
+    "llmdbenchmark-schema",
 ]
 
 #
@@ -29,14 +32,12 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["llmdbenchmark*"]
-exclude = ["templates*", "specification*"]
+exclude = ["templates*", "specification*", "llmdbenchmark_schema*"]
 
 [tool.setuptools.package-data]
 "llmdbenchmark.analysis" = [
     "scripts/*.sh",
     "scripts/*.py",
-    "benchmark_report/*.yaml",
-    "benchmark_report/*.json",
 ]
 
 [project.urls]
