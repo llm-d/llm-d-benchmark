@@ -63,12 +63,7 @@ class KustomizeTeardownStep(Step):
             parsed = parse_guide_readme(readme_path, guide_name)
 
             if not gaie_version:
-                gaie_version = parsed.variables.get("GAIE_VERSION", "")
-            if not gaie_version:
-                context.logger.log_warning(
-                    "GAIE_VERSION not resolved -- cleanup commands "
-                    "using ${GAIE_VERSION} will not be substituted"
-                )
+                gaie_version = parsed.variables.get("GAIE_VERSION", "v1.5.0")
 
             resolver = GuideVariableResolver(
                 guide_name=guide_name,
