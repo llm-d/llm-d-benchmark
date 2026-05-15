@@ -129,7 +129,7 @@ RUN pip install --no-cache-dir -r requirements-analysis.txt
 RUN pip install -e /opt
 
 ADD llmdbenchmark/standup/preprocess/ /tmp/preprocess/
-RUN chmod +x /tmp/preprocess/* ; cp -f  /tmp/preprocess/* /usr/local/bin/
+RUN chmod +x /tmp/preprocess/* ; rsync -az --exclude "__pycache__" /tmp/preprocess/ /usr/local/bin/
 
 COPY build/llm-d-benchmark.sh /usr/local/bin/llm-d-benchmark.sh
 

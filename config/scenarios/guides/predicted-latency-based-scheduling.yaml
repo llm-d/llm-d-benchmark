@@ -1,16 +1,17 @@
-# ============================================================================
-# PRECISE PREFIX CACHE AWARE ROUTING WELL LIT PATH
-# Converted from bash environment variables to YAML format
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/precise-prefix-cache-aware/README.md
+# PREDICTED LATENCY BASED SCHEDULING WELL LIT PATH for LLM-D Deployment
+# Migrated from bash environment variables to YAML format
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/predicted-latency-based-scheduling
 #
 # Notes:
 # - Removed pod monitoring; can be added using decode.extraContainerConfig
 # - Removed extra volumes metrics-volume and torch-compile-volume (not needed for this model/hardware)
 # - Use decode.additionalVolumeMounts and decode.additionalVolumes to add them if needed
-# ============================================================================
 
 scenario:
-  - name: "precise-prefix-cache-aware"
+  # ============================================================================
+  # Predicted Latency Based Scheduling - Qwen3-32B with 2 decode pods
+  # ============================================================================
+  - name: "predicted-latency-based-scheduling"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
@@ -29,112 +30,11 @@ scenario:
       blockSize: 64
       gpuMemoryUtilization: 0.95
 
-    # =========================================================================
-    # DEPLOYMENT METHOD -- Choose standalone or modelservice
-    # =========================================================================
-    modelservice:
-      enabled: true
-
-    standalone:
-      enabled: false
-
-    # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true
-    # The following sections configure the llm-d modelservice Helm chart
-    # deployment including decode pods, prefill pods, routing, and GAIE.
-    # =========================================================================
-
     # -------------------------------------------------------------------------
     # Routing Configuration
     # -------------------------------------------------------------------------
-    routing:
-      proxy:
-        enabled: false
-
-    # -------------------------------------------------------------------------
-    # Routing / GAIE Configuration
-    # -------------------------------------------------------------------------
-    inferenceExtension:
-      pluginsConfigFile: "precise-prefix-cache-config.yaml"
-      sidecar:
-        enabled: true
-      flags:
-        v: 4  # log verbosity
-      pluginsCustomConfig:
-        precise-prefix-cache-config.yaml: |
-          apiVersion: inference.networking.x-k8s.io/v1alpha1
-          kind: EndpointPickerConfig
-          plugins:
-            - type: tokenizer
-              parameters:
-                modelName: Qwen/Qwen3-32B
-                udsTokenizerConfig:
-                  socketFile: /tmp/tokenizer/tokenizer-uds.socket
-            - type: endpoint-notification-source
-            - type: metrics-data-source
-            - type: core-metrics-extractor
-            - type: single-profile-handler
-            - type: decode-filter
-            - type: precise-prefix-cache-scorer
-              parameters:
-                tokenProcessorConfig:
-                  blockSize: 64           # must match vLLM --block-size
-                speculativeIndexing: true
-                indexerConfig:
-                  tokenizersPoolConfig:
-                    modelName: ${model.name}
-                    workersCount: 24
-                    uds:
-                      socketFile: /tmp/tokenizer/tokenizer-uds.socket
-                  kvBlockIndexConfig:
-                    enableMetrics: true
-                kvEventsConfig:
-                  topicFilter: "kv@"
-                  concurrency: 8
-                  discoverPods: true
-                  podDiscoveryConfig:
-                    socketPort: 5556
-            - type: kv-cache-utilization-scorer
-            - type: queue-scorer
-            - type: no-hit-lru-scorer
-            - type: max-score-picker
-          dataLayer:
-            sources:
-              - pluginRef: metrics-data-source
-                extractors:
-                  - pluginRef: core-metrics-extractor
-              - pluginRef: endpoint-notification-source
-                extractors:
-                  - pluginRef: precise-prefix-cache-scorer
-          schedulingProfiles:
-            - name: default
-              plugins:
-                - pluginRef: decode-filter
-                - pluginRef: kv-cache-utilization-scorer
-                  weight: 2.0
-                - pluginRef: queue-scorer
-                  weight: 2.0
-                - pluginRef: precise-prefix-cache-scorer
-                  weight: 3.0
-                - pluginRef: no-hit-lru-scorer
-                  weight: 2.0
-                - pluginRef: max-score-picker
-
-      # InferencePool Provider Configuration
-      inferencePoolProviderConfig:
-        destinationRule:
-          # host is auto-resolved from model_id_label (e.g. {model_id_label}-gaie-epp)
-          trafficPolicy:
-            connectionPool:
-              http:
-                http1MaxPendingRequests: 256000
-                maxRequestsPerConnection: 256000
-                http2MaxRequests: 256000
-                idleTimeout: "900s"
-              tcp:
-                maxConnections: 256000
-                maxConnectionDuration: "1800s"
-                connectTimeout: "900s"
+    # Note: inferenceModel is enabled via the modelservice chart when this
+    # scenario is deployed. The routing is handled through the gaie values.
 
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
@@ -151,6 +51,87 @@ scenario:
     #     # gpu.nvidia.com/model: H200                        # Kubernetes
     #     # cloud.google.com/gke-accelerator: nvidia-h100-80gb  # GKE
 
+    # =========================================================================
+    # DEPLOYMENT METHOD -- Choose standalone or modelservice
+    # =========================================================================
+    modelservice:
+      enabled: true
+
+    standalone:
+      enabled: false
+
+    # =========================================================================
+    # MODELSERVICE -- Only applies when modelservice.enabled: true
+    # The following sections configure the llm-d modelservice Helm chart
+    # deployment including decode pods, prefill pods, routing, and GAIE.
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Routing / GAIE Configuration
+    # -------------------------------------------------------------------------
+    inferenceExtension:
+      latencyPredictor:
+        enabled: true
+      extraServicePorts:
+        - name: http
+          port: 80
+          protocol: TCP
+          targetPort: 8081
+      pluginsConfigFile: "predicted-latency-slo-plugins.yaml"
+      pluginsCustomConfig:
+        predicted-latency-slo-plugins.yaml: |
+          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+          - type: queue-scorer
+          - type: kv-cache-utilization-scorer
+          - type: prefix-cache-scorer
+          - type: metrics-data-source
+            parameters:
+              insecureSkipVerify: true
+              path: /metrics
+              scheme: http
+          - type: core-metrics-extractor
+          - type: predicted-latency-producer
+            parameters:
+              streamingMode: true
+          - type: prefix-cache-affinity-filter
+            name: strict-affinity-filter
+            parameters:
+              affinityThreshold: 0.99
+          - type: prefix-cache-affinity-filter
+            name: loose-affinity-filter
+            parameters:
+              affinityThreshold: 0.8
+          - type: latency-scorer
+          - type: weighted-random-picker
+          - type: slo-headroom-tier-filter
+          - type: latency-slo-admitter
+          schedulingProfiles:
+          - name: default
+            plugins:
+            - pluginRef: predicted-latency-producer
+            - pluginRef: strict-affinity-filter
+            - pluginRef: slo-headroom-tier-filter
+            - pluginRef: loose-affinity-filter
+            - pluginRef: latency-scorer
+            - pluginRef: weighted-random-picker
+
+      # InferencePool Provider Configuration
+      inferencePoolProviderConfig:
+        destinationRule:
+          # host is auto-resolved from model_id_label (e.g. {model_id_label}-gaie-epp)
+          trafficPolicy:
+            connectionPool:
+              http:
+                http1MaxPendingRequests: 256000
+                maxRequestsPerConnection: 256000
+                http2MaxRequests: 256000
+                idleTimeout: "900s"
+              tcp:
+                maxConnections: 256000
+                maxConnectionDuration: "1800s"
+                connectTimeout: "900s"
     # -------------------------------------------------------------------------
     # Prefill Configuration
     # -------------------------------------------------------------------------
@@ -167,21 +148,20 @@ scenario:
         customCommand: |
           export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
           export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
-          source /shared-config/llmdbench_env.sh
           vllm serve /model-cache/$MODEL_PATH \
           --host 0.0.0.0 \
           --served-model-name $MODEL_NAME \
-          --port $VLLM_INFERENCE_PORT \
+          --port $VLLM_METRICS_PORT \
           --block-size $VLLM_BLOCK_SIZE \
           --max-model-len $VLLM_MAX_MODEL_LEN \
           --max-num-seq $VLLM_MAX_NUM_SEQ \
           --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
           --tensor-parallel-size $TP_SIZE \
           --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
-          --prefix-caching-hash-algo sha256_cbor \
-          --kv-events-config '{"enable_kv_cache_events":true, "publisher":"zmq", "endpoint":"$(KV_EVENTS_ENDPOINT)", "topic":"kv@$(POD_IP):$(POD_PORT)@$(MODEL_NAME)"}' \
+          --no-enable-log-requests \
           --disable-uvicorn-access-log \
-          --disable-access-log-for-endpoints=/health,/metrics,/v1/models
+          --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+          --no-enable-prefix-caching
 
       initContainers:
         - name: preprocess
@@ -193,7 +173,7 @@ scenario:
               mountPath: /shared-config
 
       parallelism:
-        tensor: 2
+        tensor: 1
         data: 1
         dataLocal: 1
         workers: 1
@@ -207,15 +187,18 @@ scenario:
           memory: 64Gi
           cpu: "16"
 
-      extraEnvVars:
-        - name: KV_EVENTS_ENDPOINT
-          value: "tcp://*:5556"
-        - name: DO_NOT_TRACK
-          value: "1"
+      # No customCommand -- the vLLM serve command is auto-generated
+      # from model.*, vllmCommon.flags.*, and decode.vllm.additionalFlags.
+      # -----------------------------------------------------------------------
+      # Extra Environment Variables
+      # No custom env vars for this scenario -- uses default ENVVARS_TO_YAML
+      # mechanism. Auto-populated vars (UCX_TLS, VLLM_NIXL_*, etc.) are set
+      # by the preprocess script at pod runtime.
+      # -----------------------------------------------------------------------
+      extraEnvVars: []
 
       # -----------------------------------------------------------------------
       # Extra Container Configuration
-      # Corresponds to: LLMDBENCH_VLLM_COMMON_EXTRA_CONTAINER_CONFIG
       # -----------------------------------------------------------------------
       extraContainerConfig:
         ports:
@@ -229,44 +212,23 @@ scenario:
             add:
               - "IPC_LOCK"
               - "SYS_RAWIO"
-              - "NET_ADMIN"
-              - "NET_RAW"
           runAsGroup: 0
           runAsUser: 0
         imagePullPolicy: Always
 
       # -----------------------------------------------------------------------
       # Additional Volume Mounts
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUME_MOUNTS
       # -----------------------------------------------------------------------
       additionalVolumeMounts: []
 
       # -----------------------------------------------------------------------
       # Additional Volumes
-      # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_DECODE_EXTRA_VOLUMES
       # -----------------------------------------------------------------------
       additionalVolumes: []
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
-
-    annotations:
-      prefill:
-        pod:
-#          k8s.v1.cni.cncf.io/networks: multi-nic-inference
-      decode:
-        pod:
-#          k8s.v1.cni.cncf.io/networks: multi-nic-inference
-
-      resources:
-        prefill:
-#          networkResource: "rdma/roce_gdr"
-#          networkNr: 1
-        decode:
-#          networkResource: "rdma/roce_gdr"
-#          networkNr: 1
-
     vllmCommon:
 #      priorityClassName: nightly-gpu-critical
 
@@ -278,13 +240,13 @@ scenario:
           type: emptyDir
           emptyDir:
             medium: Memory
-            sizeLimit: 20Gi
+            sizeLimit: 16Gi
 
       volumeMounts:
-        - name: shared-config
-          mountPath: /shared-config
         - name: dshm
           mountPath: /dev/shm
+        - name: shared-config
+          mountPath: /shared-config
 
     # -------------------------------------------------------------------------
     # Storage Configuration
@@ -292,10 +254,6 @@ scenario:
     storage:
       modelPvc:
         size: 1Ti
-        # Uncomment to specify storage class:
-        # storageClassName: standard-rwx
-        # storageClassName: shared-vast
-        # storageClassName: ocs-storagecluster-cephfs
 
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration
@@ -304,7 +262,7 @@ scenario:
     # -------------------------------------------------------------------------
     # Workload/Harness Configuration
     # -------------------------------------------------------------------------
-    workDir: "~/data/precise_prefix_cache_aware"
+    workDir: "~/data/optimized-baseline"
 
     harness:
       name: inference-perf
