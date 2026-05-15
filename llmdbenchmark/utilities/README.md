@@ -91,7 +91,7 @@ class ValidationParams:
 
 - `find_standalone_endpoint(cmd, namespace, inference_port=80) -> (ip, service_name, port)` -- Find standalone services labelled `stood-up-from=llm-d-benchmark`.
 - `find_gateway_endpoint(cmd, namespace, release) -> (ip_or_hostname, gateway_name, port)` -- Find the gateway IP from Gateway resource status. Detects HTTPS (port 443) from managed fields. Falls back to service ClusterIP.
-- `find_custom_endpoint(cmd, namespace, method_pattern) -> (ip, name, port)` -- Multi-level fallback for non-standard deployments: service name match (check port names `default`, `http`, `https`), then pod name match (probe ports, metrics port, pod IP).
+- `find_custom_endpoint(cmd, namespace, method_pattern) -> (ip, name, port)` -- Multi-level fallback for non-standard deployments: service name match (check port names `http`, `https`, `default`), then pod name match (probe ports, metrics port, pod IP).
 
 ### HuggingFace Token Discovery
 
