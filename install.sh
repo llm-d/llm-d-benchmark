@@ -79,9 +79,9 @@ tool_version_for() {
         yq)        echo "v4.53.2" ;;
         helmfile)  echo "1.4.2"   ;;
         helm)      echo "v4.2.0" ;;
-        oc)        echo "4.16.0"  ;;
-        kustomize) echo "v5.0.0"  ;;
-        crane)     echo "0.20.3"  ;;
+        oc)        echo "4.20.0"  ;;
+        kustomize) echo "v5.8.1"  ;;
+        crane)     echo "0.21.5"  ;;
         *)         echo ""        ;;
     esac
 }
@@ -497,12 +497,12 @@ install_yq_linux() {
 }
 
 install_helmfile_linux() {
-    local version=1.1.3
+    local version=$(tool_version_for helmfile)
     local oc_arch="${ARCH_UNAME}"
     if [ "${oc_arch}" = "s390x" ]; then
 	    git clone  https://github.com/helmfile/helmfile.git
 	    cd helmfile || exit 1
-	    git checkout v1.1.3
+	    git checkout $version
 	    GOARCH=s390x GOOS=linux go build -o helmfile
 	    sudo mv helmfile /usr/local/bin/
 	    sudo chmod +x /usr/local/bin/helmfile
