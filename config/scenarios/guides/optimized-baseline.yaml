@@ -1,6 +1,6 @@
-# INFERENCE SCHEDULING WELL LIT PATH for LLM-D Deployment
+# OPTIMIZED BASELINE WELL LIT PATH for LLM-D Deployment
 # Migrated from bash environment variables to YAML format
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/inference-scheduling
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/optimized-baseline
 #
 # Notes:
 # - Removed pod monitoring; can be added using decode.extraContainerConfig
@@ -9,9 +9,9 @@
 
 scenario:
   # ============================================================================
-  # Inference Scheduling - Qwen3-32B with 2 decode pods
+  # Optimized Baseline - Qwen3-32B with 2 decode pods
   # ============================================================================
-  - name: "inference-scheduling"
+  - name: "optimized-baseline"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
@@ -84,6 +84,25 @@ scenario:
     # -------------------------------------------------------------------------
     decode:
       replicas: 2
+#      replicas: 8
+      vllm:
+        customCommand: |
+          export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+          export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+          vllm serve /model-cache/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_METRICS_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+          --tensor-parallel-size $TP_SIZE \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --no-enable-log-requests \
+          --disable-uvicorn-access-log \
+          --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+          --no-enable-prefix-caching
 
       initContainers:
         - name: preprocess
@@ -151,41 +170,8 @@ scenario:
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # vLLM Common Configuration
-    # Shared settings for both decode and prefill pods.
-    # When no customCommand is set on decode/prefill, the vLLM serve command
-    # is auto-generated from these fields:
-    #   - model.maxModelLen, model.blockSize maps to --max-model-len, --block-size
-    #   - model.gpuMemoryUtilization maps to --gpu-memory-utilization
-    #   - decode/prefill.parallelism.tensor maps to --tensor-parallel-size
-    #   - vllmCommon.flags.* maps to --enforce-eager, --no-enable-log-requests, etc.
-    #   - vllmCommon.kvTransfer.* maps to --kv-transfer-config (if enabled)
-    #   - vllmCommon.kvEvents.* maps to --kv-events-config (if enabled)
-    #   - decode/prefill.vllm.additionalFlags maps to appended as extra CLI args
-    # When decode.vllm.customCommand or prefill.vllm.customCommand IS set, it replaces the auto-generated
-    # command entirely. Only --kv-transfer-config and --kv-events-config are
-    # still appended from vllmCommon if enabled. All other vllmCommon.flags
-    # are ignored -- the custom command must include its own flags.
-    # -------------------------------------------------------------------------
     vllmCommon:
-      kvTransfer:
-        enabled: true
-        connector: NixlConnector
-        role: kv_both
-
-      # These flags control the auto-generated vllm serve command.
-      # Flags not listed here inherit from defaults.yaml.
-      # To use a fully custom command instead, set decode.vllm.customCommand.
-      flags:
-        enforceEager: true             # --enforce-eager
-        disableLogRequests: true     # modelservice only -- upstream vllm-openai (v0.9+) dropped --no-enable-log-requests
-        disableUvicornAccessLog: true  # --disable-uvicorn-access-log
-        allowLongMaxModelLen: "1"
-        serverDevMode: "1"
-
-      #priorityClassName: nightly-gpu-critical
+#      priorityClassName: nightly-gpu-critical
 
       volumes:
         - name: shared-config
@@ -217,7 +203,7 @@ scenario:
     # -------------------------------------------------------------------------
     # Workload/Harness Configuration
     # -------------------------------------------------------------------------
-    workDir: "~/data/inference-scheduling"
+    workDir: "~/data/optimized-baseline"
 
     harness:
       name: inference-perf
