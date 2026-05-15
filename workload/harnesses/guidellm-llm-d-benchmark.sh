@@ -3,7 +3,7 @@
 echo Using experiment result dir: "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 mkdir -p "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR"
 pushd "$LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR" > /dev/null  2>&1
-export LLMDBENCH_HARNESS_ARGS="--scenario ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/guidellm/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} --output-path ${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/results.json --disable-progress"
+export LLMDBENCH_HARNESS_ARGS="--target $(cat ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/guidellm/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} | yq -r .target) --scenario ${LLMDBENCH_RUN_WORKSPACE_DIR}/profiles/guidellm/${LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME} --output-path ${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR}/results.json --disable-progress"
 
 # Start metrics collection in background if enabled
 if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]]; then
@@ -28,7 +28,7 @@ if [[ "${LLMDBENCH_VLLM_COMMON_METRICS_SCRAPE_ENABLED:-false}" == "true" ]] && [
   # Process collected metrics
   echo "Processing collected metrics..."
   /usr/local/bin/collect_metrics.sh process >> $LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR/metrics_collection.log 2>&1
-  
+
   echo "Metrics collection complete. Check metrics_collection.log for details."
 fi
 
