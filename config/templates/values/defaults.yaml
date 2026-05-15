@@ -98,7 +98,7 @@ _anchors:
   istio_version:                     &istio_version                     1.29.2
   agentgateway_version:              &agentgateway_version              v1.2.0
   lws_version:                       &lws_version                       0.8.0
-  gaie_version:                      &gaie_version                      v1.4.0
+  gaie_version:                      &gaie_version                      v1.5.0
   wva_version:                       &wva_version                       0.6.0
   prometheus_version:                &prometheus_version                5.3.0
   vllm-openai_version:               &vllm-openai_version               v0.20.2
@@ -107,7 +107,7 @@ _anchors:
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.8.0
   llm-d-cuda_version:                &llm-d-cuda_version                v0.7.0
   llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.8.2
-  llm-d-benchmark_version:           &llm-d-benchmark_version           v0.6.2
+  llm-d-benchmark_version:           &llm-d-benchmark_version           v0.6.3
 
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
