@@ -75,6 +75,7 @@ esac
 
 tool_version_for() {
     case "$1" in
+        curl)      echo "8.20.0"  ;;
         yq)        echo "v4.53.2" ;;
         helmfile)  echo "1.4.2"   ;;
         helm)      echo "v4.2.0" ;;
@@ -577,6 +578,12 @@ install_skopeo_linux() {
     ${PKG_MGR} skopeo || true
 }
 
+install_curl_linux() {
+    # version is read by the SBOM generator (util/generate_sbom.py) to track the pinned minimum
+    local version=8.20.0
+    ${PKG_MGR} curl || true
+}
+
 # ---------------------------------------------------------------------------
 # Ensure PostgreSQL dev headers are present (required to build psycopg2 from
 # source on architectures that lack pre-built wheels, e.g. s390x, ppc64le).
@@ -612,6 +619,7 @@ install_oc_mac()       { brew install openshift-cli; }
 install_kustomize_mac(){ brew install kustomize; }
 install_crane_mac()    { brew install crane; }
 install_skopeo_mac()   { brew install skopeo; }
+install_curl_mac()     { brew install curl; }
 install_jq_mac()       { brew install jq; }
 
 # ---------------------------------------------------------------------------
