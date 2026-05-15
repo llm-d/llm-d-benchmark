@@ -60,11 +60,12 @@ scenario:
     standalone:
       enabled: false
 
+    kustomize:
+      enabled: false
+
 #    namespace:
 #      name: llm-d-optimized-baseline
 
-    kustomize:
-      enabled: true
       guideName: "optimized-baseline"
       repoPath: ""
       repoRef: "main"
@@ -113,7 +114,6 @@ scenario:
                       volumeMounts:
                         - mountPath: /.triton
                           name: triton-cache
-
 
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
