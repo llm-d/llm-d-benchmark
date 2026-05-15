@@ -286,6 +286,9 @@ def _load_stack_info_from_config(config_file, stack_name=""):
                 "modelservice_enabled": (
                     plan_config.get("modelservice", {}).get("enabled", False)
                 ),
+                "kustomize_enabled": (
+                    plan_config.get("kustomize", {}).get("enabled", False)
+                ),
                 "harness": plan_config.get("harness", {}),
             }
     except (OSError, _yaml.YAMLError):
@@ -363,6 +366,7 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
     standalone = plan_info.get("standalone_enabled", False)
     fma = plan_info.get("fma_enabled", False)
     modelservice = plan_info.get("modelservice_enabled", False)
+    kustomize = plan_info.get("kustomize_enabled", False)
 
     if phase == "run":
         # Run phase returns all enabled methods for endpoint detection
@@ -373,6 +377,8 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
             methods.append("fma")
         if modelservice:
             methods.append("modelservice")
+        if kustomize:
+            methods.append("kustomize")
         if methods:
             logger.log_info(
                 f"Auto-detected deploy method(s) from plan: {', '.join(methods)}"
@@ -380,6 +386,9 @@ def _resolve_deploy_methods(args, plan_info, logger, phase="standup"):
             return methods
     else:
         # Standup/teardown: treat as mutually exclusive
+        if kustomize:
+            logger.log_info("Auto-detected deploy method from plan: kustomize")
+            return ["kustomize"]
         if standalone:
             logger.log_info("Auto-detected deploy method from plan: standalone")
             return ["standalone"]
@@ -436,6 +445,9 @@ def _do_standup(args, logger, render_plan_errors):
         gateway_deploy_timeout=int(getattr(args, "gateway_deploy_timeout", 120) or 120),
         modelservice_deploy_timeout=int(getattr(args, "modelservice_deploy_timeout", 1500) or 1500),
         pvc_bind_timeout=int(getattr(args, "pvc_bind_timeout", 240) or 240),
+        kustomize_deploy_timeout=int(getattr(args, "kustomize_deploy_timeout", 900) or 900),
+        llmd_repo_path=getattr(args, "llmd_repo_path", None),
+        kustomize_skip_infra=not getattr(args, "full_infra", False),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
@@ -703,6 +715,7 @@ def _do_teardown(args, logger, render_plan_errors):
         model_name=plan_info.get("model_name"),
         logger=logger,
         fma_teardown_timeout=int(getattr(args, "fma_teardown_timeout", 120) or 120),
+        llmd_repo_path=getattr(args, "llmd_repo_path", None),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
@@ -1451,6 +1464,8 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT": ("modelservice_deploy_timeout", "--modelservice-deploy-timeout"),
         "LLMDBENCH_PVC_BIND_TIMEOUT": ("pvc_bind_timeout", "--pvc-bind-timeout"),
         "LLMDBENCH_FMA_TEARDOWN_TIMEOUT": ("fma_teardown_timeout", "--fma-teardown-timeout"),
+        "LLMDBENCH_LLMD_REPO_PATH": ("llmd_repo_path", "--llmd-repo-path"),
+        "LLMDBENCH_KUSTOMIZE_DEPLOY_TIMEOUT": ("kustomize_deploy_timeout", "--kustomize-deploy-timeout"),
     }
 
     active = {k: v for k, v in os.environ.items() if k in _ENV_TO_CLI}

@@ -24,6 +24,10 @@ class ModelNamespaceStep(Step):
             per_stack=False,
         )
 
+    def should_skip(self, context: ExecutionContext) -> bool:
+        methods = context.deployed_methods or []
+        return methods == ["kustomize"] and context.kustomize_skip_infra
+
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
