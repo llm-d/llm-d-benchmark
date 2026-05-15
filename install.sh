@@ -75,9 +75,9 @@ esac
 
 tool_version_for() {
     case "$1" in
-        yq)        echo "v4.52.5" ;;
+        yq)        echo "v4.53.2" ;;
         helmfile)  echo "1.4.2"   ;;
-        helm)      echo "v3.16.0" ;;
+        helm)      echo "v4.2.0" ;;
         oc)        echo "4.16.0"  ;;
         kustomize) echo "v5.0.0"  ;;
         crane)     echo "0.20.3"  ;;

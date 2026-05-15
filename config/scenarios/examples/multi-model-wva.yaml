@@ -90,7 +90,7 @@ shared:
     namespace: ""
     image:
       repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
-      tag: v0.6.0
+      tag: v0.7.0
     replicaCount: 1
     controller:
       enabled: true
@@ -106,7 +106,7 @@ shared:
       enabled: false
 
   chartVersions:
-    wva: 0.6.0
+    wva: 0.7.0
     prometheusAdapter: 5.2.0
 
   # --------------------------------------------------------------------------
