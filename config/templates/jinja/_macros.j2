@@ -247,7 +247,7 @@
   value: "{{ config.vllmVariants | map(attribute='maxNumBatchedTokens') | join(',,') }}"
 {% else -%}
 - name: VLLM_MAX_NUM_BATCHED_TOKENS
-  value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('')) }}"
+  value: "{{ model.maxNumBatchedTokens | default(vllmCommon.maxNumBatchedTokens | default('256')) }}"
 {% endif -%}
 - name: VLLM_NIXL_SIDE_CHANNEL_HOST
   valueFrom:

@@ -955,7 +955,7 @@ scenario:
 See the next subsection for how `shared:` merges with per-stack and the
 render-time behavior (auto-named PVCs, shared HTTPRoute, stack-index guards).
 For a fully-annotated real scenario, see
-[`guides/multi-model-wva.yaml`](../config/scenarios/guides/multi-model-wva.yaml).
+[`examples/multi-model-wva.yaml`](../config/scenarios/examples/multi-model-wva.yaml).
 
 ### Multi-Stack Scenarios and the `shared:` Block
 
@@ -967,7 +967,7 @@ per-stack blocks. Per-stack always wins, so a stack can still opt out of any
 shared value by setting it explicitly.
 
 ```yaml
-# config/scenarios/guides/multi-model-wva.yaml (abridged)
+# config/scenarios/examples/multi-model-wva.yaml (abridged)
 shared:
   modelservice: { enabled: true }
   standalone:   { enabled: false }

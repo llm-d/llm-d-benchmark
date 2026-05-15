@@ -272,7 +272,7 @@ llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
 Without `--stack`, `-m` applies to every stack and emits a warning.
 
 Add a third model by copying a stack block in
-[`config/scenarios/guides/multi-model-wva.yaml`](config/scenarios/guides/multi-model-wva.yaml)
+[`config/scenarios/examples/multi-model-wva.yaml`](config/scenarios/examples/multi-model-wva.yaml)
 and changing `name` + `model`. Scenario-wide config (gateway class, WVA
 controller image, shared HTTPRoute, EPP plugin config) lives in the
 top-level `shared:` block and is inherited by every stack. See
