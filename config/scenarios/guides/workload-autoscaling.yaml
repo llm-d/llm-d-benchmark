@@ -78,7 +78,7 @@ scenario:
       #       https://ghcr.io/v2/llm-d/llm-d-workload-variant-autoscaler/tags/list
       image:
         repository: ghcr.io/llm-d/llm-d-workload-variant-autoscaler
-        tag: v0.6.0
+        tag: v0.7.0
 
       replicaCount: 1                # WVA controller pod replicas (1 is the chart default)
 

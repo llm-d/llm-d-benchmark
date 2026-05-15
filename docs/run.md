@@ -145,7 +145,7 @@ The following table displays a comprehensive list of environment variables (and 
 ## Multi-Stack Runs
 
 When a scenario defines more than one stack (e.g.
-[`guides/multi-model-wva`](../config/scenarios/guides/multi-model-wva.yaml)),
+[`examples/multi-model-wva`](../config/scenarios/examples/multi-model-wva.yaml)),
 every per-stack step in the `run` phase executes once per rendered stack -
 endpoint detection, model verification, profile rendering, configmap creation,
 harness deploy, wait, and collect. Each stack's results are collected into

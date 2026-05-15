@@ -1,6 +1,6 @@
-# INFERENCE SCHEDULING WELL LIT PATH for LLM-D Deployment
+# PREDICTED LATENCY BASED SCHEDULING WELL LIT PATH for LLM-D Deployment
 # Migrated from bash environment variables to YAML format
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/inference-scheduling
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/predicted-latency-based-scheduling
 #
 # Notes:
 # - Removed pod monitoring; can be added using decode.extraContainerConfig
@@ -9,9 +9,9 @@
 
 scenario:
   # ============================================================================
-  # Inference Scheduling - Qwen3-32B with 2 decode pods
+  # Predicted Latency Based Scheduling - Qwen3-32B with 2 decode pods
   # ============================================================================
-  - name: "inference-scheduling"
+  - name: "predicted-latency-based-scheduling"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
@@ -70,8 +70,68 @@ scenario:
     # Routing / GAIE Configuration
     # -------------------------------------------------------------------------
     inferenceExtension:
-      pluginsConfigFile: "default-plugins.yaml"
+      latencyPredictor:
+        enabled: true
+      extraServicePorts:
+        - name: http
+          port: 80
+          protocol: TCP
+          targetPort: 8081
+      pluginsConfigFile: "predicted-latency-slo-plugins.yaml"
+      pluginsCustomConfig:
+        predicted-latency-slo-plugins.yaml: |
+          apiVersion: inference.networking.x-k8s.io/v1alpha1
+          kind: EndpointPickerConfig
+          plugins:
+          - type: queue-scorer
+          - type: kv-cache-utilization-scorer
+          - type: prefix-cache-scorer
+          - type: metrics-data-source
+            parameters:
+              insecureSkipVerify: true
+              path: /metrics
+              scheme: http
+          - type: core-metrics-extractor
+          - type: predicted-latency-producer
+            parameters:
+              streamingMode: true
+          - type: prefix-cache-affinity-filter
+            name: strict-affinity-filter
+            parameters:
+              affinityThreshold: 0.99
+          - type: prefix-cache-affinity-filter
+            name: loose-affinity-filter
+            parameters:
+              affinityThreshold: 0.8
+          - type: latency-scorer
+          - type: weighted-random-picker
+          - type: slo-headroom-tier-filter
+          - type: latency-slo-admitter
+          schedulingProfiles:
+          - name: default
+            plugins:
+            - pluginRef: predicted-latency-producer
+            - pluginRef: strict-affinity-filter
+            - pluginRef: slo-headroom-tier-filter
+            - pluginRef: loose-affinity-filter
+            - pluginRef: latency-scorer
+            - pluginRef: weighted-random-picker
 
+      # InferencePool Provider Configuration
+      inferencePoolProviderConfig:
+        destinationRule:
+          # host is auto-resolved from model_id_label (e.g. {model_id_label}-gaie-epp)
+          trafficPolicy:
+            connectionPool:
+              http:
+                http1MaxPendingRequests: 256000
+                maxRequestsPerConnection: 256000
+                http2MaxRequests: 256000
+                idleTimeout: "900s"
+              tcp:
+                maxConnections: 256000
+                maxConnectionDuration: "1800s"
+                connectTimeout: "900s"
     # -------------------------------------------------------------------------
     # Prefill Configuration
     # -------------------------------------------------------------------------
@@ -84,6 +144,24 @@ scenario:
     # -------------------------------------------------------------------------
     decode:
       replicas: 2
+      vllm:
+        customCommand: |
+          export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+          export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+          vllm serve /model-cache/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_METRICS_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+          --tensor-parallel-size $TP_SIZE \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --no-enable-log-requests \
+          --disable-uvicorn-access-log \
+          --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+          --no-enable-prefix-caching
 
       initContainers:
         - name: preprocess
@@ -151,41 +229,8 @@ scenario:
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # vLLM Common Configuration
-    # Shared settings for both decode and prefill pods.
-    # When no customCommand is set on decode/prefill, the vLLM serve command
-    # is auto-generated from these fields:
-    #   - model.maxModelLen, model.blockSize maps to --max-model-len, --block-size
-    #   - model.gpuMemoryUtilization maps to --gpu-memory-utilization
-    #   - decode/prefill.parallelism.tensor maps to --tensor-parallel-size
-    #   - vllmCommon.flags.* maps to --enforce-eager, --no-enable-log-requests, etc.
-    #   - vllmCommon.kvTransfer.* maps to --kv-transfer-config (if enabled)
-    #   - vllmCommon.kvEvents.* maps to --kv-events-config (if enabled)
-    #   - decode/prefill.vllm.additionalFlags maps to appended as extra CLI args
-    # When decode.vllm.customCommand or prefill.vllm.customCommand IS set, it replaces the auto-generated
-    # command entirely. Only --kv-transfer-config and --kv-events-config are
-    # still appended from vllmCommon if enabled. All other vllmCommon.flags
-    # are ignored -- the custom command must include its own flags.
-    # -------------------------------------------------------------------------
     vllmCommon:
-      kvTransfer:
-        enabled: true
-        connector: NixlConnector
-        role: kv_both
-
-      # These flags control the auto-generated vllm serve command.
-      # Flags not listed here inherit from defaults.yaml.
-      # To use a fully custom command instead, set decode.vllm.customCommand.
-      flags:
-        enforceEager: true             # --enforce-eager
-        disableLogRequests: true     # modelservice only -- upstream vllm-openai (v0.9+) dropped --no-enable-log-requests
-        disableUvicornAccessLog: true  # --disable-uvicorn-access-log
-        allowLongMaxModelLen: "1"
-        serverDevMode: "1"
-
-      #priorityClassName: nightly-gpu-critical
+#      priorityClassName: nightly-gpu-critical
 
       volumes:
         - name: shared-config
@@ -217,7 +262,7 @@ scenario:
     # -------------------------------------------------------------------------
     # Workload/Harness Configuration
     # -------------------------------------------------------------------------
-    workDir: "~/data/inference-scheduling"
+    workDir: "~/data/optimized-baseline"
 
     harness:
       name: inference-perf

@@ -42,7 +42,7 @@ source .venv/bin/activate
 oc whoami
 
 # 5. Standup the WVA-enabled scenario (substitute your namespace)
-llmdbenchmark --spec guides/inference-scheduling-wva standup -p <namespace>
+llmdbenchmark --spec guides/workload-autoscaling standup -p <namespace>
 ```
 
 When standup completes, the smoketest will have already verified the full
@@ -57,8 +57,8 @@ oc get hpa -n <namespace>
 To redeploy after editing the scenario YAML, please teardown then standup:
 
 ```bash
-llmdbenchmark --spec guides/inference-scheduling-wva teardown -p <namespace>
-llmdbenchmark --spec guides/inference-scheduling-wva standup  -p <namespace>
+llmdbenchmark --spec guides/workload-autoscaling teardown -p <namespace>
+llmdbenchmark --spec guides/workload-autoscaling standup  -p <namespace>
 ```
 
 The shared cluster-wide infrastructure (`prometheus-adapter`, ClusterRole,
@@ -125,8 +125,8 @@ one of them surfaces as `TARGETS: <unknown>` on the HPA - see the
 | Method | When to use |
 |---|---|
 | `-u / --wva` CLI flag on any existing scenario | Quick toggle without editing files; uses defaults from `config/templates/values/defaults.yaml` |
-| `--spec guides/inference-scheduling-wva` | Dedicated scenario where every WVA knob is spelled out inline so you can tweak them per-experiment |
-| `--spec guides/multi-model-wva` | Multi-model scenario: two or more pools under one gateway, each with its own VA + HPA, one shared WVA controller |
+| `--spec guides/workload-autoscaling` | Dedicated scenario where every WVA knob is spelled out inline so you can tweak them per-experiment |
+| `--spec examples/multi-model-wva` | Multi-model scenario: two or more pools under one gateway, each with its own VA + HPA, one shared WVA controller |
 
 ### 2a. Via the CLI flag
 
@@ -158,7 +158,7 @@ You'd choose this scenario when you want to:
 ### 2c. Via the `multi-model-wva` scenario (multiple pools, one WVA controller)
 
 ```bash
-llmdbenchmark --spec guides/multi-model-wva standup -p <namespace>
+llmdbenchmark --spec examples/multi-model-wva standup -p <namespace>
 ```
 
 Deploys N models behind a single gateway, each with its own EPP +
@@ -172,7 +172,7 @@ settings (controller image, chart versions, EPP plugin config, shared
 HTTPRoute); per-stack blocks hold only model-specific knobs (model name,
 decode resources, VA + HPA min/max). To add a third model, copy one of
 the stack entries and change `name` + `model`. See
-[`guides/multi-model-wva.yaml`](../config/scenarios/guides/multi-model-wva.yaml).
+[`examples/multi-model-wva.yaml`](../config/scenarios/examples/multi-model-wva.yaml).
 
 Topology:
 
@@ -218,7 +218,7 @@ What the scenario layout buys you:
 ## 3. The WVA knobs in the scenario YAML
 
 All settings live under the `wva:` block in
-[`config/scenarios/guides/inference-scheduling-wva.yaml`](../config/scenarios/guides/inference-scheduling-wva.yaml).
+[`config/scenarios/guides/workload-autoscaling.yaml`](../config/scenarios/guides/workload-autoscaling.yaml).
 Each is documented inline in the file too. Below is what each does and the
 typical reasons you'd touch it.
 
@@ -525,8 +525,8 @@ HPA, but it's still considered cluster-hygiene rude to run cluster-scoped.
 | Shared install/teardown helpers | [`llmdbenchmark/standup/wva.py`](../llmdbenchmark/standup/wva.py) |
 | Teardown logic | [`llmdbenchmark/teardown/steps/step_01_uninstall_helm.py`](../llmdbenchmark/teardown/steps/step_01_uninstall_helm.py) |
 | Smoketest WVA mixin | [`llmdbenchmark/smoketests/validators/wva.py`](../llmdbenchmark/smoketests/validators/wva.py) |
-| WVA-enabled scenario (the one to copy/edit for new experiments) | [`config/scenarios/guides/inference-scheduling-wva.yaml`](../config/scenarios/guides/inference-scheduling-wva.yaml) |
-| Multi-model WVA scenario (N pools, 1 gateway, 1 controller) | [`config/scenarios/guides/multi-model-wva.yaml`](../config/scenarios/guides/multi-model-wva.yaml) |
+| WVA-enabled scenario (the one to copy/edit for new experiments) | [`config/scenarios/guides/workload-autoscaling.yaml`](../config/scenarios/guides/workload-autoscaling.yaml) |
+| Multi-model WVA example (N pools, 1 gateway, 1 controller) | [`config/scenarios/examples/multi-model-wva.yaml`](../config/scenarios/examples/multi-model-wva.yaml) |
 
 ---
 
@@ -542,7 +542,7 @@ your own if you've customized.
 ### 10.1 First-time standup
 
 ```bash
-llmdbenchmark --spec guides/multi-model-wva standup -p <namespace>
+llmdbenchmark --spec examples/multi-model-wva standup -p <namespace>
 ```
 
 Renders both stacks, installs shared infra (istio, Gateway,
@@ -555,7 +555,7 @@ auto-chains into the smoketest phase unless you pass
 ### 10.2 Discover what's deployed (`--list-endpoints`)
 
 ```bash
-llmdbenchmark --spec guides/multi-model-wva run -p <namespace> --list-endpoints
+llmdbenchmark --spec examples/multi-model-wva run -p <namespace> --list-endpoints
 ```
 
 Prints a table of per-stack endpoint URLs + a copy-paste block of
@@ -568,7 +568,7 @@ have produced) and exits before launching any harness pods.
 **Preferred - let `--stack` auto-resolve the endpoint:**
 
 ```bash
-llmdbenchmark --spec guides/multi-model-wva run -p <namespace> \
+llmdbenchmark --spec examples/multi-model-wva run -p <namespace> \
   --stack qwen3-06b \
   -l inference-perf -w sanity_random.yaml -j 1
 ```

@@ -12,7 +12,8 @@ template_dir:
 
 # [OPTIONAL]
 scenario_file:
-  path: {{ base_dir }}/config/scenarios/guides/multi-model-wva.yaml
+  path: {{ base_dir }}/config/scenarios/guides/workload-autoscaling.yaml
 
-# Experiment definitions are shared with inference-scheduling - the workload
-# shape is the same, only the number of models/pools differs.
+# Experiment definitions are shared with the non-WVA inference-scheduling
+# scenario -- the workload shape is the same; only the infra scaling strategy
+# changes.

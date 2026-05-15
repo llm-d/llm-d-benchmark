@@ -148,7 +148,7 @@ Render-time conveniences that activate only when `len(scenario) >= 2`:
   against the shared PVC. Downloads run in parallel - total wall time
   ~ slowest model, not sum.
 
-See [guides/multi-model-wva.yaml](scenarios/guides/multi-model-wva.yaml) for a
+See [examples/multi-model-wva.yaml](scenarios/examples/multi-model-wva.yaml) for a
 complete example and the developer guide's [Multi-Stack Scenarios](../docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
 section for the merge semantics.
 
@@ -1806,7 +1806,7 @@ template_dir:
 
 ```yaml
 scenario_file:
-  path: {{ base_dir }}/config/scenarios/guides/inference-scheduling.yaml
+  path: {{ base_dir }}/config/scenarios/guides/optimized-baseline.yaml
 
 experiments:
   - name: "experiment-name"
