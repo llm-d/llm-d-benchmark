@@ -22,7 +22,7 @@ class CleanHarnessStep(Step):
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
     ) -> StepResult:
-        errors = []
+        errors = [] # noqa: F841
         cmd = context.require_cmd()
 
         # Use the same context secret name that standup created

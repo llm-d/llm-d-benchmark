@@ -9,6 +9,8 @@ import re
 
 import yaml
 
+from llmdbenchmark.executor.context import ExecutionContext
+
 
 class Phase(Enum):
     """Benchmark lifecycle phases."""
@@ -137,10 +139,10 @@ class Step(ABC):
         self.per_stack = per_stack
 
     @abstractmethod
-    def execute(self, context: "ExecutionContext", stack_path: Path | None = None) -> StepResult:
+    def execute(self, context: ExecutionContext, stack_path: Path | None = None) -> StepResult:
         """Execute this step and return a StepResult."""
 
-    def should_skip(self, context: "ExecutionContext") -> bool:  # pylint: disable=unused-argument
+    def should_skip(self, context: ExecutionContext) -> bool:  # pylint: disable=unused-argument
         """Override to implement conditional skip logic."""
         return False
 
@@ -197,7 +199,7 @@ class Step(ABC):
             current = current[key]
         return current
 
-    def _load_plan_config(self, context: "ExecutionContext") -> dict | None:
+    def _load_plan_config(self, context: ExecutionContext) -> dict | None:
         """Load the merged config.yaml from the first rendered stack."""
         for stack_path in context.rendered_stacks:
             config_file = stack_path / "config.yaml"
@@ -214,7 +216,7 @@ class Step(ABC):
                 return yaml.safe_load(f) or {}
         return {}
 
-    def _all_target_namespaces(self, context: "ExecutionContext") -> list[str]:
+    def _all_target_namespaces(self, context: ExecutionContext) -> list[str]:
         """Collect deduplicated namespaces from all rendered stacks, with context-level fallback."""
         seen: list[str] = []
 
@@ -239,7 +241,7 @@ class Step(ABC):
         return seen
 
     def _find_rendered_yaml(
-        self, context: "ExecutionContext", prefix: str
+        self, context: ExecutionContext, prefix: str
     ) -> Path | None:
         """Find a rendered YAML file by prefix across all stacks."""
         for stack_path in context.rendered_stacks:
