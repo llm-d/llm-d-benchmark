@@ -77,7 +77,7 @@ tool_version_for() {
     case "$1" in
         curl)      echo "8.20.0"  ;;
         yq)        echo "v4.53.2" ;;
-        helmfile)  echo "1.4.2"   ;;
+        helmfile)  echo "1.5.1"   ;;
         helm)      echo "v4.2.0" ;;
         oc)        echo "4.20.0"  ;;
         kustomize) echo "v5.8.1"  ;;
