@@ -84,7 +84,19 @@ class AdminPrerequisitesStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        return context.non_admin
+        if context.non_admin:
+            return True
+        if self._kustomize_only(context):
+            return True
+        return False
+
+    @staticmethod
+    def _kustomize_only(context: ExecutionContext) -> bool:
+        methods = context.deployed_methods or []
+        return (
+            methods == ["kustomize"]
+            and context.kustomize_skip_infra
+        )
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None

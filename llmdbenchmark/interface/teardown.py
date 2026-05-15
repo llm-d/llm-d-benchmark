@@ -37,7 +37,7 @@ def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.A
     teardown_parser.add_argument(
         "-t", "--methods",
         default=env("LLMDBENCH_METHODS"),
-        help="Deployment methods to tear down (standalone, modelservice, fma).",
+        help="Deployment methods to tear down (standalone, modelservice, fma, kustomize).",
     )
     teardown_parser.add_argument(
         "-r", "--release",
@@ -86,4 +86,9 @@ def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.A
         default=env_int("LLMDBENCH_FMA_TEARDOWN_TIMEOUT"),
         help="Seconds to wait for FMA launcher and requester pods to terminate "
              "before the Helm chart uninstall removes the controller. Default: 120.",
+    )
+    teardown_parser.add_argument(
+        "--llmd-repo-path",
+        default=env("LLMDBENCH_LLMD_REPO_PATH"),
+        help="Path to a local llm-d repository clone (used by the kustomize method).",
     )
