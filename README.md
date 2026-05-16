@@ -374,7 +374,7 @@ git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@e50305af90f0812e77e1827f3bc740fe75b76370"
+pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@86cd47bfd4e20d95a14138d2c7573024764a251c"
 ```
 
 ### Verify Installation
