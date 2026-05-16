@@ -580,7 +580,7 @@ install_skopeo_linux() {
 
 install_curl_linux() {
     # version is read by the SBOM generator (util/generate_sbom.py) to track the pinned minimum
-    local version=8.20.0
+    local version=8_20_0
     ${PKG_MGR} curl || true
 }
 
