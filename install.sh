@@ -82,6 +82,7 @@ tool_version_for() {
         oc)        echo "4.20.0"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.5"  ;;
+        skopeo)    echo "1.11.5"  ;;
         *)         echo ""        ;;
     esac
 }
@@ -574,6 +575,8 @@ install_crane_linux() {
 }
 
 install_skopeo_linux() {
+    # version is read by the SBOM generator (util/generate_sbom.py) to track the pinned minimum
+    local version=v1.11.5
     # skopeo is widely available in distro package managers
     ${PKG_MGR} skopeo || true
 }
