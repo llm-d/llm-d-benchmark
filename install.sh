@@ -547,9 +547,16 @@ install_oc_linux() {
 }
 
 install_kustomize_linux() {
-    # The upstream install_kustomize.sh script is arch-aware (detects GOARCH internally)
-    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-    sudo mv kustomize /usr/local/bin/
+    local version="${TOOL_VERSION["kustomize"]}"
+    local arch
+    arch=$(uname -m)
+    local go_arch="amd64"
+    [[ "$arch" == "aarch64" ]] && go_arch="arm64"
+    curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${version}/kustomize_${version}_linux_${go_arch}.tar.gz" \
+        -o "/tmp/kustomize.tar.gz"
+    tar xzf /tmp/kustomize.tar.gz -C /tmp kustomize
+    sudo mv /tmp/kustomize /usr/local/bin/
+    sudo chmod +x /usr/local/bin/kustomize
 }
 
 install_crane_linux() {
