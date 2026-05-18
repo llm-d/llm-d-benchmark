@@ -37,6 +37,7 @@ jobs:
           github-token: ${{ secrets.GHCR_TOKEN }}
           platform: linux/amd64
 
+# --------------------------------- METHOD: FMA ---------------------------------
   benchmark-fma:
     name: Benchmark - FMA (GKE)
     runs-on: ubuntu-latest
@@ -46,7 +47,7 @@ jobs:
     env:
       LLMDBENCH_CICD_NS: llmdbenchcicdfns-gke
       LLMDBENCH_CICD_R: llmdbenchcicdr-gke
-      LLMDBENCH_CICD_TARGET: cicd/gke-fma
+      LLMDBENCH_CICD_TARGET: cicd/gke
       LLMDBENCH_CICD_METHOD: fma
       LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdf-gke
       GCP_PROJECT_ID: llm-d-scale
@@ -82,14 +83,18 @@ jobs:
       - name: Get GKE credentials
         run: |
           gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" --zone "${{ env.GKE_CLUSTER_ZONE }}"
+        shell: bash
 
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
+          cp util/debug_info_on_failure.sh /usr/local/bin
+        shell: bash
 
       - name: Cleanup target cloud
         run: |
             llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+            kubectl -n "$LLMDBENCH_CICD_NS" exec -it access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*"
         shell: bash
 
       - name: Standup
@@ -100,73 +105,36 @@ jobs:
       - name: Debug info (on failure)
         if: failure()
         run: |
-          echo "=== All pods ==="
-          kubectl get pods -n "$NS" -o wide || true
-          echo ""
-          echo "=== Download job logs ==="
-          kubectl logs job/download-model -n "$NS" --tail=50 || true
-          echo ""
-          echo "=== Download pod logs (previous) ==="
-          for pod in $(kubectl get pods -n "$NS" -l job-name=download-model -o name 2>/dev/null); do
-            echo "--- $pod ---"
-            kubectl logs -n "$NS" "$pod" --tail=50 2>/dev/null || true
-            kubectl logs -n "$NS" "$pod" --previous --tail=50 2>/dev/null || true
-          done
-          echo ""
-          echo "=== Disk usage on node ==="
-          kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: allocatable ephemeral={.status.allocatable.ephemeral-storage}, capacity={.status.capacity.ephemeral-storage}{"\n"}{end}' || true
-          echo ""
-          echo "=== Failed pod descriptions ==="
-          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
-            echo "--- $pod ---"
-            kubectl describe -n "$NS" "$pod" 2>/dev/null | tail -20
-            echo "--- logs ---"
-            kubectl logs -n "$NS" "$pod" --tail=30 --all-containers 2>/dev/null || true
-          done
-          echo ""
-          echo "=== Events ==="
-          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -20 || true
+          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
+        shell: bash
 
       - name: Run
         run: |
           llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
-
-      - name: Teardown (standalone)
+      - name: Teardown
         if: always()
         run: |
           llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+          kubectl -n "$LLMDBENCH_CICD_NS" exec -it access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*"
         shell: bash
 
       - name: Debug info (on failure)
         if: failure()
         run: |
-          echo "=== Pod status ==="
-          kubectl get pods -n "$NS" -o wide || true
-          echo ""
-          echo "=== Pod descriptions (non-running) ==="
-          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
-            echo "--- $pod ---"
-            kubectl describe -n "$NS" "$pod" || true
-          done
-          echo ""
-          echo "=== Pod logs (non-running) ==="
-          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
-            echo "--- $pod ---"
-            kubectl logs -n "$NS" "$pod" --tail=200 --all-containers || true
-          done
-          echo ""
-          echo "=== Events ==="
-          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true
+          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
+        shell: bash
 
       - name: Upload results to GCS
         run: |
-          REG_NAME=$(basename "$LLMDBENCH_CICD_TARGET")
+          REG_PROVIDER=$(basename "$LLMDBENCH_CICD_TARGET")
+          REG_METHOD=$LLMDBENCH_CICD_METHOD
           RUN_DATE=$(date +'%Y-%m-%d')
-          cd "$LLMDBENCH_WORKSPACE" && gcloud storage cp -r . "gs://llm-d-benchmarks/regressions/$REG_NAME/$RUN_DATE" || true
+          cd "$LLMDBENCH_WORKSPACE" && gcloud storage cp -r . "gs://llm-d-benchmarks/comparison/$REG_PROVIDER/$REG_METHOD/$RUN_DATE" || true
         shell: bash
 
+#     START - This should be deleted, and the contents accessed from GCS accessed directly
       - name: Download standalone results
         if: always()
         uses: actions/download-artifact@v8
@@ -202,7 +170,9 @@ jobs:
           name: benchmark-results-gke-fma
           path: ${{ env.LLMDBENCH_WORKSPACE }}
           retention-days: 14
+#     END - This should be deleted, and the contents accessed from GCS accessed directly
 
+# --------------------------------- METHOD: Standalone ---------------------------------
   benchmark-standalone:
     name: Benchmark - Standalone (GKE)
     runs-on: ubuntu-latest
@@ -248,14 +218,18 @@ jobs:
       - name: Get GKE credentials
         run: |
           gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" --zone "${{ env.GKE_CLUSTER_ZONE }}"
+        shell: bash
 
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
+          cp util/debug_info_on_failure.sh /usr/local/bin
+        shell: bash
 
       - name: Cleanup target cloud
         run: |
             llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+            kubectl -n "$LLMDBENCH_CICD_NS" exec -it access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*"
         shell: bash
 
       - name: Standup
@@ -266,83 +240,46 @@ jobs:
       - name: Debug info (on failure)
         if: failure()
         run: |
-          echo "=== PVC status ==="
-          kubectl get pvc -n "$NS" -o wide || true
-          echo ""
-          echo "=== All pods ==="
-          kubectl get pods -n "$NS" -o wide || true
-          echo ""
-          echo "=== Download job logs ==="
-          kubectl logs job/download-model -n "$NS" --tail=50 || true
-          echo ""
-          echo "=== Download pod logs (previous) ==="
-          for pod in $(kubectl get pods -n "$NS" -l job-name=download-model -o name 2>/dev/null); do
-            echo "--- $pod ---"
-            kubectl logs -n "$NS" "$pod" --tail=50 2>/dev/null || true
-            kubectl logs -n "$NS" "$pod" --previous --tail=50 2>/dev/null || true
-          done
-          echo ""
-          echo "=== Disk usage on node ==="
-          kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: allocatable ephemeral={.status.allocatable.ephemeral-storage}, capacity={.status.capacity.ephemeral-storage}{"\n"}{end}' || true
-          echo ""
-          echo "=== Failed pod descriptions ==="
-          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
-            echo "--- $pod ---"
-            kubectl describe -n "$NS" "$pod" 2>/dev/null | tail -20
-            echo "--- logs ---"
-            kubectl logs -n "$NS" "$pod" --tail=30 --all-containers 2>/dev/null || true
-          done
-          echo ""
-          echo "=== Events ==="
-          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -20 || true
+          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
+        shell: bash
 
       - name: Run
         run: |
           llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
-      - name: Teardown (standalone)
+#     START - This should be deleted, and the contents accessed from GCS accessed directly
+      - name: Archive benchmark results as GitHub artifact
+        if: success() || failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: benchmark-results-ocp-standalone
+          path: ${{ env.LLMDBENCH_WORKSPACE }}
+          retention-days: 14
+#     END - This should be deleted, and the contents accessed from GCS accessed directly
+
+      - name: Teardown
         if: always()
         run: |
           llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+          kubectl -n "$LLMDBENCH_CICD_NS" exec -it access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*"
         shell: bash
 
       - name: Debug info (on failure)
         if: failure()
         run: |
-          echo "=== Pod status ==="
-          kubectl get pods -n "$NS" -o wide || true
-          echo ""
-          echo "=== Pod descriptions (non-running) ==="
-          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
-            echo "--- $pod ---"
-            kubectl describe -n "$NS" "$pod" || true
-          done
-          echo ""
-          echo "=== Pod logs (non-running) ==="
-          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
-            echo "--- $pod ---"
-            kubectl logs -n "$NS" "$pod" --tail=200 --all-containers || true
-          done
-          echo ""
-          echo "=== Events ==="
-          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true
+          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
+        shell: bash
 
       - name: Upload results to GCS
         run: |
-          REG_NAME=$(basename "$LLMDBENCH_CICD_TARGET")
+          REG_PROVIDER=$(basename "$LLMDBENCH_CICD_TARGET")
+          REG_METHOD=$LLMDBENCH_CICD_METHOD
           RUN_DATE=$(date +'%Y-%m-%d')
-          cd "$LLMDBENCH_WORKSPACE" && gcloud storage cp -r . "gs://llm-d-benchmarks/regressions/$REG_NAME/$RUN_DATE" || true
+          cd "$LLMDBENCH_WORKSPACE" && gcloud storage cp -r . "gs://llm-d-benchmarks/regressions/$REG_PROVIDER/$REG_METHOD/$RUN_DATE" || true
         shell: bash
 
-      - name: Archive benchmark results as GitHub artifact
-        if: success() || failure()
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: benchmark-results-gke-standalone
-          path: ${{ env.LLMDBENCH_WORKSPACE }}
-          retention-days: 14
-
+# --------------------------------- METHOD: Modelservice ---------------------------------
   benchmark-modelservice:
     name: Benchmark - ModelService (GKE)
     runs-on: ubuntu-latest
@@ -388,14 +325,18 @@ jobs:
       - name: Get GKE credentials
         run: |
           gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" --zone "${{ env.GKE_CLUSTER_ZONE }}"
+        shell: bash
 
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
+          cp util/debug_info_on_failure.sh /usr/local/bin
+        shell: bash
 
       - name: Cleanup target cloud
         run: |
             llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+            kubectl -n "$LLMDBENCH_CICD_NS" exec -it access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*"
         shell: bash
 
       - name: Standup
@@ -406,79 +347,31 @@ jobs:
       - name: Debug info (on failure)
         if: failure()
         run: |
-          echo "=== PVC status ==="
-          kubectl get pvc -n "$NS" -o wide || true
-          echo ""
-          echo "=== All pods ==="
-          kubectl get pods -n "$NS" -o wide || true
-          echo ""
-          echo "=== Download job logs ==="
-          kubectl logs job/download-model -n "$NS" --tail=50 || true
-          echo ""
-          echo "=== Download pod logs (previous) ==="
-          for pod in $(kubectl get pods -n "$NS" -l job-name=download-model -o name 2>/dev/null); do
-            echo "--- $pod ---"
-            kubectl logs -n "$NS" "$pod" --tail=50 2>/dev/null || true
-            kubectl logs -n "$NS" "$pod" --previous --tail=50 2>/dev/null || true
-          done
-          echo ""
-          echo "=== Disk usage on node ==="
-          kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: allocatable ephemeral={.status.allocatable.ephemeral-storage}, capacity={.status.capacity.ephemeral-storage}{"\n"}{end}' || true
-          echo ""
-          echo "=== Failed pod descriptions ==="
-          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
-            echo "--- $pod ---"
-            kubectl describe -n "$NS" "$pod" 2>/dev/null | tail -20
-            echo "--- logs ---"
-            kubectl logs -n "$NS" "$pod" --tail=30 --all-containers 2>/dev/null || true
-          done
-          echo ""
-          echo "=== Events ==="
-          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -20 || true
+          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
+        shell: bash
 
       - name: Run
         run: |
           llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
-      - name: Teardown (standalone)
+      - name: Teardown
         if: always()
         run: |
           llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+          kubectl -n "$LLMDBENCH_CICD_NS" exec -it access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*"
         shell: bash
 
       - name: Debug info (on failure)
         if: failure()
         run: |
-          echo "=== Pod status ==="
-          kubectl get pods -n "$NS" -o wide || true
-          echo ""
-          echo "=== Pod descriptions (non-running) ==="
-          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
-            echo "--- $pod ---"
-            kubectl describe -n "$NS" "$pod" || true
-          done
-          echo ""
-          echo "=== Pod logs (non-running) ==="
-          for pod in $(kubectl get pods -n "$NS" --field-selector=status.phase!=Running,status.phase!=Succeeded -o name 2>/dev/null); do
-            echo "--- $pod ---"
-            kubectl logs -n "$NS" "$pod" --tail=200 --all-containers || true
-          done
-          echo ""
-          echo "=== Events ==="
-          kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30 || true
+          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
+        shell: bash
 
       - name: Upload results to GCS
         run: |
-          REG_NAME=$(basename "$LLMDBENCH_CICD_TARGET")
+          REG_PROVIDER=$(basename "$LLMDBENCH_CICD_TARGET")
+          REG_METHOD=$LLMDBENCH_CICD_METHOD
           RUN_DATE=$(date +'%Y-%m-%d')
-          cd "$LLMDBENCH_WORKSPACE" && gcloud storage cp -r . "gs://llm-d-benchmarks/regressions/$REG_NAME/$RUN_DATE" || true
+          cd "$LLMDBENCH_WORKSPACE" && gcloud storage cp -r . "gs://llm-d-benchmarks/regressions/$REG_PROVIDER/$REG_METHOD/$RUN_DATE" || true
         shell: bash
-
-#      - name: Archive benchmark results as GitHub artifact
-#        if: success() || failure()
-#        uses: actions/upload-artifact@v7.0.1
-#        with:
-#          name: ${{ env.OUTPUT_DIR }}
-#          path: ${{ env.INPUT_DIR }}
-#          retention-days: 14
