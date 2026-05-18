@@ -93,7 +93,7 @@ jobs:
       - name: Cleanup target cloud
         run: |
             llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
-            kubectl -n "$LLMDBENCH_CICD_NS" exec -it access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*"
+            kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
         shell: bash
 
       - name: Standup
@@ -116,7 +116,7 @@ jobs:
         if: always()
         run: |
           llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
-          kubectl -n "$LLMDBENCH_CICD_NS" exec -it access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*"
+          kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
         shell: bash
 
       - name: Debug info (on failure)
@@ -125,42 +125,52 @@ jobs:
           /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
         shell: bash
 
-#     START - This should be deleted, and the contents accessed from GCS accessed directly
-      - name: Download standalone results
-        if: always()
-        uses: actions/download-artifact@v8
-        with:
-          name: benchmark-results-ocp-standalone
-          path: /tmp/standalone-results
-        continue-on-error: true
-
-      - name: Display benchmark results
-        if: always()
+      - name: Upload results to GCS
         run: |
-          echo "## Benchmark Results" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          found=0
-          for f in $(find "$LLMDBENCH_WORKSPACE" /tmp/standalone-results -path "*/analysis/*" \( -name "result.txt" -o -name "summary.txt" \) 2>/dev/null | sort || true); do
-            found=1
-            stack_dir=$(basename "$(dirname "$f")")
-            echo "### $stack_dir" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat "$f" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-          done
-          if [ "$found" -eq 0 ]; then
-            echo "_No analysis results found._" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          REG_PROVIDER=$(basename "$LLMDBENCH_CICD_TARGET")
+          REG_METHOD=$LLMDBENCH_CICD_METHOD
+          RUN_DATE=$(date +'%Y-%m-%d')
+          cd "$LLMDBENCH_WORKSPACE"
+          REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
+          gcloud storage cp -r $REG_RESULTS/ "gs://llm-d-benchmarks/regressions/$REG_PROVIDER/$REG_METHOD/$RUN_DATE/" || true
         shell: bash
 
-      - name: Archive benchmark results as GitHub artifact
-        if: success() || failure()
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: benchmark-results-ocp-fma
-          path: ${{ env.LLMDBENCH_WORKSPACE }}
-          retention-days: 14
+#     START - This should be deleted, and the contents accessed from GCS accessed directly
+#      - name: Download standalone results
+#        if: always()
+#        uses: actions/download-artifact@v8
+#        with:
+#          name: benchmark-results-ocp-standalone
+#          path: /tmp/standalone-results
+#        continue-on-error: true
+#
+#      - name: Display benchmark results
+#        if: always()
+#        run: |
+#          echo "## Benchmark Results" >> "$GITHUB_STEP_SUMMARY"
+#          echo "" >> "$GITHUB_STEP_SUMMARY"
+#          found=0
+#          for f in $(find "$LLMDBENCH_WORKSPACE" /tmp/standalone-results -path "*/analysis/*" \( -name "result.txt" -o -name "summary.txt" \) 2>/dev/null | sort || true); do
+#            found=1
+#            stack_dir=$(basename "$(dirname "$f")")
+#            echo "### $stack_dir" >> "$GITHUB_STEP_SUMMARY"
+#            echo '```' >> "$GITHUB_STEP_SUMMARY"
+#            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+#            echo '```' >> "$GITHUB_STEP_SUMMARY"
+#            echo "" >> "$GITHUB_STEP_SUMMARY"
+#          done
+#          if [ "$found" -eq 0 ]; then
+#            echo "_No analysis results found._" >> "$GITHUB_STEP_SUMMARY"
+#          fi
+#        shell: bash
+#
+#      - name: Archive benchmark results as GitHub artifact
+#        if: success() || failure()
+#        uses: actions/upload-artifact@v7.0.1
+#        with:
+#          name: benchmark-results-ocp-fma
+#          path: ${{ env.LLMDBENCH_WORKSPACE }}
+#          retention-days: 14
 #     END - This should be deleted, and the contents accessed from GCS accessed directly
 
 # --------------------------------- METHOD: Standalone ---------------------------------
@@ -218,7 +228,7 @@ jobs:
       - name: Cleanup target cloud
         run: |
             llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
-            kubectl -n "$LLMDBENCH_CICD_NS" exec -it access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*"
+            kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
         shell: bash
 
       - name: Standup
@@ -238,20 +248,20 @@ jobs:
         shell: bash
 
 #     START - This should be deleted, and the contents accessed from GCS accessed directly
-      - name: Archive benchmark results as GitHub artifact
-        if: success() || failure()
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: benchmark-results-ocp-standalone
-          path: ${{ env.LLMDBENCH_WORKSPACE }}
-          retention-days: 14
+#      - name: Archive benchmark results as GitHub artifact
+#        if: success() || failure()
+#        uses: actions/upload-artifact@v7.0.1
+#        with:
+#          name: benchmark-results-ocp-standalone
+#          path: ${{ env.LLMDBENCH_WORKSPACE }}
+#          retention-days: 14
 #     END - This should be deleted, and the contents accessed from GCS accessed directly
 
       - name: Teardown
         if: always()
         run: |
           llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
-          kubectl -n "$LLMDBENCH_CICD_NS" exec -it access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*"
+          kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
         shell: bash
 
       - name: Debug info (on failure)
@@ -265,7 +275,9 @@ jobs:
           REG_PROVIDER=$(basename "$LLMDBENCH_CICD_TARGET")
           REG_METHOD=$LLMDBENCH_CICD_METHOD
           RUN_DATE=$(date +'%Y-%m-%d')
-          cd "$LLMDBENCH_WORKSPACE" && gcloud storage cp -r . "gs://llm-d-benchmarks/comparison/$REG_PROVIDER/$REG_METHOD/$RUN_DATE" || true
+          cd "$LLMDBENCH_WORKSPACE"
+          REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
+          gcloud storage cp -r $REG_RESULTS/ "gs://llm-d-benchmarks/regressions/$REG_PROVIDER/$REG_METHOD/$RUN_DATE/" || true
         shell: bash
 
 # --------------------------------- METHOD: Modelservice ---------------------------------
@@ -323,7 +335,7 @@ jobs:
       - name: Cleanup target cloud
         run: |
             llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
-            kubectl -n "$LLMDBENCH_CICD_NS" exec -it access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*"
+            kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
         shell: bash
 
       - name: Standup
@@ -346,7 +358,7 @@ jobs:
         if: always()
         run: |
           llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
-          kubectl -n "$LLMDBENCH_CICD_NS" exec -it access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*"
+          kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
         shell: bash
 
       - name: Debug info (on failure)
@@ -360,7 +372,9 @@ jobs:
           REG_PROVIDER=$(basename "$LLMDBENCH_CICD_TARGET")
           REG_METHOD=$LLMDBENCH_CICD_METHOD
           RUN_DATE=$(date +'%Y-%m-%d')
-          cd "$LLMDBENCH_WORKSPACE" && gcloud storage cp -r . "gs://llm-d-benchmarks/comparison/$REG_PROVIDER/$REG_METHOD/$RUN_DATE" || true
+          cd "$LLMDBENCH_WORKSPACE"
+          REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
+          gcloud storage cp -r $REG_RESULTS/ "gs://llm-d-benchmarks/regressions/$REG_PROVIDER/$REG_METHOD/$RUN_DATE/" || true
         shell: bash
 
 #      - name: Install AWS CLI
