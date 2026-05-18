@@ -66,6 +66,10 @@ scenario:
 #    namespace:
 #      name: llm-d-optimized-baseline
 
+    # =======================================================================================
+    # KUSTOMIZE -- Install directly from main llm-d repo "guides/<scenario name>" directory
+    # =======================================================================================
+
       guideName: "optimized-baseline"
       repoPath: ""
       repoRef: "main"

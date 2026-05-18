@@ -82,6 +82,7 @@ tool_version_for() {
         oc)        echo "4.20.0"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.5"  ;;
+        skopeo)    echo "1.14.6"  ;;
         *)         echo ""        ;;
     esac
 }
@@ -533,6 +534,7 @@ install_kubectl_linux() {
 
 install_oc_linux() {
     # oc mirrors use aarch64 / x86_64 naming, not Go-style
+    local version=$(tool_version_for oc)
     local oc_arch="${ARCH_UNAME}"  # x86_64 | aarch64 | ppc64le | s390x
     local oc_file="openshift-client-linux"
     [[ "$oc_arch" == "aarch64" ]] && oc_file="${oc_file}-arm64-rhel9"
@@ -581,8 +583,17 @@ install_crane_linux() {
 }
 
 install_skopeo_linux() {
-    # skopeo is widely available in distro package managers
-    ${PKG_MGR} skopeo || true
+    local version=$(tool_version_for skopeo)
+    local pkg="skopeo-linux-${ARCH_GO}"
+    if curl -sfL "https://github.com/lework/skopeo-binary/releases/download/v${version}/${pkg}" \
+            -o "/tmp/${pkg}"; then
+        chmod +x "/tmp/${pkg}"
+        sudo cp -f "/tmp/${pkg}" /usr/local/bin/skopeo
+        rm -f "/tmp/${pkg}"
+    else
+        echo "  Pre-built binary for skopeo ${version} not available; falling back to package manager"
+        ${PKG_MGR} skopeo || true
+    fi
 }
 
 install_curl_linux() {
