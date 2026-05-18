@@ -57,6 +57,11 @@ scenario:
     standalone:
       enabled: false
 
+    images:
+      vllm:
+        repository: ghcr.io/llm-d/llm-d-cuda
+        tag: v0.7.0
+
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true (continued)
     # =========================================================================
