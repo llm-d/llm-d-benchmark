@@ -331,9 +331,12 @@ Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-
 
 - **Python 3.11+**
 - **kubectl** -- Kubernetes CLI
-- **helm** -- Helm package manager
+- **helm** (>= 4.x) -- Helm package manager
 - **curl**, **git** -- Standard system tools
-- **helmfile** -- Required for modelservice deployments
+- **helmfile** (>= 1.5) -- Required for modelservice deployments. Older
+  helmfile is incompatible with Helm 4 (it probes helm with the removed
+  `helm version --client` flag and panics). `./install.sh` installs the
+  pinned Helm 4 / helmfile combination for you.
 - **kustomize**, **jq**, **yq** -- Required for template rendering
 - **skopeo**, **crane** -- Required for container image management
 - **oc** (optional) -- Required for OpenShift clusters (either `kubectl` or `oc` must be present)
@@ -765,6 +768,7 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 - [Lifecycle](docs/lifecycle.md)
 - [Run](docs/run.md)
 - [Standup](docs/standup.md)
+- [Kustomize deploy method](docs/kustomize.md)
 - [Reproducibility](docs/reproducibility.md)
 - [Observability](docs/observability.md)
 - [Quickstart](docs/quickstart.md)

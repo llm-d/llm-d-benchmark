@@ -4,7 +4,14 @@ from pathlib import Path
 
 from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
-from llmdbenchmark.executor.deps import check_system_dependencies, check_python_version
+from llmdbenchmark.executor.deps import (
+    check_system_dependencies,
+    check_python_version,
+    check_helm_version,
+    check_helmfile_version,
+    MIN_HELM_MAJOR,
+    MIN_HELMFILE_VERSION,
+)
 from llmdbenchmark.utilities.cluster import print_phase_banner
 
 
@@ -39,6 +46,31 @@ class EnsureInfraStep(Step):
             if context.logger:
                 for tool in dep_result.missing_optional:
                     context.logger.log_warning(f"Optional tool not found: {tool}")
+
+        # Helm 4 toolchain guard. Standup deploys via helmfile; a Helm-3 host
+        # or a pre-1.5 helmfile makes `helmfile template` panic with an
+        # opaque "unknown flag: --client" error. Fail fast here with an
+        # actionable message instead. Skipped on --dry-run (nothing deploys)
+        # and only when the tool is actually present (a missing tool is
+        # already reported above).
+        if not context.dry_run:
+            if "helm" in dep_result.available:
+                helm_ok, helm_ver = check_helm_version()
+                if not helm_ok:
+                    errors.append(
+                        f"Helm >= {MIN_HELM_MAJOR}.x required for standup "
+                        f"(found {helm_ver}). Run ./install.sh to install the "
+                        f"pinned Helm 4 toolchain."
+                    )
+            if "helmfile" in dep_result.available:
+                hf_ok, hf_ver = check_helmfile_version()
+                if not hf_ok:
+                    min_hf = ".".join(str(p) for p in MIN_HELMFILE_VERSION)
+                    errors.append(
+                        f"helmfile >= {min_hf} required (Helm 4 compatible; "
+                        f"found {hf_ver}). Older helmfile panics under Helm 4. "
+                        f"Run ./install.sh to install the pinned helmfile."
+                    )
 
         if errors:
             for err in errors:

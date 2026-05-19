@@ -79,6 +79,7 @@ tool_version_for() {
         yq)        echo "v4.53.2" ;;
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v4.2.0" ;;
+        helm-diff) echo "v3.15.7" ;;
         oc)        echo "4.20.0"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.5"  ;;
@@ -476,6 +477,14 @@ version_gte() {
     local ver1="${1}" ver2="${2}"
     local higher
 
+    # Normalize a leading 'v'. Tools report versions inconsistently:
+    # `helmfile --version` prints 'v1.1.3' while tool_version_for helmfile
+    # is '1.5.1'. Without this, `sort -V` ranks 'v1.1.3' ABOVE '1.5.1'
+    # (the 'v' breaks numeric ordering), so a stale helmfile is wrongly
+    # judged up-to-date and never upgraded.
+    ver1="${ver1#v}"
+    ver2="${ver2#v}"
+
     [[ "$ver1" == "$ver2" ]] && return 0
     [[ -z "$ver1" || "$ver1" == "(unknown)" ]] && return 1
     [[ -z "$ver2" ]] && return 0
@@ -483,6 +492,17 @@ version_gte() {
     higher=$(printf "%s\n%s" "$ver1" "$ver2" | sort -V | tail -1)
     [[ "$higher" == "$ver1" ]] && return 0
     return 1
+}
+
+# ---------------------------------------------------------------------------
+# Status + reason for a pinned version we intentionally do NOT enforce.
+# $4 is the category word ("non-critical" | "optional") used in the message.
+# ---------------------------------------------------------------------------
+_pin_not_enforced() {
+    local tool="$1" cur="$2" pin="$3" kind="$4"
+    printf "  %-14s %-20s %s\n" "$tool" "$cur" \
+        "(pinned ${pin} not enforced -- ${kind})"
+    echo "      by design the installer does not modify PATH for ${kind} tools, so the existing on-PATH '${tool}' is kept as-is."
 }
 
 # --------------------------------------------------------------------------------
@@ -517,9 +537,17 @@ install_helmfile_linux() {
 }
 
 install_helm_linux() {
-    # The official get-helm-3 script is arch-aware
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash \
-        || { echo "ERROR: Failed to install Helm"; exit 1; }
+    # Pin to the exact Helm version from tool_version_for (Helm 4+). The old
+    # get-helm-3 script always installed the latest Helm 3.x and ignored the
+    # pin entirely, so the helm pin was never actually honored.
+    local version
+    version=$(tool_version_for helm)   # e.g. v4.2.0 (already 'v'-prefixed)
+    local pkg="helm-${version}-linux-${ARCH_GO}"
+    curl -fsSL "https://get.helm.sh/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz" \
+        || { echo "ERROR: Failed to download Helm ${version}"; exit 1; }
+    tar xzf "/tmp/${pkg}.tar.gz" -C /tmp
+    sudo cp -f "/tmp/linux-${ARCH_GO}/helm" /usr/local/bin/helm
+    sudo chmod +x /usr/local/bin/helm
     helm version --short || { echo "ERROR: Helm installation verification failed"; exit 1; }
 }
 
@@ -630,8 +658,14 @@ install_pg_dev_deps() {
 # Intel and Apple Silicon, so these are simple wrappers.
 # ---------------------------------------------------------------------------
 install_yq_mac()       { brew install yq; }
-install_helmfile_mac() { brew install helmfile; }
-install_helm_mac()     { brew install helm; }
+# `brew install` is a no-op when the formula is already present, so it never
+# upgrades a stale binary (this is why a pinned helmfile/helm could stay
+# outdated). Always follow with `brew upgrade` so the pin is honored; the
+# enforce loop re-verifies the resulting version >= the pin and fails loud
+# otherwise. macOS uses Homebrew (not pinned tarballs like Linux) because
+# Homebrew owns the PATH/prefix here and brew stable already tracks the pins.
+install_helmfile_mac() { brew install helmfile 2>/dev/null || true; brew upgrade helmfile 2>/dev/null || true; }
+install_helm_mac()     { brew install helm 2>/dev/null || true; brew upgrade helm 2>/dev/null || true; }
 install_kubectl_mac()  { brew install kubectl; }
 install_oc_mac()       { brew install openshift-cli; }
 install_kustomize_mac(){ brew install kustomize; }
@@ -658,18 +692,40 @@ for tool in $tools; do
         fi
 
         if [[ "$needs_upgrade" == "true" ]]; then
-            echo "  ${tool} — ${current_ver} (outdated, upgrading to ${expected_ver})..."
+            echo "  ${tool} — ${current_ver} below pinned ${expected_ver}; attempting install/upgrade..."
             install_func="install_${tool}_${target_os}"
             if declare -F "$install_func" &>/dev/null; then
                 eval "$install_func"
-                if command -v "$tool" &>/dev/null; then
-                    new_ver=$(tool_version "$tool")
-                    printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(upgraded)"
-                    echo "${tool} already installed." >> "$dependencies_checked_file"
-                else
+                if ! command -v "$tool" &>/dev/null; then
                     echo "ERROR: Failed to upgrade ${tool}"
                     exit 1
                 fi
+                new_ver=$(tool_version "$tool")
+                # Re-verify the installer actually produced a version that
+                # satisfies the pin (previously assumed, so a no-op upgrade
+                # was silently cached as success). Only helm/helmfile hard-
+                # fail: a stale helmfile panics under Helm 4, and both are
+                # brew-symlinked so the failure is actionable. Other tools
+                # keep the prior lenient behavior -- many pins are documented
+                # floors, and some (e.g. macOS keg-only curl) the package
+                # manager cannot put on PATH, so blocking the whole install
+                # on them is wrong.
+                if [[ -n "$expected_ver" ]] && ! version_gte "$new_ver" "$expected_ver"; then
+                    if [[ "$tool" == "helm" || "$tool" == "helmfile" ]]; then
+                        echo "ERROR: ${tool} is still ${new_ver} after the upgrade"
+                        echo "       attempt (required: >= ${expected_ver}). The"
+                        echo "       installer did not produce the pinned version."
+                        exit 1
+                    fi
+                    # Non-critical tool the package manager can't put on PATH
+                    # (macOS keg-only curl, or a non-brew binary earlier in
+                    # PATH). Print one honest line + reason; never a false
+                    # "(upgraded)", and never silently modify the user's PATH.
+                    _pin_not_enforced "$tool" "$new_ver" "$expected_ver" "non-critical"
+                else
+                    printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(upgraded -> ${new_ver})"
+                fi
+                echo "${tool} already installed." >> "$dependencies_checked_file"
             else
                 echo "  WARNING: No upgrade function available for ${tool}, keeping ${current_ver}"
                 printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
@@ -681,6 +737,7 @@ for tool in $tools; do
         fi
     else
         echo "  ${tool} — NOT FOUND, attempting install..."
+        expected_ver=$(tool_version_for "$tool")
         install_func="install_${tool}_${target_os}"
         if declare -F "$install_func" &>/dev/null; then
             eval "$install_func"
@@ -688,7 +745,18 @@ for tool in $tools; do
             ${PKG_MGR} "$tool" || true
         fi
         if command -v "$tool" &>/dev/null; then
-            printf "  %-14s %-20s %s\n" "$tool" "$(tool_version "$tool")" "(newly installed)"
+            new_ver=$(tool_version "$tool")
+            if [[ -n "$expected_ver" ]] && ! version_gte "$new_ver" "$expected_ver"; then
+                if [[ "$tool" == "helm" || "$tool" == "helmfile" ]]; then
+                    echo "ERROR: ${tool} installed as ${new_ver} but >= ${expected_ver}"
+                    echo "       is required. The installer did not produce the"
+                    echo "       pinned version."
+                    exit 1
+                fi
+                echo "  WARNING: ${tool} is ${new_ver}; pinned ${expected_ver}"
+                echo "           not applied (continuing -- non-critical tool)."
+            fi
+            printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(newly installed)"
             echo "${tool} already installed." >> "$dependencies_checked_file"
         else
             echo "ERROR: Failed to install required tool: ${tool}"
@@ -701,20 +769,40 @@ done
 # Ensure helm-diff plugin is installed
 # ---------------------------------------------------------------------------
 helm_diff_url="https://github.com/databus23/helm-diff"
+helm_diff_version=$(tool_version_for helm-diff)   # e.g. v3.15.7
+
+_install_helm_diff() {
+    # Helm 4 requires plugin verification by default; helm-diff ships no
+    # provenance artifacts, so fall back to --verify=false on failure.
+    helm plugin install "${helm_diff_url}" --version "${helm_diff_version}" \
+        || helm plugin install "${helm_diff_url}" --version "${helm_diff_version}" --verify=false \
+        || { echo "ERROR: Failed to install helm-diff plugin"; exit 1; }
+}
 
 if command -v helm &>/dev/null; then
-    if ! helm plugin list 2>/dev/null | grep -q "^diff"; then
-        echo "  helm-diff    -- NOT FOUND, installing..."
-        if ! helm plugin install ${helm_diff_url}; then
-            echo "First attempt failed, retrying without signature verification..."
-            if ! helm plugin install ${helm_diff_url} --verify=false; then
-                echo "ERROR: Failed to install helm-diff plugin"; exit 1
-            fi
-        fi
-        printf "  %-14s %-20s %s\n" "helm-diff" "$(helm plugin list | grep '^diff' | awk '{print $2}')" "(newly installed)"
+    installed_diff_ver=$(helm plugin list 2>/dev/null | awk '$1=="diff"{print $2}')
+    want="${helm_diff_version#v}"
+    if [[ -z "$installed_diff_ver" ]]; then
+        echo "  helm-diff    -- NOT FOUND, installing ${helm_diff_version}..."
+        _install_helm_diff
+        diff_state="(newly installed)"
+    elif [[ "${installed_diff_ver#v}" != "$want" ]]; then
+        # A pre-Helm-4 helm-diff (built against the Helm 3 SDK) will fail to
+        # load under Helm 4 and break `helmfile apply`. Reinstall the pin.
+        echo "  helm-diff    -- ${installed_diff_ver} != pinned ${helm_diff_version}, reinstalling..."
+        helm plugin uninstall diff 2>/dev/null || true
+        _install_helm_diff
+        diff_state="(reinstalled)"
     else
-        printf "  %-14s %-20s %s\n" "helm-diff" "$(helm plugin list | grep '^diff' | awk '{print $2}')" ""
+        diff_state=""
     fi
+    final_diff_ver=$(helm plugin list 2>/dev/null | awk '$1=="diff"{print $2}')
+    if [[ "${final_diff_ver#v}" != "$want" ]]; then
+        echo "ERROR: helm-diff is ${final_diff_ver:-<missing>} after install"
+        echo "       (required: ${helm_diff_version}). Aborting."
+        exit 1
+    fi
+    printf "  %-14s %-20s %s\n" "helm-diff" "$final_diff_ver" "$diff_state"
 fi
 
 # ---------------------------------------------------------------------------
@@ -735,13 +823,20 @@ for tool in $optional_tools; do
         fi
 
         if [[ "$needs_upgrade" == "true" ]]; then
-            echo "  ${tool} — ${current_ver} (outdated, upgrading to ${expected_ver})..."
+            echo "  ${tool} — ${current_ver} below pinned ${expected_ver}; attempting install/upgrade..."
             install_func="install_${tool}_${target_os}"
             if declare -F "$install_func" &>/dev/null; then
                 eval "$install_func"
                 if command -v "$tool" &>/dev/null; then
                     new_ver=$(tool_version "$tool")
-                    printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(upgraded)"
+                    # Optional tools never hard-fail. Re-verify so we don't
+                    # claim "(upgraded)" when the on-PATH version did not
+                    # actually change (e.g. a non-brew oc shadowing brew's).
+                    if [[ -n "$expected_ver" ]] && ! version_gte "$new_ver" "$expected_ver"; then
+                        _pin_not_enforced "$tool" "$new_ver" "$expected_ver" "optional"
+                    else
+                        printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(upgraded -> ${new_ver})"
+                    fi
                     echo "${tool} already installed." >> "$dependencies_checked_file"
                 else
                     echo "  WARNING: Failed to upgrade optional tool ${tool}, keeping ${current_ver}"

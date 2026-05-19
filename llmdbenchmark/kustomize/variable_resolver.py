@@ -20,14 +20,17 @@ class GuideVariableResolver:
         gaie_version: str,
         repo_path: str,
         accelerator_backend: str = "gpu/vllm",
-        extra_variables: dict[str, str] | None = None,
+        variable_overrides: dict[str, str] | None = None,
         readme_variables: dict[str, str] | None = None,
     ):
         self._variables: dict[str, str] = {}
         if readme_variables:
             self._variables.update(readme_variables)
-        if extra_variables:
-            self._variables.update(extra_variables)
+        # Override (or fill) the guide README's ${VAR} values; cannot add
+        # variables the README does not reference, nor override the forced
+        # GUIDE_NAME / NAMESPACE / GAIE_VERSION set below.
+        if variable_overrides:
+            self._variables.update(variable_overrides)
         self._variables.update({
             "GUIDE_NAME": guide_name,
             "NAMESPACE": namespace,

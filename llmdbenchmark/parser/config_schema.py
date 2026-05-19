@@ -352,6 +352,10 @@ class ModelConfig(BaseModel):
     maxNumSeq: int | None = None
     maxNumBatchedTokens: int | None = None
 
+    # Computed at render time by RenderPlans._resolve_model_id_label and
+    # injected for ${model.idLabel} template use -- not user-set.
+    idLabel: str | None = None
+
 
 # ---------------------------------------------------------------------------
 # Harness
