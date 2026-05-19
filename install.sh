@@ -549,7 +549,7 @@ install_oc_linux() {
 }
 
 install_kustomize_linux() {
-    local version="${TOOL_VERSION["kustomize"]}"
+    local version="$(tool_version_for kustomize)"
     local arch
     arch=$(uname -m)
     local go_arch="amd64"
