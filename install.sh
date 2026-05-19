@@ -498,7 +498,7 @@ install_yq_linux() {
 }
 
 install_helmfile_linux() {
-    local version=$(tool_version_for helmfile)
+    local version=1.5.1
     local oc_arch="${ARCH_UNAME}"
     if [ "${oc_arch}" = "s390x" ]; then
 	    git clone  https://github.com/helmfile/helmfile.git
