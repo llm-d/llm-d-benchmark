@@ -162,6 +162,25 @@ jobs:
           gcloud storage cp -r $REG_RESULTS/ "gs://llm-d-benchmarks/regressions/$REG_PROVIDER/$REG_METHOD/$RUN_DATE/" || true
         shell: bash
 
+      - name: Block waiting for Standalone baseline
+        run: |
+          RUN_DATE=$(date +'%Y-%m-%d')
+          POLL=30
+          while true; do
+            brl=$(gcloud storage ls -l "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/*/results/*/benchmark_report_v0.2*")
+            if [[ $? -ne 0 ]]; then
+              echo "Standalone baseline for \"$RUN_DATE\" still not present. Waiting $POLL seconds and trying again..."
+              sleep $POLL
+            else
+              latest_entry=$(echo "$brl" | sort -k 2 | tail -n 2 | head -n 1 | awk '{ print $3 }')
+              latest_dir=$(echo "$latest_entry" | sed "s^gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/^^g" | cut -d '/' -f 1)
+              echo "Standalone baseline for \"$RUN_DATE\" is \"$latest_dir\"."
+              exit 0
+            fi
+          done
+          exit 1
+        shell: bash
+
 #     START - This should be deleted, and the contents accessed from GCS accessed directly
 #      - name: Download standalone results
 #        if: always()
