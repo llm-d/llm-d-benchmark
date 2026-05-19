@@ -83,6 +83,21 @@ jobs:
           project_id: ${{ env.GCP_PROJECT_ID }}
           install_components: 'kubectl,gke-gcloud-auth-plugin'
 
+      - name: Install oc (optional on install.sh)
+        run: |
+          # Install oc (OpenShift CLI) — optional on install.sh
+          if ! command -v oc &>/dev/null; then
+            curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
+              "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz"
+            mkdir -p /tmp/oc-extract
+            tar -xzf /tmp/openshift-client-linux.tar.gz -C /tmp/oc-extract
+            sudo mv /tmp/oc-extract/oc /usr/local/bin/
+            sudo mv /tmp/oc-extract/kubectl /usr/local/bin/
+            sudo chmod +x /usr/local/bin/oc
+            sudo chmod +x /usr/local/bin/kubectl
+            rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
+          fi
+
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
@@ -218,10 +233,25 @@ jobs:
           project_id: ${{ env.GCP_PROJECT_ID }}
           install_components: 'kubectl,gke-gcloud-auth-plugin'
 
+      - name: Install oc (optional on install.sh)
+        run: |
+          # Install oc (OpenShift CLI) — optional on install.sh
+          if ! command -v oc &>/dev/null; then
+            curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
+              "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz"
+            mkdir -p /tmp/oc-extract
+            tar -xzf /tmp/openshift-client-linux.tar.gz -C /tmp/oc-extract
+            sudo mv /tmp/oc-extract/oc /usr/local/bin/
+            sudo mv /tmp/oc-extract/kubectl /usr/local/bin/
+            sudo chmod +x /usr/local/bin/oc
+            sudo chmod +x /usr/local/bin/kubectl
+            rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
+          fi
+
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
-          cp util/debug_info_on_failure.sh /usr/local/bin
+          sudo cp util/debug_info_on_failure.sh /usr/local/bin
         shell: bash
 
       - name: Cleanup target cloud
@@ -325,10 +355,25 @@ jobs:
           project_id: ${{ env.GCP_PROJECT_ID }}
           install_components: 'kubectl,gke-gcloud-auth-plugin'
 
+      - name: Install oc (optional on install.sh)
+        run: |
+          # Install oc (OpenShift CLI) — optional on install.sh
+          if ! command -v oc &>/dev/null; then
+            curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
+              "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz"
+            mkdir -p /tmp/oc-extract
+            tar -xzf /tmp/openshift-client-linux.tar.gz -C /tmp/oc-extract
+            sudo mv /tmp/oc-extract/oc /usr/local/bin/
+            sudo mv /tmp/oc-extract/kubectl /usr/local/bin/
+            sudo chmod +x /usr/local/bin/oc
+            sudo chmod +x /usr/local/bin/kubectl
+            rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
+          fi
+
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
-          cp util/debug_info_on_failure.sh /usr/local/bin
+          sudo cp util/debug_info_on_failure.sh /usr/local/bin
         shell: bash
 
       - name: Cleanup target cloud

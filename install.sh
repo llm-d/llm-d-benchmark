@@ -533,7 +533,6 @@ install_kubectl_linux() {
 }
 
 install_oc_linux() {
-    set -x
     # oc mirrors use aarch64 / x86_64 naming, not Go-style
     local version=$(tool_version_for oc)
     local oc_arch="${ARCH_UNAME}"  # x86_64 | aarch64 | ppc64le | s390x
@@ -547,7 +546,6 @@ install_oc_linux() {
     sudo mv /tmp/oc /usr/local/bin/
     sudo chmod +x /usr/local/bin/oc
     sudo chmod +x /usr/local/bin/kubectl
-    set +x
 }
 
 install_kustomize_linux() {
