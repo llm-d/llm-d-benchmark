@@ -1,4 +1,4 @@
-name: CI - Nightly Run Benchmark on OCP
+name: CI - Nightly Run Benchmark on OCP ("FMA" standup method)
 
 on:
   workflow_dispatch:
@@ -20,28 +20,10 @@ on:
     - cron: '0 0 * * *'  # Daily at midnight UTC
 
 jobs:
-  build-image:
-    name: Build Nightly Image
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6.0.2
-
-      - name: Build and push nightly image
-        uses: ./.github/actions/docker-build-and-push
-        with:
-          tag: nightly
-          image-name: llm-d-benchmark
-          registry: ghcr.io/llm-d
-          github-token: ${{ secrets.GHCR_TOKEN }}
-          platform: linux/amd64
-
-# --------------------------------- METHOD: FMA ---------------------------------
-  benchmark-fma:
+  benchmark-ocp-fma:
     name: Benchmark - FMA (OCP)
     runs-on: [self-hosted, openshift, pok-prod]
-    needs: [build-image, benchmark-standalone]
+    needs: [nightly-build-image, benchmark-ocp-standalone]
     timeout-minutes: 240
 
     env:
