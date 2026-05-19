@@ -1,17 +1,94 @@
 # OPTIMIZED BASELINE WELL LIT PATH for LLM-D Deployment
 # Migrated from bash environment variables to YAML format
 # Based on https://github.com/llm-d/llm-d/tree/main/guides/optimized-baseline
-#
-# Notes:
-# - Removed pod monitoring; can be added using decode.extraContainerConfig
-# - Removed extra volumes metrics-volume and torch-compile-volume (not needed for this model/hardware)
-# - Use decode.additionalVolumeMounts and decode.additionalVolumes to add them if needed
 
 scenario:
   # ============================================================================
   # Optimized Baseline - Qwen3-32B with 2 decode pods
   # ============================================================================
   - name: "optimized-baseline"
+
+    # =========================================================================
+    # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
+    # -------------------------------------------------------------------------
+    # When kustomize.enabled is true (or `-t kustomize` is passed) this
+    # scenario is deployed by applying the UPSTREAM llm-d guide directly
+    # (guides/<guideName> in the llm-d repo). In that mode the deployment is
+    # defined ENTIRELY by the guide's own manifests:
+    #
+    #   * EVERYTHING ELSE in this scenario is IGNORED -- model, modelservice,
+    #     standalone, decode/prefill, vllmCommon, storage, harness model, etc.
+    #   * `-m/--models` and all other CLI/scenario tuning are ignored.
+    #   * DoE `experiment` SETUP sweeps do NOT alter a kustomize deploy
+    #     (only run/workload treatments still apply).
+    #
+    # The ONLY way to modify a kustomize deployment is the kustomize.* keys
+    # below:
+    #   patches / overlayPath           -> modelserver (the workload pods)
+    #   extraHelmValues / extraHelmSets -> router / GAIE helm release
+    #   guideVariableOverrides          -> override the guide README's ${VAR}
+    # See docs/kustomize.md for the full reference and worked examples.
+    #
+    # NOT SUPPORTED with kustomize: multi-model / multi-stack scenarios
+    # (the deploy is keyed on guideName with no per-stack uniquification --
+    # stacks would collide). Use the modelservice method for multi-model.
+    #
+    # When kustomize.enabled is false (the DEFAULT) this whole block is
+    # inert and the scenario deploys via modelservice/standalone as
+    # configured further below.
+    # =========================================================================
+    kustomize:
+      enabled: false
+
+      guideName: "optimized-baseline"
+      repoPath: ""
+      repoRef: "main"
+      gaieVersion: ""
+      acceleratorBackend: "gpu/vllm"
+      monitoring: false
+      overlayPath: ""
+      extraHelmValues: []
+      extraHelmSets: {}
+      guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
+
+      # Inline kustomize strategic merge patches applied on top of the
+      # guide's modelserver base.  For gated models, add an HF_TOKEN
+      # env var patch (the secret is auto-created from HF_TOKEN env):
+      #
+      #   - patch: |
+      #       apiVersion: apps/v1
+      #       kind: Deployment
+      #       metadata:
+      #         name: decode
+      #       spec:
+      #         template:
+      #           spec:
+      #             containers:
+      #               - name: modelserver
+      #                 env:
+      #                   - name: HF_TOKEN
+      #                     valueFrom:
+      #                       secretKeyRef:
+      #                         name: llm-d-hf-token
+      #                         key: HF_TOKEN
+      patches:
+        - patch: |
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: decode
+            spec:
+              replicas: 2
+              template:
+                spec:
+                  volumes:
+                    - name: triton-cache
+                      emptyDir: {}
+                  containers:
+                    - name: modelserver
+                      volumeMounts:
+                        - mountPath: /.triton
+                          name: triton-cache
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
@@ -60,64 +137,10 @@ scenario:
     standalone:
       enabled: false
 
-    kustomize:
-      enabled: false
-
-#    namespace:
-#      name: llm-d-optimized-baseline
-
-    # =======================================================================================
-    # KUSTOMIZE -- Install directly from main llm-d repo "guides/<scenario name>" directory
-    # =======================================================================================
-
-      guideName: "optimized-baseline"
-      repoPath: ""
-      repoRef: "main"
-      gaieVersion: ""
-      acceleratorBackend: "gpu/vllm"
-      monitoring: false
-      overlayPath: ""
-      extraHelmValues: []
-      extraHelmSets: {}
-
-      # Inline kustomize strategic merge patches applied on top of the
-      # guide's modelserver base.  For gated models, add an HF_TOKEN
-      # env var patch (the secret is auto-created from HF_TOKEN env):
-      #
-      #   - patch: |
-      #       apiVersion: apps/v1
-      #       kind: Deployment
-      #       metadata:
-      #         name: decode
-      #       spec:
-      #         template:
-      #           spec:
-      #             containers:
-      #               - name: modelserver
-      #                 env:
-      #                   - name: HF_TOKEN
-      #                     valueFrom:
-      #                       secretKeyRef:
-      #                         name: llm-d-hf-token
-      #                         key: HF_TOKEN
-      patches:
-        - patch: |
-            apiVersion: apps/v1
-            kind: Deployment
-            metadata:
-              name: decode
-            spec:
-              replicas: 2
-              template:
-                spec:
-                  volumes:
-                    - name: triton-cache
-                      emptyDir: {}
-                  containers:
-                    - name: modelserver
-                      volumeMounts:
-                        - mountPath: /.triton
-                          name: triton-cache
+    # NOTE: the `kustomize` deploy method is configured at the TOP of this
+    # stack (see the "KUSTOMIZE DEPLOY METHOD" banner). It lives there
+    # because enabling it overrides this entire scenario -- see
+    # docs/kustomize.md.
 
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true

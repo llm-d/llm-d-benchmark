@@ -58,6 +58,40 @@ PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@deadbeefc
 """
 
 
+# install.sh fragment with a tool_version_for() pin table -- the
+# authoritative source. helmfile has a conflicting install-fn `local
+# version=` to prove tool_version_for() wins.
+_INSTALL_SH_TVF_FIXTURE = """\
+#!/bin/bash
+
+tools="curl helm helmfile"
+
+tool_version_for() {
+    case "$1" in
+        curl)      echo "8.20.0"  ;;
+        helmfile)  echo "1.5.1"   ;;
+        helm)      echo "v4.2.0" ;;
+        helm-diff) echo "v3.15.7" ;;
+        *)         echo ""        ;;
+    esac
+}
+
+install_helmfile_linux() {
+    local version=1.1.3
+    curl -sL "https://example/v${version}/helmfile" -o /tmp/helmfile
+}
+
+install_helm_linux() {
+    local version
+    version=$(tool_version_for helm)
+    curl -fsSL "https://get.helm.sh/helm-${version}-linux-amd64.tar.gz" -o /tmp/h.tgz
+}
+
+helm_diff_url="https://github.com/databus23/helm-diff"
+helm_diff_version=$(tool_version_for helm-diff)
+"""
+
+
 _DEFAULTS_YAML_FIXTURE = """\
 images:
   benchmark:
@@ -106,6 +140,13 @@ dependencies = [
 def install_sh(tmp_path: Path) -> Path:
     p = tmp_path / "install.sh"
     p.write_text(_INSTALL_SH_FIXTURE, encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def install_sh_tvf(tmp_path: Path) -> Path:
+    p = tmp_path / "install.sh"
+    p.write_text(_INSTALL_SH_TVF_FIXTURE, encoding="utf-8")
     return p
 
 
@@ -181,6 +222,42 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/mikefarah/yq" in by_name["yq"].upstream
     assert "github.com/helmfile/helmfile" in by_name["helmfile"].upstream
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
+
+
+def test_tool_version_for_is_authoritative(
+    sbom_module, install_sh_tvf: Path,
+) -> None:
+    """tool_version_for() is the source of truth for pinned tools."""
+    entries = sbom_module.parse_install_sh(install_sh_tvf)
+    by_name = {e.name: e for e in entries}
+
+    assert by_name["helm"].pin == "v4.2.0"
+    assert by_name["helm"].pin_type == "version"
+    assert "tool_version_for" in by_name["helm"].location
+
+    assert by_name["curl"].pin == "8.20.0"
+    assert "tool_version_for" in by_name["curl"].location
+
+
+def test_tool_version_for_overrides_install_fn_scrape(
+    sbom_module, install_sh_tvf: Path,
+) -> None:
+    """helmfile's tool_version_for pin (1.5.1) wins over the install-fn
+    `local version=1.1.3` scrape."""
+    entries = sbom_module.parse_install_sh(install_sh_tvf)
+    by_name = {e.name: e for e in entries}
+    assert by_name["helmfile"].pin == "1.5.1"
+    assert "tool_version_for" in by_name["helmfile"].location
+
+
+def test_helm_diff_pinned_from_tool_version_for(
+    sbom_module, install_sh_tvf: Path,
+) -> None:
+    entries = sbom_module.parse_install_sh(install_sh_tvf)
+    by_name = {e.name: e for e in entries}
+    assert by_name["helm-diff"].pin == "v3.15.7"
+    assert by_name["helm-diff"].pin_type == "plugin (version)"
+    assert "tool_version_for" in by_name["helm-diff"].location
 
 
 # --------------------------------------------------------------------------- #

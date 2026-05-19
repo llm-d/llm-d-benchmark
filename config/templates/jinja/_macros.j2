@@ -196,8 +196,18 @@
   value: "1"
 - name: HOME
   value: "{{ vllmCommon.containerHome }}"
+{# Only emit HF_HOME when the modelservice chart will NOT. With
+   modelservice.uriProtocol == 'hf' (mirrors 13_ms-values.yaml.j2) the
+   chart mounts an hf:// cache and injects its own HF_HOME=/model-cache;
+   emitting it here too gave a duplicate env entry that Helm 4 server-side
+   apply rejects (Helm 3 client-side apply silently last-wins'd to the
+   chart's value). For pvc:// (the default) the chart sets no HF_HOME, so
+   ours is required -- omitting it unconditionally regressed every
+   pvc-protocol scenario. #}
+{% if not (modelservice is defined and modelservice.uriProtocol is defined and modelservice.uriProtocol == 'hf') -%}
 - name: HF_HOME
   value: "{{ vllmCommon.hfHome }}"
+{% endif -%}
 - name: MODEL_NAME
   value: "{{ model.name }}"
 - name: MODEL_PATH
