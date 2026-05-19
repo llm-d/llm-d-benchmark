@@ -168,8 +168,15 @@ class _StdLogger:
 _VERSION_LINE_RE = re.compile(
     r"^\s*(?:local\s+)?version=(?P<v>[\"']?)(?P<val>[^\s\"']+)(?P=v)\s*$"
 )
+_VERSION_FROM_TOOL_FN_RE = re.compile(
+    r'^\s*(?:local\s+)?version=(?P<q>["\'])?\$\(\s*tool_version_for\s+(?P<tool>[A-Za-z0-9_-]+)\s*\)(?P=q)?\s*$'
+)
 _INSTALL_FN_RE = re.compile(
     r"^\s*install_(?P<tool>[a-zA-Z0-9_-]+?)_(?:linux|mac)\s*\(\s*\)\s*\{?\s*$"
+)
+_TOOL_VERSION_FN_RE = re.compile(r"^\s*tool_version_for\s*\(\s*\)\s*\{?\s*$")
+_TOOL_VERSION_CASE_RE = re.compile(
+    r'^\s*(?P<tool>[A-Za-z0-9_-]+)\)\s*echo\s+"(?P<version>[^"]+)"\s*;;\s*$'
 )
 _TOOLS_VAR_RE = re.compile(
     r"^\s*tools=(?P<q>[\"'])(?P<list>[^\"']+)(?P=q)\s*$"
@@ -199,12 +206,27 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
     planner_url: str | None = None
     planner_line: int | None = None
     helm_diff_line: int | None = None
+    tool_versions: dict[str, str] = {}
 
     current_fn: str | None = None
     current_fn_line: int = 0
+    in_tool_version_fn = False
     rel = install_sh_path.name
 
     for i, raw in enumerate(lines, start=1):
+        if _TOOL_VERSION_FN_RE.match(raw):
+            in_tool_version_fn = True
+            continue
+
+        if in_tool_version_fn:
+            if raw.strip() == "}":
+                in_tool_version_fn = False
+                continue
+            m = _TOOL_VERSION_CASE_RE.match(raw)
+            if m:
+                tool_versions[m.group("tool")] = m.group("version")
+                continue
+
         m = _INSTALL_FN_RE.match(raw)
         if m:
             current_fn = m.group("tool")
@@ -216,6 +238,13 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
             if m and current_fn not in pinned:
                 pinned[current_fn] = (m.group("val"), i, f"install_{current_fn}_linux")
                 continue
+            m = _VERSION_FROM_TOOL_FN_RE.match(raw)
+            if m and current_fn not in pinned:
+                source_tool = m.group("tool")
+                pinned_val = tool_versions.get(source_tool)
+                if pinned_val:
+                    pinned[current_fn] = (pinned_val, i, f"install_{current_fn}_linux")
+                    continue
 
         m = _TOOLS_VAR_RE.match(raw)
         if m:

@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-05-19 01:05:44` (UTC)
-- Generated against git ref: `7253c38e09d881a02d5b3d0f5bc37ac4ee2e9da4`
+- Generated at: `2026-05-19 05:27:59` (UTC)
+- Generated against git ref: `da6246d285de568b739290107903f1557c332386`
 
 ## System Tool Dependencies
 
@@ -24,13 +24,13 @@ whatever the host's package manager provides.
 | **git** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [git/git](https://github.com/git/git) |
 | **helm** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [helm/helm](https://github.com/helm/helm) |
 | **helm-diff** | `latest` | plugin (latest) | `install.sh` line 703 (`helm_diff_url`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
-| **helmfile** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
+| **helmfile** | `1.5.1` | version | `install.sh` line 501 (`install_helmfile_linux`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
 | **jq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [jqlang/jq](https://github.com/jqlang/jq) |
-| **kustomize** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
+| **kustomize** | `v5.8.1` | version | `install.sh` line 552 (`install_kustomize_linux`) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
 | **llm-d-planner (git)** | `e50305af90f0812e77e1827f3bc740fe75b76370` | commit SHA | `install.sh` line 795 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
-| **oc** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [openshift/oc](https://github.com/openshift/oc) |
-| **skopeo** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [containers/skopeo](https://github.com/containers/skopeo) |
-| **yq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [mikefarah/yq](https://github.com/mikefarah/yq) |
+| **oc** | `4.20.0` | version | `install.sh` line 537 (`install_oc_linux`) | [openshift/oc](https://github.com/openshift/oc) |
+| **skopeo** | `1.14.6` | version | `install.sh` line 586 (`install_skopeo_linux`) | [containers/skopeo](https://github.com/containers/skopeo) |
+| **yq** | `v4.53.2` | version | `install.sh` line 493 (`install_yq_linux`) | [mikefarah/yq](https://github.com/mikefarah/yq) |
 
 
 ## Helm Chart Dependencies

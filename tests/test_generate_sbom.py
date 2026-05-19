@@ -183,6 +183,36 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
 
 
+def test_parse_install_sh_reads_tool_version_for_pins(
+    sbom_module, tmp_path: Path,
+) -> None:
+    install_sh = tmp_path / "install.sh"
+    install_sh.write_text(
+        """\
+tools="kustomize jq"
+
+tool_version_for() {
+    case "$1" in
+        kustomize) echo "v5.8.1" ;;
+        *)         echo "" ;;
+    esac
+}
+
+install_kustomize_linux() {
+    local version="$(tool_version_for kustomize)"
+    curl -sL "https://example/${version}/kustomize.tgz"
+}
+""",
+        encoding="utf-8",
+    )
+    entries = sbom_module.parse_install_sh(install_sh)
+    by_name = {e.name: e for e in entries}
+    assert by_name["kustomize"].pin == "v5.8.1"
+    assert by_name["kustomize"].pin_type == "version"
+    assert "install_kustomize_linux" in by_name["kustomize"].location
+    assert by_name["jq"].pin == "system-provided"
+
+
 # --------------------------------------------------------------------------- #
 # pyproject.toml parser (tracks line numbers)
 # --------------------------------------------------------------------------- #
