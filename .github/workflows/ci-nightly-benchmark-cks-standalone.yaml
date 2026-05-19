@@ -155,7 +155,7 @@ jobs:
           cd "$LLMDBENCH_WORKSPACE"
           REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
           gcloud storage cp -r $REG_RESULTS/ "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/" || true
-          touch nightly_completed.txt
-          gcloud storage cp nightly_completed.txt "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/nightly_completed.txt"
-          rm -rf nightly_completed.txt
+#          touch nightly_completed.txt
+#          gcloud storage cp nightly_completed.txt "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/nightly_completed.txt"
+#          rm -rf nightly_completed.txt
         shell: bash
