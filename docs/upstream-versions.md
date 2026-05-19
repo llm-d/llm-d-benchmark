@@ -20,7 +20,7 @@ whatever the host's package manager provides.
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
 | **crane** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [google/go-containerregistry](https://github.com/google/go-containerregistry) |
-| **curl** | `8.20.0` | version | `install.sh` line 601 (`install_curl_linux`) | [curl/curl](https://github.com/curl/curl) |
+| **curl** | `8_20_0` | version | `install.sh` line 601 (`install_curl_linux`) | [curl/curl](https://github.com/curl/curl) |
 | **git** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [git/git](https://github.com/git/git) |
 | **helm** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [helm/helm](https://github.com/helm/helm) |
 | **helm-diff** | `latest` | plugin (latest) | `install.sh` line 703 (`helm_diff_url`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
