@@ -100,7 +100,7 @@ _anchors:
   lws_version:                       &lws_version                       0.8.0
   gaie_version:                      &gaie_version                      v1.5.0
   wva_version:                       &wva_version                       0.6.0
-  prometheus_version:                &prometheus_version                5.3.0
+  prometheus_version:                &prometheus_version                prometheus-nats-exporter-2.23.0
   vllm-openai_version:               &vllm-openai_version               v0.20.2
   llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.8.0
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.8.0

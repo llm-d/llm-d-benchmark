@@ -75,7 +75,7 @@ provisions the following resources, in this order:
 
 ```
 cluster-wide / shared
-    prometheus-adapter      v5.2.0, in openshift-user-workload-monitoring
+    prometheus-adapter      prometheus-nats-exporter-2.23.0, in openshift-user-workload-monitoring
                             serves wva_desired_replicas via external-metrics API
     prometheus-ca           ConfigMap, same ns - CA cert for thanos-querier auth
     allow-thanos-querier-api-access
@@ -308,7 +308,7 @@ For more `behavior` tuning options:
 ```yaml
 chartVersions:
   wva: 0.6.0                     # WVA controller chart (oci://ghcr.io/llm-d/workload-variant-autoscaler)
-  prometheusAdapter: 5.2.0       # bumped charts have broken external-metric rule format
+  prometheusAdapter: prometheus-nats-exporter-2.23.0  # bumped charts have broken external-metric rule format
 ```
 
 ---

@@ -196,7 +196,7 @@ scenario:
       # Pinned because newer releases have broken external-metric
       # compatibility with the rule format the WVA chart emits.
       # The upstream WVA README also pins this version.
-      prometheusAdapter: 5.2.0
+      prometheusAdapter: prometheus-nats-exporter-2.23.0
 
     # =========================================================================
     # ROUTING / GAIE CONFIGURATION
