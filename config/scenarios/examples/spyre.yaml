@@ -369,15 +369,20 @@ scenario:
                 modelName: "${model.name}"
                 udsTokenizerConfig:
                   socketFile: /tmp/tokenizer/tokenizer-uds.socket
+            - type: decode-filter
             - type: context-length-aware
               parameters:
                 label: llm-d.ai/context-length-range
                 enableFiltering: true
+            - type: max-score-picker
+            - type: single-profile-handler
           schedulingProfiles:
             - name: default
               plugins:
                 - pluginRef: tokenizer
+                - pluginRef: decode-filter
                 - pluginRef: context-length-aware
+                - pluginRef: max-score-picker
 
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration
@@ -393,14 +398,7 @@ scenario:
     # Used as workspace when --workspace is not specified on the CLI.
     workDir: "~/data/spyre"
 
-    # -------------------------------------------------------------------------
-    # Gateway API CRD override -- Spyre cluster K8s version lacks
-    # ValidatingAdmissionPolicy (requires K8s 1.30+), so use v1.2.1.
-    # -------------------------------------------------------------------------
-    gatewayApiCrd:
-      revision: v1.2.1
-
     harness:
-      name: inference-perf
-      experimentProfile: sanity_random.yaml
+      name: vllm-benchmark
+      experimentProfile: fixed_dataset.yaml.in
       waitTimeout: 36000
