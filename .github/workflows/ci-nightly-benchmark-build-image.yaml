@@ -1,0 +1,38 @@
+name: CI - Nightly Build Benchmark Image
+
+#on:
+#  workflow_dispatch:
+#    inputs:
+#      input_dir:
+#        description: 'Input directory for benchmark results'
+#        required: false
+#        default: '/tmp/cicd/analysis'
+#      output_dir:
+#        description: 'Output directory name (S3 prefix and artifact name)'
+#        required: false
+#        default: ''
+
+#  push:
+#    branches:
+#      - main
+
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+
+jobs:
+  nightly-build-image:
+    name: Build Nightly Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Build and push nightly image
+        uses: ./.github/actions/docker-build-and-push
+        with:
+          tag: nightly
+          image-name: llm-d-benchmark
+          registry: ghcr.io/llm-d
+          github-token: ${{ secrets.GHCR_TOKEN }}
+          platform: linux/amd64
