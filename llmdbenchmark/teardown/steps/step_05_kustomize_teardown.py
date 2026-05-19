@@ -71,7 +71,7 @@ class KustomizeTeardownStep(Step):
                 gaie_version=gaie_version,
                 repo_path=repo_path,
                 accelerator_backend=accel_backend,
-                extra_variables=kust_config.get("extraVariables", {}),
+                variable_overrides=kust_config.get("guideVariableOverrides", {}),
                 readme_variables=parsed.variables,
             )
 

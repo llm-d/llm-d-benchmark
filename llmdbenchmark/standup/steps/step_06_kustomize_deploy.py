@@ -78,6 +78,8 @@ class KustomizeDeployStep(Step):
             return self._fail(["kustomize.guideName is required"], stack_path,
                               "kustomize.guideName not set")
 
+        self._log_kustomize_authority(context, guide_name, repo_path, repo_ref)
+
         if not repo_path:
             clone_result = self._ensure_repo_cloned(
                 cmd, context, repo_ref, errors,
@@ -111,7 +113,7 @@ class KustomizeDeployStep(Step):
             gaie_version=gaie_version,
             repo_path=repo_path,
             accelerator_backend=accel_backend,
-            extra_variables=kust_config.get("extraVariables", {}),
+            variable_overrides=kust_config.get("guideVariableOverrides", {}),
             readme_variables=parsed.variables,
         )
 
@@ -373,6 +375,28 @@ class KustomizeDeployStep(Step):
             errors=errors,
             stack_name=stack_path.name,
         )
+
+    @staticmethod
+    def _log_kustomize_authority(
+        context: ExecutionContext, guide_name: str,
+        repo_path: str, repo_ref: str,
+    ) -> None:
+        """Make it explicit that kustomize mode ignores scenario/CLI tuning.
+
+        Under kustomize the deployment is whatever the guide's upstream
+        manifests define; nothing from the scenario/CLI/experiment merge
+        chain reaches it except the ``kustomize.*`` keys.
+        """
+        src = f"supplied repo '{repo_path}'" if repo_path else "upstream llm-d.git"
+        # One call per row: the logger only decorates the first line of a
+        # multi-line message, so per-row calls keep every row aligned under
+        # the same prefix.
+        w = context.logger.log_warning
+        w("kustomize mode — scenario/CLI parameters are NOT applied:")
+        w(f"source      : {src} (ref '{repo_ref}'), guide '{guide_name}'")
+        w("modifiable  : kustomize.patches, overlayPath, extraHelmValues, extraHelmSets, guideVariableOverrides")
+        w("ignored     : -m/--models, model.*, replicas, parallelism, resources, gateway, all other tuning")
+        w("experiments : DoE setup sweeps do NOT apply (use kustomize.patches); run/workload treatments do")
 
     @staticmethod
     def _extract_kustomize_path(resolved_cmd: str) -> str | None:
