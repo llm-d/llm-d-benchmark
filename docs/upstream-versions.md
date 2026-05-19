@@ -20,14 +20,14 @@ whatever the host's package manager provides.
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
 | **crane** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [google/go-containerregistry](https://github.com/google/go-containerregistry) |
-| **curl** | `8.20.0` | version | `install.sh` line 604 (`install_curl_linux`) | [curl/curl](https://github.com/curl/curl) |
+| **curl** | `8.20.0` | version | `install.sh` line 608 (`install_curl_linux`) | [curl/curl](https://github.com/curl/curl) |
 | **git** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [git/git](https://github.com/git/git) |
 | **helm** | `v4.2.0` | version | `install.sh` line 520 (`install_helm_linux`) | [helm/helm](https://github.com/helm/helm) |
-| **helm-diff** | `latest` | plugin (latest) | `install.sh` line 706 (`helm_diff_url`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
+| **helm-diff** | `latest` | plugin (latest) | `install.sh` line 710 (`helm_diff_url`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
 | **helmfile** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
 | **jq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [jqlang/jq](https://github.com/jqlang/jq) |
 | **kustomize** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
-| **llm-d-planner (git)** | `e50305af90f0812e77e1827f3bc740fe75b76370` | commit SHA | `install.sh` line 798 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
+| **llm-d-planner (git)** | `e50305af90f0812e77e1827f3bc740fe75b76370` | commit SHA | `install.sh` line 802 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
 | **oc** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [openshift/oc](https://github.com/openshift/oc) |
 | **skopeo** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [containers/skopeo](https://github.com/containers/skopeo) |
 | **yq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [mikefarah/yq](https://github.com/mikefarah/yq) |

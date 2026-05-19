@@ -519,10 +519,14 @@ install_helmfile_linux() {
 install_helm_linux() {
     local version=$(tool_version_for helm)
     local pkg="helm-${version}-linux-${ARCH_GO}"
-    curl -fsSL "https://get.helm.sh/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz"
-    tar xzf "/tmp/${pkg}.tar.gz" -C /tmp
-    sudo cp -f "/tmp/linux-${ARCH_GO}/helm" /usr/local/bin/helm
-    sudo chmod +x /usr/local/bin/helm
+    curl -fsSL "https://get.helm.sh/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz" \
+        || { echo "ERROR: Failed to download Helm ${version}"; exit 1; }
+    tar xzf "/tmp/${pkg}.tar.gz" -C /tmp \
+        || { echo "ERROR: Failed to extract Helm ${version}"; exit 1; }
+    sudo cp -f "/tmp/linux-${ARCH_GO}/helm" /usr/local/bin/helm \
+        || { echo "ERROR: Failed to install Helm binary"; exit 1; }
+    sudo chmod +x /usr/local/bin/helm \
+        || { echo "ERROR: Failed to set executable permissions on Helm"; exit 1; }
     helm version --short || { echo "ERROR: Helm installation verification failed"; exit 1; }
 }
 
