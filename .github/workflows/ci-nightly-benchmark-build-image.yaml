@@ -1,16 +1,12 @@
 name: CI - Nightly Build Benchmark Image
 
-#on:
-#  workflow_dispatch:
-#    inputs:
-#      input_dir:
-#        description: 'Input directory for benchmark results'
-#        required: false
-#        default: '/tmp/cicd/analysis'
-#      output_dir:
-#        description: 'Output directory name (S3 prefix and artifact name)'
-#        required: false
-#        default: ''
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for built image'
+        required: true
+        default: 'nightly'
 
 #  push:
 #    branches:
@@ -31,7 +27,7 @@ jobs:
       - name: Build and push nightly image
         uses: ./.github/actions/docker-build-and-push
         with:
-          tag: nightly
+          tag: ${{ inputs.tag_name }}
           image-name: llm-d-benchmark
           registry: ghcr.io/llm-d
           github-token: ${{ secrets.GHCR_TOKEN }}
