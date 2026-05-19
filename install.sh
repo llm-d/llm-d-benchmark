@@ -79,6 +79,7 @@ tool_version_for() {
         yq)        echo "v4.53.2" ;;
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v4.2.0" ;;
+        jq)        echo "1.8.1"   ;;
         oc)        echo "4.20.0"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.5"  ;;
@@ -461,7 +462,7 @@ tool_version() {
         oc)         oc version --client 2>&1 | head -1 | awk '{print $NF}' ;;
         helmfile)   helmfile --version 2>&1 | awk '{print $NF}' ;;
         kustomize)  kustomize version 2>&1 | head -1 ;;
-        jq)         jq --version 2>&1 ;;
+        jq)         jq --version 2>&1 | sed 's/^jq-//' ;;
         yq)         yq --version 2>&1 | awk '{print $NF}' ;;
         skopeo)     skopeo --version 2>&1 | awk '{print $NF}' ;;
         crane)      crane version 2>&1 | tr -d '\n' ;;
@@ -600,6 +601,18 @@ install_curl_linux() {
     # version is read by the SBOM generator (util/generate_sbom.py) to track the pinned minimum
     local version=8.20.0
     ${PKG_MGR} curl || true
+}
+
+install_jq_linux() {
+    local version=1.8.1
+    local binary="jq-linux-${ARCH_GO}"
+    if curl -sfL "https://github.com/jqlang/jq/releases/download/jq-${version}/${binary}" -o /tmp/jq; then
+        chmod +x /tmp/jq
+        sudo cp -f /tmp/jq /usr/local/bin/jq
+    else
+        echo "  Pre-built binary for jq ${version} not available for ${ARCH_GO}; falling back to package manager"
+        ${PKG_MGR} jq || true
+    fi
 }
 
 # ---------------------------------------------------------------------------
