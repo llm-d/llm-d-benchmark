@@ -1480,7 +1480,7 @@ scenario:
   - name: "my-deployment"
     images:
       routingSidecar:
-        tag: v0.8.0
+        tag: v0.3.0
       udsTokenizer:
         repository: my-registry/uds-tokenizer
         tag: dev

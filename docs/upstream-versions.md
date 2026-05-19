@@ -63,7 +63,7 @@ generation (and plan) time.
 | **benchmark** | `v0.6.3` | tag | `config/templates/values/defaults.yaml` line 345 (`images.benchmark`) | [llm-d/llm-d-benchmark](https://github.com/llm-d/llm-d-benchmark) (`ghcr.io/llm-d/llm-d-benchmark`) |
 | **inferenceScheduler** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 368 (`images.inferenceScheduler`) | [llm-d/llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler) (`ghcr.io/llm-d/llm-d-inference-scheduler`) |
 | **python** | `3.10` | tag | `config/templates/values/defaults.yaml` line 387 (`images.python`) | [Docker Hub: python](https://hub.docker.com/_/python) (`python`) |
-| **routingSidecar** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 374 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
+| **routingSidecar** | `v0.3.0` | tag | `config/templates/values/defaults.yaml` line 374 (`images.routingSidecar`) | [llm-d/llm-d-routing-sidecar](https://github.com/llm-d/llm-d-routing-sidecar) (`ghcr.io/llm-d/llm-d-routing-sidecar`) |
 | **udsTokenizer** | `v0.8.0` | tag | `config/templates/values/defaults.yaml` line 380 (`images.udsTokenizer`) | [llm-d/llm-d-kv-cache (services/uds_tokenizer)](https://github.com/llm-d/llm-d-kv-cache) (`ghcr.io/llm-d/llm-d-uds-tokenizer`) |
 | **vllm** | `v0.20.2` | tag | `config/templates/values/defaults.yaml` line 351 (`images.vllm`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
 | **vllmOpenai** | `v0.20.2` | tag | `config/templates/values/defaults.yaml` line 362 (`images.vllmOpenai`) | [vllm-project/vllm](https://github.com/vllm-project/vllm) (`docker.io/vllm/vllm-openai`) |
