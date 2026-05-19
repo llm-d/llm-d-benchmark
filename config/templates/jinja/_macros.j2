@@ -196,8 +196,12 @@
   value: "1"
 - name: HOME
   value: "{{ vllmCommon.containerHome }}"
-- name: HF_HOME
-  value: "{{ vllmCommon.hfHome }}"
+{# HF_HOME intentionally NOT set here: the llm-d-modelservice chart injects
+   its own HF_HOME pointing at the mounted model cache (/model-cache).
+   Setting it again produced a duplicate env entry in the vllm container --
+   Helm 3 client-side apply silently kept the chart's value (last-wins),
+   but Helm 4 server-side apply builds a typed patch and rejects duplicate
+   keys in the env list. Let the chart own HF_HOME. #}
 - name: MODEL_NAME
   value: "{{ model.name }}"
 - name: MODEL_PATH
