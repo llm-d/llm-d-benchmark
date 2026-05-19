@@ -169,7 +169,7 @@ _VERSION_LINE_RE = re.compile(
     r"^\s*(?:local\s+)?version=(?P<v>[\"']?)(?P<val>[^\s\"']+)(?P=v)\s*$"
 )
 _VERSION_FROM_TOOL_FN_RE = re.compile(
-    r'^\s*(?:local\s+)?version=(?P<q>["\'])?\$\(\s*tool_version_for\s+(?P<tool>[A-Za-z0-9_-]+)\s*\)(?P=q)?\s*$'
+    r'^\s*(?:local\s+)?version=(?P<q>["\'])?\$\(\s*tool_version_for\s+(?P<tool>[A-Za-z0-9_-]+)\s*\)(?(q)(?P=q))\s*$'
 )
 _INSTALL_FN_RE = re.compile(
     r"^\s*install_(?P<tool>[a-zA-Z0-9_-]+?)_(?:linux|mac)\s*\(\s*\)\s*\{?\s*$"
@@ -245,6 +245,8 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
                 if pinned_val:
                     pinned[current_fn] = (pinned_val, i, f"install_{current_fn}_linux")
                     continue
+                # If the indirection cannot be resolved from tool_version_for(),
+                # keep the tool unpinned so it is reported as system-provided.
 
         m = _TOOLS_VAR_RE.match(raw)
         if m:
