@@ -506,8 +506,8 @@ class RenderPlans:
     def _resolve_deploy_method(self, values: dict) -> dict:
         """Override deploy method based on CLI ``--methods`` flag.
 
-        Accepts ``--methods standalone`` or ``--methods modelservice``
-        or ``--methods fma``.
+        Accepts ``--methods standalone``, ``--methods modelservice``,
+        ``--methods fma`` or ``--methods kustomize``.
         Only one method may be active at a time.
 
         Without ``--methods``, the scenario YAML value is used as-is.
@@ -536,26 +536,44 @@ class RenderPlans:
                 "choose one. Using modelservice."
             )
             methods = ["modelservice"]
+        if "kustomize" in methods and any(
+            m in methods for m in ("standalone", "modelservice", "fma")
+        ):
+            self.logger.log_warning(
+                "Cannot combine kustomize with another deploy method -- "
+                "choose one. Using kustomize."
+            )
+            methods = ["kustomize"]
 
         standalone_config = result.setdefault("standalone", {})
         modelservice_config = result.setdefault("modelservice", {})
         fma_config = result.setdefault("fma", {})
+        kustomize_config = result.setdefault("kustomize", {})
 
         if "standalone" in methods:
             standalone_config["enabled"] = True
             modelservice_config["enabled"] = False
             fma_config["enabled"] = False
+            kustomize_config["enabled"] = False
             self.logger.log_info("Deploy method from CLI: standalone")
         elif "modelservice" in methods:
             standalone_config["enabled"] = False
             modelservice_config["enabled"] = True
             fma_config["enabled"] = False
+            kustomize_config["enabled"] = False
             self.logger.log_info("Deploy method from CLI: modelservice")
         elif "fma" in methods:
             standalone_config["enabled"] = False
             modelservice_config["enabled"] = False
             fma_config["enabled"] = True
+            kustomize_config["enabled"] = False
             self.logger.log_info("Deploy method from CLI: fma")
+        elif "kustomize" in methods:
+            standalone_config["enabled"] = False
+            modelservice_config["enabled"] = False
+            fma_config["enabled"] = False
+            kustomize_config["enabled"] = True
+            self.logger.log_info("Deploy method from CLI: kustomize")
 
         return result
 

@@ -1610,7 +1610,7 @@ kustomize:
   overlayPath: ""                    # Path to additional kustomize overlay directory
   extraHelmValues: []                # Extra -f args for helm install
   extraHelmSets: {}                  # Extra --set args for helm install
-  extraVariables: {}                 # Extra ${VAR} substitutions
+  guideVariableOverrides: {}         # Override/fill the guide README's ${VAR} values
   deployTimeout: 900                 # Seconds to wait for pods
   patches: []                        # Inline strategic merge patches (see below)
 ```
