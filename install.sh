@@ -81,7 +81,7 @@ tool_version_for() {
         helm)      echo "v4.2.0" ;;
         oc)        echo "4.20.0"  ;;
         kustomize) echo "v5.8.1"  ;;
-        crane)     echo "0.21.5"  ;;
+        crane)     echo "0.21.6"  ;;
         skopeo)    echo "1.14.6"  ;;
         *)         echo ""        ;;
     esac
@@ -562,8 +562,7 @@ install_kustomize_linux() {
 }
 
 install_crane_linux() {
-    local version
-    version="v$(tool_version_for crane)"
+    local version=v0.21.6
     # go-containerregistry release tarballs use Go arch names (X86_64 capitalised)
     local go_arch_cap
     case "$ARCH_GO" in
