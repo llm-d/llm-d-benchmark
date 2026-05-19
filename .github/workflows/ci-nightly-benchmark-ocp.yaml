@@ -38,7 +38,6 @@ jobs:
           platform: linux/amd64
 
 # --------------------------------- METHOD: FMA ---------------------------------
-
   benchmark-fma:
     name: Benchmark - FMA (OCP)
     runs-on: [self-hosted, openshift, pok-prod]
@@ -354,7 +353,7 @@ jobs:
           llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
-      - name: Teardown (standalone)
+      - name: Teardown
         if: always()
         run: |
           llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
