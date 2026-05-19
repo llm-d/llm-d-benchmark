@@ -1,0 +1,326 @@
+name: CI - Nightly Run Benchmark on OCP (vllm-rs)
+
+on:
+  workflow_dispatch:
+    inputs:
+      namespace:
+        description: 'Kubernetes namespace'
+        required: false
+        default: 'llmdbenchcicdvrs-ocp'
+      workspace:
+        description: 'Local workspace directory'
+        required: false
+        default: '/tmp/llmdbenchcicdvrs-ocp'
+
+  push:
+    branches:
+      - vllm-rs
+
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2am UTC (after main nightly)
+
+jobs:
+  baseline-vllm:
+    name: Python vLLM baseline - ${{ matrix.model_label }} (${{ matrix.harness }})
+    runs-on: [self-hosted, openshift, pok-prod]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - spec: cicd/ocp-vllm-granite
+            model_label: granite-2b
+            harness: nop
+          - spec: cicd/ocp-vllm-granite-throughput
+            model_label: granite-2b
+            harness: throughput
+          - spec: cicd/ocp-vllm-llama
+            model_label: llama-8b
+            harness: nop
+          - spec: cicd/ocp-vllm-llama-throughput
+            model_label: llama-8b
+            harness: throughput
+
+    env:
+      LLMDBENCH_CICD_NS: ${{ inputs.namespace || 'llmdbenchcicdvrs-ocp' }}
+      LLMDBENCH_CICD_R: llmdbenchcicdr-ocp
+      LLMDBENCH_WORKSPACE: '/tmp/llmdbenchcicdvllm-ocp'
+      LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+      HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+      GCP_PROJECT_ID: llm-d-scale
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up kubeconfig from secret
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+        shell: bash
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          credentials_json: ${{ secrets.GKE_SA_KEY }}
+
+      - name: Set up gcloud CLI and kubectl
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          install_components: 'kubectl,gke-gcloud-auth-plugin'
+
+      - name: Install oc
+        run: |
+          if ! command -v oc &>/dev/null; then
+            curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
+              "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz"
+            mkdir -p /tmp/oc-extract
+            tar -xzf /tmp/openshift-client-linux.tar.gz -C /tmp/oc-extract
+            sudo mv /tmp/oc-extract/oc /usr/local/bin/
+            sudo mv /tmp/oc-extract/kubectl /usr/local/bin/
+            sudo chmod +x /usr/local/bin/oc
+            sudo chmod +x /usr/local/bin/kubectl
+            rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
+          fi
+
+      - name: Install llmdbenchmark
+        run: |
+          ./install.sh -y 2>&1
+          sudo cp util/debug_info_on_failure.sh /usr/local/bin
+        shell: bash
+
+      - name: Cleanup
+        run: |
+          llmdbenchmark --spec "${{ matrix.spec }}" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R"
+        shell: bash
+
+      - name: Standup
+        run: |
+          llmdbenchmark --spec "${{ matrix.spec }}" standup -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R"
+        shell: bash
+
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
+        shell: bash
+
+      - name: Run
+        run: |
+          llmdbenchmark --spec "${{ matrix.spec }}" run -p "$LLMDBENCH_CICD_NS"
+        shell: bash
+
+      - name: Display results
+        if: always()
+        run: |
+          echo "## Python vLLM Baseline: ${{ matrix.model_label }} (${{ matrix.harness }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          found=0
+          for f in $(find "$LLMDBENCH_WORKSPACE" -name "result.yaml" -o -name "result.txt" 2>/dev/null | sort); do
+            found=1
+            result_dir=$(basename "$(dirname "$f")")
+            echo "### $result_dir" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          done
+          for f in $(find "$LLMDBENCH_WORKSPACE" -name "summary.txt" 2>/dev/null | sort); do
+            found=1
+            echo "### Throughput Summary" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "_No results found in $LLMDBENCH_WORKSPACE._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+        shell: bash
+
+      - name: Teardown
+        if: always()
+        run: |
+          llmdbenchmark --spec "${{ matrix.spec }}" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R"
+        shell: bash
+
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
+        shell: bash
+
+      - name: Upload results to GCS
+        if: always()
+        run: |
+          RUN_DATE=$(date +'%Y-%m-%d')
+          cd "$LLMDBENCH_WORKSPACE"
+          REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
+          if [ -n "$REG_RESULTS" ]; then
+            gcloud storage cp -r $REG_RESULTS/ "gs://llm-d-benchmarks/regressions/ocp/vllm-python/${{ matrix.model_label }}/${{ matrix.harness }}/$RUN_DATE/" || true
+          fi
+        shell: bash
+
+  benchmark-vllmrs:
+    name: vllm-rs - ${{ matrix.model_label }} (${{ matrix.harness }})
+    needs: baseline-vllm
+    runs-on: [self-hosted, openshift, pok-prod]
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - spec: cicd/ocp-vllmrs-granite
+            model_label: granite-2b
+            harness: nop
+          - spec: cicd/ocp-vllmrs-granite-throughput
+            model_label: granite-2b
+            harness: throughput
+          - spec: cicd/ocp-vllmrs-llama
+            model_label: llama-8b
+            harness: nop
+          - spec: cicd/ocp-vllmrs-llama-throughput
+            model_label: llama-8b
+            harness: throughput
+
+    env:
+      LLMDBENCH_CICD_NS: ${{ inputs.namespace || 'llmdbenchcicdvrs-ocp' }}
+      LLMDBENCH_CICD_R: llmdbenchcicdr-ocp
+      LLMDBENCH_WORKSPACE: ${{ inputs.workspace || '/tmp/llmdbenchcicdvrs-ocp' }}
+      LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+      HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+      GCP_PROJECT_ID: llm-d-scale
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up kubeconfig from secret
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+        shell: bash
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          credentials_json: ${{ secrets.GKE_SA_KEY }}
+
+      - name: Set up gcloud CLI and kubectl
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          install_components: 'kubectl,gke-gcloud-auth-plugin'
+
+      - name: Install oc
+        run: |
+          if ! command -v oc &>/dev/null; then
+            curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
+              "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz"
+            mkdir -p /tmp/oc-extract
+            tar -xzf /tmp/openshift-client-linux.tar.gz -C /tmp/oc-extract
+            sudo mv /tmp/oc-extract/oc /usr/local/bin/
+            sudo mv /tmp/oc-extract/kubectl /usr/local/bin/
+            sudo chmod +x /usr/local/bin/oc
+            sudo chmod +x /usr/local/bin/kubectl
+            rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
+          fi
+
+      - name: Install llmdbenchmark
+        run: |
+          ./install.sh -y 2>&1
+          sudo cp util/debug_info_on_failure.sh /usr/local/bin
+        shell: bash
+
+      - name: Cleanup
+        run: |
+          llmdbenchmark --spec "${{ matrix.spec }}" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R"
+        shell: bash
+
+      - name: Standup
+        run: |
+          llmdbenchmark --spec "${{ matrix.spec }}" standup -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R"
+        shell: bash
+
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
+        shell: bash
+
+      - name: Run
+        run: |
+          llmdbenchmark --spec "${{ matrix.spec }}" run -p "$LLMDBENCH_CICD_NS"
+        shell: bash
+
+      - name: Display results
+        if: always()
+        run: |
+          echo "## vllm-rs Results: ${{ matrix.model_label }} (${{ matrix.harness }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          found=0
+          for f in $(find "$LLMDBENCH_WORKSPACE" -name "result.yaml" -o -name "result.txt" 2>/dev/null | sort); do
+            found=1
+            result_dir=$(basename "$(dirname "$f")")
+            echo "### $result_dir" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          done
+          for f in $(find "$LLMDBENCH_WORKSPACE" -name "summary.txt" 2>/dev/null | sort); do
+            found=1
+            echo "### Throughput Summary" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "_No results found in $LLMDBENCH_WORKSPACE._" >> "$GITHUB_STEP_SUMMARY"
+          fi
+        shell: bash
+
+      - name: Teardown
+        if: always()
+        run: |
+          llmdbenchmark --spec "${{ matrix.spec }}" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R"
+        shell: bash
+
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
+        shell: bash
+
+      - name: Upload results to GCS
+        if: always()
+        run: |
+          RUN_DATE=$(date +'%Y-%m-%d')
+          cd "$LLMDBENCH_WORKSPACE"
+          REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
+          if [ -n "$REG_RESULTS" ]; then
+            gcloud storage cp -r $REG_RESULTS/ "gs://llm-d-benchmarks/regressions/ocp/vllm-rs/${{ matrix.model_label }}/${{ matrix.harness }}/$RUN_DATE/" || true
+          fi
+        shell: bash

@@ -1,0 +1,17 @@
+# vllm-rs Benchmark Specification - Llama 3.1 8B (throughput)
+
+# [REQUIRED]
+{% set base_dir = base_dir | default('../') -%}
+base_dir: {{ base_dir }}
+
+# [REQUIRED]
+values_file:
+  path: {{ base_dir }}/config/templates/values/defaults.yaml
+
+# [REQUIRED]
+template_dir:
+  path: {{ base_dir }}/config/templates/jinja
+
+# [OPTIONAL]
+scenario_file:
+  path: {{ base_dir }}/config/scenarios/cicd/ocp-vllmrs-llama-throughput.yaml

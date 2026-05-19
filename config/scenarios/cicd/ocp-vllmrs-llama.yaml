@@ -1,0 +1,55 @@
+# vllm-rs Benchmark - Llama 3.1 8B (large model)
+
+scenario:
+  - name: "ocp-vllmrs-llama-8b"
+
+    model:
+      name: meta-llama/Llama-3.1-8B-Instruct
+      shortName: llama-3.1-8b
+      path: models/meta-llama/Llama-3.1-8B-Instruct
+      huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
+
+    affinity:
+      enabled: true
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+
+    modelservice:
+      enabled: false
+    standalone:
+      enabled: true
+      image:
+        repository: quay.io/starpit/vllmrs
+        tag: cuda-sm90-dev-20260514
+        pullPolicy: Always
+      extraEnvVars:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: llm-d-hf-token
+              key: HF_TOKEN
+      vllm:
+        customCommand: |
+          vllm serve meta-llama/Llama-3.1-8B-Instruct \
+            --host 0.0.0.0 \
+            --port 8000 \
+            --gpu-memory-utilization 0.95 \
+            --tensor-parallel-size 1
+
+    fma:
+      enabled: false
+
+    vllmCommon:
+      priorityClassName: nightly-gpu-critical
+
+    workDir: /tmp/llmdbench-vllmrs/
+
+    harness:
+      name: nop
+      experimentProfile: nop.yaml
+      executable: llm-d-benchmark.py
+
+    images:
+      benchmark:
+        repository: ghcr.io/llm-d/llm-d-benchmark
+        tag: nightly
