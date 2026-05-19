@@ -183,6 +183,14 @@ def test_parse_install_sh_known_upstream_links(sbom_module, install_sh: Path) ->
     assert "github.com/google/go-containerregistry" in by_name["crane"].upstream
 
 
+def test_parse_repo_install_sh_skopeo_pin(sbom_module) -> None:
+    entries = sbom_module.parse_install_sh(_REPO_ROOT / "install.sh")
+    by_name = {e.name: e for e in entries}
+    assert by_name["skopeo"].pin == "1.11.5"
+    assert by_name["skopeo"].pin_type == "version"
+    assert "install_skopeo_linux" in by_name["skopeo"].location
+
+
 # --------------------------------------------------------------------------- #
 # pyproject.toml parser (tracks line numbers)
 # --------------------------------------------------------------------------- #

@@ -82,7 +82,7 @@ tool_version_for() {
         oc)        echo "4.20.0"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.5"  ;;
-        skopeo)    echo "1.14.6"  ;;
+        skopeo)    echo "1.11.5"  ;;
         *)         echo ""        ;;
     esac
 }
@@ -583,7 +583,7 @@ install_crane_linux() {
 }
 
 install_skopeo_linux() {
-    local version=$(tool_version_for skopeo)
+    local version=1.11.5
     local pkg="skopeo-linux-${ARCH_GO}"
     if curl -sfL "https://github.com/lework/skopeo-binary/releases/download/v${version}/${pkg}" \
             -o "/tmp/${pkg}"; then
