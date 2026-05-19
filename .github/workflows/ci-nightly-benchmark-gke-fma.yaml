@@ -19,24 +19,56 @@ on:
   schedule:
     - cron: '0 0 * * *'  # Daily at midnight UTC
 
+jobs:
+  ensure-nightly-build-image:
+    name: Ensure Nightly Build  Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo yq
+
+      - name: Ensure image is already built
+        run: |
+          IMAGE="ghcr.io/llm-d/llm-d-benchmark:nightly"
+          POLL=30
+          while true; do
+            creation_date=$(skopeo inspect docker://${IMAGE} | yq -r .Created) && \
+            creation_ts=$(date -d "${creation_date}" +"%s")
+            current_ts=$(date +%s) && \
+            image_age=$((current_ts - creation_ts))
+            if [[ $image_age -gt 86400 ]]; then
+              echo "Current image \"${IMAGE}\" is too old (${image_age}s). Waiting $POLL seconds and trying again..."
+              sleep $POLL
+            else
+              echo "Current image \"${IMAGE}\" is recent enough (${image_age}s)."
+              exit 0
+            fi
+          done
+        shell: bash
+
   benchmark-gke-fma:
     name: Benchmark - FMA (GKE)
     runs-on: ubuntu-latest
-    needs: [nightly-build-image, benchmark-gke-standalone]
+    needs: [ensure-nightly-build-image]
     timeout-minutes: 240
 
     env:
       LLMDBENCH_CICD_NS: llmdbenchcicdfns-gke
       LLMDBENCH_CICD_R: llmdbenchcicdr-gke
-      LLMDBENCH_CICD_TARGET: cicd/gke
+      LLMDBENCH_CICD_SCENARIO_DIR: cicd
+      LLMDBENCH_CICD_TARGET: gke
       LLMDBENCH_CICD_METHOD: fma
       LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdf-gke
+      LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+      GCS_PATH: llm-d-benchmarks/regressions
       GCP_PROJECT_ID: llm-d-scale
       GKE_CLUSTER_NAME: llm-d-e2e-us-east5
       GKE_CLUSTER_ZONE: us-east5
       GATEWAY: gke-l7-regional-external-managed
       GATEWAY_TYPE: gke
-      LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
 
     steps:
       - name: Checkout Code
@@ -74,13 +106,15 @@ on:
 
       - name: Cleanup target cloud
         run: |
-            llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
-            kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
+          RUN_DATE=$(date +'%Y-%m-%d')
+          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+          kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
+          gcloud storage rm "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/nightly_completed.txt" || true
         shell: bash
 
       - name: Standup
         run: |
-          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" standup --no-monitoring -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" standup --no-monitoring -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
       - name: Debug info (on failure)
@@ -91,13 +125,13 @@ on:
 
       - name: Run
         run: |
-          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
+          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
         shell: bash
 
       - name: Teardown
         if: always()
         run: |
-          llmdbenchmark --spec "$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
           kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
         shell: bash
 
@@ -109,12 +143,11 @@ on:
 
       - name: Upload results to GCS
         run: |
-          REG_PROVIDER=$(basename "$LLMDBENCH_CICD_TARGET")
-          REG_METHOD=$LLMDBENCH_CICD_METHOD
           RUN_DATE=$(date +'%Y-%m-%d')
           cd "$LLMDBENCH_WORKSPACE"
           REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
-          gcloud storage cp -r $REG_RESULTS/ "gs://llm-d-benchmarks/regressions/$REG_PROVIDER/$REG_METHOD/$RUN_DATE/" || true
+          gcloud storage cp -r $REG_RESULTS/ "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/" || true
+          gcloud storage cp <(echo -n "") "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/nightly_completed.txt"
         shell: bash
 
 #     START - This should be deleted, and the contents accessed from GCS accessed directly
