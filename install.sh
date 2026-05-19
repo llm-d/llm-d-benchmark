@@ -490,7 +490,7 @@ version_gte() {
 # ---------------------------------------------------------------------------------
 
 install_yq_linux() {
-    local version=$(tool_version_for yq)
+    local version=v4.53.2
     local binary="yq_linux_${ARCH_GO}"
     curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}"
     chmod +x "/tmp/${binary}"
