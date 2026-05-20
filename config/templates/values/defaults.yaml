@@ -101,7 +101,7 @@ _anchors:
   gaie_version:                      &gaie_version                      v1.5.0
   wva_version:                       &wva_version                       0.6.0
   prometheus_version:                &prometheus_version                5.3.0
-  vllm-openai_version:               &vllm-openai_version               v0.20.2
+  vllm-openai_version:               &vllm-openai_version               v0.21.0
   llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.8.0
   llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.8.0
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.8.0
