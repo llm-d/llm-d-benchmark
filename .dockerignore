@@ -2,6 +2,7 @@
 *
 
 # Allow only what the Dockerfile needs
+!install.sh
 !workload/harnesses/
 !llmdbenchmark/analysis/
 !llmdbenchmark/standup/preprocess/
