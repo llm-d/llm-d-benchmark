@@ -80,9 +80,9 @@ tool_version_for() {
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v4.2.0" ;;
         helm-diff) echo "v3.15.7" ;;
-        oc)        echo "4.20.0"  ;;
+        oc)        echo "4.18.0"  ;;
         kustomize) echo "v5.8.1"  ;;
-        crane)     echo "0.21.5"  ;;
+        crane)     echo "0.21.6"  ;;
         skopeo)    echo "1.14.6"  ;;
         *)         echo ""        ;;
     esac
