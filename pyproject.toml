@@ -8,7 +8,7 @@ dependencies = [
     "Jinja2",
     "requests",
     "packaging",
-    "kubernetes",
+    "kubernetes==35.0.0",
     "pykube-ng",
     "kubernetes-asyncio",
     "GitPython",

@@ -83,7 +83,7 @@ tool_version_for() {
         oc)        echo "4.18.0"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.6"  ;;
-        skopeo)    echo "1.14.6"  ;;
+        skopeo)    echo "1.20.1"  ;;
         jq)        echo "1.8.1"   ;;
         *)         echo ""        ;;
     esac
@@ -797,8 +797,8 @@ helm_diff_version=$(tool_version_for helm-diff)   # e.g. v3.15.7
 _install_helm_diff() {
     # Helm 4 requires plugin verification by default; helm-diff ships no
     # provenance artifacts, so fall back to --verify=false on failure.
-    helm plugin install "${helm_diff_url}" --version "${helm_diff_version}" \
-        || helm plugin install "${helm_diff_url}" --version "${helm_diff_version}" --verify=false \
+    helm plugin install "${helm_diff_url}" --version "${helm_diff_version}" &>/dev/null \
+        || helm plugin install "${helm_diff_url}" --version "${helm_diff_version}" --verify=false &>/dev/null \
         || { echo "ERROR: Failed to install helm-diff plugin"; exit 1; }
 }
 

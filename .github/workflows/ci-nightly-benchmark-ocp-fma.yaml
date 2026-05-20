@@ -3,14 +3,50 @@ name: CI - Nightly Run Benchmark on OCP ("FMA" standup method)
 on:
   workflow_dispatch:
     inputs:
-      input_dir:
-        description: 'Input directory for benchmark results'
-        required: false
-        default: '/tmp/cicd/analysis'
-      output_dir:
-        description: 'Output directory name (S3 prefix and artifact name)'
-        required: false
-        default: ''
+      scenario_dir:
+        description: 'Directory housing the scenarios'
+        required: true
+        default: 'cicd'
+      standup_method:
+        description: 'Standup method to be used ("standalone","fma","modelservice")'
+        required: true
+        default: 'fma'
+      cluster_provider:
+        description: 'Cluster provider targeted ("ocp","gke","cks")'
+        required: true
+        default: 'ocp'
+      cluster_namespace:
+        description: 'Cluster namespace'
+        required: true
+        default: 'llmdbenchcicdfns-ocp'
+      helm_release:
+        description: 'Helm release name (for modelservice)'
+        required: true
+        default: 'lmdbenchcicdr-ocp'
+      workspace_dir:
+        description: 'Workspace directory'
+        required: true
+        default: '/tmp/llmdbenchcicdf-ocp'
+      bucket_project:
+        description: 'Project associated to the object storage bucket'
+        required: true
+        default: 'llm-d-scale'
+      bucket_provider:
+        description: 'Type (provider of) the bucket'
+        required: true
+        default: 'gcs'
+      bucket_path:
+        description: 'Path to object storage bucket'
+        required: true
+        default: 'llm-d-benchmarks/regressions'
+      gateway_class:
+        description: 'Class of gateway used ("istio", "agentgateway", "epponly", "none")'
+        required: true
+        default: 'istio'
+      dry_run:
+        description: 'Execute workflow in "dry-run" mode ("true", "false")'
+        required: true
+        default: 'false'
 
 #  push:
 #    branches:
@@ -52,19 +88,23 @@ jobs:
   benchmark-ocp-fma:
     name: Benchmark - FMA (OCP)
     runs-on: [self-hosted, openshift, pok-prod]
+#    container:
+#      image: ghcr.io/llm-d/llm-d-benchmark:nightly
     needs: [ensure-nightly-build-image]
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_CICD_NS: llmdbenchcicdfns-ocp
-      LLMDBENCH_CICD_R: llmdbenchcicdr-ocp
-      LLMDBENCH_CICD_SCENARIO_DIR: cicd
-      LLMDBENCH_CICD_TARGET: ocp
-      LLMDBENCH_CICD_METHOD: fma
-      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdf-ocp
+      LLMDBENCH_CICD_NS: ${{ inputs.cluster_namespace }}
+      LLMDBENCH_CICD_R: ${{ inputs.helm_release }}
+      LLMDBENCH_CICD_SCENARIO_DIR: ${{ inputs.scenario_dir }}
+      LLMDBENCH_CICD_TARGET: ${{ inputs.cluster_provider }}
+      LLMDBENCH_CICD_METHOD: ${{ inputs.standup_method }}
+      LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-      GCS_PATH: llm-d-benchmarks/regressions
-      GCP_PROJECT_ID: llm-d-scale
+      LLMDBENCH_GATEWAY_CLASS: ${{ inputs.gateway_class}}
+      LLMDBENCH_EXTRA_CMD: ${{ inputs.dry_run == 'true' && '--dry-run' || '' }}
+      GCS_PATH: ${{ inputs.bucket_path }}
+      GCP_PROJECT_ID: ${{ inputs.bucket_project }}
 
     steps:
       - name: Checkout Code
@@ -76,13 +116,6 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-
-      - name: Set up kubeconfig from secret
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-        shell: bash
 
       - name: Authenticate to Google Cloud
         id: auth
@@ -111,6 +144,25 @@ jobs:
             rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
           fi
 
+      - name: Set up kubeconfig from secret
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+        shell: bash
+
+      - name: Set up extra command line parameters
+        run: |
+          export LLMDBENCH_EXTRA_CMD=""
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            export LLMDBENCH_EXTRA_CMD="--dry-run $LLMDBENCH_EXTRA_CMD"
+          fi
+          if [[ "${{ inputs.verbose }}" == "true" ]]; then
+            export LLMDBENCH_EXTRA_CMD="--verbose $LLMDBENCH_EXTRA_CMD"
+          fi
+          echo "LLMDBENCH_EXTRA_CMD=$LLMDBENCH_EXTRA_CMD" >> $GITHUB_ENV
+        shell: bash
+
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
@@ -119,13 +171,19 @@ jobs:
 
       - name: Cleanup target cloud
         run: |
-            llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
-            kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
+          echo "### Cluster names: $(cat ~/.kube/config | yq ".clusters[].name" | sed ':a;N;$!ba;s/\n/, /g')"
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
+          echo "### $LLMDBENCH_CMD ###"
+          sleep 100
+          $LLMDBENCH_CMD
+          kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
         shell: bash
 
       - name: Standup
         run: |
-          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" standup -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD standup --no-monitoring --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
+          echo "### $LLMDBENCH_CMD ###"
+          $LLMDBENCH_CMD
         shell: bash
 
       - name: Debug info (on failure)
@@ -136,13 +194,17 @@ jobs:
 
       - name: Run
         run: |
-          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD run --namespace $LLMDBENCH_CICD_NS --methods $LLMDBENCH_CICD_METHOD"
+          echo "### $LLMDBENCH_CMD ###"
+          $LLMDBENCH_CMD
         shell: bash
 
       - name: Teardown
         if: always()
         run: |
-          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
+          echo "### $LLMDBENCH_CMD ###"
+          $LLMDBENCH_CMD
           kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
         shell: bash
 
@@ -154,30 +216,38 @@ jobs:
 
       - name: Upload results to GCS
         run: |
-          REG_PROVIDER=$(basename "$LLMDBENCH_CICD_TARGET")
-          REG_METHOD=$LLMDBENCH_CICD_METHOD
-          RUN_DATE=$(date +'%Y-%m-%d')
-          cd "$LLMDBENCH_WORKSPACE"
-          REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
-          gcloud storage cp -r $REG_RESULTS/ "gs://llm-d-benchmarks/regressions/$REG_PROVIDER/$REG_METHOD/$RUN_DATE/" || true
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            echo "Skipping data upload to bucket, due to \"dry-run\" mode activated"
+          else
+            RUN_DATE=$(date +'%Y-%m-%d')
+            cd "$LLMDBENCH_WORKSPACE"
+            REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
+            echo "Uploading data from directory \"REG_RESULTS\" to \"gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/\""
+            gcloud storage cp -r $REG_RESULTS/ "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/" || true
+          fi
         shell: bash
 
       - name: Block waiting for Standalone baseline
         run: |
-          RUN_DATE=$(date +'%Y-%m-%d')
-          POLL=30
-          while true; do
-            brl=$(gcloud storage ls -l "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/*/results/*/benchmark_report_v0.2*")
-            if [[ $? -ne 0 ]]; then
-              echo "Standalone baseline for \"$RUN_DATE\" still not present. Waiting $POLL seconds and trying again..."
-              sleep $POLL
-            else
-              latest_entry=$(echo "$brl" | sort -k 2 | tail -n 2 | head -n 1 | awk '{ print $3 }')
-              latest_dir=$(echo "$latest_entry" | sed "s^gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/^^g" | cut -d '/' -f 1)
-              echo "Standalone baseline for \"$RUN_DATE\" is \"$latest_dir\"."
-              exit 0
-            fi
-          done
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            echo "Skipping waiting for \"standalone baseline\", due to \"dry-run\" mode activated"
+            exit 0
+          else
+            RUN_DATE=$(date +'%Y-%m-%d')
+            POLL=30
+            while true; do
+              brl=$(gcloud storage ls -l "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/*/results/*/benchmark_report_v0.2*")
+              if [[ $? -ne 0 ]]; then
+                echo "Standalone baseline for \"$RUN_DATE\" still not present. Waiting $POLL seconds and trying again..."
+                sleep $POLL
+              else
+                latest_entry=$(echo "$brl" | sort -k 2 | tail -n 2 | head -n 1 | awk '{ print $3 }')
+                latest_dir=$(echo "$latest_entry" | sed "s^gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/^^g" | cut -d '/' -f 1)
+                echo "Standalone baseline for \"$RUN_DATE\" is \"$latest_dir\"."
+                exit 0
+              fi
+            done
+          fi
           exit 1
         shell: bash
 

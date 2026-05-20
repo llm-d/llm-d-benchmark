@@ -1,56 +1,68 @@
-name: CI - Nightly Run Benchmark on CKS ("Standalone" standup method)
+name: CI - Generic Nightly Run Benchmark
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       scenario_dir:
         description: 'Directory housing the scenarios'
         required: false
+        type: 'string'
         default: 'cicd'
       standup_method:
         description: 'Standup method to be used ("standalone","fma","modelservice")'
         required: false
+        type: 'string'
         default: 'standalone'
       cluster_provider:
         description: 'Cluster provider targeted ("ocp","gke","cks")'
         required: false
-        default: 'cks'
+        type: 'string'
+        default: 'kind'
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
-        default: 'llmdbenchcicdsns-cks'
+        type: 'string'
+        default: 'llmdbenchcicd'
       helm_release:
         description: 'Helm release name (for modelservice)'
         required: false
-        default: 'llmdbenchcicdr-cks'
+        type: 'string'
+        default: 'lmdbenchcicdr'
       workspace_dir:
         description: 'Workspace directory'
         required: false
-        default: '/tmp/llmdbenchcicds-cks'
+        type: 'string'
+        default: '/tmp/llmdbenchcicd'
       bucket_project:
         description: 'Project associated to the object storage bucket'
         required: false
+        type: 'string'
         default: 'llm-d-scale'
       bucket_provider:
         description: 'Type (provider of) the bucket'
         required: false
-        default: 'gcs'
+        type: 'string'
+        default: 'none'
       bucket_path:
         description: 'Path to object storage bucket'
         required: false
+        type: 'string'
         default: 'llm-d-benchmarks/regressions'
       gateway_class:
         description: 'Class of gateway used ("istio", "agentgateway", "epponly", "none")'
         required: false
+        type: 'string'
         default: 'istio'
       dry_run:
         description: 'Execute workflow in "dry-run" mode ("true", "false")'
         required: false
+        type: 'string'
         default: 'false'
       verbose:
         description: 'Execute workflow in "verbose" mode ("true", "false")'
         required: false
         default: 'false'
+        type: 'string'
 
 #  push:
 #    branches:
@@ -89,8 +101,8 @@ jobs:
           done
         shell: bash
 
-  benchmark-cks-standalone:
-    name: Benchmark - Standalone (CKS)
+  benchmark:
+    name: Benchmark
     runs-on: ubuntu-latest
 #    container:
 #      image: ghcr.io/llm-d/llm-d-benchmark:nightly
@@ -98,16 +110,18 @@ jobs:
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_CICD_NS: ${{ inputs.cluster_namespace }}
-      LLMDBENCH_CICD_R: ${{ inputs.helm_release }}
-      LLMDBENCH_CICD_SCENARIO_DIR: ${{ inputs.scenario_dir }}
-      LLMDBENCH_CICD_TARGET: ${{ inputs.cluster_provider }}
-      LLMDBENCH_CICD_METHOD: ${{ inputs.standup_method }}
-      LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir }}
+      LLMDBENCH_CICD_NS: ${{ inputs.cluster_namespace || 'cicd' }}
+      LLMDBENCH_CICD_R: ${{ inputs.helm_release || 'standalone' }}
+      LLMDBENCH_CICD_SCENARIO_DIR: ${{ inputs.scenario_dir || 'kind' }}
+      LLMDBENCH_CICD_TARGET: ${{ inputs.cluster_provider || 'llmdbenchcicd' }}
+      LLMDBENCH_CICD_METHOD: ${{ inputs.standup_method || 'lmdbenchcicdr' }}
+      LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-      LLMDBENCH_GATEWAY_CLASS: ${{ inputs.gateway_class}}
-      GCS_PATH: ${{ inputs.bucket_path }}
-      GCP_PROJECT_ID: ${{ inputs.bucket_project }}
+      LLMDBENCH_GATEWAY_CLASS: ${{ inputs.gateway_class || 'istio' }}
+      LLMDBENCH_IS_DRY_RUN: ${{ inputs.dry_run || 'false' }}
+      LLMDBENCH_IS_VERBOSE: ${{ inputs.verbose || 'false' }}
+      GCS_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
+      GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
 
     steps:
       - name: Checkout Code
@@ -127,14 +141,14 @@ jobs:
           version: v0.31.0
 
       - name: Authenticate to Google Cloud
-        if: inputs.cluster_provider != 'kind'
+        if: inputs.cluster_provider == 'ocp' || inputs.bucket_provider == 'gcs'
         id: auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
           credentials_json: ${{ secrets.GKE_SA_KEY }}
 
       - name: Set up gcloud CLI and kubectl
-        if: inputs.cluster_provider != 'kind'
+        if: inputs.cluster_provider == 'ocp' || inputs.bucket_provider == 'gcs'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
@@ -148,22 +162,38 @@ jobs:
           chmod 600 ~/.kube/config
         shell: bash
 
-      - name: Set up extra command line parameters
+      - name: Install oc (optional on install.sh)
+        if: inputs.cluster_provider != 'ocp'
         run: |
-          export LLMDBENCH_EXTRA_CMD=""
-          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
-            export LLMDBENCH_EXTRA_CMD="--dry-run $LLMDBENCH_EXTRA_CMD"
+          # Install oc (OpenShift CLI) — optional on install.sh
+          if ! command -v oc &>/dev/null; then
+            curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
+              "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz"
+            mkdir -p /tmp/oc-extract
+            tar -xzf /tmp/openshift-client-linux.tar.gz -C /tmp/oc-extract
+            sudo mv /tmp/oc-extract/oc /usr/local/bin/
+            sudo mv /tmp/oc-extract/kubectl /usr/local/bin/
+            sudo chmod +x /usr/local/bin/oc
+            sudo chmod +x /usr/local/bin/kubectl
+            rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
           fi
-          if [[ "${{ inputs.verbose }}" == "true" ]]; then
-            export LLMDBENCH_EXTRA_CMD="--verbose $LLMDBENCH_EXTRA_CMD"
-          fi
-          echo "LLMDBENCH_EXTRA_CMD=$LLMDBENCH_EXTRA_CMD" >> $GITHUB_ENV
-        shell: bash
 
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
           cp util/debug_info_on_failure.sh /usr/local/bin
+        shell: bash
+
+      - name: Set up extra command line parameters
+        run: |
+          export LLMDBENCH_EXTRA_CMD=""
+          if [[ "$LLMDBENCH_IS_DRY_RUN" == "true" ]]; then
+            export LLMDBENCH_EXTRA_CMD="--dry-run"
+          fi
+          if [[ "$LLMDBENCH_IS_VERBOSE" == "true" ]]; then
+            export LLMDBENCH_EXTRA_CMD="--verbose"
+          fi
+          echo "LLMDBENCH_EXTRA_CMD=$LLMDBENCH_EXTRA_CMD" >> $GITHUB_ENV
         shell: bash
 
       - name: Show cluster nodes
@@ -177,7 +207,6 @@ jobs:
           echo "### Cluster names: $(cat ~/.kube/config | yq ".clusters[].name" | sed ':a;N;$!ba;s/\n/, /g')"
           LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
           echo "### $LLMDBENCH_CMD ###"
-          sleep 100
           $LLMDBENCH_CMD
           kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
         shell: bash
@@ -201,16 +230,6 @@ jobs:
           echo "### $LLMDBENCH_CMD ###"
           $LLMDBENCH_CMD
         shell: bash
-
-#     START - This should be deleted, and the contents accessed from GCS accessed directly
-#      - name: Archive benchmark results as GitHub artifact
-#        if: success() || failure()
-#        uses: actions/upload-artifact@v7.0.1
-#        with:
-#          name: benchmark-results-cks-standalone
-#          path: ${{ env.LLMDBENCH_WORKSPACE }}
-#          retention-days: 14
-#     END - This should be deleted, and the contents accessed from GCS accessed directly
 
       - name: Teardown
         if: always()
@@ -239,4 +258,29 @@ jobs:
             echo "Uploading data from directory \"REG_RESULTS\" to \"gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/\""
             gcloud storage cp -r $REG_RESULTS/ "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/" || true
           fi
+        shell: bash
+
+      - name: Block waiting for Standalone baseline
+        if: inputs.cluster_provider != 'kind' && inputs.bucket_provider == 'gcs'
+        run: |
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            echo "Skipping waiting for \"standalone baseline\", due to \"dry-run\" mode activated"
+            exit 0
+          else
+            RUN_DATE=$(date +'%Y-%m-%d')
+            POLL=30
+            while true; do
+              brl=$(gcloud storage ls -l "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/*/results/*/benchmark_report_v0.2*")
+              if [[ $? -ne 0 ]]; then
+                echo "Standalone baseline for \"$RUN_DATE\" still not present. Waiting $POLL seconds and trying again..."
+                sleep $POLL
+              else
+                latest_entry=$(echo "$brl" | sort -k 2 | tail -n 2 | head -n 1 | awk '{ print $3 }')
+                latest_dir=$(echo "$latest_entry" | sed "s^gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/^^g" | cut -d '/' -f 1)
+                echo "Standalone baseline for \"$RUN_DATE\" is \"$latest_dir\"."
+                exit 0
+              fi
+            done
+          fi
+          exit 1
         shell: bash
