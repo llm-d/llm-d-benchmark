@@ -28,7 +28,7 @@ whatever the host's package manager provides.
 | **jq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [jqlang/jq](https://github.com/jqlang/jq) |
 | **kustomize** | `v5.8.1` | version | `install.sh` line 84 (`tool_version_for`) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
 | **llm-d-planner (git)** | `e50305af90f0812e77e1827f3bc740fe75b76370` | commit SHA | `install.sh` line 890 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
-| **oc** | `4.20.0` | version | `install.sh` line 83 (`tool_version_for`) | [openshift/oc](https://github.com/openshift/oc) |
+| **oc** | `4.18.0` | version | `install.sh` line 83 (`tool_version_for`) | [openshift/oc](https://github.com/openshift/oc) |
 | **skopeo** | `1.14.6` | version | `install.sh` line 86 (`tool_version_for`) | [containers/skopeo](https://github.com/containers/skopeo) |
 | **yq** | `v4.53.2` | version | `install.sh` line 79 (`tool_version_for`) | [mikefarah/yq](https://github.com/mikefarah/yq) |
 
