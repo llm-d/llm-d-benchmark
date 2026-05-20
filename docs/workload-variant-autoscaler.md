@@ -308,7 +308,7 @@ For more `behavior` tuning options:
 ```yaml
 chartVersions:
   wva: 0.6.0                     # WVA controller chart (oci://ghcr.io/llm-d/workload-variant-autoscaler)
-  prometheusAdapter: 5.2.0       # bumped charts have broken external-metric rule format
+  prometheusAdapter: 5.3.0       # bumped charts have broken external-metric rule format
 ```
 
 ---
