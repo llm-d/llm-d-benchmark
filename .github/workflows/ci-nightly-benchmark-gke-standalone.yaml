@@ -109,7 +109,6 @@ jobs:
           RUN_DATE=$(date +'%Y-%m-%d')
           llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
           kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
-          gcloud storage rm "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/nightly_completed.txt" || true
         shell: bash
 
       - name: Standup
@@ -157,5 +156,4 @@ jobs:
           cd "$LLMDBENCH_WORKSPACE"
           REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
           gcloud storage cp -r $REG_RESULTS/ "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/" || true
-          gcloud storage cp <(echo -n "") "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/nightly_completed.txt"
         shell: bash

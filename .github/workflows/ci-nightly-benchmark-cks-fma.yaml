@@ -107,7 +107,6 @@ jobs:
           RUN_DATE=$(date +'%Y-%m-%d')
           llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
           kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
-          gcloud storage rm "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/nightly_completed.txt" || true
         shell: bash
 
       - name: Standup
@@ -145,7 +144,25 @@ jobs:
           cd "$LLMDBENCH_WORKSPACE"
           REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
           gcloud storage cp -r $REG_RESULTS/ "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/" || true
-          gcloud storage cp <(echo -n "") "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/nightly_completed.txt"
+        shell: bash
+
+      - name: Block waiting for Standalone baseline
+        run: |
+          RUN_DATE=$(date +'%Y-%m-%d')
+          POLL=30
+          while true; do
+            brl=$(gcloud storage ls -l "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/*/results/*/benchmark_report_v0.2*")
+            if [[ $? -ne 0 ]]; then
+              echo "Standalone baseline for \"$RUN_DATE\" still not present. Waiting $POLL seconds and trying again..."
+              sleep $POLL
+            else
+              latest_entry=$(echo "$brl" | sort -k 2 | tail -n 2 | head -n 1 | awk '{ print $3 }')
+              latest_dir=$(echo "$latest_entry" | sed "s^gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/^^g" | cut -d '/' -f 1)
+              echo "Standalone baseline for \"$RUN_DATE\" is \"$latest_dir\"."
+              exit 0
+            fi
+          done
+          exit 1
         shell: bash
 
 #     START - This should be deleted, and the contents accessed from GCS accessed directly
