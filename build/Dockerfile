@@ -17,7 +17,11 @@ RUN apt-get update; \
     gnupg \
     infiniband-diags \
     iproute2 \
-    && apt-get clean && rm -rf /var/cache/apt
+    sudo \
+    vim \
+    skopeo \
+    libpq-dev \
+    && apt-get clean && rm -rf /var/cache/apt && rm -rf /var/lib/apt/lists/*
 
 # Install OpenShift CLI (oc)
 RUN OCPFN=$(echo "-$(uname -m)" | sed -e 's/-x86_64//g' -e 's/-amd64//g' -e 's/aarch64/ppc64le/g' -e 's/s390x/s390x-rhel9/g'); \
@@ -29,8 +33,7 @@ RUN OCPFN=$(echo "-$(uname -m)" | sed -e 's/-x86_64//g' -e 's/-amd64//g' -e 's/a
 RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
 
-RUN apt-get update; \
-    apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin || true
+RUN apt-get install -y google-cloud-sdk-gke-gcloud-auth-plugin && apt-get clean && rm -rf /var/cache/apt && rm -rf /var/lib/apt/lists/* || true
 # Install kubectl for in-pod cluster operations (e.g. vLLM metrics scraping)
 RUN curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/$(dpkg --print-architecture)/kubectl" \
     -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
@@ -130,6 +133,10 @@ RUN pip install -e /opt
 
 ADD llmdbenchmark/standup/preprocess/ /tmp/preprocess/
 RUN chmod +x /tmp/preprocess/* ; rsync -az --exclude "__pycache__" /tmp/preprocess/ /usr/local/bin/
+
+COPY install.sh /tmp/install.sh
+
+RUN chmod +x /tmp/install.sh ; /tmp/install.sh && apt-get clean && rm -rf /var/cache/apt && rm -rf /var/lib/apt/lists/* || true
 
 COPY build/llm-d-benchmark.sh /usr/local/bin/llm-d-benchmark.sh
 
