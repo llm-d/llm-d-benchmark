@@ -1,7 +1,6 @@
 # Telemetry module
 
 import atexit
-from typing import Optional
 from llmdbenchmark.config import config
 from llmdbenchmark.logging.logger import get_logger
 
@@ -25,13 +24,16 @@ def init_telemetry(logger=None):
             
             # bearer_token is a function that returns the full Authorization header value or None.
             # It must include the "Bearer " prefix if a token is present.
-            bearer_token = lambda: None
             if config.telemetry_token:
-                bearer_token = lambda: f"Bearer {config.telemetry_token}"
+                def bearer_token():
+                    return f"Bearer {config.telemetry_token}"
             elif config.telemetry_auth_provider == "google":
                 from llmdbenchmark.telemetry.google_auth_provider import get_google_bearer_token_provider
                 bearer_token = get_google_bearer_token_provider(config.telemetry_endpoint, logger)
-                
+            else:
+                def bearer_token():
+                    return None
+                    
             _telemetry_instance = HttpTelemetryProvider(
                 config.telemetry_endpoint, 
                 logger,

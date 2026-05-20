@@ -45,7 +45,7 @@ class DeployModelserviceStep(Step):
         plan_config = self._load_stack_config(stack_path)
         release = self._require_config(plan_config, "release")
         model_id_label = plan_config.get("model_id_label", "")
-        inference_port = self._require_config(plan_config, "vllmCommon", "inferencePort")
+        inference_port = self._require_config(plan_config, "vllmCommon", "inferencePort") # noqa: F841
         timeout = context.modelservice_deploy_timeout # Generic timeout for all pods in step 9
 
         if not context.dry_run:
@@ -134,7 +134,7 @@ class DeployModelserviceStep(Step):
             if not decode_wait.success:
                 errors.append(f"Decode pods not ready: {decode_wait.stderr}")
 
-            decode_cfg = plan_config.get("decode", {})
+            decode_cfg = plan_config.get("decode", {}) # noqa: F841
             expected_replicas = int(self._require_config(plan_config, "decode", "replicas"))
             is_multinode = plan_config.get("multinode", {}).get("enabled", False)
             if is_multinode:
