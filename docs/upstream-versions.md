@@ -25,7 +25,7 @@ whatever the host's package manager provides.
 | **helm** | `v4.2.0` | version | `install.sh` line 81 (`tool_version_for`) | [helm/helm](https://github.com/helm/helm) |
 | **helm-diff** | `v3.15.7` | plugin (version) | `install.sh` line 82 (`tool_version_for`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
 | **helmfile** | `1.5.1` | version | `install.sh` line 80 (`tool_version_for`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
-| **jq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [jqlang/jq](https://github.com/jqlang/jq) |
+| **jq** | `1.8.1` | version | `install.sh` line 87 (`tool_version_for`) | [jqlang/jq](https://github.com/jqlang/jq) |
 | **kustomize** | `v5.8.1` | version | `install.sh` line 84 (`tool_version_for`) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
 | **llm-d-planner (git)** | `e50305af90f0812e77e1827f3bc740fe75b76370` | commit SHA | `install.sh` line 890 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
 | **oc** | `4.18.0` | version | `install.sh` line 83 (`tool_version_for`) | [openshift/oc](https://github.com/openshift/oc) |
