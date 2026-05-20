@@ -21,7 +21,7 @@ scenario:
       enabled: false
     fma:
       enabled: true
-      iterations: 3
+      iterations: 5
       launcher:
         customPreprocessCommands:
           - export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}

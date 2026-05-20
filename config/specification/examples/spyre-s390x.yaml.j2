@@ -1,3 +1,7 @@
+# IBM Spyre Accelerator Example Specification
+# Deploys a model on IBM Spyre accelerator hardware.
+# See scenarios/examples/spyre.yaml for details.
+
 # [REQUIRED]
 {% set base_dir = base_dir | default('../') -%}
 base_dir: {{ base_dir }}
@@ -12,7 +16,4 @@ template_dir:
 
 # [OPTIONAL]
 scenario_file:
-  path: {{ base_dir }}/config/scenarios/guides/inference-scheduling.yaml
-
-# Experiment definitions have been moved to:
-#   workload/experiments/inference-scheduling.yaml
+  path: {{ base_dir }}/config/scenarios/examples/spyre-s390x.yaml

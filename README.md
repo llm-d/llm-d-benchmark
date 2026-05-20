@@ -4,9 +4,14 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Join Slack](https://img.shields.io/badge/Join_Slack-blue?logo=slack)](https://llm-d.ai/slack)
 
-[![CI - Nightly Run Benchmark on CKS](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-cks.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-cks.yaml)
-[![CI - Nightly Run Benchmark on GKE](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-gke.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-gke.yaml)
-[![CI - Nightly Run Benchmark on OCP](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-ocp.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-ocp.yaml)
+[![.github/workflows/ci-nightly-benchmark-build-image.yaml](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-build-image.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-build-image.yaml)
+
+|                            | Google Kubernetes Engine      | Coreweave Kubernetes Services | OpenShift |
+|----------------------------|:-----------------------------:|:-----------------------------:|:---------:|
+| Standalone                 | [![.github/workflows/ci-nightly-benchmark-gke-standalone.yaml](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-gke-standalone.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-gke-standalone.yaml) | [![.github/workflows/ci-nightly-benchmark-cks-standalone.yaml](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-cks-standalone.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-cks-standalone.yaml) | [![.github/workflows/ci-nightly-benchmark-ocp-standalone.yaml](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-ocp-standalone.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-ocp-standalone.yaml) |
+| Modelservice               | [![.github/workflows/ci-nightly-benchmark-gke-modelservice.yaml](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-gke-modelservice.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-gke-modelservice.yaml) | [![.github/workflows/ci-nightly-benchmark-cks-modelservice.yaml](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-cks-modelservice.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-cks-modelservice.yaml) | [![.github/workflows/ci-nightly-benchmark-ocp-modelservice.yaml](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-ocp-modelservice.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-ocp-modelservice.yaml) |
+| Fast Model Actuator        | [![.github/workflows/ci-nightly-benchmark-gke-fma.yaml](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-gke-fma.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-gke-fma.yaml) | [![.github/workflows/ci-nightly-benchmark-cks-fma.yaml](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-cks-fma.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-cks-fma.yaml) | [![.github/workflows/ci-nightly-benchmark-ocp-fma.yaml](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-ocp-fma.yaml/badge.svg)](https://github.com/llm-d/llm-d-benchmark/actions/workflows/ci-nightly-benchmark-ocp-fma.yaml)|
+| Kustomize                  | NA                            |                             NA |        NA |
 
 This repository provides an automated workflow for benchmarking LLM inference using the `llm-d` stack. It includes tools for deployment, experiment execution, data collection, and teardown across multiple environments and deployment styles.
 
@@ -272,7 +277,7 @@ llmdbenchmark --spec guides/multi-model-wva run -p my-namespace \
 Without `--stack`, `-m` applies to every stack and emits a warning.
 
 Add a third model by copying a stack block in
-[`config/scenarios/guides/multi-model-wva.yaml`](config/scenarios/guides/multi-model-wva.yaml)
+[`config/scenarios/examples/multi-model-wva.yaml`](config/scenarios/examples/multi-model-wva.yaml)
 and changing `name` + `model`. Scenario-wide config (gateway class, WVA
 controller image, shared HTTPRoute, EPP plugin config) lives in the
 top-level `shared:` block and is inherited by every stack. See
@@ -326,9 +331,12 @@ Please refer to the official [llm-d prerequisites](https://github.com/llm-d/llm-
 
 - **Python 3.11+**
 - **kubectl** -- Kubernetes CLI
-- **helm** -- Helm package manager
+- **helm** (>= 4.x) -- Helm package manager
 - **curl**, **git** -- Standard system tools
-- **helmfile** -- Required for modelservice deployments
+- **helmfile** (>= 1.5) -- Required for modelservice deployments. Older
+  helmfile is incompatible with Helm 4 (it probes helm with the removed
+  `helm version --client` flag and panics). `./install.sh` installs the
+  pinned Helm 4 / helmfile combination for you.
 - **kustomize**, **jq**, **yq** -- Required for template rendering
 - **skopeo**, **crane** -- Required for container image management
 - **oc** (optional) -- Required for OpenShift clusters (either `kubectl` or `oc` must be present)
@@ -374,7 +382,7 @@ git clone https://github.com/llm-d/llm-d-benchmark.git
 cd llm-d-benchmark
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
-pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@e50305af90f0812e77e1827f3bc740fe75b76370"
+pip install "git+https://github.com/llm-d-incubation/llm-d-planner.git@92b14fe09fea0ec9ff36539326b7a8df00f1022c"
 ```
 
 ### Verify Installation
@@ -760,6 +768,7 @@ The analysis pipeline generates per-request distribution plots, cross-treatment 
 - [Lifecycle](docs/lifecycle.md)
 - [Run](docs/run.md)
 - [Standup](docs/standup.md)
+- [Kustomize deploy method](docs/kustomize.md)
 - [Reproducibility](docs/reproducibility.md)
 - [Observability](docs/observability.md)
 - [Quickstart](docs/quickstart.md)

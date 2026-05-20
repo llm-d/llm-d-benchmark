@@ -1,17 +1,94 @@
-# INFERENCE SCHEDULING WELL LIT PATH for LLM-D Deployment
+# OPTIMIZED BASELINE WELL LIT PATH for LLM-D Deployment
 # Migrated from bash environment variables to YAML format
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/inference-scheduling
-#
-# Notes:
-# - Removed pod monitoring; can be added using decode.extraContainerConfig
-# - Removed extra volumes metrics-volume and torch-compile-volume (not needed for this model/hardware)
-# - Use decode.additionalVolumeMounts and decode.additionalVolumes to add them if needed
+# Based on https://github.com/llm-d/llm-d/tree/main/guides/optimized-baseline
 
 scenario:
   # ============================================================================
-  # Inference Scheduling - Qwen3-32B with 2 decode pods
+  # Optimized Baseline - Qwen3-32B with 2 decode pods
   # ============================================================================
-  - name: "inference-scheduling"
+  - name: "optimized-baseline"
+
+    # =========================================================================
+    # KUSTOMIZE DEPLOY METHOD   (scope: the ENTIRE stack)
+    # -------------------------------------------------------------------------
+    # When kustomize.enabled is true (or `-t kustomize` is passed) this
+    # scenario is deployed by applying the UPSTREAM llm-d guide directly
+    # (guides/<guideName> in the llm-d repo). In that mode the deployment is
+    # defined ENTIRELY by the guide's own manifests:
+    #
+    #   * EVERYTHING ELSE in this scenario is IGNORED -- model, modelservice,
+    #     standalone, decode/prefill, vllmCommon, storage, harness model, etc.
+    #   * `-m/--models` and all other CLI/scenario tuning are ignored.
+    #   * DoE `experiment` SETUP sweeps do NOT alter a kustomize deploy
+    #     (only run/workload treatments still apply).
+    #
+    # The ONLY way to modify a kustomize deployment is the kustomize.* keys
+    # below:
+    #   patches / overlayPath           -> modelserver (the workload pods)
+    #   extraHelmValues / extraHelmSets -> router / GAIE helm release
+    #   guideVariableOverrides          -> override the guide README's ${VAR}
+    # See docs/kustomize.md for the full reference and worked examples.
+    #
+    # NOT SUPPORTED with kustomize: multi-model / multi-stack scenarios
+    # (the deploy is keyed on guideName with no per-stack uniquification --
+    # stacks would collide). Use the modelservice method for multi-model.
+    #
+    # When kustomize.enabled is false (the DEFAULT) this whole block is
+    # inert and the scenario deploys via modelservice/standalone as
+    # configured further below.
+    # =========================================================================
+    kustomize:
+      enabled: false
+
+      guideName: "optimized-baseline"
+      repoPath: ""
+      repoRef: "main"
+      gaieVersion: ""
+      acceleratorBackend: "gpu/vllm"
+      monitoring: false
+      overlayPath: ""
+      extraHelmValues: []
+      extraHelmSets: {}
+      guideVariableOverrides: {}   # override/fill the guide README's ${VAR}
+
+      # Inline kustomize strategic merge patches applied on top of the
+      # guide's modelserver base.  For gated models, add an HF_TOKEN
+      # env var patch (the secret is auto-created from HF_TOKEN env):
+      #
+      #   - patch: |
+      #       apiVersion: apps/v1
+      #       kind: Deployment
+      #       metadata:
+      #         name: decode
+      #       spec:
+      #         template:
+      #           spec:
+      #             containers:
+      #               - name: modelserver
+      #                 env:
+      #                   - name: HF_TOKEN
+      #                     valueFrom:
+      #                       secretKeyRef:
+      #                         name: llm-d-hf-token
+      #                         key: HF_TOKEN
+      patches:
+        - patch: |
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: decode
+            spec:
+              replicas: 2
+              template:
+                spec:
+                  volumes:
+                    - name: triton-cache
+                      emptyDir: {}
+                  containers:
+                    - name: modelserver
+                      volumeMounts:
+                        - mountPath: /.triton
+                          name: triton-cache
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
@@ -60,6 +137,11 @@ scenario:
     standalone:
       enabled: false
 
+    # NOTE: the `kustomize` deploy method is configured at the TOP of this
+    # stack (see the "KUSTOMIZE DEPLOY METHOD" banner). It lives there
+    # because enabling it overrides this entire scenario -- see
+    # docs/kustomize.md.
+
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
     # The following sections configure the llm-d modelservice Helm chart
@@ -84,6 +166,25 @@ scenario:
     # -------------------------------------------------------------------------
     decode:
       replicas: 2
+#      replicas: 8
+      vllm:
+        customCommand: |
+          export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
+          export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
+          vllm serve /model-cache/$MODEL_PATH \
+          --host 0.0.0.0 \
+          --served-model-name $MODEL_NAME \
+          --port $VLLM_METRICS_PORT \
+          --block-size $VLLM_BLOCK_SIZE \
+          --max-model-len $VLLM_MAX_MODEL_LEN \
+          --max-num-seq $VLLM_MAX_NUM_SEQ \
+          --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
+          --tensor-parallel-size $TP_SIZE \
+          --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
+          --no-enable-log-requests \
+          --disable-uvicorn-access-log \
+          --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+          --no-enable-prefix-caching
 
       initContainers:
         - name: preprocess
@@ -151,41 +252,8 @@ scenario:
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # vLLM Common Configuration
-    # Shared settings for both decode and prefill pods.
-    # When no customCommand is set on decode/prefill, the vLLM serve command
-    # is auto-generated from these fields:
-    #   - model.maxModelLen, model.blockSize maps to --max-model-len, --block-size
-    #   - model.gpuMemoryUtilization maps to --gpu-memory-utilization
-    #   - decode/prefill.parallelism.tensor maps to --tensor-parallel-size
-    #   - vllmCommon.flags.* maps to --enforce-eager, --no-enable-log-requests, etc.
-    #   - vllmCommon.kvTransfer.* maps to --kv-transfer-config (if enabled)
-    #   - vllmCommon.kvEvents.* maps to --kv-events-config (if enabled)
-    #   - decode/prefill.vllm.additionalFlags maps to appended as extra CLI args
-    # When decode.vllm.customCommand or prefill.vllm.customCommand IS set, it replaces the auto-generated
-    # command entirely. Only --kv-transfer-config and --kv-events-config are
-    # still appended from vllmCommon if enabled. All other vllmCommon.flags
-    # are ignored -- the custom command must include its own flags.
-    # -------------------------------------------------------------------------
     vllmCommon:
-      kvTransfer:
-        enabled: true
-        connector: NixlConnector
-        role: kv_both
-
-      # These flags control the auto-generated vllm serve command.
-      # Flags not listed here inherit from defaults.yaml.
-      # To use a fully custom command instead, set decode.vllm.customCommand.
-      flags:
-        enforceEager: true             # --enforce-eager
-        disableLogRequests: true     # modelservice only -- upstream vllm-openai (v0.9+) dropped --no-enable-log-requests
-        disableUvicornAccessLog: true  # --disable-uvicorn-access-log
-        allowLongMaxModelLen: "1"
-        serverDevMode: "1"
-
-      #priorityClassName: nightly-gpu-critical
+#      priorityClassName: nightly-gpu-critical
 
       volumes:
         - name: shared-config
@@ -217,7 +285,7 @@ scenario:
     # -------------------------------------------------------------------------
     # Workload/Harness Configuration
     # -------------------------------------------------------------------------
-    workDir: "~/data/inference-scheduling"
+    workDir: "~/data/optimized-baseline"
 
     harness:
       name: inference-perf

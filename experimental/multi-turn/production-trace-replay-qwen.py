@@ -1,33 +1,27 @@
 import asyncio
 import json
 import logging
-import sys
 import os
 import argparse
 import functools
 import numpy as np
 
 from dataclasses import dataclass
-from typing import Generator, List, Optional, Tuple, Dict, Any
+from typing import Generator, List, Optional, Dict, Any
 from pydantic import ConfigDict, Field
 
 from inference_perf.apis.base import InferenceAPIData, LazyLoadInferenceAPIData
 from inference_perf.apis.completion import CompletionAPIData
-from inference_perf.apis.user_session import LocalUserSession, UserSessionCompletionAPIData
-from inference_perf.apis.base import InferenceAPIData, LazyLoadInferenceAPIData, InferenceInfo
+from inference_perf.apis.base import InferenceInfo
 from inference_perf.client.modelserver.vllm_client import vLLMModelServerClient
 from inference_perf.client.requestdatacollector.multiprocess import MultiprocessRequestDataCollector
 from aiohttp import ClientResponse
-import random
-import time
 from inference_perf.config import (
     APIConfig,
     APIType,
     DataConfig,
     LoadConfig,
     StandardLoadStage,
-    ModelServerClientConfig,
-    ModelServerType,
     CustomTokenizerConfig,
     LoadType,
     ReportConfig,
@@ -43,7 +37,6 @@ from inference_perf.loadgen.load_generator import LoadGenerator
 from inference_perf.loadgen.load_timer import LoadTimer
 from inference_perf.utils.custom_tokenizer import CustomTokenizer
 from inference_perf.reportgen.base import ReportGenerator
-from inference_perf.client.metricsclient.base import StageRuntimeInfo
 from inference_perf.client.metricsclient import PerfRuntimeParameters
 
 # Configure logging
@@ -293,7 +286,7 @@ class TraceDataGenerator(DataGenerator, LazyLoadDataMixin):
         for i, entry in enumerate(self.trace_entries):
             session_id = str(entry.chat_id) if entry.parent_chat_id == -1 else str(entry.parent_chat_id)
             preferred_worker_id = hash(session_id)
-            yield LazyLoadInferenceAPIData(data_index=i, preferred_worker_id=prefered_worker_id)
+            yield LazyLoadInferenceAPIData(data_index=i, preferred_worker_id=preferred_worker_id)
     
     def load_lazy_data(self, data: LazyLoadInferenceAPIData) -> InferenceAPIData:
         entry = self.trace_entries[data.data_index]
@@ -377,7 +370,7 @@ async def main():
     limit = args.limit
     trace_file = args.trace_file
     
-    logger.info(f"Starting Multi-turn Benchmark")
+    logger.info("Starting Multi-turn Benchmark")
     logger.info(f"Model: {model_name}")
     logger.info(f"Base URL: {base_url}")
     logger.info(f"Limit: {limit}")

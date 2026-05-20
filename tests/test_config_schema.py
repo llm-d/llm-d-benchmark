@@ -19,11 +19,6 @@ import yaml
 
 from llmdbenchmark.parser.config_schema import (
     BenchmarkConfig,
-    DecodeConfig,
-    HarnessConfig,
-    ModelConfig,
-    PrefillConfig,
-    VllmCommonConfig,
     validate_config,
 )
 

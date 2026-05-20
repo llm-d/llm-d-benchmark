@@ -84,7 +84,19 @@ class AdminPrerequisitesStep(Step):
         )
 
     def should_skip(self, context: ExecutionContext) -> bool:
-        return context.non_admin
+        if context.non_admin:
+            return True
+        if self._kustomize_only(context):
+            return True
+        return False
+
+    @staticmethod
+    def _kustomize_only(context: ExecutionContext) -> bool:
+        methods = context.deployed_methods or []
+        return (
+            methods == ["kustomize"]
+            and context.kustomize_skip_infra
+        )
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
@@ -305,7 +317,7 @@ class AdminPrerequisitesStep(Step):
         existing_crds: list[str],
     ):
         """Install the gateway provider only if its CRDs are missing."""
-        gateway_config = plan_config.get("gateway", {})
+        gateway_config = plan_config.get("gateway", {}) # noqa: F841
         gateway_class = self._require_config(plan_config, "gateway", "className")
 
         if gateway_class == "agentgateway":

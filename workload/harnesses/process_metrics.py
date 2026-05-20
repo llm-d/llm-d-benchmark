@@ -231,7 +231,7 @@ def aggregate_metrics():
             }
         }
         _save_json(os.path.join(processed_dir, 'metrics_summary.json'), results)
-        print(f"Empty metrics summary saved")
+        print("Empty metrics summary saved")
         return results
 
     print(f"Processing {len(all_files)} files...")

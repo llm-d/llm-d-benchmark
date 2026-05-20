@@ -14,11 +14,12 @@ from llmdbenchmark.utilities.endpoint import (
     _normalize_url_prefix,
     _rand_suffix,
     compute_gateway_path_prefix,
+    find_custom_endpoint,
     find_gateway_endpoint,
+    find_kustomize_endpoint,
     find_standalone_endpoint,
     test_model_serving,
 )
-
 
 _RETRYABLE_INDICATORS = ("502", "503", "504", "ServiceUnavailable", "not ready")
 
@@ -100,6 +101,7 @@ class BaseSmoketest:
         """
         is_standalone = "standalone" in context.deployed_methods
         is_fma = "fma" in context.deployed_methods
+        is_kustomize = "kustomize" in context.deployed_methods
         namespace = context.require_namespace()
 
         inference_port = _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
@@ -111,6 +113,16 @@ class BaseSmoketest:
             )
         elif is_fma:
             return None, "0", False
+        elif is_kustomize:
+            guide_name = _nested_get(plan_config, "kustomize", "guideName") or ""
+            if guide_name:
+                service_ip, _, gateway_port = find_kustomize_endpoint(
+                    cmd, namespace, guide_name,
+                )
+            else:
+                service_ip, _, gateway_port = find_custom_endpoint(
+                    cmd, namespace, "epp",
+                )
         else:
             service_ip, _, gateway_port = find_gateway_endpoint(
                 cmd, namespace, release
@@ -138,6 +150,8 @@ class BaseSmoketest:
         model_name = _nested_get(plan_config, "model", "name") or ""
         model_id_label = plan_config.get("model_id_label", "") or _nested_get(plan_config, "model", "shortName") or ""
         standalone_role = _nested_get(plan_config, "standalone", "role") or "standalone"
+        is_kustomize = "kustomize" in context.deployed_methods
+        guide_name = _nested_get(plan_config, "kustomize", "guideName") or ""
 
         # skip base healh checks for FMA
         if "fma" in context.deployed_methods:
@@ -148,7 +162,9 @@ class BaseSmoketest:
         )
 
         # 1. Check pods running for each configured role
-        if is_standalone:
+        if is_kustomize:
+            roles_to_check = [("decode", "decode")]
+        elif is_standalone:
             roles_to_check = [("standalone", standalone_role)]
         else:
             # Check whichever roles are configured (decode, prefill, or both)
@@ -174,7 +190,10 @@ class BaseSmoketest:
             ))
 
         for pod_type, role_label in roles_to_check:
-            role_selector = f"llm-d.ai/model={model_id_label},llm-d.ai/role={role_label}"
+            if is_kustomize and guide_name:
+                role_selector = f"llm-d.ai/guide={guide_name},llm-d.ai/role={role_label}"
+            else:
+                role_selector = f"llm-d.ai/model={model_id_label},llm-d.ai/role={role_label}"
             context.logger.log_info(
                 f"Checking {pod_type} pod status (selector: {role_selector})..."
             )
@@ -261,12 +280,20 @@ class BaseSmoketest:
             plan_config, is_standalone, stack_name=stack_path.name,
         )
 
-        # 2. Health check (/health) - skip gracefully when a shared
-        # HTTPRoute deliberately narrows routing to /v1/* (i.e.
-        # rewriteTo != "/"). vLLM's /health endpoint lives at the root,
-        # so a request to {prefix}/health wouldn't match any route rule
-        # and would return 404 regardless of pod health.
-        if url_path_prefix and not self._gateway_routes_health(plan_config):
+        # 2. Health check (/health) - skip when the endpoint doesn't
+        # serve /health directly (EPP proxies /v1/* only; shared
+        # HTTPRoute with rewriteTo narrows to /v1/* paths).
+        if is_kustomize:
+            context.logger.log_info(
+                "Skipping /health probe: EPP proxies inference requests "
+                "(/v1/*) only. /v1/models + direct-pod-IP health check "
+                "still run."
+            )
+            report.add(CheckResult(
+                "health_endpoint_skipped", True,
+                message="/health not served by EPP; relying on /v1/models + direct-pod-IP probe",
+            ))
+        elif url_path_prefix and not self._gateway_routes_health(plan_config):
             context.logger.log_info(
                 f"Skipping /health probe: gateway rewriteTo="
                 f"{(plan_config.get('httpRoute') or {}).get('rewriteTo', '/')!r} "
@@ -323,7 +350,10 @@ class BaseSmoketest:
         # 5. Test pod IPs directly (use the first role -- decode for ms, standalone for standalone)
         inference_port = _nested_get(plan_config, "vllmCommon", "inferencePort") or "8000"
         primary_role = roles_to_check[0] if roles_to_check else ("decode", "decode")
-        primary_selector = f"llm-d.ai/model={model_id_label},llm-d.ai/role={primary_role[1]}"
+        if is_kustomize and guide_name:
+            primary_selector = f"llm-d.ai/guide={guide_name},llm-d.ai/role={primary_role[1]}"
+        else:
+            primary_selector = f"llm-d.ai/model={model_id_label},llm-d.ai/role={primary_role[1]}"
         pod_ips_result = cmd.kube(
             "get", "pods", "-l", primary_selector,
             "--namespace", namespace,
@@ -360,8 +390,8 @@ class BaseSmoketest:
                 else:
                     context.logger.log_info(f"Pod {pod_ip} responding (ok)")
 
-        # 6. OpenShift route (only for modelservice -- standalone has no gateway route)
-        if context.is_openshift and not is_standalone:
+        # 6. OpenShift route (only for modelservice -- standalone/kustomize have no gateway route)
+        if context.is_openshift and not is_standalone and not is_kustomize:
             context.logger.log_info("Testing OpenShift route...")
             self._test_openshift_route(
                 cmd, context, namespace, model_name, plan_config,
@@ -1145,11 +1175,11 @@ class BaseSmoketest:
         protocol = "https" if str(port) == "443" else "http"
         prefix = _normalize_url_prefix(url_path_prefix)
         url = f"{protocol}://{host}:{port}{prefix}/health"
-        curl_image = "quay.io/curl/curl"
+        curl_image = "quay.io/fedora/fedora"
         override_args = _build_overrides(plan_config)
 
         context.logger.log_info(
-            f"Health check: verifying vLLM is listening at {host}:{port}/health..."
+            f"Health check: verifying vLLM is listening at {host}:{port}/health... Using curl image: {curl_image}"
         )
         start = time.time()
         attempt = 0
@@ -1178,7 +1208,6 @@ class BaseSmoketest:
                 + override_args
                 + ["--command", "--", "sh", "-c", curl_cmd]
             )
-
             result = cmd.kube(*kubectl_args, check=False)
 
             if result.dry_run:
@@ -1469,7 +1498,7 @@ class BaseSmoketest:
         timeout_seconds: int = 120,
     ) -> tuple[str, str | None]:
         override_args = _build_overrides(plan_config)
-        curl_image = "quay.io/curl/curl"
+        curl_image = "quay.io/fedora/fedora"
         pod_name = f"inference-test-{_rand_suffix()}"
         payload_json = json.dumps(payload)
         payload_b64 = base64.b64encode(payload_json.encode()).decode()
@@ -1515,7 +1544,7 @@ class BaseSmoketest:
         payload: dict,
         generated_text: str,
     ):
-        payload_compact = json.dumps(payload, separators=(",", ":"))
+        payload_compact = json.dumps(payload, separators=(",", ":")) # noqa: F841
 
         context.logger.log_info(f"✅ Inference test passed via {endpoint}")
         if generated_text:
@@ -1530,13 +1559,13 @@ class BaseSmoketest:
         payload_pretty = json.dumps(payload, indent=2)
         context.logger.log_info("   To reproduce or demo, run:")
         context.logger.log_info("")
-        context.logger.log_info(f"   curl -sk -X POST \\")
+        context.logger.log_info("   curl -sk -X POST \\")
         context.logger.log_info(f"     {demo_url} \\")
-        context.logger.log_info(f"     -H 'Content-Type: application/json' \\")
-        context.logger.log_info(f"     -d '{{")
+        context.logger.log_info("     -H 'Content-Type: application/json' \\")
+        context.logger.log_info("     -d '{")
         for line in payload_pretty.splitlines()[1:]:
             context.logger.log_info(f"       {line}")
-        context.logger.log_info(f"     '")
+        context.logger.log_info("     '")
 
     def _detect_external_url(
         self,

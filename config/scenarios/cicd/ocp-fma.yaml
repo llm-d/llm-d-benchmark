@@ -22,7 +22,7 @@ scenario:
       enabled: false
     fma:
       enabled: true
-      iterations: 3
+      iterations: 5
 
     vllmCommon:
       priorityClassName: nightly-gpu-critical

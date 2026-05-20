@@ -9,6 +9,7 @@ from llmdbenchmark.utilities.endpoint import (
     find_fma_endpoint,
     find_gateway_endpoint,
     find_custom_endpoint,
+    find_kustomize_endpoint,
     discover_hf_token_secret,
     extract_hf_token_from_secret,
     compute_gateway_path_prefix,
@@ -42,11 +43,9 @@ class DetectEndpointStep(Step):
         stack_name = stack_path.name
         cmd = context.require_cmd()
 
-        # Run-only mode: use the explicit endpoint URL
         if context.endpoint_url:
             url = context.endpoint_url
             context.deployed_endpoints[stack_name] = url
-            # Determine stack type from deploy method
             stack_type = self._detect_stack_type(context)
             context.logger.log_info(
                 f"Using explicit endpoint URL: {url} (stack_type={stack_type})"
@@ -60,7 +59,6 @@ class DetectEndpointStep(Step):
                 context={"endpoint_url": url, "stack_type": stack_type},
             )
 
-        # Auto-detect from cluster
         plan_config = self._load_stack_config(stack_path)
         namespace = context.namespace or self._require_config(
             plan_config, "namespace", "name"
@@ -85,8 +83,8 @@ class DetectEndpointStep(Step):
         gateway_port = "80"
         stack_type = "vllm-prod"
 
-        # Determine the deploy method for custom endpoint detection
         deploy_method = None
+        is_kustomize = "kustomize" in context.deployed_methods
         methods_arg = getattr(context, "deployed_methods", [])
         if methods_arg:
             for m in methods_arg:
@@ -103,9 +101,23 @@ class DetectEndpointStep(Step):
             service_ip = find_fma_endpoint(cmd, namespace)
             service_name = service_ip
             gateway_port = 0
+        elif is_kustomize:
+            guide_name = self._resolve(
+                plan_config, "kustomize.guideName", default=""
+            )
+            context.logger.log_info(
+                f"Kustomize deployment -- looking for service '{guide_name}-epp'",
+            )
+            if guide_name:
+                service_ip, service_name, gateway_port = find_kustomize_endpoint(
+                    cmd, namespace, guide_name,
+                )
+            else:
+                service_ip, service_name, gateway_port = find_custom_endpoint(
+                    cmd, namespace, "epp",
+                )
+            stack_type = "vllm-prod"
         elif deploy_method:
-            # Custom deployment -- use multi-level fallback discovery
-            # matching the original bash run.sh logic.
             context.logger.log_info(
                 f"Method '{deploy_method}' is neither standalone nor "
                 f"modelservice -- trying custom endpoint discovery...",
@@ -142,12 +154,6 @@ class DetectEndpointStep(Step):
                     stack_name=stack_name,
                 )
 
-        # Build full URL. For shared-HTTPRoute multi-model scenarios,
-        # append the per-stack path prefix (e.g. /pool-a) so that every
-        # downstream `{endpoint_url}/v1/completions` becomes
-        # `{gateway}/pool-a/v1/completions` - the gateway rewrites
-        # /pool-a/* -> /* and the request reaches THIS stack's
-        # InferencePool. Returns "" (no-op) for every other scenario.
         protocol = "https" if gateway_port == "443" else "http"
         endpoint_url = f"{protocol}://{service_ip}:{gateway_port}"
         path_prefix = compute_gateway_path_prefix(
@@ -163,10 +169,6 @@ class DetectEndpointStep(Step):
             f"{', path_prefix=' + path_prefix if path_prefix else ''})"
         )
 
-        # --- HF token auto-discovery for custom deployments ---
-        # When the deployment method is neither standalone nor modelservice nor fma,
-        # attempt to discover a HuggingFace token from cluster secrets,
-        # matching the original bash run.sh logic.
         if deploy_method and not context.dry_run:
             self._discover_hf_token(cmd, namespace, context)
 
@@ -181,28 +183,18 @@ class DetectEndpointStep(Step):
 
     @staticmethod
     def _detect_stack_type(context: ExecutionContext) -> str:
-        """Determine the stack type from deployed methods."""
         if "standalone" in context.deployed_methods:
             return "vllm-prod"
         if "fma" in context.deployed_methods:
             return "vllm-prod"
         if "modelservice" in context.deployed_methods:
             return "llm-d"
-        # Default for run-only mode
         return "vllm-prod"
 
     @staticmethod
     def _discover_hf_token(cmd, namespace: str, context: ExecutionContext) -> None:
-        """Auto-discover HuggingFace token from cluster secrets.
-
-        Matches the bash run.sh logic that searches for secrets matching
-        ``llm-d-hf.*token.*`` in the namespace.  The discovered token is
-        stored on the context so downstream steps (e.g. model verification)
-        can use it.
-        """
         import os
 
-        # Skip if the token is already set via environment
         if os.environ.get("HF_TOKEN") or os.environ.get("LLMDBENCH_HF_TOKEN"):
             return
 
@@ -227,7 +219,6 @@ class DetectEndpointStep(Step):
 
         token = extract_hf_token_from_secret(cmd, namespace, secret_name)
         if token:
-            # Make it available to downstream processes and harness pods
             os.environ["HF_TOKEN"] = token
             context.logger.log_info(
                 "HuggingFace token extracted from cluster secret "

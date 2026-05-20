@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 import subprocess
-import sys
 import ipaddress
+import platform
 import os
 import json
 import time
@@ -75,10 +75,17 @@ _parser.add_option("-i" , "--initcontainermode", \
                     default=False, \
                     help="if executed from an initContainer, just dump all commands to envfile for further execution")
 
+_parser.add_option("-o" , "--omitenvvars", \
+                    dest="omitenvvars", \
+                    default="", \
+                    help="List of environment variables which should be ommitted")
+
 _parser.set_defaults()
 (options, _args) = _parser.parse_args()
 
 options.envdir = options.envfile.replace("/llmdbench_env.sh",'')
+
+options.omitenvvars = options.omitenvvars.split(',')
 
 if options.initcontainermode :
     print(f"DEBUG: \"initContainer mode\" detected. Will write commands to {options.envfile}, instead of executing those")
@@ -400,6 +407,12 @@ env_file_contents=[]
 env_file_name=f"{options.envfile}"
 env_file_contents.append("#!/usr/bin/env bash")
 
+if platform.freedesktop_os_release()["ID"] == "ubuntu" :
+    env_file_contents.append("which ip")
+    env_file_contents.append("if [ $? -ne 0 ]; then")
+    env_file_contents.append("  apt-get update && apt install -y iproute2")
+    env_file_contents.append("fi")
+
 print(f"INFO: HCA IDs selected: {nccl_list}")
 print(f"INFO: HCA IDs marked as down: {hcaids_down}")
 print(f"INFO: HCA IDs with wrong gid: {hcaids_wrong_gid}")
@@ -423,24 +436,39 @@ if nixl_list :
     nccl_list = ','.join(nccl_list)
     nixl_list = ','.join(nixl_list)
     ips_for_fping = ' '.join(ips_for_fping)
-    env_file_contents.append(f"export SMOKETEST_IPS=\"{ips_for_fping}\"")
-    env_file_contents.append(f"export UCX_NET_DEVICES=\"{nixl_list}\"")
-    env_file_contents.append(f"export NCCL_IB_HCA=\"={nccl_list}\"")
-    env_file_contents.append(f"export NCCL_SOCKET_IFNAME=\"{default_interface}\"")
-    env_file_contents.append(f"export NCCL_IB_GID_INDEX={s_gid[0]}")
+    if 'SMOKETEST_IPS' not in options.omitenvvars :
+        env_file_contents.append(f"export SMOKETEST_IPS=\"{ips_for_fping}\"")
+    if 'UCX_NET_DEVICES' not in options.omitenvvars :
+        env_file_contents.append(f"export UCX_NET_DEVICES=\"{nixl_list}\"")
+    if 'NCCL_IB_HCA' not in options.omitenvvars :
+        env_file_contents.append(f"export NCCL_IB_HCA=\"={nccl_list}\"")
+    if 'NCCL_SOCKET_IFNAME' not in options.omitenvvars :
+        env_file_contents.append(f"export NCCL_SOCKET_IFNAME=\"{default_interface}\"")
+    if 'NCCL_IB_GID_INDEX' not in options.omitenvvars :
+        env_file_contents.append(f"export NCCL_IB_GID_INDEX={s_gid[0]}")
     env_file_contents.append('\n'.join(init_container_commands))
     if 'NVSHMEM_HCA_LIST' in env_vars != "none" :
-        env_file_contents.append(f"export GLOO_SOCKET_IFNAME=\"{default_interface}\"")
-        env_file_contents.append(f"export NVSHMEM_DEBUG=\"{nvshmem_debug}\"")
-        env_file_contents.append(f"export NVSHMEM_REMOTE_TRANSPORT=\"{nvshmem_remote_transport}\"")
-        env_file_contents.append(f"export NVSHMEM_IB_ENABLE_IBGDA=\"{nvshmem_ib_enable_ibgda}\"")
-        env_file_contents.append(f"export NVSHMEM_BOOTSTRAP_UID_SOCK_IFNAME=\"{default_interface}\"")
-        env_file_contents.append(f"export NVSHMEM_IB_GID_INDEX=\"{s_gid[0]}\"")
-        env_file_contents.append(f"export NVSHMEM_ENABLE_NIC_PE_MAPPING=\"{nvshmem_enable_nic_pe_mapping}\"")
-        env_file_contents.append(f"export NVSHMEM_HCA_LIST=\"{nccl_list.replace(',',':1,')}:1\"")
-        env_file_contents.append(f"export NVSHMEM_IB_ADDR_RANGE=\"{nvshmem_ib_addr_range}\"")
+        if 'GLOO_SOCKET_IFNAME' not in options.omitenvvars :
+            env_file_contents.append(f"export GLOO_SOCKET_IFNAME=\"{default_interface}\"")
+        if 'NVSHMEM_DEBUG' not in options.omitenvvars :
+            env_file_contents.append(f"export NVSHMEM_DEBUG=\"{nvshmem_debug}\"")
+        if 'NVSHMEM_REMOTE_TRANSPORT' not in options.omitenvvars :
+            env_file_contents.append(f"export NVSHMEM_REMOTE_TRANSPORT=\"{nvshmem_remote_transport}\"")
+        if 'NVSHMEM_IB_ENABLE_IBGDA' not in options.omitenvvars :
+            env_file_contents.append(f"export NVSHMEM_IB_ENABLE_IBGDA=\"{nvshmem_ib_enable_ibgda}\"")
+        if 'NVSHMEM_BOOTSTRAP_UID_SOCK_IFNAME' not in options.omitenvvars :
+            env_file_contents.append(f"export NVSHMEM_BOOTSTRAP_UID_SOCK_IFNAME=\"{default_interface}\"")
+        if 'NVSHMEM_IB_GID_INDEX' not in options.omitenvvars :
+            env_file_contents.append(f"export NVSHMEM_IB_GID_INDEX=\"{s_gid[0]}\"")
+        if 'NVSHMEM_ENABLE_NIC_PE_MAPPING' not in options.omitenvvars :
+            env_file_contents.append(f"export NVSHMEM_ENABLE_NIC_PE_MAPPING=\"{nvshmem_enable_nic_pe_mapping}\"")
+        if 'NVSHMEM_HCA_LIST' not in options.omitenvvars :
+            env_file_contents.append(f"export NVSHMEM_HCA_LIST=\"{nccl_list.replace(',',':1,')}:1\"")
+        if 'NVSHMEM_IB_ADDR_RANGE' not in options.omitenvvars :
+            env_file_contents.append(f"export NVSHMEM_IB_ADDR_RANGE=\"{nvshmem_ib_addr_range}\"")
         if is_infiniband :
-            env_file_contents.append(f"export NVSHMEM_IB_ENABLE_IBGDA=\"{is_infiniband}\"")
+            if 'NVSHMEM_IB_ENABLE_IBGDA' not in options.omitenvvars :
+                env_file_contents.append(f"export NVSHMEM_IB_ENABLE_IBGDA=\"{is_infiniband}\"")
 
 lwswi = int(os.getenv("LWS_WORKER_INDEX", "0"))
 dpsi = int(os.getenv("DP_SIZE_LOCAL", "0"))
@@ -547,7 +575,8 @@ if pod_labels.count('_eq_') and kubeconfig_path :
 
             ssl_ctx = ssl.create_default_context()
             if 'certificate-authority-data' in cluster:
-                import base64, tempfile
+                import base64
+                import tempfile
                 ca_data = base64.b64decode(cluster['certificate-authority-data'])
                 ca_file = tempfile.NamedTemporaryFile(delete=False, suffix='.crt')
                 ca_file.write(ca_data)
@@ -560,7 +589,8 @@ if pod_labels.count('_eq_') and kubeconfig_path :
                 ssl_ctx.verify_mode = ssl.CERT_NONE
 
             if 'client-certificate-data' in user and 'client-key-data' in user:
-                import base64, tempfile
+                import base64
+                import tempfile
                 cert_data = base64.b64decode(user['client-certificate-data'])
                 key_data = base64.b64decode(user['client-key-data'])
                 cert_file = tempfile.NamedTemporaryFile(delete=False, suffix='.crt')

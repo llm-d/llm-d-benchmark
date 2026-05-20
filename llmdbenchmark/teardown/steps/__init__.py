@@ -9,6 +9,9 @@ from llmdbenchmark.teardown.steps.step_03_delete_resources import DeleteResource
 from llmdbenchmark.teardown.steps.step_04_clean_cluster_roles import (
     CleanClusterRolesStep,
 )
+from llmdbenchmark.teardown.steps.step_05_kustomize_teardown import (
+    KustomizeTeardownStep,
+)
 
 
 def get_teardown_steps() -> list[Step]:
@@ -19,4 +22,5 @@ def get_teardown_steps() -> list[Step]:
         CleanHarnessStep(),
         DeleteResourcesStep(),
         CleanClusterRolesStep(),
+        KustomizeTeardownStep(),
     ]

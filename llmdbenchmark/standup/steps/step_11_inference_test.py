@@ -29,7 +29,6 @@ from llmdbenchmark.utilities.endpoint import (
     find_gateway_endpoint,
 )
 
-
 # Transient HTTP status codes / error substrings that warrant a retry.
 _RETRYABLE_INDICATORS = ("502", "503", "504", "ServiceUnavailable", "not ready")
 
@@ -416,7 +415,7 @@ class InferenceTestStep(Step):
         avoid shell quoting issues when passing through kubectl to sh -c.
         """
         override_args = _build_overrides(plan_config)
-        curl_image = "quay.io/curl/curl"
+        curl_image = "quay.io/fedora/fedora"
         pod_name = f"inference-test-{_rand_suffix()}"
         payload_json = json.dumps(payload)
         payload_b64 = base64.b64encode(payload_json.encode()).decode()
@@ -509,18 +508,18 @@ class InferenceTestStep(Step):
 
         if external_url:
             context.logger.log_info("   To reproduce or demo, run:")
-            context.logger.log_info(f"   curl -sk -X POST \\")
+            context.logger.log_info("   curl -sk -X POST \\")
             context.logger.log_info(f"     {external_url} \\")
-            context.logger.log_info(f"     -H 'Content-Type: application/json' \\")
+            context.logger.log_info("     -H 'Content-Type: application/json' \\")
             context.logger.log_info(f"     -d '{payload_compact}'")
         else:
             cluster_url = f"{base_url}{endpoint}"
             context.logger.log_info(
                 "   To reproduce (from inside the cluster or via port-forward):"
             )
-            context.logger.log_info(f"   curl -sk -X POST \\")
+            context.logger.log_info("   curl -sk -X POST \\")
             context.logger.log_info(f"     {cluster_url} \\")
-            context.logger.log_info(f"     -H 'Content-Type: application/json' \\")
+            context.logger.log_info("     -H 'Content-Type: application/json' \\")
             context.logger.log_info(f"     -d '{payload_compact}'")
 
     def _detect_external_url(

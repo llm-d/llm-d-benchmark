@@ -29,9 +29,9 @@ release; subsequent stacks render empty files for those templates. WVA
 controller installation is deduplicated at the step level (one per
 `wva.namespace`).
 
-Currently shipped multi-stack guide:
+Currently shipped multi-stack example:
 
-- [`guides/multi-model-wva`](../config/scenarios/guides/multi-model-wva.yaml) -
+- [`examples/multi-model-wva`](../config/scenarios/examples/multi-model-wva.yaml) -
   two models (Qwen3-0.6B + Meta-Llama-3.1-8B), each with its own EPP +
   InferencePool + VariantAutoscaling + HPA, one shared WVA controller,
   one HTTPRoute with two backendRefs routing by path prefix
@@ -51,10 +51,10 @@ filtered. Unknown names fail loudly with a list of valid ones.
 
 ```bash
 # One stack:
-llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace --stack qwen3-06b
+llmdbenchmark --spec examples/multi-model-wva standup -p my-namespace --stack qwen3-06b
 
 # Multiple named stacks (comma-separated):
-llmdbenchmark --spec guides/multi-model-wva standup -p my-namespace --stack qwen3-06b,llama-31-8b
+llmdbenchmark --spec examples/multi-model-wva standup -p my-namespace --stack qwen3-06b,llama-31-8b
 ```
 
 The same flag works on `smoketest`, `run`, and `teardown` with identical
@@ -176,7 +176,7 @@ That single change is all that's needed.  The benchmark tool handles everything 
 #### Example scenarios using agentgateway
 
 - [`config/scenarios/examples/cpu.yaml`](../config/scenarios/examples/cpu.yaml) -- CPU-only deployment
-- [`config/scenarios/guides/inference-scheduling.yaml`](../config/scenarios/guides/inference-scheduling.yaml) -- inference scheduling guide
+- [`config/scenarios/guides/optimized-baseline.yaml`](../config/scenarios/guides/optimized-baseline.yaml) -- inference scheduling guide
 
 - "llm-d"-specific VLLM paramaters
 

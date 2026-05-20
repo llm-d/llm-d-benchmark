@@ -9,17 +9,17 @@
 # across a full factorial workload matrix.
 #
 # Usage (full DoE — automatic standup/run/teardown per setup treatment):
-#   llmdbenchmark --spec inference-scheduling experiment \
-#     --experiments workload/experiments/inference-scheduling.yaml
+#   llmdbenchmark --spec optimized-baseline experiment \
+#     --experiments workload/experiments/optimized-baseline.yaml
 #
 # Usage (run-only — targets an already-running endpoint):
-#   llmdbenchmark --spec inference-scheduling run \
+#   llmdbenchmark --spec optimized-baseline run \
 #     --endpoint-url http://<HOST>:<PORT> \
 #     --model <MODEL_NAME> \
 #     --namespace <NAMESPACE> \
 #     --harness inference-perf \
 #     --workload shared_prefix_synthetic.yaml \
-#     --experiments workload/experiments/inference-scheduling.yaml
+#     --experiments workload/experiments/optimized-baseline.yaml
 #
 # The experiment form auto-detects the endpoint from stood-up stacks
 # and reads harness/profile defaults from the plan config.
@@ -31,7 +31,7 @@
 # --- DoE Metadata (informational — not consumed by the runtime) ------
 
 experiment:
-  name: inference-scheduling
+  name: optimized-baseline
   description: >
     Full factorial sweep of prompt length (question_len) and output
     length (output_len) to measure the effect on inference performance

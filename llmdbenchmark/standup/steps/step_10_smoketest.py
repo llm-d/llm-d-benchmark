@@ -16,7 +16,6 @@ from llmdbenchmark.utilities.endpoint import (
     test_model_serving,
 )
 
-
 class SmoketestStep(Step):
     """Validate deployment health and model serving via smoketests."""
 
@@ -265,7 +264,7 @@ class SmoketestStep(Step):
         """
         protocol = "https" if str(port) == "443" else "http"
         url = f"{protocol}://{host}:{port}/health"
-        curl_image = "quay.io/curl/curl"
+        curl_image = "quay.io/fedora/fedora"
         override_args = _build_overrides(plan_config)
 
         context.logger.log_info(

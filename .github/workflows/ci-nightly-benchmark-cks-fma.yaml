@@ -1,0 +1,204 @@
+name: CI - Nightly Run Benchmark on CKS ("FMA" standup method)
+
+on:
+  workflow_dispatch:
+    inputs:
+      input_dir:
+        description: 'Input directory for benchmark results'
+        required: false
+        default: '/tmp/cicd/analysis'
+      output_dir:
+        description: 'Output directory name (S3 prefix and artifact name)'
+        required: false
+        default: ''
+
+#  push:
+#    branches:
+#      - main
+
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+
+jobs:
+  ensure-nightly-build-image:
+    name: Ensure Nightly Build  Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo yq
+
+      - name: Ensure image is already built
+        run: |
+          IMAGE="ghcr.io/llm-d/llm-d-benchmark:nightly"
+          POLL=30
+          while true; do
+            creation_date=$(skopeo inspect docker://${IMAGE} | yq -r .Created) && \
+            creation_ts=$(date -d "${creation_date}" +"%s")
+            current_ts=$(date +%s) && \
+            image_age=$((current_ts - creation_ts))
+            if [[ $image_age -gt 86400 ]]; then
+              echo "Current image \"${IMAGE}\" is too old (${image_age}s). Waiting $POLL seconds and trying again..."
+              sleep $POLL
+            else
+              echo "Current image \"${IMAGE}\" is recent enough (${image_age}s)."
+              exit 0
+            fi
+          done
+        shell: bash
+
+  benchmark-cks-fma:
+    name: Benchmark - FMA (CKS)
+    runs-on: ubuntu-latest
+    needs: [ensure-nightly-build-image]
+    timeout-minutes: 240
+
+    env:
+      LLMDBENCH_CICD_NS: llmdbenchcicdfns-cks
+      LLMDBENCH_CICD_R: llmdbenchcicdrf-cks
+      LLMDBENCH_CICD_SCENARIO_DIR: cicd
+      LLMDBENCH_CICD_TARGET: cks
+      LLMDBENCH_CICD_METHOD: fma
+      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdf-cks
+      LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
+      GCS_PATH: llm-d-benchmarks/regressions
+      GCP_PROJECT_ID: llm-d-scale
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up kubeconfig from secret
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+        shell: bash
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          credentials_json: ${{ secrets.GKE_SA_KEY }}
+
+      - name: Set up gcloud CLI and kubectl
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          install_components: 'kubectl,gke-gcloud-auth-plugin'
+
+      - name: Install llmdbenchmark
+        run: |
+          ./install.sh -y 2>&1
+          cp util/debug_info_on_failure.sh /usr/local/bin
+        shell: bash
+
+      - name: Cleanup target cloud
+        run: |
+          RUN_DATE=$(date +'%Y-%m-%d')
+          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+          kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
+        shell: bash
+
+      - name: Standup
+        run: |
+          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" standup --no-monitoring -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+        shell: bash
+
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
+        shell: bash
+
+      - name: Run
+        run: |
+          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
+        shell: bash
+
+      - name: Teardown
+        if: always()
+        run: |
+          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
+          kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
+        shell: bash
+
+      - name: Debug info (on failure)
+        if: failure()
+        run: |
+          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
+        shell: bash
+
+      - name: Upload results to GCS
+        run: |
+          RUN_DATE=$(date +'%Y-%m-%d')
+          cd "$LLMDBENCH_WORKSPACE"
+          REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
+          gcloud storage cp -r $REG_RESULTS/ "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/$LLMDBENCH_CICD_METHOD/$RUN_DATE/" || true
+        shell: bash
+
+      - name: Block waiting for Standalone baseline
+        run: |
+          RUN_DATE=$(date +'%Y-%m-%d')
+          POLL=30
+          while true; do
+            brl=$(gcloud storage ls -l "gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/*/results/*/benchmark_report_v0.2*")
+            if [[ $? -ne 0 ]]; then
+              echo "Standalone baseline for \"$RUN_DATE\" still not present. Waiting $POLL seconds and trying again..."
+              sleep $POLL
+            else
+              latest_entry=$(echo "$brl" | sort -k 2 | tail -n 2 | head -n 1 | awk '{ print $3 }')
+              latest_dir=$(echo "$latest_entry" | sed "s^gs://${GCS_PATH}/$LLMDBENCH_CICD_TARGET/standalone/$RUN_DATE/^^g" | cut -d '/' -f 1)
+              echo "Standalone baseline for \"$RUN_DATE\" is \"$latest_dir\"."
+              exit 0
+            fi
+          done
+          exit 1
+        shell: bash
+
+#     START - This should be deleted, and the contents accessed from GCS accessed directly
+#      - name: Download standalone results
+#        if: always()
+#        uses: actions/download-artifact@v8
+#        with:
+#          name: benchmark-results-cks-standalone
+#          path: /tmp/standalone-results
+#        continue-on-error: true
+
+#      - name: Display benchmark results
+#        if: always()
+#        run: |
+#          echo "## Benchmark Results" >> "$GITHUB_STEP_SUMMARY"
+#          echo "" >> "$GITHUB_STEP_SUMMARY"
+#          found=0
+#          for f in $(find "$LLMDBENCH_WORKSPACE" /tmp/standalone-results -path "*/analysis/*" \( -name "result.txt" -o -name "summary.txt" \) 2>/dev/null | sort || true); do
+#            found=1
+#            stack_dir=$(basename "$(dirname "$f")")
+#            echo "### $stack_dir" >> "$GITHUB_STEP_SUMMARY"
+#            echo '```' >> "$GITHUB_STEP_SUMMARY"
+#            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+#            echo '```' >> "$GITHUB_STEP_SUMMARY"
+#            echo "" >> "$GITHUB_STEP_SUMMARY"
+#          done
+#          if [ "$found" -eq 0 ]; then
+#            echo "_No analysis results found._" >> "$GITHUB_STEP_SUMMARY"
+#          fi
+#        shell: bash
+
+#      - name: Archive benchmark results as GitHub artifact
+#        if: success() || failure()
+#        uses: actions/upload-artifact@v7.0.1
+#        with:
+#          name: benchmark-results-cks-fma
+#          path: ${{ env.LLMDBENCH_WORKSPACE }}
+#          retention-days: 14
+#     END - This should be deleted, and the contents accessed from GCS accessed directly

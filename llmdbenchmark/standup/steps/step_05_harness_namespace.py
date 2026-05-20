@@ -1,6 +1,5 @@
 """Step 05 -- Prepare the harness namespace (PVC, data access pod, secrets)."""
 
-import base64
 from pathlib import Path
 
 import yaml
@@ -21,6 +20,10 @@ class HarnessNamespaceStep(Step):
             phase=Phase.STANDUP,
             per_stack=False,
         )
+
+    def should_skip(self, context: ExecutionContext) -> bool:
+        methods = context.deployed_methods or []
+        return methods == ["kustomize"] and context.kustomize_skip_infra
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None

@@ -86,6 +86,38 @@ def wait_for_pods_deleted(
         )
 
 
+def force_remove_finalizers_by_selector(
+    cmd,
+    selector: str,
+    namespace: str,
+    context: ExecutionContext,
+) -> None:
+    """Force-remove all finalizers from pods matching a label selector.
+    """
+    result = cmd.kube(
+        "get", "pod",
+        f"--selector={selector}",
+        "--namespace", namespace,
+        "-o", "name",
+        "--ignore-not-found",
+        check=False,
+    )
+    if not result.success or not result.stdout.strip():
+        return
+    for pod in result.stdout.strip().splitlines():
+        context.logger.log_info(
+            f"  Force-removing finalizers from stuck pod {pod}",
+            emoji="🗑️",
+        )
+        cmd.kube(
+            "patch", pod,
+            "--namespace", namespace,
+            "--type=merge",
+            "-p", '{"metadata":{"finalizers":null}}',
+            check=False,
+        )
+
+
 def wait_for_pods_by_label(
     cmd,
     label: str,

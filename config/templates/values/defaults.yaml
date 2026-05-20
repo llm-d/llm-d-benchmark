@@ -96,18 +96,18 @@ _anchors:
 
   # General versions
   istio_version:                     &istio_version                     1.29.2
-  agentgateway_version:              &agentgateway_version              v1.1.0
+  agentgateway_version:              &agentgateway_version              v1.2.1
   lws_version:                       &lws_version                       0.8.0
-  gaie_version:                      &gaie_version                      v1.4.0
+  gaie_version:                      &gaie_version                      v1.5.0
   wva_version:                       &wva_version                       0.6.0
-  prometheus_version:                &prometheus_version                5.2.0
-  vllm-openai_version:               &vllm-openai_version               v0.20.1
-  llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.7.1
-  llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.7.1
+  prometheus_version:                &prometheus_version                5.3.0
+  vllm-openai_version:               &vllm-openai_version               v0.20.2
+  llm-d-inference-scheduler_version: &llm-d-inference-scheduler_version v0.8.0
+  llm-d-routing-sidecar_version:     &llm-d-routing-sidecar_version     v0.8.0
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.8.0
-  llm-d-cuda_version:                &llm-d-cuda_version                v0.6.0
+  llm-d-cuda_version:                &llm-d-cuda_version                v0.7.0
   llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.8.2
-  llm-d-benchmark_version:           &llm-d-benchmark_version           v0.6.0
+  llm-d-benchmark_version:           &llm-d-benchmark_version           v0.6.3
 
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
@@ -349,11 +349,15 @@ images:
     sourceRepo: https://github.com/llm-d/llm-d-benchmark
 
   vllm:
-    repository: ghcr.io/llm-d/llm-d-cuda
-    tag: *llm-d-cuda_version
-    pullPolicy: *pull_if_not_present
-    sourceRepo: https://github.com/llm-d/llm-d
-    sourcePath: docker/Dockerfile.cuda
+#    repository: ghcr.io/llm-d/llm-d-cuda
+#    tag: *llm-d-cuda_version
+#    pullPolicy: *pull_if_not_present
+#    sourceRepo: https://github.com/llm-d/llm-d
+#    sourcePath: docker/Dockerfile.cuda
+    repository: docker.io/vllm/vllm-openai
+    tag: *vllm-openai_version
+    pullPolicy: *pull_always
+    sourceRepo: https://github.com/vllm-project/vllm
 
   vllmOpenai:
     repository: docker.io/vllm/vllm-openai
@@ -682,7 +686,6 @@ vllmCommon:
 
   # Image pull secret name for private registries (optional)
   # When set, adds imagePullSecrets to all pod specs.
-  # Equivalent to bash LLMDBENCH_VLLM_COMMON_PULL_SECRET.
   pullSecret: ""
 
   # Container HOME and HF_HOME directories.
@@ -694,20 +697,16 @@ vllmCommon:
 
   # Ephemeral storage resource for pod limits/requests (optional)
   # Only added to pod specs when ephemeralStorage value is non-empty.
-  # Equivalent to bash LLMDBENCH_VLLM_COMMON_EPHEMERAL_STORAGE_RESOURCE.
   ephemeralStorageResource: "ephemeral-storage"
   ephemeralStorage: ""
 
   # NIXL side channel port for ZMQ-based KV transfer communication.
-  # Equivalent to bash LLMDBENCH_VLLM_COMMON_NIXL_SIDE_CHANNEL_PORT.
   nixlSideChannelPort: "5557"
 
   # UCX transport layer configuration for NCCL inter-node communication.
-  # Equivalent to bash LLMDBENCH_VLLM_COMMON_UCX_TLS.
-  ucxTls: "sm,cuda_ipc,cuda_copy,tcp"
+  ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
 
   # UCX socket address transport priority.
-  # Equivalent to bash LLMDBENCH_VLLM_COMMON_UCX_SOCKADDR_TLS_PRIORITY.
   ucxSockaddrTlsPriority: "tcp"
 
   # Network resource (RDMA/InfiniBand) for pod limits/requests (optional)
@@ -1111,7 +1110,7 @@ standalone:
   # NOTE: The model PVC is standalone-specific (not in vllmCommon.volumes)
   # because modelservice handles its own model volume via the Helm chart.
   mountModelVolume: true
-  modelMountPath: /model-storage
+  modelMountPath: /model-cache
   modelPvcName: model-pvc
 
   # Launcher container (optional second container in the same pod)
@@ -1199,23 +1198,23 @@ fma:
     stood-up-via: "fma"
 
   crds:
-    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.8/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
-    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.8/config/crd/fma.llm-d.ai_launcherconfigs.yaml
-    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.8/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
+    inferenceServerConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.11/config/crd/fma.llm-d.ai_inferenceserverconfigs.yaml
+    launcherConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.11/config/crd/fma.llm-d.ai_launcherconfigs.yaml
+    launcherPopulatorConfig: https://raw.githubusercontent.com/llm-d-incubation/llm-d-fast-model-actuation/v0.6.0-alpha.11/config/crd/fma.llm-d.ai_launcherpopulationpolicies.yaml
 
   chart:
     url: oci://ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/charts/fma-controllers
-    version: 0.6.0-alpha.8
+    version: 0.6.0-alpha.11
 
   image:
     repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation
-    tag: v0.6.0-alpha.8
+    tag: v0.6.0-alpha.11
     pullPolicy: IfNotPresent
 
   requester:
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/requester
-      tag: v0.6.0-alpha.8
+      tag: v0.6.0-alpha.11
       pullPolicy: IfNotPresent
     probePort: 8080
     spiPort: 8081
@@ -1228,7 +1227,7 @@ fma:
   launcher:
     image:
       repository: ghcr.io/llm-d-incubation/llm-d-fast-model-actuation/launcher
-      tag: v0.6.0-alpha.8
+      tag: v0.6.0-alpha.11
       pullPolicy: IfNotPresent
     runtimeClassName: nvidia-legacy
     podTemplate:

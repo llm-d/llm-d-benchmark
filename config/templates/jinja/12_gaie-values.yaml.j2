@@ -1,9 +1,11 @@
 {% if standalone.enabled is defined and not standalone.enabled %}
+{% set registry = images.inferenceScheduler.repository.split('/')[0] %}
 inferenceExtension:
   replicas: {{ inferenceExtension.replicas }}
   image:
     name: llm-d-inference-scheduler
-    hub: {{ images.inferenceScheduler.repository | replace('/llm-d-inference-scheduler', '') }}
+    registry: {{ registry }}
+    repository: {{ images.inferenceScheduler.repository | replace(registry ~ '/', '') }}
     tag: {{ images.inferenceScheduler.tag }}
     pullPolicy: {{ images.inferenceScheduler.pullPolicy }}
   extProcPort: {{ inferenceExtension.extProcPort }}
@@ -133,7 +135,7 @@ inferencePool:
 {% endif %}
 
 {# Only istio and gke need a provider hint for the inference-pool chart.
-   agentgateway, kgateway, and data-science-gateway-class don't require one. #}
+   agentgateway, and data-science-gateway-class don't require one. #}
 {% set gw_class = gateway.className %}
 {% if gw_class in ['gke', 'istio'] %}
 provider:

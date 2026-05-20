@@ -180,6 +180,16 @@ _PLANNER_RE = re.compile(
 _HELM_DIFF_RE = re.compile(
     r"^\s*helm_diff_url=[\"']?(https://[^\s\"']+)"
 )
+# `tool_version_for()` is the authoritative pin table. Its case arms look
+# like:  helm)      echo "v4.2.0" ;;   -- this is the source of truth for
+# helm/helmfile/helm-diff/etc., which the install_<tool>_linux scrape misses
+# (helm uses no `local version=`, helmfile uses a command substitution).
+_TOOL_VERSION_FOR_FN_RE = re.compile(
+    r"^\s*tool_version_for\s*\(\s*\)\s*\{"
+)
+_TOOL_VERSION_FOR_ARM_RE = re.compile(
+    r'^\s*(?P<tool>[a-zA-Z0-9_-]+)\)\s*echo\s+"?(?P<val>[^\s";]*)"?\s*;;'
+)
 
 
 def parse_install_sh(install_sh_path: Path) -> list[Entry]:
@@ -195,6 +205,9 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
 
     # tool_name -> (version, line_number, fn_name) for pinned installs
     pinned: dict[str, tuple[str, int, str]] = {}
+    # tool_name -> (version, line_number) from the tool_version_for() table
+    # (authoritative; takes precedence over the install-fn scrape).
+    version_for: dict[str, tuple[str, int]] = {}
     tools_seen: set[str] = set()
     planner_url: str | None = None
     planner_line: int | None = None
@@ -202,9 +215,23 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
 
     current_fn: str | None = None
     current_fn_line: int = 0
+    in_tvf: bool = False
     rel = install_sh_path.name
 
     for i, raw in enumerate(lines, start=1):
+        # Authoritative pin table: tool_version_for() { case ... esac }
+        if _TOOL_VERSION_FOR_FN_RE.match(raw):
+            in_tvf = True
+            continue
+        if in_tvf:
+            if raw.strip() == "}":
+                in_tvf = False
+                continue
+            m = _TOOL_VERSION_FOR_ARM_RE.match(raw)
+            if m and m.group("val") and m.group("tool") not in version_for:
+                version_for[m.group("tool")] = (m.group("val"), i)
+            continue
+
         m = _INSTALL_FN_RE.match(raw)
         if m:
             current_fn = m.group("tool")
@@ -239,7 +266,16 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
     # Build entries.
     out: list[Entry] = []
     for tool in sorted(tools_seen):
-        if tool in pinned:
+        if tool in version_for:
+            version, line_num = version_for[tool]
+            out.append(Entry(
+                name=tool,
+                pin=version,
+                pin_type="version",
+                location=f"`{rel}` line {line_num} (`tool_version_for`)",
+                upstream=upstream_for_system_tool(tool),
+            ))
+        elif tool in pinned:
             version, line_num, fn_name = pinned[tool]
             out.append(Entry(
                 name=tool,
@@ -258,18 +294,30 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
                 upstream=upstream_for_system_tool(tool),
             ))
 
-    # helm-diff plugin is unconditionally installed.
-    out.append(Entry(
-        name="helm-diff",
-        pin="latest",
-        pin_type="plugin (latest)",
-        location=(
-            f"`{rel}` line {helm_diff_line} (`helm_diff_url`)"
-            if helm_diff_line is not None
-            else f"`{rel}`: `helm plugin install`"
-        ),
-        upstream=upstream_for_system_tool("helm-diff"),
-    ))
+    # helm-diff plugin is installed via `helm plugin install`. Prefer the
+    # pinned version from tool_version_for(); fall back to "latest" only if
+    # no pin is recorded there.
+    if "helm-diff" in version_for:
+        hd_version, hd_line = version_for["helm-diff"]
+        out.append(Entry(
+            name="helm-diff",
+            pin=hd_version,
+            pin_type="plugin (version)",
+            location=f"`{rel}` line {hd_line} (`tool_version_for`)",
+            upstream=upstream_for_system_tool("helm-diff"),
+        ))
+    else:
+        out.append(Entry(
+            name="helm-diff",
+            pin="latest",
+            pin_type="plugin (latest)",
+            location=(
+                f"`{rel}` line {helm_diff_line} (`helm_diff_url`)"
+                if helm_diff_line is not None
+                else f"`{rel}`: `helm plugin install`"
+            ),
+            upstream=upstream_for_system_tool("helm-diff"),
+        ))
 
     # Planner git pin (record under system tools because it's pinned in install.sh).
     if planner_url:

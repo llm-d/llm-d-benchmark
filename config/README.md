@@ -148,7 +148,7 @@ Render-time conveniences that activate only when `len(scenario) >= 2`:
   against the shared PVC. Downloads run in parallel - total wall time
   ~ slowest model, not sum.
 
-See [guides/multi-model-wva.yaml](scenarios/guides/multi-model-wva.yaml) for a
+See [examples/multi-model-wva.yaml](scenarios/examples/multi-model-wva.yaml) for a
 complete example and the developer guide's [Multi-Stack Scenarios](../docs/developer-guide.md#multi-stack-scenarios-and-the-shared-block)
 section for the merge semantics.
 
@@ -1584,6 +1584,140 @@ Map directly to the [llm-d well-lit-path guides](https://github.com/llm-d/llm-d/
 | `tiered-prefix-cache.yaml` | Tiered CPU/GPU prefix cache |
 | `wide-ep-lws.yaml` | Expert parallelism with LeaderWorkerSet |
 | `simulated-accelerators.yaml` | CPU-only simulation with opt-125m |
+| `optimized-baseline.yaml` | Optimized baseline with kustomize deployment |
+
+#### Kustomize Deployment (`-t kustomize`)
+
+Guide scenarios can be deployed via kustomize instead of the default modelservice/standalone methods. The tool parses the guide's README.md to extract `helm` and `kubectl` commands, resolves variables, and executes them in order.
+
+```bash
+llmdbenchmark --spec guides/optimized-baseline standup \
+    -t kustomize -p my-namespace \
+    --llmd-repo-path /path/to/llm-d
+```
+
+##### Kustomize Config Fields
+
+```yaml
+kustomize:
+  enabled: true
+  guideName: "optimized-baseline"    # Guide directory name under guides/
+  repoPath: ""                       # Local path to llm-d repo (auto-cloned if empty)
+  repoRef: "main"                    # Git ref to checkout
+  gaieVersion: ""                    # GAIE chart version (auto-detected from README if empty)
+  acceleratorBackend: "gpu/vllm"     # Modelserver backend path
+  monitoring: false                  # Apply monitoring kustomize overlay
+  overlayPath: ""                    # Path to additional kustomize overlay directory
+  extraHelmValues: []                # Extra -f args for helm install
+  extraHelmSets: {}                  # Extra --set args for helm install
+  guideVariableOverrides: {}         # Override/fill the guide README's ${VAR} values
+  deployTimeout: 900                 # Seconds to wait for pods
+  patches: []                        # Inline strategic merge patches (see below)
+```
+
+##### Inline Patches
+
+Use `patches` to apply kustomize strategic merge patches on top of the guide's modelserver base. Each entry is a YAML manifest that gets merged with the matching resource.
+
+Set replica counts (important -- upstream guides may set high defaults):
+
+```yaml
+kustomize:
+  patches:
+    - patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: decode
+        spec:
+          replicas: 2
+    - patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: prefill
+        spec:
+          replicas: 1
+```
+
+Add a volume mount:
+
+```yaml
+kustomize:
+  patches:
+    - patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: decode
+        spec:
+          template:
+            spec:
+              volumes:
+                - name: triton-cache
+                  emptyDir: {}
+              containers:
+                - name: modelserver
+                  volumeMounts:
+                    - mountPath: /.triton
+                      name: triton-cache
+```
+
+Inject an HF_TOKEN env var for gated models (e.g. Llama). Set `HF_TOKEN` in your shell environment before running -- the tool auto-creates a `llm-d-hf-token` Kubernetes secret in the namespace. Then add this patch so the pod reads it:
+
+```yaml
+kustomize:
+  patches:
+    - patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: decode
+        spec:
+          template:
+            spec:
+              containers:
+                - name: modelserver
+                  env:
+                    - name: HF_TOKEN
+                      valueFrom:
+                        secretKeyRef:
+                          name: llm-d-hf-token
+                          key: HF_TOKEN
+```
+
+Env vars from patches are merged with the guide's existing env vars, not replaced. The container is matched by `name: modelserver`.
+
+Set resource requests:
+
+```yaml
+kustomize:
+  patches:
+    - patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: decode
+        spec:
+          template:
+            spec:
+              containers:
+                - name: modelserver
+                  resources:
+                    limits:
+                      nvidia.com/gpu: "4"
+                    requests:
+                      nvidia.com/gpu: "4"
+```
+
+Multiple patches can be combined in a single list -- they are applied in order.
+
+##### Environment Variables
+
+| Variable | Effect |
+|----------|--------|
+| `HF_TOKEN` | Auto-creates a `llm-d-hf-token` secret in the namespace |
+| `LLMDBENCH_PRIORITY_CLASS` | Injects `priorityClassName` on the decode Deployment (for clusters with pod priority/preemption policies) |
 
 ### `scenarios/examples/`
 
@@ -1672,7 +1806,7 @@ template_dir:
 
 ```yaml
 scenario_file:
-  path: {{ base_dir }}/config/scenarios/guides/inference-scheduling.yaml
+  path: {{ base_dir }}/config/scenarios/guides/optimized-baseline.yaml
 
 experiments:
   - name: "experiment-name"

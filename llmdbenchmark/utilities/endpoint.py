@@ -11,7 +11,6 @@ import time
 
 from llmdbenchmark.executor.command import CommandExecutor
 
-
 def _rand_suffix(length: int = 8) -> str:
     """Generate a random lowercase alphanumeric suffix for pod names."""
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
@@ -99,7 +98,7 @@ def cleanup_ephemeral_pods(
     for phase in ("Succeeded", "Failed"):
         result = cmd.kube(
             "delete", "pods",
-            f"-l", EPHEMERAL_POD_LABEL,
+            "-l", EPHEMERAL_POD_LABEL,
             f"--field-selector=status.phase={phase}",
             "--namespace", namespace,
             check=False,
@@ -313,28 +312,55 @@ def extract_hf_token_from_secret(
     return None
 
 
+def find_kustomize_endpoint(
+    cmd: CommandExecutor,
+    namespace: str,
+    guide_name: str,
+) -> tuple[str | None, str | None, str]:
+    """Find the ``{guide_name}-epp`` service and pick the HTTP port."""
+    svc_name = f"{guide_name}-epp"
+    result = cmd.kube(
+        "get", f"service/{svc_name}",
+        "--namespace", namespace,
+        "-o", "json",
+        check=False,
+    )
+    if not result.success:
+        return None, None, "80"
+
+    try:
+        svc = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return None, None, "80"
+
+    ports = svc.get("spec", {}).get("ports", [])
+    if not ports:
+        return svc_name, svc_name, "80"
+
+    for p in ports:
+        if p.get("port") == 80:
+            return svc_name, svc_name, "80"
+
+    for p in ports:
+        if p.get("name") in ("http", "https"):
+            return svc_name, svc_name, str(p["port"])
+
+    for p in ports:
+        tp = p.get("targetPort")
+        if tp == 8081 or str(tp) == "8081":
+            return svc_name, svc_name, str(p["port"])
+
+    return svc_name, svc_name, str(ports[0].get("port", "80"))
+
+
 def find_custom_endpoint(
     cmd: CommandExecutor,
     namespace: str,
     method_pattern: str,
+    *,
+    preferred_port: int | None = None,
 ) -> tuple[str | None, str | None, str]:
-    """Discover an endpoint for non-standard (custom) deployments.
-
-    Implements the same multi-level fallback as the original bash run.sh
-    for deployments that are neither *standalone* nor *modelservice*:
-
-    1. **Service match** -- look for a service whose name contains
-       *method_pattern*; extract port from named ports (``default``,
-       ``http``, ``https``).
-    2. **Pod match** -- look for a pod whose name contains *method_pattern*;
-       extract port from liveness/readiness probes, then fall back to the
-       ``metrics`` container port; resolve to the pod IP.
-
-    Returns:
-        ``(ip_or_service, name, port)`` -- any may be ``None`` if nothing
-        matched.
-    """
-    # --- 1. Try to find a matching Service ---
+    """Find a service or pod matching *method_pattern* and return ``(ip, name, port)``."""
     svc_result = cmd.kube(
         "get", "service",
         "--namespace", namespace,
@@ -347,8 +373,22 @@ def find_custom_endpoint(
             svc_name = svc_name.strip()
             if method_pattern not in svc_name:
                 continue
-            # Found a matching service -- try port names: default, http, https
-            for port_name in ("default", "http", "https"):
+
+            if preferred_port is not None:
+                port_result = cmd.kube(
+                    "get", f"service/{svc_name}",
+                    "--namespace", namespace,
+                    "-o", f"jsonpath={{.spec.ports[?(@.port=={preferred_port})].port}}",
+                    check=False,
+                )
+                port_val = (
+                    port_result.stdout.strip()
+                    if port_result.success else ""
+                )
+                if port_val and port_val != "null":
+                    return svc_name, svc_name, port_val
+
+            for port_name in ("http", "https", "default"):
                 port_result = cmd.kube(
                     "get", f"service/{svc_name}",
                     "--namespace", namespace,
@@ -362,7 +402,6 @@ def find_custom_endpoint(
                 if port_val and port_val != "null":
                     return svc_name, svc_name, port_val
 
-            # Fall back to first port
             port_result = cmd.kube(
                 "get", f"service/{svc_name}",
                 "--namespace", namespace,
@@ -373,7 +412,6 @@ def find_custom_endpoint(
             if port_val and port_val != "null":
                 return svc_name, svc_name, port_val
 
-    # --- 2. Try to find a matching Pod ---
     pod_result = cmd.kube(
         "get", "pod",
         "--namespace", namespace,
@@ -503,7 +541,7 @@ def test_model_serving(
     protocol = "https" if str(port) == "443" else "http"
     prefix = _normalize_url_prefix(url_path_prefix)
     url = f"{protocol}://{host}:{port}{prefix}/v1/models"
-    
+
     # Auto-ensure service account and RBAC
     sa_name = service_account or (plan_config.get("serviceAccount", {}).get("name") if plan_config else "default")
     if sa_name:
@@ -512,7 +550,7 @@ def test_model_serving(
             if not sa_check.success or "not found" in (sa_check.stderr + sa_check.stdout).lower():
                 cmd.logger.log_info(f"ServiceAccount '{sa_name}' not found, auto-creating it...")
                 cmd.kube("create", "sa", sa_name, "--namespace", namespace, check=False)
-        
+
         # Always ensure the required RBAC role exists
         role_name = f"{sa_name}-role"
         role_check = cmd.kube("get", "role", role_name, "--namespace", namespace, check=False)
@@ -524,7 +562,7 @@ def test_model_serving(
                 "--namespace", namespace,
                 check=False
             )
-            
+
             # Always ensure RoleBinding
             binding_name = f"{sa_name}-binding"
             cmd.kube(
@@ -536,7 +574,7 @@ def test_model_serving(
             )
 
     override_args = _build_overrides(plan_config, service_account=service_account)
-    curl_image = "quay.io/curl/curl"
+    curl_image = "quay.io/fedora/fedora"
     last_error: str | None = None
 
     for attempt in range(1, max_retries + 1):

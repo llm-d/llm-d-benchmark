@@ -252,7 +252,7 @@ def print_phase_banner(
         log.log_info(f"  Spec:        {context.specification_file}")
 
     if is_dry_run:
-        log.log_info(f"  Mode:        DRY RUN (no cluster connection)")
+        log.log_info("  Mode:        DRY RUN (no cluster connection)")
     else:
         log.log_info(f"  User:        {username}")
         log.log_info(f"  Server:      {server}")

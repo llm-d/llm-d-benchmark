@@ -5,10 +5,11 @@ from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env, env_int
 
 
-def add_subcommands(parser: argparse._SubParsersAction):
+def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []):
     """Register the ``standup`` subcommand and its arguments."""
     standup_parser = parser.add_parser(
         Command.STANDUP.value,
+        parents=parents,
         description=(
             "The `standup` command provisions the model infrastructure for a given specification. "
             "It implicitly generates a plan (YAMLs) and then executes the provisioning steps."
@@ -42,7 +43,7 @@ def add_subcommands(parser: argparse._SubParsersAction):
         "-t",
         "--methods",
         default=env("LLMDBENCH_METHODS"),
-        help="Standup methods (standalone, modelservice, fma).",
+        help="Standup methods (standalone, modelservice, fma, kustomize).",
     )
     standup_parser.add_argument(
         "-a",
@@ -130,4 +131,29 @@ def add_subcommands(parser: argparse._SubParsersAction):
              "default StorageClass on the cluster) fails fast instead of "
              "masquerading as a downstream pod/job timeout. Default: 240 "
              "(some dynamic provisioners take 1-3 minutes per volume).",
+    )
+    standup_parser.add_argument(
+        "--llmd-repo-path",
+        default=env("LLMDBENCH_LLMD_REPO_PATH"),
+        help="Path to a local llm-d repository clone (used by the kustomize method).",
+    )
+    standup_parser.add_argument(
+        "--kustomize-deploy-timeout",
+        type=int,
+        default=env_int("LLMDBENCH_KUSTOMIZE_DEPLOY_TIMEOUT"),
+        help="Seconds to wait for pods to deploy during standup in kustomize mode.",
+    )
+    standup_parser.add_argument(
+        "--full-infra",
+        action="store_true",
+        default=False,
+        help=(
+            "Run the full infrastructure setup (steps 2-5: admin prerequisites, "
+            "monitoring validation, model namespace, harness namespace) even when "
+            "using the kustomize deployment method. By default, kustomize mode "
+            "skips these steps because the guide README handles its own "
+            "prerequisites (CRDs, namespace). Use this flag when you need the "
+            "benchmark harness infrastructure (PVCs, download jobs, data-access "
+            "pods) alongside the kustomize-deployed model."
+        ),
     )

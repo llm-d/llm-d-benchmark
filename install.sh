@@ -32,27 +32,73 @@ DEFAULT_BRANCH="main"
 export _APT_GET_UPDATE_RUN=0
 export LLMDBENCH_CONTROL_PCMD=${LLMDBENCH_CONTROL_PCMD:-python}
 
-declare -A TOOL_VERSION=(
-    ["yq"]="v4.52.5"
-    ["helmfile"]="1.4.2"
-    ["helm"]="v3.16.0"
-    ["oc"]="4.16.0"
-    ["kustomize"]="v5.0.0"
-    ["crane"]="0.20.3"
-)
+# ---------------------------------------------------------------------------
+# pip isolation
+# Any pip.conf on the machine (e.g. a corporate index that injects credentials
+# or redirects to an internal mirror) will break:
+#   - editable local installs  (index doesn't know about local paths)
+#   - git+https:// installs    (index can't proxy GitHub source URLs)
+#
+# We force every pip call in this script to run with:
+#   PIP_CONFIG_FILE=/dev/null   -- ignores all pip.conf files
+#   --isolated                  -- disables env-var overrides too
+#
+# PyPI is still reachable; we are only suppressing *custom* index injection.
+# If your environment truly requires a proxy, set LLMDBENCH_PIP_EXTRA_ARGS
+# before running, e.g.:
+#   export LLMDBENCH_PIP_EXTRA_ARGS="--index-url https://my.mirror/simple"
+# ---------------------------------------------------------------------------
+LLMDBENCH_PIP_EXTRA_ARGS="${LLMDBENCH_PIP_EXTRA_ARGS:-}"
+_pip_isolated() {
+    PIP_CONFIG_FILE=/dev/null ${PIP_CMD} --isolated "$@" ${LLMDBENCH_PIP_EXTRA_ARGS}
+}
+
+# ---------------------------------------------------------------------------
+# Architecture detection
+# Normalises uname -m output into two variables used throughout:
+#   ARCH_UNAME  -- raw uname -m value  (x86_64 | aarch64 | armv7l | ...)
+#   ARCH_GO     -- Go-style name       (amd64  | arm64   | arm    | ...)
+#   ARCH_DEB    -- Debian/apt name     (amd64  | arm64   | armhf  | ...)
+# ---------------------------------------------------------------------------
+ARCH_UNAME="$(uname -m)"
+case "$ARCH_UNAME" in
+    x86_64)          ARCH_GO="amd64";   ARCH_DEB="amd64"  ;;
+    aarch64|arm64)   ARCH_GO="arm64";   ARCH_DEB="arm64"  ;;
+    armv7l|armhf)    ARCH_GO="arm";     ARCH_DEB="armhf"  ;;
+    ppc64le)         ARCH_GO="ppc64le"; ARCH_DEB="ppc64el" ;;
+    s390x)           ARCH_GO="s390x";   ARCH_DEB="s390x"  ;;
+    *)
+        echo "WARNING: Unrecognised architecture '${ARCH_UNAME}'. Assuming amd64."
+        ARCH_GO="amd64"; ARCH_DEB="amd64"
+        ;;
+esac
+
+tool_version_for() {
+    case "$1" in
+        curl)      echo "8_20_0"  ;;
+        yq)        echo "v4.53.2" ;;
+        helmfile)  echo "1.5.1"   ;;
+        helm)      echo "v4.2.0" ;;
+        helm-diff) echo "v3.15.7" ;;
+        oc)        echo "4.18.0"  ;;
+        kustomize) echo "v5.8.1"  ;;
+        crane)     echo "0.21.6"  ;;
+        skopeo)    echo "1.14.6"  ;;
+        jq)        echo "1.8.1"   ;;
+        *)         echo ""        ;;
+    esac
+}
 
 # ---------------------------------------------------------------------------
 # Bootstrap: if run via curl (no repo present), clone first
 #   curl -sSL https://raw.githubusercontent.com/llm-d/llm-d-benchmark/main/install.sh | bash
 # ---------------------------------------------------------------------------
 _bootstrap_if_needed() {
-    # Detect curl-pipe-bash: BASH_SOURCE is empty or points to stdin
     local need_clone=false
 
     if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]}" == "bash" || "${BASH_SOURCE[0]}" == "/dev/stdin" ]]; then
         need_clone=true
     elif [[ ! -f "pyproject.toml" && ! -d "llmdbenchmark" ]]; then
-        # Script exists on disk but not inside the repo
         need_clone=true
     fi
 
@@ -61,12 +107,10 @@ _bootstrap_if_needed() {
         echo "  llm-d-benchmark repository not detected in current directory."
         echo ""
 
-        # Check if it already exists in cwd
         if [[ -d "${REPO_DIR}" && -f "${REPO_DIR}/pyproject.toml" ]]; then
             echo "  Found existing clone at ./${REPO_DIR}"
             cd "${REPO_DIR}"
         else
-            # Check for git
             if ! command -v git &>/dev/null; then
                 echo "  ERROR: git is required but not installed."
                 exit 1
@@ -80,7 +124,6 @@ _bootstrap_if_needed() {
         fi
 
         echo ""
-        # Re-exec the install script from within the repo
         exec bash install.sh "$@"
     fi
 }
@@ -111,11 +154,14 @@ DESCRIPTION
     Sets up the complete development / runtime environment for llm-d-benchmark.
 
     1. Validates Python 3.11+ and pip
-    2. Checks for required system tools  (curl, git, kubectl, helm)
+    2. Checks for required system tools  (curl, git, kubectl, helm, helmfile,
+                                          skopeo, kustomize, jq, yq, crane)
     3. Checks for optional system tools   (oc)
     4. Installs llmdbenchmark             (editable: pip install -e .)
-    5. Installs planner (llm-d-planner)  (pip install git+https://github.com/llm-d-incubation/llm-d-planner.git@<commit>)
+    5. Installs planner (llm-d-planner)  (pip install git+https://...)
     6. Verifies that all Python packages are importable
+
+    Supported architectures: x86_64 (amd64), aarch64/arm64, armv7l, ppc64le, s390x.
 
     If no virtual environment is active, the script will automatically
     create one at .venv/ and activate it for the install. You will be
@@ -279,10 +325,9 @@ elif [[ "$allow_system_python" == "true" ]]; then
     PIP_CMD="$PYTHON_CMD -m pip"
     echo "Using system python3 (forced with -y flag)"
 else
-    # No venv active — reuse existing .venv or create a new one
     if [[ -d "$LLMDBENCH_VENV_DIR" ]]; then
         if grep -q "venv created." "$dependencies_checked_file" 2>/dev/null; then
-            true  # cached — skip the log line
+            true
         else
             echo "Using existing virtual environment: ${LLMDBENCH_VENV_DIR}"
             echo "venv created." >> "$dependencies_checked_file"
@@ -348,7 +393,6 @@ fi
 # Validate Python 3.11+
 # ---------------------------------------------------------------------------
 if ! command -v ${PYTHON_CMD} &>/dev/null; then
-    # Last resort: try the other name
     if [[ "$PYTHON_CMD" == "python" ]] && command -v python3 &>/dev/null; then
         PYTHON_CMD="python3"
         PIP_CMD="python3 -m pip"
@@ -369,9 +413,8 @@ if ! (( python_major > 3 || (python_major == 3 && python_minor >= 11) )); then
     echo "ERROR: Python 3.11+ required, but ${PYTHON_CMD} is version ${python_version}"
     exit 1
 fi
-echo "Python ${python_version} — OK"
+echo "Python ${python_version} — OK  [arch: ${ARCH_UNAME} → ${ARCH_GO}]"
 
-# Ensure pip is available
 if ! ${PIP_CMD} --version &>/dev/null; then
     echo "pip not found. Attempting to install..."
     if [[ "$target_os" == "linux" ]]; then
@@ -383,15 +426,13 @@ if ! ${PIP_CMD} --version &>/dev/null; then
 fi
 
 # ===================================================================
-# System tool checks — shows version inline, no separate summary
+# System tool checks
 # ===================================================================
 echo ""
 echo "=== System tools ==="
 
-# Tools required for cluster operations
 tools="curl git helm helmfile skopeo kustomize jq yq crane"
 
-# One of kubectl or oc is required
 kube_tool=""
 if command -v kubectl &>/dev/null; then
     kube_tool="kubectl"
@@ -405,11 +446,10 @@ else
     printf "  %-14s %-20s %s\n" "$kube_tool" "$($kube_tool version --client --short 2>/dev/null || $kube_tool version --client 2>/dev/null | head -1)" ""
 fi
 
-# Optional tools -- checked but not fatal if missing
 optional_tools="oc"
 
 # ---------------------------------------------------------------------------
-# Version helper — returns version string for a given tool
+# Version helper
 # ---------------------------------------------------------------------------
 tool_version() {
     local tool="$1"
@@ -438,6 +478,14 @@ version_gte() {
     local ver1="${1}" ver2="${2}"
     local higher
 
+    # Normalize a leading 'v'. Tools report versions inconsistently:
+    # `helmfile --version` prints 'v1.1.3' while tool_version_for helmfile
+    # is '1.5.1'. Without this, `sort -V` ranks 'v1.1.3' ABOVE '1.5.1'
+    # (the 'v' breaks numeric ordering), so a stale helmfile is wrongly
+    # judged up-to-date and never upgraded.
+    ver1="${ver1#v}"
+    ver2="${ver2#v}"
+
     [[ "$ver1" == "$ver2" ]] && return 0
     [[ -z "$ver1" || "$ver1" == "(unknown)" ]] && return 1
     [[ -z "$ver2" ]] && return 0
@@ -448,36 +496,80 @@ version_gte() {
 }
 
 # ---------------------------------------------------------------------------
-# Per-tool Linux install helpers
+# Status + reason for a pinned version we intentionally do NOT enforce.
+# $4 is the category word ("non-critical" | "optional") used in the message.
 # ---------------------------------------------------------------------------
+_pin_not_enforced() {
+    local tool="$1" cur="$2" pin="$3" kind="$4"
+    printf "  %-14s %-20s %s\n" "$tool" "$cur" \
+        "(pinned ${pin} not enforced -- ${kind})"
+    echo "      by design the installer does not modify PATH for ${kind} tools, so the existing on-PATH '${tool}' is kept as-is."
+}
+
+# --------------------------------------------------------------------------------
+# Per-tool Linux install helpers - — all now arch-aware via $ARCH_GO / $ARCH_UNAME
+# ---------------------------------------------------------------------------------
+
 install_yq_linux() {
-    local version="${TOOL_VERSION["yq"]}"
-    local binary=yq_linux_amd64
+    local version=$(tool_version_for yq)
+    local binary="yq_linux_${ARCH_GO}"
     curl -sL "https://github.com/mikefarah/yq/releases/download/${version}/${binary}" -o "/tmp/${binary}"
     chmod +x "/tmp/${binary}"
     sudo cp -f "/tmp/${binary}" /usr/local/bin/yq
 }
 
 install_helmfile_linux() {
-    local version="${TOOL_VERSION["helmfile"]}"
-    local pkg="helmfile_${version}_linux_amd64"
-    curl -sL "https://github.com/helmfile/helmfile/releases/download/v${version}/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz"
-    tar xzf "/tmp/${pkg}.tar.gz" -C /tmp
-    sudo cp -f /tmp/helmfile /usr/local/bin/helmfile
+    local version=$(tool_version_for helmfile)
+    local oc_arch="${ARCH_UNAME}"
+    if [ "${oc_arch}" = "s390x" ]; then
+	    git clone  https://github.com/helmfile/helmfile.git
+	    cd helmfile || exit 1
+	    git checkout $version
+	    GOARCH=s390x GOOS=linux go build -o helmfile
+	    sudo mv helmfile /usr/local/bin/
+	    sudo chmod +x /usr/local/bin/helmfile
+    else
+    	local pkg="helmfile_${version}_linux_${ARCH_GO}"
+    	curl -sL "https://github.com/helmfile/helmfile/releases/download/v${version}/${pkg}.tar.gz" \
+        	-o "/tmp/${pkg}.tar.gz"
+    	tar xzf "/tmp/${pkg}.tar.gz" -C /tmp
+    	sudo cp -f /tmp/helmfile /usr/local/bin/helmfile
+    fi
 }
 
 install_helm_linux() {
-    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash || { echo "ERROR: Failed to install Helm"; exit 1; }
+    # Pin to the exact Helm version from tool_version_for (Helm 4+). The old
+    # get-helm-3 script always installed the latest Helm 3.x and ignored the
+    # pin entirely, so the helm pin was never actually honored.
+    local version
+    version=$(tool_version_for helm)   # e.g. v4.2.0 (already 'v'-prefixed)
+    local pkg="helm-${version}-linux-${ARCH_GO}"
+    curl -fsSL "https://get.helm.sh/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz" \
+        || { echo "ERROR: Failed to download Helm ${version}"; exit 1; }
+    tar xzf "/tmp/${pkg}.tar.gz" -C /tmp
+    sudo cp -f "/tmp/linux-${ARCH_GO}/helm" /usr/local/bin/helm
+    sudo chmod +x /usr/local/bin/helm
     helm version --short || { echo "ERROR: Helm installation verification failed"; exit 1; }
 }
 
+install_kubectl_linux() {
+    local stable
+    stable=$(curl -sL https://dl.k8s.io/release/stable.txt)
+    curl -sL "https://dl.k8s.io/release/${stable}/bin/linux/${ARCH_GO}/kubectl" \
+        -o /tmp/kubectl
+    chmod +x /tmp/kubectl
+    sudo mv /tmp/kubectl /usr/local/bin/kubectl
+}
+
 install_oc_linux() {
-    local arch
-    arch=$(uname -m)
+    # oc mirrors use aarch64 / x86_64 naming, not Go-style
+    local version=$(tool_version_for oc)
+    local oc_arch="${ARCH_UNAME}"  # x86_64 | aarch64 | ppc64le | s390x
     local oc_file="openshift-client-linux"
-    [[ "$arch" == "aarch64" ]] && oc_file="${oc_file}-arm64-rhel9"
+    [[ "$oc_arch" == "aarch64" ]] && oc_file="${oc_file}-arm64-rhel9"
     oc_file="${oc_file}.tar.gz"
-    curl -sL "https://mirror.openshift.com/pub/openshift-v4/${arch}/clients/ocp/stable/${oc_file}" -o "/tmp/${oc_file}"
+    curl -sL "https://mirror.openshift.com/pub/openshift-v4/${oc_arch}/clients/ocp/stable/${oc_file}" \
+        -o "/tmp/${oc_file}"
     tar xzf "/tmp/${oc_file}" -C /tmp
     sudo mv /tmp/kubectl /usr/local/bin/
     sudo mv /tmp/oc /usr/local/bin/
@@ -486,24 +578,124 @@ install_oc_linux() {
 }
 
 install_kustomize_linux() {
-    curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-    sudo mv kustomize /usr/local/bin/
+    local version="$(tool_version_for kustomize)"
+    local arch
+    arch=$(uname -m)
+    local go_arch="amd64"
+    [[ "$arch" == "aarch64" ]] && go_arch="arm64"
+    curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${version}/kustomize_${version}_linux_${go_arch}.tar.gz" \
+        -o "/tmp/kustomize.tar.gz"
+    tar xzf /tmp/kustomize.tar.gz -C /tmp kustomize
+    sudo mv /tmp/kustomize /usr/local/bin/
+    sudo chmod +x /usr/local/bin/kustomize
 }
 
 install_crane_linux() {
-    local version="v${TOOL_VERSION["crane"]}"
-    local arch
-    arch=$(uname -m)
-    local go_arch="x86_64"
-    [[ "$arch" == "aarch64" ]] && go_arch="arm64"
-    local pkg="go-containerregistry_Linux_${go_arch}"
-    curl -sL "https://github.com/google/go-containerregistry/releases/download/${version}/${pkg}.tar.gz" -o "/tmp/${pkg}.tar.gz"
+    local version
+    version="v$(tool_version_for crane)"
+    # go-containerregistry release tarballs use Go arch names (X86_64 capitalised)
+    local go_arch_cap
+    case "$ARCH_GO" in
+        amd64)   go_arch_cap="x86_64" ;;
+        arm64)   go_arch_cap="arm64"  ;;
+        arm)     go_arch_cap="armv6"  ;;
+        ppc64le) go_arch_cap="ppc64le" ;;
+        s390x)   go_arch_cap="s390x"  ;;
+        *)       go_arch_cap="x86_64" ;;
+    esac
+    local pkg="go-containerregistry_Linux_${go_arch_cap}"
+    curl -sL "https://github.com/google/go-containerregistry/releases/download/${version}/${pkg}.tar.gz" \
+        -o "/tmp/${pkg}.tar.gz"
     tar xzf "/tmp/${pkg}.tar.gz" -C /tmp crane
     sudo cp -f /tmp/crane /usr/local/bin/crane
     sudo chmod +x /usr/local/bin/crane
 }
 
-install_oc_mac() { brew install openshift-cli; }
+install_skopeo_linux() {
+    local version=$(tool_version_for skopeo)
+    local pkg="skopeo-linux-${ARCH_GO}"
+    if curl -sfL "https://github.com/lework/skopeo-binary/releases/download/v${version}/${pkg}" \
+            -o "/tmp/${pkg}"; then
+        chmod +x "/tmp/${pkg}"
+        sudo cp -f "/tmp/${pkg}" /usr/local/bin/skopeo
+        rm -f "/tmp/${pkg}"
+    else
+        echo "  Pre-built binary for skopeo ${version} not available; falling back to package manager"
+        ${PKG_MGR} skopeo || true
+    fi
+}
+
+install_curl_linux() {
+    # version is read by the SBOM generator (util/generate_sbom.py) to track the pinned minimum
+    local version=8_20_0
+    ${PKG_MGR} curl || true
+}
+
+install_jq_linux() {
+    local version
+    version="$(tool_version_for jq)"
+    local arch_name
+    case "$ARCH_GO" in
+        amd64)   arch_name="amd64"   ;;
+        arm64)   arch_name="arm64"   ;;
+        ppc64le) arch_name="ppc64el" ;;
+        s390x)   arch_name="s390x"   ;;
+        *)       arch_name="amd64"   ;;
+    esac
+    if curl -sfL "https://github.com/jqlang/jq/releases/download/jq-${version}/jq-linux-${arch_name}" \
+            -o /tmp/jq; then
+        chmod +x /tmp/jq
+        sudo cp -f /tmp/jq /usr/local/bin/jq
+        rm -f /tmp/jq
+    else
+        echo "  Pre-built binary for jq ${version} not available; falling back to package manager"
+        ${PKG_MGR} jq || true
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Ensure PostgreSQL dev headers are present (required to build psycopg2 from
+# source on architectures that lack pre-built wheels, e.g. s390x, ppc64le).
+# ---------------------------------------------------------------------------
+install_pg_dev_deps() {
+    if command -v pg_config &>/dev/null; then
+        return 0
+    fi
+    echo "  pg_config not found — installing PostgreSQL dev headers..."
+    if command -v dnf &>/dev/null; then
+        sudo dnf install -y postgresql-devel python3-devel gcc || true
+    elif command -v yum &>/dev/null; then
+        sudo yum install -y postgresql-devel python3-devel gcc || true
+    elif command -v apt-get &>/dev/null; then
+        sudo apt-get install -y libpq-dev python3-dev gcc || true
+    elif command -v apt &>/dev/null; then
+        sudo apt install -y libpq-dev python3-dev gcc || true
+    else
+        echo "  WARNING: Cannot install pg_config automatically. If planner install fails,"
+        echo "           install postgresql-devel (rpm) or libpq-dev (deb) manually."
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# macOS install helpers — Homebrew handles arch transparently on both
+# Intel and Apple Silicon, so these are simple wrappers.
+# ---------------------------------------------------------------------------
+install_yq_mac()       { brew install yq; }
+# `brew install` is a no-op when the formula is already present, so it never
+# upgrades a stale binary (this is why a pinned helmfile/helm could stay
+# outdated). Always follow with `brew upgrade` so the pin is honored; the
+# enforce loop re-verifies the resulting version >= the pin and fails loud
+# otherwise. macOS uses Homebrew (not pinned tarballs like Linux) because
+# Homebrew owns the PATH/prefix here and brew stable already tracks the pins.
+install_helmfile_mac() { brew install helmfile 2>/dev/null || true; brew upgrade helmfile 2>/dev/null || true; }
+install_helm_mac()     { brew install helm 2>/dev/null || true; brew upgrade helm 2>/dev/null || true; }
+install_kubectl_mac()  { brew install kubectl; }
+install_oc_mac()       { brew install openshift-cli; }
+install_kustomize_mac(){ brew install kustomize; }
+install_crane_mac()    { brew install crane; }
+install_skopeo_mac()   { brew install skopeo; }
+install_curl_mac()     { brew install curl; }
+install_jq_mac()       { brew install jq; }
 
 # ---------------------------------------------------------------------------
 # Check required tools (fail if missing, upgrade if outdated)
@@ -515,7 +707,7 @@ for tool in $tools; do
 
     if command -v "$tool" &>/dev/null; then
         current_ver=$(tool_version "$tool")
-        expected_ver="${TOOL_VERSION[$tool]:-}"
+        expected_ver=$(tool_version_for "$tool")
         needs_upgrade=false
 
         if [[ -n "$expected_ver" ]] && ! version_gte "$current_ver" "$expected_ver"; then
@@ -523,18 +715,40 @@ for tool in $tools; do
         fi
 
         if [[ "$needs_upgrade" == "true" ]]; then
-            echo "  ${tool} — ${current_ver} (outdated, upgrading to ${expected_ver})..."
+            echo "  ${tool} — ${current_ver} below pinned ${expected_ver}; attempting install/upgrade..."
             install_func="install_${tool}_${target_os}"
             if declare -F "$install_func" &>/dev/null; then
                 eval "$install_func"
-                if command -v "$tool" &>/dev/null; then
-                    new_ver=$(tool_version "$tool")
-                    printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(upgraded)"
-                    echo "${tool} already installed." >> "$dependencies_checked_file"
-                else
+                if ! command -v "$tool" &>/dev/null; then
                     echo "ERROR: Failed to upgrade ${tool}"
                     exit 1
                 fi
+                new_ver=$(tool_version "$tool")
+                # Re-verify the installer actually produced a version that
+                # satisfies the pin (previously assumed, so a no-op upgrade
+                # was silently cached as success). Only helm/helmfile hard-
+                # fail: a stale helmfile panics under Helm 4, and both are
+                # brew-symlinked so the failure is actionable. Other tools
+                # keep the prior lenient behavior -- many pins are documented
+                # floors, and some (e.g. macOS keg-only curl) the package
+                # manager cannot put on PATH, so blocking the whole install
+                # on them is wrong.
+                if [[ -n "$expected_ver" ]] && ! version_gte "$new_ver" "$expected_ver"; then
+                    if [[ "$tool" == "helm" || "$tool" == "helmfile" ]]; then
+                        echo "ERROR: ${tool} is still ${new_ver} after the upgrade"
+                        echo "       attempt (required: >= ${expected_ver}). The"
+                        echo "       installer did not produce the pinned version."
+                        exit 1
+                    fi
+                    # Non-critical tool the package manager can't put on PATH
+                    # (macOS keg-only curl, or a non-brew binary earlier in
+                    # PATH). Print one honest line + reason; never a false
+                    # "(upgraded)", and never silently modify the user's PATH.
+                    _pin_not_enforced "$tool" "$new_ver" "$expected_ver" "non-critical"
+                else
+                    printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(upgraded -> ${new_ver})"
+                fi
+                echo "${tool} already installed." >> "$dependencies_checked_file"
             else
                 echo "  WARNING: No upgrade function available for ${tool}, keeping ${current_ver}"
                 printf "  %-14s %-20s %s\n" "$tool" "$current_ver" ""
@@ -546,6 +760,7 @@ for tool in $tools; do
         fi
     else
         echo "  ${tool} — NOT FOUND, attempting install..."
+        expected_ver=$(tool_version_for "$tool")
         install_func="install_${tool}_${target_os}"
         if declare -F "$install_func" &>/dev/null; then
             eval "$install_func"
@@ -553,7 +768,18 @@ for tool in $tools; do
             ${PKG_MGR} "$tool" || true
         fi
         if command -v "$tool" &>/dev/null; then
-            printf "  %-14s %-20s %s\n" "$tool" "$(tool_version "$tool")" "(newly installed)"
+            new_ver=$(tool_version "$tool")
+            if [[ -n "$expected_ver" ]] && ! version_gte "$new_ver" "$expected_ver"; then
+                if [[ "$tool" == "helm" || "$tool" == "helmfile" ]]; then
+                    echo "ERROR: ${tool} installed as ${new_ver} but >= ${expected_ver}"
+                    echo "       is required. The installer did not produce the"
+                    echo "       pinned version."
+                    exit 1
+                fi
+                echo "  WARNING: ${tool} is ${new_ver}; pinned ${expected_ver}"
+                echo "           not applied (continuing -- non-critical tool)."
+            fi
+            printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(newly installed)"
             echo "${tool} already installed." >> "$dependencies_checked_file"
         else
             echo "ERROR: Failed to install required tool: ${tool}"
@@ -563,24 +789,43 @@ for tool in $tools; do
 done
 
 # ---------------------------------------------------------------------------
-# Ensure helm-diff plugin is installed (required by helmfile apply).
-# Runs regardless of whether helm was just installed or already existed.
+# Ensure helm-diff plugin is installed
 # ---------------------------------------------------------------------------
 helm_diff_url="https://github.com/databus23/helm-diff"
+helm_diff_version=$(tool_version_for helm-diff)   # e.g. v3.15.7
+
+_install_helm_diff() {
+    # Helm 4 requires plugin verification by default; helm-diff ships no
+    # provenance artifacts, so fall back to --verify=false on failure.
+    helm plugin install "${helm_diff_url}" --version "${helm_diff_version}" \
+        || helm plugin install "${helm_diff_url}" --version "${helm_diff_version}" --verify=false \
+        || { echo "ERROR: Failed to install helm-diff plugin"; exit 1; }
+}
 
 if command -v helm &>/dev/null; then
-    if ! helm plugin list 2>/dev/null | grep -q "^diff"; then
-        echo "  helm-diff    -- NOT FOUND, installing..."
-        if ! helm plugin install ${helm_diff_url}; then
-            echo "First attempt failed, retrying without signature verification..."
-            if ! helm plugin install ${helm_diff_url} --verify=false; then
-                echo "ERROR: Failed to install helm-diff plugin"; exit 1
-            fi
-        fi
-        printf "  %-14s %-20s %s\n" "helm-diff" "$(helm plugin list | grep '^diff' | awk '{print $2}')" "(newly installed)"
+    installed_diff_ver=$(helm plugin list 2>/dev/null | awk '$1=="diff"{print $2}')
+    want="${helm_diff_version#v}"
+    if [[ -z "$installed_diff_ver" ]]; then
+        echo "  helm-diff    -- NOT FOUND, installing ${helm_diff_version}..."
+        _install_helm_diff
+        diff_state="(newly installed)"
+    elif [[ "${installed_diff_ver#v}" != "$want" ]]; then
+        # A pre-Helm-4 helm-diff (built against the Helm 3 SDK) will fail to
+        # load under Helm 4 and break `helmfile apply`. Reinstall the pin.
+        echo "  helm-diff    -- ${installed_diff_ver} != pinned ${helm_diff_version}, reinstalling..."
+        helm plugin uninstall diff 2>/dev/null || true
+        _install_helm_diff
+        diff_state="(reinstalled)"
     else
-        printf "  %-14s %-20s %s\n" "helm-diff" "$(helm plugin list | grep '^diff' | awk '{print $2}')" ""
+        diff_state=""
     fi
+    final_diff_ver=$(helm plugin list 2>/dev/null | awk '$1=="diff"{print $2}')
+    if [[ "${final_diff_ver#v}" != "$want" ]]; then
+        echo "ERROR: helm-diff is ${final_diff_ver:-<missing>} after install"
+        echo "       (required: ${helm_diff_version}). Aborting."
+        exit 1
+    fi
+    printf "  %-14s %-20s %s\n" "helm-diff" "$final_diff_ver" "$diff_state"
 fi
 
 # ---------------------------------------------------------------------------
@@ -593,7 +838,7 @@ for tool in $optional_tools; do
 
     if command -v "$tool" &>/dev/null; then
         current_ver=$(tool_version "$tool")
-        expected_ver="${TOOL_VERSION[$tool]:-}"
+        expected_ver=$(tool_version_for "$tool")
         needs_upgrade=false
 
         if [[ -n "$expected_ver" ]] && ! version_gte "$current_ver" "$expected_ver"; then
@@ -601,13 +846,20 @@ for tool in $optional_tools; do
         fi
 
         if [[ "$needs_upgrade" == "true" ]]; then
-            echo "  ${tool} — ${current_ver} (outdated, upgrading to ${expected_ver})..."
+            echo "  ${tool} — ${current_ver} below pinned ${expected_ver}; attempting install/upgrade..."
             install_func="install_${tool}_${target_os}"
             if declare -F "$install_func" &>/dev/null; then
                 eval "$install_func"
                 if command -v "$tool" &>/dev/null; then
                     new_ver=$(tool_version "$tool")
-                    printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(upgraded)"
+                    # Optional tools never hard-fail. Re-verify so we don't
+                    # claim "(upgraded)" when the on-PATH version did not
+                    # actually change (e.g. a non-brew oc shadowing brew's).
+                    if [[ -n "$expected_ver" ]] && ! version_gte "$new_ver" "$expected_ver"; then
+                        _pin_not_enforced "$tool" "$new_ver" "$expected_ver" "optional"
+                    else
+                        printf "  %-14s %-20s %s\n" "$tool" "$new_ver" "(upgraded -> ${new_ver})"
+                    fi
                     echo "${tool} already installed." >> "$dependencies_checked_file"
                 else
                     echo "  WARNING: Failed to upgrade optional tool ${tool}, keeping ${current_ver}"
@@ -634,24 +886,19 @@ done
 echo ""
 echo "=== Python packages ==="
 
-# ---------------------------------------------------------------------------
-# Helper — print package name + version in aligned columns
-# ---------------------------------------------------------------------------
 print_pkg() {
     local name="$1" status="$2"
     local ver
-    ver=$(${PIP_CMD} show "$name" 2>/dev/null | awk '/^Version:/{print $2}')
+    ver=$(_pip_isolated show "$name" 2>/dev/null | awk '/^Version:/{print $2}')
     ver="${ver:---}"
     printf "  %-22s %-14s %s\n" "$name" "$ver" "$status"
 }
 
-# ---------------------------------------------------------------------------
 # 1. Install llmdbenchmark (editable)
-# ---------------------------------------------------------------------------
 if grep -q "llmdbenchmark is already installed." "$dependencies_checked_file" 2>/dev/null; then
     print_pkg llmdbenchmark ""
 else
-    if ${PIP_CMD} install -e "${SCRIPT_DIR}" --quiet 2>/dev/null; then
+    if _pip_isolated install -e "${SCRIPT_DIR}" --quiet; then
         print_pkg llmdbenchmark "(installed)"
         echo "llmdbenchmark is already installed." >> "$dependencies_checked_file"
     else
@@ -663,12 +910,23 @@ fi
 # ---------------------------------------------------------------------------
 # 2. Install planner (from llm-d-planner)
 # ---------------------------------------------------------------------------
-PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@e50305af90f0812e77e1827f3bc740fe75b76370"
+PLANNER_GIT="git+https://github.com/llm-d-incubation/llm-d-planner.git@92b14fe09fea0ec9ff36539326b7a8df00f1022c"
 
 if grep -q "planner is already installed." "$dependencies_checked_file" 2>/dev/null; then
     print_pkg planner ""
 else
-    if ${PIP_CMD} install "${PLANNER_GIT}" --quiet 2>/dev/null; then
+    # psycopg2-binary is a planner dependency. On architectures without pre-built
+    # wheels (s390x, ppc64le, older arm64 builds) pip falls back to compiling from
+    # source and requires pg_config / PostgreSQL dev headers. We ensure those are
+    # present first, then force the binary wheel where available so we never
+    # needlessly compile from source.
+    if [[ "$target_os" == "linux" ]]; then
+        install_pg_dev_deps
+    fi
+    _pip_isolated install psycopg2-binary --only-binary=:all: --quiet 2>/dev/null \
+        || true  # if no wheel exists for this arch, fall through to source build above
+
+    if _pip_isolated install "${PLANNER_GIT}" --quiet; then
         print_pkg planner "(installed)"
         echo "planner is already installed." >> "$dependencies_checked_file"
     else
@@ -677,23 +935,19 @@ else
     fi
 fi
 
-# ---------------------------------------------------------------------------
 # 3. Show key dependencies
-# ---------------------------------------------------------------------------
 echo ""
 echo "  Dependencies:"
 for pkg in PyYAML Jinja2 requests kubernetes pykube-ng kubernetes-asyncio \
            GitPython huggingface_hub transformers packaging \
            pydantic scipy pandas numpy; do
-    ver=$(${PIP_CMD} show "$pkg" 2>/dev/null | awk '/^Version:/{print $2}')
+    ver=$(_pip_isolated show "$pkg" 2>/dev/null | awk '/^Version:/{print $2}')
     if [[ -n "$ver" ]]; then
         printf "    %-22s %s\n" "$pkg" "$ver"
     fi
 done
 
-# ---------------------------------------------------------------------------
 # 4. Verify imports
-# ---------------------------------------------------------------------------
 echo ""
 import_ok=true
 if ! ${PYTHON_CMD} -c "import llmdbenchmark" 2>/dev/null; then
