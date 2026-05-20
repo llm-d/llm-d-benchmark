@@ -84,6 +84,7 @@ tool_version_for() {
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.5"  ;;
         skopeo)    echo "1.14.6"  ;;
+        jq)        echo "1.8.1"   ;;
         *)         echo ""        ;;
     esac
 }
@@ -628,6 +629,28 @@ install_curl_linux() {
     # version is read by the SBOM generator (util/generate_sbom.py) to track the pinned minimum
     local version=8.20.0
     ${PKG_MGR} curl || true
+}
+
+install_jq_linux() {
+    local version
+    version="$(tool_version_for jq)"
+    local arch_name
+    case "$ARCH_GO" in
+        amd64)   arch_name="amd64"   ;;
+        arm64)   arch_name="arm64"   ;;
+        ppc64le) arch_name="ppc64el" ;;
+        s390x)   arch_name="s390x"   ;;
+        *)       arch_name="amd64"   ;;
+    esac
+    if curl -sfL "https://github.com/jqlang/jq/releases/download/jq-${version}/jq-linux-${arch_name}" \
+            -o /tmp/jq; then
+        chmod +x /tmp/jq
+        sudo cp -f /tmp/jq /usr/local/bin/jq
+        rm -f /tmp/jq
+    else
+        echo "  Pre-built binary for jq ${version} not available; falling back to package manager"
+        ${PKG_MGR} jq || true
+    fi
 }
 
 # ---------------------------------------------------------------------------
