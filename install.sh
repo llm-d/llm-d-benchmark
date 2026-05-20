@@ -75,7 +75,7 @@ esac
 
 tool_version_for() {
     case "$1" in
-        curl)      echo "8.20.0"  ;;
+        curl)      echo "8_20_0"  ;;
         yq)        echo "v4.53.2" ;;
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v4.2.0" ;;
@@ -626,7 +626,7 @@ install_skopeo_linux() {
 
 install_curl_linux() {
     # version is read by the SBOM generator (util/generate_sbom.py) to track the pinned minimum
-    local version=8.20.0
+    local version=8_20_0
     ${PKG_MGR} curl || true
 }
 
