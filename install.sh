@@ -83,7 +83,7 @@ tool_version_for() {
         oc)        echo "4.20.0"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.5"  ;;
-        skopeo)    echo "1.14.6"  ;;
+        skopeo)    echo "1.11.5"  ;;
         *)         echo ""        ;;
     esac
 }
