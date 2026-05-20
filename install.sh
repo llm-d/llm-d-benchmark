@@ -75,15 +75,16 @@ esac
 
 tool_version_for() {
     case "$1" in
-        curl)      echo "8.20.0"  ;;
+        curl)      echo "8_20_0"  ;;
         yq)        echo "v4.53.2" ;;
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v4.2.0" ;;
         helm-diff) echo "v3.15.7" ;;
-        oc)        echo "4.20.0"  ;;
+        oc)        echo "4.18.0"  ;;
         kustomize) echo "v5.8.1"  ;;
-        crane)     echo "0.21.5"  ;;
+        crane)     echo "0.21.6"  ;;
         skopeo)    echo "1.14.6"  ;;
+        jq)        echo "1.8.1"   ;;
         *)         echo ""        ;;
     esac
 }
@@ -626,8 +627,30 @@ install_skopeo_linux() {
 
 install_curl_linux() {
     # version is read by the SBOM generator (util/generate_sbom.py) to track the pinned minimum
-    local version=8.20.0
+    local version=8_20_0
     ${PKG_MGR} curl || true
+}
+
+install_jq_linux() {
+    local version
+    version="$(tool_version_for jq)"
+    local arch_name
+    case "$ARCH_GO" in
+        amd64)   arch_name="amd64"   ;;
+        arm64)   arch_name="arm64"   ;;
+        ppc64le) arch_name="ppc64el" ;;
+        s390x)   arch_name="s390x"   ;;
+        *)       arch_name="amd64"   ;;
+    esac
+    if curl -sfL "https://github.com/jqlang/jq/releases/download/jq-${version}/jq-linux-${arch_name}" \
+            -o /tmp/jq; then
+        chmod +x /tmp/jq
+        sudo cp -f /tmp/jq /usr/local/bin/jq
+        rm -f /tmp/jq
+    else
+        echo "  Pre-built binary for jq ${version} not available; falling back to package manager"
+        ${PKG_MGR} jq || true
+    fi
 }
 
 # ---------------------------------------------------------------------------

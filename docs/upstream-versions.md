@@ -19,16 +19,16 @@ whatever the host's package manager provides.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **crane** | `0.21.5` | version | `install.sh` line 85 (`tool_version_for`) | [google/go-containerregistry](https://github.com/google/go-containerregistry) |
-| **curl** | `8.20.0` | version | `install.sh` line 78 (`tool_version_for`) | [curl/curl](https://github.com/curl/curl) |
+| **crane** | `0.21.6` | version | `install.sh` line 85 (`tool_version_for`) | [google/go-containerregistry](https://github.com/google/go-containerregistry) |
+| **curl** | `8_20_0` | version | `install.sh` line 78 (`tool_version_for`) | [curl/curl](https://github.com/curl/curl) |
 | **git** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [git/git](https://github.com/git/git) |
 | **helm** | `v4.2.0` | version | `install.sh` line 81 (`tool_version_for`) | [helm/helm](https://github.com/helm/helm) |
 | **helm-diff** | `v3.15.7` | plugin (version) | `install.sh` line 82 (`tool_version_for`) | [databus23/helm-diff](https://github.com/databus23/helm-diff) |
 | **helmfile** | `1.5.1` | version | `install.sh` line 80 (`tool_version_for`) | [helmfile/helmfile](https://github.com/helmfile/helmfile) |
-| **jq** | `system-provided` | system-provided | `install.sh`: `command -v` check (no pin) | [jqlang/jq](https://github.com/jqlang/jq) |
+| **jq** | `1.8.1` | version | `install.sh` line 87 (`tool_version_for`) | [jqlang/jq](https://github.com/jqlang/jq) |
 | **kustomize** | `v5.8.1` | version | `install.sh` line 84 (`tool_version_for`) | [kubernetes-sigs/kustomize](https://github.com/kubernetes-sigs/kustomize) |
 | **llm-d-planner (git)** | `92b14fe09fea0ec9ff36539326b7a8df00f1022c` | commit SHA | `install.sh` line 890 (`PLANNER_GIT`) | [llm-d-incubation/llm-d-planner](https://github.com/llm-d-incubation/llm-d-planner) |
-| **oc** | `4.20.0` | version | `install.sh` line 83 (`tool_version_for`) | [openshift/oc](https://github.com/openshift/oc) |
+| **oc** | `4.18.0` | version | `install.sh` line 83 (`tool_version_for`) | [openshift/oc](https://github.com/openshift/oc) |
 | **skopeo** | `1.14.6` | version | `install.sh` line 86 (`tool_version_for`) | [containers/skopeo](https://github.com/containers/skopeo) |
 | **yq** | `v4.53.2` | version | `install.sh` line 79 (`tool_version_for`) | [mikefarah/yq](https://github.com/mikefarah/yq) |
 
@@ -41,7 +41,7 @@ OCI registry at generation (and plan) time.
 
 | Dependency | Current Pin | Pin Type | File Location | Upstream Repo |
 |---|---|---|---|---|
-| **agentgateway** | `v1.2.0` | tag | `config/templates/values/defaults.yaml` line 445 (`chartVersions.agentgateway`) | [agentgateway/agentgateway](https://github.com/agentgateway/agentgateway) (`oci://cr.agentgateway.dev/charts/`) |
+| **agentgateway** | `v1.2.1` | tag | `config/templates/values/defaults.yaml` line 445 (`chartVersions.agentgateway`) | [agentgateway/agentgateway](https://github.com/agentgateway/agentgateway) (`oci://cr.agentgateway.dev/charts/`) |
 | **inferencePool** | `v1.5.0` | tag | `config/templates/values/defaults.yaml` line 444 (`chartVersions.inferencePool`) | [kubernetes-sigs/gateway-api-inference-extension](https://github.com/kubernetes-sigs/gateway-api-inference-extension) |
 | **istioBase** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 438 (`chartVersions.istioBase`) | (unknown) |
 | **istiod** | `1.29.2` | tag | `config/templates/values/defaults.yaml` line 439 (`chartVersions.istiod`) | (unknown) |
