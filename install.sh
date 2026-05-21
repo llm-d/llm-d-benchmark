@@ -80,7 +80,7 @@ tool_version_for() {
         helmfile)  echo "1.5.1"   ;;
         helm)      echo "v4.2.0" ;;
         helm-diff) echo "v3.15.7" ;;
-        oc)        echo "4.18.0"  ;;
+        oc)        echo "openshift-clients-v4.18.0-202502040032"  ;;
         kustomize) echo "v5.8.1"  ;;
         crane)     echo "0.21.6"  ;;
         skopeo)    echo "1.14.6"  ;;
@@ -568,7 +568,9 @@ install_oc_linux() {
     local oc_file="openshift-client-linux"
     [[ "$oc_arch" == "aarch64" ]] && oc_file="${oc_file}-arm64-rhel9"
     oc_file="${oc_file}.tar.gz"
-    curl -sL "https://mirror.openshift.com/pub/openshift-v4/${oc_arch}/clients/ocp/stable/${oc_file}" \
+    # Strip the version prefix (openshift-clients-v) to get the OCP mirror version
+    local oc_version="${version#openshift-clients-v}"
+    curl -sL "https://mirror.openshift.com/pub/openshift-v4/${oc_arch}/clients/ocp/${oc_version}/${oc_file}" \
         -o "/tmp/${oc_file}"
     tar xzf "/tmp/${oc_file}" -C /tmp
     sudo mv /tmp/kubectl /usr/local/bin/
