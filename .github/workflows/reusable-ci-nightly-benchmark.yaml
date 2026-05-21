@@ -9,7 +9,7 @@ on:
         type: 'string'
         default: 'cicd'
       standup_method:
-        description: 'Standup method to be used ("standalone","fma","modelservice")'
+        description: 'Standup method to be used ("standalone","fma","modelservice","kustomize")'
         required: false
         type: 'string'
         default: 'standalone'
