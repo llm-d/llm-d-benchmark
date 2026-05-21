@@ -9,6 +9,9 @@
 scenario:
   - name: "gke-cicd"
 
+    gateway:
+      className: gke
+
     # GPU affinity for GKE H100
     affinity:
       enabled: true
