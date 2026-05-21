@@ -5,4 +5,3 @@ pandas>=3.0.3
 pydantic>=2.13.3
 PyYAML>=6.0.3
 scipy>=1.16.0
-kubernetes>=36.0.0
