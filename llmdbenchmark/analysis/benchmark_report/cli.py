@@ -15,7 +15,7 @@ import os
 import sys
 
 from . import make_json_schema
-from .base import WorkloadGenerator
+from llmdbenchmark_schema.base import WorkloadGenerator
 
 
 def main() -> None:

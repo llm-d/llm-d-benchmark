@@ -10,9 +10,9 @@ from typing import Any
 import yaml
 import numpy as np
 
-from .base import BenchmarkReport
-from .schema_v0_1 import BenchmarkReportV01
-from .schema_v0_2 import BenchmarkReportV02
+from llmdbenchmark_schema.base import BenchmarkReport
+from llmdbenchmark_schema.schema_v0_1 import BenchmarkReportV01
+from llmdbenchmark_schema.schema_v0_2 import BenchmarkReportV02
 
 
 def check_file(file_path: str) -> None:
