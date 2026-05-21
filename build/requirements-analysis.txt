@@ -1,5 +1,5 @@
 matplotlib>=3.10.9
-numpy>=2.4.4
+numpy>=2.4.6
 seaborn>=0.13.2
 pandas>=3.0.3
 pydantic>=2.13.3
