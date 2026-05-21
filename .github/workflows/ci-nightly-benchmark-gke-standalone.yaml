@@ -108,7 +108,6 @@ jobs:
       GKE_CLUSTER_NAME: llm-d-e2e-us-east5
       GKE_CLUSTER_ZONE: us-east5
       GATEWAY: gke-l7-regional-external-managed
-      USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
 
     steps:
       - name: Checkout Code
