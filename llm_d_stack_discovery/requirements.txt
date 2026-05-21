@@ -1,6 +1,6 @@
 kubernetes>=28.1.0
 pykube-ng>=23.6.0
-click>=8.1.0
+click>=8.4.0
 pyyaml>=6.0
 urllib3>=2.7.0
 # Required by the benchmark_report schema modules we import from
