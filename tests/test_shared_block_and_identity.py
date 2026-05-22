@@ -388,7 +388,7 @@ class TestPrintEndpointsTable:
 
     def _capturing_logger(self):
         lines: list[str] = []
-        logger = MagicMock = type("L", (), {})()
+        logger = MagicMock = type("L", (), {})() # noqa: F841
         logger.log_info = lambda msg: lines.append(str(msg))
         logger.log_warning = lambda msg: lines.append("WARN:" + str(msg))
         logger.log_plain = lambda msg: lines.append(str(msg))

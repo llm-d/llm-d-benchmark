@@ -9,7 +9,6 @@ from llmdbenchmark.executor.step import Step, StepResult, Phase
 from llmdbenchmark.executor.context import ExecutionContext
 from llmdbenchmark.executor.command import CommandExecutor
 from llmdbenchmark.kustomize.readme_parser import (
-    CommandPhase,
     parse_guide_readme,
 )
 from llmdbenchmark.kustomize.variable_resolver import GuideVariableResolver

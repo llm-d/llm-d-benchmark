@@ -214,7 +214,7 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
     helm_diff_line: int | None = None
 
     current_fn: str | None = None
-    current_fn_line: int = 0
+    current_fn_line: int = 0 # noqa: F841
     in_tvf: bool = False
     rel = install_sh_path.name
 
@@ -235,7 +235,7 @@ def parse_install_sh(install_sh_path: Path) -> list[Entry]:
         m = _INSTALL_FN_RE.match(raw)
         if m:
             current_fn = m.group("tool")
-            current_fn_line = i
+            current_fn_line = i # noqa: F841
             continue
 
         if current_fn:
