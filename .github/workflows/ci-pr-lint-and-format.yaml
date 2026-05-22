@@ -16,7 +16,7 @@ jobs:
       - name: Run Ruff Lint Check
         uses: astral-sh/ruff-action@v3
         with:
-          args: "check --diff --verbose --output-format=full --show-source"
+          args: "check --diff --verbose --output-format=full"
 
       # 2. Run Formatting Check (Fails if code isn't formatted, but won't modify any files)
       - name: Run Ruff Format Check
