@@ -2,10 +2,12 @@
 *
 
 # Allow only what the Dockerfile needs
+!install.sh
 !workload/harnesses/
 !llmdbenchmark/analysis/
 !llmdbenchmark/standup/preprocess/
 !build/
+!util/
 
 # Exclude Python cache directories
 **/__pycache__/

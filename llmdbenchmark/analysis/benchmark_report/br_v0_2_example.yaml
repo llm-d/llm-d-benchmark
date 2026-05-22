@@ -938,3 +938,53 @@ results:
           restarts: 0
           healthy: True
           logs: s3://path/to/logs/vllm.log
+
+  # Session-level metrics for multi-turn workloads (inference-perf only).
+  # Populated from *_session_lifecycle_metrics.json files; one report per stage.
+  session_performance:
+    sessions:
+      total: 112
+      succeeded: 110
+      failed: 2
+      total_events: 1340
+      total_events_completed: 1320
+      total_events_cancelled: 20
+      session_rate:
+        units: queries/s
+        mean: 2.24
+      session_duration:
+        units: s
+        mean: 48.3
+        min: 12.1
+        p50: 47.9
+        p90: 61.2
+        p99: 74.5
+        max: 80.1
+      events_per_session:
+        units: count
+        mean: 11.96
+        min: 1.0
+        p50: 12.0
+        p99: 20.0
+        max: 20.0
+      events_cancelled_per_session:
+        units: count
+        mean: 0.18
+        min: 0.0
+        p50: 0.0
+        p99: 2.0
+        max: 3.0
+      input_tokens_per_session:
+        units: count
+        mean: 25612.4
+        min: 2148.0
+        p50: 25400.0
+        p99: 43020.0
+        max: 46900.0
+      output_tokens_per_session:
+        units: count
+        mean: 11800.2
+        min: 980.0
+        p50: 11700.0
+        p99: 20100.0
+        max: 22000.0

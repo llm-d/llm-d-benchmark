@@ -3,14 +3,50 @@ name: CI - Nightly Run Benchmark on OCP ("Modelservice" standup method)
 on:
   workflow_dispatch:
     inputs:
-      input_dir:
-        description: 'Input directory for benchmark results'
+      scenario_dir:
+        description: 'Directory housing the scenarios'
         required: false
-        default: '/tmp/cicd/analysis'
-      output_dir:
-        description: 'Output directory name (S3 prefix and artifact name)'
+        default: 'cicd'
+      standup_method:
+        description: 'Standup method to be used ("standalone","fma","modelservice")'
         required: false
-        default: ''
+        default: 'modelservice'
+      cluster_provider:
+        description: 'Cluster provider targeted ("ocp","gke","cks")'
+        required: false
+        default: 'ocp'
+      cluster_namespace:
+        description: 'Cluster namespace'
+        required: false
+        default: 'llmdbenchcicdmns-ocp'
+      helm_release:
+        description: 'Helm release name (for modelservice)'
+        required: false
+        default: 'lmdbenchcicdr-ocp'
+      workspace_dir:
+        description: 'Workspace directory'
+        required: false
+        default: '/tmp/llmdbenchcicdm-ocp'
+      bucket_project:
+        description: 'Project associated to the object storage bucket'
+        required: false
+        default: 'llm-d-scale'
+      bucket_provider:
+        description: 'Type (provider of) the bucket'
+        required: false
+        default: 'gcs'
+      bucket_path:
+        description: 'Path to object storage bucket'
+        required: false
+        default: 'llm-d-benchmarks/regressions'
+      gateway_class:
+        description: 'Class of gateway used ("istio", "agentgateway", "epponly", "none")'
+        required: false
+        default: 'istio'
+      dry_run:
+        description: 'Execute workflow in "dry-run" mode ("true", "false")'
+        required: false
+        default: 'false'
 
 #  push:
 #    branches:
@@ -20,147 +56,8 @@ on:
     - cron: '0 0 * * *'  # Daily at midnight UTC
 
 jobs:
-  ensure-nightly-build-image:
-    name: Ensure Nightly Build  Image
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y skopeo yq
-
-      - name: Ensure image is already built
-        run: |
-          IMAGE="ghcr.io/llm-d/llm-d-benchmark:nightly"
-          POLL=30
-          while true; do
-            creation_date=$(skopeo inspect docker://${IMAGE} | yq -r .Created) && \
-            creation_ts=$(date -d "${creation_date}" +"%s")
-            current_ts=$(date +%s) && \
-            image_age=$((current_ts - creation_ts))
-            if [[ $image_age -gt 86400 ]]; then
-              echo "Current image \"${IMAGE}\" is too old (${image_age}s). Waiting $POLL seconds and trying again..."
-              sleep $POLL
-            else
-              echo "Current image \"${IMAGE}\" is recent enough (${image_age}s)."
-              exit 0
-            fi
-          done
-        shell: bash
-
-  benchmark-ocp-modelservice:
-    name: Benchmark - ModelService (OCP)
-    runs-on: [self-hosted, openshift, pok-prod]
-    needs: [ensure-nightly-build-image]
-    timeout-minutes: 240
-
-    env:
-      LLMDBENCH_CICD_NS: llmdbenchcicdmns-ocp
-      LLMDBENCH_CICD_R: llmdbenchcicdr-ocp
-      LLMDBENCH_CICD_SCENARIO_DIR: cicd
-      LLMDBENCH_CICD_TARGET: ocp
-      LLMDBENCH_CICD_METHOD: modelservice
-      LLMDBENCH_WORKSPACE: /tmp/llmdbenchcicdm-ocp
-      LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
-      GCS_PATH: llm-d-benchmarks/regressions
-      GCP_PROJECT_ID: llm-d-scale
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Set up kubeconfig from secret
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-        shell: bash
-
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
-        with:
-          credentials_json: ${{ secrets.GKE_SA_KEY }}
-
-      - name: Set up gcloud CLI and kubectl
-        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
-        with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-          install_components: 'kubectl,gke-gcloud-auth-plugin'
-
-      - name: Install oc (optional on install.sh)
-        run: |
-          # Install oc (OpenShift CLI) — optional on install.sh
-          if ! command -v oc &>/dev/null; then
-            curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
-              "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz"
-            mkdir -p /tmp/oc-extract
-            tar -xzf /tmp/openshift-client-linux.tar.gz -C /tmp/oc-extract
-            sudo mv /tmp/oc-extract/oc /usr/local/bin/
-            sudo mv /tmp/oc-extract/kubectl /usr/local/bin/
-            sudo chmod +x /usr/local/bin/oc
-            sudo chmod +x /usr/local/bin/kubectl
-            rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
-          fi
-
-      - name: Install llmdbenchmark
-        run: |
-          ./install.sh -y 2>&1
-          sudo cp util/debug_info_on_failure.sh /usr/local/bin
-        shell: bash
-
-      - name: Cleanup target cloud
-        run: |
-            llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
-            kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
-        shell: bash
-
-      - name: Standup
-        run: |
-          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" standup -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
-        shell: bash
-
-      - name: Debug info (on failure)
-        if: failure()
-        run: |
-          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
-        shell: bash
-
-      - name: Run
-        run: |
-          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" run -p "$LLMDBENCH_CICD_NS" -t "$LLMDBENCH_CICD_METHOD"
-        shell: bash
-
-      - name: Teardown
-        if: always()
-        run: |
-          llmdbenchmark --spec "$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET" teardown -p "$LLMDBENCH_CICD_NS" -r "$LLMDBENCH_CICD_R" -t "$LLMDBENCH_CICD_METHOD"
-          kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
-        shell: bash
-
-      - name: Debug info (on failure)
-        if: failure()
-        run: |
-          /usr/local/bin/debug_info_on_failure.sh "$LLMDBENCH_CICD_NS"
-        shell: bash
-
-      - name: Upload results to GCS
-        run: |
-          REG_PROVIDER=$(basename "$LLMDBENCH_CICD_TARGET")
-          REG_METHOD=$LLMDBENCH_CICD_METHOD
-          RUN_DATE=$(date +'%Y-%m-%d')
-          cd "$LLMDBENCH_WORKSPACE"
-          REG_RESULTS=$(find . -name results | sed "s^/results$^^g" | cut -d '/' -f 2)
-          gcloud storage cp -r $REG_RESULTS/ "gs://llm-d-benchmarks/regressions/$REG_PROVIDER/$REG_METHOD/$RUN_DATE/" || true
-        shell: bash
+  nightly:
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
 
 #      - name: Install AWS CLI
 #        run: |
