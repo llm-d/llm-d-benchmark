@@ -8,8 +8,8 @@
 > `auto` Helm/image versions are resolved against live registries at
 > generation time via the existing `VersionResolver`.
 
-- Generated at: `2026-05-22 03:36:09` (UTC)
-- Generated against git ref: `e29225aff9b5052cb1f12dcdc8fd1df5c80c8469`
+- Generated at: `2026-05-20 18:14:02` (UTC)
+- Generated against git ref: `c678bc0349b2cabc36447f0ca44f365cbf1b2457`
 
 ## System Tool Dependencies
 
@@ -141,7 +141,7 @@ annotated with their `pyproject.toml` line.
 | **google-resumable-media** | `2.9.0` | version | (transitive in `.venv`) | [google-resumable-media (PyPI)](https://pypi.org/project/google-resumable-media/) |
 | **googleapis-common-protos** | `1.75.0` | version | (transitive in `.venv`) | [googleapis-common-protos (PyPI)](https://pypi.org/project/googleapis-common-protos/) |
 | **h11** | `0.16.0` | version | (transitive in `.venv`) | [h11 (PyPI)](https://pypi.org/project/h11/) |
-| **hf-xet** | `1.5.0` | version | (transitive in `.venv`) | [hf-xet (PyPI)](https://pypi.org/project/hf-xet/) |
+| **hf-xet** | `1.4.3` | version | (transitive in `.venv`) | [hf-xet (PyPI)](https://pypi.org/project/hf-xet/) |
 | **httpcore** | `1.0.9` | version | (transitive in `.venv`) | [httpcore (PyPI)](https://pypi.org/project/httpcore/) |
 | **httptools** | `0.7.1` | version | (transitive in `.venv`) | [httptools (PyPI)](https://pypi.org/project/httptools/) |
 | **httpx** | `0.28.1` | version | (transitive in `.venv`) | [httpx (PyPI)](https://pypi.org/project/httpx/) |
@@ -202,6 +202,7 @@ annotated with their `pyproject.toml` line.
 | **rich** | `14.3.3` | version | (transitive in `.venv`) | [rich (PyPI)](https://pypi.org/project/rich/) |
 | **safetensors** | `0.7.0` | version | (transitive in `.venv`) | [safetensors (PyPI)](https://pypi.org/project/safetensors/) |
 | **scipy** | `1.17.1` | version | (transitive in `.venv`) | [scipy (PyPI)](https://pypi.org/project/scipy/) |
+| **seaborn** | `0.13.2` | version | (transitive in `.venv`) | [seaborn (PyPI)](https://pypi.org/project/seaborn/) |
 | **shellingham** | `1.5.4` | version | (transitive in `.venv`) | [shellingham (PyPI)](https://pypi.org/project/shellingham/) |
 | **six** | `1.17.0` | version | (transitive in `.venv`) | [six (PyPI)](https://pypi.org/project/six/) |
 | **smmap** | `5.0.2` | version | (transitive in `.venv`) | [smmap (PyPI)](https://pypi.org/project/smmap/) |

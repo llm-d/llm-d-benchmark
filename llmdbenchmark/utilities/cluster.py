@@ -316,7 +316,7 @@ def _kube_api_connect(context: ExecutionContext) -> None:
 
     try:
         api = client.ApisApi(api_client)
-        groups = api.get_api_versions()
+        groups = api.get_api_versions() # noqa: F841
     except Exception as exc:
         raise RuntimeError(
             f"Cluster is unreachable: {exc}. "

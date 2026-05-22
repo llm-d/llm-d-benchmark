@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from llmdbenchmark.executor.protocols import LoggerProtocol
-from llmdbenchmark.executor.step import Phase
 
 if TYPE_CHECKING:
     from llmdbenchmark.executor.command import CommandExecutor
@@ -34,7 +33,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
     dry_run: bool = False
     verbose: bool = False
     non_admin: bool = False
-    current_phase: Phase = Phase.STANDUP
+    current_phase: Any = None  # Phase enum, set at runtime to avoid circular import
     deep_clean: bool = False  # teardown: wipe all resources in namespaces
     release: str = "llmdbench"  # Helm release name prefix
 
