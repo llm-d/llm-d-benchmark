@@ -152,10 +152,10 @@ repos:
       - id: ruff-check
         args: [--fix]
         name: Lint code check
-        stages: [manual]
+        stages: [pre-commit]
 
       # Run the formatter
       - id: ruff-format
         args: [] # Add the --diff arg if you only want to see what changes would be made
         name: Format code
-        stages: [manual]
+        stages: [pre-commit]
