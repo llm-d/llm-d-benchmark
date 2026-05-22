@@ -1112,7 +1112,10 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
     results = import_yaml(results_file)
 
     # Get stage number from metrics filename
-    stage = int(results_file.rsplit("stage_")[-1].split("_", 1)[0])
+    try:
+        stage = int(results_file.rsplit("stage_")[-1].split("_", 1)[0])
+    except (ValueError, IndexError):
+        stage = 0
 
     # Get environment variables from llm-d-benchmark run as a dict following the
     # schema of BenchmarkReportV02
@@ -1167,7 +1170,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                         "stage": stage,
                         "rate_qps": get_nested(
                             results, ["load_summary", "requested_rate"]
-                        ),
+                        ) or None,
                         "concurrency": get_nested(
                             results, ["load_summary", "concurrency"]
                         ),
@@ -1913,6 +1916,121 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
         {
             "results": {
                 "request_performance": {"aggregate": aggregate},
+            },
+        },
+    )
+
+    return load_benchmark_report(br_dict)
+
+
+def import_inference_perf_session(results_file: str) -> BenchmarkReportV02:
+    """Import data from an Inference Perf session lifecycle file as a BenchmarkReportV02.
+
+    Args:
+        results_file (str): Session lifecycle results file to import.
+
+    Returns:
+        BenchmarkReportV02: Imported data.
+    """
+    check_file(results_file)
+
+    results = import_yaml(results_file)
+
+    # Get stage number from metrics filename
+    try:
+        stage = int(results_file.rsplit("stage_")[-1].split("_", 1)[0])
+    except (ValueError, IndexError):
+        stage = 0
+
+    # Get environment variables from llm-d-benchmark run as a dict following the
+    # schema of BenchmarkReportV02
+    br_dict = _populate_benchmark_report_from_envars()
+
+    config = get_nested(br_dict, ["scenario", "load", "native", "config"], {})
+    cfg_id = config_hash(config)
+
+    def _stats(raw: dict | None, units: Units) -> dict | None:
+        if raw is None:
+            return None
+        return {
+            "units": units,
+            "mean": raw.get("mean"),
+            "min": raw.get("min"),
+            "p0p1": raw.get("p0.1"),
+            "p1": raw.get("p1"),
+            "p5": raw.get("p5"),
+            "p10": raw.get("p10"),
+            "p25": raw.get("p25"),
+            "p50": raw.get("median"),
+            "p75": raw.get("p75"),
+            "p90": raw.get("p90"),
+            "p95": raw.get("p95"),
+            "p99": raw.get("p99"),
+            "p99p9": raw.get("p99.9"),
+            "max": raw.get("max"),
+        }
+
+    sessions_per_second = results.get("sessions_per_second")
+    session_rate = None
+    if sessions_per_second is not None:
+        session_rate = {
+            "units": Units.QUERY_PER_S,
+            "mean": sessions_per_second,
+        }
+
+    update_dict(
+        br_dict,
+        {
+            "scenario": {
+                "load": {
+                    "metadata": {
+                        "schema_version": "0.0.1",
+                        "cfg_id": cfg_id,
+                    },
+                    "standardized": {
+                        "tool": WorkloadGenerator.INFERENCE_PERF,
+                        "stage": stage,
+                        "source": LoadSource.UNKNOWN,
+                        "input_seq_len": {
+                            "distribution": Distribution.OTHER,
+                            "value": get_nested(
+                                results, ["total_input_tokens", "mean"], 0
+                            ),
+                        },
+                        "multi_turn": {"enabled": True},
+                    },
+                    "native": {
+                        "config": config,
+                    },
+                },
+            },
+            "results": {
+                "session_performance": {
+                    "sessions": {
+                        "total": results.get("num_sessions", 0),
+                        "succeeded": results.get("num_sessions_succeeded"),
+                        "failed": results.get("num_sessions_failed"),
+                        "total_events": results.get("total_events"),
+                        "total_events_completed": results.get("total_events_completed"),
+                        "total_events_cancelled": results.get("total_events_cancelled"),
+                        "session_rate": session_rate,
+                        "session_duration": _stats(
+                            results.get("session_duration_sec"), Units.S
+                        ),
+                        "events_per_session": _stats(
+                            results.get("num_events"), Units.COUNT
+                        ),
+                        "events_cancelled_per_session": _stats(
+                            results.get("num_events_cancelled"), Units.COUNT
+                        ),
+                        "input_tokens_per_session": _stats(
+                            results.get("total_input_tokens"), Units.COUNT
+                        ),
+                        "output_tokens_per_session": _stats(
+                            results.get("total_output_tokens"), Units.COUNT
+                        ),
+                    },
+                },
             },
         },
     )

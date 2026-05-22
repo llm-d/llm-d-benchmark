@@ -134,7 +134,7 @@ class StandaloneDeployStep(Step):
             pass
 
         if deploy_name and not errors:
-            replicas = int(
+            replicas = int( # noqa: F841
                 self._require_config(plan_config, "standalone", "replicas")
             )
 

@@ -185,7 +185,7 @@ metadata:
             return
 
         hf_token_name = self._require_config(plan_config, "huggingface", "secretName")
-        hf_token_key = self._require_config(plan_config, "huggingface", "tokenKey")
+        hf_token_key = self._require_config(plan_config, "huggingface", "tokenKey") # noqa: F841
 
         check = cmd.kube(
             "get", "secret", hf_token_name,
@@ -212,7 +212,7 @@ metadata:
                     secret_doc["metadata"].pop("resourceVersion", None)
                     secret_doc["metadata"].pop("uid", None)
                     secret_doc["metadata"].pop("creationTimestamp", None)
-                    managed = secret_doc["metadata"].pop("managedFields", None)
+                    managed = secret_doc["metadata"].pop("managedFields", None) # noqa: F841
 
                     yaml_path = (
                         context.setup_yamls_dir() / "harness-hf-secret.yaml"

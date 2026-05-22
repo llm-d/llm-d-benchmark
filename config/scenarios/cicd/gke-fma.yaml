@@ -5,6 +5,9 @@
 scenario:
   - name: "gke-cicd"
 
+    gateway:
+      className: gke
+
     affinity:
       enabled: true
       nodeSelector:
