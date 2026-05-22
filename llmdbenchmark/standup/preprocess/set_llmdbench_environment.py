@@ -78,7 +78,7 @@ _parser.add_option("-i" , "--initcontainermode", \
 _parser.add_option("-o" , "--omitenvvars", \
                     dest="omitenvvars", \
                     default="", \
-                    help="List of environment variables which should be ommitted")
+                    help="List of environment variables which should be omitted")
 
 _parser.set_defaults()
 (options, _args) = _parser.parse_args()
