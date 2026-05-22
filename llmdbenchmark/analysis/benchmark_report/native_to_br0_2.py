@@ -1170,7 +1170,7 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
                         "stage": stage,
                         "rate_qps": get_nested(
                             results, ["load_summary", "requested_rate"]
-                        ),
+                        ) or None,
                         "concurrency": get_nested(
                             results, ["load_summary", "concurrency"]
                         ),

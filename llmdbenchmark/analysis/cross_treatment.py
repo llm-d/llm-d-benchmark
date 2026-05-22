@@ -163,7 +163,7 @@ def generate_cross_treatment_summary(
                 report, "results.request_performance.aggregate.requests.output_length.mean"
             )
             row["tool"] = deep_get(report, "scenario.load.standardized.tool", "")
-            row["rate_qps"] = deep_get(report, "scenario.load.standardized.rate_qps", "")
+            row["rate_qps"] = deep_get(report, "scenario.load.standardized.rate_qps", "") or ""
 
             rows.append(row)
 
