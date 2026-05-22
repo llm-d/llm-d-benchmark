@@ -21,7 +21,8 @@ The harness entrypoint script (`llm-d-benchmark.sh` by default) orchestrates in-
 4. **Benchmark report generation** -- Converts harness-native results into v0.2 benchmark report YAML/JSON.
 
 The in-container analysis produces:
-- Benchmark report v0.1 and v0.2 (YAML + JSON)
+- Benchmark report v0.1 and v0.2 (YAML + JSON) — one report per stage file
+- For `inference-perf` multi-turn workloads: additional benchmark reports from `*_session_lifecycle_metrics.json` files, with `results.session_performance` populated
 - Processed metrics summaries (`metrics/processed/`)
 - Harness-native analysis output (varies by harness)
 - `per_request_lifecycle_metrics.json` (per-request raw data, if supported by the harness)
@@ -64,20 +65,40 @@ Reads `per_request_lifecycle_metrics.json` and generates distribution plots for 
 
 Each histogram includes vertical lines marking the mean, P50 (median), and P99 values for quick reference.
 
-### 3. Cross-Treatment Comparison
+### 3. Session Lifecycle Plots (inference-perf)
+
+**Module:** `llmdbenchmark/analysis/__init__.py` (`_run_session_plots`)
+
+For `inference-perf` runs, reads all `benchmark_report_v0.2,_*_session_lifecycle_metrics.json.yaml` files in the results directory and generates per-stage bar charts. This is skipped automatically for harnesses other than `inference-perf`.
+
+**Generated plots** (saved to `<results_dir>/analysis/session/`):
+
+| Plot | Description |
+|------|-------------|
+| `session_session_rate_qps.png` | Session completion rate per stage (sessions/s) |
+| `session_session_duration_mean_s.png` | Mean session wall-clock duration per stage |
+| `session_session_duration_p99_s.png` | P99 session duration per stage |
+| `session_events_per_session_mean.png` | Mean event (request) count per session per stage |
+| `session_events_cancelled_per_session_mean.png` | Mean cancelled event count per session per stage |
+| `session_output_tokens_per_session_mean.png` | Mean output tokens per session per stage |
+| `session_failed_sessions.png` | Failed session count per stage |
+
+### 4. Cross-Treatment Comparison
 
 **Module:** `llmdbenchmark/analysis/cross_treatment.py`
 
 When multiple treatments were executed (via `--experiments`), this module reads the v0.2 benchmark report from each treatment's result directory and produces:
 
-- **`treatment_comparison.csv`** -- One row per treatment with key metrics (TTFT, TPOT, ITL, E2E latency stats, throughput, request counts). See [Benchmark Report](benchmark_report.md#cross-treatment-comparison-csv) for the full column list.
+- **`treatment_comparison.csv`** -- One row per treatment with key metrics (TTFT, TPOT, ITL, E2E latency stats, throughput, request counts, and session metrics when available). See [Benchmark Report](benchmark_report.md#cross-treatment-comparison-csv) for the full column list.
 - **Bar charts** -- Side-by-side bars comparing aggregate metrics across treatments.
+- **Session comparison bar charts** -- Side-by-side bars comparing session lifecycle metrics across treatments, with error bars showing min/max across stages. Generated only when at least two treatments have session data.
+- **Session scatter plots** -- Line/scatter plots showing relationships between session rate and session duration, events per session, and output tokens per session across treatments.
 - **Latency vs throughput curves** -- Scatter/line plots showing the latency-throughput trade-off.
 - **Overlaid CDFs** -- CDF plots from per-request data overlaid across treatments for direct comparison.
 
 Output is saved to `<results_dir>/cross-treatment-comparison/`.
 
-### 4. Prometheus Metric Visualization
+### 5. Prometheus Metric Visualization
 
 **Module:** `llmdbenchmark/analysis/visualize_metrics.py`
 
@@ -107,8 +128,9 @@ After a full analysis run, the results directory contains:
 ```text
 <results_dir>/
     <treatment_1>/
-        benchmark_report_v0.2.yaml
-        benchmark_report_v0.2.json
+        benchmark_report,_stage_<N>_lifecycle_metrics.json.yaml         # per-stage request report (v0.1)
+        benchmark_report_v0.2,_stage_<N>_lifecycle_metrics.json.yaml    # per-stage request report (v0.2)
+        benchmark_report_v0.2,_stage_<N>_session_lifecycle_metrics.json.yaml  # session report (inference-perf multi-turn)
         per_request_lifecycle_metrics.json
         metrics/
             raw/          # Timestamped Prometheus scrapes
@@ -116,9 +138,12 @@ After a full analysis run, the results directory contains:
         analysis/
             distributions/   # Per-request histograms and CDFs
             metrics/         # Prometheus time series plots
+            session/         # Per-stage session lifecycle bar charts (inference-perf only)
     <treatment_2>/
         ...
     cross-treatment-comparison/
         treatment_comparison.csv
-        <comparison_plots>.png
+        <comparison_plots>.png          # Aggregate metric comparisons
+        session_compare_<metric>.png    # Session metric comparisons (when session data present)
+        session_scatter_<x>_vs_<y>.png  # Session metric scatter plots
 ```

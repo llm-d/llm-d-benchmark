@@ -43,8 +43,21 @@ METRICS_OF_INTEREST = [
     ("results.request_performance.aggregate.requests.failures", "failures"),
 ]
 
+SESSION_METRICS_OF_INTEREST = [
+    ("results.session_performance.sessions.session_rate.mean", "session_rate_qps"),
+    ("results.session_performance.sessions.session_duration.mean", "session_duration_mean_s"),
+    ("results.session_performance.sessions.session_duration.p50", "session_duration_p50_s"),
+    ("results.session_performance.sessions.session_duration.p99", "session_duration_p99_s"),
+    ("results.session_performance.sessions.events_per_session.mean", "events_per_session_mean"),
+    ("results.session_performance.sessions.events_cancelled_per_session.mean", "events_cancelled_per_session_mean"),
+    ("results.session_performance.sessions.input_tokens_per_session.mean", "input_tokens_per_session_mean"),
+    ("results.session_performance.sessions.output_tokens_per_session.mean", "output_tokens_per_session_mean"),
+    ("results.session_performance.sessions.total", "total_sessions"),
+    ("results.session_performance.sessions.failed", "failed_sessions"),
+]
 
-def _deep_get(d: dict, dotted_key: str, default=None):
+
+def deep_get(d: dict, dotted_key: str, default=None):
     """Traverse nested dict by dotted key path."""
     keys = dotted_key.split(".")
     for k in keys:
@@ -135,18 +148,22 @@ def generate_cross_treatment_summary(
             row: dict = {"treatment": subdir.name, "source_file": br_file.name}
 
             for dotted_path, col_name in METRICS_OF_INTEREST:
-                value = _deep_get(report, dotted_path)
+                value = deep_get(report, dotted_path)
+                row[col_name] = value
+
+            for dotted_path, col_name in SESSION_METRICS_OF_INTEREST:
+                value = deep_get(report, dotted_path)
                 row[col_name] = value
 
             # Extract workload metadata
-            row["input_len_mean"] = _deep_get(
+            row["input_len_mean"] = deep_get(
                 report, "results.request_performance.aggregate.requests.input_length.mean"
             )
-            row["output_len_mean"] = _deep_get(
+            row["output_len_mean"] = deep_get(
                 report, "results.request_performance.aggregate.requests.output_length.mean"
             )
-            row["tool"] = _deep_get(report, "scenario.load.standardized.tool", "")
-            row["rate_qps"] = _deep_get(report, "scenario.load.standardized.rate_qps", "")
+            row["tool"] = deep_get(report, "scenario.load.standardized.tool", "")
+            row["rate_qps"] = deep_get(report, "scenario.load.standardized.rate_qps", "") or ""
 
             rows.append(row)
 
@@ -156,9 +173,12 @@ def generate_cross_treatment_summary(
 
     # Write CSV summary
     csv_path = output_dir / "treatment_comparison.csv"
-    fieldnames = ["treatment", "source_file"] + [m[1] for m in METRICS_OF_INTEREST] + [
-        "input_len_mean", "output_len_mean", "tool", "rate_qps",
-    ]
+    fieldnames = (
+        ["treatment", "source_file"]
+        + [m[1] for m in METRICS_OF_INTEREST]
+        + [m[1] for m in SESSION_METRICS_OF_INTEREST]
+        + ["input_len_mean", "output_len_mean", "tool", "rate_qps"]
+    )
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
@@ -168,6 +188,9 @@ def generate_cross_treatment_summary(
 
     # Generate comparison plots (aggregate)
     plot_count = _generate_comparison_plots(rows, output_dir, context)
+
+    # Generate session comparison plots
+    plot_count += _generate_session_comparison_plots(rows, output_dir, context)
 
     # Generate overlaid per-request CDF plots across treatments
     plot_count += _generate_overlaid_cdf_plots(results_dir, output_dir, context)
@@ -307,6 +330,215 @@ def _generate_comparison_plots(
 
     if generated:
         _log(context, f"Generated {generated} comparison plot(s) in {output_dir}")
+
+    return generated
+
+
+def _generate_session_comparison_plots(
+    rows: list[dict],
+    output_dir: Path,
+    context: "ExecutionContext | None" = None,
+) -> int:
+    """Generate bar charts for session lifecycle metrics across treatments."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        _log(context, "matplotlib not available -- skipping session comparison plots")
+        return 0
+
+    # Only process rows that have at least one session metric populated
+    session_rows = [r for r in rows if any(r.get(col) is not None for _, col in SESSION_METRICS_OF_INTEREST)]
+    if not session_rows:
+        return 0
+
+    if len({_shorten_treatment_label(r["treatment"]) for r in session_rows}) < 2:
+        _log(context, "Only 1 treatment with session data -- skipping session comparison plots")
+        return 0
+
+    # (column_name, title, unit, higher_is_better)
+    plot_specs = [
+        ("session_rate_qps", "Session Rate", "sessions/s", True),
+        ("session_duration_mean_s", "Session Duration (Mean)", "seconds", False),
+        ("session_duration_p99_s", "Session Duration P99", "seconds", False),
+        ("events_per_session_mean", "Events per Session (Mean)", "count", True),
+        ("events_cancelled_per_session_mean", "Cancelled Events per Session (Mean)", "count", False),
+        ("output_tokens_per_session_mean", "Output Tokens per Session (Mean)", "tokens", True),
+        ("failed_sessions", "Failed Sessions", "count", False),
+    ]
+
+    bar_colors = [
+        "#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12",
+        "#1abc9c", "#e67e22", "#34495e", "#16a085", "#c0392b",
+    ]
+
+    from collections import defaultdict
+    treatment_values: dict[str, list[dict]] = defaultdict(list)
+    for r in session_rows:
+        label = _shorten_treatment_label(r["treatment"])
+        treatment_values[label].append(r)
+
+    treatment_labels = sorted(treatment_values.keys())
+
+    generated = 0
+
+    for col_name, title, unit, higher_is_better in plot_specs:
+        means = []
+        mins = []
+        maxs = []
+        has_data = False
+
+        for label in treatment_labels:
+            vals = [
+                float(r[col_name]) for r in treatment_values[label]
+                if r.get(col_name) is not None
+            ]
+            if vals:
+                has_data = True
+                m = sum(vals) / len(vals)
+                means.append(m)
+                mins.append(m - min(vals))
+                maxs.append(max(vals) - m)
+            else:
+                means.append(0.0)
+                mins.append(0.0)
+                maxs.append(0.0)
+
+        if not has_data:
+            continue
+
+        fig, ax = plt.subplots(figsize=(max(8, len(treatment_labels) * 1.5), 5))
+        colors = [bar_colors[i % len(bar_colors)] for i in range(len(treatment_labels))]
+
+        non_zero_means = [m for m in means if m > 0]
+        if non_zero_means:
+            best_idx = means.index(max(non_zero_means) if higher_is_better else min(non_zero_means))
+            colors[best_idx] = "#2ecc71"
+
+        x_pos = range(len(treatment_labels))
+        bars = ax.bar(
+            x_pos, means, color=colors, alpha=0.85,
+            yerr=[mins, maxs], capsize=4, error_kw={"linewidth": 1.5},
+        )
+
+        offset = max(maxs) * 0.02 if max(maxs) > 0 else max(means, default=0) * 0.02
+        for bar, val in zip(bars, means):
+            text = f"{val:.4f}" if val < 10 else f"{val:.1f}"
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + offset,
+                text, ha="center", va="bottom", fontsize=8, fontweight="bold",
+            )
+
+        for i, label in enumerate(treatment_labels):
+            n_stages = len(treatment_values[label])
+            ax.text(i, 0, f"n={n_stages}", ha="center", va="bottom", fontsize=7, color="gray")
+
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(treatment_labels, rotation=30, ha="right", fontsize=9)
+        ax.set_ylabel(unit)
+        ax.set_title(f"{title}\n(mean across stages, error bars = min/max)")
+        ax.grid(axis="y", alpha=0.3)
+
+        plt.tight_layout()
+        plot_path = output_dir / f"session_compare_{col_name}.png"
+        plt.savefig(str(plot_path), dpi=150)
+        plt.close()
+        generated += 1
+
+    # Session rate vs session duration scatter
+    generated += _generate_session_scatter_plots(session_rows, output_dir, context)
+
+    if generated:
+        _log(context, f"Generated {generated} session comparison plot(s) in {output_dir}")
+
+    return generated
+
+
+def _generate_session_scatter_plots(
+    rows: list[dict],
+    output_dir: Path,
+    context: "ExecutionContext | None" = None,
+) -> int:
+    """Generate scatter plots for session metric relationships across treatments."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return 0
+
+    if len(rows) < 2:
+        return 0
+
+    import re
+
+    def _sort_key(row):
+        nums = re.findall(r"\d+", row.get("treatment", ""))
+        return int(nums[-1]) if nums else 0
+
+    sorted_rows = sorted(rows, key=_sort_key)
+
+    # (x_col, y_col, title, x_label, y_label)
+    scatter_specs = [
+        (
+            "session_rate_qps", "session_duration_mean_s",
+            "Session Duration vs Session Rate",
+            "Session Rate (sessions/s)", "Session Duration Mean (s)",
+        ),
+        (
+            "session_rate_qps", "events_per_session_mean",
+            "Events per Session vs Session Rate",
+            "Session Rate (sessions/s)", "Events per Session (mean)",
+        ),
+        (
+            "session_rate_qps", "output_tokens_per_session_mean",
+            "Output Tokens per Session vs Session Rate",
+            "Session Rate (sessions/s)", "Output Tokens per Session (mean)",
+        ),
+    ]
+
+    colors = [
+        "#e74c3c", "#3498db", "#2ecc71", "#9b59b6", "#f39c12",
+        "#1abc9c", "#e67e22", "#34495e", "#16a085", "#c0392b",
+    ]
+    markers = ["o", "s", "^", "D", "v", "P", "*", "X", "h", "p"]
+
+    generated = 0
+
+    for x_col, y_col, title, x_label, y_label in scatter_specs:
+        treatment_points: dict[str, list[tuple[float, float]]] = {}
+        for r in sorted_rows:
+            x = r.get(x_col)
+            y = r.get(y_col)
+            if x is None or y is None:
+                continue
+            label = _shorten_treatment_label(r["treatment"])
+            treatment_points.setdefault(label, []).append((float(x), float(y)))
+
+        total_points = sum(len(pts) for pts in treatment_points.values())
+        if total_points < 2:
+            continue
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        for i, (label, points) in enumerate(sorted(treatment_points.items())):
+            xs, ys = zip(*points)
+            ax.plot(xs, ys, f"{markers[i % len(markers)]}-",
+                    color=colors[i % len(colors)], markersize=8,
+                    linewidth=2, alpha=0.8, label=label)
+
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        ax.set_title(title)
+        ax.legend(fontsize=8, loc="best")
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        plot_path = output_dir / f"session_scatter_{x_col}_vs_{y_col}.png"
+        plt.savefig(str(plot_path), dpi=150)
+        plt.close()
+        generated += 1
 
     return generated
 
