@@ -510,13 +510,13 @@ env_file_contents.append("#!/usr/bin/env bash")
 
 env_file_contents.append("source /etc/os-release")
 env_file_contents.append("which ip")
-env_file_contents.append('if [ $? -ne 0 && $ID == "ubuntu" ]; then')
+env_file_contents.append('if [[ $? -ne 0 && $ID == "ubuntu" ]]; then')
 env_file_contents.append("  apt-get update && apt install -y iproute2")
 env_file_contents.append("fi")
 
 if nccl_list:
     env_file_contents.append("which ibstat")
-    env_file_contents.append('if [ $? -ne 0 && $ID == "ubuntu" ]; then')
+    env_file_contents.append('if [[ $? -ne 0 && $ID == "ubuntu" ]]; then')
     env_file_contents.append("  apt-get update && apt install -y infiniband-diags")
     env_file_contents.append("fi")
 
