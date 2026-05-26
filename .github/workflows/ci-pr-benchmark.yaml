@@ -32,215 +32,59 @@ jobs:
   # -- Standalone deployment (own Kind cluster) --
   benchmark-standalone:
     name: Benchmark - Standalone (Kind)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: unit-tests
-
-    env:
-      NS: llmdbenchcicd-sa-${{ github.event.number }}
-      LLMDBENCH_WORKSPACE: /tmp/cicd-sa-${{ github.event.number }}
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Create Kind cluster
-        uses: helm/kind-action@v1
-        with:
-          version: v0.31.0
-
-      - name: Label node for simulated accelerators
-        run: |
-          NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
-          echo "Labeling node: $NODE"
-          kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
-
-      - name: Install llmdbenchmark
-        run: |
-          ./install.sh -y 2>&1
-          cp util/debug_info_on_failure.sh /usr/local/bin
-        shell: bash
-
-      - name: Standup (standalone)
-        run: |
-          llmdbenchmark --spec cicd/kind-sim standup -p "$NS" -t standalone --skip-smoketest
-
-      - name: Debug standup (standalone, on failure)
-        if: failure()
-        run: |
-          /usr/local/bin/debug_info_on_failure.sh "$NS"
-        shell: bash
-
-      - name: Smoketest (standalone)
-        run: |
-          llmdbenchmark --spec cicd/kind-sim smoketest -p "$NS" -t standalone || true
-
-      - name: Run harness (standalone)
-        run: |
-          llmdbenchmark --spec cicd/kind-sim run -p "$NS" -t standalone \
-            -l inference-perf -w sanity_random.yaml
-
-      - name: Teardown (standalone)
-        if: always()
-        run: |
-          llmdbenchmark --spec cicd/kind-sim teardown -p "$NS" -t standalone || true
-
-      - name: Debug teardown (standalone, on failure)
-        if: failure()
-        run: |
-          /usr/local/bin/debug_info_on_failure.sh "$NS"
-        shell: bash
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: cicd
+      standup_method: standalone
+      cluster_provider: kind
+      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
+      helm_release: lmdbenchcicdr
+      workspace_dir: tmp/cicd-sa-${{ github.event.number }}
+      bucket_project: llm-d-scale
+      bucket_provider: none
+      bucket_path: /tmp/llmdbenchcicd
+      gateway_class: none
+      monitoring_enabled: true
+      dry_run: false
+      verbose: false
+    secrets: inherit
 
   # -- FMA deployment (own Kind cluster) --
   benchmark-fma:
     name: Benchmark - FMA (Kind)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: unit-tests
-
-    env:
-      NS: llmdbenchcicd-sa-${{ github.event.number }}
-      LLMDBENCH_WORKSPACE: /tmp/cicd-sa-${{ github.event.number }}
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Create Kind cluster
-        uses: helm/kind-action@v1
-        with:
-          version: v0.31.0
-
-      - name: Label node for simulated accelerators
-        run: |
-          NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
-          echo "Labeling node: $NODE"
-          kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
-
-      - name: Install llmdbenchmark
-        run: |
-          ./install.sh -y 2>&1
-          cp util/debug_info_on_failure.sh /usr/local/bin
-        shell: bash
-
-      - name: Standup (fma)
-        run: |
-          llmdbenchmark --spec cicd/kind-sim standup -p "$NS" -t fma --skip-smoketest
-
-      - name: Debug standup (fma, on failure)
-        if: failure()
-        run: |
-          /usr/local/bin/debug_info_on_failure.sh "$NS"
-        shell: bash
-
-      - name: Smoketest (fma)
-        run: |
-          llmdbenchmark --spec cicd/kind-sim smoketest -p "$NS" -t fma || true
-
-      - name: Teardown (fma)
-        if: always()
-        run: |
-          llmdbenchmark --spec cicd/kind-sim teardown -p "$NS" -t fma || true
-
-      - name: Debug teardown (fma, on failure)
-        if: failure()
-        run: |
-          /usr/local/bin/debug_info_on_failure.sh "$NS"
-        shell: bash
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: cicd
+      standup_method: fma
+      cluster_provider: kind
+      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
+      helm_release: lmdbenchcicdr
+      workspace_dir: tmp/cicd-sa-${{ github.event.number }}
+      bucket_project: llm-d-scale
+      bucket_provider: none
+      bucket_path: /tmp/llmdbenchcicd
+      gateway_class: none
+      monitoring_enabled: true
+      dry_run: false
+      verbose: false
+    secrets: inherit
 
   # -- Modelservice deployment matrix (istio + agentgateway) --
   benchmark-modelservice:
     name: Benchmark - Modelservice / ${{ matrix.gateway }} (Kind)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: unit-tests
-
-    strategy:
-      fail-fast: false
-      matrix:
-        gateway: [istio, agentgateway]
-
-    env:
-      NS: llmdbenchcicd-ms-${{ matrix.gateway }}-${{ github.event.number }}
-      LLMDBENCH_WORKSPACE: /tmp/cicd-ms-${{ matrix.gateway }}-${{ github.event.number }}
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Create Kind cluster
-        uses: helm/kind-action@v1
-        with:
-          version: v0.31.0
-
-      - name: Label node for simulated accelerators
-        run: |
-          NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
-          echo "Labeling node: $NODE"
-          kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
-
-      - name: Install llmdbenchmark
-        run: |
-          ./install.sh -y 2>&1
-          cp util/debug_info_on_failure.sh /usr/local/bin
-        shell: bash
-
-      - name: Patch kind-sim scenario with gateway class
-        run: |
-          # The scenario hardcodes className: agentgateway; swap to the matrix
-          # value so both gateway providers are exercised.
-          sed -i 's|className: agentgateway|className: ${{ matrix.gateway }}|' \
-            config/scenarios/cicd/kind-sim.yaml
-          echo "--- scenario gateway section ---"
-          grep -A 8 '^    gateway:' config/scenarios/cicd/kind-sim.yaml || true
-
-      - name: Standup (modelservice)
-        run: |
-          llmdbenchmark --spec cicd/kind-sim standup -p "$NS" --skip-smoketest
-
-      - name: Debug standup (modelservice, on failure)
-        if: failure()
-        run: |
-          /usr/local/bin/debug_info_on_failure.sh "$NS"
-        shell: bash
-
-      - name: Smoketest (modelservice)
-        run: |
-          llmdbenchmark --spec cicd/kind-sim smoketest -p "$NS"
-
-      - name: Run harness (modelservice)
-        run: |
-          llmdbenchmark --spec cicd/kind-sim run -p "$NS" \
-            -l inference-perf -w sanity_random.yaml
-
-      - name: Teardown (modelservice)
-        if: always()
-        run: |
-          llmdbenchmark --spec cicd/kind-sim teardown -p "$NS" || true
-
-      - name: Debug teardown (modelservice, on failure)
-        if: failure()
-        run: |
-          /usr/local/bin/debug_info_on_failure.sh "$NS"
-        shell: bash
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: cicd
+      standup_method: modelservice
+      cluster_provider: kind
+      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
+      helm_release: lmdbenchcicdr
+      workspace_dir: tmp/cicd-sa-${{ github.event.number }}
+      bucket_project: llm-d-scale
+      bucket_provider: none
+      bucket_path: /tmp/llmdbenchcicd
+      gateway_class: none
+      monitoring_enabled: true
+      dry_run: false
+      verbose: false
+    secrets: inherit

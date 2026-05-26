@@ -43,6 +43,11 @@ on:
         description: 'Class of gateway used ("istio", "agentgateway", "epponly", "none")'
         required: false
         default: 'istio'
+      monitoring_enabled:
+        description: 'Enabled monitoring ("true", "false")'
+        required: true
+        type: 'string'
+        default: 'false'
       dry_run:
         description: 'Execute workflow in "dry-run" mode ("true", "false")'
         required: false
@@ -51,6 +56,7 @@ on:
         description: 'Execute workflow in "verbose" mode ("true", "false")'
         required: false
         default: 'false'
+        type: 'string'
 
 #  push:
 #    branches:
@@ -62,3 +68,18 @@ on:
 jobs:
   nightly:
     uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: ${{ inputs.scenario_dir }}
+      standup_method: ${{ inputs.standup_method }}
+      cluster_provider: ${{ inputs.cluster_provider }}
+      cluster_namespace: ${{ inputs.cluster_namespace }}
+      helm_release: ${{ inputs.helm_release }}
+      workspace_dir: ${{ inputs.workspace_dir }}
+      bucket_project: ${{ inputs.bucket_project }}
+      bucket_provider: ${{ inputs.bucket_provider }}
+      bucket_path: ${{ inputs.bucket_path }}
+      gateway_class: ${{ inputs.gateway_class }}
+      monitoring_enabled: ${{ inputs.monitoring_enabled }}
+      dry_run: ${{ inputs.dry_run }}
+      verbose: ${{ inputs.verbose }}
+    secrets: inherit
