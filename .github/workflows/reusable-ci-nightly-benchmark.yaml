@@ -162,6 +162,11 @@ jobs:
           project_id: ${{ env.GCP_PROJECT_ID }}
           install_components: 'kubectl,gke-gcloud-auth-plugin'
 
+      - name: Get GKE credentials
+        if: inputs.cluster_provider == 'gke'
+        run: |
+          gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" --zone "${{ env.GKE_CLUSTER_ZONE }}"
+
       - name: Set up kubeconfig from secret
         if: inputs.cluster_provider != 'kind' && inputs.cluster_provider != 'gke'
         run: |
