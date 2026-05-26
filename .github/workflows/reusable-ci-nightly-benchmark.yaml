@@ -17,7 +17,7 @@ on:
         description: 'Cluster provider targeted ("ocp","gke","cks")'
         required: false
         type: 'string'
-        default: 'kind'
+        default: 'kind-sim'
       cluster_namespace:
         description: 'Cluster namespace'
         required: false
@@ -53,6 +53,11 @@ on:
         required: false
         type: 'string'
         default: 'istio'
+      monitoring_enabled:
+        description: 'Enabled monitoring ("true", "false")'
+        required: false
+        type: 'string'
+        default: 'true'
       dry_run:
         description: 'Execute workflow in "dry-run" mode ("true", "false")'
         required: false
@@ -120,6 +125,7 @@ jobs:
       LLMDBENCH_GATEWAY_CLASS: ${{ inputs.gateway_class || 'istio' }}
       LLMDBENCH_IS_DRY_RUN: ${{ inputs.dry_run || 'false' }}
       LLMDBENCH_IS_VERBOSE: ${{ inputs.verbose || 'false' }}
+      LLMDBENCH_MONITORING_ENABLED: ${{ inputs.monitoring_enabled || 'true' }}
       GCS_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
       GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
 
@@ -191,7 +197,10 @@ jobs:
             export LLMDBENCH_EXTRA_CMD="--dry-run"
           fi
           if [[ "$LLMDBENCH_IS_VERBOSE" == "true" ]]; then
-            export LLMDBENCH_EXTRA_CMD="--verbose"
+            export LLMDBENCH_EXTRA_CMD="--verbose $LLMDBENCH_EXTRA_CMD "
+          fi
+          if [[ "$LLMDBENCH_MONITORING_ENABLED" == "false" ]]; then
+            export LLMDBENCH_EXTRA_CMD="--no-monitoring $LLMDBENCH_EXTRA_CMD "
           fi
           echo "LLMDBENCH_EXTRA_CMD=$LLMDBENCH_EXTRA_CMD" >> $GITHUB_ENV
         shell: bash
