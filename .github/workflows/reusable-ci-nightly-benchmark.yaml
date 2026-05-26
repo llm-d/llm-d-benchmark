@@ -161,10 +161,15 @@ jobs:
           install_components: 'kubectl,gke-gcloud-auth-plugin'
 
       - name: Set up kubeconfig from secret
-        if: inputs.cluster_provider != 'kind'
+        if: inputs.cluster_provider != 'kind' && inputs.cluster_provider != 'gke'
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
+          if [[ $LLMDBENCH_CICD_TARGET == "cks" ]]; then
+            echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
+          fi
+          if [[ $LLMDBENCH_CICD_TARGET == "ocp" ]]; then
+            echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
+          fi
           chmod 600 ~/.kube/config
         shell: bash
 
