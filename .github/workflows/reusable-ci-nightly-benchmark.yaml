@@ -189,6 +189,12 @@ jobs:
             rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
           fi
 
+      - name: Show cluster nodes
+        run: |
+          kubectl get node
+          exit $?
+        shell: bash
+
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
@@ -211,12 +217,6 @@ jobs:
           fi
           echo "LLMDBENCH_EXTRA_CMD=$LLMDBENCH_EXTRA_CMD" >> $GITHUB_ENV
           echo "LLMDBENCH_EXTRA_OPERATION_CMD=$LLMDBENCH_EXTRA_OPERATION_CMD" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Show cluster nodes
-        run: |
-          kubectl get node
-          exit $?
         shell: bash
 
       - name: Cleanup target cloud
