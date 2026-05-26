@@ -1,0 +1,200 @@
+# Kind Simulated Accelerators CI/CD Scenario
+# Migrated from bash environment variables to YAML format
+# Based on scenarios/cicd/kind_sim_fb.sh
+#
+# CI/CD scenario for Kind clusters using llm-d-inference-sim.
+# No GPU required -- runs inference simulation on CPU-only nodes.
+# Uses facebook/opt-125m with minimal resource requirements.
+#
+# How inference-sim works with the modelservice Helm chart:
+#
+#   The llm-d-modelservice chart detects "llm-d-inference-sim" in the image
+#   name and returns an empty accelerator resource, so no GPU limits/requests
+#   are added to the pod spec.  This allows the sim to run on CPU-only nodes.
+#
+#   The routing proxy sidecar is still injected into decode pods (it is never
+#   injected into prefill pods).  There is no port conflict because the chart
+#   shifts the vLLM listen port when the proxy is present:
+#
+#     decode  (proxy enabled):  vLLM listens on 8200, proxy on 8000
+#     prefill (no proxy):       vLLM listens on 8000
+#
+#   Therefore routing.proxy.enabled does NOT need to be disabled for sim
+#   scenarios -- the chart handles the port assignment automatically.
+
+scenario:
+  - name: "kind-sim-cicd"
+
+    # Model
+    model:
+      name: facebook/opt-125m
+      shortName: facebook-opt-125m
+      path: models/facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
+      maxModelLen: 1024
+      gpuMemoryUtilization: 0
+
+    # CPU-only affinity
+    affinity:
+      enabled: true
+      nodeSelector:
+        kubernetes.io/os: linux
+
+    # No GPU accelerators
+    accelerator:
+      count: 0
+      memory: 24 # To pass capacity planner sanity checking
+
+    # Minimal gateway resources for Kind -- agentgateway is a lightweight
+    # Envoy-based proxy; on a single-node Kind cluster we keep this lean
+    # so EPP, model-server pods, and the gateway can all schedule together.
+    gateway:
+      className: agentgateway
+      resources:
+        limits:
+          cpu: "1"
+          memory: 1Gi
+        requests:
+          cpu: "250m"
+          memory: 256Mi
+
+    # Minimal EPP resources for Kind. The GAIE chart's upstream defaults
+    # (4 CPU / 8 GiB request, 16 GiB limit) won't fit on a Kind node;
+    # the EPP is a stateless gRPC scorer so this is plenty for CI.
+    inferenceExtension:
+      resources:
+        requests:
+          cpu: "100m"
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+
+    # Install Prometheus CRDs on Kind (no Prometheus Operator by default)
+    monitoring:
+      installPrometheusCrds: true
+
+    # Minimal resources for Kind cluster
+    vllmCommon:
+      shmMemory: 500Mi
+
+    # Storage -- minimal for Kind
+    # Kind uses 'standard' storage class with ReadWriteOnce only
+    storage:
+      modelPvc:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard
+        size: 2Gi
+      workloadPvc:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: standard
+        size: 3Gi
+
+    # Override images for simulation
+    images:
+      vllm:
+        repository: ghcr.io/llm-d/llm-d-inference-sim
+        tag: v0.8.2
+
+    # FMA deployment config (disabled -- deploy method is modelservice)
+    # FMA config is kept as fallback for fma testing
+    fma:
+      enabled: false
+
+    # Standalone deployment config (disabled -- deploy method is modelservice)
+    # Standalone config is kept as fallback for standalone testing
+    standalone:
+      enabled: false
+      replicas: 1
+
+      image:
+        repository: ghcr.io/llm-d/llm-d-inference-sim
+        tag: v0.8.2
+        pullPolicy: Always
+
+      # No GPU on Kind -- use OS label instead of nvidia GPU selector
+      acceleratorType:
+        labelKey: kubernetes.io/os
+        labelValue: linux
+
+      accelerator:
+        count: 0
+
+      resources:
+        limits:
+          memory: 100Mi
+          cpu: "0"
+        requests:
+          memory: 100Mi
+          cpu: "0"
+
+      vllm:
+        customCommand: "/app/llm-d-inference-sim --model /model-cache/${model.path} --port 8000 --served-model-name ${model.name}"
+
+    # Decode configuration -- use image's default entrypoint (inference-sim)
+    decode:
+      replicas: 1
+
+      parallelism:
+        tensor: 0
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 100Mi
+          cpu: "0"
+        requests:
+          memory: 100Mi
+          cpu: "0"
+
+      accelerator:
+        count: 0
+
+      vllm:
+        modelCommand: imageDefault
+
+    # Prefill configuration -- use image's default entrypoint (inference-sim)
+    prefill:
+      enabled: true
+      replicas: 1
+
+      parallelism:
+        tensor: 0
+        data: 1
+        dataLocal: 1
+        workers: 1
+
+      resources:
+        limits:
+          memory: 100Mi
+          cpu: "0"
+        requests:
+          memory: 100Mi
+          cpu: "0"
+
+      accelerator:
+        count: 0
+
+      vllm:
+        modelCommand: imageDefault
+
+    # Modelservice configuration
+    modelservice:
+      enabled: true
+      uriProtocol: hf
+
+    # Short timeout for Kind clusters
+    control:
+      waitTimeout: 20
+
+    # Workload -- minimal resources for Kind
+    harness:
+      name: inference-perf
+      experimentProfile: sanity_random.yaml
+      resources:
+        cpu: "1"
+        memory: 2Gi
