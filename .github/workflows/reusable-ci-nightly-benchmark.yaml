@@ -107,7 +107,7 @@ jobs:
         shell: bash
 
   benchmark-self-hosted:
-    name: Benchmark (OCP)
+    name: Benchmark (Self-Hosted)
 
     if: inputs.cluster_provider == 'ocp'
     runs-on: [self-hosted, openshift, pok-prod]
@@ -313,13 +313,14 @@ jobs:
         shell: bash
 
   benchmark-hosted:
-    name: Benchmark (Hosted)
+    name: Benchmark (Provider Hosted)
 
     if: inputs.cluster_provider != 'ocp'
     runs-on: [ubuntu-latest]
 
 #    container:
 #      image: ghcr.io/llm-d/llm-d-benchmark:nightly
+
     needs: [ensure-nightly-build-image]
     timeout-minutes: 240
 
