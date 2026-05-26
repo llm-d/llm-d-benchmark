@@ -128,6 +128,8 @@ jobs:
       LLMDBENCH_MONITORING_ENABLED: ${{ inputs.monitoring_enabled || 'true' }}
       GCS_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
       GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
+      GKE_CLUSTER_NAME: llm-d-e2e-us-east5
+      GKE_CLUSTER_ZONE: us-east5
 
     steps:
       - name: Checkout Code
@@ -159,12 +161,6 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
           install_components: 'kubectl,gke-gcloud-auth-plugin'
-
-      - name: Show cluster nodes
-        run: |
-          kubectl get node
-          exit $?
-        shell: bash
 
       - name: Set up kubeconfig from secret
         if: inputs.cluster_provider != 'kind' && inputs.cluster_provider != 'gke'
