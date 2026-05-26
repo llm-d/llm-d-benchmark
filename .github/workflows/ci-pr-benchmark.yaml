@@ -32,7 +32,7 @@ jobs:
   # -- Standalone deployment (own Kind cluster) --
   benchmark-standalone:
     name: Benchmark - Standalone (Kind)
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: cicd
       standup_method: standalone
@@ -52,7 +52,7 @@ jobs:
   # -- FMA deployment (own Kind cluster) --
   benchmark-fma:
     name: Benchmark - FMA (Kind)
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: cicd
       standup_method: fma
@@ -72,7 +72,7 @@ jobs:
   # -- Modelservice deployment matrix (istio + agentgateway) --
   benchmark-modelservice-istio:
     name: Benchmark - Modelservice / istio (Kind)
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: cicd
       standup_method: modelservice
@@ -91,7 +91,7 @@ jobs:
 
   benchmark-modelservice-agentgateway:
     name: Benchmark - Modelservice / agentgateway (Kind)
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: cicd
       standup_method: modelservice
