@@ -208,7 +208,7 @@ jobs:
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
-          cp util/debug_info_on_failure.sh /usr/local/bin
+          sudo cp util/debug_info_on_failure.sh /usr/local/bin
         shell: bash
 
       - name: Set up extra command line parameters
