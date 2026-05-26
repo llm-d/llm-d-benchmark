@@ -193,6 +193,8 @@ jobs:
       - name: Set up extra command line parameters
         run: |
           export LLMDBENCH_EXTRA_CMD=""
+          export LLMDBENCH_EXTRA_OPERATION_CMD=""
+
           if [[ "$LLMDBENCH_IS_DRY_RUN" == "true" ]]; then
             export LLMDBENCH_EXTRA_CMD="--dry-run"
           fi
@@ -200,9 +202,10 @@ jobs:
             export LLMDBENCH_EXTRA_CMD="--verbose $LLMDBENCH_EXTRA_CMD "
           fi
           if [[ "$LLMDBENCH_MONITORING_ENABLED" == "false" ]]; then
-            export LLMDBENCH_EXTRA_CMD="--no-monitoring $LLMDBENCH_EXTRA_CMD "
+            export LLMDBENCH_EXTRA_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_OPERATION_CMD "
           fi
           echo "LLMDBENCH_EXTRA_CMD=$LLMDBENCH_EXTRA_CMD" >> $GITHUB_ENV
+          echo "LLMDBENCH_EXTRA_OPERATION_CMD=$LLMDBENCH_EXTRA_OPERATION_CMD" >> $GITHUB_ENV
         shell: bash
 
       - name: Show cluster nodes
@@ -222,7 +225,7 @@ jobs:
 
       - name: Standup
         run: |
-          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD standup --no-monitoring --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD standup $LLMDBENCH_EXTRA_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
           echo "### $LLMDBENCH_CMD ###"
           $LLMDBENCH_CMD
         shell: bash
