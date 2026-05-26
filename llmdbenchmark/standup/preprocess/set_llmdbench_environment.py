@@ -508,7 +508,7 @@ env_file_contents = []
 env_file_name = f"{options.envfile}"
 env_file_contents.append("#!/usr/bin/env bash")
 
-env_file_contents.append("source /etc/os-release")
+env_file_contents.append(". /etc/os-release")
 env_file_contents.append("which ip")
 env_file_contents.append('if [[ $? -ne 0 && $ID == "ubuntu" ]]; then')
 env_file_contents.append("  apt-get update && apt install -y iproute2")
