@@ -70,8 +70,8 @@ jobs:
     secrets: inherit
 
   # -- Modelservice deployment matrix (istio + agentgateway) --
-  benchmark-modelservice:
-    name: Benchmark - Modelservice / ${{ matrix.gateway }} (Kind)
+  benchmark-modelservice-istio:
+    name: Benchmark - Modelservice / istio (Kind)
     uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
       scenario_dir: cicd
@@ -83,7 +83,26 @@ jobs:
       bucket_project: llm-d-scale
       bucket_provider: none
       bucket_path: /tmp/llmdbenchcicd
-      gateway_class: none
+      gateway_class: istio
+      monitoring_enabled: true
+      dry_run: false
+      verbose: false
+    secrets: inherit
+
+  benchmark-modelservice-agentgateway:
+    name: Benchmark - Modelservice / agentgateway (Kind)
+    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: cicd
+      standup_method: modelservice
+      cluster_provider: kind
+      cluster_namespace: llmdbenchcicd-sa-${{ github.event.number }}
+      helm_release: lmdbenchcicdr
+      workspace_dir: tmp/cicd-sa-${{ github.event.number }}
+      bucket_project: llm-d-scale
+      bucket_provider: none
+      bucket_path: /tmp/llmdbenchcicd
+      gateway_class: agentgateway
       monitoring_enabled: true
       dry_run: false
       verbose: false
