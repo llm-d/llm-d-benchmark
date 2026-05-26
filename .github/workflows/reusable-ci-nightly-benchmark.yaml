@@ -184,7 +184,7 @@ jobs:
         shell: bash
 
       - name: Install oc (optional on install.sh)
-        if: inputs.cluster_provider != 'ocp'
+        if: inputs.cluster_provider == 'ocp'
         run: |
           # Install oc (OpenShift CLI) — optional on install.sh
           if ! command -v oc &>/dev/null; then
@@ -391,7 +391,7 @@ jobs:
         shell: bash
 
       - name: Install oc (optional on install.sh)
-        if: inputs.cluster_provider != 'ocp'
+        if: inputs.cluster_provider == 'ocp'
         run: |
           # Install oc (OpenShift CLI) — optional on install.sh
           if ! command -v oc &>/dev/null; then
