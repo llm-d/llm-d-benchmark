@@ -57,6 +57,16 @@ on:
         required: false
         default: 'false'
         type: 'string'
+      harness:
+        description: 'Harness to be used during "run" operation ("inference-perf", "guidellm", "inferencemax", "vllm-benchmark", "nop")'
+        required: false
+        default: 'guidellm'
+        type: 'string'
+      workload:
+        description: 'Workload profile to be used during "run" operation (check list under "workload/profiles")'
+        required: false
+        default: 'sanity_random.yaml'
+        type: 'string'
 
 #  push:
 #    branches:
@@ -82,4 +92,6 @@ jobs:
       monitoring_enabled: ${{ inputs.monitoring_enabled || 'false' }}
       dry_run: ${{ inputs.dry_run || 'false' }}
       verbose: ${{ inputs.verbose || 'false' }}
+      harness: ${{ inputs.harness || 'guidellm' }}
+      workload: ${{ inputs.workload || 'sanity_random.yaml' }}
     secrets: inherit

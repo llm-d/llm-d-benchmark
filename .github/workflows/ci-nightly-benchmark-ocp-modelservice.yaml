@@ -57,7 +57,16 @@ on:
         required: false
         default: 'false'
         type: 'string'
-
+      harness:
+        description: 'Harness to be used during "run" operation ("inference-perf", "guidellm", "inferencemax", "vllm-benchmark", "nop")'
+        required: false
+        default: 'vllm-benchmark'
+        type: 'string'
+      workload:
+        description: 'Workload profile to be used during "run" operation (check list under "workload/profiles")'
+        required: false
+        default: 'sanity_random.yaml'
+        type: 'string'
 #  push:
 #    branches:
 #      - main
@@ -82,6 +91,8 @@ jobs:
       monitoring_enabled: ${{ inputs.monitoring_enabled || 'true' }}
       dry_run: ${{ inputs.dry_run || 'false' }}
       verbose: ${{ inputs.verbose || 'false' }}
+      harness: ${{ inputs.harness || 'vllm-benchmark' }}
+      workload: ${{ inputs.workload || 'sanity_random.yaml' }}
     secrets: inherit
 
 #      - name: Install AWS CLI

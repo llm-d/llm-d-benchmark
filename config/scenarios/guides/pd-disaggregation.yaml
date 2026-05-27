@@ -37,7 +37,7 @@ scenario:
 #      path: models/openai/gpt-oss-120b
 #      huggingfaceId: openai/gpt-oss-120b
       size: 1Ti
-      maxModelLen: 32768
+      maxModelLen: 16384
       blockSize: 128
       gpuMemoryUtilization: 0.90
       cacheBase: /model-cache
@@ -158,7 +158,7 @@ scenario:
         customCommand: |
           export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
           export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
-          source /shared-config/llmdbench_env.sh
+          . /shared-config/llmdbench_env.sh
           vllm serve /model-cache/$MODEL_PATH \
           --host 0.0.0.0 \
           --served-model-name $MODEL_NAME \
@@ -243,7 +243,7 @@ scenario:
         customCommand: |
           export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
           export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
-          source /shared-config/llmdbench_env.sh
+          . /shared-config/llmdbench_env.sh
           vllm serve /model-cache/$MODEL_PATH \
           --host 0.0.0.0 \
           --served-model-name $MODEL_NAME \
@@ -323,24 +323,20 @@ scenario:
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
 
-    annotations:
-      prefill:
-        pod:
-          k8s.v1.cni.cncf.io/networks: multi-nic-inference
-      decode:
-        pod:
-          k8s.v1.cni.cncf.io/networks: multi-nic-inference
-
-      resources:
-        prefill:
-          networkResource: "rdma/roce_gdr"
-          networkNr: 1
-        decode:
-          networkResource: "rdma/roce_gdr"
-          networkNr: 1
+#####    annotations:
+#####      prefill:
+#####        pod:
+#####          k8s.v1.cni.cncf.io/networks: multi-nic-inference
+#####      decode:
+#####        pod:
+#####          k8s.v1.cni.cncf.io/networks: multi-nic-inference
 
     vllmCommon:
 #      priorityClassName: nightly-gpu-critical
+      ucxTls: "sm,cuda_ipc,cuda_copy,tcp"
+#####      ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
+#####      networkResource: "auto"   # auto-detect from cluster nodes
+#####      networkNr: "1"            # number of network devices
 
       volumes:
         - name: shared-config
