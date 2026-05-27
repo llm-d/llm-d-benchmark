@@ -121,7 +121,6 @@ jobs:
 
   benchmark:
     name: Benchmark
-    if: inputs.cluster_provider == 'ocp'
 #    runs-on: ubuntu-latest
     runs-on: ${{ fromJSON(needs.ensure-nightly-build-image.outputs.conditional_runs_on) }}
 #    container:
