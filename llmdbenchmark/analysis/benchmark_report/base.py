@@ -19,6 +19,8 @@ class WorkloadGenerator(StrEnum):
     Enumeration of supported workload generators
 
     Attributes
+        AIPERF: str
+            AIPerf
         GUIDELLM: str
             GuideLLM
         INFERENCE_MAX: str
@@ -31,6 +33,7 @@ class WorkloadGenerator(StrEnum):
             vLLM Load times
     """
 
+    AIPERF = "aiperf"
     GUIDELLM = auto()
     INFERENCE_MAX = "inferencemax"
     INFERENCE_PERF = "inference-perf"
