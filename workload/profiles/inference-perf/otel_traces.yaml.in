@@ -1,13 +1,8 @@
 load:
   type: trace_session_replay
   stages:
-    - concurrent_sessions: 2
-      num_sessions: 2
-      session_rate: 1.0
-    - concurrent_sessions: 5
-      num_sessions: 5
-      session_rate: 1.0
-  worker_max_concurrency: 200
+    - concurrent_sessions: 4
+  worker_max_concurrency: 400
 api:
   type: chat
   streaming: true
@@ -21,7 +16,11 @@ tokenizer:
 data:
   type: otel_trace_replay
   otel_trace_replay:
-    trace_directory: REPLACE_ENV_LLMDBENCH_RUN_DATASET_DIR/REPLACE_ENV_LLMDBENCH_RUN_DATASET_FILE
+    skip_invalid_files: true
+    use_static_model: true
+    static_model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+    trace_directory: REPLACE_ENV_LLMDBENCH_RUN_DATASET_DIR
+    include_errors: false
 report:
   request_lifecycle:
     summary: true
