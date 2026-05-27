@@ -1899,6 +1899,20 @@ def import_inference_perf(results_file: str) -> BenchmarkReportV02:
             },
         }
 
+        # NOTE: inference-perf doesn't bode well with reasoning models.
+        # There's a fix on the way, but in the meantime, ignore latency
+        # sub-blocks if they are not populated.
+        for opt in (
+            "time_to_first_token",
+            "time_per_output_token",
+            "inter_token_latency",
+        ):
+            if aggregate["latency"].get(opt, {}).get("mean") is None:
+                aggregate["latency"].pop(opt, None)
+        for opt in ("input_length", "output_length"):
+            if aggregate["requests"].get(opt, {}).get("mean") is None:
+                aggregate["requests"].pop(opt, None)
+
     update_dict(
         br_dict,
         {
