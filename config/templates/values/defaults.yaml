@@ -700,6 +700,12 @@ vllmCommon:
   ephemeralStorageResource: "ephemeral-storage"
   ephemeralStorage: ""
 
+  # Shell used to exec the vLLM startup command in every vLLM container
+  # (decode, prefill, standalone, launcher). Renders into the `command:` field
+  # of 13_ms-values.yaml.j2 and 14_standalone-deployment_yaml.j2. Override
+  # per-scenario to e.g. /bin/sh if the image lacks bash.
+  shell: "/bin/bash"
+
   # NIXL side channel port for ZMQ-based KV transfer communication.
   nixlSideChannelPort: "5557"
 

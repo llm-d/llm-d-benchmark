@@ -385,7 +385,7 @@ decode:
     modelCommand: {{ decode_model_command }}
 {% if decode_model_command == 'custom' %}
     command:
-      - /bin/sh
+      - {{ vllmCommon.shell }}
       - '-c'
     args:
       - |
@@ -788,7 +788,7 @@ prefill:
     modelCommand: {{ prefill_model_command }}
 {% if prefill_model_command == 'custom' %}
     command:
-      - /bin/sh
+      - {{ vllmCommon.shell }}
       - '-c'
     args:
       - |

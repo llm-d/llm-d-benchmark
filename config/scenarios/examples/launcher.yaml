@@ -19,6 +19,8 @@ scenario:
       huggingfaceId: meta-llama/Llama-3.1-8B-Instruct
 
     vllmCommon:
+      # Shell used in the vLLM container `command:` field. Defaults to /bin/bash.
+      # shell: /bin/sh
       flags:
         enforceEager: false
       volumes:
