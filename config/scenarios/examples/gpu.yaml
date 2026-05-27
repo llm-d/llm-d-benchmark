@@ -78,6 +78,9 @@ scenario:
     # are ignored -- the custom command must include its own flags.
     # -------------------------------------------------------------------------
     vllmCommon:
+      # Shell used in the vLLM container `command:` field. Defaults to /bin/bash.
+      # shell: /bin/sh
+
       # Corresponds to: LLMDBENCH_VLLM_COMMON_TENSOR_PARALLELISM (default 1)
       # tensorParallelism: 2
 

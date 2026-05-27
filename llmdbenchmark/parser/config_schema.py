@@ -318,6 +318,7 @@ class VllmCommonConfig(BaseModel):
     ephemeralStorage: str
     networkResource: str
     networkNr: str
+    shell: str
     nixlSideChannelPort: str
     ucxTls: str
     ucxSockaddrTlsPriority: str

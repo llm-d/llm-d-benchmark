@@ -41,6 +41,7 @@ accurate to the current codebase.
   - [File Structure](#file-structure)
   - [Step 1: Create the Specification Template](#step-1-create-the-specification-template)
   - [Step 2: Create the Scenario File](#step-2-create-the-scenario-file)
+  - [Overriding the Container Shell (`vllmCommon.shell`)](#overriding-the-container-shell-vllmcommonshell)
   - [How Templates Are Rendered](#how-templates-are-rendered)
   - [Custom Jinja2 Templates](#custom-jinja2-templates)
 - [8. How to Add a Smoketest Validator](#8-how-to-add-a-smoketest-validator)
@@ -1030,6 +1031,43 @@ stack. Sibling stacks are exposed to templates via the injected
 [`10_helmfile-main.yaml.j2`](../config/templates/jinja/10_helmfile-main.yaml.j2) -
 so N stacks don't race on the same Helm release during parallel per-stack step
 execution.
+
+### Overriding the Container Shell (`vllmCommon.shell`)
+
+The `command:` field rendered into every vLLM container -- decode and prefill in
+`13_ms-values.yaml.j2`, plus the main and launcher containers in
+`14_standalone-deployment_yaml.j2` -- defaults to `/bin/bash -c <vllm-startup-script>`.
+The single source of truth is `vllmCommon.shell` in
+[`defaults.yaml`](../config/templates/values/defaults.yaml); override it
+per-scenario when the image lacks bash or you want plain POSIX `sh`.
+
+```yaml
+# config/scenarios/examples/my-scenario.yaml
+scenario:
+  - name: "my-scenario"
+    vllmCommon:
+      shell: /bin/sh        # default is "/bin/bash"
+```
+
+Rendered output in `plan/<stack>/ms-values.yaml`:
+
+```yaml
+decode:
+  containers:
+  - name: "vllm"
+    ...
+    command:
+      - /bin/sh           # <-- comes from vllmCommon.shell
+      - '-c'
+    args:
+      - |
+        # vllm startup script ...
+```
+
+Scope: applies to both deployment modes (`modelservice` and `standalone`). The
+templates render `vllmCommon.shell` directly with no jinja fallback, so the
+defaults.yaml value is always authoritative -- unsetting it in a scenario does
+not "fall back to /bin/sh"; it removes the field and breaks rendering.
 
 ### How Templates Are Rendered
 
