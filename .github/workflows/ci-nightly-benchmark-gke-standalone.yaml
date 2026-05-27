@@ -69,17 +69,17 @@ jobs:
   nightly:
     uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
     with:
-      scenario_dir: ${{ inputs.scenario_dir }}
-      standup_method: ${{ inputs.standup_method }}
-      cluster_provider: ${{ inputs.cluster_provider }}
-      cluster_namespace: ${{ inputs.cluster_namespace }}
-      helm_release: ${{ inputs.helm_release }}
-      workspace_dir: ${{ inputs.workspace_dir }}
-      bucket_project: ${{ inputs.bucket_project }}
-      bucket_provider: ${{ inputs.bucket_provider }}
-      bucket_path: ${{ inputs.bucket_path }}
-      gateway_class: ${{ inputs.gateway_class }}
-      monitoring_enabled: ${{ inputs.monitoring_enabled }}
-      dry_run: ${{ inputs.dry_run }}
-      verbose: ${{ inputs.verbose }}
+      scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
+      standup_method: ${{ inputs.standup_method || 'standalone' }}
+      cluster_provider: ${{ inputs.cluster_provider || 'gke' }}
+      cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdsns-gke' }}
+      helm_release: ${{ inputs.helm_release || 'llmdbenchcicdr-gke' }}
+      workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicds-gke' }}
+      bucket_project: ${{ inputs.bucket_project || 'llm-d-scale' }}
+      bucket_provider: ${{ inputs.bucket_provider || 'gcs' }}
+      bucket_path: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
+      gateway_class: ${{ inputs.gateway_class || 'istio' }}
+      monitoring_enabled: ${{ inputs.monitoring_enabled || 'false' }}
+      dry_run: ${{ inputs.dry_run || 'false' }}
+      verbose: ${{ inputs.verbose || 'false' }}
     secrets: inherit

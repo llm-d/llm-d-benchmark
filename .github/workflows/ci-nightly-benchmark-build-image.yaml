@@ -27,7 +27,7 @@ jobs:
       - name: Build and push nightly image
         uses: ./.github/actions/docker-build-and-push
         with:
-          tag: ${{ inputs.tag_name }}
+          tag: ${{ inputs.tag_name || 'nightly' }}
           image-name: llm-d-benchmark
           registry: ghcr.io/llm-d
           github-token: ${{ secrets.GHCR_TOKEN }}
