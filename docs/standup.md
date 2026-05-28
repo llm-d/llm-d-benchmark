@@ -250,8 +250,10 @@ When `epponly` is selected, standup automatically:
 
 #### Example scenario using epponly
 
-- [`config/scenarios/examples/epponly.yaml`](../config/scenarios/examples/epponly.yaml)
-  -- minimal CPU-only deployment using the inference-sim image.
+- [`config/scenarios/guides/optimized-baseline.yaml`](../config/scenarios/guides/optimized-baseline.yaml)
+  -- ships with `gateway.className: epponly` as the default. Flip it to
+  `istio`/`agentgateway`/`gke`/`data-science-gateway-class` to switch
+  topology without touching anything else in the scenario.
 
 - "llm-d"-specific VLLM paramaters
 
