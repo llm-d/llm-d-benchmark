@@ -142,7 +142,7 @@ jobs:
       LLMDBENCH_CICD_R: ${{ inputs.helm_release || 'standalone' }}
       LLMDBENCH_CICD_SCENARIO_DIR: ${{ inputs.scenario_dir || 'cicd' }}
       LLMDBENCH_CICD_TARGET: ${{ inputs.cluster_provider || 'kind' }}
-      LLMDBENCH_CICD_METHOD: ${{ inputs.standup_method || 'lmdbenchcicdr' }}
+      LLMDBENCH_CICD_METHOD: ${{ inputs.standup_method || 'standalone' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
       LLMDBENCH_GATEWAY_CLASS: ${{ inputs.gateway_class || 'istio' }}
@@ -310,7 +310,7 @@ jobs:
         shell: bash
 
       - name: Block waiting for Standalone baseline
-        if: inputs.cluster_provider != 'kind' && inputs.bucket_provider == 'gcs'
+        if: inputs.cluster_provider != 'kind' && inputs.bucket_provider == 'gcs' && inputs.standup_method == 'fma'
         run: |
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             echo "Skipping waiting for \"standalone baseline\", due to \"dry-run\" mode activated"
