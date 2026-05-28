@@ -35,6 +35,8 @@ spec:
       value: "harness_pod"
     - name: LLMDBENCH_DEPLOY_METHODS
       value: "{{ deploy_method | default('modelservice') }}"
+    - name: LLMDBENCH_CLUSTER_TYPE
+      value: "{{ cluster_type | default('unrecognized') }}"
     - name: LLMDBENCH_RUN_WORKSPACE_DIR
       value: "{{ experiment.workspaceDir }}"
     - name: LLMDBENCH_CONTROL_WORK_DIR
