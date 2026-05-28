@@ -81,14 +81,7 @@ scenario:
               replicas: 2
               template:
                 spec:
-                  volumes:
-                    - name: triton-cache
-                      emptyDir: {}
-                  containers:
-                    - name: modelserver
-                      volumeMounts:
-                        - mountPath: /.triton
-                          name: triton-cache
+                  priorityClassName: nightly-gpu-critical
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
@@ -137,10 +130,10 @@ scenario:
     standalone:
       enabled: false
 
-    # NOTE: the `kustomize` deploy method is configured at the TOP of this
-    # stack (see the "KUSTOMIZE DEPLOY METHOD" banner). It lives there
-    # because enabling it overrides this entire scenario -- see
-    # docs/kustomize.md.
+      # NOTE: the `kustomize` deploy method is configured at the TOP of this
+      # stack (see the "KUSTOMIZE DEPLOY METHOD" banner). It lives there
+      # because enabling it overrides this entire scenario -- see
+      # docs/kustomize.md.
 
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true
