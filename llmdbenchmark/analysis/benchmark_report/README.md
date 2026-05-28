@@ -185,18 +185,47 @@ br = benchmark_report.BenchmarkReportV02(**{
 print(br.get_yaml_str())
 ```
 
-### Transforming harness native formats to a benchmark report
+The native formats returned by different harnesses may be converted to a benchmark report using functions in [native_to_br0_2.py](native_to_br0_2.py), or using the CLI defined in `cli.py`.
 
-The native formats returned by different harnesses may be converted to a benchmark report using functions in [native_to_br0_2.py](native_to_br0_2.py), or using the CLI defined in `cli.py`. This CLI may be executed with `python -m benchmark_report.cli ...` at the root of this repository, and can import native results data of a harness and print to `stdout` a benchmark report, or save a report to file if a second argument is provided.
+To run the converter CLI, execute the module using `python -m` from the root of this repository:
 
+```bash
+python3 -m llmdbenchmark.analysis.benchmark_report.cli \
+  --workload-generator <generator_name> \
+  --br-version <version> \
+  <path_to_raw_results_file> \
+  [path_to_output_report_yaml]
+```
+
+#### Parameters Reference
+* `-w, --workload-generator`: Specifies the harness generator. Must be one of: `'guidellm'`, `'inferencemax'`, `'inference-perf'`, `'vllm-benchmark'`, `'nop'`.
+* `-b, --br-version`: Target benchmark report version (defaults to `0.1`; use `0.2` for the standard version).
+* `-f, --force`: Overwrites the output file if it already exists.
+* `results_file` *(Positional)*: Path to the raw native results file to convert. (e.g. For `inference-perf`, this must contain `"stage_"` in its filename, e.g., `stage_0_lifecycle_metrics.json`).
+* `output_file` *(Positional, Optional)*: Destination for the converted report. If omitted, the YAML output is printed directly to `stdout`.
+
+#### Example
+To convert a raw `stage_0_lifecycle_metrics.json` results file from an `inference-perf` run and save the v0.2 report to `benchmark_report_v02.yaml`:
+
+```bash
+python3 -m llmdbenchmark.analysis.benchmark_report.cli \
+  -w inference-perf \
+  -b 0.2 \
+  ./stage_0_lifecycle_metrics.json \
+  ./benchmark_report_v02.yaml
+```
+
+---
+
+#### Session Lifecycle Files (Inference-Perf)
 For `inference-perf` session lifecycle files (`*_session_lifecycle_metrics.json`), pass the `-s` / `--session` flag:
 
 ```bash
 # Print to stdout
-benchmark-report stage_0_session_lifecycle_metrics.json -w inference-perf -s
+python3 -m llmdbenchmark.analysis.benchmark_report.cli -w inference-perf -b 0.2 -s stage_0_session_lifecycle_metrics.json
 
 # Save to file
-benchmark-report stage_0_session_lifecycle_metrics.json -w inference-perf -s benchmark_report_session.yaml
+python3 -m llmdbenchmark.analysis.benchmark_report.cli -w inference-perf -b 0.2 -s stage_0_session_lifecycle_metrics.json benchmark_report_session.yaml
 ```
 
 The `-s` flag selects the `import_inference_perf_session` converter, which populates `results.session_performance` instead of `results.request_performance`. The `inference-perf-analyze_results.sh` script detects `*_session_lifecycle_metrics.json` files automatically and passes `-s` without manual intervention.
