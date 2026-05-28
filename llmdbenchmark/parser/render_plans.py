@@ -353,7 +353,10 @@ class RenderPlans:
         return f"{first8}-{hash8}-{last8}".lower()
 
     def _resolve_model(
-        self, values: dict, total_stacks: int = 1, stack_name: str = "",
+        self,
+        values: dict,
+        total_stacks: int = 1,
+        stack_name: str = "",
     ) -> dict:
         """Resolve model configuration from CLI ``--models`` override.
 
@@ -439,11 +442,7 @@ class RenderPlans:
             return
 
         for role in ("decode", "prefill"):
-            cmd = (
-                values.get(role, {})
-                .get("vllm", {})
-                .get("customCommand")
-            )
+            cmd = values.get(role, {}).get("vllm", {}).get("customCommand")
             if cmd:
                 self.logger.log_warning(
                     f"CLI --models override ({self.cli_model}) will not "
@@ -526,8 +525,7 @@ class RenderPlans:
             methods = ["modelservice"]
         if "standalone" in methods and "fma" in methods:
             self.logger.log_warning(
-                "Cannot enable both standalone and fma -- "
-                "choose one. Using standalone."
+                "Cannot enable both standalone and fma -- choose one. Using standalone."
             )
             methods = ["standalone"]
         if "modelservice" in methods and "fma" in methods:
@@ -576,6 +574,68 @@ class RenderPlans:
             self.logger.log_info("Deploy method from CLI: kustomize")
 
         return result
+
+    @staticmethod
+    def _validate_epponly_constraints(
+        values: dict,
+        total_stacks: int,
+        stack_name: str,
+    ) -> list[str]:
+        """Reject incompatible options when ``gateway.className == 'epponly'``.
+
+        ``epponly`` is the llm-d "standalone" router topology: no Kubernetes
+        Gateway is deployed and the EPP runs with an Envoy sidecar that
+        serves HTTP directly. The setting only takes effect on the
+        ``modelservice`` deploy path (it controls how the GAIE Helm chart is
+        wired). Some scenario features become meaningless or actively broken
+        when ``epponly`` is paired with modelservice:
+
+          - multi-stack scenarios (no shared Gateway / HTTPRoute -- each
+            stack would need its own EPP, but standup currently can't
+            advertise N independent EPP endpoints cleanly).
+          - shared HTTPRoute mode (HTTPRoute references a Gateway that
+            does not exist).
+
+        When a non-modelservice deploy method is active (``kustomize``,
+        ``standalone``, ``fma``) the ``gateway.*`` block is ignored
+        entirely by the rendering pipeline, so we no-op rather than
+        flagging an error: this lets a single scenario file ship
+        ``gateway.className: epponly`` as the modelservice default while
+        still being usable verbatim with ``-t kustomize`` (or any other
+        deploy method override).
+
+        Returns a list of fatal error strings. An empty list means the
+        configuration is compatible.
+        """
+        gw_class = (values.get("gateway") or {}).get("className", "")
+        if gw_class != "epponly":
+            return []
+
+        modelservice_enabled = (values.get("modelservice") or {}).get("enabled", True)
+        if not modelservice_enabled:
+            # Another deploy method owns the stack -- gateway.className is
+            # a no-op for kustomize/standalone/fma, so silently accept.
+            return []
+
+        errors: list[str] = []
+
+        if total_stacks > 1:
+            errors.append(
+                f"[{stack_name}] gateway.className=epponly is single-stack "
+                "only (the standalone router topology has no shared "
+                "Gateway / HTTPRoute to multiplex multiple models). "
+                f"This scenario has {total_stacks} stacks."
+            )
+
+        http_route_mode = (values.get("httpRoute") or {}).get("mode")
+        if http_route_mode == "shared":
+            errors.append(
+                f"[{stack_name}] gateway.className=epponly cannot be used "
+                "with httpRoute.mode=shared (shared HTTPRoute requires a "
+                "Gateway that epponly does not deploy)."
+            )
+
+        return errors
 
     def _log_image_overrides(self, values: dict) -> None:
         """Log images that have been explicitly set (not 'auto').
@@ -647,13 +707,13 @@ class RenderPlans:
         # SA access to the user-workload-monitoring Prometheus. Two gaie
         # Helm releases sharing this Secret name in one namespace fail
         # with "owned by another helm release".
-        (("inferenceExtension", "monitoring", "secretName"),
-         "inference-gateway-sa-metrics-reader-secret"),
+        (
+            ("inferenceExtension", "monitoring", "secretName"),
+            "inference-gateway-sa-metrics-reader-secret",
+        ),
     )
 
-    def _resolve_per_stack_identity(
-        self, values: dict, total_stacks: int = 1
-    ) -> dict:
+    def _resolve_per_stack_identity(self, values: dict, total_stacks: int = 1) -> dict:
         """Auto-suffix stack-scoped resource names with ``model_id_label``.
 
         Multi-stack scenarios need per-model PVCs, Download Jobs, and EPP
@@ -713,8 +773,7 @@ class RenderPlans:
         scenario authors don't need to compute the hashed label by hand.
         """
         dest_rule = (
-            values
-            .get("inferenceExtension", {})
+            values.get("inferenceExtension", {})
             .get("inferencePoolProviderConfig", {})
             .get("destinationRule")
         )
@@ -723,8 +782,7 @@ class RenderPlans:
             if model_id_label:
                 dest_rule["host"] = f"{model_id_label}-gaie-epp"
                 self.logger.log_info(
-                    f"Auto-resolved destinationRule.host to "
-                    f"'{dest_rule['host']}'"
+                    f"Auto-resolved destinationRule.host to '{dest_rule['host']}'"
                 )
         return values
 
@@ -760,6 +818,7 @@ class RenderPlans:
 
     def _substitute_string(self, text: str, root: dict) -> str:
         """Replace all ``${dotted.path}`` patterns in a single string."""
+
         def _replace(match: re.Match) -> str:
             path = match.group(1)
             value = self._resolve_dotted_path(path, root)
@@ -918,7 +977,9 @@ class RenderPlans:
         return errors
 
     def _build_sibling_stacks(
-        self, stacks: list[dict], shared: dict | None = None,
+        self,
+        stacks: list[dict],
+        shared: dict | None = None,
     ) -> list[dict]:
         """Build a minimal per-stack summary list the HTTPRoute template can
         iterate over to emit one backendRef per sibling stack.
@@ -950,15 +1011,15 @@ class RenderPlans:
             # otherwise None (undetermined -> treat as non-standalone).
             stack_standalone = (stack.get("standalone") or {}).get("enabled")
             is_standalone = bool(
-                stack_standalone
-                if stack_standalone is not None
-                else shared_standalone
+                stack_standalone if stack_standalone is not None else shared_standalone
             )
-            siblings.append({
-                "name": stack.get("name", ""),
-                "modelName": model_name,
-                "standalone": is_standalone,
-            })
+            siblings.append(
+                {
+                    "name": stack.get("name", ""),
+                    "modelName": model_name,
+                    "standalone": is_standalone,
+                }
+            )
         return siblings
 
     def _validate_shared_block(self, defaults: dict, shared: dict) -> None:
@@ -1052,9 +1113,7 @@ class RenderPlans:
 
         # Raises RuntimeError if "auto" values are present but cluster is unreachable
         if self.cluster_resource_resolver:
-            merged_values = self.cluster_resource_resolver.resolve_all(
-                merged_values
-            )
+            merged_values = self.cluster_resource_resolver.resolve_all(merged_values)
 
         merged_values = self._resolve_namespace(merged_values)
         merged_values = self._resolve_model(
@@ -1077,6 +1136,15 @@ class RenderPlans:
         merged_values["siblingStacks"] = sibling_stacks or []
         merged_values["stackIndex"] = stack_index
         merged_values["sharedInfraStackIndex"] = shared_infra_stack_index
+
+        epponly_errors = self._validate_epponly_constraints(
+            merged_values,
+            total_stacks=total_stacks,
+            stack_name=stack_name,
+        )
+        for msg in epponly_errors:
+            self.logger.log_error(msg)
+            stack_errors.render_errors.append(msg)
 
         validation_warnings = validate_config(merged_values, self.logger)
         if validation_warnings:
@@ -1183,8 +1251,7 @@ class RenderPlans:
         # catch now - fails fast with a list of known names.
         if self.cli_stack_filter:
             known_stack_names = {
-                s.get("name") for s in stacks
-                if isinstance(s, dict) and s.get("name")
+                s.get("name") for s in stacks if isinstance(s, dict) and s.get("name")
             }
             unknown = [n for n in self.cli_stack_filter if n not in known_stack_names]
             if unknown:

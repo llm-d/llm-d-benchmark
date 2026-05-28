@@ -547,6 +547,15 @@ annotations:
 gateway:
   name: infra-llmdbench-inference-gateway
   namespace: auto  # Synced with namespace.name; resolved at plan time
+  # Gateway implementation. Supported values:
+  #   istio                      - default; istio-base + istiod control plane
+  #   agentgateway               - agentgateway-crds + agentgateway controller
+  #   gke                        - GKE-managed Gateway
+  #   data-science-gateway-class - OpenDataHub / OpenShift AI managed Gateway
+  #   epponly                    - llm-d "standalone" router topology: no
+  #                                Kubernetes Gateway is deployed, the EPP
+  #                                runs with an Envoy sidecar that serves
+  #                                HTTP directly (single-stack only).
   className: istio
   providerNamespace: istio-system
   # Gateway version is derived from chartVersions.istiod at plan time
@@ -1184,6 +1193,16 @@ standalone:
 
   # Extra pod config (merged into pod spec)
   extraPodConfig: {}
+
+# ============================================================================
+# KUSTOMIZE DEPLOYMENT CONFIGURATION
+# Opt-in via `kustomize.enabled: true` in a scenario or `-t kustomize` on
+# the CLI. Defined here (matching modelservice/standalone/fma) so the
+# structural key is always present in merged values and template guards
+# can use `kustomize.enabled` directly.
+# ============================================================================
+kustomize:
+  enabled: false
 
 # ============================================================================
 # FMA DEPLOYMENT CONFIGURATION

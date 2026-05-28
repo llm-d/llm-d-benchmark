@@ -1,5 +1,7 @@
-{% if standalone.enabled is defined and not standalone.enabled %}
+{# Modelservice-only template. -t kustomize uses upstream guide manifests. #}
+{% if standalone.enabled is defined and not standalone.enabled and not (kustomize.enabled | default(false)) %}
 {% set registry = images.inferenceScheduler.repository.split('/')[0] %}
+{% set _epponly = (gateway.className | default('') == 'epponly') %}
 inferenceExtension:
   replicas: {{ inferenceExtension.replicas }}
   image:
@@ -18,6 +20,16 @@ inferenceExtension:
       port: {{ inferenceExtension.zmqPort }}
       targetPort: {{ inferenceExtension.zmqPort }}
       protocol: TCP
+{% if _epponly %}
+    {# epponly: the standalone chart runs an Envoy sidecar inside the EPP
+       pod that serves HTTP on 8081. Expose port 80 on the service so
+       benchmark clients can hit the EPP service directly without a
+       Kubernetes Gateway in front. #}
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8081
+{% endif %}
 {% if huggingface.enabled %}
   env:
     - name: HF_TOKEN
@@ -27,6 +39,9 @@ inferenceExtension:
           key: {{ huggingface.tokenKey }}
 {% endif %}
   pluginsConfigFile: "{{ inferenceExtension.pluginsConfigFile }}"
+{% if inferenceExtension.failureMode is defined and inferenceExtension.failureMode %}
+  failureMode: "{{ inferenceExtension.failureMode }}"
+{% endif %}
 {% if inferenceExtension.resources is defined and inferenceExtension.resources %}
   resources:
 {{ inferenceExtension.resources | toyaml | indent(4, true) }}
@@ -62,7 +77,29 @@ inferenceExtension:
     v: "{{ inferenceExtension.verbosity | default('1') }}"
 {% endif %}
 {% endif %}
-{% if inferenceExtension.sidecar is defined and inferenceExtension.sidecar.enabled is defined and inferenceExtension.sidecar.enabled %}
+{# Envoy sidecar config for the standalone chart (gateway.className=epponly).
+   The chart's built-in Envoy sidecar exposes `args` and `resources` knobs
+   under `inferenceExtension.sidecar`. We surface them via the dedicated
+   `inferenceExtension.envoySidecar` scenario key to avoid clashing with
+   the UDS-tokenizer sidecar block below (which reuses
+   `inferenceExtension.sidecar.enabled`). The two are mutually exclusive
+   in practice: UDS tokenizer is only enabled for precise-prefix-cache
+   routing, which is incompatible with the epponly topology. #}
+{% if (gateway.className | default('') == 'epponly')
+      and inferenceExtension.envoySidecar is defined
+      and inferenceExtension.envoySidecar %}
+  sidecar:
+{% if inferenceExtension.envoySidecar.args is defined and inferenceExtension.envoySidecar.args %}
+    args:
+{% for arg in inferenceExtension.envoySidecar.args %}
+      - "{{ arg }}"
+{% endfor %}
+{% endif %}
+{% if inferenceExtension.envoySidecar.resources is defined and inferenceExtension.envoySidecar.resources %}
+    resources:
+{{ inferenceExtension.envoySidecar.resources | toyaml | indent(6, true) }}
+{% endif %}
+{% elif inferenceExtension.sidecar is defined and inferenceExtension.sidecar.enabled is defined and inferenceExtension.sidecar.enabled %}
   sidecar:
     enabled: true
     image: "{{ images.udsTokenizer.repository }}:{{ images.udsTokenizer.tag }}"
@@ -135,7 +172,8 @@ inferencePool:
 {% endif %}
 
 {# Only istio and gke need a provider hint for the inference-pool chart.
-   agentgateway, and data-science-gateway-class don't require one. #}
+   agentgateway, data-science-gateway-class, and epponly don't require one
+   (epponly uses the standalone chart, which has no provider concept). #}
 {% set gw_class = gateway.className %}
 {% if gw_class in ['gke', 'istio'] %}
 provider:

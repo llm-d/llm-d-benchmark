@@ -21,7 +21,7 @@ GATEWAY_API_CRDS = [
     "httproutes.gateway.networking.k8s.io",
     "listenersets.gateway.networking.k8s.io",
     "referencegrants.gateway.networking.k8s.io",
-    "tlsroutes.gateway.networking.k8s.io"
+    "tlsroutes.gateway.networking.k8s.io",
 ]
 
 # Inference extension CRDs may use the graduated (.k8s.io) or
@@ -37,13 +37,13 @@ GATEWAY_API_EXTENSION_CRDS_XK8S = [
     "inferencemodelrewrites.inference.networking.x-k8s.io",
     "inferenceobjectives.inference.networking.x-k8s.io",
     "inferencepoolimports.inference.networking.x-k8s.io",
-    "inferencepools.inference.networking.x-k8s.io"
+    "inferencepools.inference.networking.x-k8s.io",
 ]
 
 AGENTGATEWAY_CRDS = [
     "agentgatewaybackends.agentgateway.dev",
     "agentgatewayparameters.agentgateway.dev",
-    "agentgatewaypolicies.agentgateway.dev"
+    "agentgatewaypolicies.agentgateway.dev",
 ]
 
 ISTIO_CRDS = [
@@ -93,10 +93,7 @@ class AdminPrerequisitesStep(Step):
     @staticmethod
     def _kustomize_only(context: ExecutionContext) -> bool:
         methods = context.deployed_methods or []
-        return (
-            methods == ["kustomize"]
-            and context.kustomize_skip_infra
-        )
+        return methods == ["kustomize"] and context.kustomize_skip_infra
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
@@ -150,20 +147,26 @@ class AdminPrerequisitesStep(Step):
             )
 
             self._install_prometheus_crds_if_needed(
-                cmd, plan_config, existing_crds,
+                cmd,
+                plan_config,
+                existing_crds,
             )
 
         # Also install Prometheus CRDs for standalone (outside modelservice block)
         if not modelservice_active:
             self._install_prometheus_crds_if_needed(
-                cmd, plan_config, existing_crds,
+                cmd,
+                plan_config,
+                existing_crds,
             )
 
         # After any auto-install attempt, validate that monitoring CRDs are
         # present when monitoring is enabled.  Re-fetch CRDs so we pick up
         # anything that was just installed above.
         refreshed_crds = self._get_existing_crds(cmd, context)
-        self._validate_monitoring_crds(cmd, context, plan_config, refreshed_crds, errors)
+        self._validate_monitoring_crds(
+            cmd, context, plan_config, refreshed_crds, errors
+        )
 
         self._apply_namespace_yaml(cmd, context, errors)
         self._apply_openshift_sccs(cmd, context, plan_config)
@@ -256,7 +259,9 @@ class AdminPrerequisitesStep(Step):
         # truth (gatewayApiCrd.crdUrlTemplate). Fail loudly if missing -- we
         # don't want a stale hardcoded URL silently substituting in.
         crd_url_template = self._require_config(
-            plan_config, "gatewayApiCrd", "crdUrlTemplate",
+            plan_config,
+            "gatewayApiCrd",
+            "crdUrlTemplate",
         )
         crd_url = crd_url_template.format(revision=gw_revision)
         result = cmd.kube("apply", "--server-side", "-k", crd_url)
@@ -292,20 +297,21 @@ class AdminPrerequisitesStep(Step):
             return
 
         cmd.logger.log_info(
-            f"📦 Installing inference extension CRDs "
-            f"(revision {inf_ext_revision})..."
+            f"📦 Installing inference extension CRDs (revision {inf_ext_revision})..."
         )
         # URL template lives in defaults.yaml so it has a single source of
         # truth (gatewayApiCrd.inferenceExtensionUrlTemplate). Fail loudly if
         # missing -- silent fallback would hide config drift.
         ext_url_template = self._require_config(
-            plan_config, "gatewayApiCrd", "inferenceExtensionUrlTemplate",
+            plan_config,
+            "gatewayApiCrd",
+            "inferenceExtensionUrlTemplate",
         )
         ext_url = ext_url_template.format(revision=inf_ext_revision)
         result = cmd.kube("apply", "-f", ext_url)
         if not result.success:
             errors.append(
-                f"Failed to install inference extension CRDs: " f"{result.stderr}"
+                f"Failed to install inference extension CRDs: {result.stderr}"
             )
 
     def _install_gateway_provider(
@@ -317,14 +323,13 @@ class AdminPrerequisitesStep(Step):
         existing_crds: list[str],
     ):
         """Install the gateway provider only if its CRDs are missing."""
-        gateway_config = plan_config.get("gateway", {}) # noqa: F841
+        gateway_config = plan_config.get("gateway", {})  # noqa: F841
         gateway_class = self._require_config(plan_config, "gateway", "className")
 
         if gateway_class == "agentgateway":
             if not _any_crds_missing(AGENTGATEWAY_CRDS, existing_crds):
                 cmd.logger.log_info(
-                    "✅ agentgateway already installed "
-                    "(*.agentgateway.dev CRDs found)"
+                    "✅ agentgateway already installed (*.agentgateway.dev CRDs found)"
                 )
                 return
             self._install_agentgateway(cmd, context, errors)
@@ -332,13 +337,20 @@ class AdminPrerequisitesStep(Step):
         elif gateway_class == "istio":
             if not _any_crds_missing(ISTIO_CRDS, existing_crds):
                 cmd.logger.log_info(
-                    "✅ Istio already installed " "(*.istio.io CRDs found)"
+                    "✅ Istio already installed (*.istio.io CRDs found)"
                 )
                 return
             self._install_istio(cmd, context, plan_config, errors)
 
         elif gateway_class == "gke":
             cmd.logger.log_info("✅ GKE gateway is managed -- nothing to install")
+
+        elif gateway_class == "epponly":
+            cmd.logger.log_info(
+                "✅ gateway.className=epponly -- no Kubernetes Gateway / "
+                "provider control plane is needed (EPP runs llm-d's "
+                "standalone router topology with an Envoy sidecar)"
+            )
 
     def _install_lws_if_needed(
         self,
@@ -433,9 +445,7 @@ class AdminPrerequisitesStep(Step):
         step records an error with platform-aware remediation guidance.
         """
         if context.dry_run:
-            cmd.logger.log_info(
-                "Skipping monitoring CRD validation (dry-run)"
-            )
+            cmd.logger.log_info("Skipping monitoring CRD validation (dry-run)")
             return
 
         monitoring = plan_config.get("monitoring", {})
@@ -451,9 +461,7 @@ class AdminPrerequisitesStep(Step):
         ]
         missing = [c for c in required_crds if c not in existing_crds]
         if not missing:
-            cmd.logger.log_info(
-                "✅ Monitoring CRDs present on cluster"
-            )
+            cmd.logger.log_info("✅ Monitoring CRDs present on cluster")
             return
 
         missing_str = ", ".join(missing)
@@ -468,9 +476,7 @@ class AdminPrerequisitesStep(Step):
     @staticmethod
     def _monitoring_guidance(context: ExecutionContext) -> str:
         """Return platform-specific remediation guidance for missing monitoring CRDs."""
-        common_tail = (
-            "Alternatively, pass '--no-monitoring' to disable monitoring."
-        )
+        common_tail = "Alternatively, pass '--no-monitoring' to disable monitoring."
 
         if context.is_gke:
             return (
@@ -545,7 +551,9 @@ class AdminPrerequisitesStep(Step):
         if context.is_openshift:
             namespace = plan_config.get("namespace", {}).get("name", "")
             if namespace:
-                service_account = self._require_config(plan_config, "serviceAccount", "name")
+                service_account = self._require_config(
+                    plan_config, "serviceAccount", "name"
+                )
                 for scc in ["anyuid", "privileged"]:
                     cmd.kube(
                         "adm",
@@ -587,22 +595,17 @@ class AdminPrerequisitesStep(Step):
         # Apply the rendered SCC template.
         scc_yaml = self._find_rendered_yaml(context, "05a_agentgateway_scc")
         if not scc_yaml or not self._has_yaml_content(scc_yaml):
-            cmd.logger.log_info(
-                "    No agentgateway SCC template rendered -- skipping"
-            )
+            cmd.logger.log_info("    No agentgateway SCC template rendered -- skipping")
             return
 
         result = cmd.kube("apply", "-f", str(scc_yaml))
         if not result.success:
             cmd.logger.log_warning(
-                f"    Failed to apply SCC '{_AGENTGATEWAY_SCC_NAME}': "
-                f"{result.stderr}"
+                f"    Failed to apply SCC '{_AGENTGATEWAY_SCC_NAME}': {result.stderr}"
             )
             return
 
-        cmd.logger.log_info(
-            f"    ✅ SCC '{_AGENTGATEWAY_SCC_NAME}' applied"
-        )
+        cmd.logger.log_info(f"    ✅ SCC '{_AGENTGATEWAY_SCC_NAME}' applied")
 
         # Bind the SCC to the gateway service account.
         cmd.logger.log_info(
@@ -661,7 +664,9 @@ class AdminPrerequisitesStep(Step):
             use_kubeconfig=False,
         )
         if not result.success:
-            errors.append(f"Failed to install agentgateway via helmfile: {result.stderr}")
+            errors.append(
+                f"Failed to install agentgateway via helmfile: {result.stderr}"
+            )
 
     def _install_istio(
         self,
@@ -693,7 +698,13 @@ class AdminPrerequisitesStep(Step):
         if not result.success:
             errors.append(f"Failed to install Istio via helmfile: {result.stderr}")
 
-    def _install_lws(self, cmd: CommandExecutor, lws_config: dict, errors: list, plan_config: dict | None = None):
+    def _install_lws(
+        self,
+        cmd: CommandExecutor,
+        lws_config: dict,
+        errors: list,
+        plan_config: dict | None = None,
+    ):
         version = ""
         if plan_config:
             version = plan_config.get("chartVersions", {}).get("lws", "")

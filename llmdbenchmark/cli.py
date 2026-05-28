@@ -86,7 +86,6 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
         Command.TEARDOWN.value,
         Command.RUN.value,
     ):
-
         # Resolve templates, scenarios, and values into the workspace
         specification_as_dict = RenderSpecification(
             specification_file=args.specification_file,
@@ -237,9 +236,11 @@ def _render_helm_manifests(plan_dir: Path, logger) -> None:
             logger=logger,
         )
         result = cmd.helmfile(
-            "--selector", f"name={model_id}-ms",
+            "--selector",
+            f"name={model_id}-ms",
             "template",
-            "-f", str(helm_dir / "helmfile.yaml"),
+            "-f",
+            str(helm_dir / "helmfile.yaml"),
             "--skip-schema-validation",
             use_kubeconfig=False,
         )
@@ -280,9 +281,7 @@ def _load_stack_info_from_config(config_file, stack_name=""):
                 "standalone_enabled": (
                     plan_config.get("standalone", {}).get("enabled", False)
                 ),
-                "fma_enabled": (
-                    plan_config.get("fma", {}).get("enabled", False)
-                ),
+                "fma_enabled": (plan_config.get("fma", {}).get("enabled", False)),
                 "modelservice_enabled": (
                     plan_config.get("modelservice", {}).get("enabled", False)
                 ),
@@ -417,7 +416,8 @@ def _do_standup(args, logger, render_plan_errors):
     deployed_methods = _resolve_deploy_methods(args, plan_info, logger)
 
     namespace, harness_ns = _parse_namespaces(
-        getattr(args, "namespace", None), plan_info,
+        getattr(args, "namespace", None),
+        plan_info,
     )
 
     if not namespace:
@@ -441,11 +441,17 @@ def _do_standup(args, logger, render_plan_errors):
         harness_namespace=harness_ns,
         model_name=plan_info.get("model_name"),
         logger=logger,
-        standalone_deploy_timeout=int(getattr(args, "standalone_deploy_timeout", 900) or 900),
+        standalone_deploy_timeout=int(
+            getattr(args, "standalone_deploy_timeout", 900) or 900
+        ),
         gateway_deploy_timeout=int(getattr(args, "gateway_deploy_timeout", 120) or 120),
-        modelservice_deploy_timeout=int(getattr(args, "modelservice_deploy_timeout", 1500) or 1500),
+        modelservice_deploy_timeout=int(
+            getattr(args, "modelservice_deploy_timeout", 1500) or 1500
+        ),
         pvc_bind_timeout=int(getattr(args, "pvc_bind_timeout", 240) or 240),
-        kustomize_deploy_timeout=int(getattr(args, "kustomize_deploy_timeout", 900) or 900),
+        kustomize_deploy_timeout=int(
+            getattr(args, "kustomize_deploy_timeout", 900) or 900
+        ),
         llmd_repo_path=getattr(args, "llmd_repo_path", None),
         kustomize_skip_infra=not getattr(args, "full_infra", False),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
@@ -499,10 +505,13 @@ def _do_smoketest(args, logger, render_plan_errors):
     rendered_paths = getattr(render_plan_errors, "rendered_paths", [])
     all_stacks_info = _load_all_stacks_info(rendered_paths)
     plan_info = all_stacks_info[0] if all_stacks_info else {}
-    deployed_methods = _resolve_deploy_methods(args, plan_info, logger, phase="smoketest")
+    deployed_methods = _resolve_deploy_methods(
+        args, plan_info, logger, phase="smoketest"
+    )
 
     namespace, harness_ns = _parse_namespaces(
-        getattr(args, "namespace", None), plan_info,
+        getattr(args, "namespace", None),
+        plan_info,
     )
 
     if not namespace:
@@ -650,6 +659,14 @@ def _print_standup_summary(context, result, logger):
     if harness_ns != ns:
         logger.log_info(f"  Harness NS: {harness_ns}")
     logger.log_info(f"  Methods:    {methods}")
+    # Gateway class only takes effect on the modelservice path; for the
+    # other deploy methods the label says "n/a (...)" so the operator
+    # isn't misled by the scenario's default value.
+    from llmdbenchmark.utilities.cluster import resolve_phase_gateway_label
+
+    gateway_label = resolve_phase_gateway_label(context)
+    if gateway_label:
+        logger.log_info(f"  Gateway:    {gateway_label}")
     logger.log_info(f"  Stacks:     {stacks}")
 
     total_steps = len(result.global_results)
@@ -688,7 +705,8 @@ def _do_teardown(args, logger, render_plan_errors):
     )
 
     namespace, harness_ns = _parse_namespaces(
-        getattr(args, "namespace", None), plan_info,
+        getattr(args, "namespace", None),
+        plan_info,
     )
 
     if not namespace:
@@ -764,7 +782,8 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
     deployed_methods = _resolve_deploy_methods(args, plan_info, logger, phase="run")
 
     namespace, harness_ns = _parse_namespaces(
-        getattr(args, "namespace", None), plan_info,
+        getattr(args, "namespace", None),
+        plan_info,
     )
 
     endpoint_url = getattr(args, "endpoint_url", None)
@@ -803,8 +822,7 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         harness_wait_timeout=int(
             getattr(args, "wait_timeout", None)
             if getattr(args, "wait_timeout", None) is not None
-            else (plan_info.get("harness", {}) or {}).get("waitTimeout")
-            or 3600
+            else (plan_info.get("harness", {}) or {}).get("waitTimeout") or 3600
         ),
         harness_debug=getattr(args, "debug", False),
         harness_skip_run=getattr(args, "skip", False),
@@ -815,7 +833,9 @@ def _do_run(args, logger, render_plan_errors, experiment_file_override=None):
         run_config_file=run_config_file,
         generate_config_only=getattr(args, "generate_config", False),
         dataset_url=getattr(args, "dataset", None),
-        harness_data_access_timeout=int(getattr(args, "data_access_timeout", 120) or 120),
+        harness_data_access_timeout=int(
+            getattr(args, "data_access_timeout", 120) or 120
+        ),
         stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
     )
 
@@ -930,9 +950,7 @@ def _print_endpoints_table(context, logger, args) -> None:
         f"  {'STACK'.ljust(col_stack)}  "
         f"{'MODEL'.ljust(col_model)}  {'ENDPOINT URL'.ljust(col_url)}"
     )
-    logger.log_info(
-        f"  {'-' * col_stack}  {'-' * col_model}  {'-' * col_url}"
-    )
+    logger.log_info(f"  {'-' * col_stack}  {'-' * col_model}  {'-' * col_url}")
     for stack_name, model_name, url in rows:
         logger.log_info(
             f"  {stack_name.ljust(col_stack)}  "
@@ -951,7 +969,7 @@ def _print_endpoints_table(context, logger, args) -> None:
         parent = os.path.basename(os.path.dirname(spec)) if "/" in spec else ""
         stem = os.path.basename(spec)
         if stem.endswith(".yaml.j2"):
-            stem = stem[:-len(".yaml.j2")]
+            stem = stem[: -len(".yaml.j2")]
         spec = f"{parent}/{stem}" if parent else stem
     namespace = context.namespace or "<namespace>"
     logger.log_info("💡 Copy-paste to benchmark one pool:")
@@ -1032,7 +1050,9 @@ def _execute_run(args, logger, render_plan_errors):
                 local_path = results_dir / f"{eid}_{i}"
                 if local_path.exists():
                     file_count = sum(1 for f in local_path.rglob("*") if f.is_file())
-                    logger.log_info(f"      [{i}/{parallelism}] {local_path.name} ({file_count} files)")
+                    logger.log_info(
+                        f"      [{i}/{parallelism}] {local_path.name} ({file_count} files)"
+                    )
     kube_bin = "oc" if context.is_openshift else "kubectl"
     logger.log_info(f"  Local results: {results_dir}")
     logger.log_info(
@@ -1048,7 +1068,9 @@ def _execute_run(args, logger, render_plan_errors):
 
     # --- Store run parameters as ConfigMap in namespace ---
     if not context.dry_run:
-        _store_run_parameters_configmap(context, harness, workload, experiment_ids, logger)
+        _store_run_parameters_configmap(
+            context, harness, workload, experiment_ids, logger
+        )
 
 
 def _store_run_parameters_configmap(context, harness, workload, experiment_ids, logger):
@@ -1074,7 +1096,7 @@ def _store_run_parameters_configmap(context, harness, workload, experiment_ids, 
         parallelism = context.harness_parallelism or 1
         results_dir_prefix = "/requests"
         pvc_paths = []
-        for eid in (experiment_ids or []):
+        for eid in experiment_ids or []:
             for i in range(1, parallelism + 1):
                 pvc_paths.append(f"{results_dir_prefix}/{eid}_{i}")
 
@@ -1102,8 +1124,11 @@ def _store_run_parameters_configmap(context, harness, workload, experiment_ids, 
         # Try to read existing ConfigMap to append
         existing_data = {}
         get_result = cmd.kube(
-            "get", "configmap", cm_name,
-            "-o", "jsonpath={.data}",
+            "get",
+            "configmap",
+            cm_name,
+            "-o",
+            "jsonpath={.data}",
             namespace=namespace,
             check=False,
         )
@@ -1134,7 +1159,9 @@ def _store_run_parameters_configmap(context, harness, workload, experiment_ids, 
         cm_path.write_text(_yaml.dump(cm, default_flow_style=False), encoding="utf-8")
 
         cmd.kube(
-            "apply", "-f", str(cm_path),
+            "apply",
+            "-f",
+            str(cm_path),
             namespace=namespace,
             check=False,
         )
@@ -1314,14 +1341,10 @@ def _execute_experiment(args, logger):
         # --- Phase 2b: Smoketest ---
         try:
             _do_smoketest(args, logger, render_plan_errors)
-            logger.log_info(
-                f"Smoketest complete for {treatment_name}", emoji="✅"
-            )
+            logger.log_info(f"Smoketest complete for {treatment_name}", emoji="✅")
         except PhaseError as e:
             error_msg = str(e)
-            logger.log_error(
-                f"Smoketest failed for {treatment_name}: {error_msg}"
-            )
+            logger.log_error(f"Smoketest failed for {treatment_name}: {error_msg}")
             if not skip_teardown:
                 try:
                     _do_teardown(args, logger, render_plan_errors)
@@ -1427,7 +1450,10 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_TELEMETRY_ENABLED": ("telemetry_enabled", "--telemetry-enabled"),
         "LLMDBENCH_TELEMETRY_PROVIDER": ("telemetry_provider", "--telemetry-provider"),
         "LLMDBENCH_TELEMETRY_ENDPOINT": ("telemetry_endpoint", "--telemetry-endpoint"),
-        "LLMDBENCH_TELEMETRY_AUTH_PROVIDER": ("telemetry_auth_provider", "--telemetry-auth-provider"),
+        "LLMDBENCH_TELEMETRY_AUTH_PROVIDER": (
+            "telemetry_auth_provider",
+            "--telemetry-auth-provider",
+        ),
         "LLMDBENCH_TELEMETRY_TOKEN": ("telemetry_token", "--telemetry-token"),
         "LLMDBENCH_DRY_RUN": ("dry_run", "--dry-run"),
         "LLMDBENCH_VERBOSE": ("verbose", "--verbose"),
@@ -1458,14 +1484,32 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_WVA": ("wva", "--wva"),
         "LLMDBENCH_SERVICE_ACCOUNT": ("serviceaccount", "--serviceaccount"),
         "LLMDBENCH_HARNESS_ENVVARS_TO_YAML": ("envvarspod", "--envvarspod"),
-        "LLMDBENCH_DATA_ACCESS_TIMEOUT": ("data_access_timeout", "--data-access-timeout"),
-        "LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT": ("standalone_deploy_timeout", "--standalone-deploy-timeout"),
-        "LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT": ("gateway_deploy_timeout", "--gateway-deploy-timeout"),
-        "LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT": ("modelservice_deploy_timeout", "--modelservice-deploy-timeout"),
+        "LLMDBENCH_DATA_ACCESS_TIMEOUT": (
+            "data_access_timeout",
+            "--data-access-timeout",
+        ),
+        "LLMDBENCH_STANDALONE_DEPLOY_TIMEOUT": (
+            "standalone_deploy_timeout",
+            "--standalone-deploy-timeout",
+        ),
+        "LLMDBENCH_GATEWAY_DEPLOY_TIMEOUT": (
+            "gateway_deploy_timeout",
+            "--gateway-deploy-timeout",
+        ),
+        "LLMDBENCH_MODELSERVICE_DEPLOY_TIMEOUT": (
+            "modelservice_deploy_timeout",
+            "--modelservice-deploy-timeout",
+        ),
         "LLMDBENCH_PVC_BIND_TIMEOUT": ("pvc_bind_timeout", "--pvc-bind-timeout"),
-        "LLMDBENCH_FMA_TEARDOWN_TIMEOUT": ("fma_teardown_timeout", "--fma-teardown-timeout"),
+        "LLMDBENCH_FMA_TEARDOWN_TIMEOUT": (
+            "fma_teardown_timeout",
+            "--fma-teardown-timeout",
+        ),
         "LLMDBENCH_LLMD_REPO_PATH": ("llmd_repo_path", "--llmd-repo-path"),
-        "LLMDBENCH_KUSTOMIZE_DEPLOY_TIMEOUT": ("kustomize_deploy_timeout", "--kustomize-deploy-timeout"),
+        "LLMDBENCH_KUSTOMIZE_DEPLOY_TIMEOUT": (
+            "kustomize_deploy_timeout",
+            "--kustomize-deploy-timeout",
+        ),
     }
 
     active = {k: v for k, v in os.environ.items() if k in _ENV_TO_CLI}
@@ -1744,7 +1788,9 @@ def cli() -> None:
     if hasattr(args, "wva") and not args.wva:
         args.wva = env_bool("LLMDBENCH_WVA")
     if not args.specification_file:
-        parser.error("the following arguments are required: --specification_file/--spec")
+        parser.error(
+            "the following arguments are required: --specification_file/--spec"
+        )
 
     # Results command is handled separately
     if args.command == Command.RESULTS.value:
@@ -1782,7 +1828,7 @@ def cli() -> None:
             store_root = StoreManager.find_store_root(".", silent=True)
         except Exception:
             store_root = None
-            
+
         if store_root:
             overall_workspace = store_root / "workspaces"
         elif scenario_work_dir := _extract_workspace_from_scenario(
@@ -1861,7 +1907,7 @@ def cli() -> None:
             },
             "environment": {
                 "LLMDBENCH_BASE_DIR": str(args.base_dir),
-            }
+            },
         }
         telemetry.push(telemetry_data)
 

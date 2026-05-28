@@ -8,6 +8,7 @@ from llmdbenchmark.utilities.endpoint import (
     find_standalone_endpoint,
     find_fma_endpoint,
     find_gateway_endpoint,
+    find_epponly_endpoint,
     find_custom_endpoint,
     find_kustomize_endpoint,
     discover_hf_token_secret,
@@ -63,19 +64,21 @@ class DetectEndpointStep(Step):
         namespace = context.namespace or self._require_config(
             plan_config, "namespace", "name"
         )
-        is_standalone = (
-            "standalone" in context.deployed_methods
-            or self._resolve(plan_config, "standalone.enabled", default=False)
+        is_standalone = "standalone" in context.deployed_methods or self._resolve(
+            plan_config, "standalone.enabled", default=False
         )
-        is_fma = (
-            "fma" in context.deployed_methods
-            or self._resolve(plan_config, "fma.enabled", default=False)
+        is_fma = "fma" in context.deployed_methods or self._resolve(
+            plan_config, "fma.enabled", default=False
         )
         inference_port = self._resolve(
-            plan_config, "vllmCommon.inferencePort", default=8000,
+            plan_config,
+            "vllmCommon.inferencePort",
+            default=8000,
         )
         release = self._resolve(
-            plan_config, "release", context_value=context.release,
+            plan_config,
+            "release",
+            context_value=context.release,
         )
 
         service_ip = None
@@ -102,19 +105,21 @@ class DetectEndpointStep(Step):
             service_name = service_ip
             gateway_port = 0
         elif is_kustomize:
-            guide_name = self._resolve(
-                plan_config, "kustomize.guideName", default=""
-            )
+            guide_name = self._resolve(plan_config, "kustomize.guideName", default="")
             context.logger.log_info(
                 f"Kustomize deployment -- looking for service '{guide_name}-epp'",
             )
             if guide_name:
                 service_ip, service_name, gateway_port = find_kustomize_endpoint(
-                    cmd, namespace, guide_name,
+                    cmd,
+                    namespace,
+                    guide_name,
                 )
             else:
                 service_ip, service_name, gateway_port = find_custom_endpoint(
-                    cmd, namespace, "epp",
+                    cmd,
+                    namespace,
+                    "epp",
                 )
             stack_type = "vllm-prod"
         elif deploy_method:
@@ -124,13 +129,26 @@ class DetectEndpointStep(Step):
                 emoji="🔍",
             )
             service_ip, service_name, gateway_port = find_custom_endpoint(
-                cmd, namespace, deploy_method,
+                cmd,
+                namespace,
+                deploy_method,
             )
             stack_type = "vllm-prod"
         else:
-            service_ip, service_name, gateway_port = find_gateway_endpoint(
-                cmd, namespace, release
-            )
+            # epponly: no Kubernetes Gateway exists; clients hit the EPP
+            # service directly (port 80 -> Envoy sidecar 8081 in the EPP pod).
+            gateway_class = self._resolve(plan_config, "gateway.className", default="")
+            if gateway_class == "epponly":
+                model_id_label = plan_config.get("model_id_label", "")
+                service_ip, service_name, gateway_port = find_epponly_endpoint(
+                    cmd,
+                    namespace,
+                    model_id_label,
+                )
+            else:
+                service_ip, service_name, gateway_port = find_gateway_endpoint(
+                    cmd, namespace, release
+                )
             stack_type = "llm-d"
 
         if not service_ip:
@@ -157,7 +175,9 @@ class DetectEndpointStep(Step):
         protocol = "https" if gateway_port == "443" else "http"
         endpoint_url = f"{protocol}://{service_ip}:{gateway_port}"
         path_prefix = compute_gateway_path_prefix(
-            plan_config, stack_name, is_standalone=is_standalone,
+            plan_config,
+            stack_name,
+            is_standalone=is_standalone,
         )
         if path_prefix:
             endpoint_url = f"{endpoint_url}{path_prefix}"
@@ -199,8 +219,7 @@ class DetectEndpointStep(Step):
             return
 
         context.logger.log_info(
-            "Trying to find a matching HuggingFace token "
-            "secret in the cluster...",
+            "Trying to find a matching HuggingFace token secret in the cluster...",
             emoji="🔍",
         )
 
@@ -213,9 +232,7 @@ class DetectEndpointStep(Step):
             )
             return
 
-        context.logger.log_info(
-            f"HuggingFace token secret detected: '{secret_name}'"
-        )
+        context.logger.log_info(f"HuggingFace token secret detected: '{secret_name}'")
 
         token = extract_hf_token_from_secret(cmd, namespace, secret_name)
         if token:
