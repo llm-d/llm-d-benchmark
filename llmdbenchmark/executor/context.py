@@ -180,7 +180,10 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
 
     @property
     def platform_type(self) -> str:
-        """Human-readable platform label (e.g. 'OpenShift', 'Kind')."""
+        """Human-readable platform label (e.g. 'OpenShift', 'Kind').
+
+        Returns 'unrecognized' when none of the detection signals matched.
+        """
         if self.is_openshift:
             return "OpenShift"
         if self.is_gke:
@@ -189,7 +192,7 @@ class ExecutionContext:  # pylint: disable=too-many-instance-attributes
             return "Kind"
         if self.is_minikube:
             return "Minikube"
-        return "Kubernetes"
+        return "unrecognized"
 
     def setup_commands_dir(self) -> Path:
         """Path to workspace/setup/commands, created on access."""
