@@ -710,7 +710,7 @@ vllmCommon:
   nixlSideChannelPort: "5557"
 
   # UCX transport layer configuration for NCCL inter-node communication.
-  ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
+  ucxTls: "sm,cuda_ipc,cuda_copy,tcp"
 
   # UCX socket address transport priority.
   ucxSockaddrTlsPriority: "tcp"
