@@ -37,6 +37,10 @@ do
         ;;
         -h|--help)
         show_usage
+        mkdir -p ~/.kube
+        if [[ ! -z ${LLMDBENCH_BASE64_CONTEXT_CONTENTS} ]]; then
+            echo ${LLMDBENCH_BASE64_CONTEXT_CONTENTS} | base64 -d > ~/.kube/config
+        fi
         if [[ "${BASH_SOURCE[0]}" == "${0}" ]]
         then
             exit 0
