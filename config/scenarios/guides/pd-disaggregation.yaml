@@ -326,17 +326,16 @@ scenario:
 #####    annotations:
 #####      prefill:
 #####        pod:
-#####          k8s.v1.cni.cncf.io/networks: multi-nic-inference
+#####          k8s.v1.cni.cncf.io/networks: multi-nic-compute
 #####      decode:
 #####        pod:
-#####          k8s.v1.cni.cncf.io/networks: multi-nic-inference
+#####          k8s.v1.cni.cncf.io/networks: multi-nic-compute
 
     vllmCommon:
 #      priorityClassName: nightly-gpu-critical
-      ucxTls: "sm,cuda_ipc,cuda_copy,tcp"
 #####      ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
-#####      networkResource: "auto"   # auto-detect from cluster nodes
-#####      networkNr: "1"            # number of network devices
+      networkResource: "auto"   # auto-detect from cluster nodes
+      networkNr: "1"            # number of network devices
 
       volumes:
         - name: shared-config

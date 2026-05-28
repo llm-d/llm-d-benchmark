@@ -425,24 +425,20 @@ scenario:
     # COMMON -- Applies to all deployment methods (continued)
     # =========================================================================
 
-    annotations:
-      prefill:
-        pod:
-#          k8s.v1.cni.cncf.io/networks: multi-nic-inference
-      decode:
-        pod:
-#          k8s.v1.cni.cncf.io/networks: multi-nic-inference
-
-      resources:
-        prefill:
-#          networkResource: "rdma/roce_gdr"
-#          networkNr: 1
-        decode:
-#          networkResource: "rdma/roce_gdr"
-#          networkNr: 1
+#####    annotations:
+#####      prefill:
+#####        pod:
+#####          k8s.v1.cni.cncf.io/networks: multi-nic-inference
+#####      decode:
+#####        pod:
+#####          k8s.v1.cni.cncf.io/networks: multi-nic-inference
 
     vllmCommon:
 #      priorityClassName: nightly-gpu-critical
+
+#####      ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
+      networkResource: "auto"   # auto-detect from cluster nodes
+      networkNr: "1"            # number of network devices
 
       volumes:
         - name: shared-config

@@ -92,6 +92,8 @@ jobs:
       monitoring_enabled: ${{ inputs.monitoring_enabled || 'false' }}
       dry_run: ${{ inputs.dry_run || 'false' }}
       verbose: ${{ inputs.verbose || 'false' }}
-      harness: ${{ inputs.harness || 'nop' }}
-      workload: ${{ inputs.workload || 'nop.yaml' }}
+      harness: ${{ inputs.harness || 'vllm-benchmark' }}
+      workload: ${{ inputs.workload || 'sanity_random.yaml' }}
+#      harness: ${{ inputs.harness || 'nop' }}
+#      workload: ${{ inputs.workload || 'nop.yaml' }}
     secrets: inherit

@@ -47,8 +47,10 @@ jobs:
       monitoring_enabled: true
       dry_run: false
       verbose: false
-      harness: nop
-      workload: nop.yaml
+      harness: vllm-benchmark
+      workload: sanity_random.yaml
+#      harness: nop
+#      workload: nop.yaml
     secrets: inherit
 
   # -- FMA deployment (own Kind cluster) --

@@ -131,7 +131,7 @@ COPY build/requirements-analysis.txt .
 RUN pip install --no-cache-dir -r requirements-analysis.txt && pip install -e /opt
 
 ADD install.sh /usr/local/bin/llmdbench_install.sh
-RUN chmod +x /usr/local/bin; \
+RUN chmod +x /usr/local/bin/*; \
     llmdbench_install.sh  -y && apt-get clean && rm -rf /var/cache/apt && rm -rf /var/lib/apt/lists/* || true
 
 COPY build/llm-d-benchmark.sh /usr/local/bin/llm-d-benchmark.sh
