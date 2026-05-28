@@ -119,6 +119,7 @@ def dispatch_cli(args: argparse.Namespace, logger: logging.Logger) -> None:
             cli_methods=getattr(args, "methods", None),
             cli_monitoring=getattr(args, "monitoring", None),
             cli_wva=getattr(args, "wva", False),
+            cli_gateway_class=getattr(args, "gateway_class", None),
             cli_stack_filter=_parse_stack_filter(getattr(args, "stack", None)),
         ).eval()
 
@@ -1197,6 +1198,7 @@ def _render_plans_for_experiment(args, logger, setup_overrides=None):
         cli_methods=getattr(args, "methods", None),
         cli_monitoring=getattr(args, "monitoring", None),
         cli_wva=getattr(args, "wva", False),
+        cli_gateway_class=getattr(args, "gateway_class", None),
         setup_overrides=setup_overrides,
     ).eval()
 
@@ -1461,6 +1463,7 @@ def _log_env_overrides(logger, args):
         "LLMDBENCH_NAMESPACE": ("namespace", "--namespace"),
         "LLMDBENCH_MODELS": ("models", "--models"),
         "LLMDBENCH_METHODS": ("methods", "--methods"),
+        "LLMDBENCH_GATEWAY_CLASS": ("gateway_class", "--gateway-class"),
         "LLMDBENCH_RELEASE": ("release", "--release"),
         "LLMDBENCH_KUBECONFIG": ("kubeconfig", "--kubeconfig"),
         "LLMDBENCH_PARALLEL": ("parallel", "--parallel"),
@@ -1558,6 +1561,7 @@ def _all_flag_forms(flag: str) -> list[str]:
         "--namespace": ["--namespace", "-p"],
         "--models": ["--models", "-m"],
         "--methods": ["--methods", "-t"],
+        "--gateway-class": ["--gateway-class"],
         "--release": ["--release", "-r"],
         "--kubeconfig": ["--kubeconfig", "-k"],
         "--parallel": ["--parallel"],

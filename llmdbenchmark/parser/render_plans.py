@@ -49,6 +49,7 @@ class RenderPlans:
         cli_methods: str | None = None,
         cli_monitoring: bool | None = None,
         cli_wva: bool = False,
+        cli_gateway_class: str | None = None,
         setup_overrides: dict | None = None,
         cli_stack_filter: list[str] | None = None,
     ):
@@ -63,6 +64,11 @@ class RenderPlans:
         self.cli_methods = cli_methods
         self.cli_monitoring = cli_monitoring
         self.cli_wva = cli_wva
+        # CLI override for `gateway.className`. Applied per-stack in
+        # `_resolve_gateway_class` ahead of `_validate_epponly_constraints`
+        # so the validator sees the post-override value. Only affects
+        # rendering on the modelservice path; ignored by kustomize/standalone/fma.
+        self.cli_gateway_class = cli_gateway_class
         self.setup_overrides = setup_overrides
         # When --stack selects exactly one stack, -m/--models scopes to
         # that stack only (sibling stacks keep their scenario-defined
@@ -573,6 +579,54 @@ class RenderPlans:
             kustomize_config["enabled"] = True
             self.logger.log_info("Deploy method from CLI: kustomize")
 
+        return result
+
+    # Whitelist for the --gateway-class CLI override. Reject anything else
+    # at render time so a typo doesn't silently produce a broken Gateway /
+    # InferencePool chart configuration.
+    _SUPPORTED_GATEWAY_CLASSES: tuple[str, ...] = (
+        "epponly",
+        "istio",
+        "agentgateway",
+        "gke",
+        "data-science-gateway-class",
+    )
+
+    def _resolve_gateway_class(self, values: dict) -> dict:
+        """Apply ``--gateway-class`` CLI override to ``gateway.className``.
+
+        Only meaningful on the modelservice deploy path (kustomize /
+        standalone / fma ignore the scenario's gateway block entirely).
+        The override is applied unconditionally so it shows up in the
+        rendered config and gets surfaced by the standup banner; the
+        deploy steps gate on the active method themselves.
+
+        Raises ``ValueError`` on an unknown gateway class so a typo
+        fails fast at plan time rather than silently producing a
+        broken deploy.
+        """
+        if not self.cli_gateway_class:
+            return values
+
+        candidate = self.cli_gateway_class.strip()
+        if candidate not in self._SUPPORTED_GATEWAY_CLASSES:
+            supported = ", ".join(self._SUPPORTED_GATEWAY_CLASSES)
+            raise ValueError(
+                f"--gateway-class={candidate!r} is not a supported value. "
+                f"Choose one of: {supported}."
+            )
+
+        result = deepcopy(values)
+        gateway_config = result.setdefault("gateway", {})
+        previous = gateway_config.get("className")
+        gateway_config["className"] = candidate
+
+        if previous and previous != candidate:
+            self.logger.log_info(
+                f"Gateway class override from CLI: {previous} -> {candidate}"
+            )
+        else:
+            self.logger.log_info(f"Gateway class from CLI: {candidate}")
         return result
 
     @staticmethod
@@ -1123,6 +1177,7 @@ class RenderPlans:
         )
         self._warn_custom_command_conflicts(merged_values)
         merged_values = self._resolve_deploy_method(merged_values)
+        merged_values = self._resolve_gateway_class(merged_values)
         merged_values = self._resolve_monitoring(merged_values)
         merged_values = self._resolve_wva(merged_values)
         merged_values = self._resolve_hf_token(merged_values)

@@ -5,7 +5,9 @@ from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env, env_int
 
 
-def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []):
+def add_subcommands(
+    parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []
+):
     """Register the ``teardown`` subcommand and its arguments."""
     teardown_parser = parser.add_parser(
         Command.TEARDOWN.value,
@@ -30,22 +32,34 @@ def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.A
         help="Step list (comma-separated values or ranges, e.g. 0,1,3 or 0-4).",
     )
     teardown_parser.add_argument(
-        "-m", "--models",
+        "-m",
+        "--models",
         default=env("LLMDBENCH_MODELS"),
         help="Model that was deployed (used for resource name resolution).",
     )
     teardown_parser.add_argument(
-        "-t", "--methods",
+        "-t",
+        "--methods",
         default=env("LLMDBENCH_METHODS"),
         help="Deployment methods to tear down (standalone, modelservice, fma, kustomize).",
     )
     teardown_parser.add_argument(
-        "-r", "--release",
+        "--gateway-class",
+        default=env("LLMDBENCH_GATEWAY_CLASS"),
+        help=(
+            "Override the scenario's gateway.className (only meaningful "
+            "if teardown re-renders templates)."
+        ),
+    )
+    teardown_parser.add_argument(
+        "-r",
+        "--release",
         default=env("LLMDBENCH_RELEASE", "llmdbench"),
         help="Modelservice Helm chart release name (default: llmdbench).",
     )
     teardown_parser.add_argument(
-        "-d", "--deep",
+        "-d",
+        "--deep",
         action="store_true",
         help=(
             "Deep cleaning: delete ALL resources in both namespaces. "
@@ -55,7 +69,8 @@ def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.A
         ),
     )
     teardown_parser.add_argument(
-        "-p", "--namespace",
+        "-p",
+        "--namespace",
         default=env("LLMDBENCH_NAMESPACE"),
         help="Comma-separated namespaces to tear down (model,harness). "
         "Overrides namespace from the plan config. If only one namespace is "
@@ -85,7 +100,7 @@ def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.A
         type=int,
         default=env_int("LLMDBENCH_FMA_TEARDOWN_TIMEOUT"),
         help="Seconds to wait for FMA launcher and requester pods to terminate "
-             "before the Helm chart uninstall removes the controller. Default: 120.",
+        "before the Helm chart uninstall removes the controller. Default: 120.",
     )
     teardown_parser.add_argument(
         "--llmd-repo-path",
