@@ -1,0 +1,35 @@
+load:
+  type: concurrent
+  stages:
+    - concurrency_level: 2048
+      num_requests: 8192
+api:
+  type: completion
+  streaming: true
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+data:
+  type: random
+  input_distribution:
+    min: 2000
+    max: 2000
+    mean: 2000
+    std_dev: 0
+  output_distribution:
+    min: 2000
+    max: 2000
+    mean: 2000
+    std_dev: 0
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+storage:
+  local_storage:
+    path: /workspace
