@@ -595,24 +595,42 @@ class RenderPlans:
     def _resolve_gateway_class(self, values: dict) -> dict:
         """Apply ``--gateway-class`` CLI override to ``gateway.className``.
 
-        Only meaningful on the modelservice deploy path (kustomize /
-        standalone / fma ignore the scenario's gateway block entirely).
-        The override is applied unconditionally so it shows up in the
-        rendered config and gets surfaced by the standup banner; the
-        deploy steps gate on the active method themselves.
+        ``gateway.className`` only affects rendering on the modelservice
+        path. Kustomize / standalone / fma ignore the gateway block
+        entirely, so we accept any string there (including sentinels like
+        ``none`` that CI scripts pass uniformly across deploy methods)
+        without validation.
 
-        Raises ``ValueError`` on an unknown gateway class so a typo
-        fails fast at plan time rather than silently producing a
-        broken deploy.
+        On the modelservice path we enforce a whitelist so a typo fails
+        fast at plan time rather than silently producing a broken Gateway
+        / InferencePool chart configuration.
         """
         if not self.cli_gateway_class:
             return values
 
         candidate = self.cli_gateway_class.strip()
+
+        modelservice_enabled = (values.get("modelservice") or {}).get("enabled", True)
+
+        if not modelservice_enabled:
+            # Non-modelservice deploy method is active -- the gateway
+            # block is ignored by every rendered template. Store the
+            # value verbatim (so the banner / config.yaml are honest about
+            # what the CLI requested) and skip validation.
+            result = deepcopy(values)
+            gateway_config = result.setdefault("gateway", {})
+            gateway_config["className"] = candidate
+            self.logger.log_info(
+                f"Gateway class from CLI: {candidate} "
+                f"(ignored -- modelservice is not the active deploy method)"
+            )
+            return result
+
         if candidate not in self._SUPPORTED_GATEWAY_CLASSES:
             supported = ", ".join(self._SUPPORTED_GATEWAY_CLASSES)
             raise ValueError(
-                f"--gateway-class={candidate!r} is not a supported value. "
+                f"--gateway-class={candidate!r} is not a supported value "
+                f"for the modelservice deploy method. "
                 f"Choose one of: {supported}."
             )
 

@@ -153,6 +153,49 @@ Gateway class options (set via `gateway.className` in the scenario YAML):
 | `data-science-gateway-class` | OpenDataHub / OpenShift AI managed Gateway                                                                       | Running on OpenShift AI                                           |
 | `epponly`                    | **No** Kubernetes Gateway, **no** HTTPRoute, the `standalone` GAIE chart (EPP with an Envoy sidecar serving HTTP) | You want llm-d's standalone router topology without any gateway   |
 
+### Overriding `gateway.className` from the CLI
+
+Every subcommand that renders templates (`plan`, `standup`, `experiment`,
+and the `run`/`smoketest`/`teardown` paths that re-render for setup
+overrides) accepts a `--gateway-class` flag that overrides the
+scenario's `gateway.className` for that invocation. The same value can
+be supplied via the `LLMDBENCH_GATEWAY_CLASS` environment variable.
+
+```bash
+# Scenario default is epponly -- flip to istio without editing YAML
+llmdbenchmark --spec guides/optimized-baseline standup -p my-ns --gateway-class istio
+
+# env-var form (matches the LLMDBENCH_* convention)
+LLMDBENCH_GATEWAY_CLASS=agentgateway \
+  llmdbenchmark --spec guides/optimized-baseline standup -p my-ns
+```
+
+Precedence (highest wins): `--gateway-class` CLI flag → scenario
+`gateway.className` → `defaults.yaml` (`istio`).
+
+#### Method-aware validation
+
+`gateway.className` only affects rendering when the active deploy
+method is `modelservice`. For `kustomize`, `standalone`, and `fma` the
+gateway block is ignored by every rendered template, so the CLI accepts
+**any** value (including sentinels like `none` or `n/a` that CI scripts
+often pass uniformly across deploy methods). The banner shows it as
+`Gateway: <value> (ignored -- modelservice is not the active deploy method)`.
+
+When `modelservice` is the active method, the override is checked
+against the whitelist of supported values above and a typo fails fast
+at plan time:
+
+```text
+ValueError: --gateway-class='isto' is not a supported value for the
+modelservice deploy method. Choose one of: epponly, istio, agentgateway,
+gke, data-science-gateway-class.
+```
+
+This lets CI workflows pass `--gateway-class=$SOME_VAR` for every
+deploy method without per-method special-casing, while still catching
+typos when the value actually matters.
+
 ### Switching from Istio to agentgateway
 
 By default, `llm-d-benchmark` deploys [Istio](https://istio.io/) as the gateway provider for the `modelservice` deployment method.  To use [agentgateway](https://agentgateway.dev/) instead, add a `gateway` block to your scenario YAML:
