@@ -215,7 +215,7 @@ python3 -m llmdbenchmark.analysis.benchmark_report.cli \
 
 #### Parameters Reference
 * `-w, --workload-generator`: Specifies the harness generator. Must be one of: `'guidellm'`, `'inferencemax'`, `'inference-perf'`, `'vllm-benchmark'`, `'nop'`.
-* `-b, --br-version`: Target benchmark report version (defaults to `0.1`; use `0.2` for the standard version).
+* `-b, --br-version`: Target benchmark report version (defaults to `0.1`; use `0.2` for the standard version, or `0.2.1` to additionally capture the multimodal payload statistics that `inference-perf` emits).
 * `-f, --force`: Overwrites the output file if it already exists.
 * `results_file` *(Positional)*: Path to the raw native results file to convert. (e.g. For `inference-perf`, this must contain `"stage_"` in its filename, e.g., `stage_0_lifecycle_metrics.json`).
 * `output_file` *(Positional, Optional)*: Destination for the converted report. If omitted, the YAML output is printed directly to `stdout`.
