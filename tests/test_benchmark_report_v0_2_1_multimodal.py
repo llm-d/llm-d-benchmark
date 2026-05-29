@@ -54,7 +54,6 @@ def test_full_multimodal_report_validates_and_roundtrips():
                             },
                             "video": {
                                 "frames": _stat("count", 16.0),
-                                "seconds": _stat("s", 4.0),
                             },
                             "audio": {"seconds": _stat("s", 10.0)},
                         },
@@ -88,7 +87,6 @@ def test_full_multimodal_report_validates_and_roundtrips():
         (ImagePayloadStats, "aspect_ratio", "ratio"),
         (ImagePayloadStats, "bytes", "bytes"),
         (VideoPayloadStats, "frames", "count"),
-        (VideoPayloadStats, "seconds", "s"),
         (AudioPayloadStats, "seconds", "s"),
         (AggregateRequests, "request_size", "bytes"),
     ],
@@ -107,7 +105,6 @@ def test_correct_units_accepted(model, field, units):
         # An aspect ratio is a ratio, not a portion.
         (ImagePayloadStats, "aspect_ratio", "fraction"),
         (ImagePayloadStats, "pixels", "s"),
-        (VideoPayloadStats, "seconds", "count"),
         (AudioPayloadStats, "seconds", "bytes"),
         (AggregateRequests, "request_size", "queries/s"),
     ],

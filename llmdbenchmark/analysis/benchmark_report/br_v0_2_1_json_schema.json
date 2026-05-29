@@ -3336,18 +3336,6 @@
           ],
           "default": null,
           "description": "Number of frames per video instance."
-        },
-        "seconds": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Statistics"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Duration per video instance."
         }
       },
       "title": "VideoPayloadStats",

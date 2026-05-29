@@ -570,9 +570,6 @@ results:
             frames:
               mean: 16.0
               units: count
-            seconds:
-              mean: 4.0
-              units: s
         output_length:
           max: 2328.0
           mean: 2262.448

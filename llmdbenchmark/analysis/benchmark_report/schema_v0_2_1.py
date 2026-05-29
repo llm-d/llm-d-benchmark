@@ -59,7 +59,7 @@ assert VERSION_V02 == "0.2", (
 #   MediaPayloadStats        count, bytes                 (all modalities)
 #     └─ VisualPayloadStats  + pixels, aspect_ratio       (image, video)
 #         ├─ ImagePayloadStats
-#         └─ VideoPayloadStats  + frames, seconds
+#         └─ VideoPayloadStats  + frames
 #     └─ AudioPayloadStats   + seconds
 #
 # Adding a modality is a new leaf class plus one field on MultiModalRequests.
@@ -133,8 +133,6 @@ class VideoPayloadStats(VisualPayloadStats):
 
     frames: Statistics | None = None
     """Number of frames per video instance."""
-    seconds: Statistics | None = None
-    """Duration per video instance."""
 
     @model_validator(mode="after")
     def check_video_units(self):
@@ -142,11 +140,6 @@ class VideoPayloadStats(VisualPayloadStats):
             raise ValueError(
                 f'Invalid units "{self.frames.units}", must be one of:'
                 f" {' '.join(UNITS_QUANTITY)}"
-            )
-        if self.seconds and self.seconds.units not in UNITS_TIME:
-            raise ValueError(
-                f'Invalid units "{self.seconds.units}", must be one of:'
-                f" {' '.join(UNITS_TIME)}"
             )
         return self
 
