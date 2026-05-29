@@ -265,9 +265,12 @@ class DeployHarnessStep(Step):
                     template_values["model"]["name"] = model_name
                 template_values.setdefault("images", {}).setdefault("benchmark", {})
 
-                # Service account override (-q)
+                # Service account precedence: CLI override (-q) > scenario's
+                # harness.serviceAccount > global serviceAccount.name default.
                 if context.harness_service_account:
                     template_values["harness"]["serviceAccount"] = context.harness_service_account
+                elif plan_config and plan_config.get("harness", {}).get("serviceAccount"):
+                    template_values["harness"]["serviceAccount"] = plan_config["harness"]["serviceAccount"]
                 elif plan_config and "serviceAccount" in plan_config:
                     template_values["harness"]["serviceAccount"] = plan_config["serviceAccount"].get("name", "default")
 
