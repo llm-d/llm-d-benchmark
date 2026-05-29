@@ -145,9 +145,7 @@ class ExperimentSummary:
         logger.log_info("  DoE EXPERIMENT SUMMARY")
         logger.log_info("=" * W)
         logger.log_info(f"  Experiment:      {self.experiment_name}")
-        logger.log_info(
-            f"  Setup treatments: {self.total_setup_treatments}"
-        )
+        logger.log_info(f"  Setup treatments: {self.total_setup_treatments}")
         logger.log_info(f"  Run treatments:  {self.total_run_treatments}")
         logger.log_info(f"  Total matrix:    {self.total_matrix}")
         logger.log_info(f"  Duration:        {elapsed:.0f}s")

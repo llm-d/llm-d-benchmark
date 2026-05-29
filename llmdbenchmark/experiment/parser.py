@@ -106,15 +106,14 @@ def _parse_setup_treatments(setup_data: dict) -> list[SetupTreatment]:
         if not isinstance(item, dict):
             logger.warning(
                 "setup.treatments[%d] is %s, expected dict -- skipping",
-                i, type(item).__name__,
+                i,
+                type(item).__name__,
             )
             continue
 
         # Constants first, then treatment-specific overrides
         flat_overrides = dict(constants)
-        flat_overrides.update(
-            {k: v for k, v in item.items() if k != "name"}
-        )
+        flat_overrides.update({k: v for k, v in item.items() if k != "name"})
 
         treatments.append(
             SetupTreatment(

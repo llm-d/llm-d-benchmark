@@ -160,11 +160,15 @@ class LLMDBenchmarkLogger:
 
     def log_debug(self, msg, emoji=None):
         """Log a debug-level message with an optional emoji override."""
-        self.logger.debug(self._apply_indent(msg), extra={"emoji": emoji} if emoji else {})
+        self.logger.debug(
+            self._apply_indent(msg), extra={"emoji": emoji} if emoji else {}
+        )
 
     def log_info(self, msg, emoji=None):
         """Log an info-level message with an optional emoji override."""
-        self.logger.info(self._apply_indent(msg), extra={"emoji": emoji} if emoji else {})
+        self.logger.info(
+            self._apply_indent(msg), extra={"emoji": emoji} if emoji else {}
+        )
 
     def log_plain(self, msg, emoji=None):
         """Log a plain message to console (no metadata) but full message to file."""
@@ -172,12 +176,16 @@ class LLMDBenchmarkLogger:
 
     def log_warning(self, msg, emoji=None):
         """Log a warning-level message with an optional emoji override."""
-        self.logger.warning(self._apply_indent(msg), extra={"emoji": emoji} if emoji else {})
+        self.logger.warning(
+            self._apply_indent(msg), extra={"emoji": emoji} if emoji else {}
+        )
 
     def log_error(self, msg, emoji=None, exc_info=False):
         """Log an error-level message with an optional emoji override."""
         self.logger.error(
-            self._apply_indent(msg), extra={"emoji": emoji} if emoji else {}, exc_info=exc_info
+            self._apply_indent(msg),
+            extra={"emoji": emoji} if emoji else {},
+            exc_info=exc_info,
         )
 
     def line_break(self) -> None:
@@ -186,7 +194,7 @@ class LLMDBenchmarkLogger:
             handler.stream.write("\n")
             handler.flush()
 
-    def log_plain(self, msg: str) -> None: # noqa: F811
+    def log_plain(self, msg: str) -> None:  # noqa: F811
         """Write *msg* verbatim to every handler - no timestamp or level prefix.
 
         For human-facing payloads where the log formatting would be more

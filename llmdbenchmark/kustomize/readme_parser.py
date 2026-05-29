@@ -89,6 +89,7 @@ class ParsedGuide:
 # Internal state machine
 # ---------------------------------------------------------------------------
 
+
 class _Section(str, Enum):
     PREAMBLE = "preamble"
     PREREQUISITES = "prerequisites"
@@ -108,7 +109,16 @@ _DETAILS_OPEN = re.compile(r"<details>", re.IGNORECASE)
 _DETAILS_CLOSE = re.compile(r"</details>", re.IGNORECASE)
 _SUMMARY_RE = re.compile(r"<summary[^>]*>(.*?)</summary>", re.IGNORECASE | re.DOTALL)
 
-_SKIP_PREFIXES = ("export ", "git clone", "git checkout", "cd ", "curl ", "envsubst", "chmod ", "#")
+_SKIP_PREFIXES = (
+    "export ",
+    "git clone",
+    "git checkout",
+    "cd ",
+    "curl ",
+    "envsubst",
+    "chmod ",
+    "#",
+)
 
 _KEEP_PREFIXES = ("kubectl", "helm", "kustomize", "oc ")
 
@@ -121,7 +131,12 @@ def _classify_heading(text: str, current: _Section) -> _Section:
         return _Section.PREREQUISITES
     if "cleanup" in lower or "uninstall" in lower or "removal" in lower:
         return _Section.CLEANUP
-    if "verification" in lower or "verify" in lower or "test request" in lower or "send test" in lower:
+    if (
+        "verification" in lower
+        or "verify" in lower
+        or "test request" in lower
+        or "send test" in lower
+    ):
         return _Section.VERIFICATION
     if "monitoring" in lower:
         return _Section.MONITORING
@@ -131,7 +146,11 @@ def _classify_heading(text: str, current: _Section) -> _Section:
         if current in (_Section.PREAMBLE, _Section.PREREQUISITES):
             return current
         return _Section.ROUTER_STANDALONE
-    if "deploy the llm-d router" in lower or "deploy the router" in lower or "router" in lower:
+    if (
+        "deploy the llm-d router" in lower
+        or "deploy the router" in lower
+        or "router" in lower
+    ):
         return _Section.ROUTER_STANDALONE
     if "benchmark" in lower or "report" in lower:
         return _Section.IGNORED
@@ -268,7 +287,9 @@ def parse_guide_readme(readme_path: Path, guide_name: str | None = None) -> Pars
                 phase, default_mode = pm
                 for cmd_text in joined:
                     if _should_keep_command(cmd_text):
-                        mode = details_mode if details_mode is not None else default_mode
+                        mode = (
+                            details_mode if details_mode is not None else default_mode
+                        )
                         parsed.commands.append(
                             GuideCommand(raw=cmd_text, phase=phase, mode=mode)
                         )

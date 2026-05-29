@@ -11,6 +11,7 @@ import yaml
 
 from llmdbenchmark.executor.context import ExecutionContext
 
+
 class Phase(Enum):
     """Benchmark lifecycle phases."""
 
@@ -138,7 +139,9 @@ class Step(ABC):
         self.per_stack = per_stack
 
     @abstractmethod
-    def execute(self, context: ExecutionContext, stack_path: Path | None = None) -> StepResult:
+    def execute(
+        self, context: ExecutionContext, stack_path: Path | None = None
+    ) -> StepResult:
         """Execute this step and return a StepResult."""
 
     def should_skip(self, context: ExecutionContext) -> bool:  # pylint: disable=unused-argument
@@ -265,16 +268,26 @@ class Step(ABC):
         value = float(m.group(1))
         unit = m.group(2) or ""
         multipliers = {
-            "Ki": 1 / 1024 / 1024, "Mi": 1 / 1024, "Gi": 1, "Ti": 1024,
-            "K": 1e3 / (1024**3), "M": 1e6 / (1024**3),
-            "G": 1e9 / (1024**3), "T": 1e12 / (1024**3),
+            "Ki": 1 / 1024 / 1024,
+            "Mi": 1 / 1024,
+            "Gi": 1,
+            "Ti": 1024,
+            "K": 1e3 / (1024**3),
+            "M": 1e6 / (1024**3),
+            "G": 1e9 / (1024**3),
+            "T": 1e12 / (1024**3),
             "": 1 / (1024**3),
         }
         return value * multipliers.get(unit, 1)
 
     def _check_existing_pvc(
-        self, cmd, context, pvc_name: str, requested_size: str,
-        namespace: str, errors: list,
+        self,
+        cmd,
+        context,
+        pvc_name: str,
+        requested_size: str,
+        namespace: str,
+        errors: list,
     ) -> bool:
         """Check if a PVC already exists and validate its size.
 
@@ -283,9 +296,13 @@ class Step(ABC):
         Appends to *errors* if existing size is too small or unparseable.
         """
         result = cmd.kube(
-            "get", "pvc", pvc_name,
-            "--namespace", namespace,
-            "-o", "jsonpath={.spec.resources.requests.storage}",
+            "get",
+            "pvc",
+            pvc_name,
+            "--namespace",
+            namespace,
+            "-o",
+            "jsonpath={.spec.resources.requests.storage}",
             check=False,
         )
         if not result.success or not result.stdout.strip():
@@ -322,8 +339,7 @@ class Step(ABC):
             return True
 
         context.logger.log_info(
-            f"PVC '{pvc_name}' already exists with correct size "
-            f"({existing_size_str}) ✓"
+            f"PVC '{pvc_name}' already exists with correct size ({existing_size_str}) ✓"
         )
         return True
 

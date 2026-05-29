@@ -31,11 +31,13 @@ class GuideVariableResolver:
         # GUIDE_NAME / NAMESPACE / GAIE_VERSION set below.
         if variable_overrides:
             self._variables.update(variable_overrides)
-        self._variables.update({
-            "GUIDE_NAME": guide_name,
-            "NAMESPACE": namespace,
-            "GAIE_VERSION": gaie_version,
-        })
+        self._variables.update(
+            {
+                "GUIDE_NAME": guide_name,
+                "NAMESPACE": namespace,
+                "GAIE_VERSION": gaie_version,
+            }
+        )
 
         self._repo_path = Path(repo_path).resolve()
         self._accelerator_backend = accelerator_backend

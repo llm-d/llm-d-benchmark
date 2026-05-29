@@ -56,7 +56,11 @@ class VersionResolver:
                 cmd.split(), capture_output=True, text=True, check=False
             )
             if result.returncode == 0:
-                lines = [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
+                lines = [
+                    line.strip()
+                    for line in result.stdout.strip().split("\n")
+                    if line.strip()
+                ]
                 if lines:
                     return lines[-1]
         except FileNotFoundError:
@@ -254,9 +258,7 @@ class VersionResolver:
                 )
             img_cfg = images.get(key)
             if not isinstance(img_cfg, dict):
-                available = sorted(
-                    k for k, v in images.items() if isinstance(v, dict)
-                )
+                available = sorted(k for k, v in images.items() if isinstance(v, dict))
                 raise ImageOverrideConfigError(
                     f"{path}.imageKey={key!r} does not match any entry in "
                     f"images.* (available: {available})"
@@ -314,8 +316,7 @@ class VersionResolver:
                     raise
                 except RuntimeError as exc:
                     self.logger.log_warning(
-                        f"⚠️  Could not resolve init container image "
-                        f"{path}: {exc}"
+                        f"⚠️  Could not resolve init container image {path}: {exc}"
                     )
                     unresolved.append(f"{path}.image")
 
@@ -351,7 +352,7 @@ class VersionResolver:
                         image_config["tag"] = self.resolve_image_tag("", repo)
                     except RuntimeError as exc:
                         self.logger.log_warning(
-                            f"⚠️  Could not resolve image tag for " f"{image_key}: {exc}"
+                            f"⚠️  Could not resolve image tag for {image_key}: {exc}"
                         )
                         unresolved.append(f"images.{image_key}.tag")
 
@@ -398,7 +399,7 @@ class VersionResolver:
                     )
                 except RuntimeError as exc:
                     self.logger.log_warning(
-                        f"⚠️  Could not resolve chart version for " f"{chart_key}: {exc}"
+                        f"⚠️  Could not resolve chart version for {chart_key}: {exc}"
                     )
                     unresolved.append(f"chartVersions.{chart_key}")
 
@@ -441,6 +442,8 @@ class VersionResolver:
             role_cfg = values.get(role, {})
             if isinstance(role_cfg, dict):
                 for i, c in enumerate(role_cfg.get("initContainers", []) or []):
-                    if isinstance(c, dict) and str(c.get("image", "")).endswith(":auto"):
+                    if isinstance(c, dict) and str(c.get("image", "")).endswith(
+                        ":auto"
+                    ):
                         unresolved.append(f"{role}.initContainers[{i}].image")
         return unresolved
