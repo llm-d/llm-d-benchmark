@@ -121,8 +121,8 @@ jobs:
       - name: set runs-on variable based on cluster provider
         id: set_runs_on
         run: |
-          echo "${{ github.workflow }}" | grep -q "\-ocp" || echo "$LLMDBENCH_CICD_TARGET" | grep -q "ocp"
-          if [[ $? -eq 0 ]]; then
+          IS_OCP=$(echo "${{ github.workflow }}" | grep "\-ocp")$(echo "$LLMDBENCH_CICD_TARGET" | grep "ocp")
+          if [[ ! -z $IS_OCP ]]; then
             echo "Targetting self-hosted runners (OpenShift)"
             JSON_LIST='["self-hosted", "openshift", "pok-prod"]'
           else
@@ -193,24 +193,24 @@ jobs:
       - name: Get GKE credentials
         if: inputs.cluster_provider != 'kind'
         run: |
-          echo "${{ github.workflow }}" | grep -q "\-gke" || echo "$LLMDBENCH_CICD_TARGET" | grep -q "gke"
-          if [[ $? -eq 0 ]]; then
+          IS_GKE=$(echo "${{ github.workflow }}" | grep "\-gke")$(echo "$LLMDBENCH_CICD_TARGET" | grep "gke")
+          if [[ ! -z $IS_GKE ]]; then
             echo "Selected \"Google Kubernetes Engine\" kubeconfig"
             gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" --zone "${{ env.GKE_CLUSTER_ZONE }}"
-           fi
+          fi
         shell: bash
 
       - name: Set up kubeconfig from secret
         if: inputs.cluster_provider != 'kind'
         run: |
           mkdir -p ~/.kube
-          echo "${{ github.workflow }}" | grep -q "\-cks" || echo "$LLMDBENCH_CICD_TARGET" | grep -q "cks"
-          if [[ $? -eq 0 ]]; then
+          IS_CKS=$(echo "${{ github.workflow }}" | grep "\-cks")$(echo "$LLMDBENCH_CICD_TARGET" | grep "cks")
+          if [[ ! -z $IS_CKS ]]; then
             echo "Selected \"Coreweave\" kubeconfig"
             echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
           fi
-          echo "${{ github.workflow }}" | grep -q "\-ocp" || echo "$LLMDBENCH_CICD_TARGET" | grep -q "ocp"
-          if [[ $? -eq 0 ]]; then
+          IS_OCP=$(echo "${{ github.workflow }}" | grep "\-ocp")$(echo "$LLMDBENCH_CICD_TARGET" | grep "ocp")
+          if [[ ! -z $IS_OCP -eq 0 ]]; then
             echo "Selected \"OpenShift\" kubeconfig"
             echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
           fi
@@ -220,8 +220,8 @@ jobs:
       - name: Install oc (optional on install.sh)
         if: inputs.cluster_provider != 'kind'
         run: |
-          echo "${{ github.workflow }}" | grep -q "\-ocp" || echo "$LLMDBENCH_CICD_TARGET" | grep -q "ocp"
-          if [[ $? -eq 0 ]]; then
+          IS_OCP=$(echo "${{ github.workflow }}" | grep "\-ocp")$(echo "$LLMDBENCH_CICD_TARGET" | grep "ocp")
+          if [[ ! -z $IS_OCP -eq 0 ]]; then
             # Install oc (OpenShift CLI) — optional on install.sh
             if ! command -v oc &>/dev/null; then
               curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
