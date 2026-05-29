@@ -39,15 +39,6 @@ def add_subcommands(
         help="Deploy method used during standup (standalone, modelservice, or custom resource name).",
     )
     run_parser.add_argument(
-        "--gateway-class",
-        default=env("LLMDBENCH_GATEWAY_CLASS"),
-        help=(
-            "Override the scenario's gateway.className when the run phase "
-            "re-renders templates for setup overrides. Supported values: "
-            "epponly, istio, agentgateway, gke, data-science-gateway-class."
-        ),
-    )
-    run_parser.add_argument(
         "--kubeconfig",
         "-k",
         default=env("LLMDBENCH_KUBECONFIG") or env("KUBECONFIG"),

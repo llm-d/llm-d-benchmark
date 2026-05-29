@@ -412,7 +412,6 @@ llmdbenchmark --version
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) to render into the plan |
 | `-m MODELS` | `LLMDBENCH_MODELS` | Model to render the plan for |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deployment method (`standalone`, `modelservice`) |
-| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className`. Accepted on the modelservice path: `epponly`, `istio`, `agentgateway`, `gke`, `data-science-gateway-class`. Ignored (any value accepted, including `none`) when the active deploy method is `kustomize`, `standalone`, or `fma`. |
 | `-f` / `--monitoring` | | Enable monitoring in rendered templates (PodMonitor, EPP verbosity) |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path (used for cluster resource auto-detection) |
 
@@ -425,7 +424,7 @@ llmdbenchmark --version
 | `-m MODELS` | `LLMDBENCH_MODELS` | Models to deploy |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (`standalone`, `modelservice`) |
-| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className`. See [Plan Options](#plan-options) for accepted values and method-aware behavior. |
+| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className`. Accepted on the modelservice path: `epponly`, `istio`, `agentgateway`, `gke`, `data-science-gateway-class`. Ignored (any value accepted, including `none`) when the active deploy method is `kustomize`, `standalone`, or `fma`. |
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
@@ -443,7 +442,7 @@ llmdbenchmark --version
 | `-s STEPS` | | Step filter |
 | `-m MODELS` | `LLMDBENCH_MODELS` | Model that was deployed (for resource name resolution) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Methods to tear down (`standalone`, `modelservice`) |
-| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className` if teardown re-renders. See [Plan Options](#plan-options) for accepted values. |
+| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className` when teardown re-renders templates to resolve the resource names it must delete. See [Standup Options](#standup-options) for accepted values and method-aware behavior. |
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name (default: `llmdbench`) |
 | `-d` / `--deep` | `LLMDBENCH_DEEP_CLEAN` | Deep clean: delete ALL resources in both namespaces |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Comma-separated namespaces (model,harness) |
@@ -457,7 +456,6 @@ llmdbenchmark --version
 | `-e FILE` | `LLMDBENCH_EXPERIMENTS` | Experiment YAML with setup and run treatments (required) |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deploy method |
-| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className` during standup. See [Plan Options](#plan-options) for accepted values. |
 | `-m MODELS` | `LLMDBENCH_MODELS` | Models to deploy |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
@@ -481,7 +479,6 @@ llmdbenchmark --version
 | `-m MODEL` | `LLMDBENCH_MODEL` | Model name override (e.g. facebook/opt-125m) |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespaces (deploy,benchmark) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deploy method used during standup |
-| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className` if the run phase re-renders templates for setup overrides. See [Plan Options](#plan-options) for accepted values. |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `-l HARNESS` | `LLMDBENCH_HARNESS` | Harness name (inference-perf, guidellm, vllm-benchmark) |
 | `-w PROFILE` | `LLMDBENCH_WORKLOAD` | Workload profile YAML |
@@ -517,7 +514,6 @@ llmdbenchmark --spec gpu smoketest -p my-namespace -s 2   # config validation on
 | `-s STEPS` | | Step filter (e.g., `0,1,2` or `0-2`) |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (standalone, modelservice, fma) |
-| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className` if the smoketest re-renders templates. See [Plan Options](#plan-options) for accepted values. |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4). Smoketest pins this to 1 regardless - parallel probes across stacks are confusing. |
 | `--stack NAME[,NAME...]` | `LLMDBENCH_STACK` | Restrict smoketest to the named subset of stacks. |

@@ -155,11 +155,17 @@ Gateway class options (set via `gateway.className` in the scenario YAML):
 
 ### Overriding `gateway.className` from the CLI
 
-Every subcommand that renders templates (`plan`, `standup`, `experiment`,
-and the `run`/`smoketest`/`teardown` paths that re-render for setup
-overrides) accepts a `--gateway-class` flag that overrides the
-scenario's `gateway.className` for that invocation. The same value can
-be supplied via the `LLMDBENCH_GATEWAY_CLASS` environment variable.
+The `standup` and `teardown` subcommands accept a `--gateway-class`
+flag that overrides the scenario's `gateway.className` for that
+invocation. The same value can be supplied via the
+`LLMDBENCH_GATEWAY_CLASS` environment variable.
+
+The flag is intentionally scoped to those two phases: `standup` needs
+it to pick the right GAIE chart / Gateway provider / HTTPRoute layout,
+and `teardown` needs the matching value so it deletes the same set of
+resources. The other subcommands (`plan`, `experiment`, `run`,
+`smoketest`) consume the rendered config produced by `standup` and do
+not re-pick the gateway topology, so they don't expose the flag.
 
 ```bash
 # Scenario default is epponly -- flip to istio without editing YAML
