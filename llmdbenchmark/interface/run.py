@@ -5,7 +5,9 @@ from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env, env_int
 
 
-def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []):
+def add_subcommands(
+    parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []
+):
     """Register the ``run`` subcommand and its arguments."""
     run_parser = parser.add_parser(
         Command.RUN.value,
@@ -35,6 +37,15 @@ def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.A
         "--methods",
         default=env("LLMDBENCH_METHODS"),
         help="Deploy method used during standup (standalone, modelservice, or custom resource name).",
+    )
+    run_parser.add_argument(
+        "--gateway-class",
+        default=env("LLMDBENCH_GATEWAY_CLASS"),
+        help=(
+            "Override the scenario's gateway.className when the run phase "
+            "re-renders templates for setup overrides. Supported values: "
+            "epponly, istio, agentgateway, gke, data-science-gateway-class."
+        ),
     )
     run_parser.add_argument(
         "--kubeconfig",

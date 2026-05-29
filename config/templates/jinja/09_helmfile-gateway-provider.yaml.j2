@@ -5,9 +5,13 @@
     - istio     (istio-base + istiod from the istio helm repo)
     - agentgateway  (agentgateway-crds + agentgateway from the upstream OCI registry)
 
-  Other providers (gke, data-science-gateway-class) are platform-managed
-  and emit an empty helmfile here -- the step consumer treats an empty
-  rendered file as "nothing to install" via _has_yaml_content().
+  Other providers (gke, data-science-gateway-class, epponly) are platform-
+  managed or sidecar-only and emit an empty helmfile here -- the step consumer
+  treats an empty rendered file as "nothing to install" via _has_yaml_content().
+
+  ``epponly`` is the llm-d "standalone" router topology (see llm-d/guides/
+  recipes/router/README.md): the EPP runs with an Envoy sidecar that serves
+  HTTP directly, so no Kubernetes Gateway / control plane is needed.
 
   The agentgateway release layout mirrors the canonical upstream helmfile:
     https://raw.githubusercontent.com/llm-d-incubation/llm-d-infra/refs/heads/main/quickstart/gateway-control-plane-providers/agentgateway.helmfile.yaml
@@ -26,6 +30,8 @@
    `render_plans._resolve_shared_infra_stack_index`. This correctly
    promotes ownership past any leading standalone stacks (which can't
    install istio themselves). #}
+{# -t kustomize uses upstream guide manifests; skip the entire helmfile. #}
+{% if not (kustomize.enabled | default(false)) %}
 {% if stackIndex is defined and stackIndex | int != sharedInfraStackIndex | default(1) | int %}
 {% else %}
 {% set gw_class = gateway.className %}
@@ -109,5 +115,6 @@ releases:
     labels:
       type: gateway-provider
       kind: gateway-control-plane
+{% endif %}
 {% endif %}
 {% endif %}

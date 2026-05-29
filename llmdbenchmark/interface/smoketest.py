@@ -5,7 +5,9 @@ from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env, env_int
 
 
-def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []):
+def add_subcommands(
+    parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []
+):
     """Register the ``smoketest`` subcommand and its arguments."""
     smoketest_parser = parser.add_parser(
         Command.SMOKETEST.value,
@@ -29,9 +31,18 @@ def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.A
         help="Namespaces to use (deploy_namespace, benchmark_namespace).",
     )
     smoketest_parser.add_argument(
-        "-t", "--methods",
+        "-t",
+        "--methods",
         default=env("LLMDBENCH_METHODS"),
         help="Deployment methods (standalone, modelservice, fma).",
+    )
+    smoketest_parser.add_argument(
+        "--gateway-class",
+        default=env("LLMDBENCH_GATEWAY_CLASS"),
+        help=(
+            "Override the scenario's gateway.className (only meaningful "
+            "if the smoketest re-renders templates)."
+        ),
     )
     smoketest_parser.add_argument(
         "--parallel",

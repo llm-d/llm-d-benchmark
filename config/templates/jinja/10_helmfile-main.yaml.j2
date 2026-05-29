@@ -1,7 +1,18 @@
-{% if standalone.enabled is defined and not standalone.enabled %}
+{# Modelservice-only template. With -t kustomize the upstream llm-d guide
+   manifests are applied verbatim, so we render nothing here even though
+   the legacy `standalone.enabled = False` guard would otherwise pass. #}
+{% if standalone.enabled is defined and not standalone.enabled and not (kustomize.enabled | default(false)) %}
 helmDefaults:
   createNamespace: false
 ---
+
+{# When gateway.className is "epponly" we skip the Gateway / HTTPRoute /
+   provider entirely and run the EPP in llm-d's "standalone" router topology
+   (Envoy sidecar inside the EPP pod). The chart switches from
+   `inferencepool` to `standalone` and the `infra-llmdbench` release is not
+   installed (no Gateway resource is needed). #}
+{% set _epponly = (gateway.className | default('') == 'epponly') %}
+{% set _gaie_chart = 'oci://registry.k8s.io/gateway-api-inference-extension/charts/standalone' if _epponly else 'oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool' %}
 
 repositories:
   - name: llm-d-modelservice
@@ -20,10 +31,12 @@ releases:
    Owner is computed by render_plans._resolve_shared_infra_stack_index
    (1-indexed position of the first non-standalone stack) so scenarios
    that mix standalone + modelservice still install shared infra via the
-   first modelservice stack, not a leading standalone one that can't. #}
+   first modelservice stack, not a leading standalone one that can't.
+
+   `epponly` skips this release entirely - there is no Gateway resource. #}
 {% set _is_shared_infra_owner = (stackIndex is not defined or stackIndex | int == sharedInfraStackIndex | default(1) | int) %}
 {% set _is_first_stack = _is_shared_infra_owner %}
-{% if _is_first_stack %}
+{% if _is_first_stack and not _epponly %}
   - name: infra-llmdbench
     namespace: {{ gateway.namespace }}
     chart: llm-d-infra/llm-d-infra
@@ -42,7 +55,7 @@ releases:
     version: {{ chartVersions.llmDModelservice }}
     installed: true
     needs:
-{% if _is_first_stack %}
+{% if _is_first_stack and not _epponly %}
       - {{ gateway.namespace }}/infra-llmdbench
 {% endif %}
       - {{ gateway.namespace }}/{{ model_id_label }}-gaie
@@ -53,10 +66,10 @@ releases:
 
   - name: {{ model_id_label }}-gaie
     namespace: {{ gateway.namespace }}
-    chart: oci://registry.k8s.io/gateway-api-inference-extension/charts/inferencepool
+    chart: {{ _gaie_chart }}
     version: {{ chartVersions.inferencePool }}
     installed: true
-{% if _is_first_stack %}
+{% if _is_first_stack and not _epponly %}
     needs:
       - {{ gateway.namespace }}/infra-llmdbench
 {% endif %}

@@ -130,10 +130,36 @@ scenario:
     standalone:
       enabled: false
 
-      # NOTE: the `kustomize` deploy method is configured at the TOP of this
-      # stack (see the "KUSTOMIZE DEPLOY METHOD" banner). It lives there
-      # because enabling it overrides this entire scenario -- see
-      # docs/kustomize.md.
+    # =========================================================================
+    # GATEWAY -- toggle the router topology
+    # -------------------------------------------------------------------------
+    # `epponly` is the llm-d "Standalone Mode" router topology
+    # (see https://github.com/llm-d/llm-d/blob/main/guides/recipes/router/README.md):
+    # no Kubernetes Gateway is installed, the GAIE Helm chart is swapped
+    # from `inferencepool` to `standalone`, and the EPP pod runs an Envoy
+    # sidecar that serves HTTP directly on the `{model_id_label}-gaie-epp`
+    # Service (port 80 -> 8081). HTTPRoute and `llm-d-infra` are not
+    # rendered, no gateway-provider control plane is installed.
+    #
+    # Flip this to any of the gateway-backed options to switch topology
+    # without changing anything else in the scenario:
+    #   epponly                     -- no Gateway (default here)
+    #   istio                       -- istio-base + istiod + Gateway + HTTPRoute
+    #   agentgateway                -- agentgateway controller + Gateway + HTTPRoute
+    #   gke                         -- GKE-managed Gateway + HTTPRoute
+    #   data-science-gateway-class  -- OpenDataHub managed Gateway + HTTPRoute
+    #
+    # This setting is ignored when `kustomize.enabled: true` (or when
+    # `-t kustomize` is passed) -- in that mode the upstream llm-d guide
+    # manifests are applied verbatim and define their own router topology.
+    # =========================================================================
+    gateway:
+      className: epponly
+
+    # NOTE: the `kustomize` deploy method is configured at the TOP of this
+    # stack (see the "KUSTOMIZE DEPLOY METHOD" banner). It lives there
+    # because enabling it overrides this entire scenario -- see
+    # docs/kustomize.md.
 
     # =========================================================================
     # MODELSERVICE -- Only applies when modelservice.enabled: true

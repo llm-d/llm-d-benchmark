@@ -11,6 +11,7 @@ import time
 
 from llmdbenchmark.executor.command import CommandExecutor
 
+
 def _rand_suffix(length: int = 8) -> str:
     """Generate a random lowercase alphanumeric suffix for pod names."""
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
@@ -63,7 +64,9 @@ def compute_gateway_path_prefix(
     return _normalize_url_prefix(tmpl.replace("{stack.name}", stack_name))
 
 
-def _build_overrides(plan_config: dict | None, service_account: str | None = None) -> list[str]:
+def _build_overrides(
+    plan_config: dict | None, service_account: str | None = None
+) -> list[str]:
     """Build --overrides args for ephemeral curl pods (imagePullSecrets, serviceAccount)."""
     overrides: dict = {}
     if plan_config:
@@ -73,7 +76,9 @@ def _build_overrides(plan_config: dict | None, service_account: str | None = Non
                 {"name": pull_secret}
             ]
 
-    sa_name = service_account or (plan_config.get("serviceAccount", {}).get("name") if plan_config else None)
+    sa_name = service_account or (
+        plan_config.get("serviceAccount", {}).get("name") if plan_config else None
+    )
     if sa_name:
         overrides.setdefault("spec", {})["serviceAccountName"] = sa_name
 
@@ -88,7 +93,9 @@ def _ephemeral_label_args() -> list[str]:
 
 
 def cleanup_ephemeral_pods(
-    cmd: CommandExecutor, namespace: str, logger=None,
+    cmd: CommandExecutor,
+    namespace: str,
+    logger=None,
 ) -> None:
     """Delete all completed ephemeral pods created by smoketest/endpoint checks.
 
@@ -97,13 +104,20 @@ def cleanup_ephemeral_pods(
     """
     for phase in ("Succeeded", "Failed"):
         result = cmd.kube(
-            "delete", "pods",
-            "-l", EPHEMERAL_POD_LABEL,
+            "delete",
+            "pods",
+            "-l",
+            EPHEMERAL_POD_LABEL,
             f"--field-selector=status.phase={phase}",
-            "--namespace", namespace,
+            "--namespace",
+            namespace,
             check=False,
         )
-        if result.success and result.stdout.strip() and "No resources" not in result.stdout:
+        if (
+            result.success
+            and result.stdout.strip()
+            and "No resources" not in result.stdout
+        ):
             if logger:
                 logger.log_info(
                     f"Cleaned up ephemeral pods ({phase}) in ns/{namespace}"
@@ -139,6 +153,7 @@ def find_standalone_endpoint(
         return ip, name, svc_port
     return None, None, "80"
 
+
 def find_fma_endpoint(cmd: CommandExecutor, namespace: str) -> str | None:
     """Find FMA replicaset name.
 
@@ -163,6 +178,75 @@ def find_fma_endpoint(cmd: CommandExecutor, namespace: str) -> str | None:
         return f"{result.stdout.strip()}.{namespace}.cluster.local"
 
     return None
+
+
+def find_epponly_endpoint(
+    cmd: CommandExecutor,
+    namespace: str,
+    model_id_label: str,
+) -> tuple[str | None, str | None, str]:
+    """Find the EPP service for an ``epponly`` modelservice deployment.
+
+    In llm-d's standalone router topology (``gateway.className: epponly``)
+    no Kubernetes Gateway is deployed; the EPP pod runs an Envoy sidecar
+    that serves HTTP on the same service as the gRPC ExtProc port.
+    Clients hit ``{model_id_label}-gaie-epp:80`` directly.
+
+    Returns:
+        (clusterIP, serviceName, port) or (None, expected_name, "80") if
+        the service does not exist yet.
+    """
+    if not model_id_label:
+        return None, None, "80"
+
+    svc_name = f"{model_id_label}-gaie-epp"
+    # Fetch the whole service as JSON and pick the HTTP port in Python.
+    # Earlier this used a `jsonpath` filter (``?(@.port==80)``) but that
+    # syntax is not reliably handled by every kubectl/oc version we ship
+    # against - some return the entire ports list or silently drop the
+    # filter, leaving service_ip empty and the smoketest unable to find
+    # the endpoint. JSON-parsing the response keeps us in plain Python.
+    result = cmd.kube(
+        "get",
+        "service",
+        svc_name,
+        "--namespace",
+        namespace,
+        "-o",
+        "json",
+        check=False,
+    )
+    if not (result.success and result.stdout.strip()):
+        return None, svc_name, "80"
+
+    try:
+        svc = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return None, svc_name, "80"
+
+    spec = svc.get("spec", {}) or {}
+    ip = spec.get("clusterIP") or None
+    ports = spec.get("ports") or []
+
+    # Prefer port 80 (the extraServicePort we add for the standalone
+    # chart's Envoy sidecar). Fall back to the named ``http`` port, then
+    # to the first port on the service.
+    port: str | None = None
+    for p in ports:
+        if p.get("port") == 80 or str(p.get("port")) == "80":
+            port = "80"
+            break
+    if port is None:
+        for p in ports:
+            if p.get("name") == "http":
+                port = str(p.get("port"))
+                break
+    if port is None and ports:
+        port = str(ports[0].get("port", "80"))
+    if port is None:
+        port = "80"
+
+    return ip, svc_name, port
 
 
 def find_gateway_endpoint(
@@ -242,16 +326,20 @@ def discover_hf_token_secret(
         The secret name (e.g. ``llm-d-hf-token``) if found, else None.
     """
     result = cmd.kube(
-        "get", "secrets",
-        "--namespace", namespace,
+        "get",
+        "secrets",
+        "--namespace",
+        namespace,
         "--no-headers",
-        "-o", "custom-columns=NAME:.metadata.name",
+        "-o",
+        "custom-columns=NAME:.metadata.name",
         check=False,
     )
     if not result.success or not result.stdout.strip():
         return None
 
     import re
+
     pattern = re.compile(r"llm-d-hf.*token", re.IGNORECASE)
     for line in result.stdout.strip().splitlines():
         secret_name = line.strip()
@@ -279,9 +367,13 @@ def extract_hf_token_from_secret(
 
     # Try the explicit key
     result = cmd.kube(
-        "get", "secret", secret_name,
-        "--namespace", namespace,
-        "-o", f"jsonpath={{.data.{key}}}",
+        "get",
+        "secret",
+        secret_name,
+        "--namespace",
+        namespace,
+        "-o",
+        f"jsonpath={{.data.{key}}}",
         check=False,
     )
     if result.success and result.stdout.strip():
@@ -294,9 +386,13 @@ def extract_hf_token_from_secret(
 
     # Fallback: dump all data values
     result = cmd.kube(
-        "get", "secret", secret_name,
-        "--namespace", namespace,
-        "-o", "jsonpath={.data}",
+        "get",
+        "secret",
+        secret_name,
+        "--namespace",
+        namespace,
+        "-o",
+        "jsonpath={.data}",
         check=False,
     )
     if result.success and result.stdout.strip():
@@ -320,9 +416,12 @@ def find_kustomize_endpoint(
     """Find the ``{guide_name}-epp`` service and pick the HTTP port."""
     svc_name = f"{guide_name}-epp"
     result = cmd.kube(
-        "get", f"service/{svc_name}",
-        "--namespace", namespace,
-        "-o", "json",
+        "get",
+        f"service/{svc_name}",
+        "--namespace",
+        namespace,
+        "-o",
+        "json",
         check=False,
     )
     if not result.success:
@@ -362,10 +461,13 @@ def find_custom_endpoint(
 ) -> tuple[str | None, str | None, str]:
     """Find a service or pod matching *method_pattern* and return ``(ip, name, port)``."""
     svc_result = cmd.kube(
-        "get", "service",
-        "--namespace", namespace,
+        "get",
+        "service",
+        "--namespace",
+        namespace,
         "--no-headers",
-        "-o", "custom-columns=NAME:.metadata.name",
+        "-o",
+        "custom-columns=NAME:.metadata.name",
         check=False,
     )
     if svc_result.success and svc_result.stdout.strip():
@@ -376,36 +478,39 @@ def find_custom_endpoint(
 
             if preferred_port is not None:
                 port_result = cmd.kube(
-                    "get", f"service/{svc_name}",
-                    "--namespace", namespace,
-                    "-o", f"jsonpath={{.spec.ports[?(@.port=={preferred_port})].port}}",
+                    "get",
+                    f"service/{svc_name}",
+                    "--namespace",
+                    namespace,
+                    "-o",
+                    f"jsonpath={{.spec.ports[?(@.port=={preferred_port})].port}}",
                     check=False,
                 )
-                port_val = (
-                    port_result.stdout.strip()
-                    if port_result.success else ""
-                )
+                port_val = port_result.stdout.strip() if port_result.success else ""
                 if port_val and port_val != "null":
                     return svc_name, svc_name, port_val
 
             for port_name in ("http", "https", "default"):
                 port_result = cmd.kube(
-                    "get", f"service/{svc_name}",
-                    "--namespace", namespace,
-                    "-o", f"jsonpath={{.spec.ports[?(@.name==\"{port_name}\")].port}}",
+                    "get",
+                    f"service/{svc_name}",
+                    "--namespace",
+                    namespace,
+                    "-o",
+                    f'jsonpath={{.spec.ports[?(@.name=="{port_name}")].port}}',
                     check=False,
                 )
-                port_val = (
-                    port_result.stdout.strip()
-                    if port_result.success else ""
-                )
+                port_val = port_result.stdout.strip() if port_result.success else ""
                 if port_val and port_val != "null":
                     return svc_name, svc_name, port_val
 
             port_result = cmd.kube(
-                "get", f"service/{svc_name}",
-                "--namespace", namespace,
-                "-o", "jsonpath={.spec.ports[0].port}",
+                "get",
+                f"service/{svc_name}",
+                "--namespace",
+                namespace,
+                "-o",
+                "jsonpath={.spec.ports[0].port}",
                 check=False,
             )
             port_val = port_result.stdout.strip() if port_result.success else ""
@@ -413,10 +518,13 @@ def find_custom_endpoint(
                 return svc_name, svc_name, port_val
 
     pod_result = cmd.kube(
-        "get", "pod",
-        "--namespace", namespace,
+        "get",
+        "pod",
+        "--namespace",
+        namespace,
         "--no-headers",
-        "-o", "custom-columns=NAME:.metadata.name",
+        "-o",
+        "custom-columns=NAME:.metadata.name",
         check=False,
     )
     if pod_result.success and pod_result.stdout.strip():
@@ -428,9 +536,12 @@ def find_custom_endpoint(
             port_val = None
             for probe in ("livenessProbe", "readinessProbe"):
                 probe_result = cmd.kube(
-                    "get", f"pod/{pod_name}",
-                    "--namespace", namespace,
-                    "-o", f"jsonpath={{.spec.containers[0].{probe}.httpGet.port}}",
+                    "get",
+                    f"pod/{pod_name}",
+                    "--namespace",
+                    namespace,
+                    "-o",
+                    f"jsonpath={{.spec.containers[0].{probe}.httpGet.port}}",
                     check=False,
                 )
                 pv = probe_result.stdout.strip() if probe_result.success else ""
@@ -441,9 +552,12 @@ def find_custom_endpoint(
             # Fall back to metrics container port
             if not port_val:
                 metrics_result = cmd.kube(
-                    "get", f"pod/{pod_name}",
-                    "--namespace", namespace,
-                    "-o", 'jsonpath={.spec.containers[0].ports[?(@.name=="metrics")].containerPort}',
+                    "get",
+                    f"pod/{pod_name}",
+                    "--namespace",
+                    namespace,
+                    "-o",
+                    'jsonpath={.spec.containers[0].ports[?(@.name=="metrics")].containerPort}',
                     check=False,
                 )
                 pv = metrics_result.stdout.strip() if metrics_result.success else ""
@@ -455,9 +569,12 @@ def find_custom_endpoint(
 
             # Resolve pod IP
             ip_result = cmd.kube(
-                "get", f"pod/{pod_name}",
-                "--namespace", namespace,
-                "-o", "jsonpath={.status.podIP}",
+                "get",
+                f"pod/{pod_name}",
+                "--namespace",
+                namespace,
+                "-o",
+                "jsonpath={.status.podIP}",
                 check=False,
             )
             pod_ip = ip_result.stdout.strip() if ip_result.success else None
@@ -543,34 +660,57 @@ def test_model_serving(
     url = f"{protocol}://{host}:{port}{prefix}/v1/models"
 
     # Auto-ensure service account and RBAC
-    sa_name = service_account or (plan_config.get("serviceAccount", {}).get("name") if plan_config else "default")
+    sa_name = service_account or (
+        plan_config.get("serviceAccount", {}).get("name") if plan_config else "default"
+    )
     if sa_name:
         if sa_name != "default":
-            sa_check = cmd.kube("get", "sa", sa_name, "--namespace", namespace, check=False)
-            if not sa_check.success or "not found" in (sa_check.stderr + sa_check.stdout).lower():
-                cmd.logger.log_info(f"ServiceAccount '{sa_name}' not found, auto-creating it...")
+            sa_check = cmd.kube(
+                "get", "sa", sa_name, "--namespace", namespace, check=False
+            )
+            if (
+                not sa_check.success
+                or "not found" in (sa_check.stderr + sa_check.stdout).lower()
+            ):
+                cmd.logger.log_info(
+                    f"ServiceAccount '{sa_name}' not found, auto-creating it..."
+                )
                 cmd.kube("create", "sa", sa_name, "--namespace", namespace, check=False)
 
         # Always ensure the required RBAC role exists
         role_name = f"{sa_name}-role"
-        role_check = cmd.kube("get", "role", role_name, "--namespace", namespace, check=False)
-        if not role_check.success or "not found" in (role_check.stderr + role_check.stdout).lower():
-            cmd.logger.log_info(f"RBAC Role '{role_name}' missing for ServiceAccount '{sa_name}', auto-creating it...")
+        role_check = cmd.kube(
+            "get", "role", role_name, "--namespace", namespace, check=False
+        )
+        if (
+            not role_check.success
+            or "not found" in (role_check.stderr + role_check.stdout).lower()
+        ):
+            cmd.logger.log_info(
+                f"RBAC Role '{role_name}' missing for ServiceAccount '{sa_name}', auto-creating it..."
+            )
             cmd.kube(
-                "create", "role", role_name,
-                "--verb=get,list", "--resource=configmaps,pods,pods/log",
-                "--namespace", namespace,
-                check=False
+                "create",
+                "role",
+                role_name,
+                "--verb=get,list",
+                "--resource=configmaps,pods,pods/log",
+                "--namespace",
+                namespace,
+                check=False,
             )
 
             # Always ensure RoleBinding
             binding_name = f"{sa_name}-binding"
             cmd.kube(
-                "create", "rolebinding", binding_name,
+                "create",
+                "rolebinding",
+                binding_name,
                 f"--role={role_name}",
                 f"--serviceaccount={namespace}:{sa_name}",
-                "--namespace", namespace,
-                check=False
+                "--namespace",
+                namespace,
+                check=False,
             )
 
     override_args = _build_overrides(plan_config, service_account=service_account)
@@ -638,9 +778,7 @@ def test_model_serving(
 
         # Validate the model is being served
         if expected_model and stdout:
-            check_err = validate_model_response(
-                stdout, expected_model, host, port
-            )
+            check_err = validate_model_response(stdout, expected_model, host, port)
             if check_err:
                 # If it looks retryable, keep trying
                 if _is_retryable(stdout) and attempt < max_retries:
