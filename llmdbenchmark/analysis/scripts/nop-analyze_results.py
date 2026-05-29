@@ -293,11 +293,9 @@ def write_fma_metrics(  # pylint: disable=too-many-locals,too-many-statements
 
     file.write("\n\n")
     file.write("Actuation Conditions:\n")
-    file.write(
-        "  T_luke_warm: when new launcher created by Dual Pod Controller + new vLLM\n"
-    )
-    file.write("  T_warm: when existing launcher creates new vLLM\n")
-    file.write("  T_hot: when waking up sleeping vLLM\n\n")
+    file.write("  T_cold_launcher: DPC creates new launcher + new vLLM instance\n")
+    file.write("  T_warm: existing launcher creates new vLLM instance\n")
+    file.write("  T_hot: waking sleeping vLLM instance\n\n")
     file.write("T_actuation: Time for the Requester Pod to be ready\n")
     file.write("TTRD: Time for the Requester Pod to have dual label set\n")
     file.write("T_first_token: Time for vLLM server to return first token\n")
