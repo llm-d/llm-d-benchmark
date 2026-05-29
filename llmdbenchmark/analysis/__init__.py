@@ -58,6 +58,7 @@ _WRITER_NAMES: dict[str, str] = {
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def run_analysis(
     harness_name: str,
     results_dir: Path,
@@ -100,14 +101,17 @@ def run_analysis(
 
         for br_version in ("0.1", "0.2"):
             prefix = (
-                "benchmark_report" if br_version == "0.1"
-                else "benchmark_report_v0.2"
+                "benchmark_report" if br_version == "0.1" else "benchmark_report_v0.2"
             )
             output_name = f"{prefix},_{fname}.yaml"
             output_path = results_dir / output_name
 
             err = _convert_to_benchmark_report(
-                result_path, output_path, writer_name, br_version, context,
+                result_path,
+                output_path,
+                writer_name,
+                br_version,
+                context,
             )
             if err:
                 errors.append(err)
@@ -141,6 +145,7 @@ def run_analysis(
 # ---------------------------------------------------------------------------
 # Benchmark report conversion (replaces bash `benchmark-report` CLI calls)
 # ---------------------------------------------------------------------------
+
 
 def _convert_to_benchmark_report(
     result_file: Path,
@@ -226,7 +231,14 @@ def _convert_via_cli(
 ) -> str | None:
     """Fallback: call the ``benchmark-report`` CLI."""
     try:
-        cmd = ["benchmark-report", str(result_file), "-b", br_version, "-w", writer_name]
+        cmd = [
+            "benchmark-report",
+            str(result_file),
+            "-b",
+            br_version,
+            "-w",
+            writer_name,
+        ]
         if writer_name == "inference-perf" and _is_session_lifecycle_file(result_file):
             cmd.append("-s")
         cmd.append(str(output_file))
@@ -237,10 +249,7 @@ def _convert_via_cli(
             timeout=120,
         )
         if result.returncode != 0:
-            return (
-                f"benchmark-report exited {result.returncode}: "
-                f"{result.stderr[:200]}"
-            )
+            return f"benchmark-report exited {result.returncode}: {result.stderr[:200]}"
         return None
     except FileNotFoundError:
         return "benchmark-report CLI not found on PATH"
@@ -251,6 +260,7 @@ def _convert_via_cli(
 # ---------------------------------------------------------------------------
 # Summary extraction (replaces bash grep/sed pipeline)
 # ---------------------------------------------------------------------------
+
 
 def _extract_summary(
     results_dir: Path,
@@ -267,7 +277,8 @@ def _extract_summary(
 
     try:
         lines = stdout_log.read_text(
-            encoding="utf-8", errors="replace",
+            encoding="utf-8",
+            errors="replace",
         ).splitlines()
         # Find the last occurrence of the marker
         # (matches bash ``grep | tail -1``)
@@ -279,7 +290,8 @@ def _extract_summary(
             summary_lines = lines[start_idx:]
             summary_path = analysis_dir / "summary.txt"
             summary_path.write_text(
-                "\n".join(summary_lines) + "\n", encoding="utf-8",
+                "\n".join(summary_lines) + "\n",
+                encoding="utf-8",
             )
             _log(context, f"Summary extracted to {summary_path.name}")
     except Exception as exc:
@@ -289,6 +301,7 @@ def _extract_summary(
 # ---------------------------------------------------------------------------
 # inference-perf specific post-processing
 # ---------------------------------------------------------------------------
+
 
 def _run_inference_perf_analyze(
     results_dir: Path,
@@ -340,6 +353,7 @@ def _run_inference_perf_analyze(
 # Metric visualization (Prometheus time series to PNG plots)
 # ---------------------------------------------------------------------------
 
+
 def _run_metric_visualizations(
     metrics_dir: Path,
     results_dir: Path,
@@ -377,6 +391,7 @@ def _run_metric_visualizations(
 # ---------------------------------------------------------------------------
 # Per-request distribution plots
 # ---------------------------------------------------------------------------
+
 
 def _run_per_request_plots(
     results_dir: Path,
@@ -418,6 +433,7 @@ def _run_per_request_plots(
 # Session lifecycle plot generation
 # ---------------------------------------------------------------------------
 
+
 def _run_session_plots(
     results_dir: Path,
     context: ExecutionContext | None,
@@ -435,6 +451,7 @@ def _run_session_plots(
 
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import numpy as np
@@ -448,7 +465,10 @@ def _run_session_plots(
     if not session_br_files:
         return
 
-    from llmdbenchmark.analysis.cross_treatment import SESSION_METRICS_OF_INTEREST, deep_get
+    from llmdbenchmark.analysis.cross_treatment import (
+        SESSION_METRICS_OF_INTEREST,
+        deep_get,
+    )
 
     # Load all stages into rows
     rows: list[dict] = []
@@ -478,15 +498,28 @@ def _run_session_plots(
         ("session_duration_mean_s", "Session Duration (Mean)", "seconds"),
         ("session_duration_p99_s", "Session Duration P99", "seconds"),
         ("events_per_session_mean", "Events per Session (Mean)", "count"),
-        ("events_cancelled_per_session_mean", "Cancelled Events per Session (Mean)", "count"),
-        ("output_tokens_per_session_mean", "Output Tokens per Session (Mean)", "tokens"),
+        (
+            "events_cancelled_per_session_mean",
+            "Cancelled Events per Session (Mean)",
+            "count",
+        ),
+        (
+            "output_tokens_per_session_mean",
+            "Output Tokens per Session (Mean)",
+            "tokens",
+        ),
         ("failed_sessions", "Failed Sessions", "count"),
     ]
 
     bar_color = "#3498db"
     generated = 0
 
-    stage_labels = [r["stage_file"].replace("benchmark_report_v0.2,_", "").replace("_session_lifecycle_metrics.json.yaml", "") for r in rows]
+    stage_labels = [
+        r["stage_file"]
+        .replace("benchmark_report_v0.2,_", "")
+        .replace("_session_lifecycle_metrics.json.yaml", "")
+        for r in rows
+    ]
 
     for col_name, title, unit in plot_specs:
         values = [r.get(col_name) for r in rows]
@@ -505,7 +538,11 @@ def _run_session_plots(
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
                 bar.get_height(),
-                text, ha="center", va="bottom", fontsize=8, fontweight="bold",
+                text,
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                fontweight="bold",
             )
 
         ax.set_xticks(x_pos)
@@ -526,6 +563,7 @@ def _run_session_plots(
 # ---------------------------------------------------------------------------
 # nop harness analysis (calls the original Python script)
 # ---------------------------------------------------------------------------
+
 
 def _run_nop_analysis(
     results_dir: Path,
@@ -569,6 +607,7 @@ def _run_nop_analysis(
 # ---------------------------------------------------------------------------
 # Logging helper
 # ---------------------------------------------------------------------------
+
 
 def _log(
     context: ExecutionContext | None,

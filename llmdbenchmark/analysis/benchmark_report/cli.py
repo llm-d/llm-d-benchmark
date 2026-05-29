@@ -113,7 +113,9 @@ def main() -> None:
 
     if args.session:
         if args.output_file:
-            import_inference_perf_session(args.results_file).export_yaml(args.output_file)
+            import_inference_perf_session(args.results_file).export_yaml(
+                args.output_file
+            )
         else:
             print(import_inference_perf_session(args.results_file).get_yaml_str())
         sys.exit(0)

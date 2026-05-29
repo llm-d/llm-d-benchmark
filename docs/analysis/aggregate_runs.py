@@ -126,9 +126,7 @@ def format_summary_text(stats, run_ids):
     lines.append(f"Aggregated Benchmark Results ({len(run_ids)} runs)")
     lines.append(f"Run IDs: {', '.join(run_ids)}")
     lines.append("=" * 90)
-    lines.append(
-        f"{'Metric':<55} {'Mean':>10} {'Std':>10} {'Min':>10} {'Max':>10}"
-    )
+    lines.append(f"{'Metric':<55} {'Mean':>10} {'Std':>10} {'Min':>10} {'Max':>10}")
     lines.append("-" * 90)
 
     for key in sorted(stats.keys()):
