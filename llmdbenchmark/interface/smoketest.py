@@ -37,6 +37,14 @@ def add_subcommands(
         help="Deployment methods (standalone, modelservice, fma).",
     )
     smoketest_parser.add_argument(
+        "--gateway-class",
+        default=env("LLMDBENCH_GATEWAY_CLASS"),
+        help=(
+            "Override the scenario's gateway.className (only meaningful "
+            "if the smoketest re-renders templates)."
+        ),
+    )
+    smoketest_parser.add_argument(
         "--parallel",
         type=int,
         default=env_int("LLMDBENCH_PARALLEL", 4),
