@@ -9,8 +9,23 @@
 scenario:
   - name: "gke-cicd"
 
-    gateway:
-      className: gke
+    # Model
+    model:
+      name: facebook/opt-125m
+      shortName: facebook-opt-125m
+      path: models/facebook/opt-125m
+      huggingfaceId: facebook/opt-125m
+
+    # Deployment method
+    modelservice:
+      enabled: true
+    standalone:
+      enabled: false
+    fma:
+      enabled: false
+
+#    gateway:
+#      className: gke
 
     # GPU affinity for GKE H100
     affinity:
@@ -98,8 +113,7 @@ scenario:
           --no-enable-prefix-caching
 
     fma:
-      enabled: false
-      iterations: 3
+      iterations: 5
       launcher:
         customPreprocessCommands:
           - export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
@@ -121,6 +135,7 @@ scenario:
     harness:
       name: inference-perf
       experimentProfile: sanity_random.yaml
+#      executable: llm-d-benchmark.py
 
     images:
       benchmark:
