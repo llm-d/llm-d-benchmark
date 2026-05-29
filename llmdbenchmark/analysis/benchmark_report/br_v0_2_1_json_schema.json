@@ -114,7 +114,7 @@
     },
     "AggregateRequests": {
       "additionalProperties": false,
-      "description": "v0.2 request statistics, plus multi-modal payload details.",
+      "description": "v0.2 request statistics, plus multi-modal payload details.\n\nInherits the v0.2 input/output-length unit checks and adds a declarative\nrule for the new request_size field.",
       "properties": {
         "total": {
           "description": "Total number of requests sent.",

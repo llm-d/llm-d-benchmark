@@ -17,7 +17,9 @@ descriptor on LoadStandardized is deliberately left out of this revision; see
 the PR description.
 """
 
-from pydantic import BaseModel, model_validator
+from typing import ClassVar
+
+from pydantic import BaseModel
 
 from .base import (
     UNITS_MEDIA_THROUGHPUT,
@@ -25,6 +27,8 @@ from .base import (
     UNITS_QUANTITY,
     UNITS_RATIO,
     UNITS_TIME,
+    Units,
+    UnitsValidatedModel,
 )
 from .schema_v0_2 import (
     MODEL_CONFIG,
@@ -66,7 +70,7 @@ assert VERSION_V02 == "0.2", (
 ###############################################################################
 
 
-class MediaPayloadStats(BaseModel):
+class MediaPayloadStats(UnitsValidatedModel):
     """Payload statistics shared by every media modality.
 
     All fields are distributions over the individual media instances the client
@@ -75,24 +79,15 @@ class MediaPayloadStats(BaseModel):
 
     model_config = MODEL_CONFIG.copy()
 
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {
+        "count": UNITS_QUANTITY,
+        "filesize": UNITS_MEMORY,
+    }
+
     count: Statistics | None = None
     """Number of media instances of this modality per request."""
     filesize: Statistics | None = None
     """Encoded size per media instance."""
-
-    @model_validator(mode="after")
-    def check_media_units(self):
-        if self.count and self.count.units not in UNITS_QUANTITY:
-            raise ValueError(
-                f'Invalid units "{self.count.units}", must be one of:'
-                f" {' '.join(UNITS_QUANTITY)}"
-            )
-        if self.filesize and self.filesize.units not in UNITS_MEMORY:
-            raise ValueError(
-                f'Invalid units "{self.filesize.units}", must be one of:'
-                f" {' '.join(UNITS_MEMORY)}"
-            )
-        return self
 
 
 class VisualPayloadStats(MediaPayloadStats):
@@ -100,24 +95,15 @@ class VisualPayloadStats(MediaPayloadStats):
 
     model_config = MODEL_CONFIG.copy()
 
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {
+        "pixels": UNITS_QUANTITY,
+        "aspect_ratio": UNITS_RATIO,
+    }
+
     pixels: Statistics | None = None
     """Pixel count per media instance (height x width, summed over frames)."""
     aspect_ratio: Statistics | None = None
     """Aspect ratio (width / height) per media instance."""
-
-    @model_validator(mode="after")
-    def check_visual_units(self):
-        if self.pixels and self.pixels.units not in UNITS_QUANTITY:
-            raise ValueError(
-                f'Invalid units "{self.pixels.units}", must be one of:'
-                f" {' '.join(UNITS_QUANTITY)}"
-            )
-        if self.aspect_ratio and self.aspect_ratio.units not in UNITS_RATIO:
-            raise ValueError(
-                f'Invalid units "{self.aspect_ratio.units}", must be one of:'
-                f" {' '.join(UNITS_RATIO)}"
-            )
-        return self
 
 
 class ImagePayloadStats(VisualPayloadStats):
@@ -131,17 +117,10 @@ class VideoPayloadStats(VisualPayloadStats):
 
     model_config = MODEL_CONFIG.copy()
 
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {"frames": UNITS_QUANTITY}
+
     frames: Statistics | None = None
     """Number of frames per video instance."""
-
-    @model_validator(mode="after")
-    def check_video_units(self):
-        if self.frames and self.frames.units not in UNITS_QUANTITY:
-            raise ValueError(
-                f'Invalid units "{self.frames.units}", must be one of:'
-                f" {' '.join(UNITS_QUANTITY)}"
-            )
-        return self
 
 
 class AudioPayloadStats(MediaPayloadStats):
@@ -149,17 +128,10 @@ class AudioPayloadStats(MediaPayloadStats):
 
     model_config = MODEL_CONFIG.copy()
 
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {"duration": UNITS_TIME}
+
     duration: Statistics | None = None
     """Duration per audio instance."""
-
-    @model_validator(mode="after")
-    def check_audio_units(self):
-        if self.duration and self.duration.units not in UNITS_TIME:
-            raise ValueError(
-                f'Invalid units "{self.duration.units}", must be one of:'
-                f" {' '.join(UNITS_TIME)}"
-            )
-        return self
 
 
 class MultiModalRequests(BaseModel):
@@ -180,30 +152,33 @@ class MultiModalRequests(BaseModel):
 ###############################################################################
 
 
-class AggregateRequests(AggregateRequestsV02):
-    """v0.2 request statistics, plus multi-modal payload details."""
+class AggregateRequests(AggregateRequestsV02, UnitsValidatedModel):
+    """v0.2 request statistics, plus multi-modal payload details.
+
+    Inherits the v0.2 input/output-length unit checks and adds a declarative
+    rule for the new request_size field.
+    """
 
     model_config = MODEL_CONFIG.copy()
+
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {"request_size": UNITS_MEMORY}
 
     request_size: Statistics | None = None
     """Total encoded request size, including all media payloads."""
     multimodal: MultiModalRequests | None = None
     """Per-modality payload statistics."""
 
-    @model_validator(mode="after")
-    def check_request_size_units(self):
-        if self.request_size and self.request_size.units not in UNITS_MEMORY:
-            raise ValueError(
-                f'Invalid units "{self.request_size.units}", must be one of:'
-                f" {' '.join(UNITS_MEMORY)}"
-            )
-        return self
 
-
-class AggregateThroughput(AggregateThroughputV02):
+class AggregateThroughput(AggregateThroughputV02, UnitsValidatedModel):
     """v0.2 throughput metrics, plus per-modality payload rates."""
 
     model_config = MODEL_CONFIG.copy()
+
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {
+        "image_rate": UNITS_MEDIA_THROUGHPUT,
+        "video_rate": UNITS_MEDIA_THROUGHPUT,
+        "audio_rate": UNITS_MEDIA_THROUGHPUT,
+    }
 
     image_rate: Statistics | None = None
     """Image delivery rate."""
@@ -211,20 +186,6 @@ class AggregateThroughput(AggregateThroughputV02):
     """Video delivery rate."""
     audio_rate: Statistics | None = None
     """Audio delivery rate."""
-
-    @model_validator(mode="after")
-    def check_media_rate_units(self):
-        for name, stat in (
-            ("image_rate", self.image_rate),
-            ("video_rate", self.video_rate),
-            ("audio_rate", self.audio_rate),
-        ):
-            if stat and stat.units not in UNITS_MEDIA_THROUGHPUT:
-                raise ValueError(
-                    f'Invalid units "{stat.units}" for {name}, must be one of:'
-                    f" {' '.join(UNITS_MEDIA_THROUGHPUT)}"
-                )
-        return self
 
 
 ###############################################################################

@@ -4,9 +4,9 @@ Benchmark report base class with common methods.
 
 import json
 from enum import StrEnum, auto
-from typing import Any
+from typing import Any, ClassVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 import yaml
 
 ###############################################################################
@@ -163,6 +163,46 @@ UNITS_GEN_THROUGHPUT = [Units.TOKEN_PER_S]
 UNITS_REQUEST_THROUGHPUT = [Units.QUERY_PER_S]
 UNITS_MEDIA_THROUGHPUT = [Units.IMAGE_PER_S, Units.VIDEO_PER_S, Units.AUDIO_PER_S]
 UNITS_POWER = [Units.WATTS]
+
+
+###############################################################################
+# Declarative units validation
+###############################################################################
+
+
+class UnitsValidatedModel(BaseModel):
+    """Base model that validates ``Statistics`` field units declaratively.
+
+    Instead of hand-writing a ``check_units`` method per class, a subclass sets
+    ``UNIT_RULES``, mapping a field name to the list of units allowed for that
+    field's ``Statistics.units``. A single inherited validator checks every
+    rule declared anywhere in the class's MRO, so each subclass only declares
+    the fields it introduces; ``None`` (unset Optional) fields are skipped.
+
+    The validator is named distinctly from any ``check_units`` so it co-runs
+    with, rather than shadows, a hand-written validator inherited from another
+    base under multiple inheritance.
+    """
+
+    # field name -> allowed Units. Merged across the MRO at validation time.
+    UNIT_RULES: ClassVar[dict[str, list[Units]]] = {}
+
+    @model_validator(mode="after")
+    def validate_declared_units(self):
+        merged: dict[str, list[Units]] = {}
+        # Most-derived first, so a subclass rule overrides a base rule.
+        for klass in type(self).__mro__:
+            for field, allowed in klass.__dict__.get("UNIT_RULES", {}).items():
+                merged.setdefault(field, allowed)
+        for field, allowed in merged.items():
+            stat = getattr(self, field, None)
+            if stat is not None and stat.units not in allowed:
+                raise ValueError(
+                    f'Invalid units "{stat.units}" for "{field}", must be one'
+                    f" of: {' '.join(allowed)}"
+                )
+        return self
+
 
 ###############################################################################
 # Base benchmark report class
