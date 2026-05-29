@@ -121,7 +121,7 @@ jobs:
       - name: set runs-on variable based on cluster provider
         id: set_runs_on
         run: |
-          IS_OCP=$(echo "${{ github.workflow }}" | grep "\-ocp" || true)$(echo "$LLMDBENCH_CICD_TARGET" | grep "ocp" || true)
+          IS_OCP=$(echo "${{ github.workflow }}" | grep "\-ocp" || true)$(echo "${{ inputs.cluster_provider }}" | grep "ocp" || true)
           if [[ ! -z $IS_OCP ]]; then
             echo "Targetting self-hosted runners (OpenShift)"
             JSON_LIST='["self-hosted", "openshift", "pok-prod"]'
@@ -210,7 +210,7 @@ jobs:
             echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
           fi
           IS_OCP=$(echo "${{ github.workflow }}" | grep "\-ocp" || true)$(echo "$LLMDBENCH_CICD_TARGET" | grep "ocp" || true)
-          if [[ ! -z $IS_OCP -eq 0 ]]; then
+          if [[ ! -z $IS_OCP ]]; then
             echo "Selected \"OpenShift\" kubeconfig"
             echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
           fi
@@ -221,7 +221,7 @@ jobs:
         if: inputs.cluster_provider != 'kind'
         run: |
           IS_OCP=$(echo "${{ github.workflow }}" | grep "\-ocp" || true)$(echo "$LLMDBENCH_CICD_TARGET" | grep "ocp" || true)
-          if [[ ! -z $IS_OCP -eq 0 ]]; then
+          if [[ ! -z $IS_OCP ]]; then
             # Install oc (OpenShift CLI) — optional on install.sh
             if ! command -v oc &>/dev/null; then
               curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
