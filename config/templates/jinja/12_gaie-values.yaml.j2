@@ -5,9 +5,14 @@
 inferenceExtension:
   replicas: {{ inferenceExtension.replicas }}
   image:
+{% set scheduler_repo = images.inferenceScheduler.repository %}
+{% if '/llm-d-inference-scheduler' in scheduler_repo %}
     name: llm-d-inference-scheduler
+{% else %}
+    name: {{ scheduler_repo.split('/')[-1] }}
+{% endif %}
     registry: {{ registry }}
-    repository: {{ images.inferenceScheduler.repository | replace(registry ~ '/', '') }}
+    repository: {{ scheduler_repo | replace(registry ~ '/', '') }}
     tag: {{ images.inferenceScheduler.tag }}
     pullPolicy: {{ images.inferenceScheduler.pullPolicy }}
   extProcPort: {{ inferenceExtension.extProcPort }}
