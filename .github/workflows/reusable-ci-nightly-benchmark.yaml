@@ -287,6 +287,9 @@ jobs:
           elif [[ "${{ inputs.cluster_provider }}" == "gke" && "${{ inputs.standup_method }}" == "fma" ]]; then
             echo "Temporarily unable to test \"fma\" on \"gke\" clusters"
           else
+            if [[ "${{ inputs.harness }}" == "nop" && "${{ inputs.scenario_dir }}" == "cicd"  ]]; then
+              sed -i 's^#      executable: llm-d-benchmark.py^      executable: llm-d-benchmark.py^g' config/scenarios/$LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET.yaml
+            fi
             LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD run --namespace $LLMDBENCH_CICD_NS --methods $LLMDBENCH_CICD_METHOD --harness $LLMDBENCH_CICD_HARNESS --workload $LLMDBENCH_CICD_WORKLOAD"
             echo "### $LLMDBENCH_CMD ###"
             $LLMDBENCH_CMD
