@@ -9,12 +9,24 @@
 gateway:
   gatewayClassName: gke-l7-regional-external-managed
   destinationRule: {{ model_id_label }}-gaie-epp.{{ namespace.name }}
+{% if gateway.listenerPort is defined and gateway.listenerPort %}
+  listeners:
+    - name: default
+      port: {{ gateway.listenerPort }}
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+{% endif %}
 
 provider:
   name: gke
 
 {% elif gw_class == 'data-science-gateway-class' %}
 {# ── OpenDataHub / OpenShift AI ── #}
+{% if gateway.listenerPort is defined and gateway.listenerPort %}
+{{ raise("gateway.listenerPort is not supported for gateway class 'data-science-gateway-class' (this class pins the listener to port 443, protocol HTTPS, TLS terminate). Remove gateway.listenerPort from the scenario.") }}
+{% endif %}
 gateway:
   gatewayClassName: data-science-gateway-class
   labels:
@@ -63,6 +75,15 @@ gateway:
     enabled: false
   service:
     type: {{ gateway.service.type | default('NodePort') }}
+{% if gateway.listenerPort is defined and gateway.listenerPort %}
+  listeners:
+    - name: default
+      port: {{ gateway.listenerPort }}
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+{% endif %}
 
 {% else %}
 {# ── Istio (default) ── #}
@@ -80,5 +101,14 @@ gateway:
         memory: {{ gateway.resources.requests.memory }}
   service:
     type: {{ gateway.service.type }}
+{% if gateway.listenerPort is defined and gateway.listenerPort %}
+  listeners:
+    - name: default
+      port: {{ gateway.listenerPort }}
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+{% endif %}
 {% endif %}
 {% endif %}
