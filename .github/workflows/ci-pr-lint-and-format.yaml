@@ -16,10 +16,10 @@ jobs:
       - name: Run Ruff Lint Check
         uses: astral-sh/ruff-action@v3
         with:
-          args: "check --diff --verbose --output-format=full"
+          args: "check --unsafe-fixes --output-format=full"
 
       # 2. Run Formatting Check (Fails if code isn't formatted, but won't modify any files)
       - name: Run Ruff Format Check
         uses: astral-sh/ruff-action@v3
         with:
-          args: "format --check --diff --verbose"
+          args: "format --check --diff"
