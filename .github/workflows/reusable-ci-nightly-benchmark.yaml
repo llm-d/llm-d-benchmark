@@ -121,9 +121,12 @@ jobs:
       - name: set runs-on variable based on cluster provider
         id: set_runs_on
         run: |
-          if [[ ${{ inputs.cluster_provider }} == "ocp" ]]; then
+          echo "${{ github.workflow }}" | grep -q "\-ocp" || echo "$LLMDBENCH_CICD_TARGET" | grep -q "ocp"
+          if [[ $? -eq 0 ]]; then
+            echo "Targetting self-hosted runners (OpenShift)"
             JSON_LIST='["self-hosted", "openshift", "pok-prod"]'
           else
+            echo "Targetting hosted runners (non-OpenShift)"
             JSON_LIST='["ubuntu-latest"]'
           fi
           echo "runners=$JSON_LIST" >> "$GITHUB_OUTPUT"
@@ -192,11 +195,11 @@ jobs:
         run: |
           echo "${{ github.workflow }}" | grep -q "\-gke" || echo "$LLMDBENCH_CICD_TARGET" | grep -q "gke"
           if [[ $? -eq 0 ]]; then
-            echo "Selected \"Google Kubernetes Engine\" kubeconfig"          
+            echo "Selected \"Google Kubernetes Engine\" kubeconfig"
             gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" --zone "${{ env.GKE_CLUSTER_ZONE }}"
            fi
         shell: bash
-        
+
       - name: Set up kubeconfig from secret
         if: inputs.cluster_provider != 'kind'
         run: |
@@ -207,27 +210,30 @@ jobs:
             echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
           fi
           echo "${{ github.workflow }}" | grep -q "\-ocp" || echo "$LLMDBENCH_CICD_TARGET" | grep -q "ocp"
-          if [[ $LLMDBENCH_CICD_TARGET == "ocp" ]]; then
-            echo "Selected \"OpenShift\" kubeconfig"          
+          if [[ $? -eq 0 ]]; then
+            echo "Selected \"OpenShift\" kubeconfig"
             echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
           fi
           chmod 600 ~/.kube/config
         shell: bash
 
       - name: Install oc (optional on install.sh)
-        if: inputs.cluster_provider == 'ocp'
+        if: inputs.cluster_provider != 'kind'
         run: |
-          # Install oc (OpenShift CLI) — optional on install.sh
-          if ! command -v oc &>/dev/null; then
-            curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
-              "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz"
-            mkdir -p /tmp/oc-extract
-            tar -xzf /tmp/openshift-client-linux.tar.gz -C /tmp/oc-extract
-            sudo mv /tmp/oc-extract/oc /usr/local/bin/
-            sudo mv /tmp/oc-extract/kubectl /usr/local/bin/
-            sudo chmod +x /usr/local/bin/oc
-            sudo chmod +x /usr/local/bin/kubectl
-            rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
+          echo "${{ github.workflow }}" | grep -q "\-ocp" || echo "$LLMDBENCH_CICD_TARGET" | grep -q "ocp"
+          if [[ $? -eq 0 ]]; then
+            # Install oc (OpenShift CLI) — optional on install.sh
+            if ! command -v oc &>/dev/null; then
+              curl -fsSL --retry 3 --retry-delay 5 -o /tmp/openshift-client-linux.tar.gz \
+                "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz"
+              mkdir -p /tmp/oc-extract
+              tar -xzf /tmp/openshift-client-linux.tar.gz -C /tmp/oc-extract
+              sudo mv /tmp/oc-extract/oc /usr/local/bin/
+              sudo mv /tmp/oc-extract/kubectl /usr/local/bin/
+              sudo chmod +x /usr/local/bin/oc
+              sudo chmod +x /usr/local/bin/kubectl
+              rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
+            fi
           fi
 
       - name: Show cluster nodes
