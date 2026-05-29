@@ -27,6 +27,7 @@ from llmdbenchmark.utilities.endpoint import (
     _ephemeral_label_args,
     find_standalone_endpoint,
     find_gateway_endpoint,
+    find_epponly_endpoint,
 )
 
 # Transient HTTP status codes / error substrings that warrant a retry.
@@ -96,14 +97,20 @@ class InferenceTestStep(Step):
         release = self._require_config(plan_config, "release")
 
         # Discover endpoint (same logic as smoketest)
+        gateway_class = plan_config.get("gateway", {}).get("className", "")
+        model_id_label = plan_config.get("model_id_label", "")
         if is_standalone:
             service_ip, _, gateway_port = find_standalone_endpoint(
                 cmd, namespace, inference_port
             )
-        else:
-            service_ip, _, gateway_port = find_gateway_endpoint(
-                cmd, namespace, release
+        elif gateway_class == "epponly":
+            service_ip, _, gateway_port = find_epponly_endpoint(
+                cmd,
+                namespace,
+                model_id_label,
             )
+        else:
+            service_ip, _, gateway_port = find_gateway_endpoint(cmd, namespace, release)
 
         if not service_ip:
             if context.dry_run:
@@ -123,21 +130,29 @@ class InferenceTestStep(Step):
         protocol = "https" if str(gateway_port) == "443" else "http"
         base_url = f"{protocol}://{service_ip}:{gateway_port}"
 
-        context.logger.log_info(
-            f"Running sample inference against {base_url}..."
-        )
+        context.logger.log_info(f"Running sample inference against {base_url}...")
 
         # --- Try /v1/completions first (universal in vLLM) ---
         context.logger.log_info("Trying /v1/completions endpoint...")
         completions_result = self._try_completions(
-            cmd, context, namespace, base_url, model_name, plan_config,
+            cmd,
+            context,
+            namespace,
+            base_url,
+            model_name,
+            plan_config,
         )
 
         if completions_result.success:
             self._print_demo_command(
-                context, cmd, namespace, plan_config,
-                base_url, "/v1/completions",
-                completions_result.payload, completions_result.generated_text,
+                context,
+                cmd,
+                namespace,
+                plan_config,
+                base_url,
+                "/v1/completions",
+                completions_result.payload,
+                completions_result.generated_text,
             )
             return StepResult(
                 step_number=self.number,
@@ -155,14 +170,24 @@ class InferenceTestStep(Step):
                 f"Falling back to /v1/chat/completions..."
             )
             chat_result = self._try_chat_completions(
-                cmd, context, namespace, base_url, model_name, plan_config,
+                cmd,
+                context,
+                namespace,
+                base_url,
+                model_name,
+                plan_config,
             )
 
             if chat_result.success:
                 self._print_demo_command(
-                    context, cmd, namespace, plan_config,
-                    base_url, "/v1/chat/completions",
-                    chat_result.payload, chat_result.generated_text,
+                    context,
+                    cmd,
+                    namespace,
+                    plan_config,
+                    base_url,
+                    "/v1/chat/completions",
+                    chat_result.payload,
+                    chat_result.generated_text,
                 )
                 return StepResult(
                     step_number=self.number,
@@ -201,8 +226,7 @@ class InferenceTestStep(Step):
     class _InferenceResult:
         """Encapsulates the outcome of a single inference attempt."""
 
-        __slots__ = ("success", "error", "should_fallback",
-                     "generated_text", "payload")
+        __slots__ = ("success", "error", "should_fallback", "generated_text", "payload")
 
         def __init__(
             self,
@@ -244,12 +268,17 @@ class InferenceTestStep(Step):
 
         for attempt in range(1, max_retries + 1):
             stdout, err = self._curl_post(
-                cmd, namespace, url, payload, plan_config,
+                cmd,
+                namespace,
+                url,
+                payload,
+                plan_config,
             )
 
             if cmd.dry_run:
                 return self._InferenceResult(
-                    success=True, payload=payload,
+                    success=True,
+                    payload=payload,
                     generated_text="<dry-run>",
                 )
 
@@ -310,9 +339,7 @@ class InferenceTestStep(Step):
                 payload=payload,
             )
 
-        return self._InferenceResult(
-            error=f"Exhausted {max_retries} retries for {url}"
-        )
+        return self._InferenceResult(error=f"Exhausted {max_retries} retries for {url}")
 
     # ------------------------------------------------------------------
     # /v1/chat/completions
@@ -333,14 +360,20 @@ class InferenceTestStep(Step):
         url = f"{base_url}/v1/chat/completions"
         payload = {
             "model": model_name,
-            "messages": [{"role": "user", "content": "What is the capital of the United States?"}],
+            "messages": [
+                {"role": "user", "content": "What is the capital of the United States?"}
+            ],
             "max_tokens": 5,
             "temperature": 0,
         }
 
         for attempt in range(1, max_retries + 1):
             stdout, err = self._curl_post(
-                cmd, namespace, url, payload, plan_config,
+                cmd,
+                namespace,
+                url,
+                payload,
+                plan_config,
             )
 
             if err:
@@ -390,9 +423,7 @@ class InferenceTestStep(Step):
                 payload=payload,
             )
 
-        return self._InferenceResult(
-            error=f"Exhausted {max_retries} retries for {url}"
-        )
+        return self._InferenceResult(error=f"Exhausted {max_retries} retries for {url}")
 
     # ------------------------------------------------------------------
     # Shared helpers
@@ -426,14 +457,20 @@ class InferenceTestStep(Step):
             f"'echo {payload_b64} | base64 -d | "
             f"curl -sk --max-time {timeout_seconds} "
             f"-X POST {url} "
-            f"-H \"Content-Type: application/json\" "
+            f'-H "Content-Type: application/json" '
             f"-d @- 2>&1'"
         )
 
         kubectl_args = (
             [
-                "run", pod_name, "--rm", "--attach", "--quiet",
-                "--restart=Never", "--namespace", namespace,
+                "run",
+                pod_name,
+                "--rm",
+                "--attach",
+                "--quiet",
+                "--restart=Never",
+                "--namespace",
+                namespace,
                 f"--image={curl_image}",
             ]
             + _ephemeral_label_args()
@@ -498,12 +535,15 @@ class InferenceTestStep(Step):
 
         context.logger.log_info(f"✅ Inference test passed via {endpoint}")
         if generated_text:
-            context.logger.log_info(f"   Generated: \"{generated_text[:80]}\"")
+            context.logger.log_info(f'   Generated: "{generated_text[:80]}"')
         context.logger.log_info("")
 
         # Try to detect the OpenShift route for an external URL
         external_url = self._detect_external_url(
-            cmd, namespace, plan_config, endpoint,
+            cmd,
+            namespace,
+            plan_config,
+            endpoint,
         )
 
         if external_url:
@@ -543,9 +583,13 @@ class InferenceTestStep(Step):
 
         route_name = f"{release}-inference-gateway-route"
         result = cmd.kube(
-            "get", "route", route_name,
-            "-n", namespace,
-            "-o", "jsonpath={.spec.host}:{.spec.tls.termination}",
+            "get",
+            "route",
+            route_name,
+            "-n",
+            namespace,
+            "-o",
+            "jsonpath={.spec.host}:{.spec.tls.termination}",
             check=False,
         )
 

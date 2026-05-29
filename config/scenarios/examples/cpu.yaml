@@ -93,6 +93,9 @@ scenario:
     # are ignored -- the custom command must include its own flags.
     # -------------------------------------------------------------------------
     vllmCommon:
+      # Shell used in the vLLM container `command:` field. Defaults to /bin/bash.
+      # shell: /bin/sh
+
       shmMemory: 16Gi
 
       preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && . $HOME/llmdbench_env.sh"

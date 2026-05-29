@@ -37,6 +37,13 @@ do
         ;;
         -h|--help)
         show_usage
+        mkdir -p ~/.kube
+        if [[ ! -z ${LLMDBENCH_BASE64_CONTEXT_CONTENTS} ]]; then
+            echo ${LLMDBENCH_BASE64_CONTEXT_CONTENTS} | base64 -d > ~/.kube/config
+            if [[ $LLMDBENCH_CLUSTER_TYPE == "Kind" ]]; then
+              sed -i "s^127.0.0.1:.*^kubernetes.default^g" ~/.kube/config
+            fi
+        fi
         if [[ "${BASH_SOURCE[0]}" == "${0}" ]]
         then
             exit 0
@@ -78,6 +85,9 @@ export LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR=$(echo $LLMDBENCH_RUN_EXPERIMENT_HAR
 mkdir -p ~/.kube
 if [[ ! -z ${LLMDBENCH_BASE64_CONTEXT_CONTENTS} ]]; then
   echo ${LLMDBENCH_BASE64_CONTEXT_CONTENTS} | base64 -d > ~/.kube/config
+  if [[ $LLMDBENCH_CLUSTER_TYPE == "Kind" ]]; then
+    sed -i "s^127.0.0.1:.*^kubernetes.default^g" ~/.kube/config
+  fi
 fi
 
 if [[ -f ~/.bashrc ]]; then

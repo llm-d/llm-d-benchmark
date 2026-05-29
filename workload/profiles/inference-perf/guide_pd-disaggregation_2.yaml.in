@@ -1,10 +1,14 @@
 load:
-  type: trace_session_replay
+  type: constant
   stages:
-    - concurrent_sessions: 4
-  worker_max_concurrency: 400
+  - rate: 1
+    duration: 120
+    num_requests: null
+    concurrency_level: null
+  num_workers: 100
+  worker_max_concurrency: 100
 api:
-  type: chat
+  type: completion
   streaming: true
 server:
   type: vllm
@@ -14,13 +18,17 @@ server:
 tokenizer:
   pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
 data:
-  type: otel_trace_replay
-  otel_trace_replay:
-    skip_invalid_files: true
-    use_static_model: true
-    static_model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
-    trace_directory: REPLACE_ENV_LLMDBENCH_RUN_DATASET_DIR
-    include_errors: false
+  type: random
+  input_distribution:
+    min: 1024
+    max: 1024
+    mean: 1024
+    std_dev: 0
+  output_distribution:
+    min: 1024
+    max: 1024
+    mean: 1024
+    std_dev: 0
 report:
   request_lifecycle:
     summary: true

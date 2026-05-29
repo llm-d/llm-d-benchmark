@@ -1,3 +1,7 @@
+# Kind Simulated Accelerators CI/CD Specification
+# CI/CD scenario for Kind clusters using inference simulation (no GPU).
+# See scenarios/cicd/kind-sim.yaml for details.
+
 # [REQUIRED]
 {% set base_dir = base_dir | default('../') -%}
 base_dir: {{ base_dir }}
@@ -12,7 +16,4 @@ template_dir:
 
 # [OPTIONAL]
 scenario_file:
-  path: {{ base_dir }}/config/scenarios/guides/precise-prefix-cache-aware.yaml
-
-# Experiment definitions have been moved to:
-#   workload/experiments/precise-prefix-cache-aware.yaml
+  path: {{ base_dir }}/config/scenarios/cicd/kind.yaml

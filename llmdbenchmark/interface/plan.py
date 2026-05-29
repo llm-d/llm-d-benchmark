@@ -5,7 +5,9 @@ from llmdbenchmark.interface.commands import Command
 from llmdbenchmark.interface.env import env
 
 
-def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []):
+def add_subcommands(
+    parser: argparse._SubParsersAction, parents: list[argparse.ArgumentParser] = []
+):
     """Register the ``plan`` subcommand and its arguments.
 
     The plan subcommand renders templates without applying anything to the
@@ -31,12 +33,14 @@ def add_subcommands(parser: argparse._SubParsersAction, parents: list[argparse.A
         help="Namespaces to use (deploy_namespace, benchmark_namespace).",
     )
     plan_parser.add_argument(
-        "-m", "--models",
+        "-m",
+        "--models",
         default=env("LLMDBENCH_MODELS"),
         help="Model to render the plan for.",
     )
     plan_parser.add_argument(
-        "-t", "--methods",
+        "-t",
+        "--methods",
         default=env("LLMDBENCH_METHODS"),
         help="Deployment method (standalone, modelservice, fma).",
     )

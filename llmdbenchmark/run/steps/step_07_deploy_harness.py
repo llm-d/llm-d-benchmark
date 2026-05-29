@@ -59,6 +59,13 @@ class DeployHarnessStep(Step):
                 errors=["stack_path is required"],
             )
 
+        if context.platform_type == "unrecognized":
+            context.logger.log_warning(
+                "Cluster platform type could not be identified "
+                "(detection in step 00 matched none of OpenShift/GKE/Kind/Minikube); "
+                "LLMDBENCH_CLUSTER_TYPE will be set to 'unrecognized' in the harness pod."
+            )
+
         stack_name = stack_path.name
         errors: list[str] = []
         cmd = context.require_cmd()
@@ -236,6 +243,7 @@ class DeployHarnessStep(Step):
                     "results_dir": results_dir,
                     "stack_type": stack_type,
                     "deploy_method": deploy_method,
+                    "cluster_type": context.platform_type,
                 })
 
                 # Inject base64-encoded kubeconfig so kubectl works inside the pod
@@ -257,9 +265,12 @@ class DeployHarnessStep(Step):
                     template_values["model"]["name"] = model_name
                 template_values.setdefault("images", {}).setdefault("benchmark", {})
 
-                # Service account override (-q)
+                # Service account precedence: CLI override (-q) > scenario's
+                # harness.serviceAccount > global serviceAccount.name default.
                 if context.harness_service_account:
                     template_values["harness"]["serviceAccount"] = context.harness_service_account
+                elif plan_config and plan_config.get("harness", {}).get("serviceAccount"):
+                    template_values["harness"]["serviceAccount"] = plan_config["harness"]["serviceAccount"]
                 elif plan_config and "serviceAccount" in plan_config:
                     template_values["harness"]["serviceAccount"] = plan_config["serviceAccount"].get("name", "default")
 

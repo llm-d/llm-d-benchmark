@@ -1,17 +1,11 @@
-# TIERED PREFIX CACHE / PREFIX CACHE OFFLOADING WELL LIT PATH
-# Based on https://github.com/llm-d/llm-d/tree/main/guides/tiered-prefix-cache/README.md
-# Migrated from bash environment variables to YAML format
-#
-# Notes:
-# - Removed pod monitoring; can be added using decode.extraContainerConfig
-# - Removed extra volumes metrics-volume and torch-compile-volume (not needed for this model/hardware)
-# - Use decode.additionalVolumeMounts and decode.additionalVolumes to add them if needed
+# AGENTIC-TESTS WELL LIT PATH
+# Reasoning + tool-call deployment driven by OTel-trace replay.
 
 scenario:
   # ============================================================================
-  # Tiered Prefix Cache - Llama 3.1 8B Instruct with 2 decode pods (no prefill)
+  # Agentic tests: Qwen3-30B-A3B-Thinking with tool call support
   # ============================================================================
-  - name: "tiered-prefix-cache"
+  - name: "agentic-tests"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods
@@ -19,7 +13,7 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Model Configuration
-    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-32B"
+    # Corresponds to: LLMDBENCH_DEPLOY_MODEL_LIST="Qwen/Qwen3-30B-A3B-Thinking-2507"
     # Alternative models (commented out in original):
     #   - Qwen/Qwen3-0.6B
     #   - facebook/opt-125m
@@ -27,28 +21,15 @@ scenario:
     #   - deepseek-ai/DeepSeek-R1-0528
     # -------------------------------------------------------------------------
     model:
-      name: Qwen/Qwen3-32B
-      shortName: qwen-qwen3-32b
-      path: models/Qwen/Qwen3-32B
-      huggingfaceId: Qwen/Qwen3-32B
+      name: Qwen/Qwen3-30B-A3B-Thinking-2507
+      shortName: qwen-qwen3-30b-a3b-thinking-2507
+      path: models/Qwen/Qwen3-30B-A3B-Thinking-2507
+      huggingfaceId: Qwen/Qwen3-30B-A3B-Thinking-2507
       size: 1Ti
-      maxModelLen: 16000
+      maxModelLen: 262144
       blockSize: 64
       gpuMemoryUtilization: 0.95
       cacheBase: /model-cache
-
-    # =========================================================================
-    # MODELSERVICE -- Only applies when modelservice.enabled: true
-    # The following sections configure the llm-d modelservice Helm chart
-    # deployment including decode pods, prefill pods, routing, and GAIE.
-    # =========================================================================
-
-    # -------------------------------------------------------------------------
-    # Routing Configuration
-    # Corresponds to: LLMDBENCH_VLLM_MODELSERVICE_INFERENCE_MODEL=true
-    # -------------------------------------------------------------------------
-    routing:
-      connector: nixlv2
 
     # -------------------------------------------------------------------------
     # Affinity / Node Selection
@@ -81,39 +62,11 @@ scenario:
 
     # -------------------------------------------------------------------------
     # Routing / GAIE Configuration
+    #
+    # NOTE: This will include the "program-aware-plugin" when merged
     # -------------------------------------------------------------------------
     inferenceExtension:
-      extraServicePorts:
-        - name: http
-          port: 80
-          protocol: TCP
-          targetPort: 8081
-      pluginsConfigFile: "tiered-prefix-cache-plugins.yaml"
-      pluginsCustomConfig:
-        tiered-prefix-cache-plugins.yaml: |
-          apiVersion: inference.networking.x-k8s.io/v1alpha1
-          kind: EndpointPickerConfig
-          plugins:
-          - type: queue-scorer
-          - type: kv-cache-utilization-scorer
-          - type: prefix-cache-scorer
-            name: gpu-prefix-cache-scorer
-          - type: prefix-cache-scorer
-            name: cpu-prefix-cache-scorer
-            parameters:
-              autoTune: false  # vLLM doesn't have the CPU capacity metric to enable autoTune yet
-              lruCapacityPerServer: 41000  # Allocating ~100GB for Qwen-32B: 41,000 blocks * 2.5MB/block (based on 160KB/token * 16 block size).
-          schedulingProfiles:
-          - name: default
-            plugins:
-            - pluginRef: queue-scorer
-              weight: 2
-            - pluginRef: kv-cache-utilization-scorer
-              weight: 2.0
-            - pluginRef: gpu-prefix-cache-scorer
-              weight: 1.0
-            - pluginRef: cpu-prefix-cache-scorer
-              weight: 1.0
+      pluginsConfigFile: "default-plugins.yaml"
 
     # =========================================================================
     # COMMON -- Applies to all deployment methods (continued)
@@ -150,7 +103,6 @@ scenario:
         customCommand: |
           export LD_LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | sed ':a; N; $!ba; s/\n/:/g'):${LD_LIBRARY_PATH}
           export LIBRARY_PATH=$(find / -name libcuda.so.1 -printf '%h\n' 2>/dev/null | head -1):${LIBRARY_PATH}
-          . /shared-config/llmdbench_env.sh
           vllm serve /model-cache/$MODEL_PATH \
           --host 0.0.0.0 \
           --served-model-name $MODEL_NAME \
@@ -161,10 +113,13 @@ scenario:
           --max-num-batched-tokens $VLLM_MAX_NUM_BATCHED_TOKENS \
           --tensor-parallel-size $TP_SIZE \
           --gpu-memory-utilization $VLLM_ACCELERATOR_MEM_UTIL \
-          --prefix-caching-hash-algo sha256_cbor \
-          --kv-transfer-config '{"kv_connector":"OffloadingConnector","kv_role":"kv_both","kv_connector_extra_config":{"cpu_bytes_to_use":$(CPU_BYTES_TO_USE)}}' \
+          --no-enable-log-requests \
+          --reasoning-parser qwen3 \
+          --enable-auto-tool-choice \
+          --tool-call-parser qwen3_xml \
           --disable-uvicorn-access-log \
-          --disable-access-log-for-endpoints=/health,/metrics,/v1/models
+          --disable-access-log-for-endpoints=/health,/metrics,/v1/models \
+          --no-enable-prefix-caching
 
       initContainers:
         - name: preprocess
@@ -176,7 +131,7 @@ scenario:
               mountPath: /shared-config
 
       parallelism:
-        tensor: 1
+        tensor: 2
         data: 1
         dataLocal: 1
         workers: 1
@@ -184,11 +139,11 @@ scenario:
       # Resource configuration
       resources:
         limits:
-          memory: 400Gi
+          memory: 256Gi
           cpu: "16"
         requests:
-          memory: 200Gi
-          cpu: "8"
+          memory: 128Gi
+          cpu: "16"
 
       # -----------------------------------------------------------------------
       # Extra Environment Variables
@@ -196,9 +151,7 @@ scenario:
       # other vars (UCX_TLS, VLLM_NIXL_*, etc.) are auto-populated by the
       # preprocess script at pod runtime.
       # -----------------------------------------------------------------------
-      extraEnvVars:
-        - name: CPU_BYTES_TO_USE
-          value: "214748364800"
+      extraEnvVars: []
 
       # -----------------------------------------------------------------------
       # Extra Container Configuration
@@ -216,8 +169,6 @@ scenario:
             add:
               - "IPC_LOCK"
               - "SYS_RAWIO"
-              - "NET_ADMIN"
-              - "NET_RAW"
           runAsGroup: 0
           runAsUser: 0
         imagePullPolicy: Always
@@ -261,7 +212,6 @@ scenario:
     # =========================================================================
 
     vllmCommon:
-#      priorityClassName: nightly-gpu-critical
 
       volumes:
         - name: shared-config
@@ -294,8 +244,11 @@ scenario:
     # =========================================================================
     # WORKLOAD / HARNESS -- Benchmark execution configuration
     # =========================================================================
-    workDir: "~/data/tiered-prefix-cache"
+    workDir: "~/data/agentic-tests"
 
     harness:
       name: inference-perf
-      experimentProfile: shared_prefix_synthetic.yaml
+      experimentProfile: otel_traces.yaml
+
+    experiment:
+      datasetDir: /workspace/inference-perf/examples/otel/test_traces/advanced/

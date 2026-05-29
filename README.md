@@ -424,6 +424,7 @@ llmdbenchmark --version
 | `-m MODELS` | `LLMDBENCH_MODELS` | Models to deploy |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Namespace(s) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Deployment methods (`standalone`, `modelservice`) |
+| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className`. Accepted on the modelservice path: `epponly`, `istio`, `agentgateway`, `gke`, `data-science-gateway-class`. Ignored (any value accepted, including `none`) when the active deploy method is `kustomize`, `standalone`, or `fma`. |
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name |
 | `-k FILE` | `LLMDBENCH_KUBECONFIG` / `KUBECONFIG` | Kubeconfig path |
 | `--parallel N` | `LLMDBENCH_PARALLEL` | Max parallel stacks (default: 4) |
@@ -441,6 +442,7 @@ llmdbenchmark --version
 | `-s STEPS` | | Step filter |
 | `-m MODELS` | `LLMDBENCH_MODELS` | Model that was deployed (for resource name resolution) |
 | `-t METHODS` | `LLMDBENCH_METHODS` | Methods to tear down (`standalone`, `modelservice`) |
+| `--gateway-class CLASS` | `LLMDBENCH_GATEWAY_CLASS` | Override the scenario's `gateway.className` when teardown re-renders templates to resolve the resource names it must delete. See [Standup Options](#standup-options) for accepted values and method-aware behavior. |
 | `-r NAME` | `LLMDBENCH_RELEASE` | Helm release name (default: `llmdbench`) |
 | `-d` / `--deep` | `LLMDBENCH_DEEP_CLEAN` | Deep clean: delete ALL resources in both namespaces |
 | `-p NS` | `LLMDBENCH_NAMESPACE` | Comma-separated namespaces (model,harness) |

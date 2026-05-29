@@ -113,6 +113,9 @@ scenario:
     schedulerName: spyre-scheduler
 
     vllmCommon:
+      # Shell used in the vLLM container `command:` field. Defaults to /bin/bash.
+      # shell: /bin/sh
+
       shmMemory: 64Gi
 
       preprocessScript: "python3 /setup/preprocess/set_llmdbench_environment.py && source $HOME/llmdbench_env.sh"

@@ -63,10 +63,15 @@ class DeployGaieStep(Step):
         if helmfile_work.exists():
             model_id_label = plan_config.get("model_id_label", "")
             result = cmd.helmfile(
-                "--namespace", namespace,
-                "--selector", f"name={model_id_label}-gaie",
-                "apply", "-f", str(helmfile_work),
-                "--skip-diff-on-install", "--skip-schema-validation",
+                "--namespace",
+                namespace,
+                "--selector",
+                f"name={model_id_label}-gaie",
+                "apply",
+                "-f",
+                str(helmfile_work),
+                "--skip-diff-on-install",
+                "--skip-schema-validation",
             )
             if not result.success:
                 errors.append(f"Failed to deploy GAIE: {result.stderr}")
@@ -75,10 +80,15 @@ class DeployGaieStep(Step):
             if main_helmfile:
                 model_id_label = plan_config.get("model_id_label", "")
                 result = cmd.helmfile(
-                    "--namespace", namespace,
-                    "--selector", f"name={model_id_label}-gaie",
-                    "apply", "-f", str(main_helmfile),
-                    "--skip-diff-on-install", "--skip-schema-validation",
+                    "--namespace",
+                    namespace,
+                    "--selector",
+                    f"name={model_id_label}-gaie",
+                    "apply",
+                    "-f",
+                    str(main_helmfile),
+                    "--skip-diff-on-install",
+                    "--skip-schema-validation",
                 )
                 if not result.success:
                     errors.append(f"Failed to deploy GAIE: {result.stderr}")
@@ -86,34 +96,42 @@ class DeployGaieStep(Step):
         # Wait for gateway pod only (not EPP -- it stays NOT_SERVING until step 09)
         if not errors and not context.dry_run:
             gateway_class = self._require_config(plan_config, "gateway", "className")
-            if gateway_class == "data-science-gateway-class":
-                gw_label = "gateway.istio.io/managed=istio.io-gateway-controller"
-            elif gateway_class == "agentgateway":
-                # agentgateway controller creates pods with the gateway name
-                # as the app.kubernetes.io/name label, not "llm-d-infra".
-                gw_label = (
-                    f"app.kubernetes.io/name=infra-{release}-inference-gateway"
-                )
-            else:
-                gw_label = "app.kubernetes.io/name=llm-d-infra"
-
-            timeout = context.gateway_deploy_timeout
-            gateway_wait = cmd.wait_for_pods(
-                label=gw_label,
-                namespace=namespace,
-                timeout=timeout,
-                poll_interval=10,
-                description="gateway infra",
-            )
-            if not gateway_wait.success:
-                errors.append(
-                    f"Gateway infra pod not ready: {gateway_wait.stderr}"
-                )
-            else:
+            if gateway_class == "epponly":
+                # No Gateway resource is deployed in epponly mode; the EPP
+                # pod itself is the data-plane proxy and is waited on by
+                # step_09 once the model servers come up.
                 context.logger.log_info(
-                    "GAIE deployed -- EPP pod will become Ready after "
-                    "model servers are deployed in step 09"
+                    "gateway.className=epponly -- no Gateway pod to wait "
+                    "for; EPP readiness is verified in step 09 after the "
+                    "model servers are deployed"
                 )
+            else:
+                if gateway_class == "data-science-gateway-class":
+                    gw_label = "gateway.istio.io/managed=istio.io-gateway-controller"
+                elif gateway_class == "agentgateway":
+                    # agentgateway controller creates pods with the gateway name
+                    # as the app.kubernetes.io/name label, not "llm-d-infra".
+                    gw_label = (
+                        f"app.kubernetes.io/name=infra-{release}-inference-gateway"
+                    )
+                else:
+                    gw_label = "app.kubernetes.io/name=llm-d-infra"
+
+                timeout = context.gateway_deploy_timeout
+                gateway_wait = cmd.wait_for_pods(
+                    label=gw_label,
+                    namespace=namespace,
+                    timeout=timeout,
+                    poll_interval=10,
+                    description="gateway infra",
+                )
+                if not gateway_wait.success:
+                    errors.append(f"Gateway infra pod not ready: {gateway_wait.stderr}")
+                else:
+                    context.logger.log_info(
+                        "GAIE deployed -- EPP pod will become Ready after "
+                        "model servers are deployed in step 09"
+                    )
 
         if errors:
             for err in errors:
@@ -135,9 +153,7 @@ class DeployGaieStep(Step):
             stack_name=stack_path.name,
         )
 
-    def _patch_gaie_for_non_admin(
-        self, context: ExecutionContext, stack_name: str
-    ):
+    def _patch_gaie_for_non_admin(self, context: ExecutionContext, stack_name: str):
         """Disable cluster-admin features (Prometheus monitoring, InferencePool) in GAIE values."""
         helm_dir = context.setup_helm_dir() / stack_name
         gaie_file = helm_dir / "gaie-values.yaml"

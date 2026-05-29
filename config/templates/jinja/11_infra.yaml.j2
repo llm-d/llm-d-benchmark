@@ -1,6 +1,10 @@
-{% if standalone.enabled is defined and not standalone.enabled %}
+{# Modelservice-only template. -t kustomize uses upstream guide manifests. #}
+{% if standalone.enabled is defined and not standalone.enabled and not (kustomize.enabled | default(false)) %}
 {% set gw_class = gateway.className %}
-{% if gw_class == 'gke' %}
+{# `epponly` renders no infra values: no Gateway is installed, the standalone
+   GAIE chart provides HTTP service directly via the EPP Envoy sidecar. #}
+{% if gw_class == 'epponly' %}
+{% elif gw_class == 'gke' %}
 {# ── GKE: managed gateway with destinationRule ── #}
 gateway:
   gatewayClassName: gke-l7-regional-external-managed

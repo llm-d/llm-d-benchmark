@@ -12,7 +12,7 @@ This is the same scenario our CI runs on every PR (see [`ci-pr-benchmark.yaml`](
 >
 > - **First-time walkthroughs of the framework** - you can exercise the full `standup -> smoketest -> run -> teardown` lifecycle without any cloud account, cluster access, or GPU hardware.
 > - **Iterating on framework code** - testing your changes to steps, templates, or scenarios locally in a fast feedback loop.
-> - **Reproducing CI failures** - the PR-benchmark workflow uses this exact `cicd/kind-sim` scenario on a Kind cluster, so a local repro is one `./util/test-scenarios.sh` invocation away.
+> - **Reproducing CI failures** - the PR-benchmark workflow uses this exact `cicd/kind` scenario on a Kind cluster, so a local repro is one `./util/test-scenarios.sh` invocation away.
 >
 > Kind is **not** a benchmarking target. It runs a simulated inference engine (`llm-d-inference-sim`) on CPU, so any latency, throughput, or GPU-utilization numbers you collect here are meaningless as performance data. When you have access to a cluster with real accelerators, switch to one of the GPU-backed scenarios under [`config/specification/examples/gpu.yaml.j2`](../config/specification/examples/gpu.yaml.j2) or [`config/specification/guides/`](../config/specification/guides/) and skip steps 1 and 2 of this guide - jump straight to [step 3 (Install llmdbenchmark)](#3-install-llmdbenchmark) and use your existing kubeconfig.
 
@@ -34,7 +34,7 @@ This is the same scenario our CI runs on every PR (see [`ci-pr-benchmark.yaml`](
 | Item | Value |
 |---|---|
 | Cluster | Kind (local Docker-in-Docker, CPU-only) |
-| Scenario | [`cicd/kind-sim`](../config/scenarios/cicd/kind-sim.yaml) |
+| Scenario | [`cicd/kind`](../config/scenarios/cicd/kind.yaml) |
 | Model | `facebook/opt-125m` (small - chosen so the quickstart works on a laptop) |
 | Inference engine | [`llm-d-inference-sim`](https://github.com/llm-d/llm-d-inference-sim) - fake inference, no GPU |
 | Deploy methods | `modelservice` (default) or `standalone` |
@@ -53,7 +53,7 @@ You need these installed before starting:
 | `git` | any | `git --version` |
 | Container runtime resources | **4 CPUs / 8 GiB RAM** | `docker info \| grep -E "CPUs\|Total Memory"` |
 
-> **Resource note:** The `cicd/kind-sim` scenario deploys ~7 pods on a single Kind node. With the default 2 CPUs that Docker Desktop, Colima, and Podman ship with, the harness pod (and sometimes the gateway) cannot schedule due to `Insufficient cpu`. Bump your container runtime to **4 CPUs** before creating the Kind cluster. See [Troubleshooting](#pods-stuck-in-pending-during-standup-or-run) if you hit this.
+> **Resource note:** The `cicd/kind` scenario deploys ~7 pods on a single Kind node. With the default 2 CPUs that Docker Desktop, Colima, and Podman ship with, the harness pod (and sometimes the gateway) cannot schedule due to `Insufficient cpu`. Bump your container runtime to **4 CPUs** before creating the Kind cluster. See [Troubleshooting](#pods-stuck-in-pending-during-standup-or-run) if you hit this.
 
 Everything else - `kubectl`, `helm`, `helmfile`, `kind`, `skopeo`, `crane`, `helm-diff`, `jq`, `yq`, `kustomize` - will be installed for you by `./install.sh` in [step 3](#3-install-llmdbenchmark), with one exception: `kind` itself, which we install first below because we want the cluster up before the installer runs.
 
@@ -95,7 +95,7 @@ If you prefer a different installation path or version manager, see the [upstrea
 
 ## 2. Create the Kind cluster
 
-Create a single-node cluster. The default Kind configuration is enough - we do **not** need any special port mappings, extra mounts, or registry config for `cicd/kind-sim`.
+Create a single-node cluster. The default Kind configuration is enough - we do **not** need any special port mappings, extra mounts, or registry config for `cicd/kind`.
 
 ```bash
 kind create cluster --name llmd-quickstart
@@ -109,7 +109,7 @@ kubectl get nodes
 # Expected: one node in Ready state
 ```
 
-That's all the cluster prep you need. The `cicd/kind-sim` scenario uses `affinity.nodeSelector: kubernetes.io/os: linux`, and Kubernetes sets that label automatically on every node via the kubelet (it is one of the [well-known labels](https://kubernetes.io/docs/reference/labels-annotations-taints/#kubernetes-io-os)), so no manual labeling step is required.
+That's all the cluster prep you need. The `cicd/kind` scenario uses `affinity.nodeSelector: kubernetes.io/os: linux`, and Kubernetes sets that label automatically on every node via the kubelet (it is one of the [well-known labels](https://kubernetes.io/docs/reference/labels-annotations-taints/#kubernetes-io-os)), so no manual labeling step is required.
 
 ## 3. Install llmdbenchmark
 
@@ -149,12 +149,12 @@ export NS=llmd-quickstart
 `standup` renders the scenario templates, installs the llm-d charts, creates the model PVC, downloads the model, and deploys the prefill + decode pods.
 
 ```bash
-llmdbenchmark --spec cicd/kind-sim standup -p "$NS" --skip-smoketest
+llmdbenchmark --spec cicd/kind standup -p "$NS" --skip-smoketest
 ```
 
 What's happening under the hood:
 
-1. The `cicd/kind-sim` specification is rendered into a self-contained `plan/` directory under `$LLMDBENCH_WORKSPACE` (defaults to `/tmp/<user>-<timestamp>`).
+1. The `cicd/kind` specification is rendered into a self-contained `plan/` directory under `$LLMDBENCH_WORKSPACE` (defaults to `/tmp/<user>-<timestamp>`).
 2. The `modelservice` Helm chart is deployed into `$NS` with CPU-only image overrides.
 3. A PVC is provisioned and `facebook/opt-125m` is downloaded into it from HuggingFace.
 4. Prefill, decode, and gateway pods are rolled out and wait for Ready.
@@ -168,7 +168,7 @@ Progress banners at the start of each step make it easy to follow along. If a st
 Once standup succeeds, run the smoketest to verify the inference endpoint actually answers:
 
 ```bash
-llmdbenchmark --spec cicd/kind-sim smoketest -p "$NS"
+llmdbenchmark --spec cicd/kind smoketest -p "$NS"
 ```
 
 This sends a handful of real requests through the gateway, validates the responses, and exits 0 on success.
@@ -178,7 +178,7 @@ This sends a handful of real requests through the gateway, validates the respons
 Now run the `inference-perf` harness with the `sanity_random.yaml` workload. This is the smallest benchmark profile we ship - perfect for a first run.
 
 ```bash
-llmdbenchmark --spec cicd/kind-sim run -p "$NS" \
+llmdbenchmark --spec cicd/kind run -p "$NS" \
     -l inference-perf \
     -w sanity_random.yaml
 ```
@@ -201,9 +201,9 @@ Use a different namespace so you don't clash with the modelservice run:
 ```bash
 export NS_SA=llmd-quickstart-sa
 
-llmdbenchmark --spec cicd/kind-sim standup   -p "$NS_SA" -t standalone --skip-smoketest
-llmdbenchmark --spec cicd/kind-sim smoketest -p "$NS_SA" -t standalone
-llmdbenchmark --spec cicd/kind-sim run       -p "$NS_SA" -t standalone \
+llmdbenchmark --spec cicd/kind standup   -p "$NS_SA" -t standalone --skip-smoketest
+llmdbenchmark --spec cicd/kind smoketest -p "$NS_SA" -t standalone
+llmdbenchmark --spec cicd/kind run       -p "$NS_SA" -t standalone \
     -l inference-perf -w sanity_random.yaml
 ```
 
@@ -215,10 +215,10 @@ Clean up the deployment(s) but leave the Kind cluster itself running:
 
 ```bash
 # Tear down the modelservice namespace
-llmdbenchmark --spec cicd/kind-sim teardown -p "$NS"
+llmdbenchmark --spec cicd/kind teardown -p "$NS"
 
 # Tear down the standalone namespace (if you ran step 5)
-llmdbenchmark --spec cicd/kind-sim teardown -p "$NS_SA" -t standalone
+llmdbenchmark --spec cicd/kind teardown -p "$NS_SA" -t standalone
 ```
 
 Or, if you're done with the cluster entirely, delete it wholesale:
@@ -243,7 +243,7 @@ kind delete cluster --name llmd-quickstart
   Warning  FailedScheduling  0/1 nodes are available: 1 Insufficient cpu, 1 Insufficient memory.
   ```
 
-  The `cicd/kind-sim` scenario needs roughly **2.5 CPU** across all pods (decode, prefill, EPP, gateway, harness). If your container runtime (Docker Desktop, Colima, Podman) defaults to 2 CPUs, the harness pod won't fit alongside everything else.
+  The `cicd/kind` scenario needs roughly **2.5 CPU** across all pods (decode, prefill, EPP, gateway, harness). If your container runtime (Docker Desktop, Colima, Podman) defaults to 2 CPUs, the harness pod won't fit alongside everything else.
 
   **Check your current allocation:**
 
@@ -281,7 +281,7 @@ kind delete cluster --name llmd-quickstart
 
 - **PVC stuck**: `kubectl get pvc -n "$NS"` - the `standard` Kind storage class should provision immediately. If it does not, you're probably out of disk; see above.
 - **Image pull backoff**: check `kubectl describe pod -n "$NS" <pod>` for the failing image and make sure your machine has network access to `ghcr.io`.
-- **Node selector mismatch**: if `kubectl describe pod -n "$NS" <pod>` shows `0/1 nodes are available: 1 node(s) didn't match Pod's node affinity/selector`, print the node's labels with `kubectl get node -o jsonpath='{.items[0].metadata.labels}' | jq` and cross-check against the scenario's `affinity.nodeSelector` in `config/scenarios/cicd/kind-sim.yaml`. On a standard Kind cluster this should always match because `kubernetes.io/os=linux` is a well-known label the kubelet sets automatically.
+- **Node selector mismatch**: if `kubectl describe pod -n "$NS" <pod>` shows `0/1 nodes are available: 1 node(s) didn't match Pod's node affinity/selector`, print the node's labels with `kubectl get node -o jsonpath='{.items[0].metadata.labels}' | jq` and cross-check against the scenario's `affinity.nodeSelector` in `config/scenarios/cicd/kind.yaml`. On a standard Kind cluster this should always match because `kubernetes.io/os=linux` is a well-known label the kubelet sets automatically.
 
 ### `llmdbenchmark: command not found`
 
@@ -321,8 +321,8 @@ The `facebook/opt-125m` model is public and small. If the download fails, you mo
 - If you edited `harness.resources` in your scenario to reduce requests, you must re-run `plan` before `run` (no standup needed - the cluster infra is unchanged):
 
   ```bash
-  llmdbenchmark --spec cicd/kind-sim plan -p "$NS"
-  llmdbenchmark --spec cicd/kind-sim run  -p "$NS"
+  llmdbenchmark --spec cicd/kind plan -p "$NS"
+  llmdbenchmark --spec cicd/kind run  -p "$NS"
   ```
 
 ### Anything else
@@ -330,7 +330,7 @@ The `facebook/opt-125m` model is public and small. If the download fails, you mo
 Run with `LLMDBENCH_LOG_LEVEL=DEBUG` for verbose output:
 
 ```bash
-LLMDBENCH_LOG_LEVEL=DEBUG llmdbenchmark --spec cicd/kind-sim standup -p "$NS"
+LLMDBENCH_LOG_LEVEL=DEBUG llmdbenchmark --spec cicd/kind standup -p "$NS"
 ```
 
 The workspace directory printed at the top of every run contains all rendered templates, step-by-step logs, and pod manifests. That's usually enough to pinpoint any failure without needing extra flags.

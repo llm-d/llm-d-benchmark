@@ -13,8 +13,10 @@ from llmdbenchmark.utilities.endpoint import (
     cleanup_ephemeral_pods,
     find_standalone_endpoint,
     find_gateway_endpoint,
+    find_epponly_endpoint,
     test_model_serving,
 )
+
 
 class SmoketestStep(Step):
     """Validate deployment health and model serving via smoketests."""
@@ -49,7 +51,9 @@ class SmoketestStep(Step):
 
         plan_config = self._load_stack_config(stack_path)
         model_name = self._require_config(plan_config, "model", "name")
-        inference_port = self._require_config(plan_config, "vllmCommon", "inferencePort")
+        inference_port = self._require_config(
+            plan_config, "vllmCommon", "inferencePort"
+        )
         release = self._require_config(plan_config, "release")
 
         if "fma" in context.deployed_methods:
@@ -58,14 +62,22 @@ class SmoketestStep(Step):
         gateway_port = "80"
         service_ip = None
 
+        gateway_class = plan_config.get("gateway", {}).get("className", "")
+        is_epponly = gateway_class == "epponly"
+        model_id_label = plan_config.get("model_id_label", "")
+
         if is_standalone:
             service_ip, _, gateway_port = find_standalone_endpoint(
                 cmd, namespace, inference_port
             )
-        else:
-            service_ip, _, gateway_port = find_gateway_endpoint(
-                cmd, namespace, release
+        elif is_epponly:
+            service_ip, _, gateway_port = find_epponly_endpoint(
+                cmd,
+                namespace,
+                model_id_label,
             )
+        else:
+            service_ip, _, gateway_port = find_gateway_endpoint(cmd, namespace, release)
 
         if not service_ip:
             if context.dry_run:
@@ -74,7 +86,6 @@ class SmoketestStep(Step):
             else:
                 errors.append("Could not find service/gateway IP for smoketest")
 
-        model_id_label = plan_config.get("model_id_label", "")
         standalone_role = self._require_config(plan_config, "standalone", "role")
         if is_standalone:
             pod_selector = (
@@ -103,7 +114,7 @@ class SmoketestStep(Step):
                 if not phases:
                     errors.append(f"No pods found with selector '{pod_selector}'")
                 elif not all(p == "Running" for p in phases):
-                    errors.append("Not all pods running " f"(found: {', '.join(phases)})")
+                    errors.append(f"Not all pods running (found: {', '.join(phases)})")
                 else:
                     context.logger.log_info(f"All {len(phases)} pod(s) running ✓")
             else:
@@ -111,7 +122,12 @@ class SmoketestStep(Step):
 
         if service_ip and not errors:
             health_err = self._check_health(
-                cmd, context, namespace, service_ip, gateway_port, plan_config,
+                cmd,
+                context,
+                namespace,
+                service_ip,
+                gateway_port,
+                plan_config,
             )
             if health_err:
                 errors.append(health_err)
@@ -121,15 +137,19 @@ class SmoketestStep(Step):
         # until it actually serves the model before running assertions.
         if service_ip and not errors:
             self._wait_for_model_ready(
-                cmd, context, namespace, service_ip, gateway_port,
-                model_name, plan_config,
+                cmd,
+                context,
+                namespace,
+                service_ip,
+                gateway_port,
+                model_name,
+                plan_config,
             )
 
         service_test_passed = False
         if service_ip:
             context.logger.log_info(
-                f'Testing service/gateway "{service_ip}" '
-                f"(port {gateway_port})..."
+                f'Testing service/gateway "{service_ip}" (port {gateway_port})...'
             )
             test_result = test_model_serving(
                 cmd,
@@ -167,15 +187,19 @@ class SmoketestStep(Step):
         if context.dry_run:
             # Log a representative pod IP test command
             test_model_serving(
-                cmd, namespace, "<dry-run-pod-ip>", inference_port,
-                model_name, plan_config, max_retries=1,
+                cmd,
+                namespace,
+                "<dry-run-pod-ip>",
+                inference_port,
+                model_name,
+                plan_config,
+                max_retries=1,
             )
         elif pod_ips_result.success and pod_ips_result.stdout.strip():
             pod_ips = pod_ips_result.stdout.strip().split()
             for i, pod_ip in enumerate(pod_ips, 1):
                 context.logger.log_info(
-                    f"Testing pod {i}/{len(pod_ips)} "
-                    f"at {pod_ip}:{inference_port}..."
+                    f"Testing pod {i}/{len(pod_ips)} at {pod_ip}:{inference_port}..."
                 )
                 test_result = test_model_serving(
                     cmd,
@@ -283,14 +307,18 @@ class SmoketestStep(Step):
 
             attempt += 1
             pod_name = f"healthcheck-{_rand_suffix()}"
-            curl_cmd = (
-                f"'curl -sk --max-time 10 -o /dev/null -w %{{http_code}} {url}'"
-            )
+            curl_cmd = f"'curl -sk --max-time 10 -o /dev/null -w %{{http_code}} {url}'"
 
             kubectl_args = (
                 [
-                    "run", pod_name, "--rm", "--attach", "--quiet",
-                    "--restart=Never", "--namespace", namespace,
+                    "run",
+                    pod_name,
+                    "--rm",
+                    "--attach",
+                    "--quiet",
+                    "--restart=Never",
+                    "--namespace",
+                    namespace,
                     f"--image={curl_image}",
                 ]
                 + _ephemeral_label_args()
@@ -318,7 +346,7 @@ class SmoketestStep(Step):
             )
             time.sleep(poll_interval)
 
-    def _wait_for_model_ready( # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def _wait_for_model_ready(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         cmd: CommandExecutor,
         context: ExecutionContext,
@@ -337,8 +365,7 @@ class SmoketestStep(Step):
         ``/v1/models`` returns the expected model name, up to *timeout* seconds.
         """
         context.logger.log_info(
-            f"Waiting for model to be ready at {host}:{port} "
-            f"(timeout {timeout}s)..."
+            f"Waiting for model to be ready at {host}:{port} (timeout {timeout}s)..."
         )
         start = time.time()
         attempt = 0
@@ -354,7 +381,12 @@ class SmoketestStep(Step):
 
             attempt += 1
             result = test_model_serving(
-                cmd, namespace, host, port, expected_model, plan_config,
+                cmd,
+                namespace,
+                host,
+                port,
+                expected_model,
+                plan_config,
                 max_retries=1,
             )
 
@@ -363,15 +395,13 @@ class SmoketestStep(Step):
 
             if result is None:
                 context.logger.log_info(
-                    f"Model ready at {host}:{port} ✓ "
-                    f"({int(elapsed)}s elapsed)"
+                    f"Model ready at {host}:{port} ✓ ({int(elapsed)}s elapsed)"
                 )
                 return
 
             remaining = int(timeout - elapsed)
             context.logger.log_info(
-                f"Model not ready yet (attempt {attempt}, "
-                f"{remaining}s remaining)..."
+                f"Model not ready yet (attempt {attempt}, {remaining}s remaining)..."
             )
             time.sleep(poll_interval)
 
@@ -426,10 +456,9 @@ class SmoketestStep(Step):
                 f"Unable to fetch OpenShift route '{route_name}'"
             )
 
-    def _check_deployment_fma(self,
-                              context: ExecutionContext,
-                              plan_config: dict,
-                              stack_name: str) -> StepResult:
+    def _check_deployment_fma(
+        self, context: ExecutionContext, plan_config: dict, stack_name: str
+    ) -> StepResult:
         """
         Checking if current FMA deployment was successful
         """
@@ -438,12 +467,13 @@ class SmoketestStep(Step):
         cmd = context.require_cmd()
         namespace = context.require_namespace()
         model_label = plan_config.get("model_id_label", "")
-        for resource, name in [("InferenceServerConfig",  f"fma-{model_label}"),
-                         ("LauncherrConfig",  f"fma-{model_label}"),
-                         ("LauncherPopulationPolicy",  f"fma-{model_label}"),
-                         ("ReplicaSet",  f"fma-requester-{model_label}")
-                         ]:
-            result = cmd.kube("get", resource ,"-n", namespace, name, check=False)
+        for resource, name in [
+            ("InferenceServerConfig", f"fma-{model_label}"),
+            ("LauncherrConfig", f"fma-{model_label}"),
+            ("LauncherPopulationPolicy", f"fma-{model_label}"),
+            ("ReplicaSet", f"fma-requester-{model_label}"),
+        ]:
+            result = cmd.kube("get", resource, "-n", namespace, name, check=False)
             if not result.success:
                 errors.append(f"Failed to query {resource} {name}: {result.stderr}")
             elif result.stdout.strip().split() == "":

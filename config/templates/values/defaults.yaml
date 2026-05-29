@@ -107,7 +107,7 @@ _anchors:
   llm-d-uds-tokenizer_version:       &llm-d-uds-tokenizer_version       v0.8.0
   llm-d-cuda_version:                &llm-d-cuda_version                v0.7.0
   llm-d-inference-sim_version:       &llm-d-inference-sim_version       v0.8.2
-  llm-d-benchmark_version:           &llm-d-benchmark_version           v0.6.3
+  llm-d-benchmark_version:           &llm-d-benchmark_version           v0.6.7
 
   # Common labels
   app_label: &app_label llm-d-benchmark-harness
@@ -547,6 +547,15 @@ annotations:
 gateway:
   name: infra-llmdbench-inference-gateway
   namespace: auto  # Synced with namespace.name; resolved at plan time
+  # Gateway implementation. Supported values:
+  #   istio                      - default; istio-base + istiod control plane
+  #   agentgateway               - agentgateway-crds + agentgateway controller
+  #   gke                        - GKE-managed Gateway
+  #   data-science-gateway-class - OpenDataHub / OpenShift AI managed Gateway
+  #   epponly                    - llm-d "standalone" router topology: no
+  #                                Kubernetes Gateway is deployed, the EPP
+  #                                runs with an Envoy sidecar that serves
+  #                                HTTP directly (single-stack only).
   className: istio
   providerNamespace: istio-system
   # Gateway version is derived from chartVersions.istiod at plan time
@@ -700,11 +709,17 @@ vllmCommon:
   ephemeralStorageResource: "ephemeral-storage"
   ephemeralStorage: ""
 
+  # Shell used to exec the vLLM startup command in every vLLM container
+  # (decode, prefill, standalone, launcher). Renders into the `command:` field
+  # of 13_ms-values.yaml.j2 and 14_standalone-deployment_yaml.j2. Override
+  # per-scenario to e.g. /bin/sh if the image lacks bash.
+  shell: "/bin/bash"
+
   # NIXL side channel port for ZMQ-based KV transfer communication.
   nixlSideChannelPort: "5557"
 
   # UCX transport layer configuration for NCCL inter-node communication.
-  ucxTls: "rc,sm,cuda_ipc,cuda_copy,tcp"
+  ucxTls: "sm,cuda_ipc,cuda_copy,tcp"
 
   # UCX socket address transport priority.
   ucxSockaddrTlsPriority: "tcp"
@@ -1178,6 +1193,16 @@ standalone:
 
   # Extra pod config (merged into pod spec)
   extraPodConfig: {}
+
+# ============================================================================
+# KUSTOMIZE DEPLOYMENT CONFIGURATION
+# Opt-in via `kustomize.enabled: true` in a scenario or `-t kustomize` on
+# the CLI. Defined here (matching modelservice/standalone/fma) so the
+# structural key is always present in merged values and template guards
+# can use `kustomize.enabled` directly.
+# ============================================================================
+kustomize:
+  enabled: false
 
 # ============================================================================
 # FMA DEPLOYMENT CONFIGURATION

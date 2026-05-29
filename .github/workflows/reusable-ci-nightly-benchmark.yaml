@@ -52,7 +52,12 @@ on:
         description: 'Class of gateway used ("istio", "agentgateway", "epponly", "none")'
         required: false
         type: 'string'
-        default: 'istio'
+        default: 'epponly'
+      monitoring_enabled:
+        description: 'Enabled monitoring ("true", "false")'
+        required: false
+        type: 'string'
+        default: 'true'
       dry_run:
         description: 'Execute workflow in "dry-run" mode ("true", "false")'
         required: false
@@ -63,7 +68,16 @@ on:
         required: false
         default: 'false'
         type: 'string'
-
+      harness:
+        description: 'Harness to be used during "run" operation ("inference-perf", "guidellm", "inferencemax", "vllm-benchmark", "nop")'
+        required: false
+        default: 'inference-perf'
+        type: 'string'
+      workload:
+        description: 'Workload profile to be used during "run" operation (check list under "workload/profiles")'
+        required: false
+        default: 'sanity_random.yaml'
+        type: 'string'
 #  push:
 #    branches:
 #      - main
@@ -76,6 +90,9 @@ jobs:
     name: Ensure Nightly Build  Image
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      conditional_runs_on: ${{ steps.set_runs_on.outputs.runners }}
+
     steps:
       - name: Install system dependencies
         run: |
@@ -101,27 +118,43 @@ jobs:
           done
         shell: bash
 
+      - name: set runs-on variable based on cluster provider
+        id: set_runs_on
+        run: |
+          if [[ ${{ inputs.cluster_provider }} == "ocp" ]]; then
+            JSON_LIST='["self-hosted", "openshift", "pok-prod"]'
+          else
+            JSON_LIST='["ubuntu-latest"]'
+          fi
+          echo "runners=$JSON_LIST" >> "$GITHUB_OUTPUT"
+
   benchmark:
     name: Benchmark
-    runs-on: ubuntu-latest
+#    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.ensure-nightly-build-image.outputs.conditional_runs_on) }}
 #    container:
 #      image: ghcr.io/llm-d/llm-d-benchmark:nightly
     needs: [ensure-nightly-build-image]
     timeout-minutes: 240
 
     env:
-      LLMDBENCH_CICD_NS: ${{ inputs.cluster_namespace || 'cicd' }}
+      LLMDBENCH_CICD_NS: ${{ inputs.cluster_namespace || 'llmdbenchcicd' }}
       LLMDBENCH_CICD_R: ${{ inputs.helm_release || 'standalone' }}
-      LLMDBENCH_CICD_SCENARIO_DIR: ${{ inputs.scenario_dir || 'kind' }}
-      LLMDBENCH_CICD_TARGET: ${{ inputs.cluster_provider || 'llmdbenchcicd' }}
-      LLMDBENCH_CICD_METHOD: ${{ inputs.standup_method || 'lmdbenchcicdr' }}
+      LLMDBENCH_CICD_SCENARIO_DIR: ${{ inputs.scenario_dir || 'cicd' }}
+      LLMDBENCH_CICD_TARGET: ${{ inputs.cluster_provider || 'kind' }}
+      LLMDBENCH_CICD_METHOD: ${{ inputs.standup_method || 'standalone' }}
       LLMDBENCH_WORKSPACE: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicd' }}
       LLMDBENCH_HF_TOKEN: ${{ secrets.LLMDBENCH_HF_TOKEN }}
       LLMDBENCH_GATEWAY_CLASS: ${{ inputs.gateway_class || 'istio' }}
       LLMDBENCH_IS_DRY_RUN: ${{ inputs.dry_run || 'false' }}
       LLMDBENCH_IS_VERBOSE: ${{ inputs.verbose || 'false' }}
+      LLMDBENCH_MONITORING_ENABLED: ${{ inputs.monitoring_enabled || 'true' }}
+      LLMDBENCH_CICD_HARNESS: ${{ inputs.harness || 'inference-perf' }}
+      LLMDBENCH_CICD_WORKLOAD: ${{ inputs.workload || 'sanity_random.yaml' }}
       GCS_PATH: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
       GCP_PROJECT_ID: ${{ inputs.bucket_project || 'llm-d-scale' }}
+      GKE_CLUSTER_NAME: llm-d-e2e-us-east5
+      GKE_CLUSTER_ZONE: us-east5
 
     steps:
       - name: Checkout Code
@@ -141,29 +174,39 @@ jobs:
           version: v0.31.0
 
       - name: Authenticate to Google Cloud
-        if: inputs.cluster_provider == 'ocp' || inputs.bucket_provider == 'gcs'
+        if: inputs.bucket_provider == 'gcs'
         id: auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
           credentials_json: ${{ secrets.GKE_SA_KEY }}
 
       - name: Set up gcloud CLI and kubectl
-        if: inputs.cluster_provider == 'ocp' || inputs.bucket_provider == 'gcs'
+        if: inputs.bucket_provider == 'gcs'
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
           install_components: 'kubectl,gke-gcloud-auth-plugin'
 
+      - name: Get GKE credentials
+        if: inputs.cluster_provider == 'gke'
+        run: |
+          gcloud container clusters get-credentials "${{ env.GKE_CLUSTER_NAME }}" --zone "${{ env.GKE_CLUSTER_ZONE }}"
+
       - name: Set up kubeconfig from secret
-        if: inputs.cluster_provider != 'kind'
+        if: inputs.cluster_provider != 'kind' && inputs.cluster_provider != 'gke'
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
+          if [[ $LLMDBENCH_CICD_TARGET == "cks" ]]; then
+            echo "${{ secrets.KUBECONFIG_DATA_CKS }}" | base64 -d > ~/.kube/config
+          fi
+          if [[ $LLMDBENCH_CICD_TARGET == "ocp" ]]; then
+            echo "${{ secrets.KUBECONFIG_DATA_OCP }}" | base64 -d > ~/.kube/config
+          fi
           chmod 600 ~/.kube/config
         shell: bash
 
       - name: Install oc (optional on install.sh)
-        if: inputs.cluster_provider != 'ocp'
+        if: inputs.cluster_provider == 'ocp'
         run: |
           # Install oc (OpenShift CLI) — optional on install.sh
           if ! command -v oc &>/dev/null; then
@@ -178,28 +221,41 @@ jobs:
             rm -rf /tmp/oc-extract /tmp/openshift-client-linux.tar.gz
           fi
 
+      - name: Show cluster nodes
+        run: |
+          kubectl get node
+          exit $?
+        shell: bash
+
+      - name: Label node for simulated accelerators
+        if: inputs.cluster_provider == 'kind'
+        run: |
+          NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+          echo "Labeling node: $NODE"
+          kubectl label node "$NODE" kubernetes.io/os=linux --overwrite
+
       - name: Install llmdbenchmark
         run: |
           ./install.sh -y 2>&1
-          cp util/debug_info_on_failure.sh /usr/local/bin
+          sudo cp util/debug_info_on_failure.sh /usr/local/bin
         shell: bash
 
       - name: Set up extra command line parameters
         run: |
           export LLMDBENCH_EXTRA_CMD=""
+          export LLMDBENCH_EXTRA_OPERATION_CMD=""
+
           if [[ "$LLMDBENCH_IS_DRY_RUN" == "true" ]]; then
             export LLMDBENCH_EXTRA_CMD="--dry-run"
           fi
           if [[ "$LLMDBENCH_IS_VERBOSE" == "true" ]]; then
-            export LLMDBENCH_EXTRA_CMD="--verbose"
+            export LLMDBENCH_EXTRA_CMD="--verbose $LLMDBENCH_EXTRA_CMD "
+          fi
+          if [[ "$LLMDBENCH_MONITORING_ENABLED" == "false" ]]; then
+            export LLMDBENCH_EXTRA_OPERATION_CMD="--no-monitoring $LLMDBENCH_EXTRA_OPERATION_CMD "
           fi
           echo "LLMDBENCH_EXTRA_CMD=$LLMDBENCH_EXTRA_CMD" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Show cluster nodes
-        run: |
-          kubectl get node
-          exit $?
+          echo "LLMDBENCH_EXTRA_OPERATION_CMD=$LLMDBENCH_EXTRA_OPERATION_CMD" >> $GITHUB_ENV
         shell: bash
 
       - name: Cleanup target cloud
@@ -213,7 +269,7 @@ jobs:
 
       - name: Standup
         run: |
-          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD standup --no-monitoring --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD standup $LLMDBENCH_EXTRA_OPERATION_CMD --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_GATEWAY_CLASS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
           echo "### $LLMDBENCH_CMD ###"
           $LLMDBENCH_CMD
         shell: bash
@@ -225,8 +281,9 @@ jobs:
         shell: bash
 
       - name: Run
+        if: inputs.cluster_provider != 'kind' && inputs.standup_method != 'fma' || inputs.cluster_provider != 'kind' && inputs.standup_method == 'fma'
         run: |
-          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD run --namespace $LLMDBENCH_CICD_NS --methods $LLMDBENCH_CICD_METHOD"
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD run --namespace $LLMDBENCH_CICD_NS --methods $LLMDBENCH_CICD_METHOD --harness $LLMDBENCH_CICD_HARNESS --workload $LLMDBENCH_CICD_WORKLOAD"
           echo "### $LLMDBENCH_CMD ###"
           $LLMDBENCH_CMD
         shell: bash
@@ -234,7 +291,7 @@ jobs:
       - name: Teardown
         if: always()
         run: |
-          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
+          LLMDBENCH_CMD="llmdbenchmark --spec $LLMDBENCH_CICD_SCENARIO_DIR/$LLMDBENCH_CICD_TARGET $LLMDBENCH_EXTRA_CMD teardown --namespace $LLMDBENCH_CICD_NS --gateway-class $LLMDBENCH_GATEWAY_CLASS --release $LLMDBENCH_CICD_R --methods $LLMDBENCH_CICD_METHOD"
           echo "### $LLMDBENCH_CMD ###"
           $LLMDBENCH_CMD
           kubectl -n "$LLMDBENCH_CICD_NS" exec -i access-to-harness-data-workload-pvc -- bash -c "rm -rf /requests/*" || true
@@ -261,7 +318,7 @@ jobs:
         shell: bash
 
       - name: Block waiting for Standalone baseline
-        if: inputs.cluster_provider != 'kind' && inputs.bucket_provider == 'gcs'
+        if: inputs.cluster_provider != 'kind' && inputs.bucket_provider == 'gcs' && inputs.standup_method == 'fma'
         run: |
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             echo "Skipping waiting for \"standalone baseline\", due to \"dry-run\" mode activated"

@@ -160,6 +160,9 @@ shared:
   # per-stack below if a specific model needs different tuning.
   # --------------------------------------------------------------------------
   vllmCommon:
+    # Shell used in the vLLM container `command:` field. Defaults to /bin/bash.
+    # shell: /bin/sh
+
     kvTransfer:
       enabled: true
       connector: NixlConnector

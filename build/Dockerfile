@@ -1,4 +1,4 @@
-FROM python:3.12.9-slim-bookworm
+FROM ghcr.io/llm-d/python:3.12.9-slim-bookworm
 
 RUN apt-get update; \
     apt-get install -y \
@@ -117,12 +117,11 @@ RUN echo "inference-perf: ${INFERENCE_PERF_REPO} ${INFERENCE_PERF_BRANCH}" >> /w
     echo "inferencemax: ${INFERENCEMAX_REPO} ${INFERENCEMAX_COMMIT}" >> /workspace/repos.txt;
 
 ADD workload/harnesses/ /usr/local/bin/
-COPY llmdbenchmark/analysis/scripts/inference-perf-analyze_results.sh /usr/local/bin/inference-perf-analyze_results.sh
-COPY llmdbenchmark/analysis/scripts/nop-analyze_results.py /usr/local/bin/nop-analyze_results.py
-COPY llmdbenchmark/analysis/scripts/vllm-benchmark-analyze_results.sh /usr/local/bin/vllm-benchmark-analyze_results.sh
-COPY llmdbenchmark/analysis/scripts/guidellm-analyze_results.sh /usr/local/bin/guidellm-analyze_results.sh
-COPY llmdbenchmark/analysis/scripts/inferencemax-analyze_results.sh /usr/local/bin/inferencemax-analyze_results.sh
+ADD llmdbenchmark/analysis/scripts/ /tmp/analysis/
+ADD llmdbenchmark/standup/preprocess/ /tmp/preprocess/
 COPY llmdbenchmark/analysis/visualize_metrics.py /usr/local/bin/visualize_metrics.py
+
+RUN rsync -az --exclude "__pycache__" /tmp/analysis/ /usr/local/bin/; rsync -az --exclude "__pycache__" /tmp/preprocess/ /usr/local/bin/
 
 COPY llmdbenchmark/analysis/benchmark_report/ /opt/benchmark_report/
 RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
@@ -131,11 +130,9 @@ RUN mv /opt/benchmark_report/_pyproject.toml /opt/pyproject.toml
 COPY build/requirements-analysis.txt .
 RUN pip install --no-cache-dir -r requirements-analysis.txt && pip install -e /opt
 
-ADD llmdbenchmark/standup/preprocess/ /tmp/preprocess/
-RUN chmod +x /tmp/preprocess/* ; rsync -az --exclude "__pycache__" /tmp/preprocess/ /usr/local/bin/
-
-ADD install.sh /tmp/install.sh
-RUN chmod +x /tmp/install.sh ; /tmp/install.sh && apt-get clean && rm -rf /var/cache/apt && rm -rf /var/lib/apt/lists/* || true
+ADD install.sh /usr/local/bin/llmdbench_install.sh
+RUN chmod +x /usr/local/bin/*; \
+    llmdbench_install.sh  -y && apt-get clean && rm -rf /var/cache/apt && rm -rf /var/lib/apt/lists/* || true
 
 COPY build/llm-d-benchmark.sh /usr/local/bin/llm-d-benchmark.sh
 COPY util/debug_info_on_failure.sh /usr/local/bin/debug_info_on_failure.sh

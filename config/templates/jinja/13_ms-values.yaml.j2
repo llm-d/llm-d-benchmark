@@ -1,4 +1,5 @@
-{% if standalone.enabled is defined and not standalone.enabled %}
+{# Modelservice-only template. -t kustomize uses upstream guide manifests. #}
+{% if standalone.enabled is defined and not standalone.enabled and not (kustomize.enabled | default(false)) %}
 
 {# ============================================================================
    ms-values.yaml.j2
@@ -237,7 +238,7 @@ decode:
 
 {% if decode.nodeSelector is defined and decode.nodeSelector %}
   nodeSelector:
-{{ decode.nodeSelector | toyaml | indent(4) }}
+{{ decode.nodeSelector | toyaml | indent(4, true) }}
 {% endif %}
 
 {% if decode.schedulerName is defined %}
@@ -260,10 +261,10 @@ decode:
     labelValues:
 {% if d_accel_type.labelValues is defined %}
 {% for value in d_accel_type.labelValues %}
-    - {{ value }}
+    - "{{ value }}"
 {% endfor %}
 {% elif d_accel_type.labelValue is defined %}
-    - {{ d_accel_type.labelValue }}
+    - "{{ d_accel_type.labelValue }}"
 {% endif %}
 {% endif %}
 {% endif %}
@@ -314,7 +315,7 @@ decode:
 
 {% if decode.tolerations is defined and decode.tolerations %}
   tolerations:
-{{ decode.tolerations | toyaml | indent(4) }}
+{{ decode.tolerations | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {% if decode.accelerator is defined %}
@@ -385,7 +386,7 @@ decode:
     modelCommand: {{ decode_model_command }}
 {% if decode_model_command == 'custom' %}
     command:
-      - /bin/sh
+      - {{ vllmCommon.shell }}
       - '-c'
     args:
       - |
@@ -643,7 +644,7 @@ prefill:
 
 {% if prefill.nodeSelector is defined and prefill.nodeSelector %}
   nodeSelector:
-{{ prefill.nodeSelector | toyaml | indent(4) }}
+{{ prefill.nodeSelector | toyaml | indent(4, true) }}
 {% endif %}
 
 {% if prefill.schedulerName is defined %}
@@ -666,10 +667,10 @@ prefill:
     labelValues:
 {% if p_accel_type.labelValues is defined %}
 {% for value in p_accel_type.labelValues %}
-    - {{ value }}
+    - "{{ value }}"
 {% endfor %}
 {% elif p_accel_type.labelValue is defined %}
-    - {{ p_accel_type.labelValue }}
+    - "{{ p_accel_type.labelValue }}"
 {% endif %}
 {% endif %}
 {% endif %}
@@ -720,7 +721,7 @@ prefill:
 
 {% if prefill.tolerations is defined and prefill.tolerations %}
   tolerations:
-{{ prefill.tolerations | toyaml | indent(4) }}
+{{ prefill.tolerations | toyaml | indent(4, first=True) }}
 {% endif %}
 
 {% if prefill.accelerator is defined %}
@@ -788,7 +789,7 @@ prefill:
     modelCommand: {{ prefill_model_command }}
 {% if prefill_model_command == 'custom' %}
     command:
-      - /bin/sh
+      - {{ vllmCommon.shell }}
       - '-c'
     args:
       - |

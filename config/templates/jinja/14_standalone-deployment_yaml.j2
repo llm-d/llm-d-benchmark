@@ -226,7 +226,7 @@ spec:
         image: {{ standalone.image.repository }}:{{ standalone.image.tag }}
         imagePullPolicy: {{ standalone.image.pullPolicy }}
         command:
-        - /bin/bash
+        - {{ vllmCommon.shell }}
         - "-c"
         args:
         - |
@@ -439,7 +439,7 @@ spec:
         image: {{ standalone.launcher.image.repository | default(standalone.image.repository) }}:{{ standalone.launcher.image.tag | default(standalone.image.tag) }}
         imagePullPolicy: {{ standalone.launcher.imagePullPolicy }}
         command:
-        - /bin/bash
+        - {{ vllmCommon.shell }}
         - "-c"
         args:
         - |

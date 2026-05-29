@@ -45,23 +45,26 @@ class RenderProfilesStep(Step):
 
         # Resolve harness name
         harness_name = self._resolve(
-            plan_config, "harness.name",
-            context_value=context.harness_name, default="inference-perf",
+            plan_config,
+            "harness.name",
+            context_value=context.harness_name,
+            default="inference-perf",
         )
 
         # Resolve profile name
         profile_name = self._resolve(
-            plan_config, "harness.experimentProfile", "harness.profile",
-            context_value=context.harness_profile, default="sanity_random.yaml",
+            plan_config,
+            "harness.experimentProfile",
+            "harness.profile",
+            context_value=context.harness_profile,
+            default="sanity_random.yaml",
         )
 
         # Locate source profiles directory
         base_dir = context.base_dir or Path(__file__).resolve().parents[3]
         profiles_source = base_dir / "workload" / "profiles" / harness_name
         if not profiles_source.is_dir():
-            errors.append(
-                f"Profiles directory not found: {profiles_source}"
-            )
+            errors.append(f"Profiles directory not found: {profiles_source}")
             return StepResult(
                 step_number=self.number,
                 step_name=self.name,
@@ -82,17 +85,25 @@ class RenderProfilesStep(Step):
             runtime_values["LLMDBENCH_DEPLOY_CURRENT_MODEL"] = context.model_name
             runtime_values["LLMDBENCH_DEPLOY_CURRENT_TOKENIZER"] = context.model_name
 
+        dataset_file_override: str | None = None
         if context.dataset_url:
-            # Split into directory and filename so both tokens get replaced.
-            # Use posixpath to handle URLs and absolute paths correctly.
-            dir_part, file_part = posixpath.split(context.dataset_url.rstrip("/"))
-            runtime_values["LLMDBENCH_RUN_DATASET_DIR"] = dir_part
-            runtime_values["LLMDBENCH_RUN_DATASET_FILE"] = file_part
+            # Trailing slash => directory replay: DIR is the full path, FILE is empty.
+            # Otherwise (path ends with a filename/extension) => single-file replay:
+            # DIR is the parent, FILE is the basename.
+            if context.dataset_url.endswith("/"):
+                runtime_values["LLMDBENCH_RUN_DATASET_DIR"] = context.dataset_url
+                dataset_file_override = ""
+            else:
+                dir_part, file_part = posixpath.split(context.dataset_url)
+                runtime_values["LLMDBENCH_RUN_DATASET_DIR"] = dir_part
+                runtime_values["LLMDBENCH_RUN_DATASET_FILE"] = file_part
 
         env_map = build_env_map(
             plan_config=plan_config,
             runtime_values=runtime_values,
         )
+        if dataset_file_override is not None:
+            env_map["LLMDBENCH_RUN_DATASET_FILE"] = dataset_file_override
 
         # Output directory for rendered profiles
         output_dir = context.workload_profiles_dir() / harness_name
@@ -125,9 +136,7 @@ class RenderProfilesStep(Step):
                     )
                 else:
                     render_profile_file(source_file, dest_file, env_map)
-                    context.logger.log_info(
-                        f"Rendered profile: {dest_file.name}"
-                    )
+                    context.logger.log_info(f"Rendered profile: {dest_file.name}")
             else:
                 errors.append(
                     f"Profile '{profile_name}' not found in {profiles_source}"
@@ -189,9 +198,7 @@ class RenderProfilesStep(Step):
                 stack_name=stack_name,
             )
 
-        context.logger.log_info(
-            f"Profiles rendered to {output_dir}"
-        )
+        context.logger.log_info(f"Profiles rendered to {output_dir}")
         return StepResult(
             step_number=self.number,
             step_name=self.name,
@@ -221,9 +228,7 @@ class RenderProfilesStep(Step):
                     constants: dict[str, str] = {}
                     raw_constants = exp_data.get("constants")
                     if isinstance(raw_constants, dict):
-                        constants = {
-                            k: str(v) for k, v in raw_constants.items()
-                        }
+                        constants = {k: str(v) for k, v in raw_constants.items()}
 
                     # Look for 'treatments' or 'run' key
                     raw = exp_data.get("treatments") or exp_data.get("run", [])
@@ -232,15 +237,15 @@ class RenderProfilesStep(Step):
                             if isinstance(item, dict):
                                 # Constants first, then treatment overrides
                                 overrides = dict(constants)
-                                overrides.update({
-                                    k: str(v)
-                                    for k, v in item.items()
-                                    if k != "name"
-                                })
-                                treatments.append({
-                                    "name": item.get("name", f"t{i}"),
-                                    "overrides": overrides,
-                                })
+                                overrides.update(
+                                    {k: str(v) for k, v in item.items() if k != "name"}
+                                )
+                                treatments.append(
+                                    {
+                                        "name": item.get("name", f"t{i}"),
+                                        "overrides": overrides,
+                                    }
+                                )
                 return treatments
 
         # --overrides creates a single treatment
@@ -252,10 +257,12 @@ class RenderProfilesStep(Step):
                     key, value = pair.split("=", 1)
                     overrides[key.strip()] = value.strip()
             if overrides:
-                treatments.append({
-                    "name": "override",
-                    "overrides": overrides,
-                })
+                treatments.append(
+                    {
+                        "name": "override",
+                        "overrides": overrides,
+                    }
+                )
             return treatments
 
         # No explicit treatments

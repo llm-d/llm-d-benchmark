@@ -43,6 +43,11 @@ on:
         description: 'Class of gateway used ("istio", "agentgateway", "epponly", "none")'
         required: false
         default: 'istio'
+      monitoring_enabled:
+        description: 'Enabled monitoring ("true", "false")'
+        required: true
+        type: 'string'
+        default: 'false'
       dry_run:
         description: 'Execute workflow in "dry-run" mode ("true", "false")'
         required: false
@@ -51,6 +56,17 @@ on:
         description: 'Execute workflow in "verbose" mode ("true", "false")'
         required: false
         default: 'false'
+        type: 'string'
+      harness:
+        description: 'Harness to be used during "run" operation ("inference-perf", "guidellm", "inferencemax", "vllm-benchmark", "nop")'
+        required: false
+        default: 'nop'
+        type: 'string'
+      workload:
+        description: 'Workload profile to be used during "run" operation (check list under "workload/profiles")'
+        required: false
+        default: 'nop.yaml'
+        type: 'string'
 
 #  push:
 #    branches:
@@ -61,4 +77,23 @@ on:
 
 jobs:
   nightly:
-    uses: llm-d/llm-d-benchmark/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    uses: llm-d/llm-d-infra/.github/workflows/reusable-ci-nightly-benchmark.yaml@main
+    with:
+      scenario_dir: ${{ inputs.scenario_dir || 'cicd' }}
+      standup_method: ${{ inputs.standup_method || 'standalone' }}
+      cluster_provider: ${{ inputs.cluster_provider || 'cks' }}
+      cluster_namespace: ${{ inputs.cluster_namespace || 'llmdbenchcicdsns-cks' }}
+      helm_release: ${{ inputs.helm_release || 'llmdbenchcicdr-cks' }}
+      workspace_dir: ${{ inputs.workspace_dir || '/tmp/llmdbenchcicds-cks' }}
+      bucket_project: ${{ inputs.bucket_project || 'llm-d-scale' }}
+      bucket_provider: ${{ inputs.bucket_provider || 'gcs' }}
+      bucket_path: ${{ inputs.bucket_path || 'llm-d-benchmarks/regressions' }}
+      gateway_class: ${{ inputs.gateway_class || 'istio' }}
+      monitoring_enabled: ${{ inputs.monitoring_enabled || 'false' }}
+      dry_run: ${{ inputs.dry_run || 'false' }}
+      verbose: ${{ inputs.verbose || 'false' }}
+      harness: ${{ inputs.harness || 'vllm-benchmark' }}
+      workload: ${{ inputs.workload || 'sanity_random.yaml' }}
+#      harness: ${{ inputs.harness || 'nop' }}
+#      workload: ${{ inputs.workload || 'nop.yaml' }}
+    secrets: inherit
