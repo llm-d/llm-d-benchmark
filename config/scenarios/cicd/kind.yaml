@@ -198,3 +198,4 @@ scenario:
       resources:
         cpu: "1"
         memory: 2Gi
+#      executable: llm-d-benchmark.py

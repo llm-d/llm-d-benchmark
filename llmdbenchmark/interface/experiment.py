@@ -43,6 +43,15 @@ def add_subcommands(
         help="Deploy method (standalone, modelservice, fma).",
     )
     exp_parser.add_argument(
+        "--gateway-class",
+        default=env("LLMDBENCH_GATEWAY_CLASS"),
+        help=(
+            "Override the scenario's gateway.className. Supported values: "
+            "epponly, istio, agentgateway, gke, data-science-gateway-class. "
+            "Only takes effect on the modelservice deploy path."
+        ),
+    )
+    exp_parser.add_argument(
         "-m",
         "--models",
         default=env("LLMDBENCH_MODELS"),
