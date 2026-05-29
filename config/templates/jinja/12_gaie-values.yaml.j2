@@ -51,6 +51,33 @@ inferenceExtension:
   resources:
 {{ inferenceExtension.resources | toyaml | indent(4, true) }}
 {% endif %}
+{% if inferenceExtension.tolerations is defined and inferenceExtension.tolerations %}
+  tolerations:
+{{ inferenceExtension.tolerations | toyaml | indent(4, true) }}
+{% endif %}
+{% if affinity is defined and affinity.enabled %}
+  affinity:
+{% if affinity.nodeSelector is defined and affinity.nodeSelector %}
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+{% for key, value in affinity.nodeSelector.items() %}
+          - key: {{ key }}
+            operator: In
+            values:
+            - "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if affinity.podAffinity is defined and affinity.podAffinity %}
+    podAffinity:
+{{ affinity.podAffinity | toyaml | indent(6, true) }}
+{% endif %}
+{% if affinity.podAntiAffinity is defined and affinity.podAntiAffinity %}
+    podAntiAffinity:
+{{ affinity.podAntiAffinity | toyaml | indent(6, true) }}
+{% endif %}
+{% endif %}
 {% if inferenceExtension.pluginsCustomConfig is defined and inferenceExtension.pluginsCustomConfig %}
   pluginsCustomConfig:
 {% for filename, content in inferenceExtension.pluginsCustomConfig.items() %}
